@@ -11,6 +11,7 @@ import kblib
 import metadata_property_state
 
 from queue_runtime.canon import (
+    ACTIVE_STATES,
     BATCH_REVIEW_GATE_ID,
     MANUAL_ATTESTATION_TOOL,
     MANUAL_ATTESTATION_TOOL_VERSION,
@@ -202,7 +203,7 @@ def task_phase_delivery_errors(result, phase_id, *, actor_context_id=None):
     for item in (result.get("queue") or {}).get("required_queue") or []:
         if not isinstance(item, dict):
             continue
-        if item.get("state") not in ("open", "merge-ready"):
+        if item.get("state") not in ACTIVE_STATES:
             continue
         for message in activation_phase_delivery_errors(
                 result, item, phase_id, actor_context_id=actor_context_id):

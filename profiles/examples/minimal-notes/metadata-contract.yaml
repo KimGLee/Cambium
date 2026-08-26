@@ -1,5 +1,5 @@
 # Minimal Notes metadata-contract slot: the kernel-defaults branch.
-# Interface: profiles/README.md#Metadata-Contract-Slot
+# Interface: kernel/K00 Standards Control/profile-interface.yaml
 # The kernel applicability and relationship bases apply unchanged; a profile
 # with no differences declares that explicitly instead of restating defaults.
 

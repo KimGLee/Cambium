@@ -48,7 +48,8 @@ After splitting, every diagram MUST have a clear entry, a clear exit, and a hand
 
 ## Assets
 
-- Images go in the owning module's `Assets` folder.
+- Images go in the Profile-declared asset location associated with their
+  owning module.
 - Image file names use the canonical identity registered by the selected profile's `Language Contract` and express the content.
 - Purely decorative images MUST NOT be used.
 - All images are first verified for path, format, dimensions, and references; when adding or modifying a diagram, image, or embed, run Level 0 / Level 1 per [[kernel/K12 Quality Assurance/02 Rendering Verification#Rendering Verification Levels|Rendering Verification Levels]].

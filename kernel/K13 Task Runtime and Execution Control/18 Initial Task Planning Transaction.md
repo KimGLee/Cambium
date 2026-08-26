@@ -2,111 +2,67 @@
 
 - Parent: [[kernel/K13 Task Runtime and Execution Control Standard|K13 Task Runtime and Execution Control Standard]].
 - Previous: [[kernel/K13 Task Runtime and Execution Control/17 Escalation Policy|Escalation Policy]].
+- Next: [[kernel/K13 Task Runtime and Execution Control/19 Card Context Activation and Read-back Delivery|Card Context Activation and Read-back Delivery]].
 
 ## Purpose And Boundary
 
-This module owns only the transaction that turns an empty runtime namespace
-into a planned one. It defines no field: the Task Contract is
-[[kernel/K13 Task Runtime and Execution Control/02 Task Contract Binding and Time Semantics|K13/02]]'s,
-the Coverage record
-[[kernel/K02 Knowledge Work Construction/01 Inventory and Coverage Ledger|K02/01]]'s,
-the Required Queue
-[[kernel/K13 Task Runtime and Execution Control/08 Required Queue Contract and Lifecycle|K13/08]]'s.
-What is owned here is that those first values are written together, from one
-confirmed input, or not at all.
+This module owns only the transaction that turns empty task runtime into a
+planned task. It defines no Task Contract, Coverage, Queue, Card, or Read Set
+field. K13/02 owns Task Contract semantics, K02/01 owns Coverage, K13/08 owns
+Required Queue, and the independent routing/loading mechanism owns resolution
+of the task's loading selection.
 
-`Tools/init_state.py` publishes the namespace and infers nothing: the Contract's
-five selection fields are empty, Coverage holds no object, the Queue is empty.
-`Tools/apply_task_plan.py` is the sole writer of that edge. It consumes one
-restricted-YAML plan under `.cambium/deltas/task-plans/<plan-id>.yaml`, defaults
-to dry run, and writes only with `--apply`.
+The transaction writes one confirmed Task Contract and initial Coverage state
+together or writes neither. It cannot infer that a repository has work merely
+because files, templates, Cards, Read Sets, or candidate Coverage entries
+exist.
 
 ## What The Plan Supplies And What It May Never Infer
 
-The plan carries the complete Task Contract and initial Coverage inventory,
-including `batch_specs`. Every value is one a person already decided;
-`approval_reference` names where.
+The registered initial-task-plan machine contract is the sole normative source
+for plan fields, shapes, sentinels, and serialization. A confirmed plan binds:
 
-Exactly two derivations are permitted, both deterministic and both owned
-elsewhere: the Required Queue from the confirmed Coverage, and the Card, Read
-Set, and module closure from the confirmed route IDs. The second is not a
-convenience: selecting R01 alone closes over every other route and past a
-hundred modules, so demanding those lists by hand collects a declaration nobody
-checked, and
-[[kernel/K00 Standards Control/15 Read Set Loading Boundaries|K00/15]] places
-that completeness judgment on a plan being admitted because it is still
-writable there. A path the plan does list is kept and closed over; that is how
-a profile supplemental Read Set is selected, having no registry of its own.
+- the complete Task Contract, including the user-confirmed objective, scope,
+  authority, completion semantics, and resolved loading selection;
+- the initial Coverage inventory and batch specifications;
+- an approval reference for every semantic decision supplied by a person.
 
-Which objects are Required, who owns each, its priority, prerequisites, and
-batch assignment are answers, not derivations. `init_state.py` reports `no work
-inferred` for that reason; this transaction does not weaken it.
-
-A Coverage record for an object that does not exist yet is normal: K02/01
-requires one for every Required object, and a writer that demanded the file
-first could never plan unwritten work.
+The transaction may deterministically validate and normalize those confirmed
+values but cannot decide which objects are Required, their semantic owners,
+priority, prerequisites, batch assignment, route selection, or Profile policy.
+An object need not already exist as a file to be planned as Required.
 
 ## Where The Transaction Stops
 
-The writer writes the Task Contract and Coverage. It does not write the Queue.
+The initial planning transaction writes Task Contract and Coverage. It does not
+write or own the Required Queue. Before first Queue materialization those are
+confirmed adopter inputs; Queue compilation is the separate authority boundary
+owned by K13/09.
 
-Before the first Queue materialization both are adopter inputs; after it, every
-canonical write must be the after-image of a qualified writer's receipt. The
-Queue crossing that line is what materialization means, and
-[[kernel/K13 Task Runtime and Execution Control/09 Queue Compilation Replanning and Views|K13/09]]'s
-compiler already owns it, so this transaction stops at the boundary rather than
-becoming a second Queue authority.
+The resulting unmaterialized state may validly have Coverage batch projections
+while the Queue is still empty. The transaction result must make that state
+explicit and identify Queue materialization as the next owned capability. A
+generic success result that hides this remaining boundary is insufficient.
 
-The state it leaves — Coverage naming batches the Queue does not yet carry — is
-the unmaterialized runtime, not a broken one, and running the compiler both
-completes it and resumes an interruption in it. The writer MUST report that the
-Queue is unmaterialized and name the command that materializes it; a run
-reporting only success invites the operator to stop one step early.
+## External Transaction Contract
 
-## Guarded Write Protocol
+The registered initial-task-planning transaction must:
 
-Before writing anything, the tool reparses the plan and all three state objects
-and fails closed on any of four classes: a plan that is not the closed shape or
-still carries an unfilled sentinel; a runtime that has moved, is not the empty
-skeleton, names a different task, or does not currently validate; a route or
-Coverage selection that does not resolve; and a proposed after-image that fails
-`check_queue`.
+- consume one current confirmed plan and an empty, valid task-runtime before
+  image;
+- reject unresolved references, unfilled sentinels, current-state drift, a
+  different task identity, or an after image that fails cross-state validation;
+- publish complete Task Contract and Coverage after images together with one
+  immutable transaction result, or preserve the before image;
+- make interruption fail closed and recoverable without losing the confirmed
+  plan or inventing a commit;
+- emit no Gate claim of its own; existing consistency, admission, large-scale,
+  and planning Gates consume its resulting state at their ordinary boundaries.
 
-It then takes the shared state-writer lock, re-verifies the before images under
-it, replaces Coverage and Progress, and appends one commit receipt to
-`.cambium/receipts/task-plans.jsonl`. A failure after the first replacement
-restores the before images and records an abort.
-
-The receipt records a transaction, not a gate, and claims no Gate ID. The state
-it writes is consumed by `required-queue-consistency`,
-`required-queue-admission`, `large-scale-execution-admission`, and where
-applicable `corpus-plan-structure` — all of which already exist. A gate with no
-lifecycle boundary to guard would be ceremony.
-
-## Applying It Twice
-
-A run interrupted before commit restores the before images, so the same plan
-applies cleanly on retry. Once it has committed, its own compare-and-swap
-declines it: the state has moved. A *different* plan applied over an
-already-planned runtime is refused: it would be a scope change routed around
-[[kernel/K13 Task Runtime and Execution Control/06 Amendment Log and Controlled Replanning|Amendment]]
-and replan, where later change belongs. This is not a policy laid on top of the
-machine — once the Queue is materialized the Contract fingerprint is frozen and
-any later mutation already fails closed. The refusal only declines to create a
-path around that.
-
-## Control Accretion Decision
-
-Per [[kernel/K00 Standards Control/03 Standards Governance#Control Accretion Rule|Control Accretion Rule]].
-
-- **Which layer owned this risk, and why insufficient?** None did. The
-  documented path was to hand-edit canonical runtime state, which
-  [[kernel/Read Sets/R01 Core Bootstrap Read Set|R01]] forbids and which records
-  nothing about what was confirmed.
-- **Which layer owns the canonical gate?** None is added; the four gates named
-  above consume this transaction's output unchanged.
-- **Is the superseded layer deleted?** Yes. The instruction to fill the Coverage
-  Ledger by hand is removed wherever it appeared.
+Applying the same plan after a verified commit is a no-op refusal because state
+has moved. A different plan over planned runtime is an Amendment and replan,
+not initialization. This prevents initialization from becoming a path around
+the frozen Contract.
 
 ## Related
 

@@ -122,14 +122,35 @@ class DerivationTests(unittest.TestCase):
         self.assertIn("--policy-fingerprint", command)
         self.assertIn(fingerprint, command)
 
-    def test_the_manual_card_synchronization_row_gets_its_machine_input(self):
+    def test_manual_rows_remain_human_recorded_gates(self):
         derived, _ = run_gates.derive_verification_set(
             self.ROOT, self.registry(), self.recipes())
         kinds = {gate_id: (kind, command)
                  for gate_id, kind, command in derived}
-        kind, command = kinds["runtime-card-synchronization"]
-        self.assertEqual("input", kind)
+        for gate_id, predicate in self.registry().items():
+            if (predicate["lifecycle_states"] == ("not-batch-scoped",) and
+                    predicate["tool"] ==
+                    check_queue.MANUAL_ATTESTATION_TOOL):
+                self.assertEqual(("manual", None), kinds[gate_id])
+
+    def test_card_currentness_is_a_non_gate_tool_preflight(self):
+        registry = self.registry()
+        self.assertNotIn("runtime-card-synchronization", registry)
+
+        preflights = run_gates._preflight_commands(
+            self.ROOT, "profiles/examples/agent-atlas/profile.md")
+        rows = {capability: (label, command)
+                for capability, label, command in preflights}
+        label, command = rows[run_gates.CARD_CURRENTNESS_CAPABILITY]
+        self.assertEqual("stamp_cards --check", label)
         self.assertTrue(any("stamp_cards" in part for part in command))
+        self.assertEqual("--check", command[-1])
+
+        derived, _ = run_gates.derive_verification_set(
+            self.ROOT, registry, self.recipes())
+        self.assertNotIn(
+            run_gates.CARD_CURRENTNESS_CAPABILITY,
+            {gate_id for gate_id, _kind, _command in derived})
 
 
 class BoundaryTests(unittest.TestCase):
@@ -167,6 +188,16 @@ class BoundaryTests(unittest.TestCase):
         self.assertIn("Tools/tests", findings[0])
         self.assertIn("distribution-only", findings[0])
 
+    def test_minimal_template_is_a_distribution_only_candidate(self):
+        self.install_declaration()
+        os.makedirs(os.path.join(
+            self.root, "profiles", "_template-minimal"))
+        findings, errors = run_gates._boundary_findings(
+            self.root, "profiles/mine/profile.md")
+        self.assertEqual([], errors)
+        self.assertEqual(1, len(findings))
+        self.assertIn("profiles/_template-minimal", findings[0])
+
     def test_a_declared_single_file_is_a_candidate_like_a_tree(self):
         """An entry may be one file, not only a directory.
 
@@ -191,7 +222,8 @@ class BoundaryTests(unittest.TestCase):
             str(TOOLS.parent))
         self.assertEqual([], errors)
         declared = {entry["path"].rstrip("/") for entry in declaration}
-        for member in ("profiles/_template", "profiles/template-files.yaml",
+        for member in ("profiles/_template", "profiles/_template-minimal",
+                       "profiles/template-files.yaml",
                        "Tools/scaffold_profile.py", "profiles/interview.yaml",
                        "profiles/answer-patterns.md"):
             self.assertIn(member, declared)
@@ -241,6 +273,9 @@ class CliListTests(unittest.TestCase):
                 self.assertIn(gate_id, completed.stdout)
             else:
                 self.assertNotIn("%s " % gate_id, completed.stdout)
+
+        self.assertIn("preflight card-currentness-v1", completed.stdout)
+        self.assertIn("stamp_cards", completed.stdout)
 
 
 if __name__ == "__main__":

@@ -35,6 +35,8 @@ import metadata_execution_contract  # noqa: F401 - facade attribute
 import metadata_property_state  # noqa: F401 - facade attribute
 import project_page_state  # noqa: F401 - facade attribute
 import kblib
+import runtime_paths
+import runtime_state_contract
 import card_activation
 # Five peer modules this file no longer calls, and must keep importing.  The
 # runtime moved into `queue_runtime` and took its calls with it, but about
@@ -505,7 +507,7 @@ def _write_receipt(root, relative_path, result, outcome, details, mode,
             receipt, activation_context, readback_context, piece_context,
             phase_context, resume_activation_contexts)
     path = kblib.managed_repository_path(
-        root, relative_path, ".cambium/receipts",
+        root, relative_path, runtime_paths.RECEIPT_ROOT,
         suffixes=(".jsonl",), must_exist=False,
     )
     receipt = make_check_receipt(
@@ -571,7 +573,7 @@ def _resume_recommendation(result, errors):
                 "archival" % applied.get("batch"))
     in_flight = [item_id for item_id, item in items.items()
                  if item.get("state") in ACTIVE_STATES]
-    if task_state in ("complete", "cancelled"):
+    if task_state in runtime_state_contract.TASK_TERMINAL_STATES:
         return ("the existing task is terminal; preserve any unfinished batch "
                 "or control records as incomplete history, then explicitly "
                 "archive or roll over the runtime")
@@ -760,7 +762,7 @@ def _print_resume_status(result, errors):
     print("  maintenance_candidates.previous_receipt=%s" %
           (selected_gate.get("previous_maintenance_completion_receipt") or
            "none"))
-    for state in ("queued", "open", "merge-ready", "closed", "cancelled"):
+    for state in runtime_state_contract.QUEUE_STATE_ORDER:
         batch_ids = sorted(
             (item_id for item_id, item in items.items()
              if item.get("state") == state),
@@ -862,7 +864,8 @@ def _print_resume_status(result, errors):
                            sort_keys=True),
                 json.dumps(lock.get("owner_error"), ensure_ascii=False),
             ))
-            for state_name in ("coverage", "progress", "queue"):
+            for state_name in tuple(sorted(
+                    runtime_state_contract.RUNTIME_LEDGER_IDS)):
                 phase = (lock.get("state_phases") or {}).get(state_name) or {}
                 print("    state.%s phase=%s live=%s before=%s "
                       "planned_after=%s metadata_error=%s" % (
@@ -1135,8 +1138,8 @@ def _run(args, produced):
         elif item.get("state") != "queued":
             errors.append("requested batch %s is %s, not queued" %
                           (args.require_ready, item.get("state")))
-        elif result.get("progress", {}).get("task_state") in (
-                "complete", "cancelled"):
+        elif (result.get("progress", {}).get("task_state") in
+              runtime_state_contract.TASK_TERMINAL_STATES):
             errors.append("task_state=%s is terminal and cannot activate batch %s" %
                           (result["progress"].get("task_state"),
                            args.require_ready))
@@ -1171,7 +1174,7 @@ def _run(args, produced):
         if item is None:
             errors.append("requested batch %s does not exist" %
                           args.deliver_readback)
-        elif item.get("state") not in ("open", "merge-ready"):
+        elif item.get("state") not in ACTIVE_STATES:
             errors.append(
                 "read-back delivery requires an open or merge-ready batch; "
                 "%s is %s" % (args.deliver_readback, item.get("state")))
@@ -1205,7 +1208,7 @@ def _run(args, produced):
         activation_receipt = None
         if item is None:
             errors.append("requested batch %s does not exist" % batch_id)
-        elif item.get("state") not in ("open", "merge-ready"):
+        elif item.get("state") not in ACTIVE_STATES:
             errors.append(
                 "activation piece delivery requires an open or merge-ready "
                 "batch; %s is %s" % (batch_id, item.get("state")))
@@ -1261,7 +1264,7 @@ def _run(args, produced):
         activation_receipt = None
         if item is None:
             errors.append("requested batch %s does not exist" % batch_id)
-        elif item.get("state") not in ("open", "merge-ready"):
+        elif item.get("state") not in ACTIVE_STATES:
             errors.append(
                 "activation phase delivery requires an open or merge-ready "
                 "batch; %s is %s" % (batch_id, item.get("state")))
@@ -1337,18 +1340,18 @@ def _run(args, produced):
         held_ids = [item_id for item_id, item in
                     (result.get("items_by_id") or {}).items()
                     if item.get("hold_state") != "none"]
-        if task_state in (
-                "planned", "active", "paused", "blocked",
-                "completion-candidate"):
+        if task_state in runtime_state_contract.TASK_NONTERMINAL_STATES:
             candidates.append(
                 "existing task_state=%s is non-terminal and must be resumed or "
                 "resolved before a new task" % task_state
             )
-        if active_ids and task_state not in ("complete", "cancelled"):
+        if (active_ids and
+                task_state in runtime_state_contract.TASK_NONTERMINAL_STATES):
             candidates.append("in-flight batch(es) require resume: %s" %
                               ", ".join(sorted(active_ids)))
-        if (held_ids and task_state not in
-                ("paused", "blocked", "complete", "cancelled")):
+        if (held_ids and
+                task_state in runtime_state_contract.TASK_NONTERMINAL_STATES and
+                task_state not in ("paused", "blocked")):
             candidates.append("batch hold(s) require resolution: %s" %
                               ", ".join(sorted(held_ids)))
         for item_id in sorted(active_ids):

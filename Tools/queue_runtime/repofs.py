@@ -12,11 +12,12 @@ import stat
 
 import check_profile
 import kblib
+import runtime_paths
 
 
 def load_state(root, relative_path, overrides=None):
     path = kblib.managed_repository_path(
-        root, relative_path, ".cambium/state",
+        root, relative_path, runtime_paths.STATE_ROOT,
         suffixes=(".yaml",), must_exist=True,
     )
     if overrides and relative_path in overrides:

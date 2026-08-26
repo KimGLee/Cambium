@@ -25,6 +25,97 @@ import standards_state
 import test_required_queue_e2e as required_queue_e2e
 
 
+class RouteDeclarationAuthorityTests(unittest.TestCase):
+    def setUp(self):
+        self.temporary = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temporary.cleanup)
+        self.root = Path(self.temporary.name)
+        repository = TOOLS_DIR.parent
+        for name in ("Card", "Read Set", "kernel"):
+            shutil.copytree(repository / name, self.root / name)
+        (self.root / "Tools").mkdir()
+        shutil.copy2(
+            repository / "Tools/module-boundaries.yaml",
+            self.root / "Tools/module-boundaries.yaml")
+
+    def test_navigation_indexes_are_not_registry_inputs(self):
+        (self.root / "Card/Card Index.md").write_text(
+            "not a registry\n", encoding="utf-8")
+        (self.root / "Read Set/Read Sets Index.md").write_text(
+            "not a registry\n", encoding="utf-8")
+
+        cards, read_sets, errors = check_proof.load_route_registry(self.root)
+
+        self.assertEqual([], errors)
+        self.assertEqual(13, len(cards))
+        self.assertEqual(13, len(read_sets))
+
+    def test_card_to_read_set_binding_is_checked_from_entities(self):
+        card = self.root / "Card/R01 Core Bootstrap Card.md"
+        card.write_text(card.read_text(encoding="utf-8").replace(
+            "read_set_id: R01", "read_set_id: R02"), encoding="utf-8")
+
+        _cards, _read_sets, errors = check_proof.load_route_registry(self.root)
+
+        self.assertTrue(any("read_set_id must equal route_id" in error
+                            for error in errors), errors)
+
+    def test_registry_membership_is_discovered_not_hardcoded_to_r01_r13(self):
+        read_set = self.root / "Read Set/R99 Fixture Read Set.md"
+        read_set.write_text(
+            "---\n"
+            "type: read-set\n"
+            "schema_version: 1\n"
+            "route_id: R99\n"
+            "activation_phase: batch-preflight\n"
+            "narrowable: true\n"
+            "load_edges:\n"
+            "  - edge_id: R99:start\n"
+            "    kind: required\n"
+            "    phase_id: batch-preflight\n"
+            "    trigger_id: route-selected\n"
+            "    targets:\n"
+            "      - kernel/K00 Standards Overview.md\n"
+            "    read_sets: []\n"
+            "---\n"
+            "# R99 Fixture Read Set\n\n"
+            "## Purpose\n\nFixture.\n\n"
+            "## Non-deterministic triggers\n\nNone.\n",
+            encoding="utf-8")
+        card = self.root / "Card/R99 Fixture Card.md"
+        body = (
+            "# R99 Fixture Card\n\n"
+            "## Purpose\n\nFixture.\n\n"
+            "## Actions\n\n- Observe the fixture.\n\n"
+            "## Stop or escalate\n\n- Stop on a registry error.\n\n"
+            "## Read-back hook\n\n- Read back the fixture target.\n")
+        body_hash = check_proof.stamp_cards.card_body_digest(
+            "---\ntype: card\n---\n" + body)
+        source_hash = check_proof.stamp_cards.source_digest(
+            self.root, ["Read Set/R99 Fixture Read Set.md"])
+        card.write_text(
+            "---\n"
+            "type: card\n"
+            "generation_mode: curated\n"
+            "route_id: R99\n"
+            "read_set_id: R99\n"
+            "read_set: Read Set/R99 Fixture Read Set.md\n"
+            "standards_version: fixture\n"
+            "source_files:\n"
+            "  - Read Set/R99 Fixture Read Set.md\n"
+            "source_hash: '%s'\n"
+            "reviewed_source_hash: '%s'\n"
+            "reviewed_card_hash: '%s'\n"
+            "---\n%s" % (source_hash, source_hash, body_hash, body),
+            encoding="utf-8")
+
+        cards, read_sets, errors = check_proof.load_route_registry(self.root)
+
+        self.assertEqual([], errors)
+        self.assertIn("R99", cards)
+        self.assertIn("R99", read_sets)
+
+
 def materialize_synthetic_standards_state(profile_manifest):
     """Render the fixture-owned canonical adopter Standards state."""
     return standards_state.canonical_text({
@@ -278,14 +369,14 @@ class TerminalRuntimeClosureTests(unittest.TestCase):
         self.load_contract = {
             "selected_route_ids": ["R01"],
             "selected_card_paths": [
-                "kernel/Cards/R01 Core Bootstrap Card.md",
+                "Card/R01 Core Bootstrap Card.md",
             ],
             "selected_profile_route_ids": ["P:test:supplemental"],
             "selected_read_sets": [
-                "kernel/Read Sets/R01 Core Bootstrap Read Set.md",
+                "Read Set/R01 Core Bootstrap Read Set.md",
             ],
             "loaded_module_paths": [
-                "kernel/K00 Standards Control/01 Operating Role and Reading Protocol.md",
+                "kernel/K00 Standards Control/02 Task Routing.md",
             ],
         }
         self.proof = {
@@ -388,6 +479,19 @@ class TerminalRuntimeClosureTests(unittest.TestCase):
         self.assertEqual([], check_proof._validate_terminal_progress_state(
             self.proof, progress
         ))
+
+    def test_amendment_finality_binds_status_to_writeback_state(self):
+        progress = dict(self.progress)
+        progress["amendments"] = [
+            {"id": "A-1", "status": "withdrawn", "writeback_done": False},
+        ]
+        self.assertEqual([], check_proof._validate_terminal_progress_state(
+            self.proof, progress))
+
+        progress["amendments"][0]["writeback_done"] = True
+        failures = check_proof._validate_terminal_progress_state(
+            self.proof, progress)
+        self.assertIn("progress-amendment-pending", self.checks(failures))
 
     def test_contract_identity_and_contract_version_must_match_proof(self):
         progress = dict(self.progress)
@@ -787,7 +891,7 @@ class TerminalProofCanonicalCliTests(unittest.TestCase):
         interface = self.root / check_proof.check_profile.DEFAULT_INTERFACE
         interface.write_text(
             interface.read_text(encoding="utf-8") +
-            "\nCanonical interface revision B.\n",
+            "\n# Canonical interface revision B.\n",
             encoding="utf-8",
         )
         self.assertEqual(

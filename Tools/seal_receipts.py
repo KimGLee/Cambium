@@ -84,19 +84,21 @@ import time
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import kblib
 import check_queue
+import runtime_paths
+import runtime_state_contract
 
 TOOL = "seal_receipts"
 TOOL_VERSION = "1.4.0"
-SEAL_RECEIPTS_PATH = ".cambium/receipts/seal-receipts.jsonl"
-COLD_PENDING_PREFIX = ".cambium/receipts/cold/pending"
-RECEIPTS_ROOT = ".cambium/receipts"
+SEAL_RECEIPTS_PATH = runtime_paths.SEAL_RECEIPT_PATH
+COLD_PENDING_PREFIX = runtime_paths.RECEIPT_COLD_PENDING_ROOT
+RECEIPTS_ROOT = runtime_paths.RECEIPT_ROOT
 
-NEVER_SEAL_BASENAMES = frozenset((
-    "queue-transitions.jsonl",
-    "standards-adoptions.jsonl",
-    "contract-amendments.jsonl",
-    "amendments.jsonl",
-    "seal-receipts.jsonl",
+NEVER_SEAL_BASENAMES = frozenset(os.path.basename(path) for path in (
+    runtime_paths.QUEUE_TRANSITION_RECEIPT_PATH,
+    runtime_paths.STANDARDS_ADOPTION_RECEIPT_PATH,
+    runtime_paths.CONTRACT_AMENDMENT_RECEIPT_PATH,
+    runtime_paths.AMENDMENT_RECEIPT_PATH,
+    runtime_paths.SEAL_RECEIPT_PATH,
 ))
 REVIEW_REGISTER_RE = re.compile(
     r"batch-.*-(review|checks|links)\.jsonl\Z")
@@ -938,7 +940,8 @@ def _require_unchanged(root, planned, by_file, before_tree):
     if current["errors"]:
         raise ValueError("runtime changed before write: %s" %
                          "; ".join(current["errors"]))
-    for field in ("queue_sha256", "coverage_sha256", "progress_sha256"):
+    for field in \
+            runtime_state_contract.RUNTIME_LEDGER_FINGERPRINT_BY_ID.values():
         if current.get(field) != planned.get(field):
             raise ValueError("%s changed between planning and the writer "
                              "lock" % field)
@@ -1099,8 +1102,8 @@ def _adopt_own_lock(root, seal_id, errors):
     directory is renamed rather than removed, because the mounts this tool
     has to survive refuse ``unlink`` and the owner record is evidence.
     """
-    lock_path = os.path.join(root, ".cambium/tmp/state-writer.lock")
-    owner_path = os.path.join(lock_path, "owner.json")
+    lock_path = os.path.join(root, runtime_paths.STATE_WRITER_LOCK_PATH)
+    owner_path = os.path.join(root, runtime_paths.STATE_WRITER_OWNER_PATH)
     if not os.path.isdir(lock_path):
         return False
     try:
@@ -1126,7 +1129,8 @@ def _adopt_own_lock(root, seal_id, errors):
             "out from under a running writer" % owner.get("pid"))
         return False
     retired = os.path.join(
-        root, ".cambium/tmp/state-writer.lock.reconciled-%s" % seal_id)
+        root, "%s.reconciled-%s" % (
+            runtime_paths.STATE_WRITER_LOCK_PATH, seal_id))
     if os.path.exists(retired):
         errors.append("a previous reconciliation of %s is already recorded at "
                       "%s" % (seal_id, os.path.basename(retired)))

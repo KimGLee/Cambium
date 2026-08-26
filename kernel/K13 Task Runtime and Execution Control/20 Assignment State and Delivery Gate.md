@@ -5,108 +5,72 @@
 
 ## Purpose And Boundary
 
-This module owns the mapping between one admitted batch and one temporary
-execution context, and the gate that decides when that context may be called
-`running`. [[kernel/K13 Task Runtime and Execution Control/19 Card Context Activation and Read-back Delivery|K13/19]]
-owns what is delivered and how one piece is proven; this module owns whether
-enough of it arrived. Nothing here is a second Queue: the Assignment record
-carries no work list, no batch lifecycle, and no completion semantics, and it
-is discarded when its context ends while the batch survives.
+This module owns the semantic mapping between one admitted batch and one
+temporary execution context, and the delivery result required before that
+context may be called `running`. K13/19 owns what is delivered and the evidence
+for each piece; this module owns whether the required set arrived.
 
-The separation matters because the two lifecycles fail differently. A batch is
-durable work that outlives any agent; an Assignment is one attempt by one
-context to carry it. Losing the context loses the delivery evidence and
-nothing else.
+An Assignment is not a second Queue. It carries no work list, batch lifecycle,
+or completion semantics. A batch is durable work that outlives execution
+contexts; an Assignment is one attempt by one context to carry it. Losing an
+Assignment invalidates its delivery evidence but not the batch.
 
-## Why This Is A Separate Gate
+## Assignment Contract
 
-`open` means a batch is admitted and its partition reserved. It does not mean
-any worker holds the Cards. Before this module existed the distance between
-those two facts was unmeasured: a runtime could call a worker `running` on the
-strength of an admission receipt, and the 2026-08-22 host measurement showed
-exactly that failure reaching production -- a conformant server delivery, a
-receipt claiming machine delivery, and a model context that never received the
-bytes. The claim was unfalsifiable because no gate consumed delivery evidence.
+An Assignment may have a Tool-owned machine representation, but its field
+names, shapes, serialization, and transport encoding are not Kernel rules.
+Semantically, one Assignment binds:
 
-## Assignment Record
+- a stable Assignment and admitted batch identity;
+- the acting execution-context identity and optional parent context;
+- the acting role and its already-authorized write scope;
+- the frozen delivery-obligation identity;
+- one delivery-attempt identity bound to that obligation and context; and
+- the delivery result at each applicable boundary and any handoff checkpoint.
 
-An Assignment binds, for one execution context:
-
-- `assignment_id`, and the `batch_id` it carries;
-- `execution_context_id`, and the optional parent context it was spawned from;
-- the role (`integrator`, `writer`, `reviewer`, or `researcher`) and that
-  role's permitted write scope;
-- the frozen `card_bundle_sha256` taken from Queue admission;
-- the current `delivery_attempt_id`, derived rather than stored: the hash of
-  the current `card_bundle_sha256` and the acting `execution_context_id`, so
-  a consumer recomputes the one value that pair could produce. A complete
-  chain from a superseded bundle or another context stays self-consistent
-  and stops matching that derivation, which is why consistency alone cannot
-  license reuse;
-- the delivery state below, and the handoff checkpoint if one exists.
-
-Role topology is runtime metadata. It is never Profile configuration, and an
-Assignment never widens a scope the Queue and Profile did not already grant.
+Role topology is runtime metadata, not Profile policy. An Assignment never
+widens the scope granted by Queue and selected Profile.
 
 ## Delivery States
 
-```text
-pending      Assignment created against an admitted batch
-delivering   at least one part of a phase delivered, that phase incomplete
-delivered    one phase's ack set complete and Adapter conformance current
-running      worker may execute
-```
+Delivery progresses from pending, through partial delivery, to a complete
+boundary result and then `running`. A boundary becomes delivered only when:
 
-The states are per phase, not per task. `pending -> delivering` requires one
-delivered part. `delivering -> delivered(phase)` requires all of:
+- the observed delivery set equals the frozen required set exactly, with no
+  missing, extra, duplicate, or foreign record;
+- every evidence record binds the same Assignment, context, frozen obligation,
+  and delivery attempt; and
+- the declared delivery assurance is externally established for the bound
+  context.
 
-- the ack set equals that phase's frozen piece set exactly -- no missing,
-  extra, duplicated, or foreign record, and every part accounted for;
-- every ack binds the same `assignment_id`, `execution_context_id`,
-  `card_bundle_sha256`, `phase_plan_sha256`, and `delivery_attempt_id`;
-- the host's declared adapter identity resolves to a current
-  inline-delivery conformance registration.
+Delivered initial context admits `running`. An execution environment unable
+to establish that result may operate only in explicitly degraded mode and
+cannot claim machine-enforced Card delivery. Queue `open` remains unaffected
+because batch admission and context delivery are different decisions.
 
-`delivered(batch-preflight)` admits `running`. A runtime that cannot reach `delivered`
-may still work, but records `degraded` and MUST NOT claim machine-enforced
-Card delivery. Queue `open` is unaffected either way: a human integrator
-admits batches without any Assignment at all.
+## Reading Boundary Scope
 
-## Phase Scope
-
-Admitting `running` on preflight changes timing, not obligation: later
-phases are owed at the point that consumes them rather than banked at
-startup. Which writer refuses which phase is owned by
-[[kernel/K13 Task Runtime and Execution Control/21 Phased Reading Plan|K13/21]].
-
-`running` itself still has no executable carrier: no writer computes an
-Assignment state, so it remains a definition the phase consumers
-approximate at their own edges. Recording that keeps the distance between
-definition and enforcement visible -- the distance this module exists to
-stop hiding.
+Initial delivery changes timing, not obligation. Later declared reading
+boundaries remain due at their consuming lifecycle transitions. The applicable
+loading declaration owns which content is due; the delivery implementation
+resolves that declaration. Each boundary result is proved independently under
+its frozen obligation.
 
 ## Attempt Invalidation
 
-Delivery evidence is bound to one attempt in one context, and does not
-transfer. A new execution context, a reassignment, a reopened batch, a new
-`card_bundle_sha256`, a revised Profile contract, or any change to a frozen
-input of the phase plan -- which moves `phase_plan_sha256` -- each start a
-new `delivery_attempt_id` and void every earlier ack. Recovery is to deliver
-the current phases again, never to carry evidence across the boundary that
-invalidated it. Re-delivery is scoped to the preflight phase plus the phase
-being resumed into: phases already earned remain proved by their own
-receipts under the plan hash they were earned against.
-
-This is deliberately expensive to fake and cheap to redo: re-delivery is
-idempotent reading, while a transferable ack would let a context claim
-delivery it never received.
+Delivery evidence never transfers between attempts or contexts. A new context,
+reassignment, reopened batch, or change to a frozen delivery input creates a
+new delivery-attempt identity and invalidates earlier evidence for the affected
+boundaries. Recovery resolves the current obligation and redelivers what is
+still due; evidence for an unaffected boundary remains usable only while its
+own complete binding stays current.
 
 ## What This Gate Does Not Prove
 
-`delivered` means the frozen bytes were delivered within budget to a
-conformant adapter and acknowledged from the same context. It does not prove
-the worker read them, understood them, or will obey them. Cognition is not
-observable here and no field in this module asserts it.
+Delivered means the complete frozen content was observably delivered to the
+bound context under the declared assurance. It does not prove that the worker
+read, understood, or will obey it. Cognition is not observable here and no
+Assignment field may assert it.
 
 ## Related
 

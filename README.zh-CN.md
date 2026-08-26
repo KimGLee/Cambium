@@ -44,7 +44,9 @@ Cambium 的有效治理由三部分组成：
 
 | 层 | 负责什么 |
 |---|---|
-| `kernel/` | 跨领域规则、门禁、执行路线、Read Sets 和 Runtime Cards |
+| `kernel/` | 跨领域治理语义、不变量、状态含义与扩展点 |
+| `Card/` | 面向已经选定的任务路线或阶段、经过人工策划的非权威飞行检查单 |
+| `Read Set/` | 声明已经选定的路线或阶段必须加载哪些权威内容的机器可解析边界 |
 | 已选定的 Profile | 一个仓库自己的范围、语言、架构、来源、优先级、角色、扫描规则和允许的扩展 |
 | `.cambium/` | 采用方当前的治理身份、任务状态、Queue、计划、变更、receipt 和恢复证据 |
 | `Tools/` | 确定性检查、受控写入器、schema 和生成产物 |
@@ -52,8 +54,9 @@ Cambium 的有效治理由三部分组成：
 内核是规范性来源。Profile 可以填写或收紧内核预留的扩展点，但不能关闭内核规则。
 工具按照已声明的规则执行检查和写入，但不替操作者做最终的语义判断。
 
-Runtime Card 是一条简短的执行路线，不是另一份标准。当 Card 的信息不够，或其中
-的要求存在争议时，Agent 应沿着 Read Set 回读内核中的规范文本。
+Card 是经过人工策划的简短检查单，不是路线本身，也不是规范的第二份副本。Read Set
+拥有静态加载边界。当 Card 的信息不够，或其提示存在争议时，Agent 应通过配对的
+Read Set 回到真正的权威来源。
 
 本仓库有意保持“尚未采用”的状态：它提供模板和示例，但没有替任何采用方选择
 Profile，也没有伪造任务状态。
@@ -112,21 +115,23 @@ Cambium 当前不包含：
 
 三者必须相互一致，但不能把它们当成三份可以互换的任务列表。
 
-采用方拥有的运行时目录结构如下：
+采用方拥有的运行状态分为六类：
 
 ```text
 .cambium/
-├── governance/  # 当前 Standards 和已选 Profile 的身份
-├── state/       # Coverage、Required Queue 和 Progress
-├── work_specs/  # 复杂批次的不可变合同
-├── deltas/      # 提议中的变更和批次内变更
-├── receipts/    # 证据和状态转换历史
-├── reports/     # 派生视图，不是权威输入
-└── tmp/         # 锁和写入中断后的恢复证据
+├── <当前权威状态>
+├── <已绑定的运行输入>
+├── <证据与历史>
+├── <恢复状态>
+├── <临时工作空间>
+└── <派生投影>
 ```
 
 不要手工修改权威状态。应使用拥有该状态的写入器，让 revision、hash、receipt 和
 恢复证据一起更新。
+当前物理路径与对象分类只由
+[`Tools/runtime_paths.py`](Tools/runtime_paths.py) 这一份机器合同维护；README
+不再保留第二份目录结构定义。
 
 ## 采用 Cambium
 
@@ -146,8 +151,9 @@ python3 Tools/scaffold_profile.py . --profile-id my-profile --apply
 ### 2. 回答开放问题并校验
 
 可以让 Agent 按 [profiles/interview.yaml](profiles/interview.yaml) 协助访谈，
-也可以手工填写同一份合同。各字段的权威说明在
-[profiles/README.md](profiles/README.md)。
+也可以手工填写同一份合同。通用 slot 接口属于 Kernel，由
+[K00/19](kernel/K00%20Standards%20Control/19%20Profile%20Extension%20Interface.md)
+及其机器注册表定义；[profiles/README.md](profiles/README.md) 只说明候选 Profile 的操作流程。
 
 ```text
 python3 Tools/profile_onboarding_status.py . --profile-id my-profile --json
@@ -168,14 +174,19 @@ python3 Tools/apply_profile_adoption.py . --plan <plan>.yaml
 python3 Tools/apply_profile_adoption.py . --plan <plan>.yaml --apply
 ```
 
-这个事务会把已批准的 Standards 版本、所选 Profile、生成合同、Runtime Cards 和
-采用 receipt 绑定在一起。任何一步失败，工具都会恢复之前的控制面。
+这个事务会把已批准的 Standards 版本、所选 Profile、生成合同和相应证据绑定在一起。
+任何一步失败，工具都会恢复之前的控制面。
+
+如果事务报告经过人工策划的 Card 已过期，需要由审阅者另行核对发生变化的
+canonical sources 与受影响的 Card 正文。完成语义审阅后，才可运行
+`python3 Tools/stamp_cards.py . --acknowledge-curated-review` 记录新的绑定，
+然后重新执行采用事务。采用事务本身不会代替审阅者确认 Card 语义。
 
 空语料库也使用同一份采用合同。先进行有界的 founding 工作，创建真实的
 canonical owner 和残留扫描见证——语义自然时一页可以同时充当 owner 和见证，
 但绝不为了少建文件而强行合并；随后由第二次 R09 修订配置 Corpus Planning，
-之后才能开始大规模工作。完整顺序见
-[profiles/README.md](profiles/README.md#adoption-flow)。
+之后才能开始大规模工作。候选 Profile 与采用边界见
+[profiles/README.md](profiles/README.md#mechanical-validation-and-adoption)。
 
 ## 开始或恢复任务
 
@@ -304,8 +315,10 @@ SHA-256 绑定可以在采用方的本地信任域中发现漂移和不一致历
 
 | 路径 | 用途 |
 |---|---|
-| [`kernel/`](kernel/) | 规范性标准、Read Sets 和 Runtime Cards |
-| [`profiles/`](profiles/) | Profile 接口、模板、访谈和示例 |
+| [`kernel/`](kernel/) | 通用治理规则与 Kernel-owned 机器合同 |
+| [`Card/`](Card/) | 经过人工策划的非权威行动检查单 |
+| [`Read Set/`](Read%20Set/) | 权威静态加载声明与生成导航 |
+| [`profiles/`](profiles/) | 候选模板、访谈、采用说明与非权威示例 |
 | [`Tools/`](Tools/) | 检查、写入器、schema、receipt 和生成器 |
 | [`Tools/compiled/`](Tools/compiled/) | 生成的 CLI、MCP、元数据和宿主投影 |
 | [`assets/readme/`](assets/readme/) | 根目录双语 README 使用的公共结构图 |
@@ -318,9 +331,10 @@ Profile。
 
 Cambium 按路径使用不同许可证：
 
-- `Tools/` 下的软件和实现材料使用 Apache-2.0；
-- 标准、Profile、README、路线图文档和 `assets/readme/` 下的结构图使用
-  CC BY 4.0。
+- `Tools/`、`.github/`、`Makefile` 与 `distribution-boundary.yaml` 中的软件和
+  仓库工程材料使用 Apache-2.0；
+- `kernel/` 下的标准、`Card/`、`Read Set/`、Profile、README、贡献说明、
+  路线图和 `assets/readme/` 下的结构图使用 CC BY 4.0。
 
 权威条款和声明见 [LICENSE.md](LICENSE.md)、[ATTRIBUTION.md](ATTRIBUTION.md)
 和 [LICENSES/](LICENSES/)。

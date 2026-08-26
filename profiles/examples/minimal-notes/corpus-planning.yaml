@@ -1,5 +1,5 @@
 # Minimal Notes corpus-planning slot: the inactive branch.
-# Interface: profiles/README.md#Corpus-Planning-Slot
+# Interface: kernel/K00 Standards Control/profile-interface.yaml
 # `not-applicable` requires a nonempty reason, three null bindings, an empty
 # scale, and two null authority values. Nothing below is a placeholder for a
 # future `configured` plan; see profiles/examples/worked-planning/ for that

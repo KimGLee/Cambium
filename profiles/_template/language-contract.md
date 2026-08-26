@@ -1,6 +1,7 @@
 # Language Contract
 
-Interface: [Language Contract slot](../README.md#language-contract-slot)
+Kernel owner: K10 Writing and Formatting. Common slot identity is registered
+in the Kernel Profile interface.
 
 ## Language Routing
 

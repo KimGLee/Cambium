@@ -126,10 +126,8 @@ def fill_scaffolded_candidate(root, profile_id):
         "interview fill and the scaffolder no longer agree on who owns "
         "which cells: %r" % skipped)
 
-    command = ("`python3 Tools/check_residual_content.py . "
-               "--scan-id TODO(profile) --config "
-               "profiles/%s/scan-configs/residual-scan.yaml "
-               "--time-limit 55`" % profile_id)
+    config_reference = (
+        "`profiles/%s/scan-configs/residual-scan.yaml`" % profile_id)
     post_fill = (
         ("registries/audit-dimensions.md",
          "| TODO(profile) | `coverage_and_integration`",
@@ -137,12 +135,14 @@ def fill_scaffolded_candidate(root, profile_id):
          % profile_id),
         ("registries/registered-scans.md",
          "| TODO(profile) | `K12/09 item 6 — residual-content scan` "
-         "| TODO(profile) | %s | TODO(profile) | TODO(profile) |" % command,
+         "| TODO(profile) | `residual-content-scan-v1` | %s "
+         "| TODO(profile) | TODO(profile) |" % config_reference,
          "| `{pid}-scratch-residuals` | `K12/09 item 6 — "
-         "residual-content scan` | Run from the vault root, passed "
-         "as `.`; the profile-owned configuration accepts "
+         "residual-content scan` | Run from the vault root; the "
+         "profile-owned configuration accepts "
          "`Notes/Daily Log` as the only root where dated-scratch "
-         "structure belongs. | {command} | A Markdown file outside "
+         "structure belongs. | `residual-content-scan-v1` | "
+         "{config_reference} | A Markdown file outside "
          "`Notes/Daily Log` is a candidate when it declares "
          "`type: daily-log`, carries a `Daily Log Entry` heading, "
          "or carries at least two distinct dated-scratch sorting "
@@ -150,9 +150,7 @@ def fill_scaffolded_candidate(root, profile_id):
          "`{pid}-residual-disposition`. "
          "| `{pid}-residual-disposition` |".format(
              pid=profile_id,
-             command=command.replace(
-                 "--scan-id TODO(profile)",
-                 "--scan-id %s-scratch-residuals" % profile_id))),
+             config_reference=config_reference)),
     )
     for relative, old, new in post_fill:
         path = candidate / relative
@@ -777,19 +775,10 @@ class RuntimeCreationTests(unittest.TestCase):
         cls.tmp = tempfile.TemporaryDirectory()
         cls.root = Path(cls.tmp.name) / "repo"
         root = cls.root
+        # The shared Profile fixture installs the complete schema-valid
+        # Card/Read Set registry.  Rewriting a private R01/R02 subset here
+        # previously created duplicate route identities and stale Card bytes.
         install_loadable_profile(root, profile_id="sample")
-        for relative, text in (
-                (ttp.READ_SET, ttp.READ_SET_TEXT),
-                (ttp.CARD, ttp.CARD_TEXT),
-                (ttp.OTHER_CARD, ttp.CARD_TEXT),
-                (ttp.R01_CARD, ttp.CARD_TEXT),
-                (ttp.R01_READ_SET, ttp.READ_SET_TEXT),
-                (ttp.MODULE, "# Fixture Standards Governance\n"),
-                (ttp.CARD_INDEX, ttp.CARD_INDEX_TEXT),
-                (ttp.READ_SET_INDEX, ttp.READ_SET_INDEX_TEXT)):
-            path = root / relative
-            path.parent.mkdir(parents=True, exist_ok=True)
-            path.write_text(text, encoding="utf-8")
         result = subprocess.run(
             [sys.executable, str(TOOLS / "init_state.py"), str(root),
              "--task-id", ttp.TASK_ID,
@@ -1041,33 +1030,40 @@ class LifecycleTextPinTests(unittest.TestCase):
             "README.zh-CN.md dropped 第二次 R09 修订; the two languages "
             "would teach different founding sequences")
 
-    def test_candidate_preparation_is_taught_by_all_three_owners(self):
-        k02_03 = (REPOSITORY / "kernel" / "K02 Knowledge Work Construction" /
-                  "03 Corpus Planning Applicability and Lifecycle.md"
-                  ).read_text(encoding="utf-8")
-        r13 = (REPOSITORY / "kernel" / "Read Sets" /
+    def test_candidate_preparation_resolves_to_one_kernel_owner(self):
+        k02_relative = (
+            "kernel/K02 Knowledge Work Construction/"
+            "03 Corpus Planning Applicability and Lifecycle.md")
+        k02_03 = (REPOSITORY / k02_relative).read_text(encoding="utf-8")
+        r13 = (REPOSITORY / "Read Set" /
                "R13 Corpus Planning Read Set.md").read_text(encoding="utf-8")
         interview = INTERVIEW.read_text(encoding="utf-8")
         c3_block = interview_block(
             interview, "- id: C3", "\nself_path_rewrites:")
         self.assertIn(
-            "candidate preparation", k02_03,
-            "K02/03 lost the candidate-preparation branch; R13 and the "
-            "interview would then cite an exception the kernel no longer "
-            "defines — one missing statement of the three is lifecycle "
-            "drift")
+            "Candidate artifacts acquire no authority before that adoption "
+            "commits.", collapse_ws(k02_03),
+            "K02/03 lost the authority boundary for planning candidates")
+        declaration = kblib.parse_yaml_subset(kblib.extract_frontmatter(r13))
+        targets = {
+            target
+            for edge in declaration["load_edges"]
+            for target in edge["targets"]
+        }
         self.assertIn(
-            "R09 candidate preparation", r13,
-            "R13 lost the exception naming; agents loading R13 would "
-            "refuse to prepare planning artifacts inside an open R09 "
-            "revision even though K02/03 authorizes it")
+            k02_relative, targets,
+            "R13 no longer resolves to the canonical lifecycle owner")
+        self.assertNotIn(
+            "candidate preparation", r13,
+            "Read Set prose became a second owner of the lifecycle rule; "
+            "R13 should declare only the loading edge")
         self.assertIn(
             "a second R09 revision configures the slot", c3_block,
             "the interview's closing review no longer tells an "
             "empty-corpus operator that a second R09 revision configures "
             "Corpus Planning; the three owners of this statement must "
             "agree or the empty-corpus branch dead-ends")
-        self.assertIn("candidate preparation", c3_block)
+        self.assertIn("K02/03", c3_block)
 
     def test_both_readmes_state_the_witness_owner_merge_rule(self):
         en = collapse_ws(readme_adoption_section(
@@ -1085,7 +1081,7 @@ class LifecycleTextPinTests(unittest.TestCase):
             "would then disagree on whether founding pages may be "
             "collapsed to save files")
 
-    def test_scaffold_is_the_creation_path_and_manual_copy_the_fallback(
+    def test_scaffold_is_the_creation_path_and_fallback_has_one_owner(
             self):
         interview = INTERVIEW.read_text(encoding="utf-8")
         profiles_readme = self.PROFILES_README.read_text(encoding="utf-8")
@@ -1104,10 +1100,14 @@ class LifecycleTextPinTests(unittest.TestCase):
                 "%s no longer names the scaffolder as the creation path"
                 % name)
             self.assertIn(
+                "template-files.yaml", text,
+                "%s no longer names the whitelist that bounds the "
+                "scaffolder's copy" % name)
+            self.assertNotIn(
                 "no-agent fallback", text,
-                "%s no longer marks manual copying as the no-agent "
-                "fallback; presenting it as a first-class path invites "
-                "adopters off the whitelist" % name)
+                "%s duplicated the interview's fallback instruction; "
+                "documentation should link the whitelist, not maintain a "
+                "second procedure" % name)
 
 
 if __name__ == "__main__":

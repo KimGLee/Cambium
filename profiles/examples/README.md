@@ -6,7 +6,8 @@ This directory contains non-normative, filled reference cases. An example shows 
 
 The distinction is deliberate:
 
-- `profiles/README.md` defines the slots and their constraints.
+- `kernel/K00 Standards Control/profile-interface.yaml` defines the common
+  slot registry; K00/19 defines its semantic boundary.
 - `profiles/_template/` asks an adopter to provide its own answers.
 - `profiles/examples/` shows completed domain-specific answers for reference.
 
@@ -43,10 +44,11 @@ Documented forms that still have **no** worked example anywhere in this reposito
 
 | Missing form | Why it is missing |
 |---|---|
-| A supplemental route with its profile Read Set (`type: profile-read-set`) | No example needs a route the kernel does not already provide; the file shape is documented only in prose in `profiles/README.md`. |
+| A supplemental route with its profile Read Set (`type: profile-read-set`) | No example needs a route the kernel does not already provide; the currently supported compatibility shape is validated by the runtime tooling. |
 | Gap Register statuses `promoted` and `resolved` | Both require a real Coverage object and initialized `.cambium/` runtime state, which this repository deliberately does not carry. |
 | A non-generic deterministic residual verifier, and additional optional candidate scans | Every example is served by the generic `Tools/check_residual_content.py` matcher with one registered scan. |
 | A profile-owned extension audit dimension beyond the one Atlas registers | Not needed by the other two domains. |
 | A `boundary_projection` display-label override, or a profile-closed `boundary` concern vocabulary | The K08/09 kernel display labels and the open (shape-checked only) concern-slug state are the intended defaults during a corpus's boundary migration; closing the vocabulary is a later governance decision no example has reached. |
 
-An adopter who needs one of these writes it from the interface text and the kernel owner, not from an example.
+An adopter who needs one of these starts from the Kernel-owned interface and
+the relevant semantic owner, not from an example.

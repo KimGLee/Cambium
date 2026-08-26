@@ -25,9 +25,9 @@
 17. Guidance is durable: mid-task user guidance enters the Amendment Log and MUST NOT be kept only in ephemeral conversation context.
 18. Authority is not evidence: the user decides what the current task does; whether a technical claim holds is still decided by sources and verification.
 19. Incremental amendment: new guidance modifies only the contract dimensions it explicitly touches; non-conflicting constraints remain in effect.
-20. Modular ownership: every rule has a canonical owner in one leaf module; Standard Module MOCs handle routing only.
-21. Deterministic loading: the modules to read are resolved via Read Sets, triggers, and gates; no ad-hoc guessing, and no requirement to read an entire domain in full.
-22. Content conservation: Standards splits and migrations MUST use block-by-block mapping; without separate authorization, rules MUST NOT be trimmed, summarized, or deleted under cover of structural adjustment.
-23. Language contract: reader-facing language, canonical identity, display order, and exception boundaries are registered by the selected `Language Contract`; the kernel does not hard-code a specific language.
+20. Modular ownership: every rule has a canonical owner in one leaf module; Standard Module MOCs provide navigation only.
+21. Content conservation: Standards splits and migrations MUST use block-by-block mapping; without separate authorization, rules MUST NOT be trimmed, summarized, or deleted under cover of structural adjustment.
+22. Language contract: reader-facing language, canonical identity, display order, and exception boundaries are registered by the selected `Language Contract`; the kernel does not hard-code a specific language.
 
-Which file owns each cross-domain object, and which gate checks each risk object, are registered in [[kernel/K00 Standards Control/11 Standards Map and Rule Registry#Cross-domain Rule Registry|Standards Map and Rule Registry]] and [[kernel/K00 Standards Control/12 Control Registry#Control Registry|Control Registry]]; both registries route and state no rules of their own.
+Which file owns each cross-domain object, and which stable Gate identity checks
+each risk object, are registered in [[kernel/K00 Standards Control/11 Standards Map and Rule Registry#Cross-domain Rule Registry|Standards Map and Rule Registry]] and [[kernel/K00 Standards Control/12 Control Registry#Control Registry|Control Registry]]. The former maps semantic owners; the latter is the machine owner of Gate identity and consumption position. Neither duplicates the rule or implementation it references.

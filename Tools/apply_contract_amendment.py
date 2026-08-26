@@ -40,12 +40,14 @@ import check_queue
 import kblib
 import amendment_policy
 import contract_exception_policy
+import runtime_paths
+import runtime_state_contract
 
 TOOL = "apply_contract_amendment"
 TOOL_VERSION = "1.1.0"
 CHECK = "contract_amendment"
 PLAN_PREFIX = check_queue.CONTRACT_AMENDMENT_PLAN_PREFIX
-RECEIPT_PATH = ".cambium/receipts/contract-amendments.jsonl"
+RECEIPT_PATH = runtime_paths.CONTRACT_AMENDMENT_RECEIPT_PATH
 SENTINEL = "TODO(amendment)"
 
 # Receipt IDs embed (stamp, run-token, seq); two transactions inside one
@@ -53,19 +55,15 @@ SENTINEL = "TODO(amendment)"
 # and makes the ID unique per prepared transaction.
 _RECEIPT_SEQ = itertools.count(1)
 
-# The only contract fields this writer may change.  Extending this tuple is a
-# governance change under K13/06, not an edit.
-AMENDABLE_FIELDS = ("policy_exceptions", "amendment_authority")
-
 PLAN_FIELDS_V1 = {
     "schema_version", "amendment_id", "task_id", "date", "summary",
     "approval_reference", "before", "contract_version_after",
     "policy_exceptions_after",
 }
 PLAN_FIELDS_V2 = PLAN_FIELDS_V1.union(("amendment_authority_after",))
-BEFORE_FIELDS = {"coverage_sha256", "queue_sha256", "progress_sha256"}
+BEFORE_FIELDS = runtime_state_contract.RUNTIME_LEDGER_FINGERPRINT_FIELDS
 
-STATE_NAMES = ("coverage", "queue", "progress")
+STATE_NAMES = runtime_state_contract.RUNTIME_LEDGER_IDS
 WRITTEN_NAMES = ("queue", "progress")
 
 
@@ -253,8 +251,9 @@ def _require_policy_authorization(policy, fingerprint, exceptions):
     against bytes that are not the live ones is not a grant, and the
     consumer would silently never match it.  Second, the effective quota
     ceilings -- exception where granted, standing quota where not -- must
-    jointly stay strictly below 100 (K00/07): summing the grants alone
-    would admit a P0 grant of 80 next to a standing P1 of 35.
+    jointly stay below the Kernel registry's partition ceiling (K00/07):
+    summing only granted values could ignore the other class's standing
+    ceiling and authorize a pair that leaves no remainder.
     """
     for index, entry in enumerate(exceptions):
         if not isinstance(entry, dict):
@@ -298,13 +297,13 @@ def _require_policy_authorization(policy, fingerprint, exceptions):
 def _state_paths(root):
     return {
         "coverage": kblib.managed_repository_path(
-            root, check_queue.COVERAGE_PATH, ".cambium/state",
+            root, check_queue.COVERAGE_PATH, runtime_paths.STATE_ROOT,
             suffixes=(".yaml",), must_exist=True),
         "queue": kblib.managed_repository_path(
-            root, check_queue.QUEUE_PATH, ".cambium/state",
+            root, check_queue.QUEUE_PATH, runtime_paths.STATE_ROOT,
             suffixes=(".yaml",), must_exist=True),
         "progress": kblib.managed_repository_path(
-            root, check_queue.PROGRESS_PATH, ".cambium/state",
+            root, check_queue.PROGRESS_PATH, runtime_paths.STATE_ROOT,
             suffixes=(".yaml",), must_exist=True),
     }
 
@@ -685,7 +684,8 @@ def main(argv=None):
     parser.add_argument("--plan", required=True,
                         help="repository-relative path under %s" % PLAN_PREFIX)
     parser.add_argument("--receipts", default=RECEIPT_PATH,
-                        help="receipt JSONL path under .cambium/receipts")
+                        help="receipt JSONL path under %s" %
+                        runtime_paths.RECEIPT_ROOT)
     parser.add_argument("--actor-role", choices=("worker", "integrator"),
                         default="worker",
                         help="declared caller role; only integrator may "
@@ -709,7 +709,7 @@ def _run(args):
     root = os.path.realpath(os.path.abspath(args.root))
     try:
         receipt_path = kblib.managed_repository_path(
-            root, args.receipts, ".cambium/receipts",
+            root, args.receipts, runtime_paths.RECEIPT_ROOT,
             suffixes=(".jsonl",), must_exist=False)
         prepared = prepare(root, args.plan)
     except (Refusal, OSError, UnicodeError, ValueError, TypeError,

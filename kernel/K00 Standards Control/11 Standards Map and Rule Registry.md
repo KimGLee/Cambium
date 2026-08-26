@@ -1,14 +1,12 @@
 ## Navigation
 
 - Parent: [[kernel/K00 Standards Overview|K00 Standards Overview]].
-- Previous: [[kernel/K00 Standards Control/10 Batch Execution Checklist|Batch Execution Checklist]].
+- Previous: [[kernel/K00 Standards Control/09 Default Constraints Snapshot|Default Constraints Snapshot]].
 - Next: [[kernel/K00 Standards Control/12 Control Registry|Control Registry]].
 
 ## Standards Map
 
-- `Cards` [[kernel/Cards/Card Index|Card Index]]: kernel-owned compiled task guidance; every routine task enters here before escalating to Read Sets and leaf owners.
-- `Read Sets` [[kernel/Read Sets/Read Sets Index|Read Sets Index]]: combines the leaf modules to read by task, event, and execution phase.
-- `K00` [[kernel/K00 Standards Overview|Standards Overview]] and [[kernel/K00 Standards Control/03 Standards Governance|Standards Control]]: entry, route loading, precedence, governance, defaults, and control registries.
+- `K00` [[kernel/K00 Standards Overview|Standards Overview]] and [[kernel/K00 Standards Control/03 Standards Governance|Standards Control]]: Kernel entry, precedence, governance invariants, defaults, and control registries.
 - `K01` [[kernel/K01 Scope and Architecture Standard|Scope and Architecture Standard]]: generic scope boundaries, foundation preservation, logical architecture, structural unit and support layer interfaces with their `Structure Registry` binding, and the concrete scope binding provided by `Profile Scope`.
 - `K02` [[kernel/K02 Knowledge Work Construction Standard|Knowledge Work Construction Standard]]: inventory, Coverage reconciliation, corpus-planning artifacts, architecture and dependency planning, knowledge-batch production, and migration safety.
 - `K03` [[kernel/K03 Note Types and Ownership Standard|Note Types and Ownership Standard]]: note types, Process / Flow, canonical ownership, split, and duplication.
@@ -25,27 +23,20 @@
 
 ## Cross-domain Rule Registry
 
-The following high-risk objects have a single canonical owner corpus-wide. Modifying these objects means modifying only the owner file. Every other location relates to a registered object in exactly one of two ways:
+The following high-risk objects have a single canonical owner corpus-wide. Modifying these objects means modifying only that owner. A non-owner may relate to a registered object in exactly one of two ways:
 
 - **Reference** — a Wiki Link or a registered slot, carrying no rule content of its own. Always permitted.
-- **Derived view** — a restatement, compression, quick view, snapshot, execution summary, or compiled Card item. Permitted only when all three conditions hold: (a) it declares that it is derived and is not the authority; (b) the same block — the list, table, or section carrying the restatement — names that object's owner by Wiki Link, registered slot, or module ID; and (c) it is lossless.
+- **Derived projection** — a bounded selection, explanation, compression, or generated view. It MUST identify the canonical owner, MUST NOT change the owner's conditions, strength, exceptions, or verdict, and MUST NOT present an omitted subset as complete.
 
-Lossless means: every rule the view states carries the conditions, qualifiers, and exceptions that decide its verdict, and any set, list, or formula it presents as complete is complete. A view MAY omit a rule of the owner. It MUST NOT restate one with a condition dropped, added, or reversed, and it MUST NOT present a partial enumeration as the whole.
-
-Any other restatement, whether or not slightly rephrased, is a copy and MUST NOT be made. A derived view failing (a) or (b) is such a copy; one failing (c) is additionally a rule change made outside governance. When a derived view and its owner disagree, the owner prevails and the view is corrected, never the reverse.
+When a complete closed contract can be derived deterministically, it is generated from its machine owner instead of being maintained as a second hand-written specification. A selective projection may omit material, but every rule it does state retains the conditions, qualifiers, and exceptions needed to avoid changing its meaning. When a projection and its owner disagree, the owner prevails and the projection is corrected, never the reverse.
 
 This registry governs rule text. The three conditions do not authorize a view of mutable control-plane state — Coverage, Queue, Progress, receipts, holds, or fingerprints. Each such view is governed by that state's own owner; for the Progress Ledger see [[kernel/K13 Task Runtime and Execution Control/07 Progress Ledger Contract|Progress Ledger Contract]].
 
 | Object | Canonical owner |
 |---|---|
-| Kernel runtime route membership and route-to-Read-Set binding | [[kernel/Read Sets/Read Sets Index\|Read Sets Index]] |
 | Task-to-route combinations | [[kernel/K00 Standards Control/02 Task Routing\|Task Routing]] |
-| Runtime Card ownership, loading order, and source read-back protocol | [[kernel/K00 Standards Control/01 Operating Role and Reading Protocol\|Operating Role and Reading Protocol]] |
-| Runtime Card and kernel Read Set section skeleton and its registered variants | [[kernel/K00 Standards Control/14 Card And Read Set Skeleton\|Card And Read Set Skeleton]] |
-| The current Read Sets and leaf coverage of the loading boundaries | [[kernel/K00 Standards Control/15 Read Set Loading Boundaries\|Read Set Loading Boundaries]] |
+| Common Profile extension points and binding interface | [[kernel/K00 Standards Control/19 Profile Extension Interface\|Profile Extension Interface]] |
 | Candidate and selected Profile dependency closure | [[kernel/K00 Standards Control/17 Profile Dependency Closure\|Profile Dependency Closure]] |
-| Shipped tool module identity, public surface, and dependency direction | [[kernel/K00 Standards Control/18 Tool Module Boundary Contract\|Tool Module Boundary Contract]] |
-| Leaf module size budget, its disposition classes, and the register of approved exceptions | [[kernel/K00 Standards Control/03 Standards Governance#Leaf Module Size Budget\|Leaf Module Size Budget]], registered in [[kernel/K00 Standards Control/16 Leaf Module Size Register\|Leaf Module Size Register]] |
 | Runtime namespace startup and interrupted-state recovery | [[kernel/K00 Standards Control/13 Runtime Admission and Recovery#Runtime Startup Gate\|Runtime Startup Gate]] |
 | Large-scale creation, move, or deletion admission | [[kernel/K00 Standards Control/13 Runtime Admission and Recovery#Large-scale Pre-execution Gate\|Large-scale Pre-execution Gate]] |
 | Task Contract decision list and what a task freezes | [[kernel/K00 Standards Control/06 Completion Precedence and Task Contract#Task Contract Decisions\|Task Contract Decisions]] |
@@ -60,8 +51,9 @@ This registry governs rule text. The three conditions do not authorize a view of
 | Terminal Proof formula | [[kernel/K13 Task Runtime and Execution Control/11 Completion Policy\|Completion Policy]] |
 | Terminal Audit procedure and finding convergence | [[kernel/K12 Quality Assurance/15 Terminal Audit and Convergence\|Terminal Audit and Convergence]] |
 | Terminal Proof field contract and deterministic completion gate | [[kernel/K12 Quality Assurance/16 Terminal Proof Contract\|Terminal Proof Contract]] |
-| `task_state` vocabulary | [[kernel/K13 Task Runtime and Execution Control/03 Task State and Transition Rules\|Task State and Transition Rules]] |
-| Required Queue schema, revisions, batch lifecycle, and holds | [[kernel/K13 Task Runtime and Execution Control/08 Required Queue Contract and Lifecycle\|Required Queue Contract and Lifecycle]] |
+| `task_state` membership, classes, completion-semantics applicability, and transition catalogs | `kernel/K13 Task Runtime and Execution Control/runtime-state-model.json`; state meanings and invariants remain with [[kernel/K13 Task Runtime and Execution Control/03 Task State and Transition Rules\|Task State and Transition Rules]] |
+| Required Queue state, hold, execution-mode, and transition membership | `kernel/K13 Task Runtime and Execution Control/runtime-state-model.json`; state meanings and lifecycle invariants remain with [[kernel/K13 Task Runtime and Execution Control/08 Required Queue Contract and Lifecycle\|Required Queue Contract and Lifecycle]] |
+| Required Queue record schema, revision semantics, and Work Spec binding | [[kernel/K13 Task Runtime and Execution Control/08 Required Queue Contract and Lifecycle\|Required Queue Contract and Lifecycle]] |
 | Simple/complex Batch Work Spec declaration, managed binding, immutability, and Queue ownership boundary | [[kernel/K13 Task Runtime and Execution Control/08 Required Queue Contract and Lifecycle#Batch Work Specification Binding\|Batch Work Specification Binding]] |
 | Queue compilation, same-scope replanning, writer transaction scope, and the human Queue view | [[kernel/K13 Task Runtime and Execution Control/09 Queue Compilation Replanning and Views\|Queue Compilation Replanning and Views]] |
 | Queue transition authority, concurrency, write partition, and serial integration | [[kernel/K13 Task Runtime and Execution Control/10 Batch Admission Transitions and Serial Integration\|Batch Admission Transitions and Serial Integration]] |
@@ -70,11 +62,12 @@ This registry governs rule text. The three conditions do not authorize a view of
 | Active-task Standards adoption state-write and interrupted-transaction boundary | [[kernel/K13 Task Runtime and Execution Control/15 Standards Adoption State Transaction\|Standards Adoption State Transaction]] |
 | Initial planning state-write: the one transaction that fills an empty runtime namespace, and where it stops | [[kernel/K13 Task Runtime and Execution Control/18 Initial Task Planning Transaction\|Initial Task Planning Transaction]] |
 | Contract policy-exception register and the guarded Contract Amendment state-write | [[kernel/K13 Task Runtime and Execution Control/06 Amendment Log and Controlled Replanning\|Amendment Log and Controlled Replanning]] |
+| Exceptable policy IDs, owner references, limit domains, defaults, and effective-policy fingerprint payload | `kernel/K00 Standards Control/contract-exception-policy-base.yaml`; each row retains the semantic owner it names |
 | Resume `next_action` token vocabulary | [[kernel/K13 Task Runtime and Execution Control/16 Resume Next Action Vocabulary\|Resume Next Action Vocabulary]] |
 | Escalation contract: which conditions oblige suspending a run and handing the decision to a person | [[kernel/K13 Task Runtime and Execution Control/17 Escalation Policy\|Escalation Policy]] |
 | Guidance classification and impact | [[kernel/K13 Task Runtime and Execution Control/04 Guidance Classification and Impact Analysis\|Guidance Classification and Impact Analysis]] |
-| Guidance disposition and safe switching | [[kernel/K13 Task Runtime and Execution Control/05 Guidance Disposition and Safe Switching\|Guidance Disposition and Safe Switching]] |
-| Amendment record and controlled replanning | [[kernel/K13 Task Runtime and Execution Control/06 Amendment Log and Controlled Replanning\|Amendment Log and Controlled Replanning]] |
+| Guidance disposition/status membership and finality | `kernel/K13 Task Runtime and Execution Control/runtime-state-model.json`; meanings and safe-switching invariants remain with [[kernel/K13 Task Runtime and Execution Control/05 Guidance Disposition and Safe Switching\|Guidance Disposition and Safe Switching]] |
+| Amendment status membership, status/write-back finality, and operational operation-to-capability mapping | `kernel/K13 Task Runtime and Execution Control/runtime-state-model.json`; Amendment-record meaning and controlled-replanning invariants remain with [[kernel/K13 Task Runtime and Execution Control/06 Amendment Log and Controlled Replanning\|Amendment Log and Controlled Replanning]] |
 | authoring / expression / learning status vocabularies | [[kernel/K08 Metadata and Status/03 Status Axes\|Status Axes]] + `Expression Status Axis` role |
 | `coverage_disposition` vocabulary and its scope semantics | [[kernel/K08 Metadata and Status/03 Status Axes#Coverage Disposition\|Coverage Disposition]] |
 | `evidence_maturity` definition | [[kernel/K08 Metadata and Status/04 Evidence and Relationship Metadata\|Evidence and Relationship Metadata]] |
@@ -90,7 +83,7 @@ This registry governs rule text. The three conditions do not authorize a view of
 | Expression-layer language policy | `Language Contract` slot + `Expression Layer Entry` registry |
 | Deep-dive expression skeleton | `Expression Layer Entry` registry |
 | Batch acceptance checklist | [[kernel/K12 Quality Assurance/14 Batch Review\|Batch Review]] |
-| Batch-close Closed List membership | [[kernel/K12 Quality Assurance/09 Batch-close Closed List#Batch-close Closed List\|Batch-close Closed List]] |
+| Batch-close Closed List membership and order | `kernel/K12 Quality Assurance/batch-close-closed-list.yaml`; semantics and boundary explanation remain owned by [[kernel/K12 Quality Assurance/09 Batch-close Closed List#Batch-close Closed List\|Batch-close Closed List]] |
 | Module and Coverage acceptance checklist | [[kernel/K12 Quality Assurance/03 Module and Coverage Review\|Module and Coverage Review]] |
 | Source-to-Knowledge pipeline | [[kernel/K06 Knowledge Intake and Evolution/03 Source-to-Knowledge Pipeline\|Source-to-Knowledge Pipeline]] |
 | Freshness and volatility vocabulary | [[kernel/K08 Metadata and Status/05 Review Source and Migration Metadata\|Review Source and Migration Metadata]] |

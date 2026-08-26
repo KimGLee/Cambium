@@ -6,25 +6,25 @@
 
 ## Purpose And Ownership
 
-This module is the sole kernel owner of the exact record contract for the
-`Capability Matrix`. K02/03 owns its applicability, lifecycle, and
-reconciliation. K02/04 owns its runtime, audit, deterministic-check, receipt,
-and affected-path boundaries. The selected profile supplies its path, scale,
-and pass authority; it does not redefine the record format below.
+This module owns the cross-instance meaning and invariants of the
+`Capability Matrix`. Its closed record shape is owned by the registered
+`capability-matrix` machine contract. K02/03 owns applicability, lifecycle,
+and reconciliation; K02/04 owns audit and evidence-currentness boundaries.
+The selected Profile binds the instance path, scale, and pass authority.
 
 ## Capability Matrix Contract
 
 The `Capability Matrix` states what the corpus enables an operator or consuming
-agent to explain, design, execute, verify, diagnose, or recover. Its
-restricted-YAML document has exactly `schema_version: 1` and `capabilities`.
-Each capability record has exactly `capability_id`, `capability`, `priority`,
-`map_entry_ids`, `canonical_markdown_paths`, `current_level`, `target_level`,
-`evidence_paths`, and `gap_ids`. The four multi-value fields are explicit YAML
-lists in every record, written as a list even when that list is empty.
-`map_entry_ids` and `canonical_markdown_paths` each carry at least one value
-and are never empty; `evidence_paths` and `gap_ids` are the two that may be
-empty, and the level rules below state when each MUST NOT be. `priority` is
-exactly `P0`, `P1`, or `P2`.
+agent to explain, design, execute, verify, diagnose, or recover. The
+`capability-matrix` machine contract is the sole normative source for record
+fields, closed values, cardinality, and serialization. This module does not
+repeat that contract in prose.
+
+Every capability has a stable identity, a priority, one or more owning Map
+Entries and canonical owners, current and target levels, evidence bindings,
+and any unresolved Gap bindings. Map and canonical-owner bindings are never
+empty. Gap and evidence bindings may be empty only where the machine contract
+and the semantic rules below allow it.
 
 `current_level` and `target_level` come from the selected profile's declared
 scale, whose explicit integer rank is contiguous from `0` and orders values
@@ -57,6 +57,5 @@ rubric and the kernel quota contract.
 
 - [[kernel/K02 Knowledge Work Construction/03 Corpus Planning Applicability and Lifecycle|Corpus Planning Applicability and Lifecycle]]
 - [[kernel/K02 Knowledge Work Construction/04 Corpus Planning Runtime Audit and Gate Boundaries|Corpus Planning Runtime Audit and Gate Boundaries]]
-- [[kernel/Read Sets/R13 Corpus Planning Read Set|R13 Corpus Planning]]
 - [[kernel/K02 Knowledge Work Construction/01 Inventory and Coverage Ledger|Inventory and Coverage Ledger]]
 - [[kernel/K13 Task Runtime and Execution Control/08 Required Queue Contract and Lifecycle|Required Queue Contract and Lifecycle]]

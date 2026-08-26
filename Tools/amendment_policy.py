@@ -17,7 +17,10 @@ whose writers or semantics belong elsewhere.
 import copy
 
 import batch_settlement
+import coverage_contract
 import kblib
+import runtime_state_contract
+import work_spec_contract
 
 
 AUTHORITY_SCHEMA_VERSION = 1
@@ -55,30 +58,20 @@ KNOWN_CHANGE_CLASSES = DELEGATABLE_CHANGE_CLASSES.union((
     CHANGE_PROPERTY_STATE_ADOPTION,
 ))
 
-PAGE_FIELDS = frozenset((
-    "path", "coverage_disposition", "canonical_owner", "type", "priority",
-    "tier", "authoring_status", "prerequisites", "batch", "next_batch",
-    "deferred_reason", "reentry_condition", "gate_receipts",
-    "property_state", "legacy_property_state",
-))
-PROMOTION_FIELDS = PAGE_FIELDS - frozenset(("path",))
-REROUTE_FIELDS = frozenset(("batch", "next_batch"))
-BATCH_SPEC_FIELDS = frozenset((
-    "id", "family", "order_hint", "source_route", "execution_mode",
-    "depends_on", "confirmation_required", "work_spec_path",
-    "work_spec_sha256",
-))
-WORK_SPEC_FIELDS = frozenset(("work_spec_path", "work_spec_sha256"))
-TOP_LEVEL_FIELDS = frozenset((
-    "schema_version", "task_id", "updated_at", "scope_version",
-    "standards_version", "selected_profile_manifest", "batch_specs",
-    "maintenance_candidates", "pages", "open_gaps",
-))
+# Compatibility names remain direct projections of the neutral Tool owners.
+# Amendment policy classifies authorized changes; it does not own document
+# shape merely because it must inspect that shape.
+PAGE_FIELDS = coverage_contract.COVERAGE_PAGE_FIELDS
+PROMOTION_FIELDS = coverage_contract.COVERAGE_PROMOTION_FIELDS
+REROUTE_FIELDS = coverage_contract.COVERAGE_REROUTE_FIELDS
+BATCH_SPEC_FIELDS = coverage_contract.COVERAGE_BATCH_SPEC_FIELDS
+WORK_SPEC_FIELDS = work_spec_contract.WORK_SPEC_BINDING_FIELDS
+TOP_LEVEL_FIELDS = coverage_contract.COVERAGE_TOP_LEVEL_FIELDS
 IDENTITY_FIELDS = frozenset((
     "schema_version", "task_id", "standards_version",
     "selected_profile_manifest",
 ))
-TERMINAL_STATES = frozenset(("closed", "cancelled"))
+TERMINAL_STATES = runtime_state_contract.QUEUE_TERMINAL_STATES
 
 
 class AmendmentPolicyError(ValueError):
@@ -175,7 +168,7 @@ def _queue_items(queue):
 def _batch_refs(page):
     result = set()
     if isinstance(page, dict):
-        for field in ("batch", "next_batch"):
+        for field in sorted(coverage_contract.COVERAGE_REROUTE_FIELDS):
             value = page.get(field)
             if _nonempty(value):
                 result.add(value)

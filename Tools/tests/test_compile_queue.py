@@ -1057,15 +1057,57 @@ class CompileQueueTests(unittest.TestCase):
         the three proposed state documents.  Copying those inputs into a temp
         root would create a second Profile/K00 admission and split the
         transaction across revisions."""
-        read_set_relative = "kernel/Read Sets/R99 Fixture Read Set.md"
+        read_set_relative = "Read Set/R99 Fixture Read Set.md"
+        leaf_relative = "kernel/K99 Fixture/01 Required Leaf.md"
+        leaf_path = self.root / leaf_relative
+        leaf_path.parent.mkdir(parents=True, exist_ok=True)
+        leaf_path.write_text("# Required Leaf\n", encoding="utf-8")
         read_set_path = self.root / read_set_relative
         read_set_path.parent.mkdir(parents=True, exist_ok=True)
         read_set_path.write_text(
-            "---\ntype: read-set\nroute_id: R99\n---\n\n## Purpose\n\n"
-            "Fixture route.\n\n## Related\n\nNone.\n", encoding="utf-8")
+            "---\n"
+            "type: read-set\n"
+            "schema_version: 1\n"
+            "route_id: R99\n"
+            "activation_phase: batch-preflight\n"
+            "narrowable: true\n"
+            "load_edges:\n"
+            "  - edge_id: R99:start\n"
+            "    kind: required\n"
+            "    phase_id: batch-preflight\n"
+            "    trigger_id: route-selected\n"
+            "    targets:\n"
+            "      - %s\n"
+            "    read_sets: []\n"
+            "---\n"
+            "# R99 Fixture Read Set\n\n"
+            "## Purpose\n\nFixture route.\n\n"
+            "## Non-deterministic triggers\n\nNone.\n" % leaf_relative,
+            encoding="utf-8")
+        (self.root / "Card/R99 Fixture Card.md").write_text(
+            "---\n"
+            "type: card\n"
+            "generation_mode: curated\n"
+            "route_id: R99\n"
+            "read_set_id: R99\n"
+            "read_set: Read Set/R99 Fixture Read Set.md\n"
+            "standards_version: fixture\n"
+            "source_files:\n"
+            "  - Read Set/R99 Fixture Read Set.md\n"
+            "source_hash: '000000000000'\n"
+            "reviewed_source_hash: '000000000000'\n"
+            "reviewed_card_hash: '000000000000'\n"
+            "---\n"
+            "# R99 Fixture Card\n\n"
+            "## Purpose\n\nFixture.\n\n"
+            "## Actions\n\n- Observe the fixture.\n\n"
+            "## Stop or escalate\n\n- Stop on a closure error.\n\n"
+            "## Read-back hook\n\n- Read back the fixture target.\n",
+            encoding="utf-8")
         progress_path = self.root / check_queue.PROGRESS_PATH
         progress = kblib.load_yaml_file(progress_path)
         progress["contract"]["selected_read_sets"] = [read_set_relative]
+        progress["contract"]["loaded_module_paths"] = [leaf_relative]
         progress_path.write_text(kblib.canonical_yaml(progress),
                                  encoding="utf-8")
         # Re-anchor the initial Queue receipt to the edited fixture contract;

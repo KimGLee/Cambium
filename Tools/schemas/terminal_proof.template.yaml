@@ -76,5 +76,5 @@ incremental_manual_scope:
 sampling_scope_and_result: "bounded sampling completed; all sampled objects passed"
 systemic_expansions: []
 deferred_evidence_backlog: []
-final_handoff: "handoff package reference required by K13/13"
+final_handoff: "bounded final-handoff artifact reference"
 time_contract_result: "minimum_run_until satisfied; hard_stop_at not triggered"

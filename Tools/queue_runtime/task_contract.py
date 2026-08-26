@@ -9,14 +9,13 @@ the revision the chain places it at.
 import os
 
 import kblib
+import read_set_contract
 
 from queue_runtime.canon import SHA256_RE
 from queue_runtime.primitives import nonempty_string
 
 
-READ_SET_BOUNDARY_OWNER_PATH = \
-    "kernel/K00 Standards Control/15 Read Set Loading Boundaries.md"
-READ_SET_PATH_PREFIX = "kernel/Read Sets/"
+READ_SET_BOUNDARY_OWNER_PATH = read_set_contract.SCHEMA_PATH
 
 
 def contract_sha256(progress):
@@ -252,20 +251,17 @@ def read_set_load_closure(root, selected_paths,
                            selected_profile_route_ids=None):
     """Resolve Read Sets and non-Read-Set targets from selected boundaries.
 
-    Boundary references to another Read Set select that route too, so traversal
-    continues until no new Read Set remains. ``visited`` makes cycles benign.
-    A kernel Read Set proves both its canonical namespace and ``type:
-    read-set``; a profile supplemental Read Set proves ``type:
-    profile-read-set`` in its own frontmatter. Every other boundary target is
-    a loaded module, including ordinary indexes inside ``kernel/Read Sets``.
+    Top-level Read Sets resolve only from their machine frontmatter declaration;
+    Markdown sections and Wiki Links never change the closure.  Direct target
+    paths enter ``modules`` and Read Set IDs traverse through the canonical
+    declaration registry.  ``visited`` makes declared cycles benign.
 
-    Every selected or boundary-referenced Read Set is decoded as UTF-8 and
-    classified from its own frontmatter.  Kernel and profile namespaces are
-    not interchangeable: ``read-set`` belongs under ``kernel/Read Sets/``;
-    ``profile-read-set`` belongs under the selected profile directory and its
-    route ID must be in the selected profile-route list.  Read/decode failures
-    and namespace/route mismatches are explicit closure errors rather than a
-    reason to silently shrink the load obligation.
+    Profile supplemental Read Sets use the same machine ``load_edges`` shape.
+    They are discovered only inside the selected Profile directory and must
+    bind one selected ``P:<profile>:<route>`` identity.  Profile prose, Wiki
+    Links, and registry tables never change the closure.  Kernel and Profile
+    namespaces remain non-interchangeable.  Unsafe bytes, invalid declarations,
+    unknown dependencies, and namespace/route mismatches are explicit errors.
     """
     selected = {
         value for value in (selected_paths or []) if nonempty_string(value)
@@ -282,6 +278,27 @@ def read_set_load_closure(root, selected_paths,
         value for value in (selected_profile_route_ids or [])
         if nonempty_string(value)
     }
+    read_set_schema = None
+    try:
+        read_set_schema = read_set_contract.load_schema(root)
+        kernel_registry = read_set_contract.discover(
+            root, schema=read_set_schema)
+    except read_set_contract.ReadSetContractError as exc:
+        kernel_registry = {}
+        closure_errors.append(str(exc))
+    kernel_paths = {
+        record["path"]: record for record in kernel_registry.values()
+    }
+    profile_registry = {}
+    if nonempty_string(selected_profile_manifest):
+        try:
+            profile_registry = read_set_contract.discover_profile(
+                root, selected_profile_manifest)
+        except read_set_contract.ReadSetContractError as exc:
+            closure_errors.append(str(exc))
+    profile_paths = {
+        record["path"]: record for record in profile_registry.values()
+    }
 
     def read_text(relative):
         try:
@@ -292,36 +309,41 @@ def read_set_load_closure(root, selected_paths,
         except (OSError, UnicodeError, ValueError) as exc:
             return None, str(exc)
 
-    def frontmatter_fields(text):
-        frontmatter = kblib.extract_frontmatter(text or "")
-        if frontmatter is None:
-            return {}
-        try:
-            fields = kblib.parse_yaml_subset(frontmatter)
-        except (ValueError, kblib.YamlSubsetError):
-            return {}
-        return fields if isinstance(fields, dict) else {}
-
     def read_set_role_error(relative, text):
-        document_type = kblib.read_set_document_type(text)
-        if document_type is None:
-            return ("%s does not prove frontmatter type read-set or "
-                    "profile-read-set" % relative)
-        if document_type == "read-set":
-            if not relative.startswith(READ_SET_PATH_PREFIX):
-                return ("%s declares type read-set outside the canonical %s "
-                        "namespace" % (relative, READ_SET_PATH_PREFIX))
+        if relative in kernel_paths:
             return None
-        if not profile_dir or not (relative == profile_dir or
-                                   relative.startswith(profile_dir + "/")):
-            return ("%s declares type profile-read-set outside the selected "
-                    "profile directory %r" % (relative, profile_dir))
-        route_id = frontmatter_fields(text).get("route_id")
-        if not nonempty_string(route_id) or route_id not in profile_routes:
+        profile_record = profile_paths.get(relative)
+        if profile_record is not None:
+            route_id = profile_record["route_id"]
+            if route_id in profile_routes:
+                return None
             return ("%s declares profile Read Set route_id %r, which is not "
                     "present in selected_profile_route_ids" %
                     (relative, route_id))
-        return None
+        document_type = kblib.read_set_document_type(text)
+        if document_type is None:
+            return ("%s does not prove a canonical machine Read Set "
+                    "declaration" % relative)
+        return ("%s declares type %s but is absent from the canonical machine "
+                "registry for %s" %
+                (relative, document_type,
+                 read_set_schema["path_prefix"]
+                 if (read_set_schema is not None and
+                     document_type == read_set_schema["document_type"])
+                 else profile_dir))
+
+    # A selected supplemental route already exists as a route decision.  Its
+    # machine-declared Read Set path becomes a closure root; this resolves the
+    # route-to-path binding without consulting the Profile's prose registry.
+    for route_id in sorted(profile_routes):
+        record = profile_registry.get(route_id)
+        if record is None:
+            closure_errors.append(
+                "selected Profile route %s has no machine profile-read-set "
+                "declaration inside %r" % (route_id, profile_dir))
+            continue
+        read_sets.add(record["path"])
+        pending.append(record["path"])
 
     for relative in sorted(selected):
         text, read_error = read_text(relative)
@@ -350,24 +372,65 @@ def read_set_load_closure(root, selected_paths,
                 "transitively selected Read Set %s is unsafe or unreadable "
                 "UTF-8: %s" % (relative, read_error))
             continue
-        for target in kblib.read_set_boundary_targets(text):
+        record = kernel_paths.get(relative) or profile_paths.get(relative)
+        if record is None:
+            closure_errors.append(
+                "%s is absent from the canonical machine Read Set registry" %
+                relative)
+            continue
+        declaration = record["declaration"]
+        dependency_paths = []
+        for route_id in read_set_contract.dependencies(declaration):
+            dependency = (kernel_registry.get(route_id) or
+                          profile_registry.get(route_id))
+            if dependency is None:
+                closure_errors.append(
+                    "%s references unknown Read Set %s" %
+                    (relative, route_id))
+                continue
+            if (route_id in profile_registry and
+                    route_id not in profile_routes):
+                closure_errors.append(
+                    "%s references Profile Read Set %s, which is not present "
+                    "in selected_profile_route_ids" % (relative, route_id))
+                continue
+            dependency_paths.append(dependency["path"])
+        targets = read_set_contract.targets(declaration)
+
+        for target in sorted(set(dependency_paths)):
             target_text, target_error = read_text(target)
             if target_text is None:
                 closure_errors.append(
-                    "Read Set boundary target %s is unsafe or unreadable "
+                    "Read Set dependency %s is unsafe or unreadable UTF-8: %s" %
+                    (target, target_error))
+                continue
+            role_error = read_set_role_error(target, target_text)
+            if role_error:
+                closure_errors.append(role_error)
+                continue
+            if target not in read_sets:
+                read_sets.add(target)
+                pending.append(target)
+
+        for target in targets:
+            if target in kernel_paths or target in profile_paths:
+                closure_errors.append(
+                    "%s declares Read Set %s as a target path; machine Read "
+                    "Set dependencies must use load_edges[].read_sets" %
+                    (relative, target))
+                continue
+            target_text, target_error = read_text(target)
+            if target_text is None:
+                closure_errors.append(
+                    "Read Set declared target %s is unsafe or unreadable "
                     "UTF-8: %s" % (target, target_error))
                 continue
-            document_type = (
-                kblib.read_set_document_type(target_text)
-            )
+            document_type = kblib.read_set_document_type(target_text)
             if document_type is not None:
-                role_error = read_set_role_error(target, target_text)
-                if role_error:
-                    closure_errors.append(role_error)
-                    continue
-                if target not in read_sets:
-                    read_sets.add(target)
-                    pending.append(target)
+                closure_errors.append(
+                    "%s target %s declares type %s but is not a registered "
+                    "load_edges[].read_sets dependency" %
+                    (relative, target, document_type))
                 continue
             modules.add(target)
 
@@ -394,8 +457,9 @@ def live_read_set_load_findings(root, contract):
     for a running task -- refuses to start while ``validate_runtime`` reports
     an error.  Making the gap an error would therefore lock the instance out of
     the one transaction that repairs it, exactly as refusing a sealed
-    historical plan would.  K00/15 puts the judgment where a declaration is
-    still writable: a plan being admitted.
+    historical plan would. The canonical Read Set contract therefore puts the
+    completeness judgment where a declaration is still writable: a plan being
+    admitted.
     """
     if not isinstance(contract, dict):
         return [], []

@@ -11,7 +11,8 @@ Rule owners:
   (relationship shapes, directions, and target types).
 
 Input is the compiled contract produced by Tools/compose_page_contract.py
-(Tools/page_contract.yaml by default) — like Tools/vocab.yaml it exists only
+(.cambium/derived/page_contract.yaml by default) — like the effective
+vocabulary it exists only
 once a profile is selected and composed, and an absent, empty, or unparseable
 contract is a failure, never a pass. Scope defaults to the union of the
 selected Profile Scope's registered layer directories (knowledge content
@@ -46,7 +47,7 @@ Exit codes: 0 = all pass, 1 = hard failure (or violations under --strict),
 2 = advisory candidates.
 
 Usage: python3 check_page_contract.py <vault_root> [--profile PROFILE_DIR]
-       [--contract Tools/page_contract.yaml] [--scope SUBPATH]
+       [--contract .cambium/derived/page_contract.yaml] [--scope SUBPATH]
        [--exclude SUBPATH] [--strict] [--receipts PATH]
 """
 
@@ -61,6 +62,7 @@ import profile_admission
 import metadata_execution_contract
 import metadata_property_state
 import project_page_state
+import runtime_paths
 
 TOOL = "check_page_contract"
 TOOL_VERSION = "1.5.0"
@@ -135,9 +137,9 @@ JSON_FLAG_HELP = ("write the receipts this run produced to stdout as one "
                   "unchanged")
 
 
-ACTIVE_STATE_PATH = ".cambium/governance/standards_state.yaml"
+ACTIVE_STATE_PATH = runtime_paths.ACTIVE_STANDARDS_PATH
 SCOPE_SLOT = "Profile Scope"
-COVERAGE_LEDGER_PATH = ".cambium/state/coverage_ledger.yaml"
+COVERAGE_LEDGER_PATH = runtime_paths.COVERAGE_PATH
 DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 LEGACY_STATUS_FIELD = "status"
 
@@ -711,9 +713,10 @@ def _main(argv=None):
                         help="profile directory override; default is the "
                              "selected_profile_manifest of the active "
                              "Standards state")
-    parser.add_argument("--contract", default="Tools/page_contract.yaml",
-                        help="compiled contract path (default "
-                             "Tools/page_contract.yaml)")
+    parser.add_argument("--contract",
+                        default=runtime_paths.PAGE_CONTRACT_ARTIFACT_PATH,
+                        help="compiled contract path (default %s)" %
+                        runtime_paths.PAGE_CONTRACT_ARTIFACT_PATH)
     parser.add_argument("--scope",
                         help="only scan .md files under this subpath "
                              "(directory or single page)")

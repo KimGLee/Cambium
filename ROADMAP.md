@@ -26,6 +26,7 @@ This file records what changes next and why.
 | Capability | State | Short version |
 |---|---|---|
 | Profile onboarding reform | Complete | One pre-closed template, scaffolder, interview contract, status view, checks, and end-to-end tests ship |
+| Component responsibility realignment | Complete | Kernel, Card, Read Set, Profile, Tool, and adopter runtime state have distinct owners; old nested Card/Read Set paths and duplicate authorities are removed |
 | Persistent task and Queue runtime | Complete | Coverage, Required Queue, Progress, controlled writers, receipts, recovery, and closure paths ship |
 | Workflow progression MVP | Complete | Exact candidate carry, bounded delegated Amendments, and routed-gap settlement ship |
 | Host-neutral agent interface | Complete | CLI contract, MCP projection, stdio server, and four host renderers ship |
@@ -55,6 +56,11 @@ authority
   + adopter-owned .cambium state
 ```
 
+Card, Read Set, and Tool are deliberately absent from this authority equation:
+Cards project action guidance, Read Sets declare loading boundaries, and Tools
+execute or verify existing rules. None becomes an additional policy or state
+authority by performing that role.
+
 Convenience layers may collect decisions, render views, or call controlled
 operations. They may not:
 
@@ -72,6 +78,34 @@ operations. They may not:
 
 These items used to be future roadmap work. They are now part of the current
 baseline and remain here only to make the transition visible.
+
+### Component Responsibility Realignment
+
+Cambium's existing capabilities now follow one explicit responsibility split:
+
+- `kernel/` owns common governance semantics, invariants, state meanings,
+  extension points, and the minimum implementation-independent contracts;
+- `Card/` owns short, curated action checklists for routes or phases selected
+  elsewhere; Cards are non-authoritative projections and are not described as
+  deterministically compiled when their semantic compression is curated;
+- `Read Set/` owns machine-resolvable direct and conditional loading edges;
+  its indexes are generated navigation rather than route or loading authority;
+- a selected Profile owns only confirmed repository-specific values, while the
+  common Profile interface is a Kernel-owned machine registry;
+- `Tools/` owns deterministic algorithms, capability implementations,
+  engineering contracts, generators, and controlled writers; and
+- adopter-owned `.cambium/` holds current values, bound operational inputs,
+  evidence, recovery state, transient work, and rebuildable projections.
+
+Cards and Read Sets therefore live beside the Kernel rather than inside it.
+Consumers resolve their declarations from the owning machine contracts instead
+of reconstructing them from README prose, Markdown headings, or duplicated
+constants. Repository documentation and tests describe and verify this shipped
+structure.
+
+This completion is a responsibility correction, not the later architecture
+redesign: it does not extract the task-type/route selector, replace every file
+format, or decide distribution and installation packaging.
 
 ### Profile Onboarding Reform
 

@@ -11,11 +11,14 @@ import datetime
 import os
 import stat
 
+import batch_close_contract
 import candidate_lifecycle
+import corpus_planning_contract
 import kblib
 import metadata_execution_contract
 import metadata_property_state
 import project_page_state
+import profile_contract
 
 from queue_runtime.canon import (
     ANY_PRODUCER_ERA_VERSION,
@@ -45,26 +48,21 @@ from queue_runtime.receipts import (
 )
 
 
-# K12/09 owns this closed set.  A close-gate receipt names one independently
-# persisted pass receipt for every member; no omitted or ad-hoc eighth member
-# can be hidden behind a generic "batch passed" assertion.
-CLOSED_LIST_EVIDENCE_FIELDS = (
-    "wiki_link_resolution",
-    "structural_validity",
-    "graph_and_duplicate_basenames",
-    "coverage_file_count",
-    "guidance_and_contract_continuity",
-    "registered_residual_content",
-    "controlled_vocabulary",
-    "manifest_page_contract",
-)
+# Compatibility projection of the K12/09-owned machine registry. A close-gate
+# receipt names one independently persisted pass receipt for every member; no
+# omission or ad-hoc member can be hidden behind a generic "batch passed"
+# assertion.
+CLOSED_LIST_EVIDENCE_FIELDS = \
+    batch_close_contract.CLOSED_LIST_EVIDENCE_FIELDS
 # Sealed close bundles are validated against the Closed List their producer
 # era actually ran (K12/10 producer-era identity): a bundle produced before
 # ``manifest_page_contract`` joined the list carries seven members forever,
 # and re-judging it against the current list would retroactively invalidate
 # every prior close on a checker upgrade.
-LEGACY_CLOSED_LIST_VERSIONS = frozenset(("1.4.0",))
-LEGACY_CLOSED_LIST_EVIDENCE_FIELDS = CLOSED_LIST_EVIDENCE_FIELDS[:-1]
+LEGACY_CLOSED_LIST_VERSIONS = \
+    batch_close_contract.LEGACY_CLOSED_LIST_VERSIONS
+LEGACY_CLOSED_LIST_EVIDENCE_FIELDS = \
+    batch_close_contract.LEGACY_CLOSED_LIST_EVIDENCE_FIELDS
 
 # Batch-close has a finite historical protocol catalog because its 1.4 era
 # sealed a different Closed List shape.  A current action still accepts only
@@ -89,17 +87,6 @@ HISTORICAL_CORPUS_PLAN_TOOL_VERSIONS = {
     "1.5.0": "1.6.0",
     "1.4.0": "1.6.0",
 }
-CORPUS_PLAN_TRIGGERS = frozenset(("R13", "manifest"))
-CORPUS_PLAN_PATH_SHA_FIELDS = (
-    ("selected_profile_manifest", "selected_profile_manifest_sha256"),
-    ("corpus_planning_slot_path", "corpus_planning_slot_sha256"),
-    ("profile_scope_path", "profile_scope_sha256"),
-    ("global_map_path", "global_map_sha256"),
-    ("capability_matrix_path", "capability_matrix_sha256"),
-    ("gap_register_path", "gap_register_sha256"),
-)
-
-
 # Producer eras whose batch-close protocol carries the policy-exception
 # disposition.  K12/10 producer-era identity cuts both ways: an older bundle
 # is never re-judged against members its era lacked, and it is never allowed
@@ -410,16 +397,17 @@ def _page_review_acceptance_errors(
 
     profile_bindings = {
         field: aggregate.get(field)
-        for field in (
-            "selected_profile_manifest", "profile_snapshot_sha256",
-            "profile_contract_fingerprint", "profile_load_inputs_sha256")
+        for field in profile_contract.PROFILE_LOAD_EVIDENCE_FIELDS
     }
-    expected_profile = {
-        "selected_profile_manifest": selected_profile_manifest,
-        "profile_snapshot_sha256": profile_snapshot_sha256,
-        "profile_contract_fingerprint": profile_contract_fingerprint,
-        "profile_load_inputs_sha256": profile_load_inputs_sha256,
-    }
+    expected_profile = dict(zip(
+        profile_contract.PROFILE_LOAD_EVIDENCE_FIELDS,
+        (
+            selected_profile_manifest,
+            profile_snapshot_sha256,
+            profile_contract_fingerprint,
+            profile_load_inputs_sha256,
+        ),
+    ))
     live_profile_view = dict(profile_bindings)
     live_profile_view.update({
         field: value for field, value in expected_profile.items()
@@ -692,38 +680,37 @@ def close_gate_receipt_errors(catalog, receipt_id, *, item_id, task_id,
         errors.append(
             "%s receipt %s corpus_plan_required must be an explicit boolean" %
             (label, receipt_id))
-    if (not isinstance(actual_corpus_triggers, list) or
-            any(not nonempty_string(value)
-                for value in actual_corpus_triggers)):
-        errors.append(
-            "%s receipt %s corpus_plan_triggers must be an explicit string "
-            "list" % (label, receipt_id))
+    trigger_issues = corpus_planning_contract.close_trigger_issues(
+        actual_corpus_required, actual_corpus_triggers)
+    if any(issue["code"] == "trigger_list" for issue in trigger_issues):
         actual_corpus_triggers = []
-    else:
-        if actual_corpus_triggers != sorted(set(actual_corpus_triggers)):
+    for issue in trigger_issues:
+        if issue["code"] == "trigger_list":
             errors.append(
-                "%s receipt %s corpus_plan_triggers must be unique and sorted" %
-                (label, receipt_id))
-        unsupported = sorted(
-            set(actual_corpus_triggers) - CORPUS_PLAN_TRIGGERS)
-        if unsupported:
+                "%s receipt %s corpus_plan_triggers must be an explicit "
+                "string list" % (label, receipt_id))
+        elif issue["code"] == "trigger_order":
+            errors.append(
+                "%s receipt %s corpus_plan_triggers must be unique and "
+                "sorted" % (label, receipt_id))
+        elif issue["code"] == "trigger_unsupported":
             errors.append(
                 "%s receipt %s has unsupported corpus-plan trigger(s): %s" %
-                (label, receipt_id, ", ".join(unsupported)))
-    if actual_corpus_required is False:
-        if actual_corpus_triggers:
+                (label, receipt_id, ", ".join(issue["values"])))
+        elif issue["code"] == "inactive_triggers":
             errors.append(
                 "%s receipt %s non-applicable corpus plan must use no "
                 "triggers" % (label, receipt_id))
+        elif issue["code"] == "required_trigger_missing":
+            errors.append(
+                "%s receipt %s required corpus plan has no trigger" %
+                (label, receipt_id))
+    if actual_corpus_required is False:
         if corpus_receipt_id is not None:
             errors.append(
                 "%s receipt %s non-applicable corpus plan must use "
                 "corpus_plan_receipt=null" % (label, receipt_id))
     elif actual_corpus_required is True:
-        if not actual_corpus_triggers:
-            errors.append(
-                "%s receipt %s required corpus plan has no trigger" %
-                (label, receipt_id))
         corpus_tool_version = CORPUS_PLAN_TOOL_VERSION
         if historical and receipt_version != BATCH_CLOSE_TOOL_VERSION:
             corpus_tool_version = \
@@ -763,55 +750,52 @@ def close_gate_receipt_errors(catalog, receipt_id, *, item_id, task_id,
                         "%s Corpus Planning expected binding must be a "
                         "mapping" % item_id)
                 else:
-                    for field, value in sorted(
-                            corpus_plan_expected_binding.items()):
-                        if (field not in corpus_receipt or
-                                corpus_receipt.get(field) != value):
-                            errors.append(
-                                "%s Corpus Planning child %s has %s=%r, "
-                                "expected current %r" % (
-                                    item_id, corpus_receipt_id, field,
-                                    corpus_receipt.get(field), value))
+                    differences = corpus_planning_contract.\
+                        receipt_binding_differences(
+                            corpus_receipt, corpus_plan_expected_binding,
+                            fields=sorted(corpus_plan_expected_binding))
+                    for difference in differences:
+                        errors.append(
+                            "%s Corpus Planning child %s has %s=%r, "
+                            "expected current %r" % (
+                                item_id, corpus_receipt_id,
+                                difference["field"], difference["actual"],
+                                difference["expected"]))
             applicability = corpus_receipt.get("corpus_plan_applicability")
-            if applicability not in ("configured", "not-applicable"):
+            if applicability not in \
+                    corpus_planning_contract.APPLICABILITY_STATES:
                 errors.append(
                     "%s Corpus Planning child %s has invalid applicability %r" %
                     (item_id, corpus_receipt_id, applicability))
-            if ("R13" in actual_corpus_triggers and
-                    applicability != "configured"):
+            if (corpus_planning_contract.CLOSE_ROUTE_TRIGGER in
+                    actual_corpus_triggers and applicability !=
+                    corpus_planning_contract.CONFIGURED_STATE):
                 errors.append(
                     "%s R13 close requires a configured Corpus Planning child" %
                     item_id)
-            for path_field, sha_field in CORPUS_PLAN_PATH_SHA_FIELDS:
-                path_value = corpus_receipt.get(path_field)
-                sha_value = corpus_receipt.get(sha_field)
-                always_required = path_field in (
-                    "selected_profile_manifest", "corpus_planning_slot_path")
-                configured_required = applicability == "configured"
-                if always_required or configured_required:
-                    if not nonempty_string(path_value):
-                        errors.append(
-                            "%s Corpus Planning child %s lacks %s" %
-                            (item_id, corpus_receipt_id, path_field))
-                    if (not isinstance(sha_value, str) or
-                            not SHA256_RE.fullmatch(sha_value)):
-                        errors.append(
-                            "%s Corpus Planning child %s has invalid %s" %
-                            (item_id, corpus_receipt_id, sha_field))
+            for issue in corpus_planning_contract.\
+                    receipt_path_currentness_issues(
+                        corpus_receipt, applicability):
+                path_field = issue["path_field"]
+                sha_field = issue["sha256_field"]
+                if issue["code"] == "required_path":
+                    errors.append(
+                        "%s Corpus Planning child %s lacks %s" %
+                        (item_id, corpus_receipt_id, path_field))
+                elif issue["code"] == "required_sha256":
+                    errors.append(
+                        "%s Corpus Planning child %s has invalid %s" %
+                        (item_id, corpus_receipt_id, sha_field))
+                elif issue["code"] == "inactive_pair_missing":
+                    errors.append(
+                        "%s inactive Corpus Planning child %s must "
+                        "explicitly bind null %s/%s" % (
+                            item_id, corpus_receipt_id, path_field, sha_field))
                 else:
-                    if (path_field not in corpus_receipt or
-                            sha_field not in corpus_receipt):
-                        errors.append(
-                            "%s inactive Corpus Planning child %s must "
-                            "explicitly bind null %s/%s" % (
-                                item_id, corpus_receipt_id, path_field,
-                                sha_field))
-                    elif path_value is not None or sha_value is not None:
-                        errors.append(
-                            "%s inactive Corpus Planning child %s must use "
-                            "null %s/%s" % (
-                                item_id, corpus_receipt_id, path_field,
-                                sha_field))
+                    errors.append(
+                        "%s inactive Corpus Planning child %s must use null "
+                        "%s/%s" % (
+                            item_id, corpus_receipt_id, path_field, sha_field))
 
     require_receipt(
         catalog, queue_consistency_receipt,
@@ -1011,9 +995,9 @@ def close_gate_receipt_errors(catalog, receipt_id, *, item_id, task_id,
     # The Closed List a bundle answers to is the one its producer era ran:
     # a pre-1.5.0 bundle carries seven members forever (K12/10 producer-era
     # identity), a current bundle carries the full list.
-    era_fields = (LEGACY_CLOSED_LIST_EVIDENCE_FIELDS
-                  if receipt_version in LEGACY_CLOSED_LIST_VERSIONS
-                  else CLOSED_LIST_EVIDENCE_FIELDS)
+    era_fields = \
+        batch_close_contract.closed_list_evidence_fields_for_producer_version(
+            receipt_version)
     expected_fields = set(era_fields)
     if not isinstance(evidence, dict):
         errors.append("%s receipt %s closed_list_evidence must be a mapping" %

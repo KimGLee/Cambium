@@ -48,9 +48,13 @@ EVIDENCE_KEYS = frozenset((
     "content_binding", "invalidation", "change_scope",
     "excluded_change_classes"))
 CAPABILITIES_TOP_KEYS = frozenset(("schema_version", "capabilities"))
-CAPABILITY_KEYS = frozenset((
+LEGACY_CAPABILITY_KEYS = frozenset((
     "capability_id", "kind", "capability_version", "implementation_paths",
     "operations"))
+CAPABILITY_KEYS = frozenset((
+    "capability_id", "kind", "capability_version", "implementation_owner",
+    "writers", "checkers", "consumers", "operations"))
+IMPLEMENTATION_ROLE_KEYS = ("writers", "checkers", "consumers")
 WRITER_OPERATION_KEYS = frozenset((
     "field", "transition", "source_adapter"))
 CONSUMER_OPERATION_KEYS = frozenset(("operation",))
@@ -73,6 +77,7 @@ AUTHORITY_CLASSES = frozenset((
     "evidence-projection", "derived-transient"))
 CAPABILITY_KINDS = frozenset((
     "writer", "consumer", "producer", "receipt-schema"))
+CAPABILITIES_SCHEMA_VERSION = 2
 FIELD_ID_RE = re.compile(r"[a-z][a-z0-9_]*\Z")
 STABLE_ID_RE = re.compile(r"[a-z][a-z0-9]*(?:-[a-z0-9]+)*\Z")
 VERSION_RE = re.compile(r"[0-9]+\.[0-9]+\.[0-9]+\Z")
@@ -107,6 +112,31 @@ SOURCE_ADAPTERS = {
         "owner_record_keys": [],
     },
 }
+
+
+def _owner_record_key_projection(adapter_id, spec):
+    keys = spec.get("owner_record_keys") if isinstance(spec, dict) else None
+    if (not isinstance(keys, list) or len(keys) != len(set(keys)) or
+            any(not isinstance(key, str) or
+                FIELD_ID_RE.fullmatch(key) is None for key in keys)):
+        raise ValueError(
+            "source adapter %s owner_record_keys must be a unique field-id "
+            "list" % adapter_id)
+    return frozenset(keys)
+
+
+_SOURCE_ADAPTER_OWNER_RECORD_KEYS = {
+    adapter_id: _owner_record_key_projection(adapter_id, spec)
+    for adapter_id, spec in SOURCE_ADAPTERS.items()
+}
+
+
+def source_adapter_owner_record_keys(adapter_id):
+    """Return the immutable owner-record shape declared by one adapter."""
+    try:
+        return _SOURCE_ADAPTER_OWNER_RECORD_KEYS[adapter_id]
+    except KeyError as exc:
+        raise ValueError("unknown source adapter %r" % adapter_id) from exc
 
 
 class MetadataExecutionContractError(ValueError):
@@ -297,19 +327,22 @@ def _validate_capabilities(document):
     if not _closed_keys(
             document, CAPABILITIES_TOP_KEYS, "operation capabilities", errors):
         return errors
-    if document.get("schema_version") != SCHEMA_VERSION:
-        errors.append("operation capabilities schema_version must be 1")
+    schema_version = document.get("schema_version")
+    if schema_version not in (1, CAPABILITIES_SCHEMA_VERSION):
+        errors.append("operation capabilities schema_version must be 1 or 2")
     entries = document.get("capabilities")
     if not isinstance(entries, list):
         errors.append("operation capabilities capabilities must be a list")
         return errors
 
-    seen_entries = set()
+    seen_capability_ids = {}
     seen_writer_operations = {}
     seen_generic_writer_operations = {}
     for index, entry in enumerate(entries):
         target = "capabilities[%d]" % index
-        if not _closed_keys(entry, CAPABILITY_KEYS, target, errors):
+        entry_keys = (CAPABILITY_KEYS if schema_version == 2 else
+                      LEGACY_CAPABILITY_KEYS)
+        if not _closed_keys(entry, entry_keys, target, errors):
             continue
         capability_id = entry.get("capability_id")
         kind = entry.get("kind")
@@ -317,37 +350,58 @@ def _validate_capabilities(document):
                      target + ".capability_id", errors)
         if kind not in CAPABILITY_KINDS:
             errors.append("%s.kind is not registered" % target)
-        pair = (kind, capability_id)
-        if pair in seen_entries:
-            errors.append("duplicate capability registration: %s/%s" % pair)
-        seen_entries.add(pair)
+        if capability_id in seen_capability_ids:
+            errors.append(
+                "duplicate capability_id %s across capabilities[%d] and %s; "
+                "capability identity is global, not kind-scoped" %
+                (capability_id, seen_capability_ids[capability_id], target))
+        else:
+            seen_capability_ids[capability_id] = index
         if (not isinstance(entry.get("capability_version"), str) or
                 VERSION_RE.fullmatch(entry["capability_version"]) is None):
             errors.append("%s.capability_version must be semver x.y.z" % target)
-        implementation_paths = entry.get("implementation_paths")
-        if (not isinstance(implementation_paths, list) or
-                not implementation_paths):
-            errors.append(
-                "%s.implementation_paths must be a non-empty canonical "
-                "repository-path list" % target)
+        if schema_version == 1:
+            implementation_groups = (
+                ("implementation_paths", entry.get("implementation_paths")),)
+            owner = None
         else:
-            seen_paths = set()
+            owner = entry.get("implementation_owner")
+            implementation_groups = tuple(
+                (key, entry.get(key)) for key in IMPLEMENTATION_ROLE_KEYS)
+        seen_paths = set()
+
+        def validate_path(path, path_target):
+            if (not isinstance(path, str) or not path or
+                    path.startswith("/") or "\\" in path or
+                    not path.startswith("Tools/") or
+                    not path.endswith(".py") or
+                    any(part in ("", ".", "..")
+                        for part in path.split("/"))):
+                errors.append(
+                    "%s must be a canonical Tools/*.py repository path" %
+                    path_target)
+                return False
+            return True
+
+        if schema_version == 2:
+            if validate_path(owner, target + ".implementation_owner"):
+                seen_paths.add(owner)
+        for group_name, implementation_paths in implementation_groups:
+            if (not isinstance(implementation_paths, list) or
+                    (schema_version == 1 and not implementation_paths)):
+                qualifier = "non-empty " if schema_version == 1 else ""
+                errors.append(
+                    "%s.%s must be a %scanonical repository-path list" %
+                    (target, group_name, qualifier))
+                continue
             for path_index, path in enumerate(implementation_paths):
-                path_target = "%s.implementation_paths[%d]" % (
-                    target, path_index)
-                if (not isinstance(path, str) or not path or
-                        path.startswith("/") or "\\" in path or
-                        not path.startswith("Tools/") or
-                        not path.endswith(".py") or
-                        any(part in ("", ".", "..")
-                            for part in path.split("/"))):
-                    errors.append(
-                        "%s must be a canonical Tools/*.py repository path" %
-                        path_target)
+                path_target = "%s.%s[%d]" % (
+                    target, group_name, path_index)
+                if not validate_path(path, path_target):
                     continue
                 if path in seen_paths:
                     errors.append(
-                        "%s duplicates implementation path %s" %
+                        "%s assigns implementation path %s more than once" %
                         (target, path))
                 seen_paths.add(path)
         operations = entry.get("operations")
@@ -580,8 +634,12 @@ def _normalized_capabilities(document, kind=None):
         if kind is not None and entry["kind"] != kind:
             continue
         copied = copy.deepcopy(entry)
-        copied["implementation_paths"] = sorted(
-            copied["implementation_paths"])
+        if document.get("schema_version") == 1:
+            copied["implementation_paths"] = sorted(
+                copied["implementation_paths"])
+        else:
+            for role in IMPLEMENTATION_ROLE_KEYS:
+                copied[role] = sorted(copied[role])
         copied["operations"] = sorted(
             copied["operations"],
             key=lambda item: tuple(str(item[key]) for key in sorted(item)))
@@ -600,11 +658,24 @@ def capability_implementation_paths(document):
     errors = _validate_capabilities(document)
     if errors:
         raise MetadataExecutionContractError(errors)
-    return tuple(sorted({
-        path
-        for entry in document["capabilities"]
-        for path in entry["implementation_paths"]
-    }))
+    if document.get("schema_version") == 1:
+        paths = {
+            path
+            for entry in document["capabilities"]
+            for path in entry["implementation_paths"]
+        }
+    else:
+        paths = {
+            entry["implementation_owner"]
+            for entry in document["capabilities"]
+        }
+        paths.update(
+            path
+            for entry in document["capabilities"]
+            for role in IMPLEMENTATION_ROLE_KEYS
+            for path in entry[role]
+        )
+    return tuple(sorted(paths))
 
 
 def _capability_implementation_records(capabilities,
@@ -811,9 +882,16 @@ def _reject_duplicate_json_keys(pairs):
 
 
 def _artifact_to_source(artifact):
+    operation_capabilities = copy.deepcopy(
+        artifact["operation_capabilities"])
+    capability_schema_version = (
+        CAPABILITIES_SCHEMA_VERSION
+        if all(isinstance(entry, dict) and "implementation_owner" in entry
+               for entry in operation_capabilities)
+        else 1)
     capabilities = {
-        "schema_version": SCHEMA_VERSION,
-        "capabilities": copy.deepcopy(artifact["operation_capabilities"]),
+        "schema_version": capability_schema_version,
+        "capabilities": operation_capabilities,
     }
     source = {
         "schema_version": SCHEMA_VERSION,

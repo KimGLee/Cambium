@@ -15,9 +15,10 @@ FIXTURE = TOOLS / "tests" / "fixtures" / "runtime_state" / "valid"
 sys.path.insert(0, str(TOOLS / "tests"))
 sys.path.insert(0, str(TOOLS))
 
-import check_queue
-import check_corpus_plan
+import batch_close_contract
 import batch_settlement
+import check_corpus_plan
+import check_queue
 import kblib
 import metadata_execution_contract
 import metadata_property_state
@@ -181,11 +182,20 @@ class UpdateQueueFixture:
     def restamp_close_bundle_as_legacy_1_4(self, close_gate_id):
         """Reproduce the sealed seven-member check_batch_close 1.4 era."""
         close_gate = self.close_bundle(close_gate_id)
-        omitted_field = "manifest_page_contract"
+        legacy_fields = (
+            batch_close_contract.closed_list_evidence_fields_for_producer_version(
+                "1.4.0")
+        )
+        omitted_fields = tuple(
+            field
+            for field in batch_close_contract.CLOSED_LIST_EVIDENCE_FIELDS
+            if field not in legacy_fields
+        )
+        self.assertEqual(1, len(omitted_fields))
         legacy_evidence_ids = [
             receipt_id for field, receipt_id
             in close_gate["closed_list_evidence"].items()
-            if field != omitted_field
+            if field in legacy_fields
         ]
         bundle_ids = [
             close_gate_id,
@@ -198,7 +208,8 @@ class UpdateQueueFixture:
             record["tool_version"] = "1.4.0"
             if record.get("receipt_id") in (
                     close_gate_id, close_gate["global_review_receipt"]):
-                record["closed_list_evidence"].pop(omitted_field)
+                for omitted_field in omitted_fields:
+                    record["closed_list_evidence"].pop(omitted_field)
             if record.get("check") == "batch_global_review_attestation":
                 record.setdefault("accepted_candidate_ids", [])
 

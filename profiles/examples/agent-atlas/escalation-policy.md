@@ -1,6 +1,6 @@
 # Escalation Policy
 
-Interface: [Escalation Policy slot](../../README.md#escalation-policy-slot)
+Interface: [Kernel-owned Profile interface](../../../kernel/K00%20Standards%20Control/19%20Profile%20Extension%20Interface.md) — Escalation Policy slot
 
 This corpus uses long autonomous batch runs, so the executor may reach
 situations that require a person before work can continue: the plan changes

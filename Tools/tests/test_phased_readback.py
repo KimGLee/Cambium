@@ -35,51 +35,7 @@ OTHER_CONTEXT = "mcp:2222222222222222222222222222bbbb"
 
 
 def add_conditional_routes(root, routes=("R09", "R12")):
-    """Give the shared fixture the conditional routes it does not ship.
-
-    The runtime fixture selects three preflight routes, so on it every
-    conditional phase is empty and every gate assertion would pass by having
-    nothing to check.  These tests need the opposite: a gate phase with real
-    membership, so refusing to act without it can actually fail.
-    """
-    for route_id in routes:
-        card_relative = "kernel/Cards/%s Fixture Card.md" % route_id
-        read_relative = "kernel/Read Sets/%s Fixture Read Set.md" % route_id
-        read_path = root / read_relative
-        read_path.parent.mkdir(parents=True, exist_ok=True)
-        read_path.write_text(
-            "---\ntype: read-set\nroute_id: %s\n---\n"
-            "# %s Fixture Read Set\n\n## Purpose\n\nBound the route.\n" %
-            (route_id, route_id), encoding="utf-8")
-        card = {
-            "type": "runtime-card",
-            "route_id": route_id,
-            "read_set": read_relative,
-            "compiled_from": "3.0.0",
-            "source_files": [read_relative],
-            "readback_sources": [],
-            "readback_policy": "none",
-            "source_hash": "0123456789ab",
-            "compiled_source_hash": "0123456789ab",
-        }
-        card_path = root / card_relative
-        card_path.parent.mkdir(parents=True, exist_ok=True)
-        card_path.write_text(
-            "---\n%s---\n# %s Fixture Card\n\nConditional route payload.\n" %
-            (kblib.canonical_yaml(card), route_id), encoding="utf-8")
-
-    index_path = root / "kernel/Cards/Card Index.md"
-    text = index_path.read_text(encoding="utf-8")
-    for route_id in routes:
-        text = text.replace(
-            '  - route_id: %s\n    path: "kernel/Cards/%s Fixture Card.md"\n'
-            '    read_set: "kernel/Read Sets/%s Fixture Read Set.md"\n' %
-            (route_id, route_id, route_id),
-            '  - route_id: %s\n    path: "kernel/Cards/%s Fixture Card.md"\n'
-            '    read_set: "kernel/Read Sets/%s Fixture Read Set.md"\n' %
-            (route_id, route_id, route_id))
-    index_path.write_text(text, encoding="utf-8")
-
+    """Select already declared conditional routes in the shared fixture."""
     progress_path = root / ".cambium/state/progress_ledger.yaml"
     progress = kblib.load_yaml_file(progress_path)
     contract = progress["contract"]
@@ -87,10 +43,10 @@ def add_conditional_routes(root, routes=("R09", "R12")):
         set(contract["selected_route_ids"]) | set(routes))
     contract["selected_card_paths"] = sorted(
         set(contract["selected_card_paths"]) |
-        {"kernel/Cards/%s Fixture Card.md" % route for route in routes})
+        {"Card/%s Fixture Card.md" % route for route in routes})
     contract["selected_read_sets"] = sorted(
         set(contract["selected_read_sets"]) |
-        {"kernel/Read Sets/%s Fixture Read Set.md" % route
+        {"Read Set/%s Fixture Read Set.md" % route
          for route in routes})
     progress_path.write_text(kblib.canonical_yaml(progress), encoding="utf-8")
     # The contract is anchored by the initial task transition; widening the
@@ -134,6 +90,9 @@ class PhasedActivationTests(unittest.TestCase):
     def plan(self, context=None):
         context = context or self.context()
         return context["activation_bundle_manifest"]["phase_plan"]
+
+    def registry(self):
+        return card_activation._route_registry(self.root)[0]
 
     # ---- the plan itself ------------------------------------------------
 
@@ -214,7 +173,7 @@ class PhasedActivationTests(unittest.TestCase):
     def test_work_spec_narrowing_moves_unused_routes_out_of_preflight(self):
         routes = ["R01", "R05", "R09"]
         assignment = card_activation.resolve_route_phases(
-            routes, narrowing=["R01"])
+            routes, self.registry(), narrowing=["R01"])
         self.assertEqual(card_activation.PHASE_BATCH_PREFLIGHT,
                          assignment["R01"])
         # A narrowed-away route is still reachable, just not at startup.
@@ -225,7 +184,7 @@ class PhasedActivationTests(unittest.TestCase):
 
     def test_silence_is_not_a_narrowing_claim(self):
         assignment = card_activation.resolve_route_phases(
-            ["R01", "R05"], narrowing=None)
+            ["R01", "R05"], self.registry(), narrowing=None)
         self.assertEqual(card_activation.PHASE_BATCH_PREFLIGHT,
                          assignment["R05"])
 
@@ -235,13 +194,15 @@ class PhasedActivationTests(unittest.TestCase):
         # charges every batch for an audit almost none of them run -- the
         # exact waste this protocol exists to remove.
         assignment = card_activation.resolve_route_phases(
-            ["R01", "R05", "R12"], narrowing=["R01", "R05"])
+            ["R01", "R05", "R12"], self.registry(),
+            narrowing=["R01", "R05"])
         self.assertEqual(card_activation.PHASE_BATCH_RUNNING,
                          assignment["R12"])
 
     def test_a_batch_that_names_r12_owes_the_gate_phase(self):
         assignment = card_activation.resolve_route_phases(
-            ["R01", "R05", "R12"], narrowing=["R01", "R12"])
+            ["R01", "R05", "R12"], self.registry(),
+            narrowing=["R01", "R12"])
         self.assertEqual(card_activation.PHASE_BATCH_GATE, assignment["R12"])
         self.assertEqual(card_activation.PHASE_BATCH_RUNNING,
                          assignment["R05"])
@@ -251,7 +212,8 @@ class PhasedActivationTests(unittest.TestCase):
         # is presumed by every phase.  A batch may narrow what it is doing,
         # never what the task may do.
         assignment = card_activation.resolve_route_phases(
-            ["R01", "R08", "R09", "R12"], narrowing=["R05"])
+            ["R01", "R08", "R09", "R12"], self.registry(),
+            narrowing=["R05"])
         self.assertEqual(card_activation.PHASE_BATCH_PREFLIGHT,
                          assignment["R01"])
         self.assertEqual(card_activation.PHASE_TASK_COMPLETION,
@@ -259,12 +221,12 @@ class PhasedActivationTests(unittest.TestCase):
         self.assertEqual(card_activation.PHASE_GOVERNANCE, assignment["R09"])
         self.assertEqual(card_activation.PHASE_BATCH_RUNNING,
                          assignment["R12"])
-        self.assertEqual(frozenset(("R12",)),
-                         card_activation.NARROWABLE_PHASE_OVERRIDES)
+        self.assertTrue(self.registry()["R12"][
+            "read_set_declaration"]["narrowable"])
 
     def test_an_unrevised_work_spec_still_owes_r12(self):
         assignment = card_activation.resolve_route_phases(
-            ["R01", "R12"], narrowing=None)
+            ["R01", "R12"], self.registry(), narrowing=None)
         self.assertEqual(card_activation.PHASE_BATCH_GATE, assignment["R12"])
 
     # ---- delivery and ack ----------------------------------------------

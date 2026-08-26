@@ -1,6 +1,6 @@
 # Source Policy
 
-Interface: [Source Policy slot](../../README.md#source-policy-slot)
+Interface: [Kernel-owned Profile interface](../../../kernel/K00%20Standards%20Control/19%20Profile%20Extension%20Interface.md) — Source Policy slot
 
 ## Source Authority
 
@@ -12,7 +12,7 @@ Interface: [Source Policy slot](../../README.md#source-policy-slot)
 
 ## Verification Entry Points
 
-| Bounded claim class | Registered Source ID | Verifier command, path, URL, or procedure | Version pin or freshness window |
+| Bounded claim class | Registered Source ID | Stable verifier capability, evidence source, or semantic review criterion | Version pin or freshness window |
 |---|---|---|---|
 | A torque or preload figure quoted by a procedure page. | `hub-service-manual` | Open the manual revision named on the page and read the figure from its own table. | Re-check whenever a newer revision reaches the workshop. |
 | A maximum-tension figure used to derive a working range. | `rim-tech-sheet` | Read the published maximum from the sheet for that exact rim model. | Re-check per rim model when stock changes. |

@@ -27,19 +27,10 @@ Method:
   profile ID used for supplemental-route checks, and binds the Profile-tree
   snapshot, typed-contract fingerprint, and canonical load-input fingerprint
   into the Terminal summary;
-- selected_route_ids must be a non-empty list of unique Runtime Route IDs in
-  the closed range R01-R13 and, because this is terminal evidence, must include
-  R01 Core Bootstrap, R12 Targeted and Specialized Audit, and R08 Audit and
-  Completion;
-- selected_card_paths must be a non-empty list of unique Card paths;
-- selected_profile_route_ids must be a list of unique namespaced supplemental
-  route IDs; an empty list records that no profile route was combined;
-- selected_read_sets is the possibly empty, unique list of Read Sets actually
-  read back, not a second declaration of every selected route. Together with
-  the other four selection lists it must exactly match the frozen Progress
-  Task Contract, including order. Kernel Read Set paths are registry-checked;
-  profile Read Set paths receive existence and uniqueness checks only because
-  the profile registry is prose, not a machine-readable canonical map;
+- the five route/Card/Read Set selection fields are checked against the frozen
+  Progress Task Contract and, with --root, the canonical Card/Read Set and
+  selected-Profile machine registries. This checker does not reconstruct a
+  selection from indexes, prose, or its own route list;
 - dimension_coverage must carry one entry for every base receipt dimension
   K12/07 fixes; each entry is either a non-empty list of receipt IDs or an
   explicit "not-applicable: <reason>" string. A missing dimension, an empty
@@ -72,9 +63,7 @@ Method:
   -> fail;
 - when --root (vault root) is given, path-valued fields, including every path
   in incremental_manual_scope, must exist under it;
-  the canonical Card and Read Set indexes are parsed, every selected route must
-  have exactly its registered Card path, and every recorded Read Set must be
-  registered to a selected route -> otherwise fail;
+  the shared Card/Read Set registry consumer checks the frozen selection;
 - without --root, only proof structure is checked; no route-registry agreement
   is claimed;
 - when --ledger (Coverage Ledger) is given, cross-check: open_gaps non-empty
@@ -119,13 +108,21 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import kblib
+import audit_dimension_contract
 import check_corpus_plan
+import corpus_planning_contract
 import check_profile
 import check_queue
+import profile_layout_contract
+import read_set_contract
+import runtime_paths
+import runtime_state_contract
+import stamp_cards
 
 TOOL = "check_proof"
 TOOL_VERSION = "1.17.0"
 GATE_ID = "terminal-proof"
+GATE_CHECK = "proof-check-summary"
 
 # ---------------------------------------------------------------------------
 # `--json` projection
@@ -234,45 +231,30 @@ PATH_FIELDS = ("selected_profile_manifest", "selected_card_paths",
                "audit_receipt_register", "full_deterministic_results",
                "incremental_manual_scope")
 
-# Kernel Runtime Route IDs are a closed registry. Index documents do not occupy
-# R00; the thirteen executable routes are R01-R13.
-RUNTIME_ROUTE_ID_RE = re.compile(r"R(?:0[1-9]|1[0-3])\Z")
-PROFILE_ROUTE_ID_RE = re.compile(r"P:[^:\s]+:[^:\s]+\Z")
-EXPECTED_ROUTE_IDS = tuple("R%02d" % number for number in range(1, 14))
+# Route syntax and membership come from Read Set/Card machine contracts. The
+# no-root structural pass uses only the deployed Profile-route pattern; it
+# makes no claim about selected Runtime-route membership without a repository.
+_DEPLOYED_ROOT = Path(__file__).resolve().parent.parent
+_READ_SET_SCHEMA = read_set_contract.load_schema(_DEPLOYED_ROOT)
+PROFILE_ROUTE_ID_RE = re.compile(
+    _READ_SET_SCHEMA["profile_route_id_pattern"] + r"\Z")
 TERMINAL_REQUIRED_ROUTE_IDS = frozenset(("R01", "R08", "R12"))
-REGISTRY_ID = "kernel-runtime-routes"
-CARD_INDEX_PATH = "kernel/Cards/Card Index.md"
-READ_SET_INDEX_PATH = "kernel/Read Sets/Read Sets Index.md"
-ACTIVE_STATE_PATH = ".cambium/governance/standards_state.yaml"
+ACTIVE_STATE_PATH = runtime_paths.ACTIVE_STANDARDS_PATH
 UNINSTANTIATED_RE = re.compile(r"\{\{.*?\}\}")
 SHA256_RE = re.compile(r"sha256:[0-9a-f]{64}\Z")
-CANONICAL_COVERAGE_PATH = ".cambium/state/coverage_ledger.yaml"
-CANONICAL_QUEUE_PATH = ".cambium/state/required_queue.yaml"
-CANONICAL_PROGRESS_PATH = ".cambium/state/progress_ledger.yaml"
+CANONICAL_COVERAGE_PATH = runtime_paths.COVERAGE_PATH
+CANONICAL_QUEUE_PATH = runtime_paths.QUEUE_PATH
+CANONICAL_PROGRESS_PATH = runtime_paths.PROGRESS_PATH
 NULLABLE_REQUIRED_FIELDS = frozenset((
     "corpus_plan_semantic_acceptance_receipt",
 ))
-# K12/07 fixes these seven base receipt dimensions; K12/16 requires the
-# Terminal Proof to account for every one of them, and for every dimension the
-# selected profile registers with a `receipt` target on the same terms.  Like
-# EXPECTED_ROUTE_IDS above this tuple only projects a closed kernel set into
-# the checker.  K12/07 also owns the prohibition this file enforces but does
-# not restate: the `Audit Dimension Registry` MUST NOT delete, rename, or
-# redefine a base dimension.
-BASE_RECEIPT_DIMENSIONS = (
-    "structure_and_links",
-    "content_and_depth",
-    "formula_and_numeric",
-    "source_and_currentness",
-    "coverage_and_integration",
-    "rendering",
-    "guidance_and_contract",
-)
+# K12's audit-dimension registry is the sole machine owner of this ordered
+# closed set; this checker only consumes it for Terminal Proof accounting.
+BASE_RECEIPT_DIMENSIONS = \
+    audit_dimension_contract.BASE_RECEIPT_DIMENSION_ORDER
 NOT_APPLICABLE_PREFIX = "not-applicable:"
-TERMINAL_TASK_STATES = frozenset(("completion-candidate", "complete"))
-FINAL_GUIDANCE_STATUSES = frozenset(
-    ("verified", "deferred", "superseded", "not-applicable")
-)
+TERMINAL_TASK_STATES = runtime_state_contract.BUILD_PROOF_TASK_STATES
+FINAL_GUIDANCE_STATUSES = runtime_state_contract.FINAL_GUIDANCE_STATUSES
 
 
 def _resolve_under_root(root, raw_path):
@@ -354,15 +336,11 @@ def _repo_relative_path_error(raw_path):
 
 def _selected_profile_manifest_error(raw_path):
     """Require the one canonical profile-manifest path shape."""
-    _path_error = _repo_relative_path_error(raw_path)
-    if _path_error:
-        return _path_error
-    parts = Path(raw_path).parts
-    if (len(parts) != 3 or parts[0] != "profiles" or
-            parts[2] != "profile.md"):
-        return ("path must be exactly profiles/<profile_id>/profile.md; "
-                "directories, globs, candidate lists, and nested manifests "
-                "do not select a profile")
+    try:
+        profile_layout_contract.validate_selectable_profile_manifest_path(
+            raw_path)
+    except profile_layout_contract.ProfileLayoutError as exc:
+        return str(exc)
     return None
 
 
@@ -371,155 +349,32 @@ def _uninstantiated_value(raw_value):
             UNINSTANTIATED_RE.search(raw_value) is not None)
 
 
-def _load_index(root, relative_path, expected_type):
-    """Parse one canonical route index and return its frontmatter mapping."""
-    errors = []
-    path, resolve_error = _resolve_under_root(root, relative_path)
-    if resolve_error:
-        return None, ["%s: %s" % (relative_path, resolve_error)]
-    if not path.is_file():
-        return None, ["required index is missing: %s" % relative_path]
-    try:
-        text = path.read_text(encoding="utf-8")
-    except (OSError, UnicodeError) as exc:
-        return None, ["cannot read %s as UTF-8: %s" % (relative_path, exc)]
-    front = kblib.extract_frontmatter(text)
-    if front is None:
-        return None, ["%s has no fenced frontmatter" % relative_path]
-    try:
-        data = kblib.parse_yaml_subset(front)
-    except kblib.YamlSubsetError as exc:
-        return None, ["cannot parse %s frontmatter: %s" % (relative_path, exc)]
-    if not isinstance(data, dict):
-        return None, ["%s frontmatter must be a mapping" % relative_path]
-    if data.get("type") != expected_type:
-        errors.append("%s must declare type: %s" % (relative_path, expected_type))
-    if data.get("registry_id") != REGISTRY_ID:
-        errors.append("%s must declare registry_id: %s" %
-                      (relative_path, REGISTRY_ID))
-    if "route_id" in data:
-        errors.append("%s must not declare route_id; an index is not a route" %
-                      relative_path)
-    if "card_id" in data or "card_registry" in data:
-        errors.append("%s contains retired Card identity fields" % relative_path)
-    registry = data.get("route_registry")
-    if not isinstance(registry, list) or not registry:
-        errors.append("%s must declare a non-empty route_registry" % relative_path)
-    return data, errors
-
-
-def _registry_map(data, relative_path, card_index):
-    """Return route -> canonical path data while rejecting registry anomalies."""
-    errors = []
-    result = {}
-    paths = set()
-    read_sets = set()
-    registry = data.get("route_registry") if isinstance(data, dict) else None
-    if not isinstance(registry, list):
-        return result, errors
-
-    for index, entry in enumerate(registry):
-        label = "%s route_registry[%d]" % (relative_path, index)
-        if not isinstance(entry, dict):
-            errors.append("%s must be a mapping" % label)
-            continue
-        route_id = entry.get("route_id")
-        path = entry.get("path")
-        read_set = entry.get("read_set") if card_index else None
-        if not isinstance(route_id, str) or not RUNTIME_ROUTE_ID_RE.fullmatch(route_id):
-            errors.append("%s has invalid route_id %r; expected R01-R13" %
-                          (label, route_id))
-            continue
-        if route_id in result:
-            errors.append("%s repeats route_id %s" % (relative_path, route_id))
-            continue
-        if not isinstance(path, str) or not path:
-            errors.append("%s has no canonical path" % label)
-            continue
-        expected_path_prefix = (
-            "kernel/Cards/%s " if card_index else
-            "kernel/Read Sets/%s ") % route_id
-        if (not path.startswith(expected_path_prefix) or
-                not path.endswith(".md") or Path(path).is_absolute() or
-                ".." in Path(path).parts):
-            errors.append(
-                "%s path %r is not the canonical %s path for %s"
-                % (label, path, "Card" if card_index else "Read Set", route_id))
-            continue
-        if path in paths:
-            errors.append("%s repeats canonical path %s" % (relative_path, path))
-            continue
-        if card_index:
-            if not isinstance(read_set, str) or not read_set:
-                errors.append("%s has no read_set path" % label)
-                continue
-            expected_read_set_prefix = "kernel/Read Sets/%s " % route_id
-            if (not read_set.startswith(expected_read_set_prefix) or
-                    not read_set.endswith(".md") or Path(read_set).is_absolute() or
-                    ".." in Path(read_set).parts):
-                errors.append(
-                    "%s read_set %r is not the canonical Read Set path for %s"
-                    % (label, read_set, route_id))
-                continue
-            if read_set in read_sets:
-                errors.append("%s repeats read_set path %s" %
-                              (relative_path, read_set))
-                continue
-            read_sets.add(read_set)
-        paths.add(path)
-        result[route_id] = {"path": path, "read_set": read_set}
-
-    actual_routes = set(result)
-    expected_routes = set(EXPECTED_ROUTE_IDS)
-    if actual_routes != expected_routes:
-        errors.append(
-            "%s route coverage must be exactly R01-R13; missing=%s extra=%s"
-            % (relative_path,
-               sorted(expected_routes - actual_routes),
-               sorted(actual_routes - expected_routes)))
-    return result, errors
-
-
 def load_route_registry(root):
-    """Load and cross-check the canonical Card and Read Set index pair.
+    """Project the canonical Card/Read Set registry through its one consumer.
 
-    Public because two modules have to answer "which Card and which Read
-    Set does this route mean?" from the same two indexes. `apply_task_plan`
-    completes a plan's derived load fields while the Contract can still be
-    repaired; this module re-checks the same binding at Terminal once it is
-    frozen. A second resolver over the same registry would turn one
-    agreement into two, and the disagreement would surface at the only
-    point where nothing can still be fixed.
-
-    Returns `(card_map, read_map, errors)`. Both maps are
-    `route_id -> {"path": str, "read_set": str | None}`; `read_set` is
-    populated only in `card_map`, because the Card Index is what binds a
-    Card to its Read Set and the Read Set Index only registers paths.
-    `errors` carries every structural finding about the pair, and what a
-    caller does with a non-empty list is the caller's policy rather than
-    this function's: fail receipts here, a refusal to write there.
+    ``stamp_cards.discover_cards`` validates the Card-owned shape/budget and
+    the Read Set-owned declarations and bindings. This proof checker only
+    adapts that registry to its historical ``(card_map, read_map, errors)``
+    return shape; it neither parses Card frontmatter again nor owns a second
+    route closed set. Generated indexes remain navigation only.
     """
-    errors = []
-    card_data, card_errors = _load_index(root, CARD_INDEX_PATH, "card-index")
-    read_data, read_errors = _load_index(root, READ_SET_INDEX_PATH, "route-index")
-    errors.extend(card_errors)
-    errors.extend(read_errors)
-
-    card_map, card_map_errors = _registry_map(card_data, CARD_INDEX_PATH, True)
-    read_map, read_map_errors = _registry_map(
-        read_data, READ_SET_INDEX_PATH, False)
-    errors.extend(card_map_errors)
-    errors.extend(read_map_errors)
-
-    for route_id in sorted(set(card_map) & set(read_map)):
-        card_read_set = card_map[route_id]["read_set"]
-        canonical_read_set = read_map[route_id]["path"]
-        if card_read_set != canonical_read_set:
-            errors.append(
-                "%s binds %s to %s, but %s registers %s"
-                % (CARD_INDEX_PATH, route_id, card_read_set,
-                   READ_SET_INDEX_PATH, canonical_read_set))
-    return card_map, read_map, errors
+    try:
+        cards, declarations = stamp_cards.discover_cards(root)
+    except (stamp_cards.CardContractError,
+            read_set_contract.ReadSetContractError) as exc:
+        return {}, {}, [str(exc)]
+    read_map = {
+        route_id: {"path": record["path"], "read_set": None}
+        for route_id, record in declarations.items()
+    }
+    card_map = {
+        route_id: {
+            "path": record["path"],
+            "read_set": record["read_set"],
+        }
+        for route_id, record in cards.items()
+    }
+    return card_map, read_map, []
 
 
 def _queue_linkage_failure(check, target, details):
@@ -945,7 +800,7 @@ def _validate_dimension_coverage_evidence(root, proof, cited, runtime):
     receipt_path_raw = proof.get("audit_receipt_register")
     try:
         receipt_path = Path(kblib.managed_repository_path(
-            str(root), receipt_path_raw, ".cambium/receipts",
+            str(root), receipt_path_raw, runtime_paths.RECEIPT_ROOT,
             suffixes=(".jsonl",), must_exist=True,
         ))
     except (OSError, TypeError, ValueError):
@@ -1157,7 +1012,7 @@ def _validate_required_queue_linkage(root, proof, progress_ledger,
     failures.extend(membership_failures)
     try:
         receipt_path = Path(kblib.managed_repository_path(
-            str(root), receipt_path_raw, ".cambium/receipts",
+            str(root), receipt_path_raw, runtime_paths.RECEIPT_ROOT,
             suffixes=(".jsonl",), must_exist=True,
         ))
         receipt_path_error = None
@@ -1282,7 +1137,7 @@ def _validate_corpus_plan_linkage(
     failures.extend(membership_failures)
     try:
         receipt_path = Path(kblib.managed_repository_path(
-            str(root), receipt_path_raw, ".cambium/receipts",
+            str(root), receipt_path_raw, runtime_paths.RECEIPT_ROOT,
             suffixes=(".jsonl",), must_exist=True,
         ))
         receipt_path_error = None
@@ -1397,14 +1252,14 @@ def _validate_corpus_plan_linkage(
             "%s#%s" % (receipt_path_raw, receipt_id), detail))
 
     applicability = expected_binding.get("corpus_plan_applicability")
-    if applicability == "not-applicable":
+    if applicability == corpus_planning_contract.INACTIVE_STATE:
         if semantic_id is not None:
             failures.append(_queue_linkage_failure(
                 "proof-corpus-plan-semantic-receipt-not-applicable",
                 "Terminal Proof#corpus_plan_semantic_acceptance_receipt",
                 "semantic acceptance receipt must be null when the current "
                 "Corpus Planning applicability.state is not-applicable"))
-    elif applicability == "configured":
+    elif applicability == corpus_planning_contract.CONFIGURED_STATE:
         if not isinstance(semantic_id, str) or not semantic_id.strip():
             failures.append(_queue_linkage_failure(
                 "proof-corpus-plan-semantic-receipt-required",
@@ -1439,7 +1294,8 @@ def _validate_corpus_plan_linkage(
                         ("tool", "record_corpus_acceptance"),
                         ("tool_version",
                          check_corpus_plan.SEMANTIC_ACCEPTANCE_TOOL_VERSION),
-                        ("gate_id", "corpus-plan-semantic-acceptance"),
+                        ("gate_id", corpus_planning_contract.
+                         SEMANTIC_ACCEPTANCE_SCOPE),
                         ("check", "corpus_plan_semantic_acceptance"),
                         ("result", "pass"),
                         ("invalidated_by", None),
@@ -1450,7 +1306,8 @@ def _validate_corpus_plan_linkage(
                             "%s#%s" % (receipt_path_raw, semantic_id),
                             "semantic receipt %s=%r, expected %r" %
                             (field, semantic.get(field), expected)))
-                for field in check_corpus_plan.PASS_RECEIPT_BINDING_FIELDS:
+                for field in corpus_planning_contract.\
+                        PASS_RECEIPT_BINDING_FIELDS:
                     expected = expected_binding.get(field)
                     if semantic.get(field) != expected:
                         failures.append(_queue_linkage_failure(
@@ -1622,20 +1479,22 @@ def _validate_terminal_progress_state(proof, progress_ledger,
                 ))
                 continue
             status = entry.get("status")
-            if status not in FINAL_GUIDANCE_STATUSES:
+            writeback_done = entry.get("writeback_done")
+            if not runtime_state_contract.amendment_is_final(
+                    status, writeback_done):
+                if status == "verified" and writeback_done is not True:
+                    failures.append((
+                        "progress-amendment-writeback-pending",
+                        "Progress Ledger#amendments[%d]" % index,
+                        "verified Amendment %r has not completed Progress "
+                        "write-back" % entry.get("id"),
+                    ))
+                    continue
                 failures.append((
                     "progress-amendment-pending",
                     "Progress Ledger#amendments[%d]" % index,
-                    "Amendment %r has non-final status %r" %
-                    (entry.get("id"), status),
-                ))
-            elif (status == "verified" and
-                  entry.get("writeback_done") is not True):
-                failures.append((
-                    "progress-amendment-writeback-pending",
-                    "Progress Ledger#amendments[%d]" % index,
-                    "verified Amendment %r has not completed Progress "
-                    "write-back" % entry.get("id"),
+                    "Amendment %r has non-final status/write-back %r/%r" %
+                    (entry.get("id"), status, writeback_done),
                 ))
     return failures
 
@@ -1675,8 +1534,7 @@ def _validate_terminal_coverage_state(proof, progress_ledger, coverage_ledger,
             "selected_profile_manifest"
         ),
     }
-    for field in ("task_id", "scope_version", "standards_version",
-                  "selected_profile_manifest"):
+    for field in runtime_state_contract.RUNTIME_CONTROL_IDENTITY_FIELDS:
         actual = coverage_ledger.get(field)
         expected = proof.get(field)
         if actual != expected:
@@ -1725,17 +1583,17 @@ def _main():
     ap = kblib.ArgumentParser(description="Terminal Proof completeness and zero-condition check")
     ap.add_argument("proof", help="path to the terminal proof YAML file")
     ap.add_argument("--ledger", help="Coverage Ledger YAML; with --root this "
-                    "must be exactly .cambium/state/coverage_ledger.yaml")
+                    "must be exactly %s" % runtime_paths.COVERAGE_PATH)
     ap.add_argument("--progress-ledger", help="Progress Ledger YAML; required "
-                    "with --root and must be exactly .cambium/state/"
-                    "progress_ledger.yaml")
+                    "with --root and must be exactly %s" %
+                    runtime_paths.PROGRESS_PATH)
     ap.add_argument("--template",
                     default=os.path.join(os.path.dirname(os.path.abspath(__file__)),
                                          "schemas", "terminal_proof.template.yaml"),
                     help="field-list template (default Tools/schemas/terminal_proof.template.yaml)")
     ap.add_argument("--root", help="vault root; when given, path-valued proof "
-                    "fields must exist and selected routes, Cards, and kernel "
-                    "Read Sets must agree with the canonical route indexes")
+                    "fields must exist and selected routes must agree with "
+                    "canonical Card and Read Set declarations")
     ap.add_argument("--receipts", help="JSONL path to append machine-readable receipts to")
     ap.add_argument("--json", action="store_true", help=JSON_FLAG_HELP)
     args = ap.parse_args()
@@ -1747,7 +1605,7 @@ def _main():
             if args.root:
                 receipt_output = kblib.managed_repository_path(
                     os.path.realpath(os.path.abspath(args.root)),
-                    receipt_output, ".cambium/receipts",
+                    receipt_output, runtime_paths.RECEIPT_ROOT,
                     suffixes=(".jsonl",), must_exist=False,
                 )
             else:
@@ -1897,20 +1755,21 @@ def _main():
             receipts.append(_make_receipt(
                 TOOL, TOOL_VERSION, "proof-route-ids-empty",
                 "%s#selected_route_ids" % proof_name, "fail",
-                "selected_route_ids must be a non-empty list of kernel "
-                "Runtime Route IDs (R01-R13)", seq))
+                "selected_route_ids must be a non-empty list of Runtime "
+                "Route identities", seq))
         else:
             seen_route_ids = set()
             for index, route_id in enumerate(route_ids):
                 target = "%s#selected_route_ids[%d]" % (proof_name, index)
-                if not isinstance(route_id, str) or not RUNTIME_ROUTE_ID_RE.fullmatch(route_id):
+                if not isinstance(route_id, str) or not route_id.strip():
                     route_id_bad += 1
                     seq += 1
                     receipts.append(_make_receipt(
                         TOOL, TOOL_VERSION, "proof-route-id-invalid",
                         target, "fail",
-                        "route ID %r is invalid; expected one of R01-R13"
-                        % route_id, seq))
+                        "route identity %r must be a non-empty string; "
+                        "canonical membership is checked against the machine "
+                        "registry when --root is supplied" % route_id, seq))
                 else:
                     valid_route_ids.add(route_id)
                 route_key = repr(route_id)
@@ -1988,7 +1847,7 @@ def _main():
                 TOOL, TOOL_VERSION, "proof-card-paths-empty",
                 "%s#selected_card_paths" % proof_name, "fail",
                 "selected_card_paths must be a non-empty list with one "
-                "canonical Runtime Card path for every selected Rxx route", seq))
+                "canonical curated Card path for every selected Rxx route", seq))
         else:
             seen_card_paths = set()
             for index, card_path in enumerate(selected_card_paths):
@@ -2309,8 +2168,8 @@ def _main():
                     details, seq))
             if not active_state_errors:
                 active_state_checked = True
-                for field in ("standards_version",
-                              "selected_profile_manifest"):
+                for field in \
+                        runtime_state_contract.RUNTIME_STANDARDS_IDENTITY_FIELDS:
                     if field in missing:
                         continue
                     if active_state.get(field) != proof.get(field):
@@ -2417,7 +2276,10 @@ def _main():
                             "the selected manifest declares profile_id %r" %
                             (route_id, selected_profile_id), seq))
 
-                selected_profile_dir = Path(selected_profile_manifest).parts[1]
+                selected_profile_dir = \
+                    profile_layout_contract.\
+                    validate_selectable_profile_manifest_path(
+                        selected_profile_manifest).profile_id
                 for field in ("selected_read_sets", "loaded_module_paths"):
                     value = proof.get(field)
                     values = value if isinstance(value, list) else [value]
@@ -2425,7 +2287,9 @@ def _main():
                         if not isinstance(raw_path, str):
                             continue
                         parts = Path(raw_path).parts
-                        if (len(parts) >= 3 and parts[0] == "profiles" and
+                        if (len(parts) >= 3 and
+                                parts[0] ==
+                                profile_layout_contract.PROFILES_DIRECTORY and
                                 parts[1] != selected_profile_dir):
                             profile_manifest_bad += 1
                             seq += 1
@@ -2439,6 +2303,12 @@ def _main():
                                 seq))
 
             card_map, read_map, registry_errors = load_route_registry(root)
+            live_read_set_schema = None
+            if not registry_errors:
+                try:
+                    live_read_set_schema = read_set_contract.load_schema(root)
+                except read_set_contract.ReadSetContractError as exc:
+                    registry_errors = [str(exc)]
             registry_bad = len(registry_errors)
             for index, details in enumerate(registry_errors):
                 seq += 1
@@ -2447,11 +2317,19 @@ def _main():
                     "%s#route_registry[%d]" % (proof_name, index), "fail",
                     details, seq))
 
-            # Registry-dependent proof checks only run against a structurally
-            # sound index pair. stamp_cards.py remains the full Card-layer
-            # verifier; this check owns only the proof-to-registry binding.
+            # Declaration-dependent proof checks only run against structurally
+            # sound entity frontmatter. Navigation indexes are not consulted;
+            # stamp_cards.py remains the full Card-layer verifier.
             if not registry_errors:
                 registry_checked = True
+                for route_id in sorted(valid_route_ids - set(card_map)):
+                    route_id_bad += 1
+                    seq += 1
+                    receipts.append(_make_receipt(
+                        TOOL, TOOL_VERSION, "proof-route-id-unregistered",
+                        "%s#selected_route_ids" % proof_name, "fail",
+                        "route identity %s is absent from the canonical "
+                        "Card/Read Set machine registry" % route_id, seq))
                 selected_card_set = set(valid_card_paths)
                 expected_card_set = {
                     card_map[route_id]["path"]
@@ -2490,18 +2368,61 @@ def _main():
                     entry["path"]: route_id
                     for route_id, entry in read_map.items()
                 }
+                profile_read_map = {}
+                if (isinstance(selected_profile_manifest, str) and
+                        selected_profile_manifest):
+                    try:
+                        profile_read_map = read_set_contract.discover_profile(
+                            root, selected_profile_manifest)
+                    except read_set_contract.ReadSetContractError as exc:
+                        read_set_bad += 1
+                        seq += 1
+                        receipts.append(_make_receipt(
+                            TOOL, TOOL_VERSION,
+                            "proof-profile-read-set-registry-invalid",
+                            "%s#selected_read_sets" % proof_name, "fail",
+                            "selected Profile machine Read Set declarations "
+                            "are invalid: %s" % exc, seq))
+                profile_path_to_route = {
+                    entry["path"]: route_id
+                    for route_id, entry in profile_read_map.items()
+                }
+                selected_read_set_set = set(valid_read_set_paths)
+                for route_id in valid_profile_route_ids:
+                    entry = profile_read_map.get(route_id)
+                    if entry is None:
+                        read_set_bad += 1
+                        seq += 1
+                        receipts.append(_make_receipt(
+                            TOOL, TOOL_VERSION,
+                            "proof-profile-read-set-route-unregistered",
+                            "%s#selected_profile_route_ids" % proof_name,
+                            "fail", "selected Profile route %s has no machine "
+                            "profile-read-set declaration" % route_id, seq))
+                    elif entry["path"] not in selected_read_set_set:
+                        read_set_bad += 1
+                        seq += 1
+                        receipts.append(_make_receipt(
+                            TOOL, TOOL_VERSION,
+                            "proof-profile-read-set-path-missing",
+                            "%s#selected_read_sets" % proof_name, "fail",
+                            "selected Profile route %s requires machine Read "
+                            "Set path %s" % (route_id, entry["path"]), seq))
                 for read_set_path in valid_read_set_paths:
-                    if read_set_path.startswith("kernel/Read Sets/"):
+                    if read_set_path.startswith(
+                            live_read_set_schema["path_prefix"]):
                         registered_route = read_set_to_route.get(read_set_path)
                         if registered_route is None:
                             read_set_bad += 1
                             seq += 1
                             receipts.append(_make_receipt(
                                 TOOL, TOOL_VERSION,
-                                "proof-kernel-read-set-unregistered",
+                                "proof-read-set-unregistered",
                                 "%s#selected_read_sets" % proof_name, "fail",
-                                "kernel Read Set path %s is not registered in %s"
-                                % (read_set_path, READ_SET_INDEX_PATH), seq))
+                                "Read Set path %s has no canonical machine "
+                                "declaration under %s"
+                                % (read_set_path,
+                                   live_read_set_schema["directory"]), seq))
                         elif registered_route not in valid_route_ids:
                             read_set_bad += 1
                             seq += 1
@@ -2512,19 +2433,30 @@ def _main():
                                 "Read Set path %s belongs to %s, which is not "
                                 "in selected_route_ids"
                                 % (read_set_path, registered_route), seq))
-                    elif read_set_path.startswith("profiles/"):
-                        if not valid_profile_route_ids:
+                    elif read_set_path.startswith(
+                            profile_layout_contract.PROFILES_DIRECTORY + "/"):
+                        registered_route = profile_path_to_route.get(
+                            read_set_path)
+                        if registered_route is None:
                             read_set_bad += 1
                             seq += 1
                             receipts.append(_make_receipt(
                                 TOOL, TOOL_VERSION,
-                                "proof-profile-read-set-without-route",
+                                "proof-profile-read-set-unregistered",
                                 "%s#selected_read_sets" % proof_name, "fail",
-                                "profile Read Set path %s requires at least one "
-                                "selected_profile_route_ids entry; exact "
-                                "route-to-path mapping remains a manual check "
-                                "because the profile registry is prose"
+                                "profile Read Set path %s has no machine "
+                                "declaration inside the selected Profile"
                                 % read_set_path, seq))
+                        elif registered_route not in valid_profile_route_ids:
+                            read_set_bad += 1
+                            seq += 1
+                            receipts.append(_make_receipt(
+                                TOOL, TOOL_VERSION,
+                                "proof-profile-read-set-route-mismatch",
+                                "%s#selected_read_sets" % proof_name, "fail",
+                                "Profile Read Set path %s belongs to %s, which "
+                                "is not in selected_profile_route_ids" %
+                                (read_set_path, registered_route), seq))
                     else:
                         read_set_bad += 1
                         seq += 1
@@ -2616,7 +2548,8 @@ def _main():
 
         if (isinstance(progress_ledger, dict) and
                 isinstance(progress_ledger.get("contract"), dict)):
-            for field in ("standards_version", "selected_profile_manifest"):
+            for field in \
+                    runtime_state_contract.RUNTIME_STANDARDS_IDENTITY_FIELDS:
                 ledger_value = progress_ledger["contract"].get(field)
                 invalid = _uninstantiated_value(ledger_value)
                 if (field == "selected_profile_manifest" and not invalid and
@@ -2792,7 +2725,7 @@ def _main():
                 proof_receipt_path = str(Path(args.proof).resolve())
         seq += 1
         summary_receipt = _make_receipt(
-            TOOL, TOOL_VERSION, "proof-check-summary", proof_receipt_path,
+            TOOL, TOOL_VERSION, GATE_CHECK, proof_receipt_path,
             "pass",
             "fields complete (%d/%d), all zero-condition fields are 0, every "
             "base receipt dimension explicitly covered or declared "

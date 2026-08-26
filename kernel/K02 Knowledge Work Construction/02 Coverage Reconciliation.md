@@ -14,7 +14,7 @@ Coverage reconciliation is executed at least at the following points:
 4. After accepted guidance changes coverage or priority.
 5. Before the task enters `completion-candidate`.
 
-At every reconciliation, the set of objects projected to each batch in Coverage MUST equal that Queue item's explicit manifest, and its count MUST equal `record_count`. Required objects may not be orphaned from the Queue, assigned to an unknown batch, or silently disappear through a cancelled item. `Tools/check_queue.py` is the sole deterministic owner of this cross-ledger set comparison.
+At every reconciliation, the set of objects projected to each batch in Coverage MUST equal that Queue item's explicit manifest, and its count MUST equal `record_count`. Required objects may not be orphaned from the Queue, assigned to an unknown batch, or silently disappear through a cancelled item. The `required-queue-consistency` Gate is the sole deterministic owner of this cross-ledger set comparison.
 
 Reconciliation recomputes only the receipt validity affected by file, scope, guidance, or Standards changes; one unrelated modification cannot invalidate all content review dates, nor can `last_reviewed` be treated as proof of continued validity. File count, link, and control-plane invariants concerning the final graph state are still computed in full per gate.
 

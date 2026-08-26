@@ -4,7 +4,7 @@
 
 This directory is a non-normative, filled example of the Cambium profile interface for the smallest corpus the interface still governs: one person's home-network notes, kept in a plain Markdown tree. It exists to show the **shortest legal path to a loadable profile**. It is not a template, a default configuration, or a recommendation to configure this little.
 
-The normative interface is [profiles/README.md](../../README.md), and cross-domain rules remain in the kernel. A real adopter copies [profiles/\_template/](../../_template/profile.md) to `profiles/<profile-id>/`, fills and validates that copy, and selects it through governance. Because this directory lives under `profiles/examples/`, its manifest is intentionally not selectable in place.
+The common interface is owned by [K00/19](../../../kernel/K00%20Standards%20Control/19%20Profile%20Extension%20Interface.md), and cross-domain rules remain in the Kernel. A real adopter copies [profiles/\_template/](../../_template/profile.md) to `profiles/<profile-id>/`, fills and validates that copy, and selects it through governance. Because this directory lives under `profiles/examples/`, its manifest is intentionally not selectable in place.
 
 Read this example first, then [Agent Systems Atlas](../agent-atlas/README.md). Atlas answers the same fourteen slots for a large bilingual corpus with an expression layer; the difference between the two packages is domain need, not compliance.
 

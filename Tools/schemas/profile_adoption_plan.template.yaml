@@ -10,8 +10,11 @@
 # sole writer for the two R09 branches that exist BEFORE any runtime does:
 # initial adoption (adopter Standards state absent) and a later pre-runtime
 # profile revision (state present). It advances only the canonical adopter
-# state, appends receipt history, and recomposes the generated artifacts
-# (vocab.yaml, page_contract.yaml, kernel/Cards) through their own producers.
+# state, appends receipt history, recomposes vocab.yaml/page_contract.yaml, and
+# updates only the observed source hash and Standards version of curated Cards
+# through their producer. It never acknowledges semantic Card review: stale
+# reviewed source/body bindings must be independently reviewed and acknowledged
+# before this transaction is retried.
 # It never creates task-runtime state; an existing task runtime routes the
 # revision to adopt_standards.py instead.
 # =============================================================================

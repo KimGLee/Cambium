@@ -8,7 +8,11 @@
 
 ### Disposition
 
-Each important guidance MUST be given one explicit disposition:
+Each important guidance MUST be given one explicit disposition.
+[`runtime-state-model.json`](runtime-state-model.json) is the sole machine
+owner of disposition and status membership and of which statuses are final.
+The entries below define the meaning of registered dispositions; their
+presence in prose does not create or extend the closed set.
 
 - `interrupt-now`: immediately save a consistent checkpoint and switch.
 - `apply-to-current-batch`: consistent with the current owner and acceptance; can be integrated without expanding the batch boundary.

@@ -12,13 +12,20 @@ This module owns the review that an execution context other than the author perf
 
 Substantive correctness review is mandatory for L-tier pages; it is not mandatory for S / M tiers, which are covered by batch spot checks.
 
-Execution: performed by a procedurally separate execution context — a subagent started with a clean context and carrying no author context, or a new session, whose input is only the note body and its Sources. This is Cambium's procedural independence requirement; the recorded context identifier is a declared label, while actual isolation must be supplied by the operator or host. The main thread MUST NOT produce the review receipt itself. The review MAY be triggered as soon as the page is drafted (drafted and passing the `--scope` self-check), in parallel with subsequent page writing; batch integration requires only that the review receipts have all arrived — the K13/10 merge-ready writer refuses an L-tier manifest page without a current passing `substantive_review` receipt, so the obligation is counted, not attested in prose. Review content:
+Execution is performed by a procedurally separate review context carrying only
+the note body and its Sources, not the author's working context. The recorded
+context identifier is a declared label; actual isolation is supplied by the
+operator or Host. The authoring context MUST NOT produce its own review
+receipt. Review may begin once the page is drafted and its changed-scope
+self-check passes. Batch admission requires current `substantive_review`
+evidence for every L-tier manifest page. Review content:
 
 - Re-derive the key reasoning chains and confirm the conclusions actually follow from the premises.
 - Spot check 2–3 key claims against the source's original text.
 - Check for over-extension of the "the source does not say it that strongly" kind.
 
-The review produces a receipt (`check: substantive_review`, schema as in `Tools/schemas/receipt.template.jsonl`).
+The review produces a `substantive_review` receipt under the registered receipt
+machine contract.
 
 Trigger points:
 

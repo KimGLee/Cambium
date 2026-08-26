@@ -14,8 +14,12 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import check_queue
+import corpus_planning_contract
 import kblib
 import profile_admission
+import runtime_paths
+import runtime_state_contract
+import vocabulary_contract
 
 
 TOOL = "check_corpus_plan"
@@ -25,7 +29,6 @@ TOOL_VERSION = "1.7.0"
 GATE_ID = "corpus-plan-structure"
 GATE_CHECK = "corpus_plan"
 
-SLOT_NAME = "Corpus Planning"
 SCOPE_SLOT_NAME = "Profile Scope"
 ROLE_SLOT_NAME = "Role Registry"
 STATE_PATHS = (
@@ -34,33 +37,11 @@ STATE_PATHS = (
     check_queue.PROGRESS_PATH,
 )
 
-SLOT_FIELDS = {
-    "schema_version", "applicability", "artifact_bindings",
-    "capability_scale", "pass_authority",
-}
-APPLICABILITY_FIELDS = {"state", "reason"}
-ARTIFACT_BINDING_FIELDS = {
-    "global_map", "capability_matrix", "gap_register",
-}
-ARTIFACT_ROLES = (
-    "Global Map",
-    "Capability Matrix",
-    "Gap Register",
-)
-ARTIFACT_FIELD_ROLES = {
-    "global_map": "Global Map",
-    "capability_matrix": "Capability Matrix",
-    "gap_register": "Gap Register",
-}
-SCALE_ROW_FIELDS = {"rank", "value", "predicate", "target_eligible"}
-PASS_AUTHORITY_FIELDS = {"role_id", "decision_scope_id"}
-SEMANTIC_ACCEPTANCE_SCOPE = "corpus-plan-semantic-acceptance"
 SEMANTIC_ACCEPTANCE_TOOL = "record_corpus_acceptance"
 SEMANTIC_ACCEPTANCE_TOOL_VERSION = "1.0.0"
 SEMANTIC_ACCEPTANCE_CHECK = "corpus_plan_semantic_acceptance"
-SEMANTIC_ACCEPTANCE_PLAN_PREFIX = (
-    ".cambium/deltas/corpus-plan-acceptances"
-)
+SEMANTIC_ACCEPTANCE_PLAN_PREFIX = \
+    runtime_paths.CORPUS_PLAN_ACCEPTANCE_DELTA_ROOT
 SEMANTIC_ACCEPTANCE_DECISIONS = {"accepted", "rejected"}
 SEMANTIC_ACCEPTANCE_PLAN_FIELDS = {
     "schema_version", "acceptance_id", "authority_role_id",
@@ -75,12 +56,12 @@ SCOPE_LAYER_HEADERS = (
     "Repository-relative directories",
     "Single layer responsibility",
 )
-CAPABILITY_PRIORITIES = {"P0", "P1", "P2"}
+CAPABILITY_PRIORITIES = vocabulary_contract.PRIORITY_VALUES
 GAP_STATUSES = {
     "candidate", "confirmed", "promoted", "resolved", "deferred",
     "rejected",
 }
-NONTERMINAL_QUEUE_STATES = {"queued", "open", "merge-ready"}
+NONTERMINAL_QUEUE_STATES = runtime_state_contract.QUEUE_NONTERMINAL_STATES
 RELATION_TYPES = {
     "prerequisite-for",
     "capability-input-to",
@@ -120,39 +101,6 @@ GAP_FIELDS = {
 # individual path/SHA pairs make the exact profile interface independently
 # inspectable.  Runtime state is excluded from the repository snapshot and is
 # consequently bound by its three canonical fingerprints.
-PASS_RECEIPT_BINDING_FIELDS = (
-    "task_id",
-    "queue_revision",
-    "queue_state_revision",
-    "selected_profile_manifest",
-    "selected_profile_manifest_sha256",
-    "profile_snapshot_sha256",
-    "profile_contract_fingerprint",
-    "profile_load_inputs_sha256",
-    "corpus_planning_slot_path",
-    "corpus_planning_slot_sha256",
-    "profile_scope_path",
-    "profile_scope_sha256",
-    "global_map_path",
-    "global_map_sha256",
-    "capability_matrix_path",
-    "capability_matrix_sha256",
-    "gap_register_path",
-    "gap_register_sha256",
-    "corpus_plan_applicability",
-    "coverage_ledger_sha256",
-    "required_queue_sha256",
-    "progress_ledger_sha256",
-    "repository_snapshot_sha256",
-)
-PATH_SHA_FIELDS = (
-    ("selected_profile_manifest", "selected_profile_manifest_sha256"),
-    ("corpus_planning_slot_path", "corpus_planning_slot_sha256"),
-    ("profile_scope_path", "profile_scope_sha256"),
-    ("global_map_path", "global_map_sha256"),
-    ("capability_matrix_path", "capability_matrix_sha256"),
-    ("gap_register_path", "gap_register_sha256"),
-)
 SHA256_RE = re.compile(r"^sha256:[0-9a-f]{64}$")
 
 ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:-]*$")
@@ -407,10 +355,12 @@ def _reject_runtime_path(resolved, label, result):
     if not resolved:
         return
     value = resolved["value"].rstrip("/")
-    if value == ".cambium" or value.startswith(".cambium/"):
+    if (value == runtime_paths.RUNTIME_ROOT or
+            value.startswith(runtime_paths.RUNTIME_ROOT + "/")):
         _add_error(
             result, "planning_namespace", label,
-            "semantic planning paths may not be inside .cambium/",
+            "semantic planning paths may not be inside %s/" %
+            runtime_paths.RUNTIME_ROOT,
         )
 
 
@@ -645,70 +595,118 @@ def _validate_slot(text, target, profile_view, root, result):
     except kblib.YamlSubsetError as exc:
         _add_error(result, "slot_yaml_parse", target, str(exc))
         return None
-    document = _closed_mapping(document, SLOT_FIELDS, target, result)
-    version = document.get("schema_version")
-    if type(version) is not int or version != 1:
-        _add_error(result, "slot_yaml_contract", target,
-                   "schema_version must be integer 1")
+    envelope, issues = \
+        corpus_planning_contract.validate_corpus_planning_envelope(document)
 
-    applicability = _closed_mapping(
-        document.get("applicability"), APPLICABILITY_FIELDS,
-        target + ":applicability", result)
-    mode = applicability.get("state")
-    reason = applicability.get("reason")
-    if mode not in ("configured", "not-applicable"):
-        _add_error(result, "applicability", target + ":applicability.state",
-                   "must be exactly configured or not-applicable")
-        mode = None
-    if mode == "configured":
-        if reason is not None:
-            _add_error(result, "applicability", target + ":applicability.reason",
+    def issue_target(path):
+        if not path:
+            return target
+        if path[0] == "capability_scale" and len(path) >= 2 and \
+                isinstance(path[1], int):
+            value = "%s:capability_scale[%d]" % (target, path[1])
+            if len(path) >= 3:
+                value += ":" + str(path[2])
+            return value
+        return target + ":" + ".".join(str(item) for item in path)
+
+    for issue in issues:
+        code = issue["code"]
+        path = issue.get("path") or ()
+        label = issue_target(path)
+        if code == "mapping_type":
+            _add_error(result, "yaml_contract", label, "must be a mapping")
+        elif code == "missing_fields":
+            _add_error(result, "yaml_contract", label,
+                       "missing field(s): %s" % ", ".join(issue["fields"]))
+        elif code == "unsupported_fields":
+            _add_error(
+                result, "yaml_contract", label,
+                "unsupported field(s): %s" % ", ".join(issue["fields"]))
+        elif code == "schema_version":
+            _add_error(result, "slot_yaml_contract", target,
+                       "schema_version must be integer 1")
+        elif code == "scale_list":
+            _add_error(result, "yaml_type", label, "must be a list")
+        elif code == "applicability_state":
+            _add_error(result, "applicability", label,
+                       "must be exactly configured or not-applicable")
+        elif code == "configured_reason":
+            _add_error(result, "applicability", label,
                        "configured requires null reason")
-    elif mode == "not-applicable":
-        if not isinstance(reason, str) or not reason.strip():
-            _add_error(result, "applicability", target + ":applicability.reason",
+        elif code == "inactive_reason":
+            _add_error(result, "applicability", label,
                        "not-applicable requires a non-empty string reason")
-        else:
-            reason = reason.strip()
-
-    artifact_values = _closed_mapping(
-        document.get("artifact_bindings"), ARTIFACT_BINDING_FIELDS,
-        target + ":artifact_bindings", result)
-    scale_rows = document.get("capability_scale")
-    if not isinstance(scale_rows, list):
-        _add_error(result, "yaml_type", target + ":capability_scale",
-                   "must be a list")
-        scale_rows = []
-    authority = _closed_mapping(
-        document.get("pass_authority"), PASS_AUTHORITY_FIELDS,
-        target + ":pass_authority", result)
-
-    if mode == "not-applicable":
-        for field in ARTIFACT_FIELD_ROLES:
-            if artifact_values.get(field) is not None:
+        elif code == "configured_artifact_path":
+            raw = issue.get("value")
+            if not isinstance(raw, str):
+                details = "must be a string path"
+            elif not raw.strip() or raw.strip() == "None":
+                details = "must be an explicit repository-relative path"
+            else:
+                details = "must end with .yaml"
+            _add_error(result, "path", label, details)
+        elif code == "artifact_bindings_distinct":
+            _add_error(result, "artifact_bindings", target,
+                       "the three artifact roles must bind distinct files")
+        elif code == "inactive_artifacts":
+            for field in issue["fields"]:
                 _add_error(result, "inactive_shape",
                            target + ":artifact_bindings." + field,
                            "not-applicable requires null")
-        if scale_rows:
+        elif code == "inactive_scale":
             _add_error(result, "inactive_shape", target + ":capability_scale",
                        "not-applicable requires an empty list")
-        for field in PASS_AUTHORITY_FIELDS:
-            if authority.get(field) is not None:
+        elif code == "inactive_authority":
+            for field in issue["fields"]:
                 _add_error(result, "inactive_shape",
                            target + ":pass_authority." + field,
                            "not-applicable requires null")
+        elif code == "configured_scale_empty":
+            _add_error(result, "capability_scale", target,
+                       "configured requires at least one scale item")
+        elif code == "scale_rank_type":
+            _add_error(result, "capability_scale", label,
+                       "must be a non-negative integer")
+        elif code == "scale_rank_position":
+            _add_error(result, "capability_scale", label,
+                       "must equal its zero-based list position %d" %
+                       issue["index"])
+        elif code in ("scale_value_type", "scale_predicate_type",
+                      "authority_role_type", "authority_decision_type"):
+            _add_error(result, "yaml_type", label, "must be a string")
+        elif code in ("scale_value_empty", "scale_predicate_empty",
+                      "authority_role_empty", "authority_decision_empty"):
+            _add_error(result, "yaml_value", label, "must be non-empty")
+        elif code == "scale_value_duplicate":
+            _add_error(result, "capability_scale", label,
+                       "duplicate scale value: %s" % issue["value"])
+        elif code == "scale_target_eligible_type":
+            _add_error(result, "capability_scale", label, "must be boolean")
+        elif code == "configured_target_eligible":
+            _add_error(
+                result, "capability_scale", target,
+                "configured scale requires at least one target-eligible item")
+        elif code == "authority_decision_scope":
+            _add_error(result, "pass_authority", label,
+                       "must be exactly %s" %
+                       corpus_planning_contract.SEMANTIC_ACCEPTANCE_SCOPE)
+
+    mode = envelope["mode"]
+    reason = envelope["reason"]
+    if mode == corpus_planning_contract.INACTIVE_STATE:
         return {"mode": mode, "reason": reason, "bindings": {},
                 "scale": [], "authorities": []}
-
-    if mode != "configured":
+    if mode != corpus_planning_contract.CONFIGURED_STATE:
         return None
 
     bindings = {}
-    for field, role in ARTIFACT_FIELD_ROLES.items():
+    for field in corpus_planning_contract.ARTIFACT_BINDING_FIELDS:
+        role = corpus_planning_contract.ARTIFACT_FIELD_ROLES[field]
+        raw = envelope["artifact_bindings"].get(field)
+        if raw is None:
+            continue
         resolved = _resolve_path(
-            root, artifact_values.get(field),
-            "%s:artifact_bindings.%s" % (target, field), result,
-            yaml_file=True)
+            root, raw, "%s:artifact_bindings.%s" % (target, field), result)
         if resolved:
             _reject_runtime_path(
                 resolved, "%s:artifact_bindings.%s" % (target, field), result)
@@ -721,59 +719,35 @@ def _validate_slot(text, target, profile_view, root, result):
                     "cannot bind %s to one immutable file revision: %s" %
                     (role, exc))
             bindings[role] = resolved
-    if len({value["value"] for value in bindings.values()}) != len(bindings):
+    if (not any(issue["code"] == "artifact_bindings_distinct"
+                for issue in issues) and
+            len({value["value"] for value in bindings.values()}) !=
+            len(bindings)):
         _add_error(result, "artifact_bindings", target,
                    "the three artifact roles must bind distinct files")
 
-    scale = []
-    scale_values = set()
-    if not scale_rows:
-        _add_error(result, "capability_scale", target,
-                   "configured requires at least one scale item")
-    for index, raw_row in enumerate(scale_rows):
+    scale = envelope["scale"]
+    for index, row in enumerate(scale):
         row_target = "%s:capability_scale[%d]" % (target, index)
-        row = _closed_mapping(raw_row, SCALE_ROW_FIELDS, row_target, result)
-        rank = row.get("rank")
-        if type(rank) is not int or rank < 0:
-            _add_error(result, "capability_scale", row_target + ":rank",
-                       "must be a non-negative integer")
-            rank = None
-        elif rank != index:
-            _add_error(result, "capability_scale", row_target + ":rank",
-                       "must equal its zero-based list position %d" % index)
-        value = _string(row.get("value"), row_target + ":value", result)
-        predicate = _string(
-            row.get("predicate"), row_target + ":predicate", result)
-        eligible = row.get("target_eligible")
-        if type(eligible) is not bool:
-            _add_error(result, "capability_scale",
-                       row_target + ":target_eligible", "must be boolean")
-            eligible = False
-        if value in scale_values:
-            _add_error(result, "capability_scale", row_target + ":value",
-                       "duplicate scale value: %s" % value)
-        elif value:
-            scale_values.add(value)
-        scale.append({"rank": rank, "value": value,
-                      "predicate": predicate, "target_eligible": eligible})
-    if scale_rows and not any(row["target_eligible"] for row in scale):
-        _add_error(result, "capability_scale", target,
-                   "configured scale requires at least one target-eligible item")
+        for field in ("value", "predicate"):
+            if "TODO(profile)" in row.get(field, ""):
+                _add_error(result, "template_sentinel",
+                           row_target + ":" + field,
+                           "must replace TODO(profile) before validation")
 
-    role = _string(
-        authority.get("role_id"), target + ":pass_authority.role_id", result)
-    decision = _string(
-        authority.get("decision_scope_id"),
-        target + ":pass_authority.decision_scope_id", result)
+    role = envelope["authority"].get("role_id", "")
+    decision = envelope["authority"].get("decision_scope_id")
+    for field, value in (("role_id", role),
+                         ("decision_scope_id", decision)):
+        if isinstance(value, str) and "TODO(profile)" in value:
+            _add_error(result, "template_sentinel",
+                       target + ":pass_authority." + field,
+                       "must replace TODO(profile) before validation")
     registry_roles = _role_ids(root, profile_view, result)
     if role and role not in registry_roles:
         _add_error(result, "pass_authority",
                    target + ":pass_authority.role_id",
                    "role %r is not registered in Role Registry" % role)
-    if decision != SEMANTIC_ACCEPTANCE_SCOPE:
-        _add_error(result, "pass_authority",
-                   target + ":pass_authority.decision_scope_id",
-                   "must be exactly %s" % SEMANTIC_ACCEPTANCE_SCOPE)
     authorities = [{"role_id": role, "decision_scope_id": decision}]
     return {"mode": mode, "reason": reason, "bindings": bindings,
             "scale": scale, "authorities": authorities}
@@ -1272,7 +1246,7 @@ def runtime(root, result, authorized_profile_view=None,
     if not all(present):
         missing = [path for path, exists in zip(STATE_PATHS, present)
                    if not exists]
-        _add_error(result, "runtime", ".cambium/state",
+        _add_error(result, "runtime", runtime_paths.STATE_ROOT,
                    "partial runtime; missing: %s" % ", ".join(missing))
         return {"errors": ["partial runtime"], "coverage": {}, "queue": {},
                 "progress": {}}
@@ -1282,7 +1256,7 @@ def runtime(root, result, authorized_profile_view=None,
         authorized_active_standards_view=
             authorized_active_standards_view)
     for error in runtime.get("errors", []):
-        _add_error(result, "runtime", ".cambium/state", error)
+        _add_error(result, "runtime", runtime_paths.STATE_ROOT, error)
     return runtime
 
 
@@ -1315,7 +1289,7 @@ def planning_artifact_paths(result):
     if isinstance(slot, dict):
         bindings = slot.get("bindings")
         if isinstance(bindings, dict):
-            for role in ARTIFACT_ROLES:
+            for role in corpus_planning_contract.ARTIFACT_ROLES:
                 binding = bindings.get(role)
                 add(binding)
 
@@ -1356,17 +1330,9 @@ def close_requirement(runtime, item, result):
     if isinstance(runtime, dict):
         contract = (runtime.get("progress") or {}).get("contract") or {}
     selected_routes = contract.get("selected_route_ids")
-    selected_routes = (selected_routes
-                       if isinstance(selected_routes, list) else [])
     manifest = item.get("manifest") if isinstance(item, dict) else []
-    manifest = manifest if isinstance(manifest, list) else []
-    triggers = []
-    if "R13" in selected_routes:
-        triggers.append("R13")
-    if set(planning_artifact_paths(result)).intersection(manifest):
-        triggers.append("manifest")
-    triggers = sorted(set(triggers))
-    return bool(triggers), triggers
+    return corpus_planning_contract.derive_close_requirement(
+        selected_routes, manifest, planning_artifact_paths(result))
 
 
 def _profile_snapshot_file_sha256(result, relative, label):
@@ -1415,7 +1381,7 @@ def _result_currency_errors(result):
                               relative)
 
     bindings = ((result.get("slot") or {}).get("bindings") or {})
-    for role in ARTIFACT_ROLES:
+    for role in corpus_planning_contract.ARTIFACT_ROLES:
         artifact = bindings.get(role)
         if not isinstance(artifact, dict):
             continue
@@ -1514,7 +1480,8 @@ def receipt_binding(result, *, repository_snapshot_sha256=None,
                 "terminal Progress binding must be sha256:<64 lowercase hex>")
         binding["progress_ledger_sha256"] = progress_ledger_sha256
 
-    if result.get("applicability") == "configured":
+    if result.get("applicability") == \
+            corpus_planning_contract.CONFIGURED_STATE:
         profile_scope = result.get("profile_scope") or {}
         profile_scope_path = profile_scope.get("path")
         if not isinstance(profile_scope_path, str) or not profile_scope_path:
@@ -1530,7 +1497,7 @@ def receipt_binding(result, *, repository_snapshot_sha256=None,
                 "capability_matrix_path", "capability_matrix_sha256"),
             "Gap Register": ("gap_register_path", "gap_register_sha256"),
         }
-        for role in ARTIFACT_ROLES:
+        for role in corpus_planning_contract.ARTIFACT_ROLES:
             artifact = bindings.get(role)
             if not isinstance(artifact, dict):
                 raise ValueError("configured plan has no %s binding" % role)
@@ -1541,8 +1508,15 @@ def receipt_binding(result, *, repository_snapshot_sha256=None,
                 raise ValueError("configured plan has no immutable %s "
                                  "snapshot" % role)
             binding[sha_field] = snapshot.sha256
-    elif result.get("applicability") != "not-applicable":
+    elif result.get("applicability") != \
+            corpus_planning_contract.INACTIVE_STATE:
         raise ValueError("Corpus Planning applicability is not resolved")
+    binding_issues = \
+        corpus_planning_contract.receipt_binding_shape_issues(binding)
+    if binding_issues:
+        raise ValueError(
+            "Corpus Planning receipt binding violates the K02 contract: %r"
+            % (binding_issues,))
     final_currency = _result_currency_errors(result)
     if final_currency:
         raise ValueError(
@@ -1618,12 +1592,14 @@ def current_freshness_binding(root, selected_profile_manifest, *, task_id,
             _display_error(error) for error in result["errors"]))
     result["_authorized_profile_view"] = profile_view
     result["profile_manifest"] = _relative(root, manifest_path)
-    slot_path = _typed_slot_path(root, profile_view, SLOT_NAME, result)
+    slot_path = _typed_slot_path(
+        root, profile_view, corpus_planning_contract.SLOT_NAME, result)
     if slot_path is None:
         raise ValueError("; ".join(
             _display_error(error) for error in result["errors"]))
     result["slot_path"] = _relative(root, slot_path)
-    slot_text = _typed_slot_text(profile_view, SLOT_NAME, result)
+    slot_text = _typed_slot_text(
+        profile_view, corpus_planning_contract.SLOT_NAME, result)
     if slot_text is None:
         raise ValueError("; ".join(
             _display_error(error) for error in result["errors"]))
@@ -1632,7 +1608,7 @@ def current_freshness_binding(root, selected_profile_manifest, *, task_id,
     result["slot"] = slot
     if slot:
         result["applicability"] = slot["mode"]
-        if slot["mode"] == "configured":
+        if slot["mode"] == corpus_planning_contract.CONFIGURED_STATE:
             result["profile_scope"] = _validate_profile_scope(
                 root, profile_view, result)
     if result["errors"] or not slot:
@@ -1696,7 +1672,8 @@ def pass_receipt_errors(root, receipt, *, result=None,
     applicability = (expected_binding.get("corpus_plan_applicability")
                      if isinstance(expected_binding, dict)
                      else result.get("applicability"))
-    if require_configured and applicability != "configured":
+    if require_configured and applicability != \
+            corpus_planning_contract.CONFIGURED_STATE:
         errors.append("R13 requires Corpus Planning applicability.state=configured")
     if expected_binding is None:
         try:
@@ -1721,11 +1698,11 @@ def pass_receipt_errors(root, receipt, *, result=None,
         if receipt.get(field) != expected:
             errors.append("Corpus Planning receipt %s=%r, expected %r" %
                           (field, receipt.get(field), expected))
-    for field in PASS_RECEIPT_BINDING_FIELDS:
-        expected = expected_binding[field]
-        if field not in receipt or receipt.get(field) != expected:
-            errors.append("Corpus Planning receipt %s=%r, expected %r" %
-                          (field, receipt.get(field), expected))
+    for difference in corpus_planning_contract.receipt_binding_differences(
+            receipt, expected_binding):
+        errors.append("Corpus Planning receipt %s=%r, expected %r" %
+                      (difference["field"], difference["actual"],
+                       difference["expected"]))
     if require_runtime:
         for field in (
                 "task_id", "queue_revision", "queue_state_revision",
@@ -1769,7 +1746,8 @@ def acceptance_plan_errors(root, plan, result):
     if result.get("errors"):
         errors.append("current Corpus Planning structure/reconciliation fails")
         return errors
-    if result.get("applicability") != "configured":
+    if result.get("applicability") != \
+            corpus_planning_contract.CONFIGURED_STATE:
         errors.append(
             "semantic acceptance requires applicability.state=configured")
         return errors
@@ -1792,9 +1770,10 @@ def acceptance_plan_errors(root, plan, result):
         errors.append(
             "authority_role_id=%r, expected the Profile-bound role %r" %
             (plan.get("authority_role_id"), expected_authority))
-    if plan.get("decision_scope_id") != SEMANTIC_ACCEPTANCE_SCOPE:
+    if plan.get("decision_scope_id") != \
+            corpus_planning_contract.SEMANTIC_ACCEPTANCE_SCOPE:
         errors.append("decision_scope_id must be exactly %s" %
-                      SEMANTIC_ACCEPTANCE_SCOPE)
+                      corpus_planning_contract.SEMANTIC_ACCEPTANCE_SCOPE)
 
     decisions = plan.get("decisions")
     if not isinstance(decisions, list) or not decisions:
@@ -1884,7 +1863,7 @@ def semantic_acceptance_receipt_errors(
         "tool": SEMANTIC_ACCEPTANCE_TOOL,
         "tool_version": SEMANTIC_ACCEPTANCE_TOOL_VERSION,
         "check": SEMANTIC_ACCEPTANCE_CHECK,
-        "gate_id": SEMANTIC_ACCEPTANCE_SCOPE,
+        "gate_id": corpus_planning_contract.SEMANTIC_ACCEPTANCE_SCOPE,
         "target": expected_binding["selected_profile_manifest"],
         "invalidated_by": None,
     }
@@ -1892,11 +1871,11 @@ def semantic_acceptance_receipt_errors(
         if receipt.get(field) != expected:
             errors.append("semantic-acceptance receipt %s=%r, expected %r" %
                           (field, receipt.get(field), expected))
-    for field in PASS_RECEIPT_BINDING_FIELDS:
-        if receipt.get(field) != expected_binding.get(field):
-            errors.append("semantic-acceptance receipt %s=%r, expected %r" %
-                          (field, receipt.get(field),
-                           expected_binding.get(field)))
+    for difference in corpus_planning_contract.receipt_binding_differences(
+            receipt, expected_binding):
+        errors.append("semantic-acceptance receipt %s=%r, expected %r" %
+                      (difference["field"], difference["actual"],
+                       difference["expected"]))
 
     plan_path = receipt.get("acceptance_plan_path")
     plan = None
@@ -1974,13 +1953,16 @@ def semantic_acceptance_status(result, *, repository_snapshot_sha256=None):
         "status": "not-recorded",
         "receipt_id": None,
         "authority_role_id": None,
-        "decision_scope_id": SEMANTIC_ACCEPTANCE_SCOPE,
+        "decision_scope_id":
+            corpus_planning_contract.SEMANTIC_ACCEPTANCE_SCOPE,
         "capability_decisions": [],
     }
-    if result.get("applicability") == "not-applicable":
-        base["status"] = "not-applicable"
+    if result.get("applicability") == \
+            corpus_planning_contract.INACTIVE_STATE:
+        base["status"] = corpus_planning_contract.INACTIVE_STATE
         return base
-    if result.get("errors") or result.get("applicability") != "configured":
+    if result.get("errors") or result.get("applicability") != \
+            corpus_planning_contract.CONFIGURED_STATE:
         base["status"] = "unavailable"
         return base
     authorities = (result.get("slot") or {}).get("authorities") or []
@@ -2061,11 +2043,13 @@ def validate_corpus_plan(root, profile=None, *, authorized_profile_view=None,
         return result
     result["_authorized_profile_view"] = profile_view
     result["profile_manifest"] = _relative(root, manifest_path)
-    slot_path = _typed_slot_path(root, profile_view, SLOT_NAME, result)
+    slot_path = _typed_slot_path(
+        root, profile_view, corpus_planning_contract.SLOT_NAME, result)
     if slot_path is None:
         return result
     result["slot_path"] = _relative(root, slot_path)
-    slot_text = _typed_slot_text(profile_view, SLOT_NAME, result)
+    slot_text = _typed_slot_text(
+        profile_view, corpus_planning_contract.SLOT_NAME, result)
     if slot_text is None:
         return result
 
@@ -2090,12 +2074,14 @@ def validate_corpus_plan(root, profile=None, *, authorized_profile_view=None,
                 "runtime_result selects %r" % selected,
             )
 
-    if not slot or slot["mode"] != "configured":
+    if not slot or slot["mode"] != \
+            corpus_planning_contract.CONFIGURED_STATE:
         for error in _profile_view_currency_errors(root, profile_view):
             _add_error(result, "profile_currency",
                        result["profile_manifest"], error)
         return result
-    if set(slot["bindings"]) != set(ARTIFACT_ROLES):
+    if set(slot["bindings"]) != set(
+            corpus_planning_contract.ARTIFACT_ROLES):
         for error in _profile_view_currency_errors(root, profile_view):
             _add_error(result, "profile_currency",
                        result["profile_manifest"], error)
@@ -2292,7 +2278,7 @@ def main(argv=None):
         print("[FAIL] Corpus Planning validation failed with %d issue(s)" %
               len(result["errors"]))
         return 1
-    if result["applicability"] == "not-applicable":
+    if result["applicability"] == corpus_planning_contract.INACTIVE_STATE:
         print("[PASS] Corpus Planning structure: not applicable: %s" %
               result["applicability_reason"])
     else:

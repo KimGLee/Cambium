@@ -1,6 +1,6 @@
 # Scope And Architecture
 
-Interface: [Profile Scope slot](../../README.md#profile-scope-slot)
+Interface: [Kernel-owned Profile interface](../../../kernel/K00%20Standards%20Control/19%20Profile%20Extension%20Interface.md) — Profile Scope slot
 
 ## Goal
 

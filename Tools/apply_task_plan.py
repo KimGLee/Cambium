@@ -55,12 +55,15 @@ import amendment_policy
 import metadata_execution_contract
 import metadata_property_state
 import project_page_state
+import profile_contract
+import runtime_paths
+import runtime_state_contract
 
 TOOL = "apply_task_plan"
 TOOL_VERSION = "1.2.0"
 CHECK = "task_plan"
-PLAN_PREFIX = ".cambium/deltas/task-plans"
-RECEIPT_PATH = ".cambium/receipts/task-plans.jsonl"
+PLAN_PREFIX = runtime_paths.TASK_PLAN_DELTA_ROOT
+RECEIPT_PATH = runtime_paths.TASK_PLAN_RECEIPT_PATH
 SENTINEL = "TODO(plan)"
 LEGACY_PROPERTY_ADOPTION_OPERATION = "legacy-property-adoption-v1"
 
@@ -68,7 +71,7 @@ PLAN_FIELDS = {
     "schema_version", "plan_id", "task_id", "approval_reference",
     "before", "contract_after", "coverage_after",
 }
-BEFORE_FIELDS = {"coverage_sha256", "queue_sha256", "progress_sha256"}
+BEFORE_FIELDS = runtime_state_contract.RUNTIME_LEDGER_FINGERPRINT_FIELDS
 COVERAGE_AFTER_FIELDS = {"pages", "batch_specs"}
 
 # Owned by K13/02; this tool supplies values for exactly this closed set and
@@ -80,7 +83,7 @@ CONTRACT_OPTIONAL_FIELDS = set(check_queue.CONTRACT_OPTIONAL_FIELDS).union((
     "amendment_authority",
 ))
 
-STATE_NAMES = ("coverage", "queue", "progress")
+STATE_NAMES = runtime_state_contract.RUNTIME_LEDGER_IDS
 # Only these are written; the Queue is read for its before-image and left
 # to its own writer.
 WRITTEN_NAMES = ("coverage", "progress")
@@ -236,13 +239,13 @@ def _validate_plan_shape(plan):
 def _state_paths(root):
     return {
         "coverage": kblib.managed_repository_path(
-            root, check_queue.COVERAGE_PATH, ".cambium/state",
+            root, check_queue.COVERAGE_PATH, runtime_paths.STATE_ROOT,
             suffixes=(".yaml",), must_exist=True),
         "queue": kblib.managed_repository_path(
-            root, check_queue.QUEUE_PATH, ".cambium/state",
+            root, check_queue.QUEUE_PATH, runtime_paths.STATE_ROOT,
             suffixes=(".yaml",), must_exist=True),
         "progress": kblib.managed_repository_path(
-            root, check_queue.PROGRESS_PATH, ".cambium/state",
+            root, check_queue.PROGRESS_PATH, runtime_paths.STATE_ROOT,
             suffixes=(".yaml",), must_exist=True),
     }
 
@@ -430,19 +433,14 @@ def _strings(values):
 def _derive_load_sets(root, contract):
     """Complete the three derived load fields from the confirmed route IDs.
 
-    This is one of the two derivations a plan may carry, and the one that makes
-    the plan writable at all. A kernel route's Card and Read Set are registered
-    facts, and a Read Set's transitive closure is a pure function of repository
-    bytes: R01 alone reaches every other route and well over a hundred modules.
-    Requiring an operator to type that by hand would produce a declaration
-    nobody checked, and `check_proof` enforces the same agreement at Terminal
-    against the same two indexes -- by which point the Contract is frozen and
-    the task that wrote it can no longer repair it.
-
-    So routes are the answer and the closure is the resolution. What the plan
-    lists is never dropped, only completed: a profile supplemental Read Set has
-    no machine-readable registry (`profiles/README.md` says so outright), so it
-    stays something the plan names and this function closes over.
+    A confirmed top-level route resolves through Card and Read Set entity
+    declarations; generated indexes are navigation only.  R01 is the common
+    entry route but does not imply every other route.  The transitive load
+    closure comes solely from machine ``load_edges`` in the selected top-level
+    and selected-Profile Read Sets.  Existing explicit load paths are never
+    dropped, only checked and completed, so the immutable Contract freezes a
+    machine-resolved declaration rather than an operator-reconstructed prose
+    list.
     """
     card_map, read_map, registry_errors = check_proof.load_route_registry(root)
     if registry_errors:
@@ -527,10 +525,10 @@ def prepare(root, plan_relative):
     coverage, queue, progress, derived, property_adoption = _build_after(
         root, documents, plan, authority["profile_view"])
 
-    # The derivation must satisfy the checker that judges the same declaration,
-    # rather than being trusted because this module wrote it.  K00/15 places
-    # that judgment on a plan being admitted, which is exactly here: the live
-    # path reports these as gaps rather than errors only so an already-sealed
+    # The derivation must satisfy the checker that resolves the same canonical
+    # Read Set machine declarations, rather than being trusted because this
+    # module wrote it. Admission is the last writable point: the live path
+    # reports these as gaps rather than errors only so an already-sealed
     # contract stays repairable.
     _errors, gaps = check_queue.live_read_set_load_findings(
         root, progress["contract"])
@@ -642,9 +640,7 @@ def commit(prepared, receipt_path):
             "operation_capability"],
     })
     profile_view = prepared["authority"]["profile_view"]
-    for field in (
-            "selected_profile_manifest", "profile_snapshot_sha256",
-            "profile_contract_fingerprint", "profile_load_inputs_sha256"):
+    for field in profile_contract.PROFILE_LOAD_EVIDENCE_FIELDS:
         commit_receipt[field] = profile_view.get(field)
     abort_receipt = _receipt(
         plan, "abort", "fail",
@@ -797,7 +793,8 @@ def main(argv=None):
     parser.add_argument("--plan", required=True,
                         help="repository-relative path under %s" % PLAN_PREFIX)
     parser.add_argument("--receipts", default=RECEIPT_PATH,
-                        help="receipt JSONL path under .cambium/receipts")
+                        help="receipt JSONL path under %s" %
+                        runtime_paths.RECEIPT_ROOT)
     parser.add_argument("--apply", action="store_true",
                         help="write the transaction; omit for a dry run")
     parser.add_argument("--json", action="store_true", help=JSON_HELP)
@@ -812,7 +809,7 @@ def _run(args):
     root = os.path.realpath(os.path.abspath(args.root))
     try:
         receipt_path = kblib.managed_repository_path(
-            root, args.receipts, ".cambium/receipts",
+            root, args.receipts, runtime_paths.RECEIPT_ROOT,
             suffixes=(".jsonl",), must_exist=False)
         prepared = prepare(root, args.plan)
     except (Refusal, OSError, UnicodeError, ValueError, TypeError,

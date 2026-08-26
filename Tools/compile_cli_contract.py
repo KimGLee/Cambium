@@ -32,6 +32,10 @@ Extraction:
     classify every argparse argument exactly once as workspace, path, or value.
     An MCP-exposed row may not declare an external-write capability; exact and
     namespace paths remain explicit data rather than server conventions.
+    Runtime paths name their stable ``runtime_paths`` identity in policy;
+    component paths name an identity resolved through the component's machine
+    contract. This compiler resolves either identity to the current physical
+    path and records both in the projection.
 
 Determinism: `prog` is not recorded (argparse derives it from `sys.argv`),
 and the auto-added `-h/--help` action is skipped (its help text is
@@ -65,15 +69,20 @@ TOOLS_DIR = os.path.dirname(os.path.abspath(__file__))
 REPO_ROOT = os.path.dirname(TOOLS_DIR)
 sys.path.insert(0, TOOLS_DIR)
 
+import card_contract  # noqa: E402
 import kblib  # noqa: E402
+import runtime_paths  # noqa: E402
 import tool_availability  # noqa: E402
 
 TOOL = "compile_cli_contract"
-TOOL_VERSION = "1.1.0"
+TOOL_VERSION = "1.3.0"
 
-SCHEMA_VERSION = 3
+SCHEMA_VERSION = 5
+INTERFACE_POLICY_SCHEMA_VERSION = 4
 DEFAULT_OUTPUT = "Tools/compiled/cli-contract.yaml"
 DEFAULT_INTERFACE_POLICY = "Tools/agent-interface-policy.yaml"
+DEFAULT_RUNTIME_PATH_REGISTRY = "Tools/runtime_paths.py"
+CARD_DIRECTORY_COMPONENT_PATH_ID = "card-directory"
 TOOLS_SUBDIR = "Tools"
 
 # The nine fields `kblib.make_receipt` writes unconditionally, plus the one
@@ -391,10 +400,10 @@ def load_interface_policy(root, records, availability):
                             (DEFAULT_INTERFACE_POLICY, exc))
     if not isinstance(document, dict) or \
             document.get("artifact") != "agent-interface-policy" or \
-            document.get("schema_version") != 2:
+            document.get("schema_version") != INTERFACE_POLICY_SCHEMA_VERSION:
         raise ContractError(
-            "%s must be agent-interface-policy schema_version 2"
-            % DEFAULT_INTERFACE_POLICY)
+            "%s must be agent-interface-policy schema_version %d"
+            % (DEFAULT_INTERFACE_POLICY, INTERFACE_POLICY_SCHEMA_VERSION))
     document_keys = {
         "schema_version", "artifact", "consumption_defaults",
         "path_defaults", "path_overrides", "path_activation_overrides",
@@ -416,17 +425,47 @@ def load_interface_policy(root, records, availability):
             "%s consumption_defaults must be exactly %r" %
             (DEFAULT_INTERFACE_POLICY, expected_consumption_defaults))
 
-    def path_constraint(row, expected_keys, owner):
-        if (not isinstance(row, dict) or
-                not expected_keys.issubset(row) or
-                set(row) != expected_keys):
+    component_path_registries = {}
+
+    def component_path_reference(component_path_id):
+        if component_path_id != CARD_DIRECTORY_COMPONENT_PATH_ID:
+            raise KeyError(component_path_id)
+        try:
+            schema = card_contract.load_schema(root)
+            schema_path = os.path.join(
+                root, *card_contract.SCHEMA_PATH.split("/"))
+            with open(schema_path, "rb") as handle:
+                raw_schema = handle.read()
+        except (OSError, card_contract.CardContractError) as exc:
             raise ContractError(
-                "%s %s rows must carry exactly %s" %
+                "%s cannot resolve component_path_id %s: %s" %
+                (DEFAULT_INTERFACE_POLICY, component_path_id, exc))
+        component_path_registries[component_path_id] = {
+            "path": card_contract.SCHEMA_PATH,
+            "sha256": kblib.sha256_bytes(raw_schema),
+        }
+        return schema["directory"], "exact"
+
+    def path_constraint(row, expected_keys, owner):
+        binding_keys = {"value", "runtime_path_id", "component_path_id"}
+        present_bindings = set(row) & binding_keys \
+            if isinstance(row, dict) else set()
+        if (not isinstance(row, dict) or len(present_bindings) != 1 or
+                set(row) != expected_keys | present_bindings):
+            raise ContractError(
+                "%s %s rows must carry exactly %s and exactly one of "
+                "value/runtime_path_id/component_path_id" %
                 (DEFAULT_INTERFACE_POLICY, owner,
                  ", ".join(sorted(expected_keys))))
         argument = row.get("argument")
         constraint = row.get("constraint")
-        value = row.get("value")
+        uses_runtime_path_id = "runtime_path_id" in row
+        uses_component_path_id = "component_path_id" in row
+        runtime_path_id = row.get("runtime_path_id") \
+            if uses_runtime_path_id else None
+        component_path_id = row.get("component_path_id") \
+            if uses_component_path_id else None
+        value = row.get("value") if "value" in row else None
         suffixes = row.get("suffixes")
         if not isinstance(argument, str) or not argument:
             raise ContractError("%s: %s carries no argument" %
@@ -436,6 +475,11 @@ def load_interface_policy(root, records, availability):
                 "%s: %s.%s has unknown path constraint %r" %
                 (DEFAULT_INTERFACE_POLICY, owner, argument, constraint))
         if constraint == "contained":
+            if uses_runtime_path_id or uses_component_path_id:
+                raise ContractError(
+                    "%s: %s.%s registered path reference cannot be "
+                    "contained" %
+                    (DEFAULT_INTERFACE_POLICY, owner, argument))
             if value is not None or suffixes not in (None, []):
                 raise ContractError(
                     "%s: contained path constraints carry no value or "
@@ -443,13 +487,64 @@ def load_interface_policy(root, records, availability):
             value = None
             suffixes = []
         else:
-            if not isinstance(value, str) or not value or \
-                    os.path.isabs(value) or "\\" in value or \
-                    os.path.normpath(value).replace(os.sep, "/") != value or \
-                    value.startswith("../") or value == "..":
-                raise ContractError(
-                    "%s: %s.%s must name a canonical repository-relative "
-                    "path" % (DEFAULT_INTERFACE_POLICY, owner, argument))
+            if uses_runtime_path_id:
+                if not isinstance(runtime_path_id, str) or \
+                        not runtime_path_id:
+                    raise ContractError(
+                        "%s: %s.%s runtime_path_id must be a non-empty "
+                        "string" %
+                        (DEFAULT_INTERFACE_POLICY, owner, argument))
+                try:
+                    reference = runtime_paths.path_reference_for(
+                        runtime_path_id)
+                except KeyError as exc:
+                    raise ContractError(
+                        "%s: %s.%s names unknown runtime_path_id %s" %
+                        (DEFAULT_INTERFACE_POLICY, owner, argument,
+                         runtime_path_id)) from exc
+                if reference.constraint != constraint:
+                    raise ContractError(
+                        "%s: %s.%s runtime path reference constraint "
+                        "mismatch: %s is %s, not %s" %
+                        (DEFAULT_INTERFACE_POLICY, owner, argument,
+                         runtime_path_id, reference.constraint, constraint))
+                value = reference.path
+            elif uses_component_path_id:
+                if not isinstance(component_path_id, str) or \
+                        not component_path_id:
+                    raise ContractError(
+                        "%s: %s.%s component_path_id must be a non-empty "
+                        "string" %
+                        (DEFAULT_INTERFACE_POLICY, owner, argument))
+                try:
+                    value, registered_constraint = component_path_reference(
+                        component_path_id)
+                except KeyError as exc:
+                    raise ContractError(
+                        "%s: %s.%s names unknown component_path_id %s" %
+                        (DEFAULT_INTERFACE_POLICY, owner, argument,
+                         component_path_id)) from exc
+                if registered_constraint != constraint:
+                    raise ContractError(
+                        "%s: %s.%s component path reference constraint "
+                        "mismatch: %s is %s, not %s" %
+                        (DEFAULT_INTERFACE_POLICY, owner, argument,
+                         component_path_id, registered_constraint,
+                         constraint))
+            else:
+                if not isinstance(value, str) or not value or \
+                        os.path.isabs(value) or "\\" in value or \
+                        os.path.normpath(value).replace(os.sep, "/") != value or \
+                        value.startswith("../") or value == "..":
+                    raise ContractError(
+                        "%s: %s.%s must name a canonical repository-relative "
+                        "path" % (DEFAULT_INTERFACE_POLICY, owner, argument))
+                if value == runtime_paths.RUNTIME_ROOT or value.startswith(
+                        runtime_paths.RUNTIME_ROOT + "/"):
+                    raise ContractError(
+                        "%s: %s.%s runtime path must use runtime_path_id, "
+                        "not literal value" %
+                        (DEFAULT_INTERFACE_POLICY, owner, argument))
             if not isinstance(suffixes, list) or any(
                     not isinstance(suffix, str) or not suffix or
                     not suffix.startswith(".") or "/" in suffix or
@@ -464,6 +559,8 @@ def load_interface_policy(root, records, availability):
         result = {
             "constraint": constraint,
             "value": value,
+            "runtime_path_id": runtime_path_id,
+            "component_path_id": component_path_id,
             "suffixes": list(suffixes),
         }
         if "consumption" in expected_keys:
@@ -482,7 +579,7 @@ def load_interface_policy(root, records, availability):
         raise ContractError("%s carries no path_defaults list" %
                             DEFAULT_INTERFACE_POLICY)
     default_keys = {
-        "argument", "constraint", "value", "suffixes", "consumption",
+        "argument", "constraint", "suffixes", "consumption",
     }
     for row in default_rows:
         capability = path_constraint(row, default_keys, "path_defaults")
@@ -497,7 +594,7 @@ def load_interface_policy(root, records, availability):
     if not isinstance(override_rows, list):
         raise ContractError("%s carries no path_overrides list" %
                             DEFAULT_INTERFACE_POLICY)
-    override_keys = {"tool", "argument", "constraint", "value", "suffixes"}
+    override_keys = {"tool", "argument", "constraint", "suffixes"}
     for row in override_rows:
         capability = path_constraint(row, override_keys, "path_overrides")
         tool = row.get("tool")
@@ -692,6 +789,8 @@ def load_interface_policy(root, records, availability):
             capability = overrides.get(
                 (name, argument), defaults.get(argument, {
                     "constraint": "contained", "value": None,
+                    "runtime_path_id": None,
+                    "component_path_id": None,
                     "suffixes": [],
                 }))
             consumption = capability.get(
@@ -727,6 +826,8 @@ def load_interface_policy(root, records, availability):
                 "consumption": consumption,
                 "constraint": capability["constraint"],
                 "value": capability["value"],
+                "runtime_path_id": capability["runtime_path_id"],
+                "component_path_id": capability["component_path_id"],
                 "suffixes": list(capability["suffixes"]),
                 "active_when_any": list(activation["active_when_any"]),
                 "inactive_when_any": list(
@@ -773,7 +874,8 @@ def load_interface_policy(root, records, availability):
             "%s has activation overrides for unclassified path arguments: %s"
             % (DEFAULT_INTERFACE_POLICY, ", ".join(
                 "%s.%s" % item for item in invalid_activation_overrides)))
-    return by_name, kblib.sha256_bytes(raw), sorted(excluded_tools)
+    return (by_name, kblib.sha256_bytes(raw), sorted(excluded_tools),
+            component_path_registries)
 
 
 # ---------------------------------------------------------------------------
@@ -884,6 +986,16 @@ def compile_contract(root, projection_target):
     root = os.path.abspath(root)
     availability = tool_availability.resolve(root, projection_target)
     tools = discover_tools(root)
+    registry_path = os.path.join(
+        root, *DEFAULT_RUNTIME_PATH_REGISTRY.split("/"))
+    try:
+        with open(registry_path, "rb") as handle:
+            runtime_path_registry_raw = handle.read()
+    except OSError as exc:
+        raise ContractError("cannot read %s: %s" %
+                            (DEFAULT_RUNTIME_PATH_REGISTRY, exc))
+    runtime_path_registry_hash = kblib.sha256_bytes(
+        runtime_path_registry_raw)
 
     original_parse_args = argparse.ArgumentParser.parse_args
     original_dont_write = sys.dont_write_bytecode
@@ -919,13 +1031,20 @@ def compile_contract(root, projection_target):
         sys.dont_write_bytecode = original_dont_write
         sys.argv = original_argv
 
-    interface_policy, interface_policy_hash, excluded_tools = \
-        load_interface_policy(root, records, availability)
+    (interface_policy, interface_policy_hash, excluded_tools,
+     component_path_registries) = load_interface_policy(
+        root, records, availability)
     for record in records:
         record["agent_interface"] = interface_policy[record["tool"]]
 
     manifest = "%s %s\n" % (
         DEFAULT_INTERFACE_POLICY, interface_policy_hash)
+    manifest += "%s %s\n" % (
+        DEFAULT_RUNTIME_PATH_REGISTRY, runtime_path_registry_hash)
+    manifest += "".join(
+        "%s %s\n" % (record["path"], record["sha256"])
+        for _component_id, record in sorted(component_path_registries.items())
+    )
     manifest += "".join(
         "%s %s\n" % (record["module"], record["source_hash"])
         for record in records
@@ -936,13 +1055,21 @@ def compile_contract(root, projection_target):
         "generator": "%s/%s.py" % (TOOLS_SUBDIR, TOOL),
         "generator_version": TOOL_VERSION,
         "derived_from": "argparse-introspection",
-        "source_files": ([DEFAULT_INTERFACE_POLICY] +
+        "source_files": ([DEFAULT_INTERFACE_POLICY,
+                          DEFAULT_RUNTIME_PATH_REGISTRY] +
+                         [record["path"] for _component_id, record in
+                          sorted(component_path_registries.items())] +
                          [record["module"] for record in records]),
         "source_hash": kblib.sha256_bytes(manifest),
         "agent_interface_policy": {
             "path": DEFAULT_INTERFACE_POLICY,
             "sha256": interface_policy_hash,
         },
+        "runtime_path_registry": {
+            "path": DEFAULT_RUNTIME_PATH_REGISTRY,
+            "sha256": runtime_path_registry_hash,
+        },
+        "component_path_registries": component_path_registries,
         # Binding these four is what makes the artifact answer "whose
         # projection is this, and against which boundary".  Without them a
         # copy from another repository reads as a local build, and a boundary
@@ -973,9 +1100,9 @@ def build_header(contract):
         "#   policy. A hand edit is reported by --check as a HOLD.",
         "# regenerate with: python3 Tools/compile_cli_contract.py .",
         "# verify with:     python3 Tools/compile_cli_contract.py . --check",
-        "# `source_hash` covers the manifest of the %d tool sources listed"
+        "# `source_hash` covers the policy, path registries, and %d"
         % contract["tool_count"],
-        "#   under source_files, each with its own sha256.",
+        "#   CLI tool sources listed under source_files.",
         "# A positional argument is one whose `option_strings` is empty.",
         "# `choices` is the admissible SET in canonical order, not the",
         "#   declaration order: several tools build it from a Python set,",

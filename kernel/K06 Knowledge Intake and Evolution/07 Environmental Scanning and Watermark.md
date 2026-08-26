@@ -23,8 +23,11 @@ Community buzz can trigger investigation, but MUST NOT on its own trigger canoni
 
 Incremental scanning semantics:
 
-- By default, scan only new material that appeared after `scanned_until` in `Tools/state/watermark.yaml` (schema in `Tools/schemas/watermark.template.yaml`).
-- The watermark records covered sources and the coverage cutoff date in per-domain sections.
+- By default, scan only new material that appeared after the cutoff recorded
+  by the canonical maintenance watermark. Its closed representation is owned
+  by the registered maintenance-watermark machine contract.
+- The watermark records covered sources and the coverage cutoff date for each
+  Profile-declared domain.
 - At batch close, advance the watermark together with the Ledger. The state
   records both the enclosing maintenance `last_run_id` and the exact Queue
   `last_batch_id` that performed the final advance; one identifier cannot stand

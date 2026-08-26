@@ -14,13 +14,24 @@ Each top-level domain requires at least:
 
 An Overview is not a file list; it SHOULD explain the dependencies and responsibilities between modules.
 
-The coverage map is the reader view of the [[kernel/K02 Knowledge Work Construction/01 Inventory and Coverage Ledger#Phase 1: Inventory|Coverage Ledger]]; it does not maintain a separate set of completion states. A page having an incoming link, a sequence-view entry, or a resolvable wiki link can only prove navigability; it cannot prove that authoring, profile readiness, or evidence status is complete.
+The coverage map is the reader view of the [[kernel/K02 Knowledge Work Construction/01 Inventory and Coverage Ledger#Coverage Inventory Boundary|Coverage Ledger]]; it does not maintain a separate set of completion states. A page having an incoming link, a sequence-view entry, or a resolvable wiki link can only prove navigability; it cannot prove that authoring, profile readiness, or evidence status is complete.
 
 ## Related Section
 
 `Related` supplements neighboring pages; it does not carry the causal and dependency explanations that belong in the body.
 
-The role's applicability mode is fixed `optional`: the section is created only when a real supplementary relation exists, and a missing `Related` heading is never a checker failure. Parent, prerequisite, component, consumer, causal, and key evidence relations enter the body, typed frontmatter relations, or the Global Map first — never only a trailing list. `Related` takes no canonical ownership and substitutes for no Overview, sequence view, coverage map, or `prerequisites` field. `Tools/check_links.py` keeps verifying that its wiki links resolve; review judges only whether an important neighboring relation was omitted or unexplained links were dumped, and link counts are not a quality metric. A trailing `Related` on a compiled Card or Read Set is that skeleton's own convention and creates no obligation for knowledge pages. Forcing an empty or mechanically generated `Related` onto every page only manufactures link noise.
+The role's applicability mode is fixed `optional`: the section is created only
+when a real supplementary relation exists, and a missing `Related` heading is
+never a checker failure. Parent, prerequisite, component, consumer, causal,
+and key evidence relations enter the body, typed frontmatter relations, or the
+Global Map first — never only a trailing list. `Related` takes no canonical
+ownership and substitutes for no Overview, sequence view, coverage map, or
+`prerequisites` field. The `wiki-link-integrity` Gate verifies that its links
+resolve; review judges only whether an important neighboring relation was
+omitted or unexplained links were dumped, and link counts are not a quality
+metric. A trailing `Related` on a Card or Read Set is that component's own
+convention and creates no obligation for knowledge pages. Forcing an empty or
+mechanically generated `Related` onto every page only manufactures link noise.
 
 Related links SHOULD be organized semantically, avoiding unordered accumulation. When content is large, they MAY be split into:
 

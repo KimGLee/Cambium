@@ -1,5 +1,5 @@
 # Worked Planning corpus-planning slot: the configured branch.
-# Interface: profiles/README.md#Corpus-Planning-Slot
+# Interface: kernel/K00 Standards Control/profile-interface.yaml
 # The three bindings below are the only place this profile names the planning
 # artifacts; K02/05-07 own their record contracts.
 

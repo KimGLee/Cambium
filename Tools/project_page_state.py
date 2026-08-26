@@ -29,10 +29,11 @@ import uuid
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import kblib
 import metadata_execution_contract
+import runtime_paths
 
 TOOL = "project_page_state"
 TOOL_VERSION = "2.0.0"
-COVERAGE_LEDGER_PATH = ".cambium/state/coverage_ledger.yaml"
+COVERAGE_LEDGER_PATH = runtime_paths.COVERAGE_PATH
 WRITER_CAPABILITY = "project-page-state-v2"
 ROW_VALUE_ADAPTER = "coverage-row-value-v1"
 PROPERTY_STATE_ADAPTER = "coverage-property-state-v1"
@@ -42,15 +43,16 @@ UPSERT_EXACT_OR_REMOVE_POLICY = "upsert-exact-or-remove-v1"
 CONTENT_CHANGE_TOMBSTONE_RULE = "semantic-content-change-tombstone-v1"
 CONTENT_CHANGE_REMOVE_OWNER_RULE = \
     "remove-owner-and-page-copy-on-semantic-content-change-v1"
-VALUE_SHAPES = frozenset(("scalar-string-or-null", "date", "enum"))
-PROPERTY_STATE_FIELDS = frozenset((
-    "value", "evidence_receipt", "content_fingerprint",
-))
+VALUE_SHAPES = metadata_execution_contract.VALUE_SHAPES
+PROPERTY_STATE_FIELDS = \
+    metadata_execution_contract.source_adapter_owner_record_keys(
+        PROPERTY_STATE_ADAPTER)
 SEMANTIC_FINGERPRINT_PROTOCOL = "cambium-semantic-page-v1"
 FRONTMATTER = re.compile(r"^(---\n)(.*?)(\n---\n)", re.S)
 SHA256_RE = re.compile(r"^sha256:[0-9a-f]{64}$")
-TEMP_PREFIX = ".cambium-page-state-"
-JOURNAL_NAME = "page-state-transaction.json"
+TEMP_PREFIX = runtime_paths.RUNTIME_ROOT + "-page-state-"
+JOURNAL_NAME = os.path.basename(
+    runtime_paths.PAGE_STATE_RECOVERY_JOURNAL_PATH)
 
 
 class PageProjection:

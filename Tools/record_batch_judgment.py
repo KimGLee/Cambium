@@ -25,12 +25,13 @@ import card_activation
 import check_queue
 import kblib
 import metadata_property_state
+import runtime_paths
 
 
 TOOL = "record_batch_judgment"
 TOOL_VERSION = "1.0.0"
 JUDGMENT_CHECK = "profile_batch_judgment"
-DEFAULT_RECEIPTS = ".cambium/receipts/batch-judgments.jsonl"
+DEFAULT_RECEIPTS = runtime_paths.BATCH_JUDGMENT_RECEIPT_PATH
 
 
 def _requirement(contract, judgment_item_id):
@@ -149,7 +150,8 @@ def main(argv=None):
                         help="bounded judgment statement (the concrete "
                              "verdict, not \"reviewed\")")
     parser.add_argument("--receipts", default=DEFAULT_RECEIPTS,
-                        help="receipt JSONL path under .cambium/receipts")
+                        help="receipt JSONL path under %s" %
+                        runtime_paths.RECEIPT_ROOT)
     parser.add_argument("--apply", action="store_true",
                         help="append the evidence; omit for a dry run")
     parser.add_argument("--json", action="store_true",
@@ -176,7 +178,7 @@ def main(argv=None):
             runtime, contract, item, args.judgment_item, args.target,
             args.reviewer_role, args.statement)
         receipt_path = kblib.managed_repository_path(
-            root, args.receipts, ".cambium/receipts",
+            root, args.receipts, runtime_paths.RECEIPT_ROOT,
             suffixes=(".jsonl",), must_exist=False)
     except (OSError, TypeError, UnicodeError, ValueError) as exc:
         print("[FAIL] %s" % exc, file=sys.stderr)

@@ -1,6 +1,6 @@
 # Source Policy
 
-Interface: [Source Policy slot](../../README.md#source-policy-slot)
+Interface: [Kernel-owned Profile interface](../../../kernel/K00%20Standards%20Control/19%20Profile%20Extension%20Interface.md) — Source Policy slot
 
 Within each bounded claim class, use the highest applicable authority below. A source class never becomes canonical outside its stated claim boundary.
 
@@ -17,7 +17,7 @@ Within each bounded claim class, use the highest applicable authority below. A s
 
 ## Verification Entry Points
 
-| Bounded claim class | Registered Source ID | Verifier command, path, URL, or procedure | Version pin or freshness window |
+| Bounded claim class | Registered Source ID | Stable verifier capability, evidence source, or semantic review criterion | Version pin or freshness window |
 |---|---|---|---|
 | Provider API, model, tool, pricing, limit, policy, or product behavior | `ATLAS-OFFICIAL` | Open the Source Note's exact `source_url`; verify the claim against the provider's current official documentation and retain the quoted section or response field in the evidence record. | The named API/model/release when exposed; otherwise the Source Note's `last_verified` date must not exceed `review_due`. |
 | Open protocol, schema, security, observability, or risk requirement | `ATLAS-STANDARD` | Resolve the original standards-body URL from the Source Note and verify the exact numbered section, status, and errata/correction state. | Named RFC/specification/framework edition and section; living drafts use the recorded retrieval date and `review_due`. |

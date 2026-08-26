@@ -6,8 +6,11 @@ current canonical adopter Standards state, upstream identity, and one exact
 passing `profile-load` evaluation. Initial adoption creates
 `.cambium/governance/standards_state.yaml`; a pre-task revision advances it.
 Both append `.cambium/receipts/standards-adoptions.jsonl`, then regenerate
-vocabulary, page-contract, Card, and interface projections. K00/03 and Cards
-never store the chronological adoption register.
+vocabulary and page-contract projections and update the observed Card source
+hashes/version.  The transaction never acknowledges a curated Card review;
+stale review bindings refuse the adoption and must be acknowledged separately
+by a human before retry. K00/03 and Cards never store the chronological
+adoption register.
 
 Every touched byte is staged and recoverable. Any task runtime under
 `.cambium/state/` redirects the caller to `adopt_standards.py`; governance and
@@ -32,7 +35,10 @@ import uuid
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import check_profile
+import card_contract
 import kblib
+import profile_layout_contract
+import runtime_paths
 import standards_state
 
 TOOL = "apply_profile_adoption"
@@ -42,14 +48,10 @@ TOOL_VERSION = "2.0.0"
 PROFILE_LOAD_GATE_ID = check_profile.GATE_ID
 
 GOVERNANCE_PATH = "kernel/K00 Standards Control/03 Standards Governance.md"
-SIZE_REGISTER_PATH = (
-    "kernel/K00 Standards Control/16 Leaf Module Size Register.md"
-)
-CARDS_DIR = "kernel/Cards"
-VOCAB_ARTIFACT = "Tools/vocab.yaml"
-PAGE_CONTRACT_ARTIFACT = "Tools/page_contract.yaml"
-RUNTIME_NAMESPACE = ".cambium"
-RECEIPT_RELATIVE = ".cambium/receipts/standards-adoptions.jsonl"
+VOCAB_ARTIFACT = runtime_paths.VOCAB_ARTIFACT_PATH
+PAGE_CONTRACT_ARTIFACT = runtime_paths.PAGE_CONTRACT_ARTIFACT_PATH
+RUNTIME_NAMESPACE = runtime_paths.RUNTIME_ROOT
+RECEIPT_RELATIVE = runtime_paths.STANDARDS_ADOPTION_RECEIPT_PATH
 
 STAGING_PREFIX = ".r09-adoption-"
 JOURNAL_NAME = "journal.json"
@@ -83,8 +85,7 @@ COMPOSER_STEPS = (
      lambda root, plan: ["--root", root]),
     ("stamp-set-version", "stamp_cards.py",
      lambda root, plan: [root, "--set-version",
-                         plan["standards_version_after"],
-                         "--acknowledge-compiled"]),
+                         plan["standards_version_after"]]),
     ("stamp-check", "stamp_cards.py",
      lambda root, plan: [root, "--check"]),
 )
@@ -198,15 +199,17 @@ def validate_plan_values(plan, plan_relative):
             "standards_effective_date_after must be an ISO date YYYY-MM-DD; "
             "found %r" % plan["standards_effective_date_after"])
     manifest = plan["selected_profile_manifest_after"]
-    parts = manifest.split("/")
-    if (len(parts) != 3 or parts[0] != "profiles" or
-            parts[2] != "profile.md" or not parts[1] or
-            parts[1].startswith("_")):
+    try:
+        manifest_location = \
+            profile_layout_contract.validate_selectable_profile_manifest_path(
+                manifest)
+    except profile_layout_contract.ProfileLayoutError as exc:
         raise AdoptionRefusal(
             "selected_profile_manifest_after must be exactly "
-            "profiles/<profile-id>/profile.md naming a selectable profile; "
-            "found %r" % manifest)
-    if plan_relative.startswith("profiles/%s/" % parts[1]):
+            "%s/<profile-id>/%s naming a selectable profile; found %r: %s" %
+            (profile_layout_contract.PROFILES_DIRECTORY,
+             profile_layout_contract.PROFILE_MANIFEST_NAME, manifest, exc))
+    if plan_relative.startswith(manifest_location.directory + "/"):
         raise AdoptionRefusal(
             "--plan must stay outside the candidate Profile directory so "
             "the plan cannot mutate the package whose snapshot it binds")
@@ -357,7 +360,10 @@ def evaluate_candidate(root, plan):
     the canonical producer does not authorize is refused verbatim.
     """
     manifest = plan["selected_profile_manifest_after"]
-    profile_dir = os.path.join(root, *os.path.dirname(manifest).split("/"))
+    manifest_location = \
+        profile_layout_contract.validate_selectable_profile_manifest_path(
+            manifest)
+    profile_dir = os.path.join(root, *manifest_location.directory.split("/"))
     evaluation = check_profile.evaluate_profile_load(
         profile_dir, root=root,
         receipt_identity={"selected_profile_manifest": manifest})
@@ -454,7 +460,8 @@ def touched_paths(root):
     """Every repo-relative path the transaction may write, sorted."""
     paths = [standards_state.STATE_PATH, RECEIPT_RELATIVE,
              VOCAB_ARTIFACT, PAGE_CONTRACT_ARTIFACT]
-    cards_dir = os.path.join(root, *CARDS_DIR.split("/"))
+    cards_directory = card_contract.load_schema(root)["directory"]
+    cards_dir = os.path.join(root, *cards_directory.split("/"))
     for current, directories, files in os.walk(cards_dir):
         directories.sort()
         for name in sorted(files):
@@ -525,7 +532,7 @@ def restore_from_staging(root, staging, journal):
     Returns a list of restoration failures; empty means the restoration was
     byte-verified: every backed-up file matches its recorded fingerprint,
     every file that did not exist is absent again, and no file the
-    transaction may have created under kernel/Cards survives.
+    transaction may have created under Card/ survives.
     """
     failures = []
     backups = journal.get("backups") or {}
@@ -548,7 +555,9 @@ def restore_from_staging(root, staging, journal):
     # empty, so rollback restores the pre-adoption namespace shape without
     # touching any pre-existing history or state.
     for relative in (
-            ".cambium/governance", ".cambium/receipts", ".cambium"):
+            runtime_paths.DERIVED_ROOT,
+            runtime_paths.GOVERNANCE_ROOT, runtime_paths.RECEIPT_ROOT,
+            runtime_paths.RUNTIME_ROOT):
         absolute = os.path.join(root, *relative.split("/"))
         if os.path.isdir(absolute) and not os.path.islink(absolute):
             try:
@@ -556,7 +565,8 @@ def restore_from_staging(root, staging, journal):
             except OSError as exc:
                 if exc.errno not in (errno.ENOTEMPTY, errno.EEXIST):
                     failures.append("%s cleanup: %s" % (relative, exc))
-    cards_dir = os.path.join(root, *CARDS_DIR.split("/"))
+    cards_directory = card_contract.load_schema(root)["directory"]
+    cards_dir = os.path.join(root, *cards_directory.split("/"))
     if os.path.isdir(cards_dir):
         for current, directories, files in os.walk(cards_dir):
             directories.sort()
@@ -585,7 +595,10 @@ def restore_from_staging(root, staging, journal):
             failures.append(
                 "%s still exists after restoration but was absent before"
                 % relative)
-    for relative in (".cambium/governance", ".cambium/receipts", ".cambium"):
+    for relative in (
+            runtime_paths.DERIVED_ROOT,
+            runtime_paths.GOVERNANCE_ROOT, runtime_paths.RECEIPT_ROOT,
+            runtime_paths.RUNTIME_ROOT):
         absolute = os.path.join(root, *relative.split("/"))
         try:
             os.rmdir(absolute)
@@ -704,6 +717,7 @@ def commit_transaction(prepared):
             state_path, prepared["state_after_text"],
             validator=kblib.parse_yaml_subset)
         _journal_step(staging, journal, "write-standards-state", "done")
+        runtime_paths.ensure_directory(root, "derived-root")
         for step, script, argument_builder in COMPOSER_STEPS:
             # -B: a producer step must not drop bytecode caches into the
             # adopter repository; after an abort the tree is byte-identical.
@@ -845,7 +859,8 @@ def resolve_receipts_path(root, plan_path, plan, receipts_argument):
             RECEIPT_RELATIVE)
     try:
         return kblib.managed_repository_path(
-            root, relative, ".cambium/receipts", suffixes=(".jsonl",),
+            root, relative, runtime_paths.RECEIPT_ROOT,
+            suffixes=(".jsonl",),
             must_exist=False)
     except ValueError as exc:
         raise AdoptionRefusal("invalid --receipts destination: %s" % exc)
@@ -861,9 +876,9 @@ def prepare(root, plan_argument, receipts_argument):
         raise AdoptionRefusal(
             "a Cambium runtime exists at %s/; this writer serves only the "
             "no-runtime R09 branches and never edits runtime state. Use the "
-            "active-task flow: prepare a K12/10 adoption plan under "
-            ".cambium/deltas/standards-adoptions/ and apply it with "
-            "Tools/adopt_standards.py" % runtime)
+            "active-task flow: prepare a K12/10 adoption plan under %s/ and "
+            "apply it with Tools/adopt_standards.py" %
+            (runtime, runtime_paths.STANDARDS_ADOPTION_DELTA_ROOT))
     require_tools(root)
     governance_path, governance_raw, _governance_text = read_governance(root)
     state, state_raw = read_current_state(root)
@@ -932,7 +947,7 @@ def main(argv=None):
                         help="emit the plan/result as one JSON document")
     parser.add_argument("--receipts", default=None,
                         help="must be the canonical Standards history stream "
-                             ".cambium/receipts/standards-adoptions.jsonl")
+                             "%s" % RECEIPT_RELATIVE)
     args = parser.parse_args(argv)
 
     report = {

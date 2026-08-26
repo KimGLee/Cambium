@@ -8,7 +8,7 @@ default configuration, live mirror, or adoption certificate. Because it lives
 under `profiles/examples/`, its manifest is intentionally not selectable in
 place.
 
-The normative interface is [profiles/README.md](../../README.md), and cross-domain rules remain in the kernel. A real adopter copies [profiles/_template/](../../_template/profile.md) to `profiles/<profile-id>/`, fills and validates that copy, and selects it through governance.
+The common interface is owned by [K00/19](../../../kernel/K00%20Standards%20Control/19%20Profile%20Extension%20Interface.md), and cross-domain rules remain in the Kernel. A real adopter copies [profiles/_template/](../../_template/profile.md) to `profiles/<profile-id>/`, fills and validates that copy, and selects it through governance.
 
 The example does not contain the adopter corpus, runtime state, or gate
 evidence. It remains a reference profile rather than an adoption certificate

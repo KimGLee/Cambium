@@ -1,5 +1,5 @@
 # Cambium kernel vocabulary base.
-# Canonical input for the later deterministic Tools/vocab.yaml composition.
+# Canonical Kernel input for deterministic vocabulary composition.
 
 schema_version: 1
 composition_policy: append-only-profile-extensions
@@ -104,13 +104,5 @@ review_intervals_days:
   slow: 365
   stable:
 
-task_state:
-  owner_role: Task State Contract
-  values:
-    - planned
-    - active
-    - paused
-    - blocked
-    - completion-candidate
-    - complete
-    - cancelled
+# Runtime task-state identity is intentionally absent. Its sole machine owner
+# is K13 Task Runtime and Execution Control/runtime-state-model.json.

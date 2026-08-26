@@ -15,6 +15,7 @@ import os
 import stat
 
 import kblib
+import runtime_paths
 
 from queue_runtime.canon import (
     ANY_PRODUCER_ERA_VERSION,
@@ -204,7 +205,7 @@ def receipt_catalog(root, errors):
     entire point of sealing -- and their integrity is carried by the cold
     manifest instead (K12/07).
     """
-    relative_dir = ".cambium/receipts"
+    relative_dir = runtime_paths.RECEIPT_ROOT
     receipt_dir = os.path.join(root, relative_dir)
     catalog = Catalog()
     catalog.root = root

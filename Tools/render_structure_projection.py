@@ -39,13 +39,14 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import kblib
 import profile_admission
+import runtime_paths
 
 TOOL = "render_structure_projection"
 TOOL_VERSION = "1.1.0"
 
-ACTIVE_STATE_PATH = ".cambium/governance/standards_state.yaml"
+ACTIVE_STATE_PATH = runtime_paths.ACTIVE_STANDARDS_PATH
 STRUCTURE_SLOT = "Structure Registry"
-COVERAGE_LEDGER_PATH = ".cambium/state/coverage_ledger.yaml"
+COVERAGE_LEDGER_PATH = runtime_paths.COVERAGE_PATH
 BEGIN = "<!-- structure-projection:begin -->"
 END = "<!-- structure-projection:end -->"
 
@@ -156,7 +157,7 @@ def render_block(unit_id, unit_root, matrix, dispositions):
              "`Tools/render_structure_projection.py` from the Capability "
              "Matrix and Coverage Ledger; regenerate instead of editing. "
              "The canonical owners remain `Corpus Planning/` and "
-             "`.cambium/state/coverage_ledger.yaml`." % unit_id]
+             "`%s`." % (unit_id, runtime_paths.COVERAGE_PATH)]
     if rows:
         lines += ["",
                   "| Capability | Name | Current | Target | Canonical "

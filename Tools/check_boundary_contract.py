@@ -33,7 +33,8 @@ field stay with the `page-contract` gate; whether a boundary is drawn
 correctly stays with semantic review.
 
 Input includes the compiled contract produced by
-Tools/compose_page_contract.py (Tools/page_contract.yaml by default) for
+Tools/compose_page_contract.py (.cambium/derived/page_contract.yaml by
+default) for
 the projection display labels; an absent or unparseable contract is a
 failure, never a pass. Scope defaults to the union of the selected
 Profile Scope's registered layer directories; --scope narrows it. A
@@ -48,7 +49,8 @@ Exit codes: 0 = all pass, 1 = hard failure (or violations under --strict),
 2 = advisory candidates.
 
 Usage: python3 check_boundary_contract.py <vault_root>
-       [--profile PROFILE_DIR] [--contract Tools/page_contract.yaml]
+       [--profile PROFILE_DIR]
+       [--contract .cambium/derived/page_contract.yaml]
        [--scope SUBPATH] [--exclude SUBPATH] [--strict] [--receipts PATH]
 """
 
@@ -59,6 +61,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import kblib
 import compose_page_contract
 import profile_admission
+import runtime_paths
 
 TOOL = "check_boundary_contract"
 TOOL_VERSION = "1.1.0"
@@ -133,7 +136,7 @@ JSON_FLAG_HELP = ("write the receipts this run produced to stdout as one "
                   "unchanged")
 
 
-ACTIVE_STATE_PATH = ".cambium/governance/standards_state.yaml"
+ACTIVE_STATE_PATH = runtime_paths.ACTIVE_STANDARDS_PATH
 SCOPE_SLOT = "Profile Scope"
 BEGIN = kblib.BOUNDARY_PROJECTION_BEGIN
 END = kblib.BOUNDARY_PROJECTION_END
@@ -486,9 +489,10 @@ def _main(argv=None):
                         help="profile directory override; default is the "
                              "selected_profile_manifest of the active "
                              "Standards state")
-    parser.add_argument("--contract", default="Tools/page_contract.yaml",
-                        help="compiled contract path (default "
-                             "Tools/page_contract.yaml)")
+    parser.add_argument("--contract",
+                        default=runtime_paths.PAGE_CONTRACT_ARTIFACT_PATH,
+                        help="compiled contract path (default %s)" %
+                        runtime_paths.PAGE_CONTRACT_ARTIFACT_PATH)
     parser.add_argument("--scope",
                         help="only scan .md files under this subpath "
                              "(directory or single page)")

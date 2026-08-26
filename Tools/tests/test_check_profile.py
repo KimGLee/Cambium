@@ -29,6 +29,8 @@ PLACEHOLDER_DEFAULTS = (
 )
 sys.path.insert(0, str(REPOSITORY / "Tools"))
 import kblib  # noqa: E402
+import check_queue  # noqa: E402
+import corpus_planning_contract  # noqa: E402
 import metadata_execution_contract  # noqa: E402
 import profile_contract  # noqa: E402
 
@@ -59,12 +61,16 @@ class ExecutionDefaultOverrideTests(unittest.TestCase):
             root = Path(tmp) / "repo"
             root.mkdir()
             for source, relative in (
-                    (REPOSITORY / "profiles/README.md",
-                     "profiles/README.md"),
+                    (REPOSITORY / profile_contract.PROFILE_INTERFACE_PATH,
+                     profile_contract.PROFILE_INTERFACE_PATH),
                     (PLACEHOLDER_DEFAULTS,
                      "Tools/schemas/execution_defaults.template.yaml"),
                     (REPOSITORY / "Tools/operation-capabilities.yaml",
                      "Tools/operation-capabilities.yaml"),
+                    (REPOSITORY / profile_contract.SCAN_CAPABILITY_PATH,
+                     profile_contract.SCAN_CAPABILITY_PATH),
+                    (REPOSITORY / "Tools/check_residual_content.py",
+                     "Tools/check_residual_content.py"),
                     (REPOSITORY /
                      "Tools/compiled/metadata-execution-contract.json",
                      "Tools/compiled/metadata-execution-contract.json"),
@@ -78,8 +84,13 @@ class ExecutionDefaultOverrideTests(unittest.TestCase):
                      profile_contract.KERNEL_RELATIONSHIP_PATH,
                      profile_contract.KERNEL_RELATIONSHIP_PATH),
                     (REPOSITORY /
-                     "kernel/K00 Standards Control/12 Control Registry.md",
-                     "kernel/K00 Standards Control/12 Control Registry.md")):
+                     profile_contract.AUDIT_DIMENSION_BASE_PATH,
+                     profile_contract.AUDIT_DIMENSION_BASE_PATH),
+                    (REPOSITORY /
+                     corpus_planning_contract.CORPUS_PLANNING_CONTRACT_PATH,
+                     corpus_planning_contract.CORPUS_PLANNING_CONTRACT_PATH),
+                    (REPOSITORY / check_queue.STANDARDS_GATE_REGISTRY_PATH,
+                     check_queue.STANDARDS_GATE_REGISTRY_PATH)):
                 target = root / relative
                 target.parent.mkdir(parents=True, exist_ok=True)
                 shutil.copy2(source, target)
@@ -138,8 +149,8 @@ class ExecutionDefaultOverrideTests(unittest.TestCase):
             root = Path(tmp) / "repo"
             root.mkdir()
             for source, relative in (
-                    (REPOSITORY / "profiles/README.md",
-                     "profiles/README.md"),
+                    (REPOSITORY / profile_contract.PROFILE_INTERFACE_PATH,
+                     profile_contract.PROFILE_INTERFACE_PATH),
                     (PLACEHOLDER_DEFAULTS,
                      "Tools/schemas/execution_defaults.template.yaml")):
                 target = root / relative
@@ -309,12 +320,13 @@ class ProfileCliFixture(unittest.TestCase):
         self.addCleanup(self.temporary.cleanup)
         self.root = Path(self.temporary.name) / "repo"
         self.root.mkdir()
-        self._copy_repository_file("profiles/README.md")
+        self._copy_repository_file(profile_contract.PROFILE_INTERFACE_PATH)
         self._copy_repository_file(
             "Tools/schemas/execution_defaults.template.yaml")
         self._copy_repository_file(
             "kernel/K00 Standards Control/execution-defaults-base.yaml")
         self._copy_repository_file("Tools/operation-capabilities.yaml")
+        self._copy_repository_file(profile_contract.SCAN_CAPABILITY_PATH)
         self._copy_repository_file(
             "Tools/compiled/metadata-execution-contract.json")
         self._copy_repository_file(
@@ -324,7 +336,10 @@ class ProfileCliFixture(unittest.TestCase):
         self._copy_repository_file(
             profile_contract.KERNEL_RELATIONSHIP_PATH)
         self._copy_repository_file(
-            "kernel/K00 Standards Control/12 Control Registry.md")
+            profile_contract.AUDIT_DIMENSION_BASE_PATH)
+        self._copy_repository_file(
+            corpus_planning_contract.CORPUS_PLANNING_CONTRACT_PATH)
+        self._copy_repository_file(check_queue.STANDARDS_GATE_REGISTRY_PATH)
         self._copy_repository_file("Tools/check_residual_content.py")
         for relative in capability_implementation_paths():
             self._copy_repository_file(relative)
@@ -619,11 +634,11 @@ class ProfileLoadCliTests(ProfileCliFixture):
 
     def test_registered_gate_rejects_all_normative_input_substitutions(self):
         copied = self._copied_profile("input-substitution", self_owned=True)
-        reduced_interface = self.root / "reduced-interface.md"
+        reduced_interface = self.root / "reduced-interface.yaml"
         reduced_interface.write_text(
-            (self.root / "profiles/README.md").read_text(
+            (self.root / profile_contract.PROFILE_INTERFACE_PATH).read_text(
                 encoding="utf-8").replace(
-                    "## Priority Rubric Slot", "## Priority Rubric"),
+                    "slot_id: priority-rubric", "slot_id: priority-rubric-hidden"),
             encoding="utf-8")
         custom_defaults = self.root / "custom-defaults.yaml"
         custom_defaults.write_text(
@@ -929,10 +944,9 @@ class ProfileLoadCliTests(ProfileCliFixture):
         scans = copied / "registries/registered-scans.md"
         self._replace_exact(
             scans,
-            "--config profiles/examples/missing-config/scan-configs/"
+            "profiles/examples/missing-config/scan-configs/"
             "residual-scan.yaml",
-            "--config profiles/examples/missing-config/scan-configs/"
-            "absent.yaml",
+            "profiles/examples/missing-config/scan-configs/absent.yaml",
             count=1)
 
         completed, receipts = self._run_check(copied, "missing.jsonl")

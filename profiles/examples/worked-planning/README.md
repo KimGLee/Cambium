@@ -6,7 +6,7 @@ This directory is a non-normative, filled example of the Cambium profile interfa
 
 It is not a template, a default configuration, or a claim that a corpus this small needs a plan. Because it lives under `profiles/examples/`, its manifest is intentionally not selectable in place.
 
-The normative interface is [profiles/README.md](../../README.md); the three artifact contracts are owned by [K02/05](../../../kernel/K02%20Knowledge%20Work%20Construction/05%20Global%20Map%20Contract.md), [K02/06](../../../kernel/K02%20Knowledge%20Work%20Construction/06%20Capability%20Matrix%20Contract.md), and [K02/07](../../../kernel/K02%20Knowledge%20Work%20Construction/07%20Gap%20Register%20Contract.md).
+The common interface is owned by [K00/19](../../../kernel/K00%20Standards%20Control/19%20Profile%20Extension%20Interface.md); the three artifact contracts are owned by [K02/05](../../../kernel/K02%20Knowledge%20Work%20Construction/05%20Global%20Map%20Contract.md), [K02/06](../../../kernel/K02%20Knowledge%20Work%20Construction/06%20Capability%20Matrix%20Contract.md), and [K02/07](../../../kernel/K02%20Knowledge%20Work%20Construction/07%20Gap%20Register%20Contract.md).
 
 ## Why The Corpus Is Inside The Package
 

@@ -4,42 +4,73 @@
 - Previous: [[kernel/K13 Task Runtime and Execution Control/08 Required Queue Contract and Lifecycle|Required Queue Contract and Lifecycle]].
 - Next: [[kernel/K13 Task Runtime and Execution Control/10 Batch Admission Transitions and Serial Integration|Batch Admission Transitions and Serial Integration]].
 
-## Compiler, Updates, And Views
+## Purpose And Boundary
 
-`compile_queue.py` deterministically proposes structure from Coverage
-`batch_specs`, without inferred edges or silent deletion. Initial apply starts
-from an empty Queue and records its origin. Same-scope replan uses a complete
-staged Coverage proposal first registered by `register_amendment.py`, then
-binds that authorization receipt, its Amendment, deterministic diff, and all
-live-state SHAs; terminal history remains and in-flight structure cannot
-change.
+This module owns the semantic boundary between confirmed planning state and a
+materialized Required Queue. It defines what a compliant materialization or
+same-scope replan must preserve; it does not own a program, command, storage
+path, locking scheme, publication sequence, or recovery procedure.
 
-A `batch_specs` row for a terminal item is no longer live compiler authority.
-The compiler ignores its edit or absence and preserves the sealed Queue item;
-retiring stale compiler input therefore cannot become a remove conflict or
-turn an otherwise unrelated replan into cancellation.
+Queue lifecycle transitions remain owned by K13/08 and K13/10. Amendment
+authority remains owned by K13/06. Interruption recovery remains owned by
+K13/14.
 
-Coverage `batch_specs` explicitly provides each proposed Work Spec path/hash
-pair. The compiler copies and validates it; it never guesses whether a batch
-is simple or complex. Missing or partial Work Spec fields fail closed; Queue
-compilation and replanning do not upgrade predecessor schema shapes. For an
-open batch, a Work-Spec-only replan is permitted only after
-`update_queue.py` has recorded `revalidation-required`; merge-ready and
-terminal Work Spec bindings cannot be replanned.
+## Queue Materialization
 
-`update_queue.py` alone applies lifecycle/hold transitions and the close-time
-Coverage projection. After canonical delta apply, only checks and that batch's
-close may proceed until the apply receipt is consumed. Cancellation is never a
-direct Queue transition.
+Initial Queue materialization is a deterministic projection of the confirmed
+Coverage assignments and batch specifications. It must:
 
-An apply receipt alone never authorizes close. Restart recovery of a missing or
-persisted close bundle is owned by [[kernel/K13 Task Runtime and Execution Control/14 Interruption Recovery and Rollover|K13/14]];
-this page only owns the close transition's required evidence.
+- start from a valid empty Queue and leave immutable origin evidence;
+- preserve every explicitly declared item, dependency, order, and Work Spec
+  binding without inferring missing relationships or semantic complexity;
+- reject incomplete, contradictory, or unresolved inputs rather than repair
+  or silently reinterpret them; and
+- produce a Queue whose identity and cross-state references can be verified
+  against the exact input state.
 
-`apply_amendment.py` is the sole scope-replan/cancellation transaction and
-binds the registered Amendment and authorization receipt, complete Coverage
-proposal, revisions, and three state SHAs. These writers share the recovery
-lock and durable prepare/outcome evidence; uncertain recovery retains the
-lock. Registration authority and its lock-time re-derivation are owned by
-[[kernel/K13 Task Runtime and Execution Control/06 Amendment Log and Controlled Replanning|K13/06]].
-`render_queue.py` writes only a human view.
+Materialization proposes execution structure; it does not decide which work is
+Required or authorize the underlying planning decisions.
+
+## Controlled Replanning
+
+A same-scope replan consumes one complete confirmed Coverage proposal and one
+current authorization governed by K13/06. The result must bind the proposal,
+authorization, deterministic difference, and exact before and after state
+identities.
+
+Terminal Queue history is immutable and no longer takes its authority from a
+live planning row. Removing or editing stale planning input cannot delete or
+rewrite a terminal item. In-flight structure cannot change except at an
+explicitly permitted revalidation boundary; merge-ready and terminal Work Spec
+bindings cannot be replanned.
+
+Cancellation is an Amendment outcome, not an ordinary Queue transition. A
+replan cannot be used to bypass lifecycle rules, close evidence, or current
+authorization.
+
+## External Result Contract
+
+A conforming materialization or replan must either publish one complete,
+cross-state-valid result with immutable outcome evidence or leave the prior
+authoritative state in force. It must fail closed on current-state drift,
+unresolved references, unauthorized differences, changes to protected
+in-flight or terminal history, or an after image that fails ordinary Queue
+validation.
+
+The specific writer topology, compare-and-swap fields, lock and journal
+layout, command surface, and interruption procedure belong to the Tool
+implementation. Those mechanisms may vary without changing this semantic
+contract.
+
+## Derived Human View
+
+A human-readable Queue view is a reproducible, low-authority projection of the
+canonical Queue. It is never an input to materialization, replanning,
+lifecycle transitions, or completion evidence.
+
+## Related
+
+- [[kernel/K13 Task Runtime and Execution Control/06 Amendment Log and Controlled Replanning|Amendment Log and Controlled Replanning]]
+- [[kernel/K13 Task Runtime and Execution Control/08 Required Queue Contract and Lifecycle|Required Queue Contract and Lifecycle]]
+- [[kernel/K13 Task Runtime and Execution Control/10 Batch Admission Transitions and Serial Integration|Batch Admission Transitions and Serial Integration]]
+- [[kernel/K13 Task Runtime and Execution Control/14 Interruption Recovery and Rollover|Interruption Recovery and Rollover]]

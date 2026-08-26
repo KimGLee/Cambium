@@ -50,6 +50,19 @@ class StandardsStateTests(unittest.TestCase):
         self.assertIsNone(view)
         self.assertIn("absent", "; ".join(errors))
 
+    def test_selected_profile_manifest_uses_the_shared_selectable_envelope(self):
+        for manifest in (
+                "profiles/a/b/profile.md",
+                "profiles/_template/profile.md",
+                "profiles/examples/demo/profile.md"):
+            with self.subTest(manifest=manifest):
+                value = self.value()
+                value["selected_profile_manifest"] = manifest
+                self.assertIn(
+                    "selected_profile_manifest is invalid",
+                    "; ".join(standards_state.state_errors(value)),
+                )
+
     def test_next_state_advances_only_current_identity(self):
         before = self.value()
         after = standards_state.next_state(

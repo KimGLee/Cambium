@@ -2,8 +2,11 @@
 """Profile manifest completeness check script.
 
 Rule owners:
-- "profiles/README.md" (the normative profile interface: which slots exist and
-  what constrains each; the Execution Default Overrides Contract);
+- "kernel/K00 Standards Control/profile-interface.yaml" (the Kernel-owned
+  machine registry for the common slot interface and Profile-specific closed
+  contracts);
+- "kernel/K12 Quality Assurance/audit-dimension-base.yaml" (the Kernel-owned
+  base receipt dimensions, evidence roles, and extension-target mappings);
 - "kernel/K00 Standards Control/execution-defaults-base.yaml" (the canonical
   membership registry for the overridable / constitutional split, and the
   admissible value form of an item whose owner module fixes one);
@@ -17,9 +20,9 @@ script is the mechanical stop: it fails while the skeleton is still visible, so
 an unfilled profile cannot pass a gate that runs it.
 
 Method:
-- Slot list: the H2 headings of the interface file ending in " Slot", with the
-  suffix stripped. The Execution Default Overrides Contract is not a file-bound
-  slot -- it is a declaration table, checked separately below.
+- Slot list: the ordered `slots` rows of the Kernel-owned interface registry.
+  The Execution Default Overrides Contract is not a file-bound slot -- it is a
+  declaration table, checked separately below.
 - Manifest: `<profile_dir>/profile.md`. Its `## Implemented Slots` section must
   bind every interface slot, as `- `Slot Name`: <binding>`.
 - Each of the 13 slots is file-bound. A binding may spell its exact
@@ -71,7 +74,7 @@ error, never a pass.
 Exit codes: 0 = all pass, 1 = at least one fail, 2 = no fail but candidates.
 
 Usage: python3 check_profile.py <profile_dir> [--root VAULT_ROOT]
-       [--interface profiles/README.md]
+       [--interface "kernel/K00 Standards Control/profile-interface.yaml"]
        [--defaults Tools/schemas/execution_defaults.template.yaml]
        [--execution-defaults "kernel/K00 Standards Control/execution-defaults-base.yaml"]
        [--receipts PATH]
@@ -89,9 +92,12 @@ from typing import Optional, Tuple
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import contract_exception_policy
+import control_registry_contract
+import corpus_planning_contract
 import kblib
 import metadata_execution_contract
 import profile_contract
+import profile_layout_contract
 
 TOOL = "check_profile"
 TOOL_VERSION = "2.0.0"
@@ -149,25 +155,33 @@ class ProfileLoadEvaluation:
 
 REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
-DEFAULT_INTERFACE = "profiles/README.md"
+DEFAULT_INTERFACE = profile_contract.PROFILE_INTERFACE_PATH
+DEFAULT_AUDIT_DIMENSION_BASE = \
+    profile_contract.AUDIT_DIMENSION_BASE_PATH
+DEFAULT_CORPUS_PLANNING_CONTRACT = \
+    corpus_planning_contract.CORPUS_PLANNING_CONTRACT_PATH
 DEFAULT_DEFAULTS = "Tools/schemas/execution_defaults.template.yaml"
 DEFAULT_EXECUTION_DEFAULTS = (
     "kernel/K00 Standards Control/execution-defaults-base.yaml"
 )
 DEFAULT_OPERATION_CAPABILITIES = "Tools/operation-capabilities.yaml"
+DEFAULT_SCAN_CAPABILITIES = profile_contract.SCAN_CAPABILITY_PATH
 DEFAULT_METADATA_AUTHORITY = (
     "kernel/K08 Metadata and Status/metadata-authority-base.yaml")
 DEFAULT_METADATA_CONTRACT = (
     "Tools/compiled/metadata-execution-contract.json")
 DEFAULT_APPLICABILITY_BASE = profile_contract.KERNEL_APPLICABILITY_PATH
 DEFAULT_RELATIONSHIP_BASE = profile_contract.KERNEL_RELATIONSHIP_PATH
-DEFAULT_GATE_REGISTRY = (
-    "kernel/K00 Standards Control/12 Control Registry.md")
+DEFAULT_GATE_REGISTRY = \
+    control_registry_contract.STANDARDS_GATE_REGISTRY_PATH
 CANONICAL_PROFILE_LOAD_INPUTS = (
     DEFAULT_INTERFACE,
+    DEFAULT_AUDIT_DIMENSION_BASE,
+    DEFAULT_CORPUS_PLANNING_CONTRACT,
     DEFAULT_DEFAULTS,
     DEFAULT_EXECUTION_DEFAULTS,
     DEFAULT_OPERATION_CAPABILITIES,
+    DEFAULT_SCAN_CAPABILITIES,
     DEFAULT_METADATA_AUTHORITY,
     DEFAULT_METADATA_CONTRACT,
     DEFAULT_APPLICABILITY_BASE,
@@ -175,8 +189,6 @@ CANONICAL_PROFILE_LOAD_INPUTS = (
     DEFAULT_GATE_REGISTRY,
 )
 
-MANIFEST_NAME = "profile.md"
-SLOT_SUFFIX = " Slot"
 SLOTS_SECTION = "Implemented Slots"
 OVERRIDES_SECTION = "Execution Default Overrides"
 
@@ -187,19 +199,6 @@ TEXT_SUFFIXES = (".md", ".yaml", ".yml", ".txt", ".json", ".jsonl", ".py", ".csv
 DECLARATION_RE = re.compile(
     r"^\s*-\s+(Registration|Applicability):\s*(.*?)\s*$"
 )
-
-CORPUS_PLANNING_SLOT = "Corpus Planning"
-CORPUS_PLANNING_FIELDS = {
-    "schema_version", "applicability", "artifact_bindings",
-    "capability_scale", "pass_authority",
-}
-CORPUS_APPLICABILITY_FIELDS = {"state", "reason"}
-CORPUS_ARTIFACT_FIELDS = {
-    "global_map", "capability_matrix", "gap_register",
-}
-CORPUS_SCALE_FIELDS = {"rank", "value", "predicate", "target_eligible"}
-CORPUS_AUTHORITY_FIELDS = {"role_id", "decision_scope_id"}
-CORPUS_DECISION_SCOPE = "corpus-plan-semantic-acceptance"
 
 STRUCTURE_REGISTRY_SLOT = "Structure Registry"
 PRIORITY_RUBRIC_SLOT = "Priority Rubric"
@@ -307,6 +306,7 @@ _MECHANICAL_CHECKS = frozenset((
     "inactive-table-has-rows",
     # Corpus Planning slot envelope
     "corpus-planning-binding",
+    "corpus-planning-contract-invalid",
     "corpus-planning-yaml",
     "corpus-planning-schema",
     "corpus-planning-applicability",
@@ -344,6 +344,9 @@ _MECHANICAL_CHECKS = frozenset((
     "override-value-domain-unknown",
     # typed dependency closure (profile_contract diagnostics)
     "profile-contract-manifest-path",
+    "profile-contract-interface-invalid",
+    "profile-contract-interface-incomplete",
+    "profile-contract-audit-dimension-base-invalid",
     "profile-contract-profile-root",
     "profile-contract-snapshot-invalid",
     "profile-contract-manifest-name",
@@ -368,16 +371,11 @@ _MECHANICAL_CHECKS = frozenset((
     "registered-scan-id-duplicate",
     "registered-scan-judgment-reference",
     "registered-scans-required-count",
-    "registered-scan-command-literal",
-    "registered-scan-command-parse",
-    "registered-scan-command-shape",
-    "registered-scan-command-interpreter",
-    "registered-scan-command-script",
-    "registered-scan-command-root",
-    "registered-scan-command-shell-operator",
-    "registered-scan-command-gate-option",
-    "registered-scan-command-scan-id",
-    "registered-scan-command-config",
+    "scan-capability-registry-invalid",
+    "registered-scan-capability-unknown",
+    "registered-scan-capability-implementation",
+    "registered-scan-config-required",
+    "registered-scan-config-forbidden",
     # typed Profile extension Gate execution contract
     "extension-gates-registration",
     "extension-gates-none-with-rows",
@@ -511,6 +509,12 @@ def canonical_profile_load_inputs(root):
                 capability_implementation_paths(capabilities):
             snapshots[relative] = kblib.repository_file_snapshot(
                 root, relative, singly_linked=True)
+        scan_capabilities = kblib.parse_yaml_subset(
+            snapshots[DEFAULT_SCAN_CAPABILITIES].read_text())
+        for relative in profile_contract.\
+                scan_capability_implementation_paths(scan_capabilities):
+            snapshots[relative] = kblib.repository_file_snapshot(
+                root, relative, singly_linked=True)
     fingerprint = kblib.sha256_bytes(
         "\0".join(
             "%s\0%s" % (relative, snapshots[relative].sha256)
@@ -603,9 +607,9 @@ def read_text(path):
 
 
 def interface_slots(text):
-    """Slot names = H2 headings ending in ' Slot', suffix stripped."""
-    return [h[: -len(SLOT_SUFFIX)].strip()
-            for h in h2_headings(text) if h.endswith(SLOT_SUFFIX)]
+    """Return ordered slot names from the Kernel-owned machine registry."""
+    document = kblib.parse_yaml_subset(text)
+    return list(profile_contract.profile_interface_slots(document))
 
 
 def parse_bindings(manifest_text):
@@ -717,115 +721,133 @@ def validate_corpus_planning_slot(path, target, add, text=None):
         add("corpus-planning-yaml", target, "fail",
             "cannot parse restricted YAML: %s" % exc)
         return
+    _normalized, issues = \
+        corpus_planning_contract.validate_corpus_planning_envelope(
+            document, normalize_strings=False)
 
-    def closed(value, fields, label):
-        if not isinstance(value, dict):
-            add("corpus-planning-schema", label, "fail", "must be a mapping")
-            return {}
-        missing = sorted(fields - set(value))
-        extra = sorted(set(value) - fields)
-        if missing:
-            add("corpus-planning-schema", label, "fail",
-                "missing field(s): %s" % ", ".join(missing))
-        if extra:
-            add("corpus-planning-schema", label, "fail",
-                "unsupported field(s): %s" % ", ".join(extra))
-        return value
+    def label(path_parts):
+        if not path_parts:
+            return target
+        if path_parts[0] == "capability_scale" and \
+                len(path_parts) >= 2 and isinstance(path_parts[1], int):
+            return "%s:capability_scale[%d]" % (target, path_parts[1])
+        return target + ":" + str(path_parts[0])
 
-    document = closed(document, CORPUS_PLANNING_FIELDS, target)
-    if type(document.get("schema_version")) is not int or \
-            document.get("schema_version") != 1:
-        add("corpus-planning-schema", target, "fail",
-            "schema_version must be integer 1")
-    applicability = closed(
-        document.get("applicability"), CORPUS_APPLICABILITY_FIELDS,
-        target + ":applicability")
-    artifacts = closed(
-        document.get("artifact_bindings"), CORPUS_ARTIFACT_FIELDS,
-        target + ":artifact_bindings")
-    authority = closed(
-        document.get("pass_authority"), CORPUS_AUTHORITY_FIELDS,
-        target + ":pass_authority")
-    scale = document.get("capability_scale")
-    if not isinstance(scale, list):
-        add("corpus-planning-schema", target + ":capability_scale", "fail",
-            "must be a list")
-        scale = []
+    structural = {
+        "mapping_type", "missing_fields", "unsupported_fields",
+        "schema_version", "scale_list",
+    }
+    applicability = {
+        "applicability_state", "configured_reason", "inactive_reason",
+    }
+    artifacts = {
+        "configured_artifact_path", "artifact_bindings_distinct",
+        "inactive_artifacts",
+    }
+    scale = {
+        "configured_scale_empty", "scale_rank_type",
+        "scale_rank_position", "scale_value_type",
+        "scale_value_empty", "scale_value_duplicate",
+        "scale_predicate_type", "scale_predicate_empty",
+        "scale_target_eligible_type", "configured_target_eligible",
+        "inactive_scale",
+    }
 
-    state = applicability.get("state")
-    reason = applicability.get("reason")
-    if state == "configured":
-        if reason is not None:
-            add("corpus-planning-applicability", target, "fail",
-                "configured requires null reason")
-        paths = []
-        for field in ("global_map", "capability_matrix", "gap_register"):
-            value = artifacts.get(field)
-            if not isinstance(value, str) or not value.strip() or \
-                    not value.lower().endswith(".yaml"):
-                add("corpus-planning-artifact", target + ":" + field, "fail",
+    # Keep the producer's historical check-code vocabulary literal and
+    # inspectable even though the shared contract now owns branch selection.
+    def add_schema(issue_target, details):
+        add("corpus-planning-schema", issue_target, "fail", details)
+
+    def add_applicability(issue_target, details):
+        add("corpus-planning-applicability", issue_target, "fail", details)
+
+    def add_artifact(issue_target, details):
+        add("corpus-planning-artifact", issue_target, "fail", details)
+
+    def add_scale(issue_target, details):
+        add("corpus-planning-scale", issue_target, "fail", details)
+
+    def add_authority(issue_target, details):
+        add("corpus-planning-authority", issue_target, "fail", details)
+
+    for issue in issues:
+        code = issue["code"]
+        path_parts = issue.get("path") or ()
+        issue_target = label(path_parts)
+        if code in structural:
+            emit = add_schema
+            if code == "mapping_type":
+                details = "must be a mapping"
+            elif code == "missing_fields":
+                details = "missing field(s): %s" % ", ".join(issue["fields"])
+            elif code == "unsupported_fields":
+                details = "unsupported field(s): %s" % ", ".join(
+                    issue["fields"])
+            elif code == "schema_version":
+                details = "schema_version must be integer 1"
+            else:
+                details = "must be a list"
+        elif code in applicability:
+            emit = add_applicability
+            issue_target = target
+            details = {
+                "applicability_state":
+                    "state must be exactly configured or not-applicable",
+                "configured_reason": "configured requires null reason",
+                "inactive_reason":
+                    "not-applicable requires a non-empty reason",
+            }[code]
+        elif code in artifacts:
+            emit = add_artifact
+            if code == "configured_artifact_path":
+                issue_target = target + ":" + str(path_parts[-1])
+                details = (
                     "configured requires a repository-relative .yaml path")
+            elif code == "artifact_bindings_distinct":
+                issue_target = target
+                details = "artifact bindings must be distinct"
             else:
-                paths.append(value.strip())
-        if len(set(paths)) != len(paths):
-            add("corpus-planning-artifact", target, "fail",
-                "artifact bindings must be distinct")
-        if not scale:
-            add("corpus-planning-scale", target, "fail",
-                "configured requires at least one scale item")
-        values = set()
-        eligible = False
-        for index, raw in enumerate(scale):
-            label = "%s:capability_scale[%d]" % (target, index)
-            row = closed(raw, CORPUS_SCALE_FIELDS, label)
-            if type(row.get("rank")) is not int or row.get("rank") != index:
-                add("corpus-planning-scale", label, "fail",
-                    "rank must equal zero-based list position %d" % index)
-            value = row.get("value")
-            predicate = row.get("predicate")
-            if not isinstance(value, str) or not value.strip():
-                add("corpus-planning-scale", label, "fail",
-                    "value must be a non-empty string")
-            elif value in values:
-                add("corpus-planning-scale", label, "fail",
-                    "scale value must be unique")
+                issue_target = target
+                details = (
+                    "not-applicable requires all artifact bindings to be null")
+        elif code in scale:
+            emit = add_scale
+            if code == "configured_scale_empty":
+                issue_target = target
+                details = "configured requires at least one scale item"
+            elif code in ("scale_rank_type", "scale_rank_position"):
+                details = "rank must equal zero-based list position %d" % \
+                    issue["index"]
+            elif code in ("scale_value_type", "scale_value_empty"):
+                details = "value must be a non-empty string"
+            elif code == "scale_value_duplicate":
+                details = "scale value must be unique"
+            elif code in ("scale_predicate_type", "scale_predicate_empty"):
+                details = "predicate must be a non-empty string"
+            elif code == "scale_target_eligible_type":
+                details = "target_eligible must be boolean"
+            elif code == "configured_target_eligible":
+                issue_target = target
+                details = "at least one scale item must be target eligible"
             else:
-                values.add(value)
-            if not isinstance(predicate, str) or not predicate.strip():
-                add("corpus-planning-scale", label, "fail",
-                    "predicate must be a non-empty string")
-            if type(row.get("target_eligible")) is not bool:
-                add("corpus-planning-scale", label, "fail",
-                    "target_eligible must be boolean")
-            eligible = eligible or row.get("target_eligible") is True
-        if scale and not eligible:
-            add("corpus-planning-scale", target, "fail",
-                "at least one scale item must be target eligible")
-        if not isinstance(authority.get("role_id"), str) or \
-                not authority.get("role_id", "").strip():
-            add("corpus-planning-authority", target, "fail",
-                "configured requires a non-empty role_id")
-        if authority.get("decision_scope_id") != CORPUS_DECISION_SCOPE:
-            add("corpus-planning-authority", target, "fail",
-                "decision_scope_id must be %s" % CORPUS_DECISION_SCOPE)
-    elif state == "not-applicable":
-        if not isinstance(reason, str) or not reason.strip():
-            add("corpus-planning-applicability", target, "fail",
-                "not-applicable requires a non-empty reason")
-        if any(artifacts.get(field) is not None
-               for field in CORPUS_ARTIFACT_FIELDS):
-            add("corpus-planning-artifact", target, "fail",
-                "not-applicable requires all artifact bindings to be null")
-        if scale:
-            add("corpus-planning-scale", target, "fail",
-                "not-applicable requires an empty scale list")
-        if any(authority.get(field) is not None
-               for field in CORPUS_AUTHORITY_FIELDS):
-            add("corpus-planning-authority", target, "fail",
-                "not-applicable requires null authority fields")
-    else:
-        add("corpus-planning-applicability", target, "fail",
-            "state must be exactly configured or not-applicable")
+                issue_target = target
+                details = "not-applicable requires an empty scale list"
+        elif code in ("authority_decision_type",
+                      "authority_decision_empty"):
+            # Profile-load historically reports the closed-scope failure;
+            # the deeper structural producer retains its scalar diagnostic.
+            continue
+        else:
+            emit = add_authority
+            issue_target = target
+            if code in ("authority_role_type", "authority_role_empty"):
+                details = "configured requires a non-empty role_id"
+            elif code == "authority_decision_scope":
+                details = "decision_scope_id must be %s" % \
+                    corpus_planning_contract.SEMANTIC_ACCEPTANCE_SCOPE
+            else:
+                details = "not-applicable requires null authority fields"
+        emit(issue_target, details)
 
 
 def main(argv=None, *, _evaluation_out=None,
@@ -881,8 +903,10 @@ def main(argv=None, *, _evaluation_out=None,
                                os.path.join(root, DEFAULT_EXECUTION_DEFAULTS))
 
     checked_manifest_identity = (
-        MANIFEST_NAME if profile_disp == "." else
-        "%s/%s" % (profile_disp, MANIFEST_NAME)
+        profile_layout_contract.PROFILE_MANIFEST_NAME
+        if profile_disp == "." else
+        "%s/%s" % (
+            profile_disp, profile_layout_contract.PROFILE_MANIFEST_NAME)
     )
     if _receipt_identity is _LIVE_RUNTIME_RECEIPT_IDENTITY:
         live_identity = kblib.runtime_receipt_identity(root)
@@ -1077,6 +1101,16 @@ def main(argv=None, *, _evaluation_out=None,
             "canonical metadata authority/capability bundle cannot be "
             "compiled from the same root-input snapshot: %s" % exc)
         return finish()
+    try:
+        corpus_planning_contract.current_corpus_planning_contract_values(
+            root, snapshots=normative_snapshots)
+    except (OSError, UnicodeError, ValueError,
+            kblib.YamlSubsetError) as exc:
+        add("corpus-planning-contract-invalid",
+            DEFAULT_CORPUS_PLANNING_CONTRACT, "fail",
+            "cannot load the K02-owned Corpus Planning machine contract: %s"
+            % exc)
+        return finish()
 
     # Bind the exact Profile bytes before any existence judgment or read.  A
     # pathname-level isdir/isfile preflight after MCP admission would merely
@@ -1104,17 +1138,20 @@ def main(argv=None, *, _evaluation_out=None,
         return finish()
     profile_snapshot_before = profile_snapshot.sha256
 
-    manifest_path = os.path.join(profile_dir, MANIFEST_NAME)
+    manifest_path = os.path.join(
+        profile_dir, profile_layout_contract.PROFILE_MANIFEST_NAME)
     manifest_relative = (
-        MANIFEST_NAME if profile_disp == "." else
-        "%s/%s" % (profile_disp, MANIFEST_NAME))
+        profile_layout_contract.PROFILE_MANIFEST_NAME
+        if profile_disp == "." else
+        "%s/%s" % (
+            profile_disp, profile_layout_contract.PROFILE_MANIFEST_NAME))
     if manifest_relative not in profile_snapshot.files:
         add("manifest-missing", manifest_relative, "fail",
             "the profile manifest %s is missing; every slot binding is "
             "declared there, so nothing about this profile can be verified"
-            % MANIFEST_NAME)
+            % profile_layout_contract.PROFILE_MANIFEST_NAME)
         say("check_profile: FAIL — %s has no %s" %
-            (profile_disp, MANIFEST_NAME))
+            (profile_disp, profile_layout_contract.PROFILE_MANIFEST_NAME))
         return finish()
 
     def profile_snapshot_text(path):
@@ -1124,7 +1161,8 @@ def main(argv=None, *, _evaluation_out=None,
 
     try:
         interface_text = normative_snapshots[DEFAULT_INTERFACE].read_text()
-    except (OSError, UnicodeError) as exc:
+        slots = interface_slots(interface_text)
+    except (OSError, UnicodeError, ValueError, kblib.YamlSubsetError) as exc:
         add("interface-unreadable", DEFAULT_INTERFACE, "fail",
             "cannot read the normative slot interface: %s" % exc)
         say("check_profile: FAIL — cannot read interface %s: %s" % (interface_path, exc))
@@ -1150,7 +1188,9 @@ def main(argv=None, *, _evaluation_out=None,
         return finish()
 
     sentinel = str(defaults.get("unfilled_sentinel") or "TODO(profile)")
-    reserved_ids = {str(v) for v in (defaults.get("reserved_profile_ids") or [])}
+    reserved_ids = set(profile_layout_contract.RESERVED_PROFILE_IDS)
+    reserved_ids.update(
+        str(v) for v in (defaults.get("reserved_profile_ids") or []))
     overridable = {str(e.get("item")): e
                    for e in (execution_defaults.get("overridable") or [])
                    if isinstance(e, dict) and e.get("item")}
@@ -1168,7 +1208,8 @@ def main(argv=None, *, _evaluation_out=None,
         say("check_profile: FAIL — Profile text is not strict UTF-8: %s" %
               exc)
         return finish()
-    manifest_disp = "%s/%s" % (profile_disp, MANIFEST_NAME)
+    manifest_disp = "%s/%s" % (
+        profile_disp, profile_layout_contract.PROFILE_MANIFEST_NAME)
 
     manifest_h2s = h2_headings(manifest_text)
     for heading in ("Profile Identity", SLOTS_SECTION, OVERRIDES_SECTION):
@@ -1179,11 +1220,10 @@ def main(argv=None, *, _evaluation_out=None,
                 "manifest contains %d `%s` sections; exactly one is allowed"
                 % (count, heading))
 
-    slots = interface_slots(interface_text)
     if not slots:
         add("interface-no-slots", DEFAULT_INTERFACE, "fail",
-            "the interface file declares no '<name>%s' H2 heading; with no "
-            "slot list there is nothing to check against" % SLOT_SUFFIX)
+            "the interface registry declares no slots; with no slot list "
+            "there is nothing to check against")
     if tuple(slots) != profile_contract.PROFILE_FILE_SLOTS:
         add("profile-interface-slot-registry-mismatch", DEFAULT_INTERFACE,
             "fail", "canonical Profile interface slots must equal the typed "
@@ -1278,7 +1318,7 @@ def main(argv=None, *, _evaluation_out=None,
         kind, detail = resolve_binding(binding, root, profile_dir)
         if kind == "path":
             bound_ok += 1
-            if slot == CORPUS_PLANNING_SLOT:
+            if slot == corpus_planning_contract.SLOT_NAME:
                 target = os.path.relpath(
                     detail, root).replace(os.sep, "/")
                 if not target.lower().endswith(".yaml"):

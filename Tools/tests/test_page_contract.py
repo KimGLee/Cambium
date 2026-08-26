@@ -23,6 +23,7 @@ if str(TOOLS) not in sys.path:
 import metadata_execution_contract
 import metadata_property_state
 import project_page_state
+import runtime_paths
 
 COMPOSER = TOOLS / "compose_page_contract.py"
 CHECKER = TOOLS / "check_page_contract.py"
@@ -223,7 +224,7 @@ class PageContractTests(unittest.TestCase):
              "--relationships", str(root / "kernel/relationship-base.yaml"),
              "--sources-role", str(root / "kernel/sources-role-base.yaml"),
              "--profile", "profiles/test-profile",
-             "--output", str(root / "Tools/page_contract.yaml")],
+             "--output", str(root / runtime_paths.PAGE_CONTRACT_ARTIFACT_PATH)],
             text=True, capture_output=True, check=False)
         self.assertEqual(expect, result.returncode,
                          result.stdout + result.stderr)
@@ -233,7 +234,8 @@ class PageContractTests(unittest.TestCase):
         return subprocess.run(
             [sys.executable, str(CHECKER), str(root),
              "--profile", "profiles/test-profile",
-             "--contract", str(root / "Tools/page_contract.yaml"), *args],
+             "--contract",
+             str(root / runtime_paths.PAGE_CONTRACT_ARTIFACT_PATH), *args],
             text=True, capture_output=True, check=False)
 
     def semantic_fingerprint(self, root, relative, text):
@@ -260,16 +262,18 @@ class PageContractTests(unittest.TestCase):
     def test_composition_is_deterministic_and_check_mode_works(self):
         root = self.build(base_files())
         self.compose(root)
-        first = (root / "Tools/page_contract.yaml").read_bytes()
+        artifact = root / runtime_paths.PAGE_CONTRACT_ARTIFACT_PATH
+        first = artifact.read_bytes()
         self.compose(root)
-        self.assertEqual(first, (root / "Tools/page_contract.yaml").read_bytes())
+        self.assertEqual(first, artifact.read_bytes())
         result = subprocess.run(
             [sys.executable, str(COMPOSER), "--root", str(root),
              "--base", str(root / "kernel/applicability-base.yaml"),
              "--relationships", str(root / "kernel/relationship-base.yaml"),
              "--sources-role", str(root / "kernel/sources-role-base.yaml"),
              "--profile", "profiles/test-profile",
-             "--output", str(root / "Tools/page_contract.yaml"), "--check"],
+             "--output",
+             str(root / runtime_paths.PAGE_CONTRACT_ARTIFACT_PATH), "--check"],
             text=True, capture_output=True, check=False)
         self.assertEqual(0, result.returncode,
                          result.stdout + result.stderr)
@@ -288,7 +292,8 @@ class PageContractTests(unittest.TestCase):
              "--relationships", str(root / "kernel/relationship-base.yaml"),
              "--sources-role", str(root / "kernel/sources-role-base.yaml"),
              "--profile", "profiles/test-profile",
-             "--output", str(root / "Tools/page_contract.yaml"), "--check"],
+             "--output",
+             str(root / runtime_paths.PAGE_CONTRACT_ARTIFACT_PATH), "--check"],
             text=True, capture_output=True, check=False)
 
         self.assertEqual(2, result.returncode, result.stdout + result.stderr)

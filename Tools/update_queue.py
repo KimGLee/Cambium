@@ -17,6 +17,7 @@ import time
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import check_queue
 import check_corpus_plan
+import corpus_planning_contract
 import card_activation
 import kblib
 import update_task
@@ -24,12 +25,13 @@ import apply_delta
 import batch_settlement
 import metadata_property_state
 import project_page_state
+import runtime_paths
+import runtime_state_contract
 
 TOOL_VERSION = "1.8.0"
-# The lifecycle map moved to `kblib` so `check_queue` can read it without
-# importing this writer, which imports it.  The name stays here because it is
-# this tool's transition guard and every existing reference reads it here.
-TRANSITIONS = kblib.BATCH_LIFECYCLE_TRANSITIONS
+# Compatibility projection for callers of this writer.  The Kernel-owned K13
+# state model, parsed once by runtime_state_contract, owns every edge.
+TRANSITIONS = runtime_state_contract.BATCH_LIFECYCLE_TRANSITIONS
 
 
 def _emit_json_receipts(receipts):
@@ -188,7 +190,7 @@ def _pre_apply_coverage_restore(result, apply_receipt):
             "%s" % (apply_receipt.get("receipt_id"), manual))
     try:
         archive_path = kblib.managed_repository_path(
-            result["root"], relative, ".cambium/receipts",
+            result["root"], relative, runtime_paths.RECEIPT_ROOT,
             suffixes=(".yaml",), must_exist=True,
         )
         with open(archive_path, encoding="utf-8") as handle:
@@ -235,7 +237,9 @@ def _corpus_plan_close_expectation(result, item):
                 error.get("check"), error.get("target"), error.get("details"))
             for error in plan.get("errors") or []
         ]
-        if "R13" in triggers and plan.get("applicability") != "configured":
+        if (corpus_planning_contract.CLOSE_ROUTE_TRIGGER in triggers and
+                plan.get("applicability") !=
+                corpus_planning_contract.CONFIGURED_STATE):
             plan_errors.append(
                 "R13-selected batch requires Corpus Planning "
                 "applicability.state=configured")
@@ -313,7 +317,7 @@ def _current_delta_gate_receipts(item, result):
     if not _nonempty(delta_path):
         raise ValueError("merge-ready batch has no canonical delta")
     delta = kblib.managed_repository_path(
-        result["root"], delta_path, ".cambium/deltas",
+        result["root"], delta_path, runtime_paths.DELTA_ROOT,
         suffixes=(".yaml",), must_exist=True,
     )
     if kblib.sha256_file(delta) != item.get("delta_sha256"):
@@ -434,7 +438,7 @@ def _project_closed_coverage(coverage, queue, closing_id):
 def _transition_item(item, args, result):
     before = item.get("state")
     after = args.transition or before
-    if before in ("closed", "cancelled"):
+    if before in runtime_state_contract.QUEUE_TERMINAL_STATES:
         raise ValueError("%s item is immutable; create a successor batch" % before)
     if args.transition and after not in TRANSITIONS.get(before, frozenset()):
         raise ValueError("illegal transition %s -> %s" % (before, after))
@@ -532,12 +536,13 @@ def _transition_item(item, args, result):
             raise ValueError("held open batch cannot become merge-ready")
         if not _nonempty(args.delta_path):
             raise ValueError("open -> merge-ready requires --delta-path")
-        expected_delta = ".cambium/deltas/%s.yaml" % item["id"]
+        expected_delta = runtime_paths.child_path(
+            runtime_paths.DELTA_ROOT, "%s.yaml" % item["id"])
         if args.delta_path != expected_delta:
             raise ValueError("delta path must be exactly %s" % expected_delta)
         try:
             delta = kblib.managed_repository_path(
-                result["root"], args.delta_path, ".cambium/deltas",
+                result["root"], args.delta_path, runtime_paths.DELTA_ROOT,
                 suffixes=(".yaml",), must_exist=True,
             )
         except (OSError, ValueError) as exc:
@@ -782,7 +787,8 @@ def _transition_item(item, args, result):
         revalidation_receipts = _current_attempt_revalidation_receipts(
             item, result)
         source_delta = item.get("delta_path")
-        expected_source = ".cambium/deltas/%s.yaml" % item["id"]
+        expected_source = runtime_paths.child_path(
+            runtime_paths.DELTA_ROOT, "%s.yaml" % item["id"])
         if source_delta != expected_source:
             raise ValueError("merge-ready batch has no canonical delta to invalidate")
         # A rollback taken after the delta was applied must additionally undo
@@ -833,10 +839,10 @@ def _transition_item(item, args, result):
             raise ValueError(
                 "--delta-apply-receipt is valid only when rolling back a "
                 "batch whose delta was applied")
-        archive_delta = (
-            ".cambium/receipts/invalidated-deltas/%s-r%d.yaml" %
-            (item["id"], result["queue"].get("state_revision", 0) + 1)
-        )
+        archive_delta = runtime_paths.child_path(
+            runtime_paths.INVALIDATED_DELTA_RECEIPT_ROOT,
+            "%s-r%d.yaml" % (
+                item["id"], result["queue"].get("state_revision", 0) + 1))
         args.delta_archive_move = (source_delta, archive_delta)
         history = item.get("invalidation_history")
         if history is None:
@@ -922,7 +928,9 @@ def main(argv=None):
     parser.add_argument("--id", required=True,
                         help="Required Queue batch id to transition")
     write = parser.add_mutually_exclusive_group(required=True)
-    write.add_argument("--transition", choices=("open", "merge-ready", "closed"),
+    write.add_argument("--transition", choices=tuple(sorted({
+        target for targets in TRANSITIONS.values() for target in targets
+    })),
                        help="target lifecycle state; exclusive with "
                             "--hold-state")
     write.add_argument("--hold-state", choices=tuple(check_queue.HOLDS),
@@ -955,8 +963,9 @@ def main(argv=None):
                         help="confirmation receipt id required by queued -> "
                              "open when the batch is confirmation_required")
     parser.add_argument("--delta-path",
-                        help="repository-relative .cambium/deltas/<id>.yaml "
-                             "batch delta required by open -> merge-ready")
+                        help="repository-relative %s/<id>.yaml "
+                             "batch delta required by open -> merge-ready" %
+                        runtime_paths.DELTA_ROOT)
     parser.add_argument("--delta-apply-receipt",
                         help="apply_delta receipt id required by the closed "
                              "transition and by merge-ready -> open reopen")
@@ -969,8 +978,9 @@ def main(argv=None):
     parser.add_argument("--at", default=None,
                         help="transition timestamp; defaults to now in UTC")
     parser.add_argument("--receipts",
-                        default=".cambium/receipts/queue-transitions.jsonl",
-                        help="receipt JSONL path under .cambium/receipts")
+                        default=runtime_paths.QUEUE_TRANSITION_RECEIPT_PATH,
+                        help="receipt JSONL path under %s" %
+                        runtime_paths.RECEIPT_ROOT)
     parser.add_argument("--apply", action="store_true",
                         help="write the transition; omit for a dry run")
     parser.add_argument(
@@ -1066,7 +1076,7 @@ def _run(args, produced):
     root = os.path.realpath(os.path.abspath(args.root))
     try:
         coverage_path = kblib.managed_repository_path(
-            root, check_queue.COVERAGE_PATH, ".cambium/state",
+            root, check_queue.COVERAGE_PATH, runtime_paths.STATE_ROOT,
             suffixes=(".yaml",), must_exist=True,
         )
         with open(coverage_path, encoding="utf-8") as fh:
@@ -1262,11 +1272,11 @@ def _run(args, produced):
         receipt["after_progress_sha256"] = after_progress_sha
         receipt["queue_revision"] = queue_new["queue_revision"]
         receipt_path = kblib.managed_repository_path(
-            root, args.receipts, ".cambium/receipts",
+            root, args.receipts, runtime_paths.RECEIPT_ROOT,
             suffixes=(".jsonl",), must_exist=False,
         )
         task_receipt_path = (kblib.managed_repository_path(
-            root, update_task.RECEIPT_PATH, ".cambium/receipts",
+            root, update_task.RECEIPT_PATH, runtime_paths.RECEIPT_ROOT,
             suffixes=(".jsonl",), must_exist=False,
         ) if task_receipt is not None else None)
     except (OSError, TypeError, ValueError, kblib.YamlSubsetError) as exc:
@@ -1347,7 +1357,7 @@ def _run(args, produced):
             with kblib.no_authoritative_write_guard(lock):
                 queue_path = result["queue_path"]
                 progress_path = kblib.managed_repository_path(
-                    root, check_queue.PROGRESS_PATH, ".cambium/state",
+                    root, check_queue.PROGRESS_PATH, runtime_paths.STATE_ROOT,
                     suffixes=(".yaml",), must_exist=True,
                 )
                 with open(queue_path, encoding="utf-8") as fh:
@@ -1468,7 +1478,7 @@ def _run(args, produced):
                         raise ValueError(
                             "batch is no longer the validated open item")
                     locked_delta_path = kblib.managed_repository_path(
-                        root, args.delta_path, ".cambium/deltas",
+                        root, args.delta_path, runtime_paths.DELTA_ROOT,
                         suffixes=(".yaml",), must_exist=True)
                     with open(locked_delta_path, encoding="utf-8") as handle:
                         locked_delta_text = handle.read()
@@ -1560,11 +1570,11 @@ def _run(args, produced):
                         root, authority,
                         "runtime authority changed before delta archival")
                     source_delta = kblib.managed_repository_path(
-                        root, delta_move[0], ".cambium/deltas",
+                        root, delta_move[0], runtime_paths.DELTA_ROOT,
                         suffixes=(".yaml",), must_exist=True,
                     )
                     archive_delta = kblib.managed_repository_path(
-                        root, delta_move[1], ".cambium/receipts",
+                        root, delta_move[1], runtime_paths.RECEIPT_ROOT,
                         suffixes=(".yaml",), must_exist=False,
                     )
                     if os.path.lexists(archive_delta):

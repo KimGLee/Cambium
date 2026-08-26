@@ -1,6 +1,6 @@
 # Source Policy
 
-Interface: [Source Policy slot](../../README.md#source-policy-slot)
+Interface: [Kernel-owned Profile interface](../../../kernel/K00%20Standards%20Control/19%20Profile%20Extension%20Interface.md) — Source Policy slot
 
 ## Source Authority
 
@@ -11,7 +11,7 @@ Interface: [Source Policy slot](../../README.md#source-policy-slot)
 
 ## Verification Entry Points
 
-| Bounded claim class | Registered Source ID | Verifier command, path, URL, or procedure | Version pin or freshness window |
+| Bounded claim class | Registered Source ID | Stable verifier capability, evidence source, or semantic review criterion | Version pin or freshness window |
 |---|---|---|---|
 | A claim about a router setting's default value. | `router-vendor-docs` | Open the manual revision named in the note and read the settings table for that field. | Re-check when the manual revision on the vendor site differs from the one recorded. |
 | A claim about what is currently running at home. | `device-observation` | Log in to the device and read the status screen named in the note. | 180 days. |

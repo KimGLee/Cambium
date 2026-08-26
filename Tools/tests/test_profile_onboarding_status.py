@@ -36,6 +36,10 @@ import metadata_execution_contract  # noqa: E402
 import scaffold_profile  # noqa: E402
 import standards_state  # noqa: E402
 import test_template_fill  # noqa: E402  (reused semantic fill + scan config)
+from canonical_registry_fixture import (  # noqa: E402
+    KERNEL_MACHINE_REGISTRY_PATHS,
+    install_isolated_tool_registry_bundle,
+)
 
 # Extra root-owned inputs used by this onboarding fixture outside the
 # canonical profile-load set.  The canonical set itself is derived below from
@@ -66,7 +70,14 @@ def profile_load_fixture_files():
 
 def copy_profile_load_fixture(root):
     """Copy the producer's closed input set into one minimal adopting root."""
+    # The subprocess may import copied production modules whose import-time
+    # machine authorities extend beyond the profile-load snapshot itself.
+    # Install that closed Kernel bundle once, then add non-Kernel producer
+    # inputs below.
+    install_isolated_tool_registry_bundle(root)
     for relative in profile_load_fixture_files():
+        if relative in KERNEL_MACHINE_REGISTRY_PATHS:
+            continue
         target = Path(root) / relative
         target.parent.mkdir(parents=True, exist_ok=True)
         shutil.copyfile(REPOSITORY / relative, target)

@@ -20,12 +20,42 @@ import time
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import check_queue
 import kblib
+import profile_contract
+import runtime_paths
+import runtime_state_contract
 
 TOOL = "init_state"
 TOOL_VERSION = "1.4.0"
-RUNTIME_DIRS = (
-    "state", "work_specs", "deltas", "receipts", "reports", "tmp",
-)
+RUNTIME_DIRS = runtime_paths.TASK_RUNTIME_DIRECTORIES
+
+_STATE_DOCUMENT_PATH_BY_NAME = {
+    os.path.basename(path): path
+    for path in (
+        runtime_paths.COVERAGE_PATH,
+        runtime_paths.QUEUE_PATH,
+        runtime_paths.PROGRESS_PATH,
+    )
+}
+_STATE_DOCUMENT_NAMES = frozenset(_STATE_DOCUMENT_PATH_BY_NAME)
+_QUEUE_DOCUMENT_NAME = os.path.basename(runtime_paths.QUEUE_PATH)
+
+
+def _runtime_namespace_path(runtime, repository_path):
+    """Map a registered ``.cambium`` path into a staged/runtime root."""
+    prefix = runtime_paths.RUNTIME_ROOT + "/"
+    if (not isinstance(repository_path, str) or
+            not repository_path.startswith(prefix)):
+        raise ValueError(
+            "runtime namespace projection requires a path below %s" %
+            runtime_paths.RUNTIME_ROOT)
+    relative = repository_path[len(prefix):]
+    return os.path.join(runtime, *relative.split("/"))
+
+
+def _runtime_relative_path(repository_path):
+    """Return one registered runtime path relative to ``.cambium``."""
+    projected = _runtime_namespace_path("", repository_path)
+    return projected.lstrip(os.sep)
 
 
 def _rename_noreplace(source, destination):
@@ -104,15 +134,18 @@ def _existing_runtime_summary(root):
     """
     try:
         queue_path = kblib.managed_repository_path(
-            root, ".cambium/state/required_queue.yaml", ".cambium/state",
+            root, runtime_paths.QUEUE_PATH,
+            runtime_paths.roots_for(runtime_paths.CANONICAL_STATE)[1],
             suffixes=(".yaml",), must_exist=True,
         )
         progress_path = kblib.managed_repository_path(
-            root, ".cambium/state/progress_ledger.yaml", ".cambium/state",
+            root, runtime_paths.PROGRESS_PATH,
+            runtime_paths.roots_for(runtime_paths.CANONICAL_STATE)[1],
             suffixes=(".yaml",), must_exist=True,
         )
         coverage_path = kblib.managed_repository_path(
-            root, ".cambium/state/coverage_ledger.yaml", ".cambium/state",
+            root, runtime_paths.COVERAGE_PATH,
+            runtime_paths.roots_for(runtime_paths.CANONICAL_STATE)[1],
             suffixes=(".yaml",), must_exist=True,
         )
         queue = kblib.load_yaml_file(queue_path)
@@ -124,8 +157,7 @@ def _existing_runtime_summary(root):
         contract = progress.get("contract")
         if not isinstance(contract, dict):
             raise ValueError("Progress contract is not a mapping")
-        for field in ("task_id", "scope_version", "standards_version",
-                      "selected_profile_manifest"):
+        for field in runtime_state_contract.RUNTIME_CONTROL_IDENTITY_FIELDS:
             progress_value = (progress.get(field) if field == "task_id" else
                               contract.get(field))
             values = (queue.get(field), coverage.get(field), progress_value)
@@ -181,9 +213,11 @@ def _create_publication_lock(staging, operation):
     """Place a cooperating-writer lock inside a not-yet-public runtime."""
     if not isinstance(operation, dict):
         raise ValueError("initialization lock operation must be a mapping")
-    lock_path = os.path.join(staging, "tmp", "state-writer.lock")
+    lock_path = _runtime_namespace_path(
+        staging, runtime_paths.STATE_WRITER_LOCK_PATH)
     os.mkdir(lock_path, 0o700)
-    owner_path = os.path.join(lock_path, "owner.json")
+    owner_path = _runtime_namespace_path(
+        staging, runtime_paths.STATE_WRITER_OWNER_PATH)
     owner = {
         "lock_name": "state-writer",
         "pid": os.getpid(),
@@ -202,10 +236,13 @@ def _create_publication_lock(staging, operation):
 
 def _publication_lock_paths(runtime, expected_operation):
     """Return the lock paths only when its full operation still matches."""
-    lock_path = os.path.join(runtime, "tmp", "state-writer.lock")
-    owner_path = os.path.join(lock_path, "owner.json")
+    lock_path = _runtime_namespace_path(
+        runtime, runtime_paths.STATE_WRITER_LOCK_PATH)
+    owner_path = _runtime_namespace_path(
+        runtime, runtime_paths.STATE_WRITER_OWNER_PATH)
     names = sorted(os.listdir(lock_path))
-    if names != ["owner.json"]:
+    expected_names = [os.path.basename(runtime_paths.STATE_WRITER_OWNER_PATH)]
+    if names != expected_names:
         raise ValueError(
             "initialization lock changed before release: %s" % names)
     owner_stat = os.lstat(owner_path)
@@ -229,7 +266,8 @@ def _remove_publication_lock(runtime, expected_operation):
         runtime, expected_operation)
     os.unlink(owner_path)
     os.rmdir(lock_path)
-    _fsync_directory(os.path.join(runtime, "tmp"))
+    _fsync_directory(_runtime_namespace_path(
+        runtime, runtime_paths.TRANSIENT_ROOT))
 
 
 def publish_runtime(root, documents, *, pre_publish_validator=None,
@@ -261,25 +299,24 @@ def publish_runtime(root, documents, *, pre_publish_validator=None,
                 "validated publication requires lock_operation metadata")
     elif lock_operation is not None:
         raise ValueError("lock_operation requires publication validators")
-    runtime = os.path.join(root, ".cambium")
+    runtime = os.path.join(root, runtime_paths.RUNTIME_ROOT)
     if os.path.lexists(runtime):
         raise FileExistsError(
-            ".cambium already exists; refusing to overwrite even an empty namespace"
+            "%s already exists; refusing to overwrite even an empty namespace"
+            % runtime_paths.RUNTIME_ROOT
         )
-    expected = {
-        "coverage_ledger.yaml", "required_queue.yaml", "progress_ledger.yaml"
-    }
-    if set(documents) != expected:
+    if set(documents) != _STATE_DOCUMENT_NAMES:
         raise ValueError("runtime initialization requires exactly the three state files")
 
-    staging = tempfile.mkdtemp(prefix=".cambium-init-", dir=root)
+    staging = tempfile.mkdtemp(
+        prefix=runtime_paths.RUNTIME_ROOT + "-init-", dir=root)
     published = False
     try:
         for directory in RUNTIME_DIRS:
             os.makedirs(os.path.join(staging, directory), exist_ok=False)
-        state_dir = os.path.join(staging, "state")
         for name, text in documents.items():
-            target = os.path.join(state_dir, name)
+            target = _runtime_namespace_path(
+                staging, _STATE_DOCUMENT_PATH_BY_NAME[name])
             kblib.atomic_write_text(
                 target, text, validator=kblib.parse_yaml_subset
             )
@@ -322,39 +359,48 @@ def publish_runtime(root, documents, *, pre_publish_validator=None,
 
 def _governance_only_namespace_errors(root):
     """Return errors when an existing namespace is not pre-runtime state."""
-    runtime = os.path.join(root, ".cambium")
+    runtime = os.path.join(root, runtime_paths.RUNTIME_ROOT)
     if not os.path.lexists(runtime):
         return []
     if os.path.islink(runtime) or not os.path.isdir(runtime):
-        return [".cambium must be a real directory"]
+        return ["%s must be a real directory" % runtime_paths.RUNTIME_ROOT]
     allowed = {
-        "governance": {"standards_state.yaml"},
-        "receipts": {"standards-adoptions.jsonl"},
+        os.path.basename(runtime_paths.GOVERNANCE_ROOT): {
+            os.path.basename(runtime_paths.ACTIVE_STANDARDS_PATH)},
+        os.path.basename(runtime_paths.RECEIPT_ROOT): {
+            os.path.basename(runtime_paths.STANDARDS_ADOPTION_RECEIPT_PATH)},
+        os.path.basename(runtime_paths.DERIVED_ROOT): {
+            os.path.basename(runtime_paths.VOCAB_ARTIFACT_PATH),
+            os.path.basename(runtime_paths.PAGE_CONTRACT_ARTIFACT_PATH)},
     }
     errors = []
-    if not os.path.isfile(os.path.join(
-            runtime, "governance", "standards_state.yaml")):
+    if not os.path.isfile(_runtime_namespace_path(
+            runtime, runtime_paths.ACTIVE_STANDARDS_PATH)):
         errors.append(
-            "pre-runtime .cambium must contain governance/standards_state.yaml")
+            "pre-runtime %s must contain %s" % (
+                runtime_paths.RUNTIME_ROOT,
+                _runtime_relative_path(runtime_paths.ACTIVE_STANDARDS_PATH),
+            ))
     for name in sorted(os.listdir(runtime)):
         path = os.path.join(runtime, name)
         if name not in allowed:
-            errors.append("pre-runtime .cambium contains %s" % name)
+            errors.append("pre-runtime %s contains %s" %
+                          (runtime_paths.RUNTIME_ROOT, name))
             continue
         if os.path.islink(path) or not os.path.isdir(path):
-            errors.append("pre-runtime .cambium/%s must be a real directory" %
-                          name)
+            errors.append("pre-runtime %s/%s must be a real directory" %
+                          (runtime_paths.RUNTIME_ROOT, name))
             continue
         entries = set(os.listdir(path))
         unexpected = sorted(entries - allowed[name])
         for entry in unexpected:
-            errors.append("pre-runtime .cambium/%s contains %s" %
-                          (name, entry))
+            errors.append("pre-runtime %s/%s contains %s" %
+                          (runtime_paths.RUNTIME_ROOT, name, entry))
         for entry in sorted(entries & allowed[name]):
             target = os.path.join(path, entry)
             if os.path.islink(target) or not os.path.isfile(target):
-                errors.append("pre-runtime .cambium/%s/%s must be a regular "
-                              "file" % (name, entry))
+                errors.append("pre-runtime %s/%s/%s must be a regular file" %
+                              (runtime_paths.RUNTIME_ROOT, name, entry))
     return errors
 
 
@@ -365,24 +411,36 @@ def publish_runtime_into_governance_namespace(
     errors = _governance_only_namespace_errors(root)
     if errors:
         raise FileExistsError("; ".join(errors))
-    runtime = os.path.join(root, ".cambium")
-    expected = {
-        "coverage_ledger.yaml", "required_queue.yaml", "progress_ledger.yaml"
-    }
-    if set(documents) != expected:
+    runtime = os.path.join(root, runtime_paths.RUNTIME_ROOT)
+    if set(documents) != _STATE_DOCUMENT_NAMES:
         raise ValueError(
             "runtime initialization requires exactly the three state files")
-    staging = tempfile.mkdtemp(prefix=".cambium-init-", dir=root)
+    staging = tempfile.mkdtemp(
+        prefix=runtime_paths.RUNTIME_ROOT + "-init-", dir=root)
     moved = []
-    publish_dirs = ["tmp", "state", "work_specs", "deltas", "reports"]
-    if not os.path.lexists(os.path.join(runtime, "receipts")):
-        publish_dirs.append("receipts")
+    # A governance-only namespace is already public. Publish the writer lock
+    # before any task state, matching the pre-registry transaction ordering.
+    publication_roots = (
+        runtime_paths.TRANSIENT_ROOT,
+        runtime_paths.STATE_ROOT,
+        runtime_paths.WORK_SPEC_ROOT,
+        runtime_paths.DELTA_ROOT,
+        runtime_paths.REPORT_ROOT,
+        runtime_paths.RECEIPT_ROOT,
+    )
+    publication_dirs = tuple(
+        _runtime_relative_path(directory) for directory in publication_roots)
+    publish_dirs = [
+        directory for directory in publication_dirs
+        if not os.path.lexists(os.path.join(runtime, directory))
+    ]
     publish_dirs = tuple(publish_dirs)
     try:
         for directory in publish_dirs:
             os.makedirs(os.path.join(staging, directory), exist_ok=False)
         for name, text in documents.items():
-            target = os.path.join(staging, "state", name)
+            target = _runtime_namespace_path(
+                staging, _STATE_DOCUMENT_PATH_BY_NAME[name])
             kblib.atomic_write_text(
                 target, text, validator=kblib.parse_yaml_subset)
         pre_publish_validator()
@@ -502,10 +560,7 @@ def _profile_configuration(root, manifest_relative, explicit_cap, *,
         root, manifest_relative, explicit_cap,
         authorized_profile_view=view)
     evidence = check_queue.public_profile_load_evidence(view)
-    for field in (
-            "selected_profile_manifest", "profile_snapshot_sha256",
-            "profile_contract_fingerprint",
-            "profile_load_inputs_sha256"):
+    for field in profile_contract.PROFILE_LOAD_EVIDENCE_FIELDS:
         if (expected_evidence is not None and
                 evidence.get(field) != expected_evidence.get(field)):
             raise ValueError(
@@ -524,8 +579,8 @@ def _profile_configuration(root, manifest_relative, explicit_cap, *,
 
 
 def build_documents(args):
-    if getattr(args, "completion_semantics", None) not in (
-            "build", "maintenance"):
+    if (getattr(args, "completion_semantics", None) not in
+            runtime_state_contract.COMPLETION_SEMANTICS):
         raise ValueError(
             "completion_semantics must be explicitly build or maintenance"
         )
@@ -572,7 +627,7 @@ def build_documents(args):
         "task_id": args.task_id,
         "task_state": "planned",
         "task_transition_receipts": [],
-        "required_queue_path": ".cambium/state/required_queue.yaml",
+        "required_queue_path": runtime_paths.QUEUE_PATH,
         "queue_revision": 1,
         "queue_state_revision": 0,
         "required_queue_sha256": kblib.sha256_bytes(queue_text),
@@ -635,9 +690,11 @@ def build_documents(args):
         "guidance_queue": [],
     }
     return {
-        "coverage_ledger.yaml": kblib.canonical_yaml(coverage),
-        "required_queue.yaml": queue_text,
-        "progress_ledger.yaml": kblib.canonical_yaml(progress),
+        os.path.basename(runtime_paths.COVERAGE_PATH):
+            kblib.canonical_yaml(coverage),
+        _QUEUE_DOCUMENT_NAME: queue_text,
+        os.path.basename(runtime_paths.PROGRESS_PATH):
+            kblib.canonical_yaml(progress),
     }
 
 
@@ -667,7 +724,7 @@ def main(argv=None):
                              "the Progress Ledger contract")
     parser.add_argument(
         "--completion-semantics", required=True,
-        choices=("build", "maintenance"),
+        choices=tuple(sorted(runtime_state_contract.COMPLETION_SEMANTICS)),
         help=("build requires completion-candidate plus Terminal Proof; "
               "maintenance closes directly through the bounded maintenance "
               "completion gate"),
@@ -682,7 +739,8 @@ def main(argv=None):
     parser.add_argument("--at", default=None,
                         help="initial Coverage timestamp (default: current UTC)")
     parser.add_argument("--apply", action="store_true",
-                        help="materialize .cambium/; omit for a dry run")
+                        help="materialize %s/; omit for a dry run" %
+                        runtime_paths.RUNTIME_ROOT)
     args = parser.parse_args(argv)
 
     root = os.path.realpath(os.path.abspath(args.root))
@@ -721,14 +779,15 @@ def main(argv=None):
         print("[FAIL] cannot admit selected Profile: %s" % exc)
         return 1
 
-    runtime = os.path.join(root, ".cambium")
-    task_state = os.path.join(runtime, "state")
+    runtime = os.path.join(root, runtime_paths.RUNTIME_ROOT)
+    task_state = os.path.join(root, runtime_paths.STATE_ROOT)
     governance_only = os.path.lexists(runtime) and not os.path.lexists(
         task_state)
     namespace_errors = (_governance_only_namespace_errors(root)
                         if governance_only else [])
     if os.path.lexists(task_state) or namespace_errors:
-        _report_existing_runtime(root, ".cambium already exists")
+        _report_existing_runtime(
+            root, "%s already exists" % runtime_paths.RUNTIME_ROOT)
         for error in namespace_errors:
             print("[FAIL] %s" % error)
         return 1
@@ -745,9 +804,9 @@ def main(argv=None):
 
     print("initialization plan:")
     for directory in RUNTIME_DIRS:
-        print("  .cambium/%s/" % directory)
+        print("  %s/%s/" % (runtime_paths.RUNTIME_ROOT, directory))
     for name in documents:
-        print("  .cambium/state/%s" % name)
+        print("  %s" % _STATE_DOCUMENT_PATH_BY_NAME[name])
     print("  Required Queue items: 0 (no work inferred)")
     print("  objective=%s" % args.objective)
     print("  exclusions=%s" % (", ".join(args.exclusions) or "none"))
@@ -756,7 +815,7 @@ def main(argv=None):
           (args.concurrency_cap, concurrency_cap_source))
     print("queue_revision=1 state_revision=0")
     print("required_queue_sha256=%s" %
-          kblib.sha256_bytes(documents["required_queue.yaml"]))
+          kblib.sha256_bytes(documents[_QUEUE_DOCUMENT_NAME]))
     if not args.apply:
         print("dry run; add --apply to create the runtime state")
         return 0
@@ -789,7 +848,7 @@ def main(argv=None):
         "active_standards_sha256":
             active_standards_view["active_standards_sha256"],
         "planned_required_queue_sha256":
-            kblib.sha256_bytes(documents["required_queue.yaml"]),
+            kblib.sha256_bytes(documents[_QUEUE_DOCUMENT_NAME]),
     }
     try:
         publisher = (publish_runtime_into_governance_namespace

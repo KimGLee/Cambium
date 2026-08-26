@@ -1,50 +1,5 @@
-# Structure Registry — structural units (K01/05) and support layers (K01/06).
-# Interface: profiles/README.md#Structure-Registry-Slot
-# Shape is validated by Tools/check_profile.py; vault resolution (paths,
-# headings, parent graph, Global Map and Coverage references) is validated by
-# Tools/check_structure.py against the adopting repository.
-#
-# This slot ships in its inactive branch. A flat corpus registers no hollow
-# units merely to fill the table; configure the slot later, through ordinary
-# Standards adoption, when a directory first carries a responsibility that is
-# built, maintained, or audited independently. See
-# profiles/examples/agent-atlas/ for the configured branch. The shapes below
-# are the complete reference for that branch — read them when you open it.
-#
-# applicability.state: configured | not-applicable
-#   configured     -> null reason, at least one unit.
-#   not-applicable -> nonempty reason, empty units and support_layers.
-#
-# Each unit:
-#   id: stable unique unit ID            kind: domain | module
-#   parent: null for domain; an existing unit id for module
-#   root: repository-relative directory, no trailing slash
-#   entry: {path: canonical entry page, expected_type: registered type or null}
-#   global_map_entry: Global Map entry ID, or null when Corpus Planning is
-#     not configured or the unit is not a registered Global Map entry
-#   roles: sequence / coverage / quick_reference / expression — each declares
-#     exactly one mode with that mode's required keys (K01/05):
-#       {mode: embedded, path: ..., heading: ...}
-#       {mode: standalone, path: ...}
-#       {mode: derived, generator: ..., inputs_owner: ...}
-#         (derived MAY add path/heading naming its embedded rendering target)
-#       {mode: not-applicable, reason: ...}
-#
-# Each support layer (K01/06):
-#   layer_id: Layer ID registered by Profile Scope
-#   role: cases | sources | synthesis | expression
-#   root, entry, global_map_entry: as for units
-#   layout: flat | grouped
-#   taxonomy: null when flat; when grouped:
-#     {axis: ..., page_field: ..., classes: [{class: ..., directory: ...}]}
-#   coverage: a role mapping as above
-#   bindings, by role:
-#     cases      -> {evidence_binding_owner: ...}
-#     sources    -> {authority_taxonomy_ref: ..., intake_policy_ref: ...,
-#                    freshness_policy_ref: ..., index_mode: derived | none}
-#     synthesis  -> {question_identity_field: ..., promotion_policy_ref: ...}
-#     expression -> {artifact_registry_ref: ..., preparation_route_ref: ...,
-#                    readiness_projection: <role mapping>}
+# Candidate instance values for the Structure Registry slot. The Kernel-owned
+# Profile interface and K01/05-K01/06 define the common shape and semantics.
 
 schema_version: 1
 

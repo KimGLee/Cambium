@@ -41,7 +41,10 @@ Where:
 
 - `scope_reconciled`: the Coverage Ledger is reconciled against the file system, scope, and exclusions.
 - `guidance_reconciled`: all accepted guidance has been mapped, verified, explicitly deferred, or superseded by later guidance; no unclassified, accepted-but-unmapped, or implemented-but-unverified items exist.
-- `remaining_required_work_units = 0`: `Tools/check_queue.py . --require-complete` passes against the frozen Queue, every Required work unit is `closed`, and any retained `cancelled` history has a matching scope or disposition Amendment so that it no longer represents Required work.
+- `remaining_required_work_units = 0`: `required-queue-completion` passes
+  against the frozen Queue, every Required work unit is `closed`, and any
+  retained `cancelled` history has a matching scope or disposition Amendment
+  showing that it no longer represents Required work.
 - `required_authoring_gaps = 0`: all Required pages have reached the target authoring state, or their disposition has been changed with explicit authorization.
 - `unverified_batches = 0`: no batch exists that was only written but not accepted.
 - `unresolved_invalidations = 0`: all Required receipts invalidated by content, dependency, contract, Standards, review due, or systemic issues have been re-verified, superseded, or had their disposition changed with authorization.
@@ -58,7 +61,7 @@ The user MAY pause or cancel the task before the Completion Gate, but that actio
 For `completion_semantics: maintenance`, the Task Contract instead selects the
 bounded predicate in [[kernel/K00 Standards Control/06 Completion Precedence and Task Contract#Maintenance Completion|K00/06]]. The task MUST NOT enter
 `completion-candidate`, combine R08, or produce Terminal Proof. When persistent
-state applies, K13/12 owns the maintenance gate and `update_task.py` consumes
+state applies, K13/12 owns the maintenance Gate and the registered task-state transaction consumes
 its pass. A direct `planned -> complete` edge is limited to a nonempty Queue
 whose batches were all validly cancelled before any opened; otherwise closure
 starts from `active`. After interruption, reuse a passed gate only when resume

@@ -103,7 +103,8 @@ def manifest_lists():
 def template_files():
     return sorted(
         path.relative_to(TEMPLATE).as_posix()
-        for path in TEMPLATE.rglob("*") if path.is_file())
+        for path in TEMPLATE.rglob("*")
+        if path.is_file() and path.name != ".DS_Store")
 
 
 def candidate_files(destination):
@@ -147,8 +148,9 @@ class DryRun(unittest.TestCase):
             self.assertIn("dry run", out)
             self.assertIn("profiles/%s/profile.md" % PROFILE_ID, out)
             self.assertIn("README.md", out)
-            self.assertIn("--config profiles/%s/scan-configs" % PROFILE_ID,
-                          out)
+            self.assertIn(
+                "profiles/%s/scan-configs/residual-scan.yaml" % PROFILE_ID,
+                out)
 
     def test_dry_run_json_reports_the_structured_plan(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -366,7 +368,7 @@ class MechanicalRewrites(unittest.TestCase):
             scans = (candidate / "registries" / "registered-scans.md"
                      ).read_text(encoding="utf-8")
             self.assertIn(
-                "--config profiles/%s/scan-configs/residual-scan.yaml"
+                "profiles/%s/scan-configs/residual-scan.yaml"
                 % PROFILE_ID, scans)
             dimensions = (candidate / "registries" / "audit-dimensions.md"
                           ).read_text(encoding="utf-8")
@@ -392,10 +394,12 @@ class MechanicalRewrites(unittest.TestCase):
             deltas = {name: before[name] - after[name]
                       for name in copy if before[name] != after[name]}
             # profile_id: -1.  audit-dimensions: the two predicate-owner
-            # cells: -2.  registered-scans: three semantic cells stay, the
-            # scan-id inside the derived command stays semantic: net 0.
+            # cells: -2.  The registered-scan configuration reference is a
+            # stable package-local path in the template, so materializing its
+            # repository-relative form removes no semantic sentinel.
             self.assertEqual(
-                {"profile.md": 1, "registries/audit-dimensions.md": 2},
+                {"profile.md": 1,
+                 "registries/audit-dimensions.md": 2},
                 deltas)
 
     def test_check_profile_fails_with_sentinel_findings_only(self):
@@ -470,10 +474,8 @@ class SemanticFillEndToEnd(unittest.TestCase):
 
             # Post-scaffold forms of the anchors skipped above: the two
             # judgment-item IDs and the scan row's remaining semantic cells.
-            command = ("`python3 Tools/check_residual_content.py . "
-                       "--scan-id TODO(profile) --config "
-                       "profiles/%s/scan-configs/residual-scan.yaml "
-                       "--time-limit 55`" % PROFILE_ID)
+            config_reference = (
+                "`profiles/%s/scan-configs/residual-scan.yaml`" % PROFILE_ID)
             post_fill = (
                 ("registries/audit-dimensions.md",
                  "| TODO(profile) | `coverage_and_integration`",
@@ -481,13 +483,14 @@ class SemanticFillEndToEnd(unittest.TestCase):
                  % PROFILE_ID),
                 ("registries/registered-scans.md",
                  "| TODO(profile) | `K12/09 item 6 — residual-content scan` "
-                 "| TODO(profile) | %s | TODO(profile) | TODO(profile) |"
-                 % command,
+                 "| TODO(profile) | `residual-content-scan-v1` | %s "
+                 "| TODO(profile) | TODO(profile) |" % config_reference,
                  "| `{pid}-scratch-residuals` | `K12/09 item 6 — "
-                 "residual-content scan` | Run from the vault root, passed "
-                 "as `.`; the profile-owned configuration accepts "
+                 "residual-content scan` | Run from the vault root; the "
+                 "profile-owned configuration accepts "
                  "`Notes/Daily Log` as the only root where dated-scratch "
-                 "structure belongs. | {command} | A Markdown file outside "
+                 "structure belongs. | `residual-content-scan-v1` | "
+                 "{config_reference} | A Markdown file outside "
                  "`Notes/Daily Log` is a candidate when it declares "
                  "`type: daily-log`, carries a `Daily Log Entry` heading, "
                  "or carries at least two distinct dated-scratch sorting "
@@ -495,9 +498,7 @@ class SemanticFillEndToEnd(unittest.TestCase):
                  "`{pid}-residual-disposition`. "
                  "| `{pid}-residual-disposition` |".format(
                      pid=PROFILE_ID,
-                     command=command.replace(
-                         "--scan-id TODO(profile)",
-                         "--scan-id %s-scratch-residuals" % PROFILE_ID))),
+                     config_reference=config_reference)),
             )
             for relative, old, new in post_fill:
                 path = candidate / relative

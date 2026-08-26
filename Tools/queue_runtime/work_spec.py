@@ -12,13 +12,15 @@ import re
 from pathlib import Path
 
 import kblib
+import runtime_paths
+import work_spec_contract
 
 from queue_runtime.canon import SHA256_RE
 from queue_runtime.primitives import nonempty_string
 
 
-WORK_SPEC_PREFIX = ".cambium/work_specs"
-WORK_SPEC_FIELDS = frozenset(("work_spec_path", "work_spec_sha256"))
+WORK_SPEC_PREFIX = runtime_paths.WORK_SPEC_ROOT
+WORK_SPEC_FIELDS = work_spec_contract.WORK_SPEC_BINDING_FIELDS
 WORK_SPEC_TOP_LEVEL_FIELDS = frozenset((
     "schema_version", "batch_id", "manifest", "outcomes", "instructions",
     "acceptance_conditions", "constraints",
@@ -38,8 +40,7 @@ WORK_SPEC_CONSTRAINT_FIELDS = frozenset((
 WORK_SPEC_QUEUE_OWNED_FIELDS = frozenset((
     "id", "family", "order", "record_count", "source_route",
     "execution_mode", "depends_on", "confirmation_required", "state",
-    "lifecycle", "hold", "hold_state", "work_spec_path",
-    "work_spec_sha256", "opened_at", "activation_receipt",
+    "lifecycle", "hold", "hold_state", "opened_at", "activation_receipt",
     "confirmation_receipt", "merge_ready_at", "delta_path",
     "delta_sha256", "closed_at", "queue_consistency_receipt",
     "close_gate_receipt", "delta_apply_receipt", "cancelled_at",
@@ -47,7 +48,7 @@ WORK_SPEC_QUEUE_OWNED_FIELDS = frozenset((
     "invalidation_history",
     "queue_revision", "state_revision", "revision", "receipts",
     "transition_receipts", "batch_receipts", "revalidation_receipts",
-))
+)).union(WORK_SPEC_FIELDS)
 WORK_SPEC_RECORD_ID_RE = re.compile(
     r"[A-Za-z][A-Za-z0-9]*(?:[-_][A-Za-z0-9]+)*\Z"
 )

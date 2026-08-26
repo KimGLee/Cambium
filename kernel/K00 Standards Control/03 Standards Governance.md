@@ -9,13 +9,13 @@
 This page owns governance rules only. It MUST NOT carry an adopter's current
 version/Profile values or a chronological adoption register.
 
-The canonical current adopter identity is the closed restricted-YAML document
-`.cambium/governance/standards_state.yaml`, whose schema is shipped at
-`Tools/schemas/standards_state.template.yaml`. It records exactly one current
-version, approval status, effective date, selected Profile manifest, upstream
-identity, state revision, and latest adoption receipt. Its absence means the
-public distribution or an uninstantiated adopter; content tasks cannot freeze
-a Task Contract until the initial R09 transaction creates it.
+The adopter-owned runtime state stores exactly one current Standards/Profile
+identity under the stable `standards-state` schema contract: version, approval
+status, effective date, selected Profile identity, upstream identity, state
+revision, and latest adoption evidence. Kernel owns the meaning and required
+invariants of that identity, not its physical path or current values. A content
+task cannot freeze a Task Contract until an authorized adoption has established
+the identity.
 
 The canonical history is the append-only Standards-adoption receipt stream.
 Each adoption receipt binds its plan, before/after identity, upstream
@@ -41,33 +41,30 @@ When modifying rules, you MUST:
    Kernel page or Card.
 5. For every existing affected runtime task, publish the changed-predicate input required by [[kernel/K12 Quality Assurance/10 Standards Version Adoption|K12/10]]. R09 owns the governance revision; R07 later executes or resumes the active-task adoption through the sole K13/15 writer. An empty changed-predicate list takes K12/10's no-predicate-change branch rather than bypassing state synchronization.
 
-For an active-task adoption, the restricted-YAML adoption plan is the canonical
-machine revision record. It binds deterministic after snapshots of the whole
-`kernel/` tree and selected Profile directory and the exact current Standards
-state before-image. The after Profile MUST pass `profile-load`; because that
-Gate closes every Profile-owned dependency inside the directory, the directory
-snapshot binds the resolved dependency bytes and the Gate's contract
-fingerprint binds their typed ownership edges. Its changed-predicate rows are
-the machine-consumed list. The single-writer transaction advances the adopter
-state, task Ledgers, and append-only adoption receipts as one state change.
+For an active-task adoption, one machine-readable adoption plan is the
+canonical revision input. It binds the exact before identity, deterministic
+after snapshots, and the changed predicates. The candidate Profile MUST pass
+the `profile-load` Gate. The stable `standards-adoption` transaction capability
+then advances the affected adopter state and appends adoption evidence as one
+controlled state change. This page specifies the observable invariants; the
+transaction algorithm, storage layout, locking, and recovery procedure belong
+to the capability implementation.
 
 User approval of the Standards does not equal approval of an immediate bulk Frontmatter migration of all legacy pages. The migration scope still needs to enter a specific task contract.
 
-## Revision Write-back Checklist
+## Revision Closure Contract
 
-Before any Standards revision closes, the following snapshot locations MUST be checked and synchronized; a revision MUST NOT close with write-back incomplete. A revision with no predicate change checks only the locations involving the actually modified Standards files. If an existing runtime task is affected, its separate agent-readable adoption plan and controlled state transaction are still required by K12/10; a prose report is never a substitute:
+A Standards revision closes only when all changed semantic owners, registered
+machine contracts, and affected non-authoritative projections agree with the
+candidate revision. A projection may be regenerated or invalidated, but it may
+not become a second source of the rule. A revision that changes a Gate's
+observable accept or reject behavior also changes the registered producer
+protocol identity in the same revision.
 
-- The state table of [[kernel/K00 Standards Control/04 Control State and Scope|Control State and Scope]].
-- The Protected Defaults and Task Router of [[kernel/K00 Standards Overview|K00 Standards Overview]].
-- The Module Index of the affected Standard Module MOCs. A leaf module number is never reused once assigned: a retired module leaves a permanent gap, and its Module Index records that the gap is retired rather than missing.
-- The target lists of the affected Read Sets.
-- The [[kernel/K00 Standards Control/11 Standards Map and Rule Registry#Cross-domain Rule Registry|Cross-domain Rule Registry]].
-- The measured values and dispositions of [[kernel/K00 Standards Control/16 Leaf Module Size Register|Leaf Module Size Register]], for every leaf module the revision changed in size. `Tools/stamp_cards.py --check` reports both, so this location is checked by the same run as the Cards below.
-- The `Tool version` cells of the [[kernel/K00 Standards Control/12 Control Registry#Stable Gate ID Registry|Stable Gate ID Registry]], for every registered producer whose accept or reject set the revision changed. A producer deciding differently under an unchanged version leaves the registry naming a behaviour it no longer has, and no run catches that: the behaviour it would compare against is gone. The new version ships in the revision that changes the behaviour.
-- Regenerate the affected kernel Runtime Cards under `kernel/Cards`; these artifacts, including the Card Index, are compiled artifacts and must not be hand-edited outside this write-back step. Affected = cards whose `source_files` include a modified file. For each paired Read Set boundary leaf, the Card records exactly one disposition: direct semantic input in `source_files`, or intentional conditional/source read-back in `readback_sources`. Ordinary `Tools/stamp_cards.py` updates only the observed `source_hash`; after the Card body has been regenerated or consciously confirmed against those exact inputs, `--acknowledge-compiled` advances `compiled_source_hash`. An explicit write-time `--set-version` may stamp the candidate version before an active-task adoption so those exact Card bytes enter its after snapshot; this preparation does not advance canonical state, and ordinary `--check` continues to require the active version until the adoption transaction commits. Governance closes only when `Tools/stamp_cards.py --check` proves both hashes equal, the read-back partition is exact, and versions agree. A missing Card directory, Card Index, Read Set mapping, or zero-card scan is a failure, never `not_applicable`.
-- Regenerate `Tools/vocab.yaml` only when the adopting instance has selected a profile and the revision changes the selected profile, the kernel vocabulary base, or that profile's `Vocabulary Extensions` binding or content. The artifact is compiled from the active selection and those inputs; the generic Cambium distribution and an instance with no selected profile carry no composed vocabulary.
-
-Persistent tools self-built by the execution side for gates or audits MUST be brought under Tools/ management through a lightweight governance registration with a designated owner; existing self-built tools are registered retroactively at the next governance pass, and before registration their output is advisory only and MUST NOT serve as a gate's sole evidence.
+Candidate preparation does not advance adopter state. When an existing task is
+affected, its explicit changed-predicate plan and the controlled adoption
+transaction remain required; a prose report, regenerated projection, or
+matching hash cannot substitute for that state transition.
 
 ## Control Accretion Rule
 
@@ -79,35 +76,10 @@ For any revision that adds a check, freeze, invalidation, or reconciliation obli
 
 If the three questions are not fully answered, the revision MUST NOT pass. Control obligations are managed in the Registry just like content rules.
 
-## Distribution Boundary
+## Single-owner Expression
 
-What an adopter carries is what its governance needs, not what the distribution has. The trees that verify or scaffold the distribution itself -- the unit suite, profile templates, shipped examples -- have no gate, no receipt, and no consumer inside an adopter runtime, and an ungoverned tree that turns red under an upstream change invites improvisation in the inverted direction. The machine declaration is root `distribution-boundary.yaml`, owned by this section; `Tools/run_gates.py` reports a candidate for each declared tree present in an adopter runtime. Extending the declaration is a governance change under this page, judged by the Control Accretion Rule above.
-
-## Structural Migration Conservation
-
-For any structural migration of the standards corpus (splits, moves, renames, or re-ownership), the following conservation rules apply:
-
-- Every original H2 block MUST have an owner in one and only one leaf module.
-- Newly added Navigation, MOCs, and Read Sets do not replace the original rule text.
-- When modifying outdated routing, the superseded source text and version status MUST be preserved.
-- Apparent duplicates are not deleted during migration; deduplication requires separate governance authorization.
-- Corpus-wide heading links MUST be retargeted to the canonical leaf module.
-- Path-only links MAY continue to point to the stable Standard Module MOC.
-- Before completion, content conservation, Wiki link, heading, table, fence, and routing validation MUST be re-run.
-
-## Leaf Module Size Budget
-
-- Leaf module target ≤5KB, soft cap 6KB; KB means 1024 bytes.
-- The cap applies by function, not by folder or file type. It applies to a page that owns rule text: a task that needs one of its rules reads the page whole, so the page's size is what reaching that rule costs.
-- A page that owns no rule text is outside the cap, because every normative sentence in it points to a rule owned elsewhere (Core Principle 20), and splitting such a page raises resolution cost instead of lowering it. Standard Module MOCs, Read Sets, and the standards maps and registries are the usual cases. These pages are likewise kept lean.
-- Being outside the cap and being a registered exception are exclusive dispositions; a page outside the cap is not registered as an exception in [[kernel/K00 Standards Control/16 Leaf Module Size Register|Leaf Module Size Register]].
-- When over the limit, cut examples first; if still over, then consider a split, which follows this page's governance change process. An example that illustrates a rule the page states MAY be cut. An example a reader needs in order to decide which of the page's rules applies to the case in hand is doing the page's work rather than illustrating it: it is not cut, and the page goes straight to the split test.
-- Examples default to one good / one bad per rule point.
-- Each approved exception MUST register the object, the measured value, the necessity, the growth cap, and the follow-up disposition; the registered cap MUST NOT be exceeded without a new governance change.
-- The register of approved exceptions is carried by [[kernel/K00 Standards Control/16 Leaf Module Size Register|Leaf Module Size Register]]; it holds no rule of its own and is outside this cap.
-- A leaf module over the soft cap carries exactly one of the two dispositions in that register: an approved exception, or an outside-the-cap declaration giving the reason it owns no rule text. An undeclared page over the soft cap is a candidate, not a failure; the soft cap is soft, and only a registered growth cap is a MUST. `Tools/stamp_cards.py` measures every leaf against this budget and that register.
-
-## Execution-Acceptance Ownership Convention
-
-- The `K02 Knowledge Work Construction` standard module holds knowledge-work principles and trigger points; `K13 Task Runtime and Execution Control` holds persistent state and transitions; the `K12 Quality Assurance` standard module holds acceptance checklists.
-- The same item MUST NOT be held in full text on both sides; the execution side references the acceptance side's detail items via Wiki Link and does not copy checklist content.
+A governance rule has one semantic owner. Other locations may reference,
+project, execute, or store evidence for that rule, but they MUST NOT maintain a
+second complete normative copy. Choosing a deterministic expression does not
+transfer semantic ownership; it only makes that machine contract the unique
+normative carrier for the rule it expresses.

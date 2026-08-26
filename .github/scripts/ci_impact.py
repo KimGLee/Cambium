@@ -29,6 +29,15 @@ import subprocess
 import sys
 import unittest
 
+REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
+TOOLS_ROOT = REPOSITORY_ROOT / "Tools"
+if str(TOOLS_ROOT) not in sys.path:
+    sys.path.insert(0, str(TOOLS_ROOT))
+
+import card_contract  # noqa: E402
+import profile_layout_contract  # noqa: E402
+import read_set_contract  # noqa: E402
+
 
 PYTHON_VERSIONS = ("3.10", "3.14")
 MAX_SELECTIVE_TESTS = 24
@@ -55,12 +64,12 @@ FULL_PREFIXES = (
 CHECK_ONLY_PREFIXES = ("assets/readme/", "LICENSES/", "Tools/compiled/")
 
 # mcp_server reaches every tool through its command line rather than its
-# imports, so no reverse-import closure can ever include it.  K00/18 names
+# imports, so no reverse-import closure can ever include it. The Tool module
+# boundary contract names
 # this blind spot exactly: subprocess invocation consumes a registered CLI
 # surface, which the import rules do not see.  Declaring the edge is the
 # remedy the contract asks for; hoping the graph finds it is not.
 CLI_SURFACE_TESTS = ("test_mcp_server.py",)
-CHECK_ONLY_MARKDOWN_PREFIXES = ("kernel/", "profiles/")
 FORBIDDEN_TRACKED_PREFIXES = ("docs/", "_to_delete/")
 CHECK_ONLY_ROOT_FILES = {
     "CONTRIBUTING.md",
@@ -71,6 +80,17 @@ CHECK_ONLY_ROOT_FILES = {
     "ROADMAP.md",
     "SECURITY.md",
 }
+
+
+def check_only_markdown_prefixes(root):
+    """Project governance Markdown roots from their machine owners."""
+    root = Path(root)
+    return (
+        "kernel/",
+        card_contract.load_schema(root)["path_prefix"],
+        read_set_contract.load_schema(root)["path_prefix"],
+        profile_layout_contract.PROFILES_DIRECTORY + "/",
+    )
 
 
 @dataclass(frozen=True)
@@ -363,6 +383,14 @@ def plan_changes(root, changes, event="pull_request"):
         )
     if not changes:
         return _full_plan(root, changes, ["empty or unavailable diff is fail-closed"])
+    try:
+        markdown_prefixes = check_only_markdown_prefixes(root)
+    except (card_contract.CardContractError,
+            read_set_contract.ReadSetContractError) as error:
+        return _full_plan(
+            root, changes,
+            ["governance path contract is invalid: %s" % error],
+        )
 
     full_reasons = []
     selected = set()
@@ -402,7 +430,7 @@ def plan_changes(root, changes, event="pull_request"):
             continue
         if path in CHECK_ONLY_ROOT_FILES or path.startswith(CHECK_ONLY_PREFIXES) \
                 or (path.endswith(".md") and
-                    path.startswith(CHECK_ONLY_MARKDOWN_PREFIXES)):
+                    path.startswith(markdown_prefixes)):
             check_only.append(path)
             continue
         full_reasons.append("unclassified path is fail-closed: %s" % path)

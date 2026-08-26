@@ -1,12 +1,13 @@
 ## Purpose
 
-This page is the stable entry point for the Metadata and Status standard. The detailed rules have been split by responsibility into the modules below; the original content has not been reduced.
+This page is the stable entry point for the Metadata and Status standard.
+Detailed rules are maintained by the responsibility-specific modules below.
 
 ## Reading Rule
 
-- Use this MOC to locate the rule owner first, then read the modules required by the current task, event, or quality gate.
-- Entering this domain does not require reading all modules at once.
-- Each module returns to its parent via `Navigation` and links to its adjacent previous and next modules.
+- Use this MOC only to locate the canonical semantic owner. Loading decisions
+  are owned outside Kernel; opening this index is not evidence that any leaf was
+  loaded.
 
 ## Module Index
 
@@ -23,14 +24,6 @@ This page is the stable entry point for the Metadata and Status standard. The de
 | [[kernel/K08 Metadata and Status/09 Page Boundary Contract\|Page Boundary Contract]] + `Metadata Contract` | `Page Boundary Contract`, `Cross-page Rules`, `Projection`, `Enablement` |
 
 Machine-readable base values are registered in `kernel/K08 Metadata and Status/vocabulary-base.yaml`; the selected profile appends values only through `Vocabulary Extensions`. Field applicability and relationship bases are registered in `applicability-base.yaml` and `relationship-base.yaml` of the same directory; the selected profile declares only differences through its `Metadata Contract` slot. Markdown prose remains the single canonical owner of field semantics and behavior rules; machine registries do not duplicate upgrade gates.
-
-## Applicable Read Sets
-
-- [[kernel/Read Sets/R02 Single Note Authoring Read Set|Single Note Authoring]]
-- [[kernel/Read Sets/R03 Module Build Read Set|Module Build]]
-- [[kernel/Read Sets/R04 Source-driven Expansion Read Set|Source-driven Expansion]]
-- [[kernel/Read Sets/R05 Expression Layer Read Set|R05 Expression Layer]]
-- [[kernel/Read Sets/R06 Migration and Refactor Read Set|Migration and Refactor]]
 
 ## Related Standards
 

@@ -25,6 +25,7 @@ import kblib
 import metadata_execution_contract
 import module_boundary_facts
 import profile_admission
+import runtime_paths
 from profile_fixture import install_loadable_profile
 
 
@@ -88,6 +89,36 @@ class CheckBatchCloseTests(unittest.TestCase):
         prepare_profile()
         self.prepare_applied_batch()
 
+    def reset_applied_batch_with_verifier(self, transform):
+        """Install one registered-verifier variant before runtime evidence.
+
+        A registered scan implementation is part of the canonical
+        Profile-load input closure.  Tests that change its bytes must walk the
+        ready/open/apply lifecycle under those exact bytes; changing it on an
+        already-applied template correctly invalidates the opening transition
+        before the close-time verifier behavior can be exercised.
+        """
+        def install_variant():
+            script = self.root / "Tools/fixture_residual.py"
+            source = script.read_text(encoding="utf-8")
+            variant = transform(source)
+            self.assertNotEqual(
+                source, variant,
+                "registered-verifier fixture transform changed no bytes")
+            script.write_text(variant, encoding="utf-8")
+
+        self.reset_applied_batch(install_variant)
+        runtime = check_queue.validate_runtime(self.root)
+        self.assertEqual(
+            [], runtime["errors"],
+            "rebuilt verifier scenario did not bind current Profile evidence")
+
+    @staticmethod
+    def _without_lines(source, lines):
+        for line in lines:
+            source = source.replace(line, "")
+        return source
+
     def run_tool(self, name, *arguments):
         return subprocess.run(
             [sys.executable, str(TOOLS / name), str(self.root), *arguments],
@@ -139,12 +170,13 @@ class CheckBatchCloseTests(unittest.TestCase):
         registry.write_text(
             "# Registered Scan Registry\n\n## Scan Registrations\n\n"
             "| Stable Scan ID | Activation role | Whole-corpus scope/root | "
-            "Deterministic verifier command/path | Candidate predicate/boundary | "
+            "Verifier capability ID | Profile configuration reference or "
+            "`None` | Candidate predicate/boundary | "
             "Judgment Item ID reference |\n"
-            "|---|---|---|---|---|---|\n"
+            "|---|---|---|---|---|---|---|\n"
             "| `fixture-residuals` | `K12/09 item 6 — residual-content scan` | "
-            "Whole repository | `python3 Tools/fixture_residual.py . "
-            "--scan-id fixture-residuals` | candidate-only | `fixture-item` |\n",
+            "Whole repository | `fixture-residual-scan-v1` | `None` | "
+            "candidate-only | `fixture-item` |\n",
             encoding="utf-8",
         )
         tools = self.root / "Tools"
@@ -184,6 +216,14 @@ class CheckBatchCloseTests(unittest.TestCase):
             "kblib.write_receipts(a.receipts,[r])\n",
             encoding="utf-8",
         )
+        (tools / "scan-capabilities.yaml").write_text(
+            "schema_version: 1\n\n"
+            "capabilities:\n"
+            "  - capability_id: fixture-residual-scan-v1\n"
+            "    invocation_contract: profile-registered-scan-v1\n"
+            "    implementation_path: Tools/fixture_residual.py\n"
+            "    configuration: none\n",
+            encoding="utf-8")
         vocab_base = (
             "kernel/K08 Metadata and Status/vocabulary-base.yaml")
         (self.root / vocab_base).parent.mkdir(parents=True, exist_ok=True)
@@ -208,7 +248,9 @@ class CheckBatchCloseTests(unittest.TestCase):
         rendered, _vocab, compile_errors = compose_vocab.compiled_artifact(
             self.root, admission)
         self.assertEqual([], compile_errors)
-        (tools / "vocab.yaml").write_text(rendered, encoding="utf-8")
+        vocab_path = self.root / runtime_paths.VOCAB_ARTIFACT_PATH
+        vocab_path.parent.mkdir(parents=True, exist_ok=True)
+        vocab_path.write_text(rendered, encoding="utf-8")
 
     def queue(self):
         return kblib.load_yaml_file(self.root / check_queue.QUEUE_PATH)
@@ -456,19 +498,13 @@ class CheckBatchCloseTests(unittest.TestCase):
         return check_batch_close._priority_quotas(
             check_batch_close._profile_evaluation(self.root, runtime))
 
-    def _install_authoritative_state_mutating_verifier(self, exit_code):
-        script = self.root / "Tools/fixture_residual.py"
-        script.write_text(
-            script.read_text(encoding="utf-8") +
+    def _assert_state_mutating_verifier_is_uncertain(self, exit_code):
+        self.reset_applied_batch_with_verifier(
+            lambda source: source +
             "with open(os.path.join(a.root,'.cambium/state/"
             "coverage_ledger.yaml'),'a',encoding='utf-8') as fh:\n"
             "    fh.write('\\n')\n" +
-            ("raise SystemExit(%d)\n" % exit_code if exit_code else ""),
-            encoding="utf-8",
-        )
-
-    def _assert_state_mutating_verifier_is_uncertain(self, exit_code):
-        self._install_authoritative_state_mutating_verifier(exit_code)
+            ("raise SystemExit(%d)\n" % exit_code if exit_code else ""))
         completed = self.batch_close()
         self.assertEqual(1, completed.returncode, completed.stdout)
         self.assertIn(
@@ -1354,7 +1390,7 @@ class CandidateGraphTests(_TemplateBackedCase):
     def test_profile_example_vocabulary_is_outside_the_vocab_member(self):
         """A shipped example instance's own vocabulary values must not fail
         the adopter's close: profiles/ is control plane, so the vocab member
-        excludes it like kernel/Cards (the defect only appeared on a real
+        excludes it like Card/ (the defect only appeared on a real
         adopter's first close)."""
         foreign = self.root / "profiles/examples/foreign/corpus/Case.md"
         foreign.parent.mkdir(parents=True, exist_ok=True)
@@ -1495,9 +1531,8 @@ class RegisteredScanTests(_TemplateBackedCase):
         )
         source = registry.read_text(encoding="utf-8")
         registry.write_text(source.replace(
-            "--scan-id fixture-residuals`",
-            "--scan-id fixture-residuals "
-            "--config profiles/foreign/scan-config.yaml`",
+            "| `None` | candidate-only |",
+            "| `profiles/foreign/scan-config.yaml` | candidate-only |",
             1,
         ), encoding="utf-8")
 
@@ -1544,13 +1579,10 @@ class RegisteredScanTests(_TemplateBackedCase):
         self.assertFalse(marker.exists(), completed.stdout)
 
     def test_registered_check_cannot_mutate_around_a_self_reported_pass(self):
-        script = self.root / "Tools/fixture_residual.py"
-        script.write_text(
-            script.read_text(encoding="utf-8") +
+        self.reset_applied_batch_with_verifier(
+            lambda source: source +
             "open(os.path.join(a.root,'MUTATED.txt'),'w',encoding='utf-8')"
-            ".write('changed during gate')\n",
-            encoding="utf-8",
-        )
+            ".write('changed during gate')\n")
         completed = self.batch_close()
         self.assertEqual(1, completed.returncode, completed.stdout)
         self.assertIn("repository content changed while the Closed List ran",
@@ -1563,15 +1595,14 @@ class RegisteredScanTests(_TemplateBackedCase):
         self.assertNotIn("closed_list_evidence", records[0])
 
     def test_registered_blind_pass_without_positive_control_evidence_fails(self):
-        script = self.root / "Tools/fixture_residual.py"
-        source = script.read_text(encoding="utf-8")
-        for line in (
-                "r['positive_control_result']='passed'\n",
-                "r['positive_control_mode']='production-classifier'\n",
-                "r['positive_control_count']=len(controls)\n",
-                "r['positive_control_fingerprint']=control_fp\n"):
-            source = source.replace(line, "")
-        script.write_text(source, encoding="utf-8")
+        removed = (
+            "r['positive_control_result']='passed'\n",
+            "r['positive_control_mode']='production-classifier'\n",
+            "r['positive_control_count']=len(controls)\n",
+            "r['positive_control_fingerprint']=control_fp\n",
+        )
+        self.reset_applied_batch_with_verifier(
+            lambda source: self._without_lines(source, removed))
         completed = self.batch_close()
         self.assertEqual(1, completed.returncode, completed.stdout)
         self.assertIn(
@@ -1584,25 +1615,23 @@ class RegisteredScanTests(_TemplateBackedCase):
         self.assertNotIn("closed_list_evidence", records[0])
 
     def test_registered_positive_control_invocation_failure_fails(self):
-        script = self.root / "Tools/fixture_residual.py"
-        source = script.read_text(encoding="utf-8").replace(
-            "a=p.parse_args()\n",
-            "a=p.parse_args()\n"
-            "if a.positive_controls_only:\n"
-            "    raise SystemExit(1)\n")
-        script.write_text(source, encoding="utf-8")
+        self.reset_applied_batch_with_verifier(
+            lambda source: source.replace(
+                "a=p.parse_args()\n",
+                "a=p.parse_args()\n"
+                "if a.positive_controls_only:\n"
+                "    raise SystemExit(1)\n"))
         completed = self.batch_close()
         self.assertEqual(1, completed.returncode, completed.stdout)
         self.assertIn("positive-control invocation", completed.stdout)
         self.assertIn("checker exited 1", completed.stdout)
 
     def test_registered_control_and_production_binding_mismatch_fails(self):
-        script = self.root / "Tools/fixture_residual.py"
-        source = script.read_text(encoding="utf-8").replace(
-            "r['config_fingerprint']=config_fp\n",
-            "r['config_fingerprint']=(('sha256:' + 'f'*64) "
-            "if a.positive_controls_only else config_fp)\n")
-        script.write_text(source, encoding="utf-8")
+        self.reset_applied_batch_with_verifier(
+            lambda source: source.replace(
+                "r['config_fingerprint']=config_fp\n",
+                "r['config_fingerprint']=(('sha256:' + 'f'*64) "
+                "if a.positive_controls_only else config_fp)\n"))
         completed = self.batch_close()
         self.assertEqual(1, completed.returncode, completed.stdout)
         self.assertIn(
@@ -1610,11 +1639,10 @@ class RegisteredScanTests(_TemplateBackedCase):
             "config_fingerprint", completed.stdout)
 
     def test_registered_verifier_cannot_self_report_a_foreign_scan_id(self):
-        script = self.root / "Tools/fixture_residual.py"
-        source = script.read_text(encoding="utf-8").replace(
-            "r['scan_id']=a.scan_id\n",
-            "r['scan_id']='foreign-scan'\n")
-        script.write_text(source, encoding="utf-8")
+        self.reset_applied_batch_with_verifier(
+            lambda source: source.replace(
+                "r['scan_id']=a.scan_id\n",
+                "r['scan_id']='foreign-scan'\n"))
 
         completed = self.batch_close()
 

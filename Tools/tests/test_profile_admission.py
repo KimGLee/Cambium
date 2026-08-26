@@ -137,7 +137,8 @@ class ProfileAdmissionTests(unittest.TestCase):
         admission, errors = profile_admission.admit_profile(
             self.root, self.profile)
         self.assertEqual([], errors)
-        interface = self.root / "profiles/README.md"
+        interface = (
+            self.root / profile_admission.check_profile.DEFAULT_INTERFACE)
         interface.write_text(
             interface.read_text(encoding="utf-8") + "\n<!-- revision B -->\n",
             encoding="utf-8")

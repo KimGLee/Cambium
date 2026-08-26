@@ -9,6 +9,7 @@ leaves behind, and it is refused rather than repaired.
 import datetime
 
 import kblib
+import runtime_state_contract
 import standards_state
 
 from queue_runtime.canon import (
@@ -22,6 +23,7 @@ from queue_runtime.canon import (
     TOOL,
 )
 from queue_runtime.gate_registry import (
+    is_revalidation_boundary_owner,
     partition_revalidation_owner_claims,
     projected_revalidation_owners,
     standards_gate_registry,
@@ -142,7 +144,8 @@ def standards_adoption_plan_errors(
             "selected_profile_manifest_after", "governance_revision_ref"):
         if not nonempty_string(plan.get(field)):
             errors.append("Standards adoption plan %s must be non-empty" % field)
-    if plan.get("task_state_before") not in ("active", "paused"):
+    if (plan.get("task_state_before") not in
+            runtime_state_contract.STANDARDS_ADOPTION_TASK_STATES):
         errors.append("Standards adoption plan supports only active or paused "
                       "tasks; completion-candidate must first transition back")
     if upstream_required and isinstance(plan, dict) and \
@@ -424,8 +427,7 @@ def standards_adoption_plan_errors(
                         label, ", ".join(extra_required_gate_ids)))
             for gate_id in required_gate_ids:
                 capability = revalidation_capabilities.get(gate_id) or {}
-                if capability.get("role") not in (
-                        "special-owner", "immediate-owner", "native-owner"):
+                if not is_revalidation_boundary_owner(capability):
                     errors.append(
                         "%s required_gate_ids names %s, which is not a "
                         "Standards revalidation boundary owner" %
@@ -738,10 +740,11 @@ def standards_adoption_plan_errors(
                 "no gate rerun would ever be required for it" %
                 (index, boundary_id, boundary.get("target_kind")))
 
-    # K00/15: selected Read Sets are transitively closed over Read Sets named by
-    # their loading boundaries, and every non-Read-Set target in that closure
-    # belongs in the declared module load set. The obligations are containment,
-    # not equality: additional tool and profile paths remain legitimate.
+    # Canonical Read Set machine declarations are transitively closed over
+    # their declared Read Set edges, and every non-Read-Set target in that
+    # closure belongs in the declared module load set. The obligations are
+    # containment, not equality: additional tool and profile paths remain
+    # legitimate.
     #
     # Only a plan being admitted is judged, for the reason the boundary rule
     # above is so scoped: a historical adoption's plan bytes are sealed into

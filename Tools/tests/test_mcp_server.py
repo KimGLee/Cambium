@@ -34,6 +34,7 @@ SERVER_SOURCE = TOOLS / "mcp_server.py"
 
 sys.path.insert(0, str(TOOLS))
 import mcp_server  # noqa: E402
+import module_boundary_facts  # noqa: E402
 import path_capability  # noqa: E402
 
 
@@ -194,15 +195,20 @@ def fake_projection():
 class SyntheticDistribution(object):
     """A distribution root holding only the fake tools and a projection."""
 
-    def __init__(self, projection=None, tool_sources=None):
+    def __init__(self, projection=None, tool_sources=None,
+                 production_roots=()):
         self._tmp = tempfile.TemporaryDirectory()
         self.root = Path(self._tmp.name) / "dist"
         (self.root / "Tools" / "compiled").mkdir(parents=True)
         self.workspace = Path(self._tmp.name) / "corpus"
         self.workspace.mkdir()
         for name, source in (tool_sources or FAKE_TOOLS).items():
-            (self.root / "Tools" / ("%s.py" % name)).write_text(
-                source, encoding="utf-8")
+            target = self.root / "Tools" / ("%s.py" % name)
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_text(source, encoding="utf-8")
+        if production_roots:
+            module_boundary_facts.stage_shipped_modules(
+                str(REPO_ROOT), str(self.root), list(production_roots))
         document = fake_projection() if projection is None else projection
         self.projection_path = self.root / "Tools/compiled/mcp-tools.json"
         self.projection_path.write_text(
@@ -661,9 +667,6 @@ class StableConsumptionTests(ArgvTests):
     def distribution_for(self, source, access, consumption):
         sources = dict(FAKE_TOOLS)
         sources["echo_tool"] = source
-        sources["kblib"] = (TOOLS / "kblib.py").read_text(encoding="utf-8")
-        sources["path_capability"] = (
-            TOOLS / "path_capability.py").read_text(encoding="utf-8")
         projection = fake_projection()
         echo = next(tool for tool in projection["tools"]
                     if tool["name"] == "echo_tool")
@@ -678,7 +681,8 @@ class StableConsumptionTests(ArgvTests):
                 "inactive_when_any": [],
             }
         distribution = SyntheticDistribution(
-            projection=projection, tool_sources=sources)
+            projection=projection, tool_sources=sources,
+            production_roots=("kblib",))
         self.addCleanup(distribution.cleanup)
         return distribution, started(distribution)
 
@@ -822,10 +826,6 @@ class StableConsumptionTests(ArgvTests):
         )
         sources = dict(FAKE_TOOLS)
         sources["echo_tool"] = source
-        sources["kblib"] = (TOOLS / "kblib.py").read_text(
-            encoding="utf-8")
-        sources["path_capability"] = (
-            TOOLS / "path_capability.py").read_text(encoding="utf-8")
         projection = fake_projection()
         echo = next(tool for tool in projection["tools"]
                     if tool["name"] == "echo_tool")
@@ -837,7 +837,8 @@ class StableConsumptionTests(ArgvTests):
         }
         echo["inputSchema"]["properties"]["scope"] = scope
         distribution = SyntheticDistribution(
-            projection=projection, tool_sources=sources)
+            projection=projection, tool_sources=sources,
+            production_roots=("kblib",))
         self.addCleanup(distribution.cleanup)
         server = started(distribution)
         first = distribution.workspace / "first.md"
@@ -933,12 +934,10 @@ class StableConsumptionTests(ArgvTests):
         sources = dict(FAKE_TOOLS)
         sources["echo_tool"] = parent
         sources["child_tool"] = child
-        sources["kblib"] = (TOOLS / "kblib.py").read_text(encoding="utf-8")
-        sources["path_capability"] = (
-            TOOLS / "path_capability.py").read_text(encoding="utf-8")
         projection = fake_projection()
         distribution = SyntheticDistribution(
-            projection=projection, tool_sources=sources)
+            projection=projection, tool_sources=sources,
+            production_roots=("kblib",))
         self.addCleanup(distribution.cleanup)
         server = started(distribution)
         admitted = distribution.workspace / "note.md"
@@ -1222,9 +1221,6 @@ class StableConsumptionTests(ArgvTests):
         sources = dict(FAKE_TOOLS)
         sources["echo_tool"] = parent
         sources["child_tool"] = child
-        sources["kblib"] = (TOOLS / "kblib.py").read_text(encoding="utf-8")
-        sources["path_capability"] = (
-            TOOLS / "path_capability.py").read_text(encoding="utf-8")
         projection = fake_projection()
         echo = next(tool for tool in projection["tools"]
                     if tool["name"] == "echo_tool")
@@ -1236,7 +1232,8 @@ class StableConsumptionTests(ArgvTests):
                 "inactive_when_any": [],
             }
         distribution = SyntheticDistribution(
-            projection=projection, tool_sources=sources)
+            projection=projection, tool_sources=sources,
+            production_roots=("kblib",))
         self.addCleanup(distribution.cleanup)
         server = started(distribution)
         receipts = distribution.workspace / "receipts"
@@ -1453,7 +1450,7 @@ class StableConsumptionTests(ArgvTests):
 
     def test_an_exact_path_constraint_refuses_an_alternate_artifact(self):
         _distribution, server = self.server_with_scope_capability(
-            "exact", "kernel/Cards")
+            "exact", "Card")
 
         response = request(server, "tools/call", {
             "name": "echo_tool",
@@ -1464,20 +1461,19 @@ class StableConsumptionTests(ArgvTests):
         self.assertEqual(response["error"]["code"],
                          mcp_server.INVALID_PARAMS)
         self.assertEqual(response["error"]["data"]["expected"],
-                         "kernel/Cards")
+                         "Card")
 
     def test_an_exact_registered_path_cannot_be_a_symlink(self):
         distribution, server = self.server_with_scope_capability(
-            "exact", "kernel/Cards")
-        (distribution.workspace / "kernel").mkdir()
+            "exact", "Card")
         (distribution.workspace / "alternate-cards").mkdir()
-        (distribution.workspace / "kernel/Cards").symlink_to(
-            "../alternate-cards", target_is_directory=True)
+        (distribution.workspace / "Card").symlink_to(
+            "alternate-cards", target_is_directory=True)
 
         response = request(server, "tools/call", {
             "name": "echo_tool",
-            "arguments": {"root": ".", "first": "a", "second": "b",
-                          "scope": "kernel/Cards"},
+                          "arguments": {"root": ".", "first": "a", "second": "b",
+                          "scope": "Card"},
         })
 
         self.assertEqual(response["error"]["code"],
@@ -1489,19 +1485,18 @@ class StableConsumptionTests(ArgvTests):
         echo = next(tool for tool in projection["tools"]
                     if tool["name"] == "echo_tool")
         scope = echo["inputSchema"]["properties"]["scope"]
-        scope["default"] = "kernel/Cards"
+        scope["default"] = "Card"
         scope[mcp_server.PATH_EXTENSION_KEY] = {
             "access": "read-write", "consumption": "transaction",
             "constraint": "exact",
-            "value": "kernel/Cards", "suffixes": [],
+            "value": "Card", "suffixes": [],
             "active_when_any": [], "inactive_when_any": [],
         }
         distribution = SyntheticDistribution(projection=projection)
         self.addCleanup(distribution.cleanup)
-        (distribution.workspace / "kernel").mkdir()
         (distribution.workspace / "alternate-cards").mkdir()
-        (distribution.workspace / "kernel/Cards").symlink_to(
-            "../alternate-cards", target_is_directory=True)
+        (distribution.workspace / "Card").symlink_to(
+            "alternate-cards", target_is_directory=True)
         server = started(distribution)
 
         response = request(server, "tools/call", {

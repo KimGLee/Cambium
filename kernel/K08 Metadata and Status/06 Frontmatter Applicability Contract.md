@@ -20,16 +20,30 @@ This leaf owns the mode vocabulary and the two-layer composition; it does not re
 
 ## Two-layer Composition
 
-`kernel/K08 Metadata and Status/applicability-base.yaml` carries the kernel's default mode per field with its conditions; this leaf is its semantic owner. The selected profile declares only differences in the `Metadata Contract` slot: it MAY tighten a mode (`optional -> required`), add note-type or layer conditions, and register extension fields with their modes. It MUST NOT loosen a kernel `required`, `forbidden`, or safety/evidence condition, redefine a mode word, or restate kernel defaults.
+The registered frontmatter applicability base carries the Kernel default mode
+per field with its conditions; this leaf is its semantic owner. The selected
+Profile declares only differences in its Metadata Contract: it MAY tighten a
+mode (`optional -> required`), add note-type or layer conditions, and register
+extension fields with their modes. It MUST NOT loosen a Kernel `required`,
+`forbidden`, or safety/evidence condition, redefine a mode word, or restate
+Kernel defaults.
 
-`Tools/compose_page_contract.py` compiles the base and the selected profile's differences into `Tools/page_contract.yaml`, a generated artifact and never a rule owner. `Tools/check_page_contract.py` validates pages against the compiled contract: presence and non-emptiness, value shape (scalar, list, date, path, url), condition relations, derived/projection persistence, and unknown-field closure — a field that is neither in the compiled contract nor a registered vocabulary or profile extension field is a violation, not open metadata. Controlled-value legality stays owned by the `frontmatter-vocabulary` gate; this contract never re-checks enums.
+The registered page-contract composition capability composes the base with the
+selected Profile differences into one effective machine contract, which is a
+generated artifact and never a rule owner. The `page-contract` Gate validates
+presence and non-emptiness, value shape, condition relations,
+derived/projection persistence, and unknown-field closure. A field absent from
+both the effective contract and registered extensions is a violation, not open
+metadata. Controlled-value legality stays owned by the
+`frontmatter-vocabulary` Gate; this contract never re-checks enums.
 
 ## Missingness Has One Owner
 
 This applicability contract alone decides whether an absent frontmatter block
-or field is legal, advisory debt, or a violation. `check_page_contract` emits
-that finding from the composed page context. `check_vocab` judges only a value
-that is present against its controlled vocabulary; it MUST NOT create a second
+or field is legal, advisory debt, or a violation. The `page-contract` Gate
+emits that finding from the composed page context. The
+`frontmatter-vocabulary` Gate judges only a value that is present against its
+controlled vocabulary; it MUST NOT create a second
 missing-field candidate or infer applicability from the field name. Consumers
 therefore receive one stable finding from one predicate owner, rather than
 asking a reviewer to dispose of the same absence once as schema debt and again
@@ -42,7 +56,7 @@ knows a field remains forbidden.
 
 ## Enablement
 
-The checker remains advisory over the whole corpus: its candidates support
+The `page-contract` Gate remains advisory over the whole corpus: its candidates support
 migration planning, while K12/09 consumes only the current batch manifest's
 page-contract slice at close. Promotion of the corpus-wide backlog to a
 blocking gate is a separate governance decision under

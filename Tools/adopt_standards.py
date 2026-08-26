@@ -17,6 +17,9 @@ import uuid
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import check_queue
 import kblib
+import profile_contract
+import runtime_paths
+import runtime_state_contract
 import standards_state
 
 TOOL = "adopt_standards"
@@ -26,8 +29,8 @@ GATE_ID = "standards-adoption"
 # tool offers as gate evidence carries it verbatim.
 GATE_CHECK = "standards_adoption"
 PLAN_PREFIX = check_queue.STANDARDS_ADOPTION_PLAN_PREFIX
-RECEIPT_PATH = ".cambium/receipts/standards-adoptions.jsonl"
-ALLOWED_TASK_STATES = frozenset(("active", "paused"))
+RECEIPT_PATH = runtime_paths.STANDARDS_ADOPTION_RECEIPT_PATH
+ALLOWED_TASK_STATES = runtime_state_contract.STANDARDS_ADOPTION_TASK_STATES
 LOAD_FIELDS = (
     "selected_route_ids", "selected_card_paths",
     "selected_profile_route_ids", "selected_read_sets",
@@ -149,10 +152,7 @@ def _after_profile_evidence(root, plan, *, expected=None, phase):
             "%s candidate Profile load inputs differ from the admitted "
             "plan" % phase)
     if expected is not None:
-        for field in (
-                "selected_profile_manifest", "profile_snapshot_sha256",
-                "profile_contract_fingerprint",
-                "profile_load_inputs_sha256"):
+        for field in profile_contract.PROFILE_LOAD_EVIDENCE_FIELDS:
             if evidence.get(field) != expected.get(field):
                 raise ValueError(
                     "%s candidate Profile %s changed after plan admission" %
@@ -176,14 +176,14 @@ def _load_plan(root, relative):
 def _state_paths(root, current):
     return {
         "coverage": kblib.managed_repository_path(
-            root, check_queue.COVERAGE_PATH, ".cambium/state",
+            root, check_queue.COVERAGE_PATH, runtime_paths.STATE_ROOT,
             suffixes=(".yaml",), must_exist=True),
         "queue": current["queue_path"],
         "progress": kblib.managed_repository_path(
-            root, check_queue.PROGRESS_PATH, ".cambium/state",
+            root, check_queue.PROGRESS_PATH, runtime_paths.STATE_ROOT,
             suffixes=(".yaml",), must_exist=True),
         "standards": kblib.managed_repository_path(
-            root, standards_state.STATE_PATH, ".cambium/governance",
+            root, standards_state.STATE_PATH, runtime_paths.GOVERNANCE_ROOT,
             suffixes=(".yaml",), must_exist=True),
     }
 
@@ -810,13 +810,15 @@ def main(argv=None):
         description="Adopt one approved Standards/Profile revision")
     parser.add_argument("root", help="adopting repository root")
     parser.add_argument("--plan", required=True,
-                        help=".cambium/deltas/standards-adoptions/*.yaml")
+                        help="%s/*.yaml" %
+                        runtime_paths.STANDARDS_ADOPTION_DELTA_ROOT)
     parser.add_argument("--actor-role", choices=("worker", "integrator"),
                         default="worker",
                         help="declared caller role; only integrator may "
                              "apply a Standards adoption")
     parser.add_argument("--receipts", default=RECEIPT_PATH,
-                        help="receipt JSONL path under .cambium/receipts")
+                        help="receipt JSONL path under %s" %
+                        runtime_paths.RECEIPT_ROOT)
     parser.add_argument("--apply", action="store_true",
                         help="write the transaction; omit for a dry run")
     parser.add_argument("--json", action="store_true", help=JSON_HELP)
@@ -831,7 +833,7 @@ def _run(args):
     root = os.path.realpath(os.path.abspath(args.root))
     try:
         receipt_path = kblib.managed_repository_path(
-            root, args.receipts, ".cambium/receipts",
+            root, args.receipts, runtime_paths.RECEIPT_ROOT,
             suffixes=(".jsonl",), must_exist=False)
         prepared = _prepare_result(root, args.plan)
     except (OSError, UnicodeError, ValueError, TypeError,

@@ -1,6 +1,7 @@
 # Scope And Architecture
 
-Interface: [Profile Scope slot](../README.md#profile-scope-slot)
+Kernel owner: K01 Scope and Architecture. Common slot identity is registered in
+the Kernel Profile interface.
 
 ## Goal
 
@@ -84,8 +85,8 @@ form".
 
 One page class with a four-element predicate is the minimal shape — for
 example, "a page describing anything the maintainer must restore: names the
-thing, its current version, where its backup or definition lives, and the one
-command or check that verifies it works".
+thing, its current version, where its backup or definition lives, and the
+observable condition or stable check capability that verifies it works".
 
 | Bounded foundation page class | Testable completeness predicate |
 |---|---|

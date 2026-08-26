@@ -1,0 +1,108 @@
+# Kernel leaf-size repository-engineering contract.
+# Numeric limits and recorded measurements have no second authority.
+# Human exception rationales and follow-ups are preserved separately in
+# Tools/kernel-size-exceptions.md and joined by record_id.
+
+schema_version: 1
+policy_id: kernel-leaf-size-v1
+kernel_root: kernel
+leaf_path_regex: 'kernel/K[0-9]{2} [^/]+/[0-9]{2} .+[.]md'
+engineering_record: Tools/kernel-size-exceptions.md
+target_bytes: 5120
+soft_cap_bytes: 6144
+
+exceptions:
+  - path: kernel/K08 Metadata and Status/05 Review Source and Migration Metadata.md
+    measured_bytes: 6731
+    growth_cap_bytes: 7168
+    record_id: EXC-001
+  - path: kernel/K00 Standards Control/03 Standards Governance.md
+    measured_bytes: 4561
+    growth_cap_bytes: 12288
+    record_id: EXC-002
+  - path: kernel/K00 Standards Control/06 Completion Precedence and Task Contract.md
+    measured_bytes: 7402
+    growth_cap_bytes: 8192
+    record_id: EXC-003
+  - path: kernel/K03 Note Types and Ownership/01 Note Type Catalog.md
+    measured_bytes: 6668
+    growth_cap_bytes: 7168
+    record_id: EXC-004
+  - path: kernel/K06 Knowledge Intake and Evolution/03 Source-to-Knowledge Pipeline.md
+    measured_bytes: 7443
+    growth_cap_bytes: 7680
+    record_id: EXC-005
+  - path: kernel/K12 Quality Assurance/05 Automated and Manual Checks.md
+    measured_bytes: 9384
+    growth_cap_bytes: 10240
+    record_id: EXC-006
+  - path: kernel/K12 Quality Assurance/07 Audit Evidence Reuse and Invalidation.md
+    measured_bytes: 17142
+    growth_cap_bytes: 26112
+    record_id: EXC-007
+  - path: kernel/K00 Standards Control/09 Default Constraints Snapshot.md
+    measured_bytes: 1271
+    growth_cap_bytes: 7168
+    record_id: EXC-008
+  - path: kernel/K00 Standards Control/13 Runtime Admission and Recovery.md
+    measured_bytes: 3937
+    growth_cap_bytes: 6656
+    record_id: EXC-009
+  - path: kernel/K02 Knowledge Work Construction/04 Corpus Planning Runtime Audit and Gate Boundaries.md
+    measured_bytes: 6058
+    growth_cap_bytes: 6656
+    record_id: EXC-010
+  - path: kernel/K12 Quality Assurance/01 Quality Dimensions and Single Note Review.md
+    measured_bytes: 6622
+    growth_cap_bytes: 7168
+    record_id: EXC-011
+  - path: kernel/K12 Quality Assurance/09 Batch-close Closed List.md
+    measured_bytes: 11872
+    growth_cap_bytes: 16896
+    record_id: EXC-012
+  - path: kernel/K12 Quality Assurance/10 Standards Version Adoption.md
+    measured_bytes: 8021
+    growth_cap_bytes: 16384
+    record_id: EXC-013
+  - path: kernel/K12 Quality Assurance/15 Terminal Audit and Convergence.md
+    measured_bytes: 4393
+    growth_cap_bytes: 7168
+    record_id: EXC-014
+  - path: kernel/K12 Quality Assurance/16 Terminal Proof Contract.md
+    measured_bytes: 5719
+    growth_cap_bytes: 11264
+    record_id: EXC-015
+  - path: kernel/K12 Quality Assurance/17 Gate Receipt Payload Contract.md
+    measured_bytes: 5357
+    growth_cap_bytes: 10752
+    record_id: EXC-016
+  - path: kernel/K12 Quality Assurance/14 Batch Review.md
+    measured_bytes: 6060
+    growth_cap_bytes: 7680
+    record_id: EXC-017
+  - path: kernel/K13 Task Runtime and Execution Control/19 Card Context Activation and Read-back Delivery.md
+    measured_bytes: 5693
+    growth_cap_bytes: 12288
+    record_id: EXC-018
+  - path: kernel/K13 Task Runtime and Execution Control/06 Amendment Log and Controlled Replanning.md
+    measured_bytes: 6067
+    growth_cap_bytes: 9728
+    record_id: EXC-019
+  - path: kernel/K13 Task Runtime and Execution Control/08 Required Queue Contract and Lifecycle.md
+    measured_bytes: 6745
+    growth_cap_bytes: 9216
+    record_id: EXC-020
+  - path: kernel/K13 Task Runtime and Execution Control/10 Batch Admission Transitions and Serial Integration.md
+    measured_bytes: 5224
+    growth_cap_bytes: 9216
+    record_id: EXC-021
+  - path: kernel/K13 Task Runtime and Execution Control/16 Resume Next Action Vocabulary.md
+    measured_bytes: 2708
+    growth_cap_bytes: 6656
+    record_id: EXC-022
+
+outside_cap:
+  - path: kernel/K00 Standards Control/11 Standards Map and Rule Registry.md
+    record_id: OUT-001
+  - path: kernel/K00 Standards Control/12 Control Registry.md
+    record_id: OUT-002

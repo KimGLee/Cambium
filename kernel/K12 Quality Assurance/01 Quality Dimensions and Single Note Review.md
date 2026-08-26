@@ -29,13 +29,13 @@ These eleven are acceptance vocabulary and grouping labels, not checks, and they
 
 ## Single Note Review
 
-Applicability: the full checklist in this section applies to L-tier pages; M-tier pages are accepted against the M-tier Gate Checklist below, compiled into the kernel Single Note Authoring Card and folded into the batch gate; S-tier pages receive only deterministic script checks, with sampled re-review at batch close (for tiering rules see [[kernel/K00 Standards Control/07 Effort Tiering and Priority Quota|tiering rules]]).
+Applicability: the full checklist in this section applies to L-tier pages; M-tier pages are accepted against the M-tier Gate Checklist below and folded into the batch gate; S-tier pages receive only deterministic checks, with sampled re-review at batch close (for tiering rules see [[kernel/K00 Standards Control/07 Effort Tiering and Priority Quota|tiering rules]]).
 
 Several items below are satisfied by evidence produced at another layer rather than by a separate single-note verdict; which ones, and what each remaining item files under, is fixed by [[kernel/K12 Quality Assurance/08 Judgment Item Dimension Map#Item Map|K12/08]].
 
 ## M-tier Gate Checklist
 
-This is the canonical minimum page-level checklist for an M-tier page. Runtime Cards may compress or link to it, but they MUST NOT add, remove, or redefine its acceptance items.
+This is the canonical minimum page-level checklist for an M-tier page. A non-authoritative action projection may compress or link to it, but MUST NOT add, remove, or redefine its acceptance items.
 
 - The note type, canonical owner, scope, depth, priority, tier, and applicable status fields are explicit and internally consistent.
 - The opening states the problem or position; the body explains the key mechanism or causal chain, its important boundary, and at least one example appropriate to the note type.

@@ -1,10 +1,10 @@
 """Inline-delivery conformance probe for one Host Adapter build.
 
-K13/19's delivery guarantee has three parts, and this probe supplies exactly
-one of them: whether a within-budget tool result reaches the model context
-whole.  A server can prove what it sent and an ack can prove which context
-answered, but neither can see what the host did in between.  That gap is the
-failure this protocol exists to catch, so it is measured against a live host
+The current Tool delivery contract has separate identity, transport, and
+acknowledgement evidence.  This probe supplies the transport observation:
+whether a within-budget tool result reaches the model context whole.  A server
+can prove what it sent and an ack can prove which context answered, but neither
+can see what the host did in between.  That gap is measured against a live host
 rather than asserted.
 
 The probe is not a unit test.  It needs a real adapter, so it prints an exact

@@ -20,31 +20,18 @@ Layer IDs, their repository-relative directories, and layer responsibilities.
 The Corpus Planning slot remains the sole owner of the Matrix and Gap artifact
 paths. The Global Map MUST NOT repeat any of those values.
 
-The restricted-YAML document has exactly three top-level fields:
-`schema_version: 1`, `entries`, and `typed_dependencies`. Each `entries` item
-has exactly `entry_id`, `layer_id`, `canonical_markdown_path`, and
-`single_responsibility`. Each `typed_dependencies` item has exactly `edge_id`,
-`upstream_entry_id`, `downstream_entry_id`, and `relation_type`.
+The `global-map` machine contract is the unique normative carrier of the
+document's closed fields and relationship vocabulary. Each entry has a stable
+identity, belongs to one Profile Scope layer, resolves to one canonical
+Markdown owner, and states that owner's unique responsibility. Each typed edge
+has a stable identity and is an explicit directed assertion between registered
+entries; links, backlinks, co-location, or semantic similarity do not create an
+edge.
 
-Entry and edge IDs are stable. Each Profile Scope layer has at least one Map
-entry. Each entry identifies an existing canonical Markdown owner inside one
-of its layer's registered directories and states that owner's unique
-responsibility. Each edge is an explicit,
-directed assertion; links, backlinks, co-location, or semantic similarity do
-not create an edge. `relation_type` is exactly one of `prerequisite-for`,
-`capability-input-to`, `realized-by`, `evidence-input-to`, `system-input-to`,
-`control-input-to`, `canonical-source-for`, `expressed-by`, or
-`downstream-impact`. `expressed-by` points from a canonical knowledge
-entry to the derived expression artifact that presents it; the
-downstream artifact never becomes the upstream entry's canonical
-owner. Together with `evidence-input-to` and `canonical-source-for`
-it closes the minimal typed evidence flow — sources feed synthesis,
-stable conclusions reach canonical owners or cases, and expression
-artifacts derive from canonical knowledge. Only real dependencies
-gain edges; topic similarity never does. Together
-the records express the included logical
-architecture, Knowledge Spine, owner boundaries, and important prerequisite
-or downstream relationships.
+Evidence and expression edges preserve ownership direction: sources may feed
+synthesis and canonical conclusions, and an expression artifact may present a
+canonical owner, but no downstream artifact becomes that owner's replacement.
+Only real dependencies gain edges.
 
 The map MUST reflect the current corpus structure and canonical owners. It
 contains no free-form sections or additional fields and MUST NOT own capability
@@ -55,6 +42,5 @@ revisions, fingerprints, or completion claims.
 
 - [[kernel/K02 Knowledge Work Construction/03 Corpus Planning Applicability and Lifecycle|Corpus Planning Applicability and Lifecycle]]
 - [[kernel/K02 Knowledge Work Construction/04 Corpus Planning Runtime Audit and Gate Boundaries|Corpus Planning Runtime Audit and Gate Boundaries]]
-- [[kernel/Read Sets/R13 Corpus Planning Read Set|R13 Corpus Planning]]
 - [[kernel/K02 Knowledge Work Construction/01 Inventory and Coverage Ledger|Inventory and Coverage Ledger]]
 - [[kernel/K13 Task Runtime and Execution Control/08 Required Queue Contract and Lifecycle|Required Queue Contract and Lifecycle]]

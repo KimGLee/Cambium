@@ -13,7 +13,9 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import check_corpus_plan
+import corpus_planning_contract
 import kblib
+import runtime_paths
 
 
 TOOL = check_corpus_plan.SEMANTIC_ACCEPTANCE_TOOL
@@ -21,9 +23,9 @@ TOOL_VERSION = check_corpus_plan.SEMANTIC_ACCEPTANCE_TOOL_VERSION
 # The Gate ID and the `Check` cell K00/12 registers for this recorder
 # are owned next to K02/04's acceptance contract; this module
 # re-exports them rather than restating them.
-GATE_ID = check_corpus_plan.SEMANTIC_ACCEPTANCE_SCOPE
+GATE_ID = corpus_planning_contract.SEMANTIC_ACCEPTANCE_SCOPE
 GATE_CHECK = check_corpus_plan.SEMANTIC_ACCEPTANCE_CHECK
-DEFAULT_RECEIPTS = ".cambium/receipts/corpus-plan-acceptance.jsonl"
+DEFAULT_RECEIPTS = runtime_paths.CORPUS_PLAN_ACCEPTANCE_RECEIPT_PATH
 
 
 def _output(payload):
@@ -134,7 +136,7 @@ def main(argv=None):
         errors.append("--apply requires --actor-role")
     try:
         receipt_absolute = kblib.managed_repository_path(
-            root, args.receipts, ".cambium/receipts",
+            root, args.receipts, runtime_paths.RECEIPT_ROOT,
             suffixes=(".jsonl",), must_exist=False)
     except ValueError as exc:
         errors.append(str(exc))

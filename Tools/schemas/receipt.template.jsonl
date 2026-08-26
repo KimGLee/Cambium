@@ -158,27 +158,24 @@
 # `activation_protocol`, the Task Contract, reading plan, read-back plan and
 # Card Bundle SHA-256 values, plus the closed `activation_bundle_manifest`. It
 # stores paths and content hashes, never Card text.
-#   card-first-readback-v3 (current): the manifest carries a `pieces` list --
-#     one `{piece_id, kind, path, sha256, bytes}` record per deliverable file,
-#     plus `piece_count` and `max_piece_envelope_bytes` -- and NO `cards` or
-#     `startup_readbacks` arrays. No `activation_delivery_payload` accompanies
-#     it in the receipt or the tool result: admission delivers nothing. It
-#     records `delivery_assurance: host-bound` with
-#     `delivery_mode: host-context-injection` and a nonempty
-#     `execution_context_id`, or `prepared` with `cli-tool-result` and null.
-#     Neither value claims delivery; completion is `machine-delivery-complete`
-#     and is earned by the K13/20 Assignment delivery gate.
+#   card-first-phased-readback-v4 (current): the manifest carries the exact
+#     deliverable records and their frozen phase plan. Admission delivers no
+#     content. Phase parts travel through `deliver-phase:*` and are acknowledged
+#     through `ack-activation-phase:*`; K13/20 consumes exact-set evidence.
+#   card-first-readback-v3 (sealed history): the manifest carries one piece per
+#     deliverable and uses the legacy piece delivery/ack operations. Admission
+#     also claims no delivery.
 #   card-first-readback-v1 / v2 (sealed history): the manifest carries `cards`
 #     and `startup_readbacks`, the tool result carries transient
 #     `activation_delivery_payload` bytes, and admission itself recorded
 #     `machine-delivered`/`degraded`. Those eras replay under their own shape
-#     and never acquire the v3 fields.
+#     and never acquire the later fields.
 # `deliver-activation-piece:<batch>:<piece>` carries an `activation-piece-v1`
 # delivery: `piece_id`, `piece_sha256`, `piece_envelope_bytes`,
 # `delivery_attempt_id` and a single-use `delivery_nonce`, with the exact file
 # bytes only in the transient `activation_piece_payload`. The server re-reads
 # current bytes and refuses a source that drifted since admission, and refuses
-# any delivery serializing above the K13/19 budget.
+# any delivery serializing above the Tool-owned activation envelope budget.
 # `ack-activation-piece:<batch>:<piece>` carries an `activation-piece-ack-v1`
 # record binding the delivery receipt, its nonce, `delivery_attempt_id` and the
 # answering `execution_context_id`. An ack proves this context consumed that

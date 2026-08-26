@@ -24,6 +24,8 @@ import maintenance_candidates
 import metadata_execution_contract
 import metadata_property_state
 import project_page_state
+import runtime_paths
+import stamp_cards
 import standards_state
 from profile_fixture import install_loadable_profile
 
@@ -495,8 +497,8 @@ class RequiredQueueFixture:
                 candidate_context["candidate_state_sha256"],
         })
 
-        watermark_path = "Tools/state/watermark.yaml"
-        (self.root / "Tools/state").mkdir(parents=True, exist_ok=True)
+        watermark_path = runtime_paths.WATERMARK_PATH
+        (self.root / ".cambium/state").mkdir(parents=True, exist_ok=True)
         watermark_receipt = kblib.make_receipt(
             "fixture_maintenance", "1.0.0",
             "maintenance_watermark_advanced", watermark_path, "pass",
@@ -567,10 +569,6 @@ class RequiredQueueFixture:
         shutil.copytree(
             REPOSITORY / "kernel", self.root / "kernel", dirs_exist_ok=True)
         (self.root / "profiles").mkdir(exist_ok=True)
-        shutil.copy2(
-            REPOSITORY / "profiles/README.md",
-            self.root / "profiles/README.md",
-        )
         target_profile = self.root / "profiles/test-profile"
         shutil.copytree(SYNTHETIC_PROFILE, target_profile, dirs_exist_ok=True)
         tools_root = self.root / "Tools"
@@ -603,14 +601,12 @@ class RequiredQueueFixture:
         coverage["selected_profile_manifest"] = manifest
         queue["selected_profile_manifest"] = manifest
         progress["contract"]["selected_profile_manifest"] = manifest
+        selected_route_ids = ["R01", "R03", "R08", "R12"]
+        cards, _read_sets = stamp_cards.discover_cards(self.root)
         progress["contract"].update({
-            "selected_route_ids": ["R01", "R03", "R08", "R12"],
-            "selected_card_paths": [
-                "kernel/Cards/R01 Core Bootstrap Card.md",
-                "kernel/Cards/R03 Module Build Card.md",
-                "kernel/Cards/R08 Audit and Completion Card.md",
-                "kernel/Cards/R12 Targeted and Specialized Audit Card.md",
-            ],
+            "selected_route_ids": selected_route_ids,
+            "selected_card_paths": sorted(
+                cards[route_id]["path"] for route_id in selected_route_ids),
             "selected_profile_route_ids": [],
             "selected_read_sets": [],
             "loaded_module_paths": [
@@ -1377,7 +1373,7 @@ class MaintenanceCompletionTests(_TemplateBackedCase):
                       wrong_gate.stdout)
         candidate = self.scenario["maintenance_candidate_refusal"]
         self.assertEqual(1, candidate.returncode, candidate.stdout)
-        self.assertIn("maintenance tasks may not enter completion-candidate",
+        self.assertIn("illegal task transition planned -> completion-candidate",
                       candidate.stdout)
         early = self.scenario["maintenance_early_gate"]
         self.assertEqual(1, early.returncode, early.stdout)
@@ -1505,7 +1501,7 @@ class MaintenanceCompletionTests(_TemplateBackedCase):
     def test_maintenance_gate_rejects_watermark_batch_outside_manifest(self):
         budget_id, ledger_id, watermark_id = self.maintenance_evidence_ids()
 
-        watermark_path = self.root / "Tools/state/watermark.yaml"
+        watermark_path = self.root / runtime_paths.WATERMARK_PATH
         watermark = kblib.load_yaml_file(watermark_path)
         watermark["last_batch_id"] = "B-NOT-IN-QUEUE"
         watermark_path.write_text(

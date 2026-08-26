@@ -45,7 +45,9 @@ tools, and agent execution contexts.
 
 | Layer | What it owns |
 |---|---|
-| `kernel/` | Cross-domain rules, gates, routes, Read Sets, and Runtime Cards |
+| `kernel/` | Cross-domain governance semantics, invariants, state meanings, and extension points |
+| `Card/` | Curated, non-authoritative flight checklists for an already selected task route or phase |
+| `Read Set/` | Machine-resolvable declarations of what canonical material an already selected route or phase must load |
 | Selected profile | One repository's scope, language, architecture, sources, priorities, roles, scans, and allowed extensions |
 | `.cambium/` | The adopter's current governance identity, task state, Queue, plans, deltas, receipts, and recovery evidence |
 | `Tools/` | Deterministic checks, controlled writers, schemas, and generated projections |
@@ -54,9 +56,10 @@ The kernel is normative. A profile can fill or tighten an extension point, but
 cannot disable a kernel rule. Tools execute declared rules; they do not make
 the final semantic judgment.
 
-Runtime Cards are short execution routes, not a second copy of the standard.
-When a Card is insufficient or disputed, its Read Set leads back to the
-normative kernel text.
+Cards are short, curated checklists, not routes or a second copy of the
+standard. Read Sets own the static loading boundary. When a Card is
+insufficient or disputed, its read-back hook resolves through the paired Read
+Set to the canonical owner.
 
 This repository is intentionally uninstantiated. It contains templates and
 examples, but selects no adopter profile and creates no fabricated task state.
@@ -121,21 +124,23 @@ Long-running work uses three state objects with different owners:
 
 They must agree, but they are not interchangeable task lists.
 
-The adopter-owned namespace is:
+The adopter-owned namespace contains six lifecycle classes:
 
 ```text
 .cambium/
-├── governance/  # current Standards and selected-profile identity
-├── state/       # Coverage, Required Queue, and Progress
-├── work_specs/  # immutable contracts for complex batches
-├── deltas/      # proposed and batch-local changes
-├── receipts/    # evidence and transition history
-├── reports/     # derived views; never authority
-└── tmp/         # locks and interrupted-write recovery evidence
+├── <canonical current state>
+├── <bound operational inputs>
+├── <evidence and history>
+├── <recovery state>
+├── <transient workspace>
+└── <derived projections>
 ```
 
 Do not edit canonical state by hand. Use the owning writer so revisions,
 hashes, receipts, and recovery evidence move together.
+[`Tools/runtime_paths.py`](Tools/runtime_paths.py) is the single machine owner
+of the current physical path spellings and object classifications; this README
+does not maintain a second directory contract.
 
 ## Adopt Cambium
 
@@ -155,8 +160,11 @@ whitelist and refuses to overwrite an existing candidate.
 ### 2. Answer the open decisions and validate
 
 Use [profiles/interview.yaml](profiles/interview.yaml) with an assisting agent,
-or fill the same contract by hand. The authoritative slot guide is
-[profiles/README.md](profiles/README.md).
+or fill the same contract by hand. The common slot interface belongs to the
+Kernel and is defined by
+[K00/19](kernel/K00%20Standards%20Control/19%20Profile%20Extension%20Interface.md)
+and its machine-readable registry; [profiles/README.md](profiles/README.md) is
+the candidate workflow guide.
 
 ```text
 python3 Tools/profile_onboarding_status.py . --profile-id my-profile --json
@@ -178,17 +186,24 @@ python3 Tools/apply_profile_adoption.py . --plan <plan>.yaml
 python3 Tools/apply_profile_adoption.py . --plan <plan>.yaml --apply
 ```
 
-The transaction binds the approved Standards version, selected profile,
-generated contracts, Runtime Cards, and adoption receipts. It restores the
-previous control plane if any step fails.
+The transaction binds the approved Standards version, selected Profile, and
+the resulting generated contracts and evidence. It restores the previous
+control plane if any step fails.
+
+If the transaction reports a stale curated Card, review the changed canonical
+sources and the affected Card body as a separate human step. Only after that
+review may the reviewer record the new binding with
+`python3 Tools/stamp_cards.py . --acknowledge-curated-review`; rerun the
+adoption transaction afterwards. Adoption never acknowledges Card semantics
+on the reviewer's behalf.
 
 An empty corpus follows the same adoption contract. First perform bounded
 founding work to create real canonical owners and the residual-scan witness —
 one page may serve as both owner and witness when that is semantically
 natural, but pages are never merged only to save files. Then a second R09
 revision configures the Corpus Planning slot before large-scale work begins.
-The exact sequence is documented in
-[profiles/README.md](profiles/README.md#adoption-flow).
+The candidate and adoption boundary is documented in
+[profiles/README.md](profiles/README.md#mechanical-validation-and-adoption).
 
 ## Start Or Resume A Task
 
@@ -332,8 +347,10 @@ require an isolated workspace or external trust anchor.
 
 | Path | Purpose |
 |---|---|
-| [`kernel/`](kernel/) | Normative standards, Read Sets, and Runtime Cards |
-| [`profiles/`](profiles/) | Profile interface, template, interview, and examples |
+| [`kernel/`](kernel/) | Normative common governance rules and Kernel-owned machine contracts |
+| [`Card/`](Card/) | Curated, non-authoritative action checklists |
+| [`Read Set/`](Read%20Set/) | Canonical static loading declarations and generated navigation |
+| [`profiles/`](profiles/) | Candidate template, interview, adoption guidance, and non-authoritative examples |
 | [`Tools/`](Tools/) | Checks, writers, schemas, receipts, and generators |
 | [`Tools/compiled/`](Tools/compiled/) | Generated CLI, MCP, metadata, and host projections |
 | [`assets/readme/`](assets/readme/) | Public diagrams embedded by the root READMEs |
@@ -347,9 +364,11 @@ place of an adopter-owned profile.
 
 Cambium uses path-based licensing:
 
-- software and implementation material under `Tools/` uses Apache-2.0;
-- standards, profiles, README files, roadmap documentation, and diagrams under
-  `assets/readme/` use CC BY 4.0.
+- software and repository-engineering material under `Tools/`, `.github/`,
+  `Makefile`, and `distribution-boundary.yaml` uses Apache-2.0;
+- standards under `kernel/`, curated `Card/` and `Read Set/` material,
+  profiles, README and contributing documentation, the roadmap, and diagrams
+  under `assets/readme/` use CC BY 4.0.
 
 See [LICENSE.md](LICENSE.md), [ATTRIBUTION.md](ATTRIBUTION.md), and
 [LICENSES/](LICENSES/) for the authoritative terms and notices.

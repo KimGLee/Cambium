@@ -68,6 +68,7 @@ directly instead.
 
 import json
 import os
+import re
 import sys
 
 TOOLS_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -77,13 +78,14 @@ sys.path.insert(0, TOOLS_DIR)
 import kblib  # noqa: E402
 
 TOOL = "render_interface_projection"
-TOOL_VERSION = "1.1.0"
+TOOL_VERSION = "1.3.0"
 
 SCHEMA_VERSION = 3
 ARTIFACT_KIND = "agent-interface-projection"
 DEFAULT_CONTRACT = "Tools/compiled/cli-contract.yaml"
 UPSTREAM_ARTIFACT = "cli-invocation-contract"
-UPSTREAM_SCHEMA_VERSION = 3
+UPSTREAM_SCHEMA_VERSION = 5
+SHA256_RE = re.compile(r"sha256:[0-9a-f]{64}\Z")
 
 # The transports the `mcp` form declares. Deliberately two, and
 # deliberately not four.
@@ -371,6 +373,20 @@ def read_contract(path):
                             UPSTREAM_SCHEMA_VERSION))
     if not isinstance(contract.get("source_hash"), str):
         raise ProjectionError("%s carries no source_hash" % path)
+    component_path_registries = contract.get("component_path_registries")
+    if not isinstance(component_path_registries, dict):
+        raise ProjectionError(
+            "%s carries no component_path_registries provenance" % path)
+    for component_path_id, provenance in component_path_registries.items():
+        if (not isinstance(component_path_id, str) or
+                not component_path_id or not isinstance(provenance, dict) or
+                set(provenance) != {"path", "sha256"} or
+                not isinstance(provenance.get("path"), str) or
+                not provenance.get("path") or
+                not SHA256_RE.fullmatch(str(provenance.get("sha256", "")))):
+            raise ProjectionError(
+                "%s carries malformed component path provenance for %r" %
+                (path, component_path_id))
     tools = contract.get("tools")
     if not isinstance(tools, list) or not tools:
         raise ProjectionError("%s carries no tools" % path)
@@ -401,10 +417,36 @@ def read_contract(path):
         for item in paths:
             if not isinstance(item, dict) or set(item) != {
                     "argument", "access", "consumption", "constraint", "value",
-                    "suffixes", "active_when_any", "inactive_when_any"}:
+                    "runtime_path_id", "component_path_id", "suffixes",
+                    "active_when_any",
+                    "inactive_when_any"}:
                 raise ProjectionError(
                     "%s: tool %r carries a malformed path capability" %
                     (path, record.get("tool")))
+            runtime_path_id = item.get("runtime_path_id")
+            component_path_id = item.get("component_path_id")
+            if runtime_path_id is not None and (
+                    not isinstance(runtime_path_id, str) or
+                    not runtime_path_id):
+                raise ProjectionError(
+                    "%s: tool %r carries a malformed runtime_path_id" %
+                    (path, record.get("tool")))
+            if component_path_id is not None and (
+                    not isinstance(component_path_id, str) or
+                    not component_path_id):
+                raise ProjectionError(
+                    "%s: tool %r carries a malformed component_path_id" %
+                    (path, record.get("tool")))
+            if runtime_path_id is not None and component_path_id is not None:
+                raise ProjectionError(
+                    "%s: tool %r path capability carries both runtime and "
+                    "component path identities" %
+                    (path, record.get("tool")))
+            if (component_path_id is not None and
+                    component_path_id not in component_path_registries):
+                raise ProjectionError(
+                    "%s: tool %r names unknown component_path_id %s" %
+                    (path, record.get("tool"), component_path_id))
             path_names.add(item.get("argument"))
         classified = set(values) | path_names
         workspace_argument = interface.get("workspace_argument")

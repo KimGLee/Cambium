@@ -51,6 +51,7 @@ if str(TOOLS) not in sys.path:
     sys.path.insert(0, str(TOOLS))
 
 import test_profile_onboarding_status as tpos  # noqa: E402
+import corpus_planning_contract  # noqa: E402
 
 
 def _load(name):
@@ -107,7 +108,7 @@ class WhenTheCloseGateIsOwed(unittest.TestCase):
         self.result = {
             "applicability": "configured",
             "slot": {"bindings": dict(zip(
-                check_corpus_plan.ARTIFACT_ROLES,
+                corpus_planning_contract.ARTIFACT_ROLES,
                 (GLOBAL_MAP, CAPABILITY_MATRIX, GAP_REGISTER)))},
         }
         self.paths = list(check_corpus_plan.planning_artifact_paths(

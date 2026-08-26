@@ -1,5 +1,5 @@
 # Agent Systems Atlas metadata-contract slot: the configured branch.
-# Interface: profiles/README.md#Metadata-Contract-Slot
+# Interface: kernel/K00 Standards Control/profile-interface.yaml
 # Kernel defaults stay in kernel/K08 Metadata and Status/applicability-base.yaml
 # and relationship-base.yaml; only Atlas differences and extensions appear
 # here. `interview_card` and `interview_status`

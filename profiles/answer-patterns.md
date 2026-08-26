@@ -4,7 +4,8 @@ Shapes harvested from the shipped examples (`profiles/examples/minimal-notes/`,
 `profiles/examples/agent-atlas/`) and from the Agent Systems Atlas adopter's
 field experience. **A pattern is a shape, never an answer**: instantiate it
 with this corpus's own content, and do not reuse an example's identity, paths,
-or scale of ambition. These patterns serve both template depths.
+or scale of ambition. These patterns only help discuss candidate answers; they
+do not add defaults or another template tier.
 
 ## 1. One-line Knowledge Spine (Q9)
 
@@ -17,7 +18,8 @@ stage chain (foundations → mechanism → system → outcome).
 
 `A page describing <the class the maintainer must act on>` is complete when it
 names: the thing, its current version, where its backup or definition lives,
-and the one command or check that verifies it works. Swap the four elements
+and the observable condition or stable check capability that verifies it
+works. Swap the four elements
 for the corpus's own act-on-it needs; keep the predicate testable.
 
 ## 3. Own-observation Source (Q7)

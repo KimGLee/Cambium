@@ -56,6 +56,7 @@ def fixture_contract(**overrides):
         "schema_version": projector.UPSTREAM_SCHEMA_VERSION,
         "artifact": projector.UPSTREAM_ARTIFACT,
         "source_hash": kblib.sha256_bytes(b"fixture manifest"),
+        "component_path_registries": {},
         "tool_count": 1,
         "tools": [{
             "tool": "sample",
@@ -164,10 +165,10 @@ class ShippedArtifactTests(unittest.TestCase):
                 self.assertEqual(capability["value"], ".cambium/receipts")
                 self.assertEqual(capability["suffixes"], [".jsonl"])
         exact = {
-            ("check_vocab", "vocab"): "Tools/vocab.yaml",
+            ("check_vocab", "vocab"): ".cambium/derived/vocab.yaml",
             ("check_proof", "template"):
                 "Tools/schemas/terminal_proof.template.yaml",
-            ("stamp_cards", "cards_dir"): "kernel/Cards",
+            ("stamp_cards", "cards_dir"): "Card",
         }
         for (tool_name, argument), value in exact.items():
             with self.subTest(tool=tool_name, argument=argument):
@@ -271,7 +272,8 @@ class DeterminismTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as workspace:
             contract_path = Path(workspace) / projector.DEFAULT_CONTRACT
             contract_path.parent.mkdir(parents=True)
-            contract_path.write_bytes(CONTRACT.read_bytes())
+            contract_path.write_text(
+                kblib.canonical_yaml(fixture_contract()), encoding="utf-8")
             artifact = Path(workspace) / projector.FORMS["mcp"]["output"]
             first_run = run(workspace, "--form", "mcp",
                             env={"PYTHONHASHSEED": "0"})
@@ -387,6 +389,144 @@ class FixtureRunTests(unittest.TestCase):
         result = self.project("--check")
 
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+
+    def test_runtime_source_identity_does_not_change_mcp_path_semantics(self):
+        contract = fixture_contract()
+        record = contract["tools"][0]
+        record["arguments"].append({
+            "dest": "contract",
+            "option_strings": ["--contract"],
+            "required": False,
+            "default": ".cambium/derived/page_contract.yaml",
+            "default_type": "str",
+            "choices": None,
+            "nargs": None,
+            "action": "store",
+            "type": None,
+            "help": "compiled page contract",
+        })
+        record["agent_interface"]["path_arguments"] = [{
+            "argument": "contract",
+            "access": "read",
+            "consumption": "snapshot",
+            "constraint": "exact",
+            "value": ".cambium/derived/page_contract.yaml",
+            "runtime_path_id": "effective-page-contract",
+            "component_path_id": None,
+            "suffixes": [],
+            "active_when_any": [],
+            "inactive_when_any": [],
+        }]
+        with open(self.contract_path, "w", encoding="utf-8") as handle:
+            handle.write(kblib.canonical_yaml(contract))
+
+        result = self.project()
+
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        artifact = json.loads(Path(self.output).read_text(encoding="utf-8"))
+        capability = artifact["tools"][0]["inputSchema"]["properties"][
+            "contract"][projector.PATH_EXTENSION_KEY]
+        self.assertEqual(
+            capability,
+            {
+                "access": "read",
+                "consumption": "snapshot",
+                "constraint": "exact",
+                "value": ".cambium/derived/page_contract.yaml",
+                "suffixes": [],
+                "active_when_any": [],
+                "inactive_when_any": [],
+            },
+        )
+
+    def test_component_source_identity_is_validated_but_not_exposed_to_mcp(self):
+        contract = fixture_contract(component_path_registries={
+            "card-directory": {
+                "path": "Card/card.schema.yaml",
+                "sha256": kblib.sha256_bytes(b"fixture Card schema"),
+            },
+        })
+        record = contract["tools"][0]
+        record["arguments"].append({
+            "dest": "cards_dir",
+            "option_strings": ["--cards-dir"],
+            "required": False,
+            "default": "Card",
+            "default_type": "str",
+            "choices": None,
+            "nargs": None,
+            "action": "store",
+            "type": None,
+            "help": "canonical Card directory",
+        })
+        record["agent_interface"]["path_arguments"] = [{
+            "argument": "cards_dir",
+            "access": "read-write",
+            "consumption": "transaction",
+            "constraint": "exact",
+            "value": "Card",
+            "runtime_path_id": None,
+            "component_path_id": "card-directory",
+            "suffixes": [],
+            "active_when_any": [],
+            "inactive_when_any": [],
+        }]
+        with open(self.contract_path, "w", encoding="utf-8") as handle:
+            handle.write(kblib.canonical_yaml(contract))
+
+        result = self.project()
+
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        artifact = json.loads(Path(self.output).read_text(encoding="utf-8"))
+        capability = artifact["tools"][0]["inputSchema"]["properties"][
+            "cards_dir"][projector.PATH_EXTENSION_KEY]
+        self.assertEqual(
+            capability,
+            {
+                "access": "read-write",
+                "consumption": "transaction",
+                "constraint": "exact",
+                "value": "Card",
+                "suffixes": [],
+                "active_when_any": [],
+                "inactive_when_any": [],
+            },
+        )
+
+    def test_unknown_component_source_identity_is_unreliable(self):
+        contract = fixture_contract()
+        record = contract["tools"][0]
+        record["arguments"].append({
+            "dest": "cards_dir",
+            "option_strings": ["--cards-dir"],
+            "required": False,
+            "default": "Card",
+            "default_type": "str",
+            "choices": None,
+            "nargs": None,
+            "action": "store",
+            "type": None,
+            "help": None,
+        })
+        record["agent_interface"]["path_arguments"] = [{
+            "argument": "cards_dir",
+            "access": "read-write",
+            "consumption": "transaction",
+            "constraint": "exact",
+            "value": "Card",
+            "runtime_path_id": None,
+            "component_path_id": "card-directory",
+            "suffixes": [],
+            "active_when_any": [],
+            "inactive_when_any": [],
+        }]
+        with open(self.contract_path, "w", encoding="utf-8") as handle:
+            handle.write(kblib.canonical_yaml(contract))
+
+        result = self.project()
+
+        self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
+        self.assertIn("unknown component_path_id", result.stdout)
 
     def test_a_hand_edited_artifact_holds_with_2(self):
         self.project()

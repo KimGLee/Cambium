@@ -1,12 +1,10 @@
-"""The interface, the template, and the fill script must stay in step.
+"""The Kernel interface, candidate template, and interview must stay in step.
 
-`profiles/README.md` is the normative slot interface. `profiles/_template` is
-that interface as a copyable form, and `profiles/interview.yaml` is the script
-that fills it. A slot therefore reaches an adopter through three surfaces, not
-one, and nothing failed before this module when a slot reached some of them and
-not the others: a slot added to the interface without an interview question
-arrives as a file nobody was asked to fill, and one added without a manifest
-binding fails `check_profile.py` in the adopter's copy rather than in CI.
+`kernel/K00 Standards Control/profile-interface.yaml` is the single normative
+Profile-slot registry. `profiles/_template` is a copyable candidate form and
+`profiles/interview.yaml` is one way to collect confirmed instance answers. A
+slot therefore reaches an adopter through three surfaces, but only the Kernel
+registry defines the common interface.
 
 The module pins the joins:
 
@@ -15,9 +13,8 @@ The module pins the joins:
 2. Every interface slot is reachable from `interview.yaml` -- through a core
    pack question's `maps_to[].file` or an expansion pack's `binds_slot`, and
    every `binds_slot` names a real slot.
-3. Every interface slot section names the kernel module it projects. A slot
-   exists because some kernel module needs an instance-side answer; when that
-   module changes, the citation is what points back at the slot to revisit.
+3. Every interface slot names its Kernel semantic owner. A slot exists because
+   a Kernel extension point needs an instance-side answer.
 4. Validating the unfilled template fails on nothing but its open decisions --
    the placeholder sentinel and the unfilled identity. Every switch with a
    legal exit state ships in it, so a shipped applicability failure means a
@@ -32,9 +29,8 @@ does not read -- `vocabulary-extensions.yaml` belongs to `compose_vocab.py`,
 `metadata-contract.yaml`'s body to `compose_page_contract.py` -- are covered by
 those tools' own suites, not here.
 
-Nothing here reads prose for meaning. That a slot cites a kernel module is
-checkable; that the citation is the right module, and that the slot's spec
-still matches what that module requires, stays a review obligation.
+Nothing here judges the semantic quality of a template answer or confirms it
+on a user's behalf.
 
 These are regression tests, not gates: they record no receipt, claim no Gate
 ID, and judge no answer quality.
@@ -50,7 +46,6 @@ from pathlib import Path
 REPOSITORY = Path(__file__).resolve().parents[2]
 TOOLS = REPOSITORY / "Tools"
 PROFILES = REPOSITORY / "profiles"
-INTERFACE = PROFILES / "README.md"
 INTERVIEW = PROFILES / "interview.yaml"
 CHECK_PROFILE = TOOLS / "check_profile.py"
 
@@ -61,7 +56,6 @@ OPEN_DECISION_CODES = ("unfilled-placeholder", "profile-id-invalid")
 FAIL_CODE_RE = re.compile(r"\[FAIL ([a-z0-9-]+)\]")
 INLINE_FILE_RE = re.compile(r"\{file:\s*([^,}]+)")
 BINDS_SLOT_RE = re.compile(r"^\s*binds_slot:\s*(.+?)\s*$", re.MULTILINE)
-KERNEL_MODULE_RE = re.compile(r"\bK\d\d/\d\d\b")
 
 
 def _load_check_profile():
@@ -78,26 +72,20 @@ def _load_check_profile():
 check_profile = _load_check_profile()
 
 
-def interface_text():
-    return INTERFACE.read_text(encoding="utf-8")
+def interface_document():
+    path = REPOSITORY / check_profile.profile_contract.PROFILE_INTERFACE_PATH
+    return check_profile.kblib.parse_yaml_subset(
+        path.read_text(encoding="utf-8"))
 
 
 def interface_slot_names():
-    return check_profile.interface_slots(interface_text())
+    return list(check_profile.profile_contract.profile_interface_slots(
+        interface_document()))
 
 
-def slot_sections():
-    """Slot name -> the section body that specifies it."""
-    lines = interface_text().splitlines()
-    headings = [(index, line[3:].strip()[: -len(" Slot")].strip())
-                for index, line in enumerate(lines)
-                if line.startswith("## ") and line.strip().endswith(" Slot")]
-    sections = {}
-    for position, (index, name) in enumerate(headings):
-        end = (headings[position + 1][0] if position + 1 < len(headings)
-               else len(lines))
-        sections[name] = "\n".join(lines[index:end])
-    return sections
+def slot_records():
+    """Slot name -> its Kernel-owned interface record."""
+    return {row["name"]: row for row in interface_document()["slots"]}
 
 
 def template_bindings():
@@ -117,7 +105,7 @@ class InterfaceBinding(unittest.TestCase):
         self.assertEqual(
             sorted(slots), sorted(bindings),
             "profiles/%s/profile.md must bind exactly the slots "
-            "profiles/README.md declares; a slot added to the interface "
+            "the Kernel interface declares; a slot added to the interface "
             "reaches an adopter only through the template" % TEMPLATE)
 
     def test_template_ships_every_bound_file(self):
@@ -134,15 +122,15 @@ class InterfaceBinding(unittest.TestCase):
 class KernelProjection(unittest.TestCase):
     """A slot exists because a kernel module needs an instance-side answer."""
 
-    def test_every_slot_section_names_its_kernel_module(self):
+    def test_every_slot_names_its_kernel_owner(self):
         missing = sorted(
-            name for name, body in slot_sections().items()
-            if not KERNEL_MODULE_RE.search(body))
+            name for name, row in slot_records().items()
+            if not isinstance(row.get("kernel_owner"), str)
+            or not row["kernel_owner"].strip())
         self.assertEqual(
             [], missing,
-            "these slot specifications name no kernel module, so nothing "
-            "records why the slot exists or which module to revisit when it "
-            "changes: %s" % missing)
+            "these interface slots name no Kernel semantic owner: %s"
+            % missing)
 
 
 class InterviewCoverage(unittest.TestCase):

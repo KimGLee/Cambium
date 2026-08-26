@@ -1,42 +1,5 @@
-# Metadata Contract — the profile's page-contract differences.
-# Interface: profiles/README.md#Metadata-Contract-Slot
-# Semantic owners: kernel/K08 Metadata and Status/06 Frontmatter
-# Applicability Contract.md, 08 Relationship Metadata Contract.md, and
-# 09 Page Boundary Contract.md; writer
-# authority: 07 Frontmatter Writer and Projection Authority.md.
-# Kernel defaults live in kernel/K08 Metadata and Status/applicability-base.yaml
-# and relationship-base.yaml; declare only differences here — never restate a
-# kernel default, and a difference may only tighten (optional -> required,
-# optional -> conditional, conditional -> required).
-#
-# This slot ships in its kernel-defaults branch: the kernel applicability and
-# relationship bases apply unchanged, and a profile with no differences
-# declares that explicitly instead of restating defaults. Open the slot later
-# (state: configured) when the corpus needs a tightened mode, an extension
-# field, or a relationship extension. The shapes below are the complete
-# reference for that branch.
-#
-# applicability.state: configured | kernel-defaults
-#   kernel-defaults -> all four lists empty.
-#   configured      -> at least one entry across the four lists.
-#
-# applicability_differences: [{field, mode, condition?, note?}]
-# extension_fields:          [{field, mode, shape, condition?, owner}]
-# relationship_extensions:   [{field, mode, direction, target, shape, owner}]
-# section_roles:             [{role: sources|related, titles: [...],
-#                              aliases?: [...], owner}] — display titles the
-#   Language Contract binds for the K07 sources / K09 related section roles.
-# Conditions: {all|any: [{field, in: [...]} | {field, absent: true}]}.
-# Shapes: nonempty-string | date | url | path | list-of-strings |
-#   list-of-paths | delegated (internal structure owned by the gate the
-#   base entry's `delegate` key names; kernel-only — a profile extension
-#   does not declare it).
-#
-# Optional top-level key (omit it entirely to keep kernel defaults):
-# boundary_projection:            K08/09 boundary-projection display labels;
-#   labels:                       display text only, never schema/semantics.
-#     preamble|owns|excludes|owner|goals|non_goals: "display string"
-# Compose with: python3 Tools/compose_page_contract.py
+# Candidate instance values for the Metadata Contract slot. The Kernel-owned
+# Profile interface and K08 define the common shape and extension boundary.
 
 schema_version: 1
 

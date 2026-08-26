@@ -279,7 +279,9 @@ class CheckCorpusPlanPositiveTests(CorpusPlanFixture):
             check_corpus_plan.check_queue.profile_load_authorized_view(
                 self.root, "profiles/test-profile/profile.md")
         self.assertEqual([], view_errors)
-        interface = self.root / "profiles/README.md"
+        interface = (
+            self.root /
+            check_corpus_plan.check_queue.check_profile.DEFAULT_INTERFACE)
         interface.write_text(
             interface.read_text(encoding="utf-8") +
             "\n<!-- canonical input revision B -->\n",

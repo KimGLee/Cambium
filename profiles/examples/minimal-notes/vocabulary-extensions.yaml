@@ -1,5 +1,5 @@
 # Minimal Notes profile vocabulary extensions.
-# Interface: profiles/README.md#Vocabulary-Extensions-Slot
+# Interface: kernel/K00 Standards Control/profile-interface.yaml
 #
 # This profile registers no kernel-field extension and no profile-owned field:
 # the readiness-axis mapping shipped by profiles/_template/ has been deleted

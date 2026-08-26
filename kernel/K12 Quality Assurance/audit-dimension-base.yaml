@@ -1,0 +1,37 @@
+schema_version: 1
+registry_id: cambium-audit-dimension-base
+semantic_owner: K12/07-K12/08
+
+# This is the sole machine authority for Cambium's base receipt-dimension
+# namespace, evidence roles, and the target mapping used when a selected
+# Profile registers an extension dimension. K12 prose explains the meanings;
+# the Profile interface only references this registry.
+base_receipt_dimensions:
+  - structure_and_links
+  - content_and_depth
+  - formula_and_numeric
+  - source_and_currentness
+  - coverage_and_integration
+  - rendering
+  - guidance_and_contract
+
+evidence_roles:
+  - emits
+  - consumes
+  - triggers
+
+extension_output_kinds:
+  - review
+  - receipt
+
+extension_target_mappings:
+  - declaration: review
+    outputs:
+      - review
+  - declaration: receipt
+    outputs:
+      - receipt
+  - declaration: review + receipt
+    outputs:
+      - review
+      - receipt

@@ -57,30 +57,31 @@ import os
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import card_contract
 import check_profile
+import corpus_planning_contract
 import kblib
+import profile_layout_contract
+import read_set_contract
+import runtime_paths
 import standards_state
 
 TOOL = "profile_onboarding_status"
-TOOL_VERSION = "1.1.0"
+TOOL_VERSION = "1.2.0"
 
 ACTIVE_STATE_RELATIVE = standards_state.STATE_PATH
 DEFAULTS_RELATIVE = "Tools/schemas/execution_defaults.template.yaml"
-CORPUS_PLANNING_SLOT = "Corpus Planning"
-MANIFEST_NAME = "profile.md"
+CORPUS_PLANNING_SLOT = corpus_planning_contract.SLOT_NAME
 
 # Trees and root-level files that are distribution/control plane, never
 # corpus pages.  Dot-directories (.git, .cambium, .obsidian, ...) are
 # excluded wherever they occur.
-NON_CORPUS_TREES = frozenset(("kernel", "profiles", "Tools", "LICENSES",
-                              "docs"))
+BASE_NON_CORPUS_TREES = frozenset((
+    "kernel", profile_layout_contract.PROFILES_DIRECTORY, "Tools",
+    "LICENSES", "docs"))
 NON_CORPUS_ROOT_FILES = frozenset(("ROADMAP.md", "ATTRIBUTION.md",
                                    "LICENSE.md", "NOTICE"))
 NON_CORPUS_ROOT_PREFIX = "README"
-
-# Candidate enumeration never treats these profiles/ members as candidates.
-NON_CANDIDATE_DIRECTORIES = frozenset(("_template", "examples"))
-
 
 def read_text(path):
     with open(path, encoding="utf-8", errors="strict") as handle:
@@ -133,7 +134,8 @@ def corpus_planning_state(root, profile_dir):
     a projection only; slot validation stays with ``check_profile``.
     """
     try:
-        manifest_text = read_text(os.path.join(profile_dir, MANIFEST_NAME))
+        manifest_text = read_text(os.path.join(
+            profile_dir, profile_layout_contract.PROFILE_MANIFEST_NAME))
         binding = kblib.profile_slot_bindings(manifest_text).get(
             CORPUS_PLANNING_SLOT)
         if binding is None:
@@ -148,7 +150,7 @@ def corpus_planning_state(root, profile_dir):
                  if isinstance(applicability, dict) else None)
     except (OSError, UnicodeError, kblib.YamlSubsetError):
         return "unreadable"
-    if state in ("configured", "not-applicable"):
+    if state in corpus_planning_contract.APPLICABILITY_STATES:
         return state
     return "unreadable"
 
@@ -173,14 +175,16 @@ def sentinel_count(directory, sentinel):
 
 def candidate_directories(root):
     """Profile directories under profiles/, excluding template and examples."""
-    profiles_dir = os.path.join(root, "profiles")
+    profiles_dir = os.path.join(
+        root, profile_layout_contract.PROFILES_DIRECTORY)
     names = []
     try:
         entries = sorted(os.listdir(profiles_dir))
     except OSError:
         return names
     for name in entries:
-        if name in NON_CANDIDATE_DIRECTORIES or name.startswith("."):
+        if (name in profile_layout_contract.RESERVED_PROFILE_IDS or
+                name.startswith(".")):
             continue
         if os.path.isdir(os.path.join(profiles_dir, name)):
             names.append(name)
@@ -189,7 +193,9 @@ def candidate_directories(root):
 
 def candidate_profile_id(root, name):
     """The manifest's declared profile_id, or None when unreadable."""
-    manifest = os.path.join(root, "profiles", name, MANIFEST_NAME)
+    manifest = os.path.join(
+        root, profile_layout_contract.PROFILES_DIRECTORY, name,
+        profile_layout_contract.PROFILE_MANIFEST_NAME)
     try:
         manifest_text = read_text(manifest)
     except (OSError, UnicodeError):
@@ -200,7 +206,8 @@ def candidate_profile_id(root, name):
 
 def evaluate_candidate(root, name):
     """One in-process ``profile-load`` evaluation with categorized counts."""
-    profile_dir = os.path.join(root, "profiles", name)
+    profile_dir = os.path.join(
+        root, profile_layout_contract.PROFILES_DIRECTORY, name)
     try:
         evaluation = check_profile.evaluate_profile_load(
             profile_dir, root=root, receipt_identity=None)
@@ -226,6 +233,10 @@ def evaluate_candidate(root, name):
 
 def corpus_page_count(root):
     """Count corpus Markdown pages outside the distribution/control trees."""
+    non_corpus_trees = BASE_NON_CORPUS_TREES | {
+        card_contract.load_schema(root)["directory"],
+        read_set_contract.load_schema(root)["directory"],
+    }
     count = 0
     for dirpath, dirnames, filenames in os.walk(root):
         relative = os.path.relpath(dirpath, root)
@@ -233,7 +244,7 @@ def corpus_page_count(root):
         dirnames[:] = sorted(
             name for name in dirnames
             if not name.startswith(".")
-            and not (at_root and name in NON_CORPUS_TREES))
+            and not (at_root and name in non_corpus_trees))
         for name in sorted(filenames):
             if not name.lower().endswith(".md"):
                 continue
@@ -245,8 +256,8 @@ def corpus_page_count(root):
 
 
 def runtime_view(root):
-    cambium = os.path.join(root, ".cambium")
-    state_dir = os.path.join(cambium, "state")
+    cambium = os.path.join(root, runtime_paths.RUNTIME_ROOT)
+    state_dir = os.path.join(root, runtime_paths.STATE_ROOT)
     present = os.path.isdir(state_dir)
     state_has_content = False
     if present:
@@ -261,7 +272,8 @@ def derive_status(root, targeted_id):
     """Derive the complete deterministic status view for one root."""
     adopting_root = all(
         os.path.isdir(os.path.join(root, name))
-        for name in ("kernel", "profiles", "Tools"))
+        for name in ("kernel", profile_layout_contract.PROFILES_DIRECTORY,
+                     "Tools"))
     view = {
         "tool": TOOL,
         "tool_version": TOOL_VERSION,
@@ -303,10 +315,12 @@ def derive_status(root, targeted_id):
         targeted = names[0]
     for name in names:
         entry = {
-            "directory": "profiles/%s" % name,
+            "directory": profile_layout_contract.profile_relative(name),
             "profile_id": candidate_profile_id(root, name),
             "sentinel_count": sentinel_count(
-                os.path.join(root, "profiles", name), sentinel),
+                os.path.join(
+                    root, profile_layout_contract.PROFILES_DIRECTORY, name),
+                sentinel),
             "targeted": name == targeted,
             "profile_load": None,
         }
@@ -322,7 +336,8 @@ def derive_status(root, targeted_id):
             root, selected_dir)
     elif targeted is not None:
         view["corpus_planning_state"] = corpus_planning_state(
-            root, os.path.join(root, "profiles", targeted))
+            root, os.path.join(
+                root, profile_layout_contract.PROFILES_DIRECTORY, targeted))
 
     pages = corpus_page_count(root)
     view["corpus_page_count"] = pages
@@ -332,11 +347,13 @@ def derive_status(root, targeted_id):
     if view["cambium_runtime"]["present"]:
         view["next_action"] = "resume-existing-task"
         notes.append(
-            ".cambium/ runtime state exists (state/ %s); existing-task "
+            "%s/ runtime state exists (state/ %s); existing-task "
             "recovery always wins -- run `python3 Tools/check_queue.py . "
             "--resume-status` and follow its next_action; scaffolding or "
             "adoption must not proceed over an existing runtime"
-            % ("has content" if view["cambium_runtime"]["state_has_content"]
+            % (runtime_paths.RUNTIME_ROOT,
+               "has content"
+               if view["cambium_runtime"]["state_has_content"]
                else "is empty"))
         return view
 
@@ -463,7 +480,7 @@ def print_human(view):
         print("  cambium_runtime=present state_has_content=%s"
               % str(runtime["state_has_content"]).lower())
     else:
-        print("  cambium_runtime=.cambium/ absent")
+        print("  cambium_runtime=%s/ absent" % runtime_paths.RUNTIME_ROOT)
     print("  next_action=%s" % view["next_action"])
     for note in view["notes"]:
         print("  note: %s" % note)

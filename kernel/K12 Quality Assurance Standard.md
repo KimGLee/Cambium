@@ -1,12 +1,13 @@
 ## Purpose
 
-This page is the stable entry for the Quality Assurance standard. The detailed rules have been split by responsibility into the modules below; the original content has not been reduced.
+This page is the stable entry for the Quality Assurance standard. Detailed
+rules are maintained by the responsibility-specific modules below.
 
 ## Reading Rule
 
-- First use this MOC to locate the rule owner, then read the modules required by the current task, event, or quality gate.
-- Entering this domain does not require reading all modules at once.
-- Each module returns to its parent via `Navigation` and connects to its adjacent previous and next modules.
+- Use this MOC only to locate the canonical semantic owner. Loading decisions
+  are owned outside Kernel; opening this index is not evidence that any leaf was
+  loaded.
 
 ## Module Index
 
@@ -18,40 +19,20 @@ This page is the stable entry for the Quality Assurance standard. The detailed r
 | [[kernel/K12 Quality Assurance/04 Guidance and Source Review\|Guidance and Source Review]] | `Guidance Reconciliation Review`, `Source Intake And Promotion Review` |
 | [[kernel/K12 Quality Assurance/05 Automated and Manual Checks\|Automated and Manual Checks]] | `Automated Checks`, `Codification Admission`, `Domain-specific Checks`, `Manual Checks` |
 | [[kernel/K12 Quality Assurance/06 Completion Gate and Reporting\|Completion Gate and Reporting]] | `Completion Gate`, `Final Report`, `Related` |
-| [[kernel/K12 Quality Assurance/07 Audit Evidence Reuse and Invalidation\|Audit Evidence Reuse and Invalidation]] | `Purpose`, `Audit Layers`, `Dimension-specific Audit Receipt`, `Reuse Gate`, `Invalidation`, `Specialized Audit Boundary`, `Receipt Sealing and the Cold Chain`, `Terminal Reconciliation Rules`, `Related` |
+| [[kernel/K12 Quality Assurance/07 Audit Evidence Reuse and Invalidation\|Audit Evidence Reuse and Invalidation]] and [`audit-dimension-base.yaml`](<K12 Quality Assurance/audit-dimension-base.yaml>) | `Purpose`, `Audit Layers`, `Dimension-specific Audit Receipt`, `Reuse Gate`, `Invalidation`, `Specialized Audit Boundary`, `Receipt Sealing and the Cold Chain`, `Terminal Reconciliation Rules`, `Related`; the YAML is the sole machine registry for base receipt dimensions, evidence roles, and Profile extension-target mappings |
 | [[kernel/K12 Quality Assurance/08 Judgment Item Dimension Map\|Judgment Item Dimension Map]] | `Purpose`, `Terms`, `Evidence Role`, `Uniform Sections`, `Item Map`, `Reverse Check`, `Profile Registration`, `Related`; this half files the Single Note Review layer |
-| [[kernel/K12 Quality Assurance/09 Batch-close Closed List\|Batch-close Closed List]] | `Purpose`, `Batch-close Closed List`, `Related` |
-| [[kernel/K12 Quality Assurance/10 Standards Version Adoption\|Standards Version Adoption]] | `Purpose And Sole Ownership`, `Trigger And Invariants`, `Restricted-YAML Adoption Plan`, `Adoption Branches`, `Acceptance And Resume` |
+| [[kernel/K12 Quality Assurance/09 Batch-close Closed List\|Batch-close Closed List]] and [`batch-close-closed-list.yaml`](<K12 Quality Assurance/batch-close-closed-list.yaml>) | `Purpose`, `Batch-close Closed List`, `Related`; the YAML is the sole machine registry for current membership and order |
+| [[kernel/K12 Quality Assurance/10 Standards Version Adoption\|Standards Version Adoption]] | `Purpose And Sole Ownership`, `Trigger And Invariants`, `Adoption Plan Contract`, `Adoption Branches`, `Acceptance And Resume` |
 | [[kernel/K12 Quality Assurance/11 Content-level Propagation\|Content-level Propagation]] | `Purpose`, `Content-level Propagation`, `Related` |
 | [[kernel/K12 Quality Assurance/12 Substantive Correctness Review\|Substantive Correctness Review]] | `Purpose`, `Substantive Correctness Review`, `Related` |
 | [[kernel/K12 Quality Assurance/13 Visual Verification Escalation\|Visual Verification Escalation]] | `Visual Verification Escalation` |
 | [[kernel/K12 Quality Assurance/14 Batch Review\|Batch Review]] | `Batch Review` |
 | [[kernel/K12 Quality Assurance/15 Terminal Audit and Convergence\|Terminal Audit and Convergence]] | `Terminal Audit`, `Terminal Findings And Convergence` |
-| [[kernel/K12 Quality Assurance/16 Terminal Proof Contract\|Terminal Proof Contract]] | `Terminal Proof Contract`, `Terminal Completion Gate`, `Evidence Trust Boundary` |
+| [[kernel/K12 Quality Assurance/16 Terminal Proof Contract\|Terminal Proof Contract]] | `Terminal Proof Contract`, `Evidence Bindings`, `Terminal Completion Gate`, `Evidence Trust Boundary` |
 | [[kernel/K12 Quality Assurance/17 Gate Receipt Payload Contract\|Gate Receipt Payload Contract]] | `Purpose`, `Gate Receipt Payload`, `Recording Authority`, `Standards-adoption Boundary Authority`, `Consumption And Rejection`, `Related` |
-| [[kernel/K12 Quality Assurance/18 Cross-page and Control-plane Dimension Map\|Cross-page and Control-plane Dimension Map]] | `Purpose`, `Item Map`, `Gate Receipt Dimensions`, `Reverse Check`; this half files the layers above one page and the control-plane Gates |
+| [[kernel/K12 Quality Assurance/18 Cross-page and Control-plane Dimension Map\|Cross-page and Control-plane Dimension Map]] | `Purpose`, `Item Map`, `Gate Receipt Dimension Boundary`, `Reverse Check`; this half files the layers above one page and the control-plane Gates |
 | [[kernel/K12 Quality Assurance/19 Incremental Audit Planning\|Incremental Audit Planning]] | `Incremental Audit Planning`, `Incremental By Default` |
 | `Audit Dimension Registry` + `Registered Scan Registry` + `Routing And Gate Registry` | profile-owned QA dimensions, scans, and extension gates |
-
-## Extension Registry
-
-Sections added to this domain after a frozen baseline are registered here for conservation accounting. Registering an extension does not retroactively change the content-conservation denominator of that baseline. Migration and version history do not enter the active standard; the registry is currently empty:
-
-| Version | Extension | Canonical owner | Responsibility |
-|---|---|---|---|
-
-## Applicable Read Sets
-
-- [[kernel/Read Sets/R02 Single Note Authoring Read Set|Single Note Authoring]]
-- [[kernel/Read Sets/R03 Module Build Read Set|Module Build]]
-- [[kernel/Read Sets/R04 Source-driven Expansion Read Set|Source-driven Expansion]]
-- [[kernel/Read Sets/R05 Expression Layer Read Set|R05 Expression Layer]]
-- [[kernel/Read Sets/R06 Migration and Refactor Read Set|Migration and Refactor]]
-- [[kernel/Read Sets/R07 Long-running Execution Read Set|Long-running Execution]]
-- [[kernel/Read Sets/R08 Audit and Completion Read Set|Audit and Completion]]
-- [[kernel/Read Sets/R09 Standards Governance Read Set|Standards Governance]]
-- [[kernel/Read Sets/R11 Large-scale Work Admission Read Set|Large-scale Work Admission]]
-- [[kernel/Read Sets/R12 Targeted and Specialized Audit Read Set|Targeted and Specialized Audit]]
 
 ## Related Standards
 

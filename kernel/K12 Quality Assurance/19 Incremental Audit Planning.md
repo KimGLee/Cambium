@@ -5,23 +5,25 @@
 
 ## Incremental Audit Planning
 
-Each batch generates an `AuditPlan` exactly once, before close; at batch start only the Audit Receipt Register is loaded, with no separate AuditPlan:
+Each batch produces one `AuditPlan` before close. The registered AuditPlan
+machine contract is the sole normative source for its fields and
+serialization. The plan must bind one artifact and Contract snapshot, its
+accepted comparison baseline, direct and dependency invalidations, and a
+complete partition into:
 
-```text
-1. Freeze current artifact and contract snapshot.
-2. Diff against the latest accepted snapshot.
-3. Resolve direct and dependency invalidations.
-4. Partition checks into:
-   - mandatory full deterministic
-   - changed-scope deterministic
-   - invalidated semantic review
-   - overdue (freshness) targeted review
-   - bounded sampling
-   - reusable evidence
-5. Run checks and emit new receipts.
-6. Reconcile invalidated, replaced and reused receipts.
-7. Close only when required invalidations are zero.
-```
+- mandatory full deterministic checks;
+- changed-scope deterministic checks;
+- invalidated semantic review;
+- overdue targeted review;
+- bounded sampling;
+- reusable evidence.
+
+Every obligation belongs to exactly one partition. Close requires current
+receipts for executed partitions, explicit reconciliation of reused,
+superseded, and invalidated evidence, and zero unresolved required
+invalidations. This semantic owner does not prescribe action order;
+registered capabilities own deterministic diffing, partition construction,
+and validation.
 
 The mandatory full deterministic partition of step 4 is the [[kernel/K12 Quality Assurance/09 Batch-close Closed List#Batch-close Closed List|Batch-close Closed List]]; this module decides the plan, not the list's membership.
 

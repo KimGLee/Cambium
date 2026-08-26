@@ -26,11 +26,221 @@ import json
 import os
 from pathlib import Path
 import re
-import shlex
 import sys
 from typing import Iterable, Optional, Sequence, Tuple
 
+import audit_dimension_contract
+import control_registry_contract
+import corpus_planning_contract
 import kblib
+import profile_layout_contract
+
+
+PROFILE_INTERFACE_PATH = (
+    "kernel/K00 Standards Control/profile-interface.yaml")
+AUDIT_DIMENSION_BASE_PATH = \
+    audit_dimension_contract.AUDIT_DIMENSION_BASE_PATH
+SCAN_CAPABILITY_PATH = "Tools/scan-capabilities.yaml"
+
+# Public durable evidence emitted by one authorized ``profile-load``.  The
+# parser/linker owns this shape because it is the producer of the typed Profile
+# identity; runtime consumers project it instead of maintaining receipt-field
+# quartets of their own.
+PROFILE_LOAD_EVIDENCE_FIELDS = (
+    "selected_profile_manifest",
+    "profile_snapshot_sha256",
+    "profile_contract_fingerprint",
+    "profile_load_inputs_sha256",
+)
+PROFILE_LOAD_EVIDENCE_FINGERPRINT_FIELDS = \
+    PROFILE_LOAD_EVIDENCE_FIELDS[1:]
+
+
+def scan_capability_records(document):
+    """Return the closed Tool-owned verifier capability registry by ID."""
+    if not isinstance(document, dict) or set(document) != {
+            "schema_version", "capabilities"}:
+        raise ValueError("scan capability registry fields are not closed")
+    if document.get("schema_version") != 1:
+        raise ValueError("scan capability registry schema_version must be 1")
+    rows = document.get("capabilities")
+    if not isinstance(rows, list) or not rows:
+        raise ValueError("scan capability registry must be a non-empty list")
+    records = {}
+    required = {
+        "capability_id", "invocation_contract", "implementation_path",
+        "configuration",
+    }
+    for index, row in enumerate(rows):
+        if not isinstance(row, dict) or set(row) != required:
+            raise ValueError(
+                "scan capability %d fields are not closed" % index)
+        capability_id = row.get("capability_id")
+        if not isinstance(capability_id, str) or not re.fullmatch(
+                r"[a-z][a-z0-9]*(?:-[a-z0-9]+)*", capability_id):
+            raise ValueError("scan capability %d has an invalid ID" % index)
+        if capability_id in records:
+            raise ValueError("duplicate scan capability %s" % capability_id)
+        if row.get("invocation_contract") != "profile-registered-scan-v1":
+            raise ValueError(
+                "scan capability %s has an unsupported invocation contract" %
+                capability_id)
+        implementation = row.get("implementation_path")
+        if (not isinstance(implementation, str) or
+                not implementation.startswith("Tools/") or
+                not implementation.endswith(".py") or
+                any(part in ("", ".", "..")
+                    for part in implementation.split("/"))):
+            raise ValueError(
+                "scan capability %s has an invalid implementation path" %
+                capability_id)
+        if row.get("configuration") not in ("required", "none"):
+            raise ValueError(
+                "scan capability %s configuration must be required or none" %
+                capability_id)
+        records[capability_id] = dict(row)
+    return records
+
+
+def load_scan_capabilities(root=None, snapshots=None):
+    """Load the Tool-owned scan capability registry."""
+    if root is None:
+        root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    snapshot = (snapshots or {}).get(SCAN_CAPABILITY_PATH)
+    if snapshot is not None:
+        text = snapshot.read_text()
+    else:
+        text = kblib.read_text(
+            os.path.join(root, *SCAN_CAPABILITY_PATH.split("/")))
+    document = kblib.parse_yaml_subset(text)
+    scan_capability_records(document)
+    return document
+
+
+def scan_capability_implementation_paths(document):
+    return tuple(sorted(
+        row["implementation_path"]
+        for row in scan_capability_records(document).values()))
+
+
+def profile_interface_slots(document):
+    """Validate one interface document and return its ordered slot names."""
+    if not isinstance(document, dict):
+        raise ValueError("Profile interface must be a mapping")
+    required = {
+        "schema_version", "interface_id", "semantic_owner", "slots",
+        "registry_references", "tables", "closed_sets",
+        "capability_bindings",
+    }
+    missing = sorted(required - set(document))
+    extra = sorted(set(document) - required)
+    if missing or extra:
+        raise ValueError(
+            "Profile interface fields are not closed: missing=%s extra=%s" %
+            (missing, extra))
+    if document.get("schema_version") != 1:
+        raise ValueError("Profile interface schema_version must be 1")
+    if document.get("interface_id") != "cambium-profile-interface":
+        raise ValueError("Profile interface_id must be cambium-profile-interface")
+    if document.get("semantic_owner") != "K00/19":
+        raise ValueError("Profile semantic_owner must be K00/19")
+    references = document.get("registry_references")
+    if not isinstance(references, dict) or set(references) != {
+            "audit_dimension_base", "corpus_planning_contract"}:
+        raise ValueError("Profile registry_references fields are not closed")
+    if references.get("audit_dimension_base") != \
+            audit_dimension_contract.AUDIT_DIMENSION_BASE_PATH:
+        raise ValueError(
+            "Profile audit_dimension_base reference must be %s" %
+            audit_dimension_contract.AUDIT_DIMENSION_BASE_PATH)
+    if references.get("corpus_planning_contract") != \
+            corpus_planning_contract.CORPUS_PLANNING_CONTRACT_PATH:
+        raise ValueError(
+            "Profile corpus_planning_contract reference must be %s" %
+            corpus_planning_contract.CORPUS_PLANNING_CONTRACT_PATH)
+    slots = document.get("slots")
+    if not isinstance(slots, list) or not slots:
+        raise ValueError("Profile interface slots must be a non-empty list")
+    names = []
+    identifiers = []
+    for index, row in enumerate(slots):
+        if not isinstance(row, dict):
+            raise ValueError("Profile interface slot %d must be a mapping" % index)
+        if set(row) != {"slot_id", "name", "binding", "kernel_owner"}:
+            raise ValueError(
+                "Profile interface slot %d fields are not closed" % index)
+        name = row.get("name")
+        slot_id = row.get("slot_id")
+        if not isinstance(name, str) or not name.strip():
+            raise ValueError("Profile interface slot %d has no name" % index)
+        if not isinstance(slot_id, str) or not slot_id.strip():
+            raise ValueError("Profile interface slot %d has no slot_id" % index)
+        if not re.fullmatch(r"[a-z][a-z0-9]*(?:-[a-z0-9]+)*", slot_id):
+            raise ValueError("Profile interface slot %d has invalid slot_id" % index)
+        if row.get("binding") != "file":
+            raise ValueError("Profile interface slot %d must bind one file" % index)
+        if not isinstance(row.get("kernel_owner"), str) or not \
+                row["kernel_owner"].strip():
+            raise ValueError("Profile interface slot %d has no Kernel owner" % index)
+        names.append(name)
+        identifiers.append(slot_id)
+    if len(set(names)) != len(names) or len(set(identifiers)) != len(identifiers):
+        raise ValueError("Profile interface slot names and IDs must be unique")
+    return tuple(names)
+
+
+def load_profile_interface(root=None, snapshots=None):
+    """Load the single Kernel-owned Profile interface registry.
+
+    ``snapshots`` lets a caller bind this read to the same immutable input set
+    used for the rest of profile admission.  The module-level constants below
+    are compatibility projections for callers that need the shipped interface;
+    runtime admission reloads the registry from the adopting repository root.
+    """
+    if root is None:
+        root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    snapshot = (snapshots or {}).get(PROFILE_INTERFACE_PATH)
+    if snapshot is not None:
+        text = snapshot.read_text()
+    else:
+        path = os.path.join(root, *PROFILE_INTERFACE_PATH.split("/"))
+        text = kblib.read_text(path)
+    document = kblib.parse_yaml_subset(text)
+    profile_interface_slots(document)
+    return document
+
+
+def profile_file_slots(root=None, snapshots=None):
+    return profile_interface_slots(
+        load_profile_interface(root, snapshots=snapshots))
+
+
+_SHIPPED_PROFILE_INTERFACE = load_profile_interface()
+
+
+def _table_contract(name):
+    row = (_SHIPPED_PROFILE_INTERFACE.get("tables") or {}).get(name)
+    if not isinstance(row, dict):
+        raise ValueError("Profile interface has no table contract %s" % name)
+    section = row.get("section")
+    header = row.get("header")
+    if not isinstance(section, str) or not isinstance(header, list):
+        raise ValueError("Profile interface table %s is malformed" % name)
+    return section, tuple(header)
+
+
+def _closed_values(name):
+    value = (_SHIPPED_PROFILE_INTERFACE.get("closed_sets") or {}).get(name)
+    if not isinstance(value, list):
+        raise ValueError("Profile interface closed set %s is malformed" % name)
+    return frozenset(value)
+
+
+def _capability_binding(name):
+    value = (_SHIPPED_PROFILE_INTERFACE.get("capability_bindings") or {}).get(name)
+    if not isinstance(value, str) or not value:
+        raise ValueError("Profile interface capability binding %s is missing" % name)
+    return value
 
 
 AUDIT_SLOT = "Audit Dimension Registry"
@@ -43,98 +253,26 @@ KERNEL_APPLICABILITY_PATH = (
     "kernel/K08 Metadata and Status/applicability-base.yaml")
 KERNEL_RELATIONSHIP_PATH = (
     "kernel/K08 Metadata and Status/relationship-base.yaml")
-PROFILE_FILE_SLOTS = (
-    "Profile Scope",
-    "Corpus Planning",
-    "Structure Registry",
-    "Metadata Contract",
-    "Priority Rubric",
-    "Vocabulary Extensions",
-    "Language Contract",
-    "Expression Layer Entry",
-    "Source Policy",
-    "Role Registry",
-    AUDIT_SLOT,
-    SCAN_SLOT,
-    "Escalation Policy",
-    "Routing And Gate Registry",
-)
+PROFILE_FILE_SLOTS = profile_file_slots()
 
-EXTENSION_SECTION = "Extension Dimensions"
-JUDGMENT_SECTION = "Judgment Items"
-SCAN_SECTION = "Scan Registrations"
-EXTENSION_GATE_SECTION = "Extension Gates"
-EXTENSION_ROLE_SECTION = "Extension Roles"
+EXTENSION_SECTION, EXTENSION_HEADER = _table_contract("extension_dimensions")
+JUDGMENT_SECTION, JUDGMENT_HEADER = _table_contract("judgment_items")
+SCAN_SECTION, SCAN_HEADER = _table_contract("registered_scans")
+EXTENSION_GATE_SECTION, EXTENSION_GATE_HEADER = _table_contract("extension_gates")
+EXTENSION_ROLE_SECTION, EXTENSION_ROLE_HEADER = _table_contract("extension_roles")
+BATCH_REVIEW_SECTION, BATCH_REVIEW_HEADER = _table_contract(
+    "batch_review_requirements")
+BATCH_REVIEW_TARGET_SELECTORS = _closed_values("batch_review_target_selectors")
+BATCH_REVIEW_TRIGGERS = _closed_values("batch_review_triggers")
+BATCH_REVIEW_PRODUCER_KINDS = _closed_values("batch_review_producer_kinds")
+BATCH_REVIEW_RECEIPT_SCHEMAS = _closed_values("batch_review_receipt_schemas")
 
-EXTENSION_HEADER = (
-    "Dimension ID",
-    "Target list(s): `review`, `receipt`, or `review + receipt`",
-    "Meaning",
-)
-JUDGMENT_HEADER = (
-    "Stable Judgment Item ID",
-    "Base or registered receipt Dimension ID",
-    "Exact kernel audit-layer name",
-    "Bounded audit object one run proves",
-    "Evidence role: `emits`, `consumes`, or `triggers`",
-    "Predicate owner (repo-relative path; optional `#heading`)",
-)
-SCAN_HEADER = (
-    "Stable Scan ID",
-    "Activation role",
-    "Whole-corpus scope/root",
-    "Deterministic verifier command/path",
-    "Candidate predicate/boundary",
-    "Judgment Item ID reference",
-)
-EXTENSION_GATE_HEADER = (
-    "Gate ID",
-    "Kernel Gate ID or repo-relative owner path, optionally `#heading`",
-    "Blocked transition/action ID",
-    "Pass-authority Role ID reference",
-    "Applicability predicate",
-    "Vocabulary field ID or `None`",
-    "Registered completion value(s) or `None`",
-    "Judgment Item ID reference",
-    "Producer kind: `deterministic` or `manual-attestation`",
-    "Producer capability",
-    "Receipt schema",
-    "Consumer capability",
-)
-EXTENSION_ROLE_HEADER = (
-    "Role ID",
-    "Bound actor or system ID/name",
-    "Responsibility",
-)
-BATCH_REVIEW_SECTION = "Batch Review Requirements"
-BATCH_REVIEW_HEADER = (
-    "Judgment Item ID reference",
-    "Target selector: `each-manifest-page` or `batch`",
-    "Trigger: `before-merge-ready`",
-    "Producer kind: `manual-attestation`",
-    "Receipt schema",
-    "Pass-authority Role ID reference",
-)
-BATCH_REVIEW_TARGET_SELECTORS = frozenset(("each-manifest-page", "batch"))
-BATCH_REVIEW_TRIGGERS = frozenset(("before-merge-ready",))
-BATCH_REVIEW_PRODUCER_KINDS = frozenset(("manual-attestation",))
-BATCH_REVIEW_RECEIPT_SCHEMAS = frozenset(("page-batch-judgment-v1",))
-
-BASE_DIMENSIONS = frozenset((
-    "structure_and_links",
-    "content_and_depth",
-    "formula_and_numeric",
-    "source_and_currentness",
-    "coverage_and_integration",
-    "rendering",
-    "guidance_and_contract",
-))
-EXTENSION_TARGETS = {
-    "review": ("review",),
-    "receipt": ("receipt",),
-    "review + receipt": ("review", "receipt"),
-}
-EVIDENCE_ROLES = frozenset(("emits", "consumes", "triggers"))
+BASE_DIMENSION_ORDER = \
+    audit_dimension_contract.BASE_RECEIPT_DIMENSION_ORDER
+BASE_DIMENSIONS = frozenset(BASE_DIMENSION_ORDER)
+EXTENSION_TARGETS = dict(
+    audit_dimension_contract.EXTENSION_TARGET_MAPPINGS)
+EVIDENCE_ROLES = audit_dimension_contract.EVIDENCE_ROLES
 DIMENSION_ID_RE = re.compile(r"[a-z][a-z0-9_]*\Z")
 STABLE_ID_RE = re.compile(r"[a-z][a-z0-9]*(?:-[a-z0-9]+)*\Z")
 PROFILE_GATE_ID_RE = re.compile(
@@ -144,25 +282,22 @@ VOCABULARY_VALUE_RE = re.compile(r"[a-z0-9][a-z0-9_-]*\Z")
 REQUIRED_SCAN_RE = re.compile(r"(?<![A-Za-z0-9])K12/09\s+item\s+6(?![0-9])")
 TABLE_SEPARATOR_RE = re.compile(r":?-{3,}:?\Z")
 REGISTRATION_RE = re.compile(r"^\s*-\s+Registration:\s*(.*?)\s*$")
-SHELL_OPERATORS = frozenset((";", "&&", "||", "|", ">", ">>", "<"))
-KERNEL_ROLE_IDS = frozenset((
-    "proposer", "gatekeeper", "executor", "stopper",
-    "knowledge-host", "knowledge-host UI",
-))
-PRODUCER_KINDS = frozenset(("deterministic", "manual-attestation"))
-PRODUCER_CAPABILITY_BY_KIND = {
-    "deterministic": "registered-scan-v1",
-    "manual-attestation": "manual-attestation-v1",
-}
-RECEIPT_SCHEMA_BY_KIND = {
-    "deterministic": "deterministic-gate-result-v1",
-    "manual-attestation": "manual-gate-attestation-v1",
-}
-FIELD_GATE_CONSUMER_OPERATION = "typed-field-metadata-transition"
-NON_FIELD_GATE_CONSUMER_OPERATION = "non-field-transition"
-PROFILE_EXTENSION_ENUM_PROJECTION_OPERATION = \
-    "profile-extension-enum-owner-projection-v1"
-PROFILE_EXTENSION_ENUM_WRITER_CAPABILITY = "project-page-state-v2"
+KERNEL_ROLE_IDS = _closed_values("kernel_role_ids")
+PRODUCER_KINDS = _closed_values("producer_kinds")
+PRODUCER_CAPABILITY_BY_KIND = dict(
+    (_SHIPPED_PROFILE_INTERFACE.get("capability_bindings") or {}).get(
+        "producer_capability_by_kind", {}))
+RECEIPT_SCHEMA_BY_KIND = dict(
+    (_SHIPPED_PROFILE_INTERFACE.get("capability_bindings") or {}).get(
+        "receipt_schema_by_kind", {}))
+FIELD_GATE_CONSUMER_OPERATION = _capability_binding(
+    "field_gate_consumer_operation")
+NON_FIELD_GATE_CONSUMER_OPERATION = _capability_binding(
+    "non_field_gate_consumer_operation")
+PROFILE_EXTENSION_ENUM_PROJECTION_OPERATION = _capability_binding(
+    "profile_extension_enum_projection_operation")
+PROFILE_EXTENSION_ENUM_WRITER_CAPABILITY = _capability_binding(
+    "profile_extension_enum_writer_capability")
 
 
 class ProfileContractError(ValueError):
@@ -246,8 +381,7 @@ class RegisteredScan:
     scan_id: str
     activation_role: str
     scope: str
-    command_text: str
-    command_tokens: Tuple[str, ...]
+    verifier_capability_id: str
     script_repo_path: Optional[str]
     script_absolute_path: Optional[str]
     config_dependency: Optional[ProfileDependency]
@@ -1135,142 +1269,57 @@ def _parse_judgments(builder, text, source_path, profile_repo_dir,
     return tuple(parsed)
 
 
-def _option_values(tokens, option):
-    values = []
-    errors = []
-    index = 0
-    while index < len(tokens):
-        token = tokens[index]
-        if token == option:
-            if index + 1 >= len(tokens) or tokens[index + 1].startswith("--"):
-                errors.append("%s requires a non-empty value" % option)
-            else:
-                values.append(tokens[index + 1])
-                index += 1
-        elif token.startswith(option + "="):
-            value = token[len(option) + 1:]
-            if not value:
-                errors.append("%s requires a non-empty value" % option)
-            else:
-                values.append(value)
-        index += 1
-    return tuple(values), tuple(errors)
-
-
-def _command_spec(builder, scan_id, command_raw, source, profile_repo_dir):
-    command_text = _literal(command_raw)
-    if "`" in command_text:
+def _scan_capability_spec(builder, scan_id, capability_raw, config_raw,
+                          capability_source, config_source,
+                          profile_repo_dir, capabilities):
+    capability_id = _literal(capability_raw)
+    capability = capabilities.get(capability_id)
+    if capability is None:
         builder.add(
-            "registered-scan-command-literal", source.target,
-            "verifier command must be one bare or fully backtick-wrapped "
-            "command literal", source)
-        return command_text, (), None, None, None
-    if "--config" in command_text and "\\" in command_text:
-        # POSIX shlex treats backslash as an escape and would erase the
-        # evidence before the path resolver sees it.  Refuse the source
-        # spelling itself so a Windows-style alias cannot become a different
-        # apparently canonical argv value.
-        builder.add(
-            "scan-config-path-invalid", source.target,
-            "scan-config command spelling must use canonical `/` separators",
-            source)
+            "registered-scan-capability-unknown", capability_source.target,
+            "verifier capability %r is not registered in %s" %
+            (capability_id, SCAN_CAPABILITY_PATH), capability_source)
+        return capability_id, None, None, None
+
+    script_repo_path = capability["implementation_path"]
     try:
-        tokens = tuple(shlex.split(command_text, posix=True))
-    except ValueError as exc:
+        script_absolute_path = _canonical_repository_file(
+            builder.root, script_repo_path, singly_linked=True)
+    except (OSError, ValueError) as exc:
         builder.add(
-            "registered-scan-command-parse", source.target,
-            "cannot parse verifier command: %s" % exc, source)
-        return command_text, (), None, None, None
-    if len(tokens) < 3:
-        builder.add(
-            "registered-scan-command-shape", source.target,
-            "verifier command must contain interpreter, Tools script, and `.`",
-            source)
-        return command_text, tokens, None, None, None
-    if os.path.basename(tokens[0]) not in ("python", "python3"):
-        builder.add(
-            "registered-scan-command-interpreter", source.target,
-            "registered verifier must use a `python` or `python3` interpreter",
-            source)
-    script_repo_path = tokens[1]
-    script_absolute_path = None
-    if not (script_repo_path.startswith("Tools/") and
-            script_repo_path.endswith(".py")):
-        builder.add(
-            "registered-scan-command-script", source.target,
-            "registered verifier must name a canonical repository "
-            "`Tools/*.py` script; found %r" % script_repo_path, source)
-    else:
-        try:
-            script_absolute_path = _canonical_repository_file(
-                builder.root, script_repo_path, singly_linked=True)
-        except (OSError, ValueError) as exc:
-            builder.add(
-                "registered-scan-command-script", source.target,
-                "registered verifier script %r is invalid: %s" %
-                (script_repo_path, exc), source)
-    if tokens[2] != ".":
-        builder.add(
-            "registered-scan-command-root", source.target,
-            "registered verifier must bind the whole repository root as `.`",
-            source)
-    operators = sorted(SHELL_OPERATORS.intersection(tokens))
-    if operators:
-        builder.add(
-            "registered-scan-command-shell-operator", source.target,
-            "registered verifier command contains shell operator(s): %s" %
-            ", ".join(operators), source)
-    for option in ("--receipts", "--positive-controls-only"):
-        if any(token == option or token.startswith(option + "=")
-               for token in tokens):
-            builder.add(
-                "registered-scan-command-gate-option", source.target,
-                "registered verifier command must leave `%s` to the gate" %
-                option, source)
+            "registered-scan-capability-implementation",
+            capability_source.target,
+            "capability %r implementation %r is invalid: %s" %
+            (capability_id, script_repo_path, exc), capability_source)
+        script_absolute_path = None
 
-    scan_ids, scan_id_errors = _option_values(tokens[3:], "--scan-id")
-    for details in scan_id_errors:
-        builder.add("registered-scan-command-scan-id", source.target,
-                    details, source)
-    if len(scan_ids) != 1:
-        builder.add(
-            "registered-scan-command-scan-id", source.target,
-            "verifier command must contain exactly one `--scan-id`; found %d" %
-            len(scan_ids), source)
-    elif scan_ids[0] != scan_id:
-        builder.add(
-            "registered-scan-command-scan-id", source.target,
-            "command `--scan-id` %r does not match Stable Scan ID %r" %
-            (scan_ids[0], scan_id), source)
-
-    configs, config_errors = _option_values(tokens[3:], "--config")
-    for details in config_errors:
-        builder.add("registered-scan-command-config", source.target,
-                    details, source)
-    if len(configs) > 1:
-        builder.add(
-            "registered-scan-command-config", source.target,
-            "verifier command may contain at most one `--config`; found %d" %
-            len(configs), source)
-    bundled = script_repo_path == "Tools/check_residual_content.py"
-    if bundled and len(configs) != 1:
-        builder.add(
-            "registered-scan-command-config", source.target,
-            "Tools/check_residual_content.py requires exactly one `--config`; "
-            "found %d" % len(configs), source)
+    config_literal = _literal(config_raw)
     config_dependency = None
-    if len(configs) == 1:
+    if config_literal != "None":
         config_dependency = builder.profile_dependency(
-            "scan-config", scan_id, configs[0], source, profile_repo_dir)
+            "scan-config", scan_id, config_literal, config_source,
+            profile_repo_dir)
+    configuration = capability["configuration"]
+    if configuration == "required" and config_literal == "None":
+        builder.add(
+            "registered-scan-config-required", config_source.target,
+            "verifier capability %r requires one Profile configuration "
+            "reference" % capability_id, config_source)
+    elif configuration == "none" and config_literal != "None":
+        builder.add(
+            "registered-scan-config-forbidden", config_source.target,
+            "verifier capability %r accepts no Profile configuration" %
+            capability_id, config_source)
 
-    if script_repo_path and script_absolute_path:
+    if script_absolute_path is not None:
         builder.edges.append(DependencyEdge(
-            kind="verifier-tool", owner_id=scan_id, path=script_repo_path))
-    return (command_text, tokens, script_repo_path,
-            script_absolute_path, config_dependency)
+            kind="verifier-capability", owner_id=scan_id,
+            target_id=capability_id, path=script_repo_path))
+    return (capability_id, script_repo_path, script_absolute_path,
+            config_dependency)
 
 
-def _parse_scans(builder, text, source_path, profile_repo_dir):
+def _parse_scans(builder, text, source_path, profile_repo_dir, capabilities):
     section = builder.section(
         text, SCAN_SECTION, source_path, "registered-scans")
     if section is None:
@@ -1307,20 +1356,20 @@ def _parse_scans(builder, text, source_path, profile_repo_dir):
                 "Stable Scan ID %r is registered more than once" % scan_id,
                 cells[0])
         seen.add(scan_id)
-        command = _command_spec(
-            builder, scan_id, cells[3].raw, cells[3], profile_repo_dir)
+        capability = _scan_capability_spec(
+            builder, scan_id, cells[3].raw, cells[4].raw,
+            cells[3], cells[4], profile_repo_dir, capabilities)
         required = bool(REQUIRED_SCAN_RE.search(activation))
         parsed.append(RegisteredScan(
             scan_id=scan_id,
             activation_role=activation,
             scope=cells[2].raw.strip(),
-            command_text=command[0],
-            command_tokens=command[1],
-            script_repo_path=command[2],
-            script_absolute_path=command[3],
-            config_dependency=command[4],
-            candidate_predicate=cells[4].raw.strip(),
-            judgment_item_id=_literal(cells[5].raw),
+            verifier_capability_id=capability[0],
+            script_repo_path=capability[1],
+            script_absolute_path=capability[2],
+            config_dependency=capability[3],
+            candidate_predicate=cells[5].raw.strip(),
+            judgment_item_id=_literal(cells[6].raw),
             required_for_k12_item_6=required,
             source=cells[0],
         ))
@@ -1588,8 +1637,14 @@ def _kernel_metadata_fields(builder, source_path, root_input_snapshots=None):
 
 
 def _kernel_gate_ids(builder, root_input_snapshots=None):
-    """Read the canonical kernel Gate ID namespace for owner references."""
-    source_path = "kernel/K00 Standards Control/12 Control Registry.md"
+    """Read the canonical Kernel Gate namespace through its sole parser.
+
+    Profile admission needs only the structurally valid namespace. Runtime
+    producer availability is deliberately checked by
+    ``standards_gate_registry`` at the execution boundary, not imported into
+    this frozen-root semantic reference check.
+    """
+    source_path = control_registry_contract.STANDARDS_GATE_REGISTRY_PATH
     try:
         snapshot = ((root_input_snapshots or {}).get(source_path))
         if snapshot is not None:
@@ -1598,45 +1653,20 @@ def _kernel_gate_ids(builder, root_input_snapshots=None):
             absolute = _canonical_repository_file(
                 builder.root, source_path, singly_linked=True)
             text = _strict_read(absolute)
+        registry, errors = \
+            control_registry_contract.parse_standards_gate_registry(text)
     except (OSError, UnicodeError, ValueError) as exc:
         builder.add(
             "extension-gate-owner-registry", source_path,
             "cannot read the kernel Gate registry: %s" % exc)
         return frozenset()
-    sections = [
-        item for item in _sections(text)
-        if item.heading == "Stable Gate ID Registry"
-    ]
-    if len(sections) != 1:
-        builder.add(
-            "extension-gate-owner-registry", source_path,
-            "expected exactly one Stable Gate ID Registry section; found %d" %
-            len(sections))
-        return frozenset()
-    groups = _table_groups(sections[0])
-    if len(groups) != 1 or len(groups[0]) < 2:
-        builder.add(
-            "extension-gate-owner-registry", source_path,
-            "Stable Gate ID Registry must contain exactly one table")
-        return frozenset()
-    rows = groups[0]
-    if not rows[0].cells or rows[0].cells[0] != "Gate ID":
-        builder.add(
-            "extension-gate-owner-registry", source_path,
-            "Stable Gate ID Registry has no canonical Gate ID column")
-        return frozenset()
-    gate_ids = []
-    for row in rows[2:]:
-        if len(row.cells) != len(rows[0].cells):
+    if errors:
+        for error in errors:
             builder.add(
-                "extension-gate-owner-registry",
-                "%s:%d" % (source_path, row.line),
-                "Stable Gate ID Registry contains a malformed row")
-            continue
-        gate_id = _literal(row.cells[0])
-        if STABLE_ID_RE.fullmatch(gate_id):
-            gate_ids.append(gate_id)
-    return frozenset(gate_ids)
+                "extension-gate-owner-registry", source_path,
+                "kernel Gate registry is invalid: %s" % error)
+        return frozenset()
+    return frozenset(registry)
 
 
 def _completion_values(raw):
@@ -2248,6 +2278,44 @@ def load_profile_contract(root, manifest_path, sentinel="TODO(profile)",
         )
         return _empty_contract(builder)
     builder.root = root_real
+    try:
+        audit_dimension_contract.current_audit_dimension_values(
+            builder.root, snapshots=root_input_snapshots)
+    except (OSError, UnicodeError, ValueError,
+            kblib.YamlSubsetError) as exc:
+        builder.add(
+            "profile-contract-audit-dimension-base-invalid",
+            audit_dimension_contract.AUDIT_DIMENSION_BASE_PATH,
+            "cannot load the Kernel-owned audit-dimension base registry: %s" %
+            exc,
+        )
+        return _empty_contract(builder)
+    try:
+        interface_document = load_profile_interface(
+            builder.root, snapshots=root_input_snapshots)
+        if interface_document != _SHIPPED_PROFILE_INTERFACE:
+            raise ValueError(
+                "adopting registry differs from the validator's deployed "
+                "Kernel interface")
+        interface_slots = profile_interface_slots(interface_document)
+    except (OSError, UnicodeError, ValueError, kblib.YamlSubsetError) as exc:
+        builder.add(
+            "profile-contract-interface-invalid", PROFILE_INTERFACE_PATH,
+            "cannot load the Kernel-owned Profile interface registry: %s" % exc,
+        )
+        return _empty_contract(builder)
+    required_typed_slots = {
+        AUDIT_SLOT, SCAN_SLOT, ROLE_SLOT, VOCABULARY_SLOT,
+        METADATA_SLOT, ROUTING_SLOT,
+    }
+    missing_typed = sorted(required_typed_slots - set(interface_slots))
+    if missing_typed:
+        builder.add(
+            "profile-contract-interface-incomplete", PROFILE_INTERFACE_PATH,
+            "Profile interface omits typed slot(s): %s" %
+            ", ".join(missing_typed),
+        )
+        return _empty_contract(builder)
     profile_root = os.path.dirname(manifest_absolute)
     try:
         profile_repo_dir = _repo_relative(builder.root, profile_root)
@@ -2278,10 +2346,12 @@ def load_profile_contract(root, manifest_path, sentinel="TODO(profile)",
             builder, manifest_absolute, manifest_relative,
             profile_root, profile_repo_dir)
 
-    if os.path.basename(manifest_absolute) != "profile.md":
+    if (os.path.basename(manifest_absolute) !=
+            profile_layout_contract.PROFILE_MANIFEST_NAME):
         builder.add(
             "profile-contract-manifest-name", manifest_relative,
-            "Profile manifest must be named `profile.md`",
+            "Profile manifest must be named `%s`" %
+            profile_layout_contract.PROFILE_MANIFEST_NAME,
         )
     try:
         canonical_manifest = _canonical_repository_file(
@@ -2345,7 +2415,7 @@ def load_profile_contract(root, manifest_path, sentinel="TODO(profile)",
             kind="manifest-slot", owner_id=ROUTING_SLOT, path=routing_path))
     bindings, duplicate_bindings = kblib.profile_slot_bindings(
         manifest_text, include_duplicates=True)
-    for slot_name in PROFILE_FILE_SLOTS:
+    for slot_name in interface_slots:
         if slot_name in (
                 AUDIT_SLOT, SCAN_SLOT, ROLE_SLOT, VOCABULARY_SLOT,
                 METADATA_SLOT,
@@ -2405,6 +2475,16 @@ def load_profile_contract(root, manifest_path, sentinel="TODO(profile)",
     scans = ()
     gate_registration = None
     gates = ()
+    try:
+        scan_capabilities = scan_capability_records(
+            load_scan_capabilities(
+                builder.root, snapshots=root_input_snapshots))
+    except (OSError, UnicodeError, ValueError,
+            kblib.YamlSubsetError) as exc:
+        builder.add(
+            "scan-capability-registry-invalid", SCAN_CAPABILITY_PATH,
+            "cannot load the Tool-owned scan capability registry: %s" % exc)
+        scan_capabilities = {}
     if audit_text is not None:
         registration, dimensions = _parse_extensions(
             builder, audit_text, audit_path)
@@ -2412,7 +2492,8 @@ def load_profile_contract(root, manifest_path, sentinel="TODO(profile)",
             builder, audit_text, audit_path, profile_repo_dir, dimensions)
     if scan_text is not None:
         scans = _parse_scans(
-            builder, scan_text, scan_path, profile_repo_dir)
+            builder, scan_text, scan_path, profile_repo_dir,
+            scan_capabilities)
 
     judgment_ids = {}
     for item in judgments:
@@ -2512,15 +2593,19 @@ def compile_registered_scan_command(root, contract, scan=None):
     if selected not in contract.registered_scans:
         raise ProfileContractError(
             "registered scan does not belong to this Profile contract")
-    if (not selected.script_absolute_path or
-            len(selected.command_tokens) < 3):
+    if not selected.script_absolute_path:
         raise ProfileContractError(
-            "registered scan has no compiled verifier command")
-    return tuple((
+            "registered scan has no resolved verifier capability")
+    command = [
         sys.executable,
         selected.script_absolute_path,
         contract.root,
-    ) + selected.command_tokens[3:])
+        "--scan-id",
+        selected.scan_id,
+    ]
+    if selected.config_dependency is not None:
+        command.extend(("--config", selected.config_dependency.path))
+    return tuple(command)
 
 
 __all__ = (
@@ -2533,8 +2618,13 @@ __all__ = (
     "ProfileContractError",
     "ProfileDependency",
     "RegisteredScan",
+    "AUDIT_DIMENSION_BASE_PATH",
+    "SCAN_CAPABILITY_PATH",
     "SourceCell",
     "compile_registered_scan_command",
     "format_diagnostics",
+    "load_scan_capabilities",
     "load_profile_contract",
+    "scan_capability_implementation_paths",
+    "scan_capability_records",
 )

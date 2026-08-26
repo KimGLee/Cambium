@@ -12,11 +12,15 @@ never runs them.  A registry row this runner recognizes in none of those
 classes fails the run closed: the registry grew and this runner must be
 extended WITH it, loudly, never silently skipped.
 
-Before any gate runs, two preflights guard the conclusions:
+Before any gate runs, independent Tool preflights check the non-Gate inputs
+the sweep relies on:
 
 * the registry/producer agreement check (`check_queue`
   `gate_registry_producer_errors`) -- a registry row contradicting an
   installed producer would make every downstream result unreliable;
+* Card review currentness (`card-currentness-v1`, implemented by
+  `stamp_cards --check`) -- this checks the curated Card sources and body
+  review identities without creating a Gate or Receipt;
 * compiled-artifact freshness (`compose_vocab --check`,
   `compose_page_contract --check`) -- a stale composed artifact lets a gate
   pass against bytes that are not the profile's current answers.
@@ -45,9 +49,13 @@ import check_queue
 import contract_exception_policy
 import kblib
 import profile_contract
+import profile_layout_contract
+import runtime_paths
 
 TOOL = "run_gates"
-TOOL_VERSION = "1.0.0"
+TOOL_VERSION = "1.1.0"
+
+CARD_CURRENTNESS_CAPABILITY = "card-currentness-v1"
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 
@@ -78,7 +86,14 @@ def _selected_profile(root, override):
     """Resolve the selected profile manifest, live runtime first."""
     if override:
         capability = kblib.inherited_path_capability(override, "snapshot")
-        manifest = os.path.join(override, "profile.md")
+        manifest = os.path.join(
+            override, profile_layout_contract.PROFILE_MANIFEST_NAME)
+        manifest = manifest.replace(os.sep, "/")
+        try:
+            profile_layout_contract.parse_profile_manifest_path(manifest)
+        except profile_layout_contract.ProfileLayoutError as exc:
+            raise RunnerError("--profile does not name a canonical Profile "
+                              "directory: %s" % exc)
         if capability is not None:
             if not capability["exists"] or capability["kind"] != "directory":
                 raise RunnerError("--profile must name a Profile directory")
@@ -88,16 +103,23 @@ def _selected_profile(root, override):
             exists = os.path.isfile(os.path.join(root, manifest))
         if not exists:
             raise RunnerError(
-                "--profile %s has no profile.md under the repository root"
-                % override)
-        return manifest.replace(os.sep, "/")
+                "--profile %s has no %s under the repository root" %
+                (override, profile_layout_contract.PROFILE_MANIFEST_NAME))
+        return manifest
     queue_path = os.path.join(root, check_queue.QUEUE_PATH)
     if os.path.isfile(queue_path):
         with open(queue_path, encoding="utf-8") as handle:
             queue = kblib.parse_yaml_subset(handle.read())
         manifest = (queue or {}).get("selected_profile_manifest")
         if isinstance(manifest, str) and manifest.strip():
-            return manifest.strip()
+            manifest = manifest.strip()
+            try:
+                profile_layout_contract.\
+                    validate_selectable_profile_manifest_path(manifest)
+            except profile_layout_contract.ProfileLayoutError as exc:
+                raise RunnerError(
+                    "runtime selected_profile_manifest is invalid: %s" % exc)
+            return manifest
     raise RunnerError(
         "no selected profile: pass --profile <dir> or run inside a "
         "materialized runtime whose Queue names selected_profile_manifest")
@@ -135,7 +157,11 @@ def _boundary_declaration(root):
 
 def _boundary_findings(root, manifest):
     """Candidates for distribution-only trees present in an adopter runtime."""
-    if manifest.startswith("profiles/examples/"):
+    try:
+        location = profile_layout_contract.parse_profile_manifest_path(manifest)
+    except profile_layout_contract.ProfileLayoutError as exc:
+        return [], ["selected Profile manifest is invalid: %s" % exc]
+    if location.example:
         # The distribution's own repository (and its fixtures) selects a
         # shipped example profile; the boundary speaks only to adopters.
         return [], []
@@ -242,20 +268,30 @@ def _recipes(root, manifest, excludes):
     return recipes
 
 
-def _freshness_commands(root, manifest):
+def _preflight_commands(root, manifest):
+    """Return non-Gate checks that must run before the derived Gate set.
+
+    The first tuple field is a stable capability/category identity used only
+    for reporting.  None of these rows is a K00/12 Gate, none produces a Gate
+    Receipt, and none enters the derived Gate count.
+    """
     profile_dir = os.path.join(root, os.path.dirname(manifest))
     python = _python()
     return [
-        ("compose_vocab --check", [
+        (CARD_CURRENTNESS_CAPABILITY, "stamp_cards --check", [
+            python, _tool_path("stamp_cards"), root, "--check"]),
+        ("compiled-currentness", "compose_vocab --check", [
             python, _tool_path("compose_vocab"),
             "--extensions",
             os.path.join(profile_dir, "vocabulary-extensions.yaml"),
-            "--output", os.path.join(SCRIPT_DIR, "vocab.yaml"),
+            "--output", os.path.join(
+                root, runtime_paths.VOCAB_ARTIFACT_PATH),
             "--check"]),
-        ("compose_page_contract --check", [
+        ("compiled-currentness", "compose_page_contract --check", [
             python, _tool_path("compose_page_contract"),
             "--profile", profile_dir,
-            "--output", os.path.join(SCRIPT_DIR, "page_contract.yaml"),
+            "--output", os.path.join(
+                root, runtime_paths.PAGE_CONTRACT_ARTIFACT_PATH),
             "--check"]),
         # The interface artifacts are derived from this repository's own tool
         # set, so they are the two that can be carried in from elsewhere and
@@ -266,9 +302,9 @@ def _freshness_commands(root, manifest):
         # disagrees with at least one of the three.  No target is passed --
         # the stored artifact declares its own, and an artifact that declares
         # none is refused rather than assigned one here.
-        ("compile_cli_contract --check", [
+        ("compiled-currentness", "compile_cli_contract --check", [
             python, _tool_path("compile_cli_contract"), root, "--check"]),
-        ("render_interface_projection --check", [
+        ("compiled-currentness", "render_interface_projection --check", [
             python, _tool_path("render_interface_projection"), root,
             "--check"]),
     ]
@@ -289,14 +325,7 @@ def derive_verification_set(root, registry, recipes):
         tool = predicate["tool"]
         mode = predicate["mode"]
         if tool == check_queue.MANUAL_ATTESTATION_TOOL:
-            # Human-recorded.  One row declares a machine INPUT the runner
-            # can produce for the person: runtime-card-synchronization is
-            # signed over `stamp_cards . --check` output (K00/12 row text).
-            if gate_id == "runtime-card-synchronization":
-                derived.append((gate_id, "input", [
-                    _python(), _tool_path("stamp_cards"), root, "--check"]))
-            else:
-                derived.append((gate_id, "manual", None))
+            derived.append((gate_id, "manual", None))
             continue
         if tool in TRANSACTION_WRITER_TOOLS:
             derived.append((gate_id, "transaction", None))
@@ -363,12 +392,13 @@ def main(argv=None):
             print("  [FAIL derive] %s" % error)
         return 1
 
-    freshness = _freshness_commands(root, manifest)
+    preflights = _preflight_commands(root, manifest)
     boundary_findings, boundary_errors = _boundary_findings(root, manifest)
 
     if args.list:
-        for label, command in freshness:
-            print("freshness %-28s %s" % (label, " ".join(command)))
+        for capability, label, command in preflights:
+            print("preflight %-24s %-28s %s" % (
+                capability, label, " ".join(command)))
         for gate_id, kind, command in derived:
             print("%-12s %-36s %s" % (
                 kind, gate_id, " ".join(command) if command else "-"))
@@ -377,19 +407,27 @@ def main(argv=None):
     failures = 0
     holds = 0
 
-    for label, command in freshness:
+    for capability, label, command in preflights:
         code, output = _run(command)
         if code == 0:
-            print("  [PASS freshness] %s" % label)
+            print("  [PASS preflight:%s] %s" % (capability, label))
         elif code == 2:
             holds += 1
-            print("  [HOLD freshness] %s -- stale compiled artifact; gate "
-                  "conclusions below are unreliable until recomposed" % label)
+            if capability == CARD_CURRENTNESS_CAPABILITY:
+                reason = ("curated Card source/body review is stale; "
+                          "refresh and review it before relying on Card "
+                          "guidance")
+            else:
+                reason = ("stale compiled artifact; gate conclusions below "
+                          "are unreliable until recomposed")
+            print("  [HOLD preflight:%s] %s -- %s" % (
+                capability, label, reason))
             print("    " + output.strip().splitlines()[-1]
                   if output.strip() else "")
         else:
             failures += 1
-            print("  [FAIL freshness] %s (exit %d)" % (label, code))
+            print("  [FAIL preflight:%s] %s (exit %d)" % (
+                capability, label, code))
             for line in output.strip().splitlines()[-5:]:
                 print("    " + line)
 
@@ -447,7 +485,7 @@ def main(argv=None):
         print("  [CAND boundary] %s" % finding)
 
     print("run_gates: gates=%d failures=%d holds=%d" %
-          (sum(1 for _, kind, _ in derived if kind in ("run", "input")),
+          (sum(1 for _, kind, _ in derived if kind == "run"),
            failures, holds))
     if failures:
         print("  Conclusion: at least one registered gate failed; the "

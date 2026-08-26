@@ -75,7 +75,8 @@ class MetadataExecutionContractTests(unittest.TestCase):
         capabilities["capabilities"].reverse()
         for entry in capabilities["capabilities"]:
             entry["operations"].reverse()
-            entry["implementation_paths"].reverse()
+            for role in contract.IMPLEMENTATION_ROLE_KEYS:
+                entry[role].reverse()
         second = compile_documents(authority, capabilities)
         self.assertEqual(first.contract_fingerprint,
                          second.contract_fingerprint)
@@ -145,6 +146,22 @@ class MetadataExecutionContractTests(unittest.TestCase):
             compile_documents(authority, capabilities)
         self.assertIn("implemented more than once", str(cm.exception))
 
+    def test_capability_id_is_unique_across_kinds(self):
+        authority, capabilities = source_documents()
+        writer = next(
+            entry for entry in capabilities["capabilities"]
+            if entry["kind"] == "writer")
+        consumer = next(
+            entry for entry in capabilities["capabilities"]
+            if entry["kind"] == "consumer")
+        consumer["capability_id"] = writer["capability_id"]
+
+        with self.assertRaises(contract.MetadataExecutionContractError) as cm:
+            compile_documents(authority, capabilities)
+
+        self.assertIn("duplicate capability_id", str(cm.exception))
+        self.assertIn("global, not kind-scoped", str(cm.exception))
+
     def test_content_change_requires_exact_nonsemantic_exclusions(self):
         authority, capabilities = source_documents()
         rule = next(
@@ -208,7 +225,7 @@ class MetadataExecutionContractTests(unittest.TestCase):
             "manual-gate-attestation-v1", "receipt-schema",
             root=REPOSITORY))
         self.assertTrue(contract.capability_supports(
-            "metadata-transition-integrator-v1",
+            "typed-metadata-transition-v1",
             "typed-field-metadata-transition",
             root=REPOSITORY))
         self.assertTrue(contract.capability_supports(
@@ -237,21 +254,62 @@ class MetadataExecutionContractTests(unittest.TestCase):
             kblib.sha256_file(REPOSITORY / "Tools/record_gate_result.py"),
             records["Tools/record_gate_result.py"])
         self.assertEqual(
-            ["Tools/apply_metadata_transition.py",
-             "Tools/metadata_property_state.py"],
+            "Tools/apply_metadata_transition.py",
             contract.capability_entry(
-                "metadata-transition-integrator-v1", "consumer",
-                root=REPOSITORY)["implementation_paths"])
+                "typed-metadata-transition-v1", "consumer",
+                root=REPOSITORY)["implementation_owner"])
         self.assertEqual(
-            ["Tools/record_gate_result.py"],
+            "Tools/record_gate_result.py",
             contract.capability_entry(
                 "registered-scan-v1", "producer",
-                root=REPOSITORY)["implementation_paths"])
+                root=REPOSITORY)["implementation_owner"])
+
+    def test_real_registry_separates_owner_writers_checkers_and_consumers(self):
+        _authority, capabilities = source_documents()
+        for entry in capabilities["capabilities"]:
+            role_sets = [set(entry[role])
+                         for role in contract.IMPLEMENTATION_ROLE_KEYS]
+            self.assertTrue(all(
+                entry["implementation_owner"] not in role_set
+                for role_set in role_sets
+            ), entry["capability_id"])
+            for index, left in enumerate(role_sets):
+                for right in role_sets[index + 1:]:
+                    self.assertFalse(left & right, entry["capability_id"])
+
+        projection = next(
+            entry for entry in capabilities["capabilities"]
+            if entry["capability_id"] == "project-page-state-v2")
+        self.assertEqual(
+            "Tools/project_page_state.py",
+            projection["implementation_owner"],
+        )
+        self.assertEqual(
+            {"Tools/check_batch_close.py"}, set(projection["checkers"]))
+        self.assertNotIn("Tools/register_amendment.py", projection["writers"])
+
+        card_currentness = next(
+            entry for entry in capabilities["capabilities"]
+            if entry["capability_id"] == "card-currentness-v1")
+        self.assertEqual(
+            "Tools/stamp_cards.py",
+            card_currentness["implementation_owner"],
+        )
+        self.assertEqual(
+            {"Tools/apply_profile_adoption.py"},
+            set(card_currentness["writers"]),
+        )
+        self.assertEqual(
+            {"Tools/run_gates.py"}, set(card_currentness["checkers"]))
+        self.assertEqual(
+            {"Tools/card_activation.py"},
+            set(card_currentness["consumers"]),
+        )
 
     def test_missing_or_noncanonical_implementation_fails_closed(self):
         authority, capabilities = source_documents()
-        capabilities["capabilities"][0]["implementation_paths"] = [
-            "../outside.py"]
+        capabilities["capabilities"][0]["implementation_owner"] = \
+            "../outside.py"
         with self.assertRaises(contract.MetadataExecutionContractError) as cm:
             compile_documents(authority, capabilities)
         self.assertIn("canonical Tools/*.py", str(cm.exception))

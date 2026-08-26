@@ -36,20 +36,23 @@ Before formal execution, freeze the decisions listed in K00/06, including:
   concurrency cap, checkpoint/recovery policy, and identity shared by Coverage,
   Queue, and Progress.
 
-Every writer first probes for `.cambium/`. Only R07/R11, resumable,
-multi-batch, or otherwise persistent Required work initializes it when absent;
-bounded single-note work does not. Existing state is resumed, never
-overwritten. [[kernel/K13 Task Runtime and Execution Control/01 Runtime State Model and Namespace|K13/01]] owns the runtime namespace and cross-state contract.
+Only resumable, multi-batch, or otherwise persistent Required work initializes
+adopter task state when absent; bounded single-note work does not. Existing
+state is resumed, never overwritten.
+[[kernel/K13 Task Runtime and Execution Control/01 Runtime State Model and Namespace|K13/01]]
+owns the runtime-state classes and cross-state contract.
 
 Freeze `standards_version` and `selected_profile_manifest` once work starts.
 Only an authorized governance change may modify them; afterward run K12/10
 Active-task Adoption against the revision's changed predicates.
 
-The contract MAY carry a `policy_exceptions` register: bounded, currently
-valid exceptions to standing policies, each a closed record of `decision_id`,
-`policy_id`, `baseline_policy_fingerprint`, `limit`, `scope_kind` (`task` or
-`repository-snapshot`), `scope_ref`, `rationale`, and `approval_reference`.
-An exception is contract state because it is *current authorization* -- it
+The Task Contract may carry bounded, current policy exceptions under its
+registered machine contract. That machine contract is the sole normative
+source for fields, allowed scope kinds, shapes, and serialization. An exception
+must bind a stable decision and policy identity, exact effective-policy
+fingerprint, quantitative or semantic bound, finite scope, rationale, and
+approval reference. It is Contract state because it is *current authorization*:
+it
 ends with its task or named snapshot, and its baseline fingerprint binds it to
 the exact *effective policy* it was judged against (the resolved standing
 values, kernel defaults included, under one comparison protocol -- never the
@@ -59,23 +62,18 @@ empty. Its sole writer after materialization is the
 [[kernel/K13 Task Runtime and Execution Control/06 Amendment Log and Controlled Replanning|K13/06]]
 Contract Amendment transaction; the policy each exception excepts keeps its
 own owner, and consumption is judged where the policy is consumed.
+The closed set of exceptable policy identities, their owner references, limit
+domains, defaults, and canonical effective-policy payload is carried only by
+`kernel/K00 Standards Control/contract-exception-policy-base.yaml`; the Task
+Contract stores one bounded authorization against that identity and does not
+redefine the policy.
 
-The contract MAY also carry `amendment_authority`, a closed delegation record
-with `schema_version: 1`, a stable nonempty `authority_id`, `mode`, and a sorted
-unique `allowed_change_classes` list. Absence is equivalent to
-`mode: user-only` with an empty list. `user-only` MUST carry an empty list;
-`delegated-integrator` may name only these current operational classes:
-
-```text
-batch-add
-queued-batch-update
-required-object-add
-required-object-promote
-required-object-reroute
-```
-
-The block authorizes the integrator to register exactly those mechanically
-derived effects without another user interruption. It does not authorize
+The Contract may also carry amendment authority under the registered Task
+Contract machine contract. That contract is the sole normative source for
+delegation modes and allowed change classes. Absence means user-only authority.
+A delegated-integrator record authorizes the integrator to register exactly
+the mechanically derived operational effects in its closed allowlist without
+another user interruption. It does not authorize
 Standards/Profile changes, Required-object demotion, batch retirement, open
 Work-Spec mutation, gap settlement, arbitrary metadata edits, or a writer
 operation whose ordinary lifecycle checks fail. The authority record and the

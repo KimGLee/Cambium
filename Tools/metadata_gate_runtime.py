@@ -30,6 +30,7 @@ import metadata_execution_contract
 import metadata_property_state
 import profile_contract
 import project_page_state
+import runtime_state_contract
 
 # The Queue runtime's identity policy, read the way any consumer reads a
 # declared surface.  This module owns whether a persisted typed Gate
@@ -655,7 +656,8 @@ def require_authorities_current(context, phase, *, runtime=None):
     if manifest.sha256 != context.selected_profile_manifest_sha256:
         raise ValueError("%s: selected Profile manifest changed" % phase)
     if runtime is not None:
-        for field in ("coverage_sha256", "queue_sha256", "progress_sha256"):
+        for field in \
+                runtime_state_contract.RUNTIME_LEDGER_FINGERPRINT_BY_ID.values():
             if runtime.get(field) != context.runtime.get(field):
                 raise ValueError("%s: runtime %s changed" % (phase, field))
 

@@ -1,0 +1,275 @@
+{
+  "schema_version": 1,
+  "model_id": "cambium-runtime-state-model-v1",
+  "owner_refs": [
+    "K13/01", "K13/03", "K13/05", "K13/06", "K13/07", "K13/08",
+    "K13/10", "K13/11"
+  ],
+  "runtime_ledgers": [
+    {"ledger_id": "coverage", "fingerprint_field": "coverage_sha256"},
+    {"ledger_id": "queue", "fingerprint_field": "queue_sha256"},
+    {"ledger_id": "progress", "fingerprint_field": "progress_sha256"}
+  ],
+  "queue": {
+    "states": [
+      {"state_id": "queued", "classes": ["nonterminal", "actionable-target"]},
+      {"state_id": "open", "classes": ["nonterminal", "active", "actionable-target"]},
+      {"state_id": "merge-ready", "classes": ["nonterminal", "active", "delta-bound"]},
+      {"state_id": "closed", "classes": ["terminal", "delta-bound"]},
+      {"state_id": "cancelled", "classes": ["terminal"]}
+    ],
+    "hold_states": [
+      "none",
+      "confirmation-required",
+      "blocked",
+      "revalidation-required",
+      "paused"
+    ],
+    "execution_modes": ["concurrent-worker", "serial-integrator"],
+    "edge_catalogs": [
+      {
+        "catalog_id": "batch-ordinary-v1",
+        "edges": [
+          ["queued", "open"],
+          ["open", "merge-ready"],
+          ["merge-ready", "closed"],
+          ["merge-ready", "open"]
+        ]
+      },
+      {
+        "catalog_id": "batch-amendment-cancellation-v1",
+        "edges": [
+          ["queued", "cancelled"],
+          ["open", "cancelled"]
+        ]
+      }
+    ],
+    "current_authorizations": [
+      {
+        "capability_id": "ordinary-queue-transition-v1",
+        "edge_catalog_ids": ["batch-ordinary-v1"]
+      },
+      {
+        "capability_id": "amendment-batch-cancellation-v1",
+        "edge_catalog_ids": ["batch-amendment-cancellation-v1"]
+      }
+    ],
+    "historical_replay": [
+      {
+        "protocol_id": "queue-transition-receipt-v1",
+        "edge_catalog_ids": [
+          "batch-ordinary-v1",
+          "batch-amendment-cancellation-v1"
+        ]
+      }
+    ]
+  },
+  "task": {
+    "completion_semantics": ["build", "maintenance"],
+    "states": [
+      {
+        "state_id": "planned",
+        "classes": ["nonterminal", "batch-activation-current", "maintenance-completion-current", "maintenance-completion-replay"],
+        "applicable_completion_semantics": ["build", "maintenance"]
+      },
+      {
+        "state_id": "active",
+        "classes": ["nonterminal", "active", "batch-activation-current", "standards-adoption-current", "maintenance-completion-current", "maintenance-completion-replay"],
+        "applicable_completion_semantics": ["build", "maintenance"]
+      },
+      {
+        "state_id": "paused",
+        "classes": ["nonterminal", "standards-adoption-current"],
+        "applicable_completion_semantics": ["build", "maintenance"]
+      },
+      {
+        "state_id": "blocked",
+        "classes": ["nonterminal"],
+        "applicable_completion_semantics": ["build", "maintenance"]
+      },
+      {
+        "state_id": "completion-candidate",
+        "classes": ["nonterminal", "build-proof-readable"],
+        "applicable_completion_semantics": ["build"]
+      },
+      {
+        "state_id": "complete",
+        "classes": ["terminal", "build-proof-readable", "maintenance-completion-replay"],
+        "applicable_completion_semantics": ["build", "maintenance"]
+      },
+      {
+        "state_id": "cancelled",
+        "classes": ["terminal"],
+        "applicable_completion_semantics": ["build", "maintenance"]
+      }
+    ],
+    "edge_catalogs": [
+      {
+        "catalog_id": "task-build-v1",
+        "completion_semantics": "build",
+        "edges": [
+          ["planned", "active"],
+          ["planned", "paused"],
+          ["planned", "blocked"],
+          ["planned", "completion-candidate"],
+          ["planned", "cancelled"],
+          ["active", "paused"],
+          ["active", "blocked"],
+          ["active", "completion-candidate"],
+          ["active", "cancelled"],
+          ["paused", "active"],
+          ["paused", "blocked"],
+          ["paused", "cancelled"],
+          ["blocked", "active"],
+          ["blocked", "paused"],
+          ["blocked", "cancelled"],
+          ["completion-candidate", "active"],
+          ["completion-candidate", "paused"],
+          ["completion-candidate", "blocked"],
+          ["completion-candidate", "complete"],
+          ["completion-candidate", "cancelled"]
+        ]
+      },
+      {
+        "catalog_id": "task-maintenance-v1",
+        "completion_semantics": "maintenance",
+        "edges": [
+          ["planned", "active"],
+          ["planned", "paused"],
+          ["planned", "blocked"],
+          ["planned", "complete"],
+          ["planned", "cancelled"],
+          ["active", "paused"],
+          ["active", "blocked"],
+          ["active", "complete"],
+          ["active", "cancelled"],
+          ["paused", "active"],
+          ["paused", "blocked"],
+          ["paused", "cancelled"],
+          ["blocked", "active"],
+          ["blocked", "paused"],
+          ["blocked", "cancelled"]
+        ]
+      }
+    ],
+    "current_authorizations": [
+      {
+        "capability_id": "task-state-transition-v1",
+        "completion_semantics": "build",
+        "edge_catalog_ids": ["task-build-v1"]
+      },
+      {
+        "capability_id": "task-state-transition-v1",
+        "completion_semantics": "maintenance",
+        "edge_catalog_ids": ["task-maintenance-v1"]
+      }
+    ],
+    "historical_replay": [
+      {
+        "protocol_id": "task-transition-receipt-v1",
+        "completion_semantics": "build",
+        "edge_catalog_ids": ["task-build-v1"]
+      },
+      {
+        "protocol_id": "task-transition-receipt-v1",
+        "completion_semantics": "maintenance",
+        "edge_catalog_ids": ["task-maintenance-v1"]
+      }
+    ]
+  },
+  "guidance": {
+    "dispositions": [
+      "interrupt-now",
+      "apply-to-current-batch",
+      "queue-next",
+      "queue-by-dependency",
+      "research-first",
+      "deferred",
+      "clarification-required",
+      "superseded",
+      "not-applicable"
+    ],
+    "statuses": [
+      "received",
+      "classified",
+      "mapped",
+      "in-progress",
+      "verified",
+      "clarification-required",
+      "deferred",
+      "superseded",
+      "not-applicable"
+    ],
+    "final_statuses": ["verified", "deferred", "superseded", "not-applicable"]
+  },
+  "progress_controls": {
+    "amendment_statuses": [
+      "received",
+      "classified",
+      "mapped",
+      "in-progress",
+      "approved",
+      "verified",
+      "clarification-required",
+      "deferred",
+      "superseded",
+      "not-applicable",
+      "withdrawn"
+    ],
+    "amendment_finality": [
+      {"status_id": "verified", "required_writeback_done": true},
+      {"status_id": "deferred", "required_writeback_done": null},
+      {"status_id": "superseded", "required_writeback_done": null},
+      {"status_id": "not-applicable", "required_writeback_done": null},
+      {"status_id": "withdrawn", "required_writeback_done": false}
+    ],
+    "terminal_audit_states": [
+      "not-started",
+      "ready",
+      "passed",
+      "invalidated",
+      "not-applicable"
+    ],
+    "maintenance_completion_states": [
+      "pending",
+      "passed",
+      "invalidated",
+      "not-applicable"
+    ],
+    "operational_amendment_operations": [
+      {
+        "operation_id": "queue-replan",
+        "execution_capability": "same-scope-queue-replan-v1",
+        "classes": []
+      },
+      {
+        "operation_id": "scope-replan",
+        "execution_capability": "cross-ledger-amendment-v1",
+        "classes": ["state-revision-preserving", "cancel-id-forbidden"]
+      },
+      {
+        "operation_id": "cancel-batch",
+        "execution_capability": "cross-ledger-amendment-v1",
+        "classes": []
+      },
+      {
+        "operation_id": "gap-routing-reconciliation",
+        "execution_capability": "cross-ledger-amendment-v1",
+        "classes": [
+          "scope-preserving",
+          "state-revision-preserving",
+          "cancel-id-forbidden"
+        ]
+      },
+      {
+        "operation_id": "property-state-migration",
+        "execution_capability": "cross-ledger-amendment-v1",
+        "classes": [
+          "scope-preserving",
+          "state-revision-preserving",
+          "cancel-id-forbidden"
+        ]
+      }
+    ]
+  }
+}

@@ -37,6 +37,7 @@ import kblib
 TOOL = "check_residual_content"
 TOOL_VERSION = "1.2.0"
 GATE_ID = "registered-residual-content"
+GATE_CHECK = "residual-content-summary"
 CONFIG_VERSION = 1
 DEFAULT_TIME_LIMIT = 55.0
 MAX_TIME_LIMIT = 55.0
@@ -724,7 +725,7 @@ def _run(args, produced):
                     ("; zero-candidate liveness witness %s" %
                      receipt_context["nontriviality_witness"])
                     if candidates == 0 else ""))
-        add("residual-content-summary", root, "pass", details)
+        add(GATE_CHECK, root, "pass", details)
 
     print("check_residual_content: scanned %d file(s), candidates=%d, "
           "failures=%d, elapsed=%.3fs" %

@@ -216,17 +216,54 @@ class QueueFixture(unittest.TestCase):
 
     def write_under_declaring_read_set(self):
         """Lay down a Read Set whose boundary names an undeclared leaf."""
-        read_set = "kernel/Read Sets/R99 Live Fixture.md"
+        read_set = "Read Set/R99 Live Fixture Read Set.md"
         leaf = "kernel/K99 Fixture/01 Required Leaf.md"
         read_set_path = self.root / read_set
         read_set_path.parent.mkdir(parents=True, exist_ok=True)
         read_set_path.write_text(
-            "---\ntype: read-set\nroute_id: R99\n---\n\n"
-            "## Start\n\n- [[%s|Required Leaf]]\n" % leaf[:-3],
+            "---\n"
+            "type: read-set\n"
+            "schema_version: 1\n"
+            "route_id: R99\n"
+            "activation_phase: batch-preflight\n"
+            "narrowable: true\n"
+            "load_edges:\n"
+            "  - edge_id: R99:start\n"
+            "    kind: required\n"
+            "    phase_id: batch-preflight\n"
+            "    trigger_id: route-selected\n"
+            "    targets:\n"
+            "      - %s\n"
+            "    read_sets: []\n"
+            "---\n"
+            "# R99 Live Fixture Read Set\n\n"
+            "## Purpose\n\nFixture loading boundary.\n\n"
+            "## Non-deterministic triggers\n\nNone.\n" % leaf,
             encoding="utf-8")
         leaf_path = self.root / leaf
         leaf_path.parent.mkdir(parents=True, exist_ok=True)
         leaf_path.write_text("## Purpose\n\nFixture.\n", encoding="utf-8")
+        card_path = self.root / "Card/R99 Live Fixture Card.md"
+        card_path.write_text(
+            "---\n"
+            "type: card\n"
+            "generation_mode: curated\n"
+            "route_id: R99\n"
+            "read_set_id: R99\n"
+            "read_set: Read Set/R99 Live Fixture Read Set.md\n"
+            "standards_version: fixture\n"
+            "source_files:\n"
+            "  - Read Set/R99 Live Fixture Read Set.md\n"
+            "source_hash: '000000000000'\n"
+            "reviewed_source_hash: '000000000000'\n"
+            "reviewed_card_hash: '000000000000'\n"
+            "---\n"
+            "# R99 Live Fixture Card\n\n"
+            "## Purpose\n\nFixture.\n\n"
+            "## Actions\n\n- Observe the declared fixture boundary.\n\n"
+            "## Stop or escalate\n\n- Stop on a closure error.\n\n"
+            "## Read-back hook\n\n- Read back the fixture target.\n",
+            encoding="utf-8")
         return read_set, leaf
 
     def open_b1_with_activation_receipt(self, **receipt_overrides):
@@ -564,7 +601,7 @@ class CurrentPropertyStateTests(unittest.TestCase):
             producer_capability="manual-attestation-v1",
             producer_reference="stopper",
             receipt_schema="manual-gate-attestation-v1",
-            consumer_capability="metadata-transition-integrator-v1",
+            consumer_capability="typed-metadata-transition-v1",
         )
         self.metadata_contract = \
             check_queue.metadata_execution_contract.\
@@ -1886,7 +1923,7 @@ class HubPageAdmissionTests(QueueFixture):
             check_queue.profile_load_authorized_view(
                 self.root, "profiles/test-profile/profile.md")
         self.assertEqual([], view_errors)
-        interface = self.root / "profiles/README.md"
+        interface = self.root / check_queue.check_profile.DEFAULT_INTERFACE
         interface.write_text(
             interface.read_text(encoding="utf-8") +
             "\n<!-- canonical input revision B -->\n",
@@ -2328,7 +2365,8 @@ class CheckQueueTests(QueueFixture):
         adoption, whose plan bytes are then sealed into append-only receipts.
         Refusing the runtime that holds them would lock the instance out of the
         sole writer that can re-declare them, so the gap is reported on
-        `task_runtime` and admission of the next plan is where K00/15 judges it.
+        `task_runtime`; admission of the next plan is where the canonical Read
+        Set contract judges it.
         """
         read_set, leaf = self.write_under_declaring_read_set()
         self.write_live_load_set([read_set])
@@ -2342,7 +2380,7 @@ class CheckQueueTests(QueueFixture):
 
     def test_a_broken_live_read_set_path_remains_a_runtime_error(self):
         """Unresolvable bytes are not an under-declaration and stay errors."""
-        absent = "kernel/Read Sets/R99 Absent.md"
+        absent = "Read Set/R99 Absent Read Set.md"
         self.write_live_load_set([absent])
 
         result = check_queue.validate_runtime(self.root)
@@ -2361,7 +2399,8 @@ class CheckQueueTests(QueueFixture):
 
         result = check_queue.validate_runtime(self.root)
         self.assertTrue(any(
-            "does not prove frontmatter type" in error and ordinary in error
+            "does not prove a canonical machine Read Set declaration" in error
+            and ordinary in error
             for error in result["errors"]), result["errors"])
         self.assertEqual([], result["task_runtime"]["contract_load_set_gaps"])
 
@@ -3049,6 +3088,15 @@ class CheckQueueTests(QueueFixture):
         completed = self.run_cli()
         self.assertEqual(0, completed.returncode, completed.stdout)
         self.assertIn("required_queue_sha256=sha256:", completed.stdout)
+
+    def test_merge_ready_batch_remains_required_nonterminal_work(self):
+        queue = self.queue()
+        queue["required_queue"][0]["state"] = "merge-ready"
+        self.write_queue(queue)
+
+        result = check_queue.validate_runtime(self.root)
+
+        self.assertEqual(2, result["remaining"])
 
     def test_manifest_and_record_count_are_strict(self):
         for mutation, expected in (

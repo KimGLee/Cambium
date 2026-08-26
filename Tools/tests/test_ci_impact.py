@@ -3,6 +3,7 @@ import contextlib
 import importlib.util
 import io
 from pathlib import Path
+import shutil
 import subprocess
 import tempfile
 import unittest
@@ -24,7 +25,17 @@ class CiImpactTests(unittest.TestCase):
         (self.root / "Tools/schemas").mkdir()
         (self.root / ".github/workflows").mkdir(parents=True)
         (self.root / "kernel").mkdir()
+        (self.root / "Card").mkdir()
+        (self.root / "Read Set").mkdir()
         (self.root / "profiles").mkdir()
+        shutil.copy(
+            ROOT / "Card/card.schema.yaml",
+            self.root / "Card/card.schema.yaml",
+        )
+        shutil.copy(
+            ROOT / "Read Set/read-set.schema.yaml",
+            self.root / "Read Set/read-set.schema.yaml",
+        )
         self._write("Tools/alpha.py", "VALUE = 1\n")
         self._write("Tools/beta.py", "import alpha\n")
         self._write("Tools/orphan.py", "VALUE = 2\n")
@@ -57,10 +68,38 @@ class CiImpactTests(unittest.TestCase):
         )
 
     def test_markdown_only_change_runs_checks_only_on_ceiling(self):
-        plan = self._plan(("M", "kernel/K00 Standards Control/README.md"))
-        self.assertEqual("checks-only", plan["mode"])
-        self.assertEqual(["3.14"], plan["check_versions"])
-        self.assertFalse(plan["run_tests"])
+        for path in (
+                "kernel/K00 Standards Control/README.md",
+                "Card/R01 Core Bootstrap Card.md",
+                "Read Set/R01 Core Bootstrap Read Set.md"):
+            with self.subTest(path=path):
+                plan = self._plan(("M", path))
+                self.assertEqual("checks-only", plan["mode"])
+                self.assertEqual(["3.14"], plan["check_versions"])
+                self.assertFalse(plan["run_tests"])
+
+    def test_markdown_roots_follow_component_schema_prefixes(self):
+        cases = (
+            ("Card/card.schema.yaml", "Card/", "Flight-Cards/"),
+            ("Read Set/read-set.schema.yaml", "Read Set/", "Reading/"),
+        )
+        for schema_relative, old_prefix, new_prefix in cases:
+            with self.subTest(schema=schema_relative):
+                schema_path = self.root / schema_relative
+                source = schema_path.read_text(encoding="utf-8")
+                schema_path.write_text(
+                    source.replace(
+                        'path_prefix: "%s"' % old_prefix,
+                        'path_prefix: "%s"' % new_prefix,
+                    ),
+                    encoding="utf-8",
+                )
+
+                projected = self._plan(("M", new_prefix + "R01.md"))
+                stale = self._plan(("M", old_prefix + "R01.md"))
+
+                self.assertEqual("checks-only", projected["mode"])
+                self.assertEqual("full", stale["mode"])
 
     def test_readme_assets_are_checks_only_but_local_docs_fail_closed(self):
         allowed = self._plan(("A", "assets/readme/diagram.png"))
@@ -175,8 +214,8 @@ class CiImpactTests(unittest.TestCase):
         """mcp_server reaches tools by command line, never by import.
 
         No reverse-import closure can reach it, so the edge is declared
-        rather than discovered -- the remedy K00/18 names for exactly this
-        blind spot.
+        rather than discovered -- the remedy the Tool module boundary names
+        for this blind spot.
         """
         self._write("Tools/tests/test_mcp_server.py", "pass\n")
         plan = self._plan(("M", "Tools/alpha.py"))

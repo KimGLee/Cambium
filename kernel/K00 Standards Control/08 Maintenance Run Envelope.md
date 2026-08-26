@@ -12,7 +12,12 @@ This module owns the bound a maintenance run declares before it starts, and what
 
 When a maintenance run starts, a budget envelope MUST be declared, choosing one of three: N pages, N batches, or N hours.
 
-- Candidate list = the complete `check_freshness` candidate set ∪ the watermark delta ∪ `needs_rereview` marks ∪ the candidates pool (duplicate / vocab / language). The freshness member is every `candidate` outcome from the run, not an overdue-only projection; its semantic classes and closed-world pass rule are owned by [[kernel/K08 Metadata and Status/05 Review Source and Migration Metadata|K08/05]].
+- Candidate list = the complete `knowledge-freshness` candidate set ∪ the
+  maintenance-watermark delta ∪ re-review marks ∪ the registered duplicate,
+  vocabulary, and language candidate sets. The freshness member is every
+  candidate outcome, not an overdue-only projection; its semantic classes and
+  closed-world pass rule are owned by
+  [[kernel/K08 Metadata and Status/05 Review Source and Migration Metadata|K08/05]].
 - Fuse duplicate object paths before selection, retaining every contributing source kind. The fused list is ordered by priority, then canonical object path and stable candidate ID, and only then truncated to the budget. A producer's display order, age value, or candidate subtype cannot create a second budget order.
 - Candidates arising from changed pages within a batch are adjudicated in that batch (the author is present; lowest cost); candidates from existing pages always enter the pool, and neither block any gate nor surface as to-dos.
 - A candidate not selected by the budget for 3 consecutive maintenance runs is automatically demoted to log-only: the record is kept, but it does not count as a to-do, does not appear in gate output, and does not count toward any completion determination; it re-enters the pool when hit again by a new scan.
@@ -39,6 +44,5 @@ reset deferral age.
 
 ## Related
 
-- [[kernel/Read Sets/R10 Maintenance Run Read Set|Maintenance Run Read Set]]
 - [[kernel/K00 Standards Control/06 Completion Precedence and Task Contract|Completion Precedence and Task Contract]]
 - [[kernel/K03 Note Types and Ownership/03 Split and Duplication Policy|Split and Duplication Policy]]

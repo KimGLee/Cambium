@@ -8,6 +8,8 @@ that admits an unrecorded transition admits an unrecorded change.
 
 import amendment_policy
 import kblib
+import runtime_paths
+import runtime_state_contract
 
 from queue_runtime.canon import (
     ANY_PRODUCER_ERA_VERSION,
@@ -81,17 +83,14 @@ TERMINAL_AUDIT_FIELDS = frozenset((
     "state", "terminal_proof_path", "terminal_proof_sha256",
     "terminal_proof_receipt", "queue_check_receipt",
 ))
-TERMINAL_AUDIT_STATES = frozenset((
-    "not-started", "ready", "passed", "invalidated", "not-applicable",
-))
+TERMINAL_AUDIT_STATES = runtime_state_contract.TERMINAL_AUDIT_STATES
 MAINTENANCE_COMPLETION_FIELDS = frozenset((
     "state", "completion_gate_receipt", "budget_manifest_receipt",
     "ledger_advance_receipt", "watermark_advance_receipt",
 ))
-MAINTENANCE_COMPLETION_STATES = frozenset((
-    "pending", "passed", "invalidated", "not-applicable",
-))
-COMPLETION_SEMANTICS = frozenset(("build", "maintenance"))
+MAINTENANCE_COMPLETION_STATES = \
+    runtime_state_contract.MAINTENANCE_COMPLETION_STATES
+COMPLETION_SEMANTICS = runtime_state_contract.COMPLETION_SEMANTICS
 # Guidance records carry the kernel's own field names.  ``guidance_id`` and
 # ``disposition`` are named by K13/06 Amendment Record; the accepted
 # dispositions are the closed list K13/05 requires for every important
@@ -99,15 +98,8 @@ COMPLETION_SEMANTICS = frozenset(("build", "maintenance"))
 # plus ``not-applicable``, the disposition-closing status both this checker
 # and check_proof already treat as final.
 GUIDANCE_FIELDS = frozenset(("guidance_id", "disposition", "status"))
-GUIDANCE_DISPOSITIONS = frozenset((
-    "interrupt-now", "apply-to-current-batch", "queue-next",
-    "queue-by-dependency", "research-first", "deferred",
-    "clarification-required", "superseded", "not-applicable",
-))
-GUIDANCE_STATUSES = frozenset((
-    "received", "classified", "mapped", "in-progress", "verified",
-    "clarification-required", "deferred", "superseded", "not-applicable",
-))
+GUIDANCE_DISPOSITIONS = runtime_state_contract.GUIDANCE_DISPOSITIONS
+GUIDANCE_STATUSES = runtime_state_contract.GUIDANCE_STATUSES
 AMENDMENT_COMMON_FIELDS = frozenset((
     "id", "date", "summary", "status", "writeback_done",
 ))
@@ -135,16 +127,6 @@ STANDARDS_ADOPTION_RECORD_FIELDS = frozenset((
     "upstream_source_ref", "upstream_revision_id",
     "standards_state_sha256_before", "standards_effective_date_after",
     "after_standards_state_sha256",
-))
-
-
-LIFECYCLE_EDGES = frozenset((
-    ("queued", "open"),
-    ("open", "merge-ready"),
-    ("merge-ready", "closed"),
-    ("merge-ready", "open"),
-    ("queued", "cancelled"),
-    ("open", "cancelled"),
 ))
 
 
@@ -400,6 +382,11 @@ def progress_shape_errors(progress):
                 if not nonempty_string(entry.get(field)):
                     errors.append("%s %s must be a non-empty string" %
                                   (label, field))
+            status = entry.get("status")
+            if (nonempty_string(status) and
+                    status not in runtime_state_contract.AMENDMENT_STATUSES):
+                errors.append("%s status has invalid value %r" %
+                              (label, status))
             if not isinstance(entry.get("writeback_done"), bool):
                 errors.append("%s writeback_done must be boolean" % label)
             entry_id = entry.get("id")
@@ -721,7 +708,7 @@ def task_transition_errors(root, progress, catalog, queue, queue_sha,
             proof_sha = proof.get("terminal_proof_sha256")
             try:
                 proof_file = kblib.managed_repository_path(
-                    root, proof_path, ".cambium/receipts",
+                    root, proof_path, runtime_paths.RECEIPT_ROOT,
                     suffixes=(".yaml", ".yml"), must_exist=True,
                 )
                 if kblib.sha256_file(proof_file) != proof_sha:
@@ -776,7 +763,8 @@ def task_transition_errors(root, progress, catalog, queue, queue_sha,
                               "gate_id=maintenance-completion")
         if transitions and gate is not None:
             latest = transitions[-1]
-            if (latest.get("before_task_state") not in ("planned", "active") or
+            if (latest.get("before_task_state") not in
+                    runtime_state_contract.MAINTENANCE_COMPLETION_TASK_STATES or
                     latest.get("after_task_state") != "complete"):
                 errors.append(
                     "maintenance completion must use planned/active -> complete"
@@ -855,8 +843,9 @@ def task_transition_errors(root, progress, catalog, queue, queue_sha,
             value = item.get(field)
             if valid_timestamp(value):
                 terminal_times.append(value)
-    if transitions and task_state in ("completion-candidate", "complete") and \
-            terminal_times:
+    if (transitions and
+            task_state in runtime_state_contract.BUILD_PROOF_TASK_STATES and
+            terminal_times):
         candidate = (transitions[-1] if completion_semantics == "maintenance"
                      else next((entry for entry in transitions
                                 if entry.get("after_task_state") ==
@@ -935,7 +924,8 @@ def global_transition_errors(items_by_id, catalog, queue, queue_sha):
             elif before_state in TERMINAL_STATES:
                 errors.append("transition receipt %s mutates terminal history" %
                               receipt_id)
-        elif (before_state, after_state) not in LIFECYCLE_EDGES:
+        elif ((before_state, after_state) not in
+              runtime_state_contract.BATCH_HISTORICAL_LIFECYCLE_EDGES):
             errors.append("transition receipt %s has illegal lifecycle edge "
                           "%r -> %r" %
                           (receipt_id, before_state, after_state))

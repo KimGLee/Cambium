@@ -16,7 +16,15 @@ Gate rows is unaffected -- that is a registry fact, not an import.
 
 import re
 
-import standards_state
+import runtime_paths
+from runtime_state_contract import (
+    ACTIVE_STATES,
+    EXECUTION_MODES,
+    HOLDS,
+    STATES,
+    TASK_STATES,
+    TERMINAL_STATES,
+)
 
 
 TOOL = "check_queue"
@@ -41,24 +49,11 @@ SUPPORTED_APPLY_AMENDMENT_TOOL_VERSIONS = frozenset((
 COMPILE_QUEUE_TOOL_VERSION = "1.5.0"
 
 
-QUEUE_PATH = ".cambium/state/required_queue.yaml"
-COVERAGE_PATH = ".cambium/state/coverage_ledger.yaml"
-PROGRESS_PATH = ".cambium/state/progress_ledger.yaml"
-ACTIVE_STANDARDS_PATH = standards_state.STATE_PATH
-
-
-STATES = frozenset(("queued", "open", "merge-ready", "closed", "cancelled"))
-HOLDS = frozenset((
-    "none", "confirmation-required", "blocked", "revalidation-required",
-    "paused",
-))
-ACTIVE_STATES = frozenset(("open", "merge-ready"))
-TERMINAL_STATES = frozenset(("closed", "cancelled"))
-TASK_STATES = frozenset((
-    "planned", "active", "paused", "blocked", "completion-candidate",
-    "complete", "cancelled",
-))
-EXECUTION_MODES = frozenset(("concurrent-worker", "serial-integrator"))
+QUEUE_PATH = runtime_paths.QUEUE_PATH
+COVERAGE_PATH = runtime_paths.COVERAGE_PATH
+PROGRESS_PATH = runtime_paths.PROGRESS_PATH
+ACTIVE_STANDARDS_PATH = runtime_paths.ACTIVE_STANDARDS_PATH
+WATERMARK_PATH = runtime_paths.WATERMARK_PATH
 
 
 # Sentinel for require_receipt: accept any nonempty producer-era version
@@ -115,7 +110,7 @@ STANDARDS_ADOPTION_TOOL = "adopt_standards"
 STANDARDS_ADOPTION_TOOL_VERSION = "1.7.0"
 
 
-STANDARDS_ADOPTION_PLAN_PREFIX = ".cambium/deltas/standards-adoptions"
+STANDARDS_ADOPTION_PLAN_PREFIX = runtime_paths.STANDARDS_ADOPTION_DELTA_ROOT
 
 
 CONTRACT_AMENDMENT_TOOL_VERSION = "1.1.0"

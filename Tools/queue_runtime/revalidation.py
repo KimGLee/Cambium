@@ -18,9 +18,13 @@ from queue_runtime.canon import (
     TOOL_VERSION,
 )
 from queue_runtime.gate_registry import (
+    is_immediate_revalidation_owner,
+    is_native_revalidation_owner,
+    is_special_revalidation_owner,
     partition_revalidation_owner_claims,
     receipt_matches_gate_id,
     registered_gate_dimensions,
+    registered_gate_position,
     standards_gate_registry,
     standards_revalidation_capabilities,
     standards_revalidation_owner,
@@ -40,12 +44,6 @@ from queue_runtime.receipts import (
     current_receipt_catalog,
     historical_receipt_catalog,
 )
-
-
-# K00/12 gives the `standards-revalidation` Gate these lifecycle cells.  The
-# producer's own admission and the recovery vocabulary that names a batch for
-# it read the same constant, so the two cannot drift apart.
-STANDARDS_REVALIDATION_STATES = ("queued", "open")
 
 
 STANDARDS_REVALIDATION_CAPABILITY_PROTOCOL = "owner-projection-v1"
@@ -197,7 +195,7 @@ def standards_revalidation_requirements(root, progress, capabilities=None,
                     owner_capability = (capabilities or {}).get(mapped_owner)
                     if isinstance(owner_capability, dict):
                         owner_claim_edge = owner_capability.get("claim_edge")
-                        if owner_capability.get("role") == "special-owner":
+                        if is_special_revalidation_owner(owner_capability):
                             # Profile admission is completed against the
                             # writable after-image by the adoption writer.  It
                             # never becomes a post-admission batch obligation.
@@ -267,9 +265,15 @@ def standards_revalidation_producer_eligibility(result, batch_id):
     item = (result.get("items_by_id") or {}).get(batch_id)
     if item is None:
         return "requested batch %s does not exist" % batch_id
-    if item.get("state") not in STANDARDS_REVALIDATION_STATES:
-        return ("Standards revalidation batch %s is %s, expected "
-                "queued or open" % (batch_id, item.get("state")))
+    gate_registry, gate_errors = standards_gate_registry(result.get("root"))
+    allowed_states = registered_gate_position(
+        "standards-revalidation", gate_registry)
+    if gate_errors or not isinstance(allowed_states, frozenset):
+        return "Standards revalidation Gate position is unavailable"
+    if item.get("state") not in allowed_states:
+        return ("Standards revalidation batch %s is %s, expected %s" %
+                (batch_id, item.get("state"),
+                 " or ".join(sorted(allowed_states))))
     if item.get("state") == "open" and \
             item.get("hold_state") != "revalidation-required":
         return ("open Standards revalidation batch must have "
@@ -564,10 +568,10 @@ def standards_revalidation_context(result, batch_id, gate_receipts):
         bindings.append(binding)
     immediate_gate_ids = sorted(
         gate_id for gate_id in mapped_owner_gate_ids
-        if (capabilities.get(gate_id) or {}).get("role") == "immediate-owner")
+        if is_immediate_revalidation_owner(capabilities.get(gate_id)))
     native_owner_gate_ids = sorted(
         gate_id for gate_id in mapped_owner_gate_ids
-        if (capabilities.get(gate_id) or {}).get("role") == "native-owner")
+        if is_native_revalidation_owner(capabilities.get(gate_id)))
     deferred_native_owner_gate_ids = sorted(
         set(native_owner_gate_ids) & set(deferred_gate_ids))
     context = {

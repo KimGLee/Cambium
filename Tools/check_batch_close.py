@@ -52,20 +52,25 @@ from collections import defaultdict
 from pathlib import Path
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import batch_close_contract
+import batch_settlement
+import card_contract
+import candidate_lifecycle
 import check_links
 import check_corpus_plan
 import check_page_contract
 import check_profile
 import check_queue
 import check_vocab
-import batch_settlement
-import candidate_lifecycle
 import contract_exception_policy
+import corpus_planning_contract
 import kblib
 import metadata_property_state
 import project_page_state
 import profile_admission
 import profile_contract
+import profile_layout_contract
+import runtime_paths
 
 
 TOOL = "check_batch_close"
@@ -74,7 +79,7 @@ GATE_ID = "batch-close"
 # The `Check` cell K00/12 registers for this Gate; every receipt this
 # tool offers as gate evidence carries it verbatim.
 GATE_CHECK = "batch_close_gate"
-DEFAULT_RECEIPTS = ".cambium/receipts/batch-close.jsonl"
+DEFAULT_RECEIPTS = runtime_paths.BATCH_CLOSE_RECEIPT_PATH
 MAX_CHECK_SECONDS = 60
 IDENTITY_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9._@-]*\Z")
 SHA256_RE = re.compile(r"sha256:[0-9a-f]{64}\Z")
@@ -343,7 +348,8 @@ def _assert_work_spec_unchanged(root, item):
 def _repo_files(root, suffixes):
     """Yield Git-managed content outside Git/Cambium control state."""
     for absolute, relative in kblib.repository_content_files(root):
-        if relative.split("/", 1)[0] in (".git", ".cambium"):
+        if relative.split("/", 1)[0] in (
+                ".git", runtime_paths.RUNTIME_ROOT):
             continue
         if relative.lower().endswith(tuple(suffixes)):
             yield absolute, relative
@@ -497,15 +503,20 @@ def _structural_check(root, runtime):
     errors = []
     markdown_count = yaml_count = table_count = 0
     manifest = runtime.get("queue", {}).get("selected_profile_manifest")
-    profile_prefix = (os.path.dirname(manifest).strip("/") + "/"
-                      if isinstance(manifest, str) and "/" in manifest
-                      else "")
+    try:
+        profile_prefix = (
+            profile_layout_contract.validate_selectable_profile_manifest_path(
+                manifest).directory + "/")
+    except profile_layout_contract.ProfileLayoutError:
+        # Runtime identity is diagnosed by check_queue.  This member merely
+        # avoids widening its restricted-YAML scope when that identity is
+        # absent or malformed.
+        profile_prefix = ""
     for absolute, relative in _repo_files(root, (".md", ".yaml", ".yml")):
         lower = relative.lower()
         cambium_yaml = (
             bool(profile_prefix and relative.startswith(profile_prefix)) or
-            relative.startswith("kernel/") or
-            relative == "Tools/vocab.yaml"
+            relative.startswith("kernel/")
         )
         if lower.endswith((".yaml", ".yml")) and not cambium_yaml:
             continue
@@ -813,7 +824,9 @@ def _corpus_plan_close_check(root, runtime, item, snapshot, *,
         "%s %s: %s" % (error["check"], error["target"], error["details"])
         for error in result.get("errors") or []
     ]
-    if "R13" in triggers and result.get("applicability") != "configured":
+    if (corpus_planning_contract.CLOSE_ROUTE_TRIGGER in triggers and
+            result.get("applicability") !=
+            corpus_planning_contract.CONFIGURED_STATE):
         errors.append(
             "R13-selected batch requires Corpus Planning applicability.state=configured")
     receipt = None
@@ -826,12 +839,14 @@ def _corpus_plan_close_check(root, runtime, item, snapshot, *,
                 root, receipt, result=result,
                 repository_snapshot_sha256=snapshot,
                 require_runtime=True,
-                require_configured="R13" in triggers,
+                require_configured=(
+                    corpus_planning_contract.CLOSE_ROUTE_TRIGGER in triggers),
             ))
             if not errors:
                 binding = {
                     field: receipt.get(field)
-                    for field in check_corpus_plan.PASS_RECEIPT_BINDING_FIELDS
+                    for field in
+                    corpus_planning_contract.PASS_RECEIPT_BINDING_FIELDS
                 }
         except (OSError, TypeError, ValueError) as exc:
             errors.append("Corpus Planning receipt cannot be bound: %s" % exc)
@@ -1522,7 +1537,7 @@ def _main(argv=None):
             "--accept-while-unchanged-type values must be unique")
     try:
         receipt_path = kblib.managed_repository_path(
-            root, args.receipts, ".cambium/receipts",
+            root, args.receipts, runtime_paths.RECEIPT_ROOT,
             suffixes=(".jsonl",), must_exist=False)
     except (OSError, ValueError) as exc:
         invocation_errors.append("unsafe receipt path: %s" % exc)
@@ -1745,17 +1760,18 @@ def _main(argv=None):
                         for error in residual_control["errors"])
                 checks["registered_residual_content"] = residual_member
                 vocab_path = kblib.repository_path(
-                    root, "Tools/vocab.yaml", must_exist=True,
+                    root, runtime_paths.VOCAB_ARTIFACT_PATH, must_exist=True,
                     reject_symlink=True)
                 vocab_args = [
                     root, "--vocab", vocab_path,
-                    # `profiles/` is excluded like `kernel/Cards`: profile
-                    # directories are governance control plane, and shipped
+                    # `profiles/` is excluded like `Card/`: both directories
+                    # are governance control plane, and shipped
                     # example instances under profiles/examples/ carry their
                     # own vocabularies, so judging them against the selected
                     # profile's composed vocab.yaml fails every adopter's
                     # first close on foreign example values.
-                    "--exclude", "kernel/Cards", "--exclude", "profiles",
+                    "--exclude", card_contract.load_schema(root)["directory"],
+                    "--exclude", profile_layout_contract.PROFILES_DIRECTORY,
                     "--quota-p0", str(p0), "--quota-p1", str(p1),
                     "--policy-fingerprint", str(quota_policy_fingerprint),
                 ]
@@ -1768,14 +1784,16 @@ def _main(argv=None):
                 checks["controlled_vocabulary"] = _tool_member_run(
                     vocab, "controlled_vocabulary")
                 contract_artifact = os.path.join(
-                    root, "Tools", "page_contract.yaml")
+                    root, *runtime_paths.PAGE_CONTRACT_ARTIFACT_PATH.split("/"))
                 if os.path.isfile(contract_artifact):
                     page_contract = _run_inprocess_checker(
                         [sys.executable,
                          str(SCRIPT_DIR / "check_page_contract.py"), root],
                         root, "check_page_contract",
                         lambda receipt_path: check_page_contract.run(
-                            root, None, "Tools/page_contract.yaml", None, [],
+                            root, None,
+                            runtime_paths.PAGE_CONTRACT_ARTIFACT_PATH,
+                            None, [],
                             False, receipt_path,
                             authorized_admission=
                                 profile_consumer_admission))
@@ -1792,10 +1810,10 @@ def _main(argv=None):
                     checks["manifest_page_contract"] = {
                         "errors": [],
                         "candidates": [],
-                        "details": ("no composed page contract "
-                                    "(Tools/page_contract.yaml absent); "
+                        "details": ("no composed page contract (%s absent); "
                                     "member vacuously clean — "
-                                    "compose_page_contract.py arms it"),
+                                    "compose_page_contract.py arms it" %
+                                    runtime_paths.PAGE_CONTRACT_ARTIFACT_PATH),
                     }
             except (OSError, UnicodeError, ValueError,
                     subprocess.SubprocessError) as exc:
@@ -1814,7 +1832,7 @@ def _main(argv=None):
                 "corpus_plan: %s" % error
                 for error in corpus_plan_check["errors"])
             all_candidates = []
-            for field in check_queue.CLOSED_LIST_EVIDENCE_FIELDS:
+            for field in batch_close_contract.CLOSED_LIST_EVIDENCE_FIELDS:
                 run = checks[field]
                 check_errors.extend("%s: %s" % (field, error)
                                     for error in run["errors"])
@@ -1933,7 +1951,7 @@ def _main(argv=None):
             records = []
             evidence = {}
             for sequence, field in enumerate(
-                    check_queue.CLOSED_LIST_EVIDENCE_FIELDS, 1):
+                    batch_close_contract.CLOSED_LIST_EVIDENCE_FIELDS, 1):
                 member_candidates = [entry for entry in accepted
                                      if entry["member"] == field]
                 receipt = _member_receipt(
@@ -1946,7 +1964,7 @@ def _main(argv=None):
             attestation = _make_receipt(
                 TOOL, TOOL_VERSION, "batch_global_review_attestation",
                 args.batch, "pass", args.review_attestation.strip(),
-                len(check_queue.CLOSED_LIST_EVIDENCE_FIELDS) + 1,
+                len(batch_close_contract.CLOSED_LIST_EVIDENCE_FIELDS) + 1,
                 root=root)
             accepted_type_counts = {}
             for entry in accepted:
@@ -1989,19 +2007,15 @@ def _main(argv=None):
 
             profile_bindings = {
                 field: profile_view[field]
-                for field in (
-                    "selected_profile_manifest",
-                    "profile_snapshot_sha256",
-                    "profile_contract_fingerprint",
-                    "profile_load_inputs_sha256",
-                )
+                for field in profile_contract.PROFILE_LOAD_EVIDENCE_FIELDS
             }
             page_review_receipts = []
             page_semantic_fingerprints = {
                 page["path"]: page["semantic_content_sha256"]
                 for page in frozen_pages
             }
-            page_sequence = len(check_queue.CLOSED_LIST_EVIDENCE_FIELDS) + 2
+            page_sequence = \
+                len(batch_close_contract.CLOSED_LIST_EVIDENCE_FIELDS) + 2
             for offset, frozen_page in enumerate(frozen_pages):
                 page_review = _make_receipt(
                     TOOL, TOOL_VERSION, "page_review_acceptance",
@@ -2037,7 +2051,7 @@ def _main(argv=None):
             global_review = _make_receipt(
                 TOOL, TOOL_VERSION, "batch_global_review", args.batch,
                 "pass", "declared reviewer attestation recorded for the Closed List merged-snapshot review",
-                (len(check_queue.CLOSED_LIST_EVIDENCE_FIELDS) + 2 +
+                (len(batch_close_contract.CLOSED_LIST_EVIDENCE_FIELDS) + 2 +
                  len(frozen_pages)), root=root)
             global_review.update({
                 "task_id": runtime["queue"].get("task_id"),
@@ -2068,7 +2082,7 @@ def _main(argv=None):
             aggregator = _make_receipt(
                 TOOL, TOOL_VERSION, GATE_CHECK, args.batch, "pass",
                 "Closed List checks passed and declared review attestation was recorded",
-                len(check_queue.CLOSED_LIST_EVIDENCE_FIELDS) + 4 +
+                len(batch_close_contract.CLOSED_LIST_EVIDENCE_FIELDS) + 4 +
                 len(frozen_pages), root=root)
             aggregator["receipt_id"] = attempt_id
             aggregator.update({

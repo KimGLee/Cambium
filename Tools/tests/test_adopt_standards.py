@@ -25,6 +25,7 @@ import check_queue
 # The requirements derivation is spied on below, and its caller reads
 # that name in the module the caller lives in.
 import queue_runtime.runtime
+import queue_runtime.adoption
 import check_vocab
 import kblib
 import seal_receipts
@@ -71,32 +72,9 @@ class AdoptStandardsFixture:
             "Adopter state is external to the Kernel.\n",
             encoding="utf-8",
         )
-        registry = (self.root /
-                    "kernel/K00 Standards Control/12 Control Registry.md")
-        registry.write_text(
-            "## Stable Gate ID Registry\n\n"
-            "| Gate ID | Tool | Tool version | Check | Mode | Dimension "
-            "| Lifecycle |\n"
-            "|---|---|---|---|---|---|---|\n"
-            "| profile-load | check_profile | %s | profile-check-summary | * | guidance_and_contract | not-batch-scoped |\n"
-            "| wiki-link-integrity | check_links | 1.6.0 | link-check-summary | * | * | not-batch-scoped |\n"
-            "| required-queue-consistency | check_queue | %s | required_queue | consistency | * | not-batch-scoped |\n"
-            "| required-queue-admission | check_queue | %s | required_queue | require-ready:* | * | queued |\n"
-            "| batch-close | check_batch_close | %s | batch_close_gate | * | * | merge-ready |\n\n"
-            "## Standards Revalidation Capability Registry\n\n"
-            "| Gate ID | Role | Owner | Claim edge | Scope protocol | Binding protocol |\n"
-            "|---|---|---|---|---|---|\n"
-            "| profile-load | special-owner | profile-load | after-image-admission | profile-after-image | profile-fingerprints |\n"
-            "| wiki-link-integrity | semantic-leaf | batch-close | project-to-owner | inherit-owner-scope | owner-member-chain |\n"
-            "| required-queue-consistency | immediate-owner | required-queue-consistency | adoption-commit | runtime-after-image | runtime-state-fingerprints |\n"
-            "| required-queue-admission | native-owner | required-queue-admission | native-transition | native-owner-scope | native-owner-receipt |\n"
-            "| batch-close | native-owner | batch-close | native-transition | native-owner-scope | native-owner-receipt |\n" % (
-                check_profile.TOOL_VERSION,
-                check_queue.TOOL_VERSION,
-                check_queue.TOOL_VERSION,
-                check_batch_close.TOOL_VERSION,
-            ),
-            encoding="utf-8")
+        # ``install_loadable_profile`` installs the complete current
+        # K00-owned YAML Control registry and its K12 registry dependency.
+        # Tests must not recreate either machine contract as Markdown.
 
     def load(self, relative):
         return kblib.load_yaml_file(self.root / relative)
@@ -284,10 +262,10 @@ class AdoptStandardsFixture:
         slots.write_text(text.replace(owned, foreign, 1), encoding="utf-8")
 
     def revise_profile_load_inputs(self):
-        interface = self.root / "profiles/README.md"
+        interface = self.root / check_profile.DEFAULT_INTERFACE
         interface.write_text(
             interface.read_text(encoding="utf-8") +
-            "\nCanonical interface revision B.\n",
+            "\n# Fixture interface revision B.\n",
             encoding="utf-8",
         )
 
@@ -305,100 +283,32 @@ class AdoptStandardsFixture:
     LINK_RECEIPTS = ".cambium/receipts/links.jsonl"
 
     def register_link_gate(self):
-        """Register the leaf and its native batch-close owner mapping."""
-        registry = (self.root /
-                    "kernel/K00 Standards Control/12 Control Registry.md")
-        text = registry.read_text(encoding="utf-8")
-        if "| wiki-link-integrity | check_links |" not in text:
-            text = text.replace(
-                "\n## Standards Revalidation Capability Registry\n",
-                "\n| wiki-link-integrity | check_links | 1.6.0 "
-                "| link-check-summary | * | * | not-batch-scoped |\n\n"
-                "## Standards Revalidation Capability Registry\n")
-            text += (
-                "| wiki-link-integrity | semantic-leaf | batch-close "
-                "| project-to-owner | inherit-owner-scope "
-                "| owner-member-chain |\n")
-            registry.write_text(text, encoding="utf-8")
+        """Assert the shipped link Gate and its native owner are present."""
+        gates, gate_errors = check_queue.standards_gate_registry(self.root)
+        capabilities, capability_errors = \
+            check_queue.standards_gate_capability_registry(
+                self.root, gate_registry=gates)
+        self.assertEqual([], gate_errors)
+        self.assertEqual([], capability_errors)
+        self.assertIn("wiki-link-integrity", gates)
+        self.assertEqual(
+            "batch-close", capabilities["wiki-link-integrity"]["owner"])
 
     def install_revalidation_capability_fixture(self):
-        """Install the closed two-registry subset these tests exercise.
-
-        Most adoption tests predate the capability registry and intentionally
-        keep their tiny four-row Gate fixture.  These focused tests need a
-        closed capability table, so they replace that fixture locally rather
-        than making every older test accidentally depend on the new policy.
-        """
-        registry = (self.root /
-                    "kernel/K00 Standards Control/12 Control Registry.md")
-        registry.write_text(
-            "## Stable Gate ID Registry\n\n"
-            "| Gate ID | Tool | Tool version | Check | Mode | Dimension "
-            "| Lifecycle |\n"
-            "|---|---|---|---|---|---|---|\n"
-            "| profile-load | check_profile | %s | profile-check-summary "
-            "| * | guidance_and_contract | not-batch-scoped |\n"
-            "| frontmatter-vocabulary | check_vocab | %s "
-            "| vocab-check-summary | * | * | not-batch-scoped |\n"
-            "| required-queue-consistency | check_queue | %s "
-            "| required_queue | consistency | * | not-batch-scoped |\n"
-            "| required-queue-admission | check_queue | %s "
-            "| required_queue | require-ready:* | * | queued |\n"
-            "| batch-review | manual-attestation | %s | batch_gate "
-            "| * | none | open |\n"
-            "| batch-close | check_batch_close | %s | batch_close_gate "
-            "| * | * | merge-ready |\n"
-            "| page-contract | check_page_contract | %s "
-            "| page-contract-summary | * | * | not-batch-scoped |\n"
-            "| standards-adoption | adopt_standards | %s "
-            "| standards_adoption | * | * | not-batch-scoped |\n"
-            "| standards-revalidation | check_queue | %s "
-            "| required_queue | require-revalidation:* | * | queued, open |\n"
-            "| runtime-card-synchronization | manual-attestation | %s "
-            "| runtime-card-synchronization | * | guidance_and_contract "
-            "| not-batch-scoped |\n\n"
-            "## Standards Revalidation Capability Registry\n\n"
-            "| Gate ID | Role | Owner | Claim edge | Scope protocol "
-            "| Binding protocol |\n"
-            "|---|---|---|---|---|---|\n"
-            "| profile-load | special-owner | profile-load "
-            "| after-image-admission | profile-after-image "
-            "| profile-fingerprints |\n"
-            "| frontmatter-vocabulary | semantic-leaf | batch-close "
-            "| project-to-owner | inherit-owner-scope "
-            "| owner-member-chain |\n"
-            "| required-queue-consistency | immediate-owner "
-            "| required-queue-consistency | adoption-commit "
-            "| runtime-after-image | runtime-state-fingerprints |\n"
-            "| required-queue-admission | native-owner "
-            "| required-queue-admission | native-transition "
-            "| native-owner-scope | native-owner-receipt |\n"
-            "| batch-review | native-owner | batch-review "
-            "| native-transition | native-owner-scope "
-            "| native-owner-receipt |\n"
-            "| batch-close | native-owner | batch-close "
-            "| native-transition | native-owner-scope "
-            "| native-owner-receipt |\n"
-            "| page-contract | semantic-leaf | batch-close "
-            "| project-to-owner | inherit-owner-scope "
-            "| owner-member-chain |\n"
-            "| standards-adoption | mechanism-only | none "
-            "| mechanism-input-only | none | not-authorizing |\n"
-            "| standards-revalidation | mechanism-only | none "
-            "| mechanism-input-only | none | not-authorizing |\n"
-            "| runtime-card-synchronization | unsupported | none "
-            "| none | none | not-authorizing |\n" % (
-                check_profile.TOOL_VERSION,
-                check_vocab.TOOL_VERSION,
-                check_queue.TOOL_VERSION,
-                check_queue.TOOL_VERSION,
-                check_queue.MANUAL_ATTESTATION_TOOL_VERSION,
-                check_batch_close.TOOL_VERSION,
-                check_page_contract.TOOL_VERSION,
-                adopt_standards.TOOL_VERSION,
-                check_queue.TOOL_VERSION,
-                check_queue.MANUAL_ATTESTATION_TOOL_VERSION,
-            ), encoding="utf-8")
+        """Assert the complete shipped YAML contract covers this scenario."""
+        gates, gate_errors = check_queue.standards_gate_registry(self.root)
+        capabilities, capability_errors = \
+            check_queue.standards_gate_capability_registry(
+                self.root, gate_registry=gates)
+        self.assertEqual([], gate_errors)
+        self.assertEqual([], capability_errors)
+        for gate_id in (
+                "profile-load", "frontmatter-vocabulary",
+                "required-queue-consistency", "required-queue-admission",
+                "batch-review", "batch-close", "page-contract",
+                "standards-adoption", "standards-revalidation",
+                "runtime-startup-recovery"):
+            self.assertIn(gate_id, capabilities)
 
     def capability_boundary_plan(self, invalidated_receipt, affected,
                                  required):
@@ -637,10 +547,13 @@ class AdoptStandardsFixture:
         plan["boundary_gate_reruns"] = runtime_gate_ids
         return plan
 
-    READ_SET = "kernel/Read Sets/R99 Fixture Read Set.md"
-    CROSS_READ_SET = "kernel/Read Sets/R98 Cross Referenced Read Set.md"
+    READ_SET = "Read Set/R99 Fixture Read Set.md"
+    CROSS_READ_SET = "Read Set/R98 Cross Referenced Read Set.md"
     PROFILE_READ_SET = "profiles/test-profile/P Supplemental Read Set.md"
-    READ_SET_INDEX = "kernel/Read Sets/Fixture Route Index.md"
+    # A non-Read-Set target must not sit inside the closed canonical Read Set
+    # declaration directory, where discovery intentionally treats every
+    # Markdown file except the generated index as a declaration.
+    READ_SET_INDEX = "kernel/K99 Fixture Family/Fixture Route Index.md"
     LEAF_DIRECT = "kernel/K99 Fixture Family/01 Direct Leaf.md"
     LEAF_NESTED = "kernel/K99 Fixture Family/02 Nested Leaf.md"
     LEAF_PROFILE = "kernel/K99 Fixture Family/03 Profile Leaf.md"
@@ -650,6 +563,30 @@ class AdoptStandardsFixture:
     BOUND_TOOL_FILE = "Tools/fixture_tool.py"
     MODULE_OMISSION = "loaded_module_paths_after omits"
     READ_SET_OMISSION = "selected_read_sets_after omits"
+
+    def read_set_text(self, route_id, *, targets, read_sets,
+                      document_type="read-set", trigger_note="None."):
+        """Render one canonical machine Read Set fixture."""
+        declaration = {
+            "type": document_type,
+            "schema_version": 1,
+            "route_id": route_id,
+            "activation_phase": "batch-preflight",
+            "narrowable": True,
+            "load_edges": [{
+                "edge_id": "%s:start" % route_id,
+                "kind": "required",
+                "phase_id": "batch-preflight",
+                "trigger_id": "route-selected",
+                "targets": list(targets),
+                "read_sets": list(read_sets),
+            }],
+        }
+        return (
+            "---\n%s---\n# %s Fixture Read Set\n\n"
+            "## Purpose\n\nExercise the declared loading boundary.\n\n"
+            "## Non-deterministic triggers\n\n%s\n" %
+            (kblib.canonical_yaml(declaration), route_id, trigger_note))
 
     def load_set_baseline_errors(self):
         """Errors a plan of this fixture carries before any load set is set.
@@ -680,45 +617,34 @@ class AdoptStandardsFixture:
         read_set = self.root / self.READ_SET
         read_set.parent.mkdir(parents=True, exist_ok=True)
         read_set.write_text(
-            "---\ntype: read-set\nroute_id: R99\n---\n\n"
-            "## Purpose\n\n"
-            "Applicability only, so [[%s|Related Only Leaf]] here is not a\n"
-            "loading boundary target.\n\n"
-            "## Start\n\n"
-            "- [[%s|Direct Leaf]]\n"
-            "- First read [[%s|Cross Referenced]].\n"
-            "- Consult [[%s|Route Index]].\n"
-            "- Run `python3 Tools/check_queue.py .` before closing.\n\n"
-            "## Related\n\n"
-            "- [[%s|Related Only Leaf]]\n"
-            % (self.LEAF_RELATED[:-3], self.LEAF_DIRECT[:-3],
-               self.CROSS_READ_SET[:-3], self.READ_SET_INDEX[:-3],
-               self.LEAF_RELATED[:-3]),
+            self.read_set_text(
+                "R99",
+                targets=[self.LEAF_DIRECT, self.READ_SET_INDEX],
+                # A top-level Read Set composes only top-level route IDs.
+                # The selected Profile route is an independent closure root
+                # resolved from selected_profile_route_ids_after.
+                read_sets=["R98"],
+                trigger_note=(
+                    "The explanatory link [[%s|Related Only Leaf]] is not a "
+                    "loading edge." % self.LEAF_RELATED[:-3])),
             encoding="utf-8")
 
         cross = self.root / self.CROSS_READ_SET
         cross.write_text(
-            "---\ntype: read-set\nroute_id: R98\n---\n\n"
-            "## Purpose\n\nKernel supplemental fixture.\n\n"
-            "## Start\n\n"
-            "- [[%s|Nested Leaf]]\n"
-            "- [[%s|Profile Supplemental Read Set]]\n"
-            % (self.LEAF_NESTED[:-3], self.PROFILE_READ_SET[:-3]),
+            self.read_set_text(
+                "R98", targets=[self.LEAF_NESTED], read_sets=["R99"]),
             encoding="utf-8")
 
         profile = self.root / self.PROFILE_READ_SET
         profile.parent.mkdir(parents=True, exist_ok=True)
         profile.write_text(
-            "---\ntype: profile-read-set\n"
-            "route_id: P:test-profile:supplemental\nsupplements: R98\n---\n\n"
-            "## Purpose\n\nProfile supplemental fixture.\n\n"
-            "## Start\n\n"
-            "- [[%s|Profile Leaf]]\n"
-            "- [[%s|Cycle Back To Root]]\n"
-            % (self.LEAF_PROFILE[:-3], self.READ_SET[:-3]),
+            self.read_set_text(
+                "P:test-profile:supplemental",
+                targets=[self.LEAF_PROFILE], read_sets=[],
+                document_type="profile-read-set"),
             encoding="utf-8")
 
-    UNDER_DECLARING_READ_SET = "kernel/Read Sets/R97 Live Contract Fixture.md"
+    UNDER_DECLARING_READ_SET = "Read Set/R97 Live Contract Fixture.md"
     UNDER_DECLARED_LEAF = "kernel/K97 Fixture Family/01 Boundary Leaf.md"
 
     def under_declare_live_contract(self):
@@ -732,9 +658,9 @@ class AdoptStandardsFixture:
         read_set = self.root / self.UNDER_DECLARING_READ_SET
         read_set.parent.mkdir(parents=True, exist_ok=True)
         read_set.write_text(
-            "---\ntype: read-set\nroute_id: R97\n---\n\n"
-            "## Start\n\n- [[%s|Boundary Leaf]]\n" %
-            self.UNDER_DECLARED_LEAF[:-3], encoding="utf-8")
+            self.read_set_text(
+                "R97", targets=[self.UNDER_DECLARED_LEAF], read_sets=[]),
+            encoding="utf-8")
         leaf = self.root / self.UNDER_DECLARED_LEAF
         leaf.parent.mkdir(parents=True, exist_ok=True)
         leaf.write_text("## Purpose\n\nFixture leaf.\n", encoding="utf-8")
@@ -950,6 +876,10 @@ class AdoptStandardsFixture:
                   "hold_state": "none"}
         record.update(item)
         return {
+            # Producer eligibility consumes the canonical K00 Gate registry;
+            # the reduced context must therefore retain the repository root
+            # that a full validate_runtime result always carries.
+            "root": TOOLS.parent,
             "standards_revalidation_outstanding": {
                 "B1": [{"adoption_id": "SA-001", "boundary_id": "INV-B1",
                         "required_gate_id": "batch-close"}]},
@@ -1811,26 +1741,31 @@ class CapabilityBoundaryTests(_TemplateBackedCase):
         plan = self.capability_boundary_plan(
             "audit-fixture-initial-queue", ["frontmatter-vocabulary"],
             ["batch-close"])
-        registry = (self.root /
-                    "kernel/K00 Standards Control/12 Control Registry.md")
-        registry.write_text(
-            registry.read_text(encoding="utf-8").replace(
-                "| frontmatter-vocabulary | semantic-leaf | batch-close ",
-                "| frontmatter-vocabulary | semantic-leaf | batch-review "),
-            encoding="utf-8")
         runtime = check_queue.validate_runtime(self.root)
+        gates, gate_errors = check_queue.standards_gate_registry(self.root)
+        capabilities, capability_errors = \
+            check_queue.standards_gate_capability_registry(
+                self.root, gate_registry=gates)
+        self.assertEqual([], gate_errors)
+        self.assertEqual([], capability_errors)
+        future_capabilities = copy.deepcopy(capabilities)
+        future_capabilities["frontmatter-vocabulary"]["owner"] = \
+            "batch-review"
 
         legacy_plan = self.legacy_plan_shape(plan)
-        historical = check_queue.standards_adoption_plan_errors(
-            self.root, legacy_plan, catalog=runtime["receipt_catalog"],
-            queue=runtime["queue"], progress=runtime["progress"],
-            validate_current=False, producer_tool_version="1.6.0")
+        with mock.patch.object(
+                queue_runtime.adoption,
+                "standards_revalidation_capabilities",
+                return_value=(future_capabilities, [])):
+            historical = check_queue.standards_adoption_plan_errors(
+                self.root, legacy_plan, catalog=runtime["receipt_catalog"],
+                queue=runtime["queue"], progress=runtime["progress"],
+                validate_current=False, producer_tool_version="1.6.0")
+            current = check_queue.standards_adoption_plan_errors(
+                self.root, plan, catalog=runtime["receipt_catalog"],
+                queue=runtime["queue"], progress=runtime["progress"],
+                validate_current=True, producer_tool_version="1.6.0")
         self.assertEqual([], historical)
-
-        current = check_queue.standards_adoption_plan_errors(
-            self.root, plan, catalog=runtime["receipt_catalog"],
-            queue=runtime["queue"], progress=runtime["progress"],
-            validate_current=True, producer_tool_version="1.6.0")
         self.assertTrue(any(
             "required_gate_ids adds owner Gate(s) not projected" in error and
             "batch-close" in error for error in current), current)
@@ -1991,7 +1926,7 @@ class CapabilityBoundaryTests(_TemplateBackedCase):
         for gate_id, role in (
                 ("standards-adoption", "mechanism-only"),
                 ("standards-revalidation", "mechanism-only"),
-                ("runtime-card-synchronization", "unsupported")):
+                ("runtime-startup-recovery", "unsupported")):
             with self.subTest(gate_id=gate_id):
                 plan = self.capability_boundary_plan(
                     "audit-fixture-initial-queue", [gate_id], [gate_id])
@@ -2858,12 +2793,9 @@ class HeldRevalidationTests(_TemplateBackedCase):
 
 
 class QueueExhaustionGateTests(_TemplateBackedCase):
-    # Private scenario: this test extends the Gate registry BEFORE B1 is
-    # opened and held, and the open transition's receipt binds the
-    # Profile-load inputs hash over those registry bytes.  The shared
-    # "held" template binds the unextended registry, so this walk cannot
-    # be shared; the test keeps its own three-transition walk on a copy
-    # of the base template.
+    # Private scenario: this test opens and holds B1 before constructing its
+    # queue-exhaustion boundary, so it keeps its own three-transition walk on
+    # a copy of the base template.
     TEMPLATE = "base"
 
     def test_a_queue_exhaustion_gate_is_deferred_not_demanded_now(self):
@@ -2874,19 +2806,8 @@ class QueueExhaustionGateTests(_TemplateBackedCase):
         batch remains, which every live batch is.  Treating it as producible
         now would deadlock the hold exactly as `batch-close` did.
         """
-        registry = (self.root /
-                    "kernel/K00 Standards Control/12 Control Registry.md")
-        text = registry.read_text(encoding="utf-8").replace(
-            "\n## Standards Revalidation Capability Registry\n",
-            "\n| required-queue-completion | check_queue | %s "
-            "| required_queue | require-complete | * | queue-exhausted |\n\n"
-            "## Standards Revalidation Capability Registry\n" %
-            check_queue.TOOL_VERSION)
-        text += (
-            "| required-queue-completion | native-owner "
-            "| required-queue-completion | native-transition "
-            "| native-owner-scope | native-owner-receipt |\n")
-        registry.write_text(text, encoding="utf-8")
+        # The K00-owned YAML Control registry already declares the
+        # queue-exhaustion producer position and native-owner projection.
         invalidated_gate = self.open_b1_and_hold_for_revalidation()
         affected = ["required-queue-completion",
                     "required-queue-consistency", "wiki-link-integrity"]
@@ -3037,7 +2958,8 @@ class ReadSetClosureTests(_TemplateBackedCase):
         })
         errors = self.plan_errors(plan)
         type_errors = [error for error in errors
-                       if "does not prove frontmatter type" in error]
+                       if "does not prove a canonical machine Read Set"
+                       in error]
 
         self.assertEqual(1, len(type_errors), errors)
         self.assertIn(self.ORDINARY_SELECTED, type_errors[0])
@@ -3049,7 +2971,7 @@ class ReadSetClosureTests(_TemplateBackedCase):
         """A Read Set path that does not resolve is already reported."""
         plan = self.plan(overrides={
             "contract_version_after": "c2",
-            "selected_read_sets_after": ["kernel/Read Sets/R99 Absent.md"],
+            "selected_read_sets_after": ["Read Set/R99 Absent.md"],
             "loaded_module_paths_after": [],
         })
         errors = self.plan_errors(plan)
@@ -3061,7 +2983,7 @@ class ReadSetClosureTests(_TemplateBackedCase):
 
     def test_invalid_utf8_read_set_fails_closed(self):
         """A present but undecodable Read Set cannot shrink the closure."""
-        relative = "kernel/Read Sets/R99 Invalid UTF8.md"
+        relative = "Read Set/R99 Invalid UTF8.md"
         path = self.root / relative
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_bytes(b"---\ntype: read-set\n---\n\xff")
@@ -3080,8 +3002,7 @@ class ReadSetClosureTests(_TemplateBackedCase):
         read_set.parent.mkdir(parents=True, exist_ok=True)
         target = "kernel/K99 Fixture Family/Invalid UTF8.md"
         read_set.write_text(
-            "---\ntype: read-set\nroute_id: R99\n---\n\n"
-            "## Start\n\n- [[%s|Broken Target]]\n" % target[:-3],
+            self.read_set_text("R99", targets=[target], read_sets=[]),
             encoding="utf-8")
         target_path = self.root / target
         target_path.parent.mkdir(parents=True, exist_ok=True)
@@ -3116,9 +3037,16 @@ class ReadSetClosureTests(_TemplateBackedCase):
         path = self.root / relative
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(
-            "---\ntype: profile-read-set\n"
-            "route_id: P:test-profile:supplemental\n---\n\n"
-            "## Start\n\n- [[%s|Leaf]]\n" % self.LEAF_DIRECT[:-3],
+            "---\ntype: profile-read-set\nschema_version: 1\n"
+            "route_id: P:test-profile:supplemental\n"
+            "activation_phase: batch-preflight\nnarrowable: true\n"
+            "load_edges:\n"
+            "  - edge_id: P:test-profile:supplemental:start\n"
+            "    kind: required\n    phase_id: batch-preflight\n"
+            "    trigger_id: route-selected\n    targets:\n"
+            "      - %s\n    read_sets: []\n---\n\n"
+            "## Purpose\n\nFixture.\n\n"
+            "## Non-deterministic triggers\n\nNone.\n" % self.LEAF_DIRECT,
             encoding="utf-8")
         plan = self.plan(overrides={
             "contract_version_after": "c2",
@@ -3129,8 +3057,10 @@ class ReadSetClosureTests(_TemplateBackedCase):
         })
         errors = self.plan_errors(plan)
         self.assertTrue(any(
-            relative in error and "outside the selected profile directory"
-            in error for error in errors), errors)
+            relative in error and
+            "absent from the canonical machine registry for "
+            "profiles/test-profile" in error
+            for error in errors), errors)
 
     def test_profile_read_set_route_must_be_selected(self):
         self.write_boundary_fixture()
@@ -3365,20 +3295,6 @@ class PureFunctionTests(AdoptStandardsFixture, unittest.TestCase):
         """Malformed YAML types are rejected without raising TypeError."""
         text = "---\ntype: [read-set]\n---\n\n## Start\n"
         self.assertIsNone(kblib.read_set_document_type(text))
-
-    def test_boundary_parser_ignores_fences_and_accepts_indented_h2(self):
-        text = (
-            "## Purpose\n\n[[Ignored/Purpose]]\n\n"
-            "  ## Start\n\n[[Included/Leaf]]\n\n"
-            "[[Included/WithSuffix.md|Explicit suffix]]\n\n"
-            "| Target |\n|---|\n| [[Included/Table\\|Alias]] |\n\n"
-            "```markdown\n## Triggered\n[[Ignored/Fenced]]\n```\n\n"
-            "   ## Gate\n\n[[Included/Gate]]\n\n"
-            "## Related\n\n[[Ignored/Related]]\n")
-        self.assertEqual(
-            ["Included/Gate.md", "Included/Leaf.md", "Included/Table.md",
-             "Included/WithSuffix.md"],
-            kblib.read_set_boundary_targets(text))
 
     def test_current_catalog_and_gate_identity_never_fall_back(self):
         historical = {

@@ -1,12 +1,14 @@
 ## Purpose
 
-This page is the stable entry point for the Knowledge Intake and Evolution standard. The detailed rules have been split by responsibility into the modules below; the original content has not been reduced.
+This page is the stable entry point for the Knowledge Intake and Evolution
+standard. Detailed rules are maintained by the responsibility-specific modules
+below.
 
 ## Reading Rule
 
-- First use this MOC to locate the rule owner, then read the modules needed by the current task, event, or quality gate.
-- Reading all modules at once is not required merely because this domain is entered.
-- Each module returns to its parent via `Navigation` and connects to its adjacent modules.
+- Use this MOC only to locate the canonical semantic owner. Loading decisions
+  are owned outside Kernel; opening this index is not evidence that any leaf was
+  loaded.
 
 ## Module Index
 
@@ -20,12 +22,6 @@ This page is the stable entry point for the Knowledge Intake and Evolution stand
 | [[kernel/K06 Knowledge Intake and Evolution/06 Intake Anti-patterns and Acceptance\|Intake Anti-patterns and Acceptance]] | `Anti-patterns`, `Acceptance Criteria`, `Related` |
 | [[kernel/K06 Knowledge Intake and Evolution/07 Environmental Scanning and Watermark\|Environmental Scanning and Watermark]] | `Environmental Scanning` |
 | [[kernel/K06 Knowledge Intake and Evolution/08 Canonical Promotion Gate\|Canonical Promotion Gate]] | `Canonical Promotion Gate` |
-
-## Applicable Read Sets
-
-- [[kernel/Read Sets/R03 Module Build Read Set|Module Build]] (triggered via the Module Build Read Set composition)
-- [[kernel/Read Sets/R04 Source-driven Expansion Read Set|Source-driven Expansion]]
-- [[kernel/Read Sets/R07 Long-running Execution Read Set|Long-running Execution]]
 
 ## Related Standards
 

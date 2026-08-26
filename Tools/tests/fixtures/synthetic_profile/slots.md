@@ -32,9 +32,9 @@ recorded as an intentional fixture exception before the batch closes.
 
 ## Scan Registrations
 
-| Stable Scan ID | Activation role | Whole-corpus scope/root | Deterministic verifier command/path | Candidate predicate/boundary | Judgment Item ID reference |
-|---|---|---|---|---|---|
-| `test-profile-residuals` | `K12/09 item 6 — residual-content scan` | Run once from the repository root. | `python3 Tools/check_residual_content.py . --scan-id test-profile-residuals --config profiles/test-profile/scan-configs/residual-scan.yaml --time-limit 55` | A synthetic scratch heading outside the accepted root is a candidate. | `test-profile-residual-disposition` |
+| Stable Scan ID | Activation role | Whole-corpus scope/root | Verifier capability ID | Profile configuration reference or `None` | Candidate predicate/boundary | Judgment Item ID reference |
+|---|---|---|---|---|---|---|
+| `test-profile-residuals` | `K12/09 item 6 — residual-content scan` | Run once from the repository root. | `residual-content-scan-v1` | `profiles/test-profile/scan-configs/residual-scan.yaml` | A synthetic scratch heading outside the accepted root is a candidate. | `test-profile-residual-disposition` |
 
 ## Extension Gates
 

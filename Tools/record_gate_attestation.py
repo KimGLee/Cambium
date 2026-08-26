@@ -16,11 +16,12 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import check_queue
 import kblib
 import metadata_gate_runtime
+import runtime_paths
 
 
 TOOL = "record_gate_attestation"
 TOOL_VERSION = "1.0.0"
-DEFAULT_RECEIPTS = ".cambium/receipts/gate-attestations.jsonl"
+DEFAULT_RECEIPTS = runtime_paths.GATE_ATTESTATION_RECEIPT_PATH
 
 
 def _require_context_current(context, phase, *, runtime=None):
@@ -121,7 +122,8 @@ def main(argv=None):
     parser.add_argument("--statement", required=True,
                         help="bounded manual attestation statement")
     parser.add_argument("--receipts", default=DEFAULT_RECEIPTS,
-                        help="receipt JSONL path under .cambium/receipts")
+                        help="receipt JSONL path under %s" %
+                        runtime_paths.RECEIPT_ROOT)
     parser.add_argument("--apply", action="store_true",
                         help="append the evidence; omit for a dry run")
     parser.add_argument("--json", action="store_true",
@@ -139,7 +141,7 @@ def main(argv=None):
         receipt = build_attestation_receipt(
             context, args.value, args.actor_role, args.statement)
         receipt_path = kblib.managed_repository_path(
-            root, args.receipts, ".cambium/receipts",
+            root, args.receipts, runtime_paths.RECEIPT_ROOT,
             suffixes=(".jsonl",), must_exist=False)
     except (OSError, TypeError, UnicodeError, ValueError) as exc:
         print("[FAIL] %s" % exc, file=sys.stderr)

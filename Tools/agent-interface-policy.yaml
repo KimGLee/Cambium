@@ -5,9 +5,14 @@
 # CAMBIUM_WORKSPACE_ROOT.  Each argparse argument is closed as exactly that
 # workspace argument, one read/write path, or one ordinary value. Path defaults
 # and overrides narrow containment to a registered namespace or exact artifact.
+# Runtime paths bind the stable `runtime_path_id` owned by runtime_paths.py;
+# component paths bind a `component_path_id` owned by that component's machine
+# contract. compile_cli_contract resolves either identity to its current
+# physical value. Other paths retain a literal `value`. Every row carries
+# exactly one source form.
 # A CLI-only tool may retain an external-write workflow, but that effect is
 # never inherited by MCP merely because the CLI happens to declare it.
-schema_version: 2
+schema_version: 4
 artifact: agent-interface-policy
 consumption_defaults:
   read: snapshot
@@ -16,29 +21,29 @@ consumption_defaults:
 path_defaults:
   - argument: receipts
     constraint: namespace
-    value: .cambium/receipts
+    runtime_path_id: receipt-root
     suffixes: [.jsonl]
     consumption: append
 path_overrides:
   - tool: check_boundary_contract
     argument: contract
     constraint: exact
-    value: Tools/page_contract.yaml
+    runtime_path_id: effective-page-contract
     suffixes: []
   - tool: check_page_contract
     argument: contract
     constraint: exact
-    value: Tools/page_contract.yaml
+    runtime_path_id: effective-page-contract
     suffixes: []
   - tool: render_boundary_projection
     argument: contract
     constraint: exact
-    value: Tools/page_contract.yaml
+    runtime_path_id: effective-page-contract
     suffixes: []
   - tool: check_profile
     argument: interface
     constraint: exact
-    value: profiles/README.md
+    value: kernel/K00 Standards Control/profile-interface.yaml
     suffixes: []
   - tool: check_profile
     argument: defaults
@@ -53,12 +58,12 @@ path_overrides:
   - tool: check_proof
     argument: ledger
     constraint: exact
-    value: .cambium/state/coverage_ledger.yaml
+    runtime_path_id: coverage-ledger
     suffixes: []
   - tool: check_proof
     argument: progress_ledger
     constraint: exact
-    value: .cambium/state/progress_ledger.yaml
+    runtime_path_id: progress-ledger
     suffixes: []
   - tool: check_proof
     argument: template
@@ -68,27 +73,27 @@ path_overrides:
   - tool: check_vocab
     argument: vocab
     constraint: exact
-    value: Tools/vocab.yaml
+    runtime_path_id: effective-vocabulary
     suffixes: []
   - tool: compile_queue
     argument: output
     constraint: namespace
-    value: .cambium
+    runtime_path_id: runtime-root
     suffixes: [.yaml]
   - tool: render_queue
     argument: output
     constraint: namespace
-    value: .cambium/reports
+    runtime_path_id: report-root
     suffixes: [.md]
   - tool: stamp_cards
     argument: cards_dir
     constraint: exact
-    value: kernel/Cards
+    component_path_id: card-directory
     suffixes: []
   - tool: update_queue
     argument: delta_path
     constraint: namespace
-    value: .cambium/deltas
+    runtime_path_id: delta-root
     suffixes: [.yaml]
 path_activation_overrides:
   - tool: adopt_standards
@@ -263,6 +268,15 @@ tools:
     write_paths: [receipts]
     read_write_paths: []
     external_write: none
+  - tool: check_kernel_size
+    exposure: cli-only
+    workspace_argument: root
+    workspace_access: read
+    value_arguments: [json]
+    read_paths: []
+    write_paths: []
+    read_write_paths: []
+    external_write: none
   - tool: check_links
     exposure: mcp
     workspace_argument: vault_root
@@ -416,6 +430,15 @@ tools:
     write_paths: []
     read_write_paths: []
     external_write: none
+  - tool: module_boundary_report
+    exposure: cli-only
+    workspace_argument: root
+    workspace_access: write
+    value_arguments: [format, base_ref, emit_manifest, acknowledge_drift]
+    read_paths: []
+    write_paths: []
+    read_write_paths: [output]
+    external_write: temporary-git-worktree
   - tool: profile_onboarding_status
     exposure: mcp
     workspace_argument: root
@@ -555,7 +578,7 @@ tools:
     exposure: mcp
     workspace_argument: root
     workspace_access: write
-    value_arguments: [set_version, acknowledge_compiled, check]
+    value_arguments: [set_version, acknowledge_review, check]
     read_paths: []
     write_paths: []
     read_write_paths: [cards_dir]

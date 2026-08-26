@@ -1,6 +1,6 @@
 # Worked Planning structure-registry slot: the inactive branch, chosen by the
 # K01/05 admission test rather than by corpus size.
-# Interface: profiles/README.md#Structure-Registry-Slot
+# Interface: kernel/K00 Standards Control/profile-interface.yaml
 # The four corpus directories are Profile Scope layers with Global Map
 # entries; none carries a canonical entry page or is maintained or audited
 # independently of the whole, so registering them as units would create

@@ -6,44 +6,14 @@ both directions of time -- a replay that accepted a shape the live validator
 refuses would let history contain states the present cannot produce.
 """
 
+import runtime_state_contract
+
 from queue_runtime.canon import SHA256_RE
 from queue_runtime.primitives import (
     nonempty_string,
     valid_timestamp,
 )
 from queue_runtime.receipts import require_receipt
-
-
-TASK_LIFECYCLE_EDGES = frozenset((
-    ("planned", "active"),
-    ("planned", "paused"),
-    ("planned", "blocked"),
-    ("planned", "completion-candidate"),
-    ("planned", "complete"),
-    ("planned", "cancelled"),
-    ("active", "paused"),
-    ("active", "blocked"),
-    ("active", "completion-candidate"),
-    ("active", "complete"),
-    ("active", "cancelled"),
-    ("paused", "active"),
-    ("paused", "blocked"),
-    ("paused", "cancelled"),
-    ("blocked", "active"),
-    ("blocked", "paused"),
-    ("blocked", "cancelled"),
-    ("completion-candidate", "active"),
-    ("completion-candidate", "paused"),
-    ("completion-candidate", "blocked"),
-    ("completion-candidate", "complete"),
-    ("completion-candidate", "cancelled"),
-))
-FINAL_CONTROL_STATUSES = frozenset((
-    "verified", "deferred", "superseded", "not-applicable",
-    # K13/06: a withdrawn operational Amendment is final — it authorizes
-    # nothing and is never resumed, so it raises no reconcile obligation.
-    "withdrawn",
-))
 
 
 def pending_control_ids(progress):
@@ -53,7 +23,8 @@ def pending_control_ids(progress):
     if isinstance(guidance, list):
         for index, entry in enumerate(guidance):
             if (not isinstance(entry, dict) or
-                    entry.get("status") not in FINAL_CONTROL_STATUSES):
+                    entry.get("status") not in
+                    runtime_state_contract.FINAL_GUIDANCE_STATUSES):
                 pending_guidance.append(str(
                     entry.get("guidance_id") if isinstance(entry, dict) else
                     "#%d" % index))
@@ -65,15 +36,14 @@ def pending_control_ids(progress):
                 pending_amendments.append("#%d" % index)
                 continue
             status = entry.get("status")
-            if (status not in FINAL_CONTROL_STATUSES or
-                    (status == "verified" and
-                     entry.get("writeback_done") is not True)):
+            if not runtime_state_contract.amendment_is_final(
+                    status, entry.get("writeback_done")):
                 pending_amendments.append(str(entry.get("id") or "#%d" % index))
     return pending_guidance, pending_amendments
 
 
 def last_reconciled_guidance_id(progress):
-    """Derive the incremental guidance boundary named by K00/10 and K12/04.
+    """Derive the incremental guidance boundary named by K12/04.
 
     K13/07 keeps Pending/reconciled Guidance in Progress but forbids Progress
     holding a second authority for anything the owned records already
@@ -114,27 +84,10 @@ def task_transition_receipt_record_errors(
     errors = []
     before = receipt.get("before_task_state")
     after = receipt.get("after_task_state")
-    if (before, after) not in TASK_LIFECYCLE_EDGES:
+    if not runtime_state_contract.task_transition_is_authorized(
+            completion_semantics, before, after, historical=True):
         errors.append("task transition receipt %s has illegal edge %r -> %r" %
                       (receipt_id, before, after))
-    elif (completion_semantics == "build" and after == "complete" and
-          before != "completion-candidate"):
-        errors.append(
-            "build task transition %s may not bypass completion-candidate" %
-            receipt_id
-        )
-    elif (completion_semantics == "maintenance" and
-          "completion-candidate" in (before, after)):
-        errors.append(
-            "maintenance task transition %s may not enter or leave "
-            "completion-candidate" % receipt_id
-        )
-    elif (completion_semantics == "maintenance" and after == "complete" and
-          before not in ("planned", "active")):
-        errors.append(
-            "maintenance task transition %s must be planned/active -> "
-            "complete" % receipt_id
-        )
     checked_at = receipt.get("checked_at")
     if not valid_timestamp(checked_at):
         errors.append("task transition receipt %s has invalid checked_at" %
@@ -176,7 +129,7 @@ def task_transition_receipt_record_errors(
             errors.append("task transition receipt %s has invalid %s" %
                           (receipt_id, field))
     evidence = receipt.get("evidence_receipt")
-    if after in ("completion-candidate", "complete"):
+    if after in runtime_state_contract.BUILD_PROOF_TASK_STATES:
         if not nonempty_string(evidence):
             errors.append("task transition %s requires evidence_receipt" %
                           receipt_id)

@@ -1,6 +1,6 @@
 # Escalation Policy
 
-Interface: [Escalation Policy slot](../../README.md#escalation-policy-slot)
+Interface: [Kernel-owned Profile interface](../../../kernel/K00%20Standards%20Control/19%20Profile%20Extension%20Interface.md) — Escalation Policy slot
 
 This registry is `None`, and that is a complete answer rather than a
 deferral. Work here is bounded and maintained a few pages at a time, so no

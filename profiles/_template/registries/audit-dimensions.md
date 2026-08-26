@@ -1,28 +1,23 @@
 # Audit Dimension Registry
 
-Interface: [Audit Dimension Registry slot](../../README.md#audit-dimension-registry-slot)
+Kernel owner: K12 Quality Assurance. Common slot identity and table contract
+are registered in the Kernel Profile interface.
 
 ## Extension Dimensions
 
 - Registration: None
 
-This profile files every judgment item under a base kernel receipt dimension;
-it registers no extension dimension because it has no artifact class whose
-fitness is judged independently of the seven base dimensions.
+This candidate registers no additional audit dimension. Confirm that choice or
+add only the instance-specific dimensions permitted by the Kernel interface.
 
 | Dimension ID | Target list(s): `review`, `receipt`, or `review + receipt` | Meaning |
 |---|---|---|
 
 ## Judgment Items
 
-The interface requires these two registrations; a profile cannot opt out of
-them. The first registers Foundation Depth; the second is the acceptance item
-for the registered residual scan. Item IDs conventionally start with the
-profile ID (`<profile-id>-foundation-depth`). The predicate-owner cells point
-into this Profile's own files — derive them from your profile ID before
-validation (see the README's materialization checklist). `profile-load`
-requires each path to remain inside this Profile and each optional heading to
-resolve exactly once; it reports a stale owner but never guesses a rewrite.
+The two candidate rows bind this repository's Foundation Depth judgment and
+residual-scan disposition. Choose stable IDs, bounded objects, and Profile-owned
+predicate references during the interview.
 
 | Stable Judgment Item ID | Base or registered receipt Dimension ID | Exact kernel audit-layer name | Bounded audit object one run proves | Evidence role: `emits`, `consumes`, or `triggers` | Predicate owner (repo-relative path; optional `#heading`) |
 |---|---|---|---|---|---|
@@ -31,8 +26,5 @@ resolve exactly once; it reports a stale owner but never guesses a rewrite.
 
 ## Residual Disposition
 
-TODO(profile) — state, in two or three sentences, what the registered scan's
-candidates mean for this corpus and the two or three legal ways a candidate is
-resolved (moved into its accepted root, or the page states why this structure
-is canonical here). The scan is candidate discovery only; a zero-candidate
-result proves the registered predicate for the scanned snapshot, nothing more.
+TODO(profile) — define what a reported candidate means for this repository and
+which stable dispositions are acceptable.

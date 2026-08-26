@@ -17,9 +17,12 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import kblib
+import profile_layout_contract
+import runtime_paths
+import runtime_state_contract
 
 
-STATE_PATH = ".cambium/governance/standards_state.yaml"
+STATE_PATH = runtime_paths.ACTIVE_STANDARDS_PATH
 SCHEMA_VERSION = 1
 STATE_FIELDS = frozenset((
     "schema_version", "state_revision", "standards_version", "status",
@@ -54,7 +57,7 @@ def state_errors(state, *, allow_initial_receipt_null=False):
     revision = state.get("state_revision")
     if not isinstance(revision, int) or isinstance(revision, bool) or revision < 1:
         errors.append("Standards state state_revision must be an integer >= 1")
-    for field in ("standards_version", "selected_profile_manifest"):
+    for field in runtime_state_contract.RUNTIME_STANDARDS_IDENTITY_FIELDS:
         if not _nonempty(state.get(field)):
             errors.append("Standards state %s must be non-empty" % field)
     if state.get("status") != "approved":
@@ -70,13 +73,14 @@ def state_errors(state, *, allow_initial_receipt_null=False):
         if parsed is None or parsed.isoformat() != date:
             errors.append("Standards state effective_date must be YYYY-MM-DD")
     manifest = state.get("selected_profile_manifest")
-    if (_nonempty(manifest) and
-            (not manifest.startswith("profiles/") or
-             not manifest.endswith("/profile.md") or
-             "//" in manifest or "/../" in manifest or "/./" in manifest)):
-        errors.append(
-            "Standards state selected_profile_manifest must be a canonical "
-            "profiles/<id>/profile.md path")
+    if _nonempty(manifest):
+        try:
+            profile_layout_contract.\
+                validate_selectable_profile_manifest_path(manifest)
+        except profile_layout_contract.ProfileLayoutError as exc:
+            errors.append(
+                "Standards state selected_profile_manifest is invalid: %s" %
+                exc)
     receipt = state.get("latest_adoption_receipt")
     if receipt is None:
         if not allow_initial_receipt_null:

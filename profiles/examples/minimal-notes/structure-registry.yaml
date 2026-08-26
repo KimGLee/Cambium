@@ -1,5 +1,5 @@
 # Minimal Notes structure-registry slot: the inactive branch.
-# Interface: profiles/README.md#Structure-Registry-Slot
+# Interface: kernel/K00 Standards Control/profile-interface.yaml
 # `not-applicable` requires a nonempty reason and empty units and
 # support_layers. A flat personal corpus registers no hollow units merely to
 # fill the table; see profiles/examples/agent-atlas/ for the configured branch.

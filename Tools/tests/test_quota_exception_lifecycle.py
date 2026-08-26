@@ -41,6 +41,7 @@ import check_batch_close  # noqa: E402
 import check_queue  # noqa: E402
 import contract_exception_policy  # noqa: E402
 import kblib  # noqa: E402
+import runtime_paths  # noqa: E402
 from test_check_batch_close import CheckBatchCloseTests  # noqa: E402
 
 
@@ -316,8 +317,8 @@ class QuotaExceptionLifecycleTests(CheckBatchCloseTests):
         receipts_path = self.root / ".cambium/receipts/vocab-check.jsonl"
         completed = subprocess.run(
             [sys.executable, str(TOOLS / "check_vocab.py"), str(self.root),
-             "--vocab", str(self.root / "Tools/vocab.yaml"),
-             "--exclude", "kernel/Cards", "--exclude", "profiles",
+             "--vocab", str(self.root / runtime_paths.VOCAB_ARTIFACT_PATH),
+             "--exclude", "Card", "--exclude", "profiles",
              "--quota-p0", "15", "--quota-p1", "35",
              "--policy-fingerprint", fingerprint,
              "--receipts", str(receipts_path)],

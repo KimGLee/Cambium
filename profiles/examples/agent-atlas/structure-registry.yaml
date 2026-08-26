@@ -1,6 +1,6 @@
 # Agent Atlas Structure Registry — the selected profile's structural units
 # (K01/05) and support layers (K01/06).
-# Interface: profiles/README.md#Structure-Registry-Slot
+# Interface: kernel/K00 Standards Control/profile-interface.yaml
 # The registry declares the current target state, and
 # Tools/check_structure.py is the structure-registry gate that proves the
 # adopting repository agrees with it.

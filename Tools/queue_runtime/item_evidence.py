@@ -8,8 +8,11 @@ state that never happened.
 
 import card_activation
 import kblib
+import runtime_paths
+import runtime_state_contract
 
 from queue_runtime.canon import (
+    ACTIVE_STATES,
     ANY_PRODUCER_ERA_VERSION,
     HOLDS,
     SHA256_RE,
@@ -18,6 +21,7 @@ from queue_runtime.canon import (
     SUPPORTED_UPDATE_QUEUE_TOOL_VERSIONS,
     TOOL,
     TOOL_VERSION,
+    TERMINAL_STATES,
     UPDATE_QUEUE_TOOL_VERSION,
 )
 from queue_runtime.close_gate import (
@@ -126,7 +130,9 @@ def item_evidence_errors(item, progress, records, catalog, current_catalog,
                     current, "%s merge-ready transition %s" %
                     (item_id, receipt_id)))
                 if current.get("delta_path") != \
-                        ".cambium/deltas/%s.yaml" % item_id:
+                        runtime_paths.child_path(
+                            runtime_paths.DELTA_ROOT,
+                            "%s.yaml" % item_id):
                     errors.append(
                         "%s merge-ready transition %s has noncanonical "
                         "delta_path" % (item_id, receipt_id))
@@ -141,7 +147,7 @@ def item_evidence_errors(item, progress, records, catalog, current_catalog,
             errors.extend(current_open_semantic_baseline_errors(
                 records["root"], current, item,
                 records.get("profile_view"),
-                require_live_authority=state in ("open", "merge-ready")))
+                require_live_authority=state in ACTIVE_STATES))
             errors.extend(current_close_transition_metadata_errors(
                 records["root"], current, catalog, item_id))
             if (current.get("before_state") not in STATES or
@@ -226,10 +232,11 @@ def item_evidence_errors(item, progress, records, catalog, current_catalog,
             if transition.get("after_hold_state") != hold:
                 errors.append("%s last transition hold is %r, current hold is %r" %
                               (item_id, transition.get("after_hold_state"), hold))
-        if state in ("open", "merge-ready"):
+        if state in ACTIVE_STATES:
             latest_opening = next((
                 receipt for receipt in reversed(transition_history)
-                if receipt.get("before_state") in ("queued", "merge-ready")
+                if receipt.get("before_state") in
+                runtime_state_contract.BATCH_OPENING_SOURCE_STATES
                 and receipt.get("after_state") == "open"), None)
             if latest_opening is None:
                 errors.append(
@@ -243,7 +250,7 @@ def item_evidence_errors(item, progress, records, catalog, current_catalog,
                     "migrate/reopen it before further writes" %
                     (item_id, state, latest_opening.get("tool"),
                      latest_opening.get("tool_version")))
-    if state in ("closed", "cancelled") and hold != "none":
+    if state in TERMINAL_STATES and hold != "none":
         errors.append("%s history is immutable and must have hold_state none" %
                       item_id)
 
@@ -263,7 +270,7 @@ def item_evidence_errors(item, progress, records, catalog, current_catalog,
     if hold != "none" and not nonempty_string(item.get("hold_reason")):
         errors.append("%s hold_state %s requires hold_reason" % (item_id, hold))
 
-    if state in ("open", "merge-ready", "closed"):
+    if state in runtime_state_contract.QUEUE_STARTED_STATES:
         if not valid_timestamp(item.get("opened_at")):
             errors.append("%s state %s requires a timezone-aware opened_at" %
                           (item_id, state))
@@ -329,7 +336,7 @@ def item_evidence_errors(item, progress, records, catalog, current_catalog,
                 expected={"check": "confirmation", "target": item_id},
             )
 
-    if state in ("merge-ready", "closed"):
+    if state in runtime_state_contract.QUEUE_DELTA_BOUND_STATES:
         if not valid_timestamp(item.get("merge_ready_at")):
             errors.append("%s state %s requires a timezone-aware merge_ready_at" %
                           (item_id, state))
@@ -337,13 +344,14 @@ def item_evidence_errors(item, progress, records, catalog, current_catalog,
         if not nonempty_string(delta_path):
             errors.append("%s state %s requires delta_path" % (item_id, state))
         else:
-            expected_delta = ".cambium/deltas/%s.yaml" % item_id
+            expected_delta = runtime_paths.child_path(
+                runtime_paths.DELTA_ROOT, "%s.yaml" % item_id)
             if delta_path != expected_delta:
                 errors.append("%s delta_path must be exactly %s" %
                               (item_id, expected_delta))
             try:
                 delta_file = kblib.managed_repository_path(
-                    records["root"], delta_path, ".cambium/deltas",
+                    records["root"], delta_path, runtime_paths.DELTA_ROOT,
                     suffixes=(".yaml",), must_exist=True,
                 )
                 delta_data = kblib.load_yaml_file(delta_file)
@@ -535,7 +543,8 @@ def item_evidence_errors(item, progress, records, catalog, current_catalog,
     latest_merge = next((entry for entry in reversed(transition_history)
                          if entry.get("before_state") == "open" and
                          entry.get("after_state") == "merge-ready"), None)
-    if (latest_merge is not None and state in ("merge-ready", "closed") and
+    if (latest_merge is not None and
+            state in runtime_state_contract.QUEUE_DELTA_BOUND_STATES and
             latest_merge.get("tool") == "update_queue" and
             latest_merge.get("tool_version") == UPDATE_QUEUE_TOOL_VERSION):
         if latest_merge.get("delta_path") != item.get("delta_path"):
@@ -729,7 +738,7 @@ def item_evidence_errors(item, progress, records, catalog, current_catalog,
         seen_paths.add(archive_path)
         try:
             archived = kblib.managed_repository_path(
-                records["root"], archive_path, ".cambium/receipts",
+                records["root"], archive_path, runtime_paths.RECEIPT_ROOT,
                 suffixes=(".yaml",), must_exist=True,
             )
             if kblib.sha256_file(archived) != delta_sha:

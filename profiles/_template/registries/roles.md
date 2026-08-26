@@ -1,25 +1,25 @@
 # Role Registry
 
-Interface: [Role Registry slot](../../README.md#role-registry-slot)
+Kernel owner: K00 Operating Roles. Common slot identity and table contract are
+registered in the Kernel Profile interface.
 
 ## Process Roles
 
-Confirm or replace these operational defaults during the interview; they
-identify actors, not domain policy.
+Bind each stable governance role to the actor or system the user confirms.
 
 | Kernel role | Bound actor or system ID/name |
 |---|---|
-| `proposer` | Assisting agent session |
-| `gatekeeper` | Corpus maintainer |
-| `executor` | Assisting agent session |
-| `stopper` | Corpus maintainer |
+| `proposer` | TODO(profile) |
+| `gatekeeper` | TODO(profile) |
+| `executor` | TODO(profile) |
+| `stopper` | TODO(profile) |
 
 ## Knowledge Host
 
 | Kernel role | Binding |
 |---|---|
-| `knowledge-host` | A plain Markdown directory tree on the maintainer's machine |
-| `knowledge-host UI` | None — headless |
+| `knowledge-host` | TODO(profile) |
+| `knowledge-host UI` | TODO(profile) |
 
 ## Metric Traceability Roles
 

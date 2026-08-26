@@ -21,20 +21,24 @@ import uuid
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import check_queue
 import compile_queue
+import coverage_contract
 import kblib
 import amendment_policy
 import metadata_execution_contract
 import metadata_property_state
 import project_page_state
+import profile_contract
+import runtime_paths
+import runtime_state_contract
+from queue_runtime.canon import LEGACY_PROPERTY_ADOPTION_OPERATION
 
 TOOL = "apply_amendment"
 TOOL_VERSION = "1.4.0"
-PLAN_PREFIX = ".cambium/deltas/amendments"
-RECEIPT_PATH = ".cambium/receipts/amendments.jsonl"
-OPERATIONS = (
-    "scope-replan", "cancel-batch", "gap-routing-reconciliation",
-    "property-state-migration",
-)
+PLAN_PREFIX = runtime_paths.AMENDMENT_DELTA_ROOT
+RECEIPT_PATH = runtime_paths.AMENDMENT_RECEIPT_PATH
+OPERATIONS = tuple(sorted(
+    runtime_state_contract.AMENDMENT_OPERATIONS_BY_EXECUTION_CAPABILITY[
+        runtime_state_contract.CROSS_LEDGER_AMENDMENT_CAPABILITY]))
 PLAN_FIELDS = (
     "schema_version", "amendment_id", "operation", "affected_pages",
     "affected_batches", "scope_version_before", "scope_version_after",
@@ -56,21 +60,6 @@ AMENDMENT_BINDINGS = {
     "coverage_proposal_sha256": "coverage_proposal_sha256",
     "cancel_batch_id": "cancel_batch_id",
 }
-
-PROPERTY_MIGRATION_BINDING_FIELDS = (
-    "property_state_migration_records",
-    "property_state_migration_count",
-    "property_state_migration_set_sha256",
-    "metadata_execution_contract_fingerprint",
-    "metadata_execution_rule_fingerprint",
-    "operation_capability",
-    "selected_profile_manifest",
-    "profile_snapshot_sha256",
-    "profile_contract_fingerprint",
-    "profile_load_inputs_sha256",
-)
-LEGACY_PROPERTY_ADOPTION_OPERATION = "legacy-property-adoption-v1"
-
 
 # ---------------------------------------------------------------------------
 # `--json` output (machine-readable receipts)
@@ -178,13 +167,13 @@ def _validate_plan(plan):
     after_scope = plan.get("scope_version_after")
     if not _nonempty(before_scope) or not _nonempty(after_scope):
         raise ValueError("scope versions must be non-empty strings")
-    if (plan["operation"] in (
-            "gap-routing-reconciliation", "property-state-migration") and
+    if (plan["operation"] in
+            runtime_state_contract.SCOPE_PRESERVING_AMENDMENT_OPERATIONS and
             before_scope != after_scope):
         raise ValueError(
             "%s must preserve scope_version" % plan["operation"])
-    if (plan["operation"] not in (
-            "gap-routing-reconciliation", "property-state-migration") and
+    if (plan["operation"] not in
+            runtime_state_contract.SCOPE_PRESERVING_AMENDMENT_OPERATIONS and
             before_scope == after_scope):
         raise ValueError("a scope/cancel Amendment must change scope_version")
     for field in ("queue_revision_before", "queue_revision_after",
@@ -197,13 +186,14 @@ def _validate_plan(plan):
     expected_queue_after = plan["queue_revision_before"] + 1
     if plan["queue_revision_after"] != expected_queue_after:
         raise ValueError("queue_revision_after must increment by exactly one")
-    if plan["operation"] in (
-            "scope-replan", "gap-routing-reconciliation",
-            "property-state-migration"):
+    if (plan["operation"] in
+            runtime_state_contract.STATE_REVISION_PRESERVING_AMENDMENT_OPERATIONS):
         if plan["state_revision_after"] != plan["state_revision_before"]:
             raise ValueError("%s must preserve state_revision" %
                              plan["operation"])
-        if plan.get("cancel_batch_id") is not None:
+        if (plan["operation"] in
+                runtime_state_contract.CANCEL_ID_FORBIDDEN_AMENDMENT_OPERATIONS and
+                plan.get("cancel_batch_id") is not None):
             raise ValueError("%s cancel_batch_id must be null" %
                              plan["operation"])
     else:
@@ -350,9 +340,7 @@ def _property_state_migration_plan(
         migration["plan"].contract_rule_fingerprint
     migration["operation_capability"] = \
         LEGACY_PROPERTY_ADOPTION_OPERATION
-    for field in (
-            "selected_profile_manifest", "profile_snapshot_sha256",
-            "profile_contract_fingerprint", "profile_load_inputs_sha256"):
+    for field in profile_contract.PROFILE_LOAD_EVIDENCE_FIELDS:
         migration[field] = profile_view.get(field)
     return migration
 
@@ -413,20 +401,16 @@ def _changed_gap_pages(current, proposal):
 def _validate_coverage_proposal(current, proposal, plan):
     if proposal.get("schema_version") != 1:
         raise ValueError("Coverage proposal schema_version must be 1")
-    for field in ("task_id", "standards_version", "selected_profile_manifest"):
+    for field in kblib.RECEIPT_IDENTITY_FIELDS:
         if proposal.get(field) != current.get(field):
             raise ValueError("Coverage proposal may not change %s" % field)
     if current.get("scope_version") != plan["scope_version_before"]:
         raise ValueError("current Coverage scope_version does not match plan")
     if proposal.get("scope_version") != plan["scope_version_after"]:
         raise ValueError("Coverage proposal scope_version does not match plan")
-    allowed_top_level = {
-        "schema_version", "task_id", "updated_at", "scope_version",
-        "standards_version", "selected_profile_manifest", "batch_specs",
-        "maintenance_candidates", "pages", "open_gaps",
-    }
     unexpected = sorted(
-        field for field in (set(current).union(proposal)) - allowed_top_level
+        field for field in (set(current).union(proposal)) -
+        coverage_contract.COVERAGE_TOP_LEVEL_FIELDS
         if current.get(field) != proposal.get(field)
     )
     if unexpected:
@@ -529,7 +513,7 @@ def _new_transaction_receipt(phase, result, plan, transaction_id, plan_path,
 
 
 def _transaction_fields(receipt, before, after):
-    for name in ("coverage", "progress", "queue"):
+    for name in tuple(sorted(runtime_state_contract.RUNTIME_LEDGER_IDS)):
         receipt["before_%s_sha256" % name] = before[name]
         receipt["after_%s_sha256" % name] = after[name]
 
@@ -555,7 +539,7 @@ def _lock_operation(plan, transaction_id, plan_sha, before, after,
         "coverage_proposal_sha256": plan["coverage_proposal_sha256"],
         "receipt_path": receipt_path,
     }
-    for name in ("coverage", "progress", "queue"):
+    for name in tuple(sorted(runtime_state_contract.RUNTIME_LEDGER_IDS)):
         operation["before_%s_sha256" % name] = before[name]
         operation["planned_after_%s_sha256" % name] = after[name]
     return operation
@@ -568,7 +552,9 @@ def _cancel_queue(queue, plan, now, transition_receipt):
     item = items.get(item_id)
     if item is None:
         raise ValueError("cancel_batch_id %s is absent from Queue" % item_id)
-    if item.get("state") not in ("queued", "open"):
+    cancellation_edges = runtime_state_contract.BATCH_TRANSITIONS_BY_CAPABILITY[
+        runtime_state_contract.AMENDMENT_BATCH_CANCELLATION_CAPABILITY]
+    if (item.get("state"), "cancelled") not in cancellation_edges:
         raise ValueError("cancel-batch requires a queued/open batch")
     dependents = sorted(other_id for other_id, other in items.items()
                         if item_id in (other.get("depends_on") or []))
@@ -635,11 +621,11 @@ def _prepare_result(root, plan_path, expected, admitted_runtime=None):
     progress = current["progress"]
     state_paths = {
         "coverage": kblib.managed_repository_path(
-            root, check_queue.COVERAGE_PATH, ".cambium/state",
+            root, check_queue.COVERAGE_PATH, runtime_paths.STATE_ROOT,
             suffixes=(".yaml",), must_exist=True),
         "queue": current["queue_path"],
         "progress": kblib.managed_repository_path(
-            root, check_queue.PROGRESS_PATH, ".cambium/state",
+            root, check_queue.PROGRESS_PATH, runtime_paths.STATE_ROOT,
             suffixes=(".yaml",), must_exist=True),
     }
     before_raw = {}
@@ -648,7 +634,7 @@ def _prepare_result(root, plan_path, expected, admitted_runtime=None):
             before_raw[name] = fh.read()
     before_sha = {name: kblib.sha256_bytes(raw)
                   for name, raw in before_raw.items()}
-    for name in ("coverage", "progress", "queue"):
+    for name in tuple(sorted(runtime_state_contract.RUNTIME_LEDGER_IDS)):
         if expected[name] != before_sha[name]:
             raise ValueError("expected %s SHA does not match current bytes" % name)
     if (queue.get("scope_version") != plan["scope_version_before"] or
@@ -873,14 +859,14 @@ def _prepare_result(root, plan_path, expected, admitted_runtime=None):
 
 def _restore(paths, before_raw):
     failures = []
-    for name in ("coverage", "queue", "progress"):
+    for name in runtime_state_contract.RUNTIME_LEDGER_IDS:
         try:
             text = before_raw[name].decode("utf-8")
             kblib.atomic_write_text(paths[name], text,
                                     validator=kblib.parse_yaml_subset)
         except Exception as exc:  # preserve every attempted rollback failure
             failures.append("%s: %s" % (name, exc))
-    for name in ("coverage", "queue", "progress"):
+    for name in runtime_state_contract.RUNTIME_LEDGER_IDS:
         try:
             with open(paths[name], "rb") as fh:
                 live = fh.read()
@@ -1034,7 +1020,7 @@ def _commit_transaction(root, prepared, receipt_path):
             check_queue.require_runtime_authority_current(
                 root, authority,
                 "runtime authority changed during prepare receipt")
-            for name in ("coverage", "queue", "progress"):
+            for name in runtime_state_contract.RUNTIME_LEDGER_IDS:
                 check_queue.require_runtime_authority_current(
                     root, authority,
                     "runtime authority changed before %s write" % name)
@@ -1161,7 +1147,8 @@ def main(argv=None):
         description="Apply one approved cross-Ledger Amendment transaction")
     parser.add_argument("root", help="adopting repository root")
     parser.add_argument("--plan", required=True,
-                        help=".cambium/deltas/amendments/*.yaml plan")
+                        help="%s/*.yaml plan" %
+                        runtime_paths.AMENDMENT_DELTA_ROOT)
     parser.add_argument("--expected-coverage-sha256", required=True,
                         help="compare-and-swap guard: sha256:<hex> the caller "
                              "read from the current Coverage; planning is "
@@ -1179,7 +1166,8 @@ def main(argv=None):
                         help="declared caller role; only integrator may "
                              "apply an Amendment transaction")
     parser.add_argument("--receipts", default=RECEIPT_PATH,
-                        help="receipt JSONL path under .cambium/receipts")
+                        help="receipt JSONL path under %s" %
+                        runtime_paths.RECEIPT_ROOT)
     parser.add_argument("--apply", action="store_true",
                         help="write the transaction; omit for a dry run")
     parser.add_argument("--json", action="store_true", help=JSON_HELP)
@@ -1221,7 +1209,7 @@ def _run(args):
         # plans simply re-run strict admission there and remain rejected.
     try:
         receipt_path = kblib.managed_repository_path(
-            root, args.receipts, ".cambium/receipts",
+            root, args.receipts, runtime_paths.RECEIPT_ROOT,
             suffixes=(".jsonl",), must_exist=False)
         prepared = _prepare_result(
             root, args.plan, expected,
@@ -1241,7 +1229,7 @@ def _run(args):
               prepared["plan"]["state_revision_before"],
               prepared["plan"]["state_revision_after"],
           ))
-    for name in ("coverage", "queue", "progress"):
+    for name in runtime_state_contract.RUNTIME_LEDGER_IDS:
         print("%s_sha256=%s -> %s" % (
             name, prepared["before_sha"][name], prepared["after_sha"][name]))
     if not args.apply:

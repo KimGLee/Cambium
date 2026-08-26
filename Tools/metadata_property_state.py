@@ -19,9 +19,6 @@ import project_page_state
 
 
 SHA256_RE = re.compile(r"sha256:[0-9a-f]{64}\Z")
-PROPERTY_RECORD_KEYS = frozenset((
-    "value", "evidence_receipt", "content_fingerprint",
-))
 LAST_CONTENT_MODIFIED = "last_content_modified"
 LAST_REVIEWED = "last_reviewed"
 SEMANTIC_CONTENT_EVENT = "semantic-content-change"
@@ -33,6 +30,9 @@ PROPERTY_ADAPTER = "coverage-property-state-v1"
 PROPERTY_RECONCILE_POLICY = "upsert-exact-or-remove-v1"
 PROPERTY_INVALIDATION_RULE = \
     "remove-owner-and-page-copy-on-semantic-content-change-v1"
+PROPERTY_RECORD_KEYS = \
+    metadata_execution_contract.source_adapter_owner_record_keys(
+        PROPERTY_ADAPTER)
 LEGACY_PROPERTY_STATE = "legacy_property_state"
 LEGACY_PROPERTY_STATUS = "legacy-unverified"
 LEGACY_PROPERTY_RECORD_KEYS = frozenset(("status", "value"))

@@ -17,6 +17,7 @@ sys.path.insert(0, str(TOOLS))
 
 import check_queue
 import kblib
+import stamp_cards
 import update_task
 from profile_fixture import install_loadable_profile
 
@@ -40,6 +41,13 @@ class UpdateTaskTests(unittest.TestCase):
 
     def progress(self):
         return kblib.load_yaml_file(self.root / check_queue.PROGRESS_PATH)
+
+    def route_artifacts(self, route_id):
+        cards, read_sets = stamp_cards.discover_cards(self.root)
+        self.assertIn(route_id, cards)
+        self.assertIn(route_id, read_sets)
+        return (self.root / cards[route_id]["path"],
+                self.root / read_sets[route_id]["path"])
 
     def transition(self, state, *arguments, at="2026-08-04T01:00:00Z"):
         completed = self.run_tool(
@@ -223,10 +231,10 @@ class UpdateTaskTests(unittest.TestCase):
     def test_current_completion_rejects_changed_profile_load_inputs(self):
         """Root-owned profile-load policy is part of current authorization."""
         result, catalog, receipt_id, receipt = self.terminal_proof_fixture()
-        interface = self.root / "profiles/README.md"
+        interface = self.root / check_queue.check_profile.DEFAULT_INTERFACE
         interface.write_text(
             interface.read_text(encoding="utf-8") +
-            "\nCanonical interface revision B.\n",
+            "\n# Canonical interface revision B.\n",
             encoding="utf-8",
         )
         replacement, errors = check_queue.profile_load_evidence(
@@ -248,13 +256,14 @@ class UpdateTaskTests(unittest.TestCase):
                     "selected Profile authorization is stale"):
                 update_task._terminal_proof_receipt(result, receipt_id)
 
-    def test_current_completion_rejects_changed_kernel_read_set(self):
+    def test_current_completion_rejects_changed_canonical_read_set(self):
         """A Proof cannot survive a repository revision before consumption."""
-        read_set = self.root / "kernel/Read Sets/R08 Audit Read Set.md"
-        read_set.parent.mkdir(parents=True, exist_ok=True)
-        read_set.write_text("# R08\n\nRevision A.\n", encoding="utf-8")
         result, catalog, receipt_id, _ = self.terminal_proof_fixture()
-        read_set.write_text("# R08\n\nRevision B.\n", encoding="utf-8")
+        _card, read_set = self.route_artifacts("R08")
+        read_set.write_text(
+            read_set.read_text(encoding="utf-8") +
+            "\n<!-- Fixture revision B. -->\n",
+            encoding="utf-8")
 
         with mock.patch.object(
                 check_queue, "current_receipt_catalog",
@@ -511,10 +520,8 @@ class UpdateTaskTests(unittest.TestCase):
 
     def test_build_completion_detects_card_change_after_progress_write(self):
         """The Proof's repository snapshot is CASed after state publication."""
-        card = self.root / "kernel/Cards/R08 Audit Card.md"
-        card.parent.mkdir(parents=True, exist_ok=True)
-        card.write_text("# R08\n\nRevision A.\n", encoding="utf-8")
         result, catalog, receipt_id, _ = self.completion_main_fixture()
+        card, _read_set = self.route_artifacts("R08")
         progress_path = self.root / check_queue.PROGRESS_PATH
         progress_before = progress_path.read_bytes()
         receipt_path = self.root / update_task.RECEIPT_PATH
@@ -528,7 +535,10 @@ class UpdateTaskTests(unittest.TestCase):
             outcome = real_write(path, text, **kwargs)
             if not mutated:
                 mutated = True
-                card.write_text("# R08\n\nRevision B.\n", encoding="utf-8")
+                card.write_text(
+                    card.read_text(encoding="utf-8") +
+                    "\n<!-- Fixture revision B. -->\n",
+                    encoding="utf-8")
             return outcome
 
         output = io.StringIO()

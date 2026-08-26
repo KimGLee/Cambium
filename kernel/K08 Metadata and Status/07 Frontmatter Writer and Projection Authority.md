@@ -9,7 +9,13 @@
 Fields sharing one YAML block does not mean they share one writer. This leaf owns, per field class: the canonical owner, the allowed writer, the write-back timing, and the invalidation rule. It does not redefine field values, the Queue state machine, or evidence policy.
 
 - **User state** (`learning_status`): user-owned. Only the user or an explicitly authorized learning flow writes it; bulk knowledge-base building never fills it, including to silence a checker candidate. Absence carries no quality meaning and never enters authoring or coverage completion.
-- **Derived freshness** (`review_by`): computed by `Tools/check_freshness.py` from the valid completed-event baseline and resolved volatility policy owned by [[kernel/K08 Metadata and Status/05 Review Source and Migration Metadata|K08/05]]. By default it appears only in tool output, reports, and receipts, and is **not persisted** to the page — a persisted derived date goes stale the moment its inputs change. A real external validity date (a legal, contract, version, or expiry) is not derived freshness: it uses the explicitly named `source_valid_until` field or a formal override, never `review_by`.
+- **Derived freshness** (`review_by`): computed by the registered freshness
+  capability from the valid completed-event baseline and resolved volatility
+  policy owned by [[kernel/K08 Metadata and Status/05 Review Source and Migration Metadata|K08/05]].
+  By default it appears only in Tool output, reports, and receipts, and is
+  **not persisted** to the page. A real external validity date uses the
+  explicitly named `source_valid_until` field or a formal override, never
+  `review_by`.
 - **State and event projections**: the Coverage Ledger and Required Queue own
   the current values and evidence pointers; the page only mirrors them.
   `coverage_disposition`, `authoring_status`, and `next_batch` report lifecycle

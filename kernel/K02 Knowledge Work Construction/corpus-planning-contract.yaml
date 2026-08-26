@@ -1,0 +1,94 @@
+schema_version: 1
+contract_id: cambium-corpus-planning-contract
+semantic_owner: K02/03+K02/04
+
+# K02/03 owns the Profile-slot envelope and its two applicability branches.
+# This document carries only the closed machine shape already defined there;
+# adopter values remain owned by the selected Profile.
+slot_envelope:
+  slot_name: Corpus Planning
+  schema_version: 1
+  fields:
+    - schema_version
+    - applicability
+    - artifact_bindings
+    - capability_scale
+    - pass_authority
+  applicability_fields:
+    - state
+    - reason
+  artifact_binding_fields:
+    - global_map
+    - capability_matrix
+    - gap_register
+  capability_scale_fields:
+    - rank
+    - value
+    - predicate
+    - target_eligible
+  pass_authority_fields:
+    - role_id
+    - decision_scope_id
+  applicability_branches:
+    configured: configured
+    inactive: not-applicable
+  artifact_roles:
+    global_map: Global Map
+    capability_matrix: Capability Matrix
+    gap_register: Gap Register
+  semantic_acceptance_scope: corpus-plan-semantic-acceptance
+
+# K02/04 owns the freshness binding shared by structural and semantic pass
+# receipts. The requirement column says only which existing applicability
+# branch makes a path/SHA pair non-null.
+receipt_binding:
+  fields:
+    - task_id
+    - queue_revision
+    - queue_state_revision
+    - selected_profile_manifest
+    - selected_profile_manifest_sha256
+    - profile_snapshot_sha256
+    - profile_contract_fingerprint
+    - profile_load_inputs_sha256
+    - corpus_planning_slot_path
+    - corpus_planning_slot_sha256
+    - profile_scope_path
+    - profile_scope_sha256
+    - global_map_path
+    - global_map_sha256
+    - capability_matrix_path
+    - capability_matrix_sha256
+    - gap_register_path
+    - gap_register_sha256
+    - corpus_plan_applicability
+    - coverage_ledger_sha256
+    - required_queue_sha256
+    - progress_ledger_sha256
+    - repository_snapshot_sha256
+  path_sha_bindings:
+    - path_field: selected_profile_manifest
+      sha256_field: selected_profile_manifest_sha256
+      requirement: always
+    - path_field: corpus_planning_slot_path
+      sha256_field: corpus_planning_slot_sha256
+      requirement: always
+    - path_field: profile_scope_path
+      sha256_field: profile_scope_sha256
+      requirement: configured
+    - path_field: global_map_path
+      sha256_field: global_map_sha256
+      requirement: configured
+    - path_field: capability_matrix_path
+      sha256_field: capability_matrix_sha256
+      requirement: configured
+    - path_field: gap_register_path
+      sha256_field: gap_register_sha256
+      requirement: configured
+
+# K02/04 defines the two existing reasons a batch-close child becomes
+# applicable. These are identifiers only; route and manifest state remain
+# owned by Progress and Queue respectively.
+close_triggers:
+  selected_route: R13
+  affected_manifest: manifest

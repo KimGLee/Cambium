@@ -1,6 +1,6 @@
 # Expression Layer
 
-Interface: [Expression Layer Entry slot](../../README.md#expression-layer-entry-slot)
+Interface: [Kernel-owned Profile interface](../../../kernel/K00%20Standards%20Control/19%20Profile%20Extension%20Interface.md) — Expression Layer Entry slot
 
 ## Registered Artifacts
 

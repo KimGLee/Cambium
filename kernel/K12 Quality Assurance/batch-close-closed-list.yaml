@@ -1,0 +1,24 @@
+schema_version: 1
+registry_id: batch-close-closed-list
+semantic_owner: K12/09
+
+# This is the sole machine authority for the current Batch-close Closed List.
+# Member order is authoritative. K12/09 prose explains why these checks form
+# the close boundary and how their results may be interpreted or reused.
+members:
+  - member_id: wiki_link_resolution
+    meaning: Wiki link missing, ambiguous, and heading resolution
+  - member_id: structural_validity
+    meaning: Markdown, YAML, fence, and table structural validity
+  - member_id: graph_and_duplicate_basenames
+    meaning: Deterministic Markdown and Wiki-link graph JSON projection plus duplicate basename candidates
+  - member_id: coverage_file_count
+    meaning: Coverage file-count reconciliation
+  - member_id: guidance_and_contract_continuity
+    meaning: Guidance ID and contract version continuity
+  - member_id: registered_residual_content
+    meaning: The batch-close residual-content scan registered in the Registered Scan Registry
+  - member_id: controlled_vocabulary
+    meaning: Frontmatter controlled-vocabulary validation by the frontmatter-vocabulary Gate over the effective vocabulary contract
+  - member_id: manifest_page_contract
+    meaning: Page-contract debt on this batch's manifest pages

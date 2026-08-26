@@ -8,8 +8,8 @@ Rule owners:
 - "kernel/K01 Scope and Architecture/06 Support Layer Structural
   Interfaces.md" (support layer shared base, layouts, role-specific
   bindings);
-- "profiles/README.md#Structure Registry Slot" (the closed slot shape,
-  carried by profiles/_template/structure-registry.yaml).
+- "kernel/K00 Standards Control/profile-interface.yaml" and K01/05-K01/06
+  (the common slot contract and structural semantics).
 
 The registry's byte-level shape contract lives in
 ``kblib.validate_structure_registry_shape`` and is shared with
@@ -51,6 +51,8 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import kblib
 import profile_admission
+import profile_contract
+import runtime_paths
 
 TOOL = "check_structure"
 TOOL_VERSION = "1.1.0"
@@ -126,11 +128,11 @@ JSON_FLAG_HELP = ("write the receipts this run produced to stdout as one "
                   "unchanged")
 
 
-ACTIVE_STATE_PATH = ".cambium/governance/standards_state.yaml"
+ACTIVE_STATE_PATH = runtime_paths.ACTIVE_STANDARDS_PATH
 STRUCTURE_SLOT = "Structure Registry"
 CORPUS_SLOT = "Corpus Planning"
 SCOPE_SLOT = "Profile Scope"
-COVERAGE_LEDGER_PATH = ".cambium/state/coverage_ledger.yaml"
+COVERAGE_LEDGER_PATH = runtime_paths.COVERAGE_PATH
 
 
 class Findings:
@@ -682,15 +684,15 @@ def run(root, profile_override, receipts_path):
             seq, root=root)
         summary_receipt["gate_id"] = GATE_ID
         if admission is not None:
-            summary_receipt.update({
-                "selected_profile_manifest": admission.manifest_repo_path,
-                "profile_snapshot_sha256":
+            summary_receipt.update(dict(zip(
+                profile_contract.PROFILE_LOAD_EVIDENCE_FIELDS,
+                (
+                    admission.manifest_repo_path,
                     admission.evaluation.profile_snapshot_sha256,
-                "profile_contract_fingerprint":
                     admission.evaluation.profile_contract_fingerprint,
-                "profile_load_inputs_sha256":
                     admission.evaluation.profile_load_inputs_sha256,
-            })
+                ),
+            )))
         if global_map_snapshot is not None:
             summary_receipt["global_map_path"] = \
                 global_map_snapshot.repository_path

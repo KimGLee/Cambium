@@ -1,6 +1,6 @@
 # Language Contract
 
-Interface: [Language Contract slot](../../README.md#language-contract-slot)
+Interface: [Kernel-owned Profile interface](../../../kernel/K00%20Standards%20Control/19%20Profile%20Extension%20Interface.md) — Language Contract slot
 
 ## Language Routing
 

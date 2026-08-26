@@ -6,22 +6,28 @@
 
 ## Purpose
 
-An `AuditReceipt` carries one `dimension` field, holding one of the seven base dimensions fixed in [[kernel/K12 Quality Assurance/07 Audit Evidence Reuse and Invalidation#Dimension-specific Audit Receipt|K12/07]]. This module fixes, for every judgment item the kernel states whose audit object is one page, which dimension its verdict is filed under and whether it produces a receipt at all; the layers above it are filed by [[kernel/K12 Quality Assurance/18 Cross-page and Control-plane Dimension Map|K12/18]]. Without the map that field has no determinate value for most kernel checks, and the same work can be filed twice under two names.
+An `AuditReceipt` carries one `dimension` from
+[`audit-dimension-base.yaml`](audit-dimension-base.yaml). This module assigns
+each page-level Kernel judgment item to that namespace and states whether it
+produces a receipt; higher layers are filed by
+[[kernel/K12 Quality Assurance/18 Cross-page and Control-plane Dimension Map|K12/18]].
+Without this map, one verdict can be filed under multiple names.
 
 ## Terms
 
 | Term | Meaning |
 |---|---|
-| Review dimension | The eleven acceptance words of [[kernel/K12 Quality Assurance/01 Quality Dimensions and Single Note Review#Quality Dimensions\|K12/01]]: vocabulary and grouping labels, not checks; they do not appear in this map |
+| Review dimension | The eleven acceptance labels of [[kernel/K12 Quality Assurance/01 Quality Dimensions and Single Note Review#Quality Dimensions\|K12/01]]; they are not checks and do not appear here |
 | Judgment item | One check that can be run once and returns pass or fail |
-| Receipt dimension | The seven values the receipt `dimension` field may take |
+| Receipt dimension | A base value registered in `audit-dimension-base.yaml`, or a valid extension registered by the selected Profile |
 | Audit object | What one run of an item proves at one layer, per [[kernel/K12 Quality Assurance/07 Audit Evidence Reuse and Invalidation#Audit Layers\|Audit Layers]] |
 
 A heading is not a judgment item. The test: ask "did this pass?" If the question has to be sent back as "which part?", it is a grouping label.
 
 ## Evidence Role
 
-Every judgment item has exactly one evidence role:
+Every judgment item has exactly one evidence role. The closed role namespace
+is owned by `audit-dimension-base.yaml`; the meanings are:
 
 - `emits` — produces the canonical receipt for its dimension.
 - `consumes` — satisfied by a receipt produced elsewhere; records `reused_receipt_id` under the Reuse Gate and does not change that receipt's dimension.
@@ -66,7 +72,11 @@ A [[kernel/K12 Quality Assurance/05 Automated and Manual Checks#Manual Checks|K1
 
 ## Reverse Check
 
-Every base dimension has an emitting item across this map and K12/18, which are read together for this check. formula_and_numeric draws from two `K12/01 Accuracy` items only; the concentration is deliberate but thin, and a profile adding numeric obligations SHOULD register them here rather than widening another dimension.
+Every base dimension registered in `audit-dimension-base.yaml` has an emitting
+item across this map and K12/18, which are read together for this check.
+`formula_and_numeric` draws from two `K12/01 Accuracy` items only; the
+concentration is deliberate but thin, and a profile adding numeric obligations
+SHOULD register them here rather than widening another dimension.
 
 ## Profile Registration
 
@@ -77,3 +87,4 @@ An entry appended through the `Audit Dimension Registry` is a judgment item, not
 - [[kernel/K12 Quality Assurance/01 Quality Dimensions and Single Note Review|Quality Dimensions and Single Note Review]]
 - [[kernel/K12 Quality Assurance/07 Audit Evidence Reuse and Invalidation|Audit Evidence Reuse and Invalidation]]
 - [[kernel/K00 Standards Control/12 Control Registry|Control Registry]]
+- [`audit-dimension-base.yaml`](audit-dimension-base.yaml)

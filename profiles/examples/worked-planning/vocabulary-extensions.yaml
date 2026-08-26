@@ -1,5 +1,5 @@
 # Worked Planning profile vocabulary extensions.
-# Interface: profiles/README.md#Vocabulary-Extensions-Slot
+# Interface: kernel/K00 Standards Control/profile-interface.yaml
 #
 # One kernel-field extension only. No expression artifact is registered, so the
 # readiness-axis mapping shipped by profiles/_template/ has been deleted.

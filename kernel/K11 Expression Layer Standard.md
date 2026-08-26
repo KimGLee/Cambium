@@ -4,11 +4,6 @@ This page is the kernel entry for the Expression Layer. The kernel specifies onl
 
 Concrete artifact types, display names, organization, and the readiness vocabulary are registered by the selected profile's `Expression Layer Entry`; the kernel does not duplicate these profile rules.
 
-## Applicable Read Sets
-
-- [[kernel/Read Sets/R05 Expression Layer Read Set|R05 Expression Layer]] is the kernel-owned route for creating, migrating, or reviewing a registered expression artifact.
-- The selected profile supplies a concrete artifact identity, entry point, single rule owner, readiness binding, dependency mapping, and any supplemental gate. Those bindings specialize R05; they do not create or replace its kernel floor.
-
 ## Module Index
 
 | Module | Canonical sections |
@@ -19,8 +14,6 @@ Concrete artifact types, display names, organization, and the readiness vocabula
 | [[kernel/K11 Expression Layer/05 Expression Knowledge Binding\|Expression Knowledge Binding]] | `Resolvable Binding`, `Bidirectional Knowledge Flow`, `Evidence Maturity Boundary` |
 | [[kernel/K11 Expression Layer/06 Sequence and Progress Semantics\|Sequence and Progress Semantics]] | `Sequence And Progress Semantics` |
 | [[kernel/K11 Expression Layer/07 Expression Migration Audit and Acceptance\|Expression Migration Audit and Acceptance]] | `Migration Policy`, `Scoped Migration Audit`, `Candidate-only Automation`, `Acceptance Criteria` |
-
-Module 03 is retired; the gap is permanent and nothing is missing from this index. Module numbers are never reused, per the [[kernel/K00 Standards Control/03 Standards Governance#Revision Write-back Checklist|Revision Write-back Checklist]].
 
 ## Profile Interface
 

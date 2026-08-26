@@ -11,8 +11,8 @@ transaction's safety contract:
 1. dry-run writes nothing anywhere (tree byte-hash unchanged, no staging
    directory) and reports the complete planned change;
 2. both happy paths leave the exact promised state: canonical state advanced,
-   receipt history appended, vocab.yaml/page_contract.yaml composed, Cards
-   stamped, `stamp_cards --check` exit 0, two receipts
+   receipt history appended, vocab.yaml/page_contract.yaml composed, already
+   reviewed curated Cards version-stamped, `stamp_cards --check` exit 0, two receipts
    appended (the canonical `profile-load` pass receipt plus the commit
    receipt, which registers no Gate ID of its own);
 3. every refusal (existing task runtime, K00/03 drift, candidate
@@ -43,7 +43,6 @@ REPOSITORY = Path(__file__).resolve().parents[2]
 TOOLS = REPOSITORY / "Tools"
 TEMPLATE = REPOSITORY / "profiles" / "_template"
 GOVERNANCE = "kernel/K00 Standards Control/03 Standards Governance.md"
-SIZE_REGISTER = "kernel/K00 Standards Control/16 Leaf Module Size Register.md"
 PROFILE_ID = "cand"
 MANIFEST = "profiles/%s/profile.md" % PROFILE_ID
 PLAN_RELATIVE = "adoption-plans/PA-001.yaml"
@@ -67,6 +66,8 @@ def _build_base(target):
     """A minimal adopting repository with one passing candidate Profile."""
     target.mkdir(parents=True)
     shutil.copytree(REPOSITORY / "kernel", target / "kernel")
+    shutil.copytree(REPOSITORY / "Card", target / "Card")
+    shutil.copytree(REPOSITORY / "Read Set", target / "Read Set")
     (target / "profiles").mkdir()
     shutil.copyfile(REPOSITORY / "profiles" / "README.md",
                     target / "profiles" / "README.md")
@@ -100,19 +101,6 @@ def _build_base(target):
     (profile / "scan-configs" / "residual-scan.yaml").write_text(
         test_template_fill.SCAN_CONFIG.replace("fill-e2e", PROFILE_ID),
         encoding="utf-8")
-    # This adopter's register grants K00/03 growth headroom for its Change
-    # Summary rows (an adopter governance choice; the shipped 12KB cap still
-    # leaves insufficient room for this fixture's adoption history).
-    register = target / SIZE_REGISTER
-    lines = register.read_text(encoding="utf-8").splitlines(keepends=True)
-    for index, line in enumerate(lines):
-        if line.startswith("| [[kernel/K00 Standards Control/"
-                           "03 Standards Governance\\|"):
-            assert "| 12KB |" in line
-            lines[index] = line.replace("| 12KB |", "| 13KB |", 1)
-    register.write_text("".join(lines), encoding="utf-8")
-
-
 def setUpModule():
     global _BASE, _ADOPTED, _MODULE_TMP
     _MODULE_TMP = tempfile.TemporaryDirectory()
@@ -277,6 +265,13 @@ class ApplyProfileAdoptionTests(unittest.TestCase):
 
     # ---- dry run -----------------------------------------------------
 
+    def test_transaction_never_acknowledges_curated_card_review(self):
+        stamp_args = next(
+            builder("/repo", {"standards_version_after": "1.0.0"})
+            for step, script, builder in apply_profile_adoption.COMPOSER_STEPS
+            if step == "stamp-set-version" and script == "stamp_cards.py")
+        self.assertNotIn("--acknowledge-curated-review", stamp_args)
+
     def test_dry_run_writes_nothing_and_reports_the_planned_change(self):
         root = self.clone()
         plan = initial_plan(root)
@@ -315,12 +310,14 @@ class ApplyProfileAdoptionTests(unittest.TestCase):
         self.assertEqual(1, len(rows))
         self.assertIn("Initial adoption", rows[0]["change_summary"])
 
-        self.assertTrue((root / "Tools" / "vocab.yaml").is_file())
-        self.assertTrue((root / "Tools" / "page_contract.yaml").is_file())
-        card = (root / "kernel" / "Cards" /
+        self.assertTrue(
+            (root / apply_profile_adoption.VOCAB_ARTIFACT).is_file())
+        self.assertTrue(
+            (root / apply_profile_adoption.PAGE_CONTRACT_ARTIFACT).is_file())
+        card = (root / "Card" /
                 "R09 Standards Governance Card.md").read_text(
                     encoding="utf-8")
-        self.assertIn("compiled_from: '1.0.0'", card)
+        self.assertIn("standards_version: '1.0.0'", card)
         check = subprocess.run(
             [sys.executable, str(root / "Tools" / "stamp_cards.py"),
              str(root), "--check"],
@@ -384,10 +381,10 @@ class ApplyProfileAdoptionTests(unittest.TestCase):
         self.assertEqual(first_rows[0]["receipt_id"], rows[0]["receipt_id"],
                          "the first adoption receipt must be preserved")
         self.assertIn("Profile revision", rows[1]["change_summary"])
-        card = (root / "kernel" / "Cards" /
+        card = (root / "Card" /
                 "R09 Standards Governance Card.md").read_text(
                     encoding="utf-8")
-        self.assertIn("compiled_from: '1.1.0'", card)
+        self.assertIn("standards_version: '1.1.0'", card)
         check = subprocess.run(
             [sys.executable, str(root / "Tools" / "stamp_cards.py"),
              str(root), "--check"],
@@ -442,6 +439,29 @@ class ApplyProfileAdoptionTests(unittest.TestCase):
             encoding="utf-8")
         out = self.assert_refused(root, "profile-load")
         self.assertIn("unfilled-placeholder", out)
+
+    def test_stale_curated_review_aborts_without_acknowledging_it(self):
+        root = self.clone()
+        write_plan(root, initial_plan(root))
+        source = (root / "kernel" / "K12 Quality Assurance" /
+                  "10 Standards Version Adoption.md")
+        source.write_text(
+            source.read_text(encoding="utf-8") + "\n",
+            encoding="utf-8")
+        before = tree_state(root)
+
+        code, out = run_tool(root, "--apply")
+
+        self.assertEqual(1, code, out)
+        self.assertIn("producer step stamp-set-version", out)
+        self.assertIn("exited 2", out)
+        self.assertIn("review_stale=", out)
+        self.assertEqual(before, tree_state(root))
+        names = stagings(root)
+        self.assertEqual(1, len(names))
+        journal = journal_of(root, names[0])
+        self.assertEqual("aborted", journal["status"])
+        self.assertTrue(journal["restore_verified"])
 
     def test_nonempty_changed_predicates_refused_toward_adopt_standards(
             self):

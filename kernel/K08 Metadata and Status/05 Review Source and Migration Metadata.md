@@ -38,13 +38,24 @@ day it happened to run.
 
 `volatility` uses a controlled vocabulary and describes how fast a page's conclusions decay in freshness:
 
-- `fast`: fast-changing content, such as the current state of external services and interfaces, component comparisons, and performance numbers; re-verification interval 120 days.
-- `slow`: slow-changing content, such as methodology and system design patterns; re-verification interval 365 days.
-- `stable`: stable content, such as mathematics and classical foundational principles; no re-verification deadline.
+- `fast`: conclusions that change rapidly, such as current external interfaces,
+  comparisons, and performance measurements.
+- `slow`: conclusions that change more slowly, such as methodology and system
+  design patterns.
+- `stable`: stable conclusions such as mathematics and classical foundations.
+
+The registered vocabulary base is the sole normative source for closed values
+and default review intervals. This page owns their meanings and the freshness
+calculation boundary.
 
 An absent/blank page value uses its domain default from the selected Profile's `Vocabulary Extensions`; a page MAY validly override it. A non-empty value outside the vocabulary is a candidate, not a reason to use that default.
 
-`review_by` is derived, never written by hand: for non-stable policy, `Tools/check_freshness.py` adds the interval to the first available valid event (`last_verified`, then `last_reviewed`). Only absence/blankness permits fallback. If both events are absent, creation or substantive-modification time is diagnostic only and the page awaits first verification, including under `stable`.
+`review_by` is derived, never written by hand: for non-stable policy, the
+registered freshness capability adds the resolved interval to the first
+available valid event (`last_verified`, then `last_reviewed`). Only
+absence/blankness permits fallback. If both events are absent, creation or
+substantive-modification time is diagnostic only and the page awaits first
+verification, including under `stable`.
 
 Every active in-scope page MUST have one closed outcome. The candidate set is
 exactly: content modified after its current review; overdue; awaiting first verification; invalid or post-`as_of`
@@ -62,20 +73,9 @@ Re-verification MUST answer: does this topic still deserve its current priority 
 
 ## Conditional Source Metadata
 
-Source Notes and Research Synthesis MAY add:
-
-```yaml
-source_type: official-engineering-article
-source_organization: Example Organization
-source_date:
-source_url:
-evidence_roles:
-  - implementation-evidence
-claim_scope:
-supersedes:
-superseded_by:
-source_valid_until:
-```
+The registered applicability and relationship bases are the sole normative
+source for conditional source-field membership, shape, and conditions. The
+semantic responsibilities are:
 
 - `source_type` uses a controlled vocabulary, distinguishing paper, official article, documentation, benchmark, postmortem, community discussion, and independent reproduction.
 - `evidence_roles` describes the evidence role the source plays, rather than simply repeating the source's authority level.
@@ -85,15 +85,14 @@ source_valid_until:
 
 ## Migration Rules
 
-- Approve the schema first, then add frontmatter in bulk.
-- Establish the authoritative state in the Coverage Ledger first, then decide whether to write back to Frontmatter in bulk.
-- Migration MUST NOT change body semantics.
-- Old `status` migrates only to `authoring_status`; the profile-registered expression readiness status, `learning_status`, or `evidence_maturity` MUST NOT be inferred from it.
-- Existing pages without Frontmatter default to `unassessed`, not `drafted` or `reviewed`.
-- aliases and prerequisites require manual or semi-automated review.
-- MUST NOT mark all pages as reviewed in one pass.
-- `deferred` and `excluded` MUST have explicit reasons and MUST NOT serve as default values that hide gaps.
-- After completion, verify that the selected knowledge host's plugins and relationship graph are unaffected.
+A metadata migration is valid only when the machine contract has already been
+adopted, Coverage remains authoritative for current state, body semantics are
+unchanged, and every projected value is supported by its canonical owner or
+required evidence. Legacy values cannot be used to infer a different status
+axis, and absence cannot be upgraded to reviewed. Aliases, prerequisites,
+deferral, and exclusion require their ordinary semantic review and rationale.
+This semantic owner does not prescribe a migration action sequence. Registered
+capabilities own deterministic transformation and verification.
 
 ## Related
 
