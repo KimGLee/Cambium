@@ -67,10 +67,62 @@ source_files:
   - Tools/stamp_cards.py
   - Tools/update_queue.py
   - Tools/update_task.py
-source_hash: sha256:90532b76b0ee1e6dc84b292137be273bdebeb403fc1956f6c056a1ff03cbfe15
+source_hash: sha256:6ce8d73b0507ac4251a52d6d648eb71c5fff1e7fdd5a566d9f068cb092cec8f9
 agent_interface_policy:
   path: Tools/agent-interface-policy.yaml
-  sha256: sha256:13f6cf606ca826338529b8c71ff54765367351e710b078c44e1fcba47830150b
+  sha256: sha256:2f45302622dbcb1de62e9cf9feaefc814347d1fefe525c847d13f7fe7b22eb56
+projection_target: source-distribution
+distribution_boundary:
+  path: distribution-boundary.yaml
+  sha256: sha256:a53469c8266beab83b2310b589b7348911bf2dda1cc12a3af7b144f664e0164a
+included_tools:
+  - adopt_standards
+  - apply_amendment
+  - apply_contract_amendment
+  - apply_delta
+  - apply_metadata_transition
+  - apply_profile_adoption
+  - apply_task_plan
+  - check_batch_close
+  - check_boundary_contract
+  - check_corpus_plan
+  - check_freshness
+  - check_links
+  - check_moc
+  - check_page_contract
+  - check_profile
+  - check_proof
+  - check_queue
+  - check_residual_content
+  - check_structure
+  - check_vocab
+  - compile_cli_contract
+  - compile_queue
+  - compose_page_contract
+  - compose_vocab
+  - duplicate_check
+  - init_state
+  - metadata_execution_contract
+  - migrate_standards_state
+  - profile_onboarding_status
+  - project_page_state
+  - record_batch_judgment
+  - record_corpus_acceptance
+  - record_gate_attestation
+  - record_gate_result
+  - register_amendment
+  - render_boundary_projection
+  - render_host_configs
+  - render_interface_projection
+  - render_queue
+  - render_structure_projection
+  - run_gates
+  - scaffold_profile
+  - seal_receipts
+  - stamp_cards
+  - update_queue
+  - update_task
+excluded_tools: []
 receipt_shape:
   base_fields:
     - receipt_id
@@ -3021,7 +3073,7 @@ tools:
       external_write: none
   - tool: compile_cli_contract
     module: Tools/compile_cli_contract.py
-    source_hash: sha256:cbbe7713e7cdecec052b5ff8cf0edc081b2e68bee27d2d5a79e961b4a264d5e3
+    source_hash: sha256:73d491a8272e80b1eb1c95aa78bf9b01c27043ab04e650398edbd2c16d52290e
     description: Compile the machine-readable CLI invocation contract from every Tools/*.py argparse declaration.
     arguments:
       - dest: root
@@ -3056,6 +3108,19 @@ tools:
         action: store
         type: null
         help: "artifact path to write or verify (default: <root>/Tools/compiled/cli-contract.yaml)"
+      - dest: projection_target
+        option_strings:
+          - --projection-target
+        required: false
+        default: null
+        default_type: NoneType
+        choices:
+          - carried-runtime
+          - source-distribution
+        nargs: null
+        action: store
+        type: null
+        help: "which projection this repository is compiling: the distribution that owns every tool, or a runtime carrying only what the distribution boundary lets it carry. Required to write; with --check it defaults to the target the stored artifact records. Declared either way, never inferred from which files happen to be present"
     mutually_exclusive_groups: []
     receipt_extensions: []
     receipt_extensions_extraction: complete
@@ -3065,6 +3130,7 @@ tools:
       workspace_access: write
       value_arguments:
         - check
+        - projection_target
       path_arguments:
         - argument: output
           access: read-write
@@ -5064,7 +5130,7 @@ tools:
       external_write: host-config-installation
   - tool: render_interface_projection
     module: Tools/render_interface_projection.py
-    source_hash: sha256:001d285a7f08446aa6b4a6dd4d9d6769a4fc01d65d8a88ddecf3778c28fd806b
+    source_hash: sha256:559f5c210e205d30af99564423358fa2bca1b994fc89bcc12a93038f0f8af21b
     description: Project the compiled CLI invocation contract into the agent-facing interface forms registered in this tool.
     arguments:
       - dest: root
@@ -5306,7 +5372,7 @@ tools:
       external_write: none
   - tool: run_gates
     module: Tools/run_gates.py
-    source_hash: sha256:171e2830adc2db8035c532ec2dcc50857cc7a1f24bd9c39e6a6f67e65f996ddf
+    source_hash: sha256:8f2df3af103d056fc8a22c2a138ed768c41fca2f5321318d5296267f68dfc17a
     description: Run the adopter verification set derived from the K00/12 Stable Gate ID Registry (deterministic, not-batch-scoped producers).
     arguments:
       - dest: root

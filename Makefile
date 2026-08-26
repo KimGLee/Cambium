@@ -63,7 +63,7 @@ check:
 	PYTHONDONTWRITEBYTECODE=1 $(PYTHON) Tools/check_links.py .
 	PYTHONDONTWRITEBYTECODE=1 $(PYTHON) Tools/stamp_cards.py . --check
 	PYTHONDONTWRITEBYTECODE=1 $(PYTHON) Tools/metadata_execution_contract.py --root . --check
-	PYTHONDONTWRITEBYTECODE=1 $(PYTHON) Tools/compile_cli_contract.py . --check
+	PYTHONDONTWRITEBYTECODE=1 $(PYTHON) Tools/compile_cli_contract.py . --check --projection-target source-distribution
 	PYTHONDONTWRITEBYTECODE=1 $(PYTHON) Tools/render_interface_projection.py . --check
 	PYTHONDONTWRITEBYTECODE=1 $(PYTHON) Tools/render_host_configs.py . --check
 	PYTHONDONTWRITEBYTECODE=1 $(PYTHON) Tools/check_moc.py .

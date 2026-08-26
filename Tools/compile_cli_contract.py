@@ -66,6 +66,7 @@ REPO_ROOT = os.path.dirname(TOOLS_DIR)
 sys.path.insert(0, TOOLS_DIR)
 
 import kblib  # noqa: E402
+import tool_availability  # noqa: E402
 
 TOOL = "compile_cli_contract"
 TOOL_VERSION = "1.1.0"
@@ -366,7 +367,7 @@ def describe_exclusive_groups(parser):
 # ---------------------------------------------------------------------------
 
 
-def load_interface_policy(root, records):
+def load_interface_policy(root, records, availability):
     """Load and close the agent call-surface policy over every CLI tool.
 
     Argparse remains the invocation source.  This separate document owns the
@@ -573,6 +574,7 @@ def load_interface_policy(root, records):
         "read_write_paths", "external_write",
     }
     by_name = {}
+    excluded_tools = []
     record_by_name = {record["tool"]: record for record in records}
     for row in rows:
         if not isinstance(row, dict) or set(row) != expected_keys:
@@ -584,8 +586,18 @@ def load_interface_policy(root, records):
             raise ContractError("%s carries an invalid or duplicate tool %r"
                                 % (DEFAULT_INTERFACE_POLICY, name))
         if name not in record_by_name:
-            raise ContractError("%s names unknown CLI tool %s" %
-                                (DEFAULT_INTERFACE_POLICY, name))
+            # Absence means two opposite things.  The boundary is what tells
+            # them apart: a module it names is excluded from this target by
+            # public rule, and anything else is a tool that was supposed to
+            # arrive and did not.
+            if availability.permits_missing(name):
+                excluded_tools.append(name)
+                continue
+            raise ContractError(
+                "%s names CLI tool %s, which is neither present nor excluded "
+                "by %s for projection target %s"
+                % (DEFAULT_INTERFACE_POLICY, name,
+                   availability.boundary_path, availability.target))
         if row.get("exposure") not in ("mcp", "cli-only"):
             raise ContractError("%s: exposure must be mcp or cli-only" % name)
         if row.get("workspace_access") not in (None, "read", "write"):
@@ -761,7 +773,7 @@ def load_interface_policy(root, records):
             "%s has activation overrides for unclassified path arguments: %s"
             % (DEFAULT_INTERFACE_POLICY, ", ".join(
                 "%s.%s" % item for item in invalid_activation_overrides)))
-    return by_name, kblib.sha256_bytes(raw)
+    return by_name, kblib.sha256_bytes(raw), sorted(excluded_tools)
 
 
 # ---------------------------------------------------------------------------
@@ -862,9 +874,15 @@ def receipt_extensions(source_text):
 # ---------------------------------------------------------------------------
 
 
-def compile_contract(root):
-    """Return the contract mapping compiled from the repository's own tools."""
+def compile_contract(root, projection_target):
+    """Return the contract mapping compiled for one declared target.
+
+    The target is an argument rather than something read off the filesystem.
+    A distribution mid-checkout would otherwise present itself as an adopter
+    runtime and excuse the absence that most needs reporting.
+    """
     root = os.path.abspath(root)
+    availability = tool_availability.resolve(root, projection_target)
     tools = discover_tools(root)
 
     original_parse_args = argparse.ArgumentParser.parse_args
@@ -901,8 +919,8 @@ def compile_contract(root):
         sys.dont_write_bytecode = original_dont_write
         sys.argv = original_argv
 
-    interface_policy, interface_policy_hash = load_interface_policy(
-        root, records)
+    interface_policy, interface_policy_hash, excluded_tools = \
+        load_interface_policy(root, records, availability)
     for record in records:
         record["agent_interface"] = interface_policy[record["tool"]]
 
@@ -925,6 +943,17 @@ def compile_contract(root):
             "path": DEFAULT_INTERFACE_POLICY,
             "sha256": interface_policy_hash,
         },
+        # Binding these four is what makes the artifact answer "whose
+        # projection is this, and against which boundary".  Without them a
+        # copy from another repository reads as a local build, and a boundary
+        # edit leaves every derived artifact silently describing the old set.
+        "projection_target": availability.target,
+        "distribution_boundary": {
+            "path": availability.boundary_path,
+            "sha256": availability.boundary_sha256,
+        },
+        "included_tools": [record["tool"] for record in records],
+        "excluded_tools": excluded_tools,
         "receipt_shape": {
             "base_fields": list(RECEIPT_BASE_FIELDS),
             "conditional_fields": list(RECEIPT_CONDITIONAL_FIELDS),
@@ -968,6 +997,56 @@ def render(contract):
 # ---------------------------------------------------------------------------
 
 
+def _recorded_projection_target(output):
+    """The target a stored artifact declares, or None when it declares none."""
+    try:
+        stored = kblib.parse_yaml_subset(kblib.read_text(output))
+    except (OSError, kblib.YamlSubsetError, ValueError):
+        return None
+    if not isinstance(stored, dict):
+        return None
+    recorded = stored.get("projection_target")
+    return recorded if recorded in tool_availability.PROJECTION_TARGETS \
+        else None
+
+
+def _recorded_binding_drift(existing_text, contract):
+    """Name a binding mismatch between a stored artifact and this repository.
+
+    A byte comparison already refuses a stale artifact, but it reports every
+    cause as the same sentence.  These three have a different remedy: the
+    artifact belongs to another target, another boundary, or another
+    repository's tool set, and regenerating it in place would erase the
+    evidence of that rather than resolve it.
+    """
+    try:
+        stored = kblib.parse_yaml_subset(existing_text)
+    except (kblib.YamlSubsetError, ValueError):
+        return None  # unreadable is the byte comparison's finding, not ours
+    if not isinstance(stored, dict):
+        return None
+    recorded_target = stored.get("projection_target")
+    if recorded_target != contract["projection_target"]:
+        return ("the stored artifact was compiled for projection target %r, "
+                "not %r; it is another projection, not a stale copy of this "
+                "one" % (recorded_target, contract["projection_target"]))
+    stored_boundary = stored.get("distribution_boundary")
+    stored_hash = (stored_boundary or {}).get("sha256") \
+        if isinstance(stored_boundary, dict) else None
+    if stored_hash != contract["distribution_boundary"]["sha256"]:
+        return ("the distribution boundary changed since the stored artifact "
+                "was compiled (%s -> %s); every derived artifact is stale "
+                "until it is rebuilt"
+                % (stored_hash, contract["distribution_boundary"]["sha256"]))
+    stored_included = stored.get("included_tools")
+    if isinstance(stored_included, list) and \
+            sorted(stored_included) != sorted(contract["included_tools"]):
+        return ("the stored artifact records a different tool set than this "
+                "repository holds; it was compiled somewhere else and cannot "
+                "stand in for this repository's own projection")
+    return None
+
+
 def main(argv=None):
     parser = kblib.ArgumentParser(
         description="Compile the machine-readable CLI invocation contract "
@@ -983,6 +1062,16 @@ def main(argv=None):
         "--output", default=None,
         help="artifact path to write or verify (default: <root>/%s)"
              % DEFAULT_OUTPUT)
+    parser.add_argument(
+        "--projection-target",
+        choices=list(tool_availability.PROJECTION_TARGETS),
+        default=None,
+        help="which projection this repository is compiling: the "
+             "distribution that owns every tool, or a runtime carrying only "
+             "what the distribution boundary lets it carry. Required to "
+             "write; with --check it defaults to the target the stored "
+             "artifact records. Declared either way, never inferred from "
+             "which files happen to be present")
     args = parser.parse_args(argv)
 
     root = os.path.abspath(args.root)
@@ -995,9 +1084,27 @@ def main(argv=None):
     except ValueError as exc:
         return fail("unsafe artifact output: %s" % exc)
 
+    projection_target = args.projection_target
+    if projection_target is None:
+        # Reading the target the artifact recorded is not inference: the
+        # artifact states it.  Absent both, there is nothing to verify
+        # against, and guessing is what this contract exists to prevent.
+        if not args.check:
+            return fail("--projection-target is required to write the "
+                        "contract; declare %s"
+                        % " or ".join(tool_availability.PROJECTION_TARGETS))
+        projection_target = _recorded_projection_target(output)
+        if projection_target is None:
+            return fail(
+                "%s records no projection target, so there is nothing to "
+                "check it against; recompile it with an explicit "
+                "--projection-target" % output)
+
     try:
-        contract = compile_contract(root)
+        contract = compile_contract(root, projection_target)
         text = render(contract)
+    except tool_availability.AvailabilityError as exc:
+        return fail("cannot resolve tool availability: %s" % exc)
     except ContractError as exc:
         return fail("evidence is unreliable: %s" % exc)
     except (kblib.YamlSubsetError, TypeError, ValueError) as exc:
@@ -1009,10 +1116,18 @@ def main(argv=None):
         except OSError as exc:
             print("%s --check: cannot read %s: %s" % (TOOL, output, exc))
             return 2
+        drift = _recorded_binding_drift(existing, contract)
+        if drift:
+            # Naming the specific mismatch matters more than "stale" here: a
+            # target or boundary mismatch is an artifact describing a
+            # different repository, which regenerating silently would hide.
+            print("%s --check: %s" % (TOOL, drift))
+            return 2
         if existing != text:
             print("%s --check: %s is stale or hand-edited; regenerate it "
-                  "with `python3 Tools/compile_cli_contract.py .`"
-                  % (TOOL, output))
+                  "with `python3 Tools/compile_cli_contract.py . "
+                  "--projection-target %s`"
+                  % (TOOL, output, projection_target))
             return 2
         print("%s --check: %s is current (%d tool(s))"
               % (TOOL, output, contract["tool_count"]))

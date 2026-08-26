@@ -1227,6 +1227,12 @@ modules:
       - next_state
       - parse
       - snapshot
+  - module: tool_availability
+    path: Tools/tool_availability.py
+    public:
+      - AvailabilityError
+      - PROJECTION_TARGETS
+      - resolve
   - module: update_queue
     path: Tools/update_queue.py
     public: []
