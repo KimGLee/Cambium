@@ -348,7 +348,7 @@ tools:
     exposure: cli-only
     workspace_argument: root
     workspace_access: write
-    value_arguments: [check]
+    value_arguments: [check, projection_target]
     read_paths: []
     write_paths: []
     read_write_paths: [output]

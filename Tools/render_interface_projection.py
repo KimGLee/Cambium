@@ -351,7 +351,7 @@ def read_contract(path):
     except OSError as exc:
         raise ProjectionError(
             "cannot read the compiled CLI contract %s: %s -- compile it with "
-            "`python3 Tools/compile_cli_contract.py .`" % (path, exc))
+            "`python3 Tools/compile_cli_contract.py . --projection-target <target>`" % (path, exc))
     try:
         contract = kblib.parse_yaml_subset(raw.decode("utf-8"))
     except (UnicodeError, kblib.YamlSubsetError) as exc:

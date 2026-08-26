@@ -257,6 +257,20 @@ def _freshness_commands(root, manifest):
             "--profile", profile_dir,
             "--output", os.path.join(SCRIPT_DIR, "page_contract.yaml"),
             "--check"]),
+        # The interface artifacts are derived from this repository's own tool
+        # set, so they are the two that can be carried in from elsewhere and
+        # still parse.  Checking them here is what makes "regenerate in the
+        # target repository" enforceable rather than merely documented: the
+        # contract binds its projection target, the boundary hash and the
+        # tool set it was compiled from, and a copy from another repository
+        # disagrees with at least one of the three.  No target is passed --
+        # the stored artifact declares its own, and an artifact that declares
+        # none is refused rather than assigned one here.
+        ("compile_cli_contract --check", [
+            python, _tool_path("compile_cli_contract"), root, "--check"]),
+        ("render_interface_projection --check", [
+            python, _tool_path("render_interface_projection"), root,
+            "--check"]),
     ]
 
 

@@ -29,7 +29,28 @@ ARTIFACT = TOOLS_DIR / "compiled" / "cli-contract.yaml"
 
 sys.path.insert(0, str(TOOLS_DIR))
 import compile_cli_contract as compiler  # noqa: E402
+import tool_availability  # noqa: E402
 import kblib  # noqa: E402
+
+
+def write_distribution_boundary(root, entries=()):
+    """A workspace needs a boundary before any projection can be compiled.
+
+    The default declares nothing excluded, so both targets resolve to the
+    same effective tool set and these cases keep testing what they were
+    written to test rather than the exclusion rule.
+    """
+    lines = ["schema_version: 1"]
+    if entries:
+        lines.append("distribution_only:")
+        for path in entries:
+            lines.append("  - path: %s" % path)
+            lines.append("    reason: fixture entry")
+    else:
+        lines.append("distribution_only: []")
+    with open(os.path.join(root, "distribution-boundary.yaml"), "w",
+              encoding="utf-8") as handle:
+        handle.write("\n".join(lines) + "\n")
 
 
 def write_interface_policy(root, tool_names):
@@ -102,7 +123,8 @@ class ShippedArtifactTests(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 
     def test_every_shipped_cli_has_a_section(self):
-        contract = compiler.compile_contract(str(REPO_ROOT))
+        contract = compiler.compile_contract(str(REPO_ROOT),
+            tool_availability.SOURCE_DISTRIBUTION)
 
         modules = {record["module"] for record in contract["tools"]}
         expected = {
@@ -119,7 +141,8 @@ class ShippedArtifactTests(unittest.TestCase):
         self.assertEqual(contract["tool_count"], len(expected))
 
     def test_each_section_records_the_source_it_was_read_from(self):
-        contract = compiler.compile_contract(str(REPO_ROOT))
+        contract = compiler.compile_contract(str(REPO_ROOT),
+            tool_availability.SOURCE_DISTRIBUTION)
 
         for record in contract["tools"]:
             with self.subTest(tool=record["tool"]):
@@ -139,12 +162,15 @@ class DeterminismTests(unittest.TestCase):
     def test_two_runs_agree_across_hash_seeds(self):
         with tempfile.TemporaryDirectory() as workspace:
             shutil.copytree(TOOLS_DIR, Path(workspace) / "Tools")
+            write_distribution_boundary(workspace)
             artifact = Path(workspace) / compiler.DEFAULT_OUTPUT
-            first_run = run(workspace, env={"PYTHONHASHSEED": "0"})
+            first_run = run(workspace, "--projection-target", tool_availability.SOURCE_DISTRIBUTION,
+                            env={"PYTHONHASHSEED": "0"})
             self.assertEqual(first_run.returncode, 0,
                              first_run.stdout + first_run.stderr)
             first = artifact.read_bytes()
-            second_run = run(workspace, env={"PYTHONHASHSEED": "12345"})
+            second_run = run(workspace, "--projection-target", tool_availability.SOURCE_DISTRIBUTION,
+                             env={"PYTHONHASHSEED": "12345"})
             self.assertEqual(second_run.returncode, 0,
                              second_run.stdout + second_run.stderr)
 
@@ -168,6 +194,8 @@ class FixtureTests(unittest.TestCase):
         self.tools = os.path.join(self.workspace, "Tools")
         os.makedirs(self.tools)
         shutil.copy(str(TOOLS_DIR / "kblib.py"), self.tools)
+        shutil.copy(str(TOOLS_DIR / "tool_availability.py"), self.tools)
+        write_distribution_boundary(self.workspace)
 
     def write_tool(self, name, body):
         path = os.path.join(self.tools, name)
@@ -179,7 +207,8 @@ class FixtureTests(unittest.TestCase):
         names = [name for name, _path, _source in
                  compiler.discover_tools(self.workspace)]
         write_interface_policy(self.workspace, names)
-        return compiler.compile_contract(self.workspace)
+        return compiler.compile_contract(self.workspace,
+            tool_availability.SOURCE_DISTRIBUTION)
 
     def only_tool(self):
         tools = self.compile()["tools"]
@@ -345,7 +374,8 @@ class FixtureTests(unittest.TestCase):
 
         with self.assertRaisesRegex(
                 compiler.ContractError, "unclassified=new_capability"):
-            compiler.compile_contract(self.workspace)
+            compiler.compile_contract(self.workspace,
+            tool_availability.SOURCE_DISTRIBUTION)
 
     def test_path_activation_is_closed_over_same_tool_boolean_modes(self):
         self.write_tool("sample.py", """
@@ -378,7 +408,8 @@ class FixtureTests(unittest.TestCase):
         policy_path.write_text(
             kblib.canonical_yaml(policy), encoding="utf-8")
 
-        compiled = compiler.compile_contract(self.workspace)
+        compiled = compiler.compile_contract(self.workspace,
+            tool_availability.SOURCE_DISTRIBUTION)
         capability = compiled["tools"][0]["agent_interface"][
             "path_arguments"][0]
         self.assertEqual(capability["active_when_any"], ["apply"])
@@ -389,7 +420,8 @@ class FixtureTests(unittest.TestCase):
             kblib.canonical_yaml(policy), encoding="utf-8")
         with self.assertRaisesRegex(
                 compiler.ContractError, "must name one store_true"):
-            compiler.compile_contract(self.workspace)
+            compiler.compile_contract(self.workspace,
+            tool_availability.SOURCE_DISTRIBUTION)
 
 
 class ExitCodeTests(unittest.TestCase):
@@ -399,6 +431,8 @@ class ExitCodeTests(unittest.TestCase):
         self.tools = os.path.join(self.workspace, "Tools")
         os.makedirs(self.tools)
         shutil.copy(str(TOOLS_DIR / "kblib.py"), self.tools)
+        shutil.copy(str(TOOLS_DIR / "tool_availability.py"), self.tools)
+        write_distribution_boundary(self.workspace)
         with open(os.path.join(self.tools, "sample.py"), "w",
                   encoding="utf-8") as handle:
             handle.write(textwrap.dedent("""
@@ -415,12 +449,12 @@ class ExitCodeTests(unittest.TestCase):
         os.makedirs(os.path.dirname(self.output), exist_ok=True)
 
     def compile_once(self):
-        return run(self.workspace)
+        return run(self.workspace, "--projection-target", tool_availability.SOURCE_DISTRIBUTION)
 
     def test_write_then_check_passes(self):
         self.assertEqual(self.compile_once().returncode, 0)
 
-        result = run(self.workspace, "--check")
+        result = run(self.workspace, "--check", "--projection-target", tool_availability.SOURCE_DISTRIBUTION)
 
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 
@@ -430,12 +464,12 @@ class ExitCodeTests(unittest.TestCase):
         Path(self.output).write_text(
             text.replace("tool_count: 1", "tool_count: 2"), encoding="utf-8")
 
-        result = run(self.workspace, "--check")
+        result = run(self.workspace, "--check", "--projection-target", tool_availability.SOURCE_DISTRIBUTION)
 
         self.assertEqual(result.returncode, 2, result.stdout + result.stderr)
 
     def test_a_missing_artifact_holds_with_2(self):
-        result = run(self.workspace, "--check")
+        result = run(self.workspace, "--check", "--projection-target", tool_availability.SOURCE_DISTRIBUTION)
 
         self.assertEqual(result.returncode, 2, result.stdout + result.stderr)
 
@@ -445,7 +479,7 @@ class ExitCodeTests(unittest.TestCase):
                   encoding="utf-8") as handle:
             handle.write("\n# a later edit to the tool\n")
 
-        result = run(self.workspace, "--check")
+        result = run(self.workspace, "--check", "--projection-target", tool_availability.SOURCE_DISTRIBUTION)
 
         self.assertEqual(result.returncode, 2, result.stdout + result.stderr)
 
@@ -461,7 +495,7 @@ class ExitCodeTests(unittest.TestCase):
                     return parser.parse_args(argv)
             """))
 
-        result = run(self.workspace, "--check")
+        result = run(self.workspace, "--check", "--projection-target", tool_availability.SOURCE_DISTRIBUTION)
 
         self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
 
@@ -469,7 +503,8 @@ class ExitCodeTests(unittest.TestCase):
         import argparse
 
         before = argparse.ArgumentParser.parse_args
-        compiler.compile_contract(self.workspace)
+        compiler.compile_contract(self.workspace,
+            tool_availability.SOURCE_DISTRIBUTION)
 
         self.assertIs(argparse.ArgumentParser.parse_args, before)
 
