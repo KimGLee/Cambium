@@ -43,7 +43,7 @@ import uuid
 
 import path_capability as _pathcaps
 
-LIB_VERSION = "1.11.0"
+LIB_VERSION = "1.12.0"
 
 def inherited_path_capability(path, consumptions=None):
     return _pathcaps.inherited_capability(path, consumptions)
@@ -71,6 +71,12 @@ def run_cambium_subprocess(*popenargs, **kwargs):
     descriptors.update(inherited.get("pass_fds", ()))
     if descriptors:
         kwargs["pass_fds"] = tuple(sorted(descriptors))
+    inherited_env = inherited.get("env_overrides")
+    if inherited_env is not None:
+        caller_env = kwargs.pop("env", None)
+        environment = dict(os.environ if caller_env is None else caller_env)
+        environment.update(inherited_env)
+        kwargs["env"] = environment
     return subprocess.run(*popenargs, **kwargs)
 
 
@@ -2306,14 +2312,16 @@ def _read_receipt_bytes(path):
     absolute = validate_receipt_output_path(path)
     capability = inherited_path_capability(path, consumptions="append")
     if capability is not None:
-        if not capability["exists"]:
+        target_fd, target_dev, target_ino = \
+            _pathcaps.effective_target(capability)
+        if target_fd is None:
             _pathcaps.acknowledge(capability)
             return False, b""
-        if capability["kind"] != "file":
+        if capability["exists"] and capability["kind"] != "file":
             raise ValueError("receipt target must be a regular file")
         content = _pathcaps.read_stable_descriptor(
-            capability["target_fd"], capability["target_dev"],
-            capability["target_ino"], absolute)
+            target_fd, target_dev, target_ino, absolute)
+        _pathcaps.verify_named_target(capability, absolute)
         _pathcaps.acknowledge(capability)
         return True, content
     parent = os.path.dirname(absolute)
@@ -2555,6 +2563,17 @@ def _append_receipt_lines(absolute, lines, exclusive=False):
                 "receipt target must have exactly one hard link; found %d" %
                 descriptor.st_nlink
             )
+        if capability is not None and not capability["exists"]:
+            advanced_fd, advanced_dev, advanced_ino = \
+                _pathcaps.effective_target(capability)
+            if advanced_fd is not None and (
+                    descriptor.st_dev, descriptor.st_ino) != (
+                        advanced_dev, advanced_ino):
+                raise OSError(errno.EAGAIN,
+                              "receipt target changed after first append",
+                              absolute)
+            _pathcaps.record_append_target(
+                capability, parent_fd, basename, absolute, descriptor)
         # Each JSONL record is one append syscall.  Retrying a short write
         # would allow a concurrent writer to land between fragments and make
         # both records ambiguous, so surface the partial append instead.  The
@@ -2566,11 +2585,11 @@ def _append_receipt_lines(absolute, lines, exclusive=False):
                 raise OSError(errno.EIO, "receipt append was partial",
                               absolute)
         os.fsync(fd)
-        if capability is not None and capability["exists"]:
+        if capability is not None:
             named_after = os.stat(basename, dir_fd=parent_fd,
                                   follow_symlinks=False)
             if ((named_after.st_dev, named_after.st_ino) !=
-                    (capability["target_dev"], capability["target_ino"])):
+                    (descriptor.st_dev, descriptor.st_ino)):
                 raise OSError(errno.EAGAIN,
                               "receipt target changed during append",
                               absolute)
