@@ -29,8 +29,8 @@ class CiImpactTests(unittest.TestCase):
         (self.root / "Read Set").mkdir()
         (self.root / "profiles").mkdir()
         shutil.copy(
-            ROOT / "Card/card.schema.yaml",
-            self.root / "Card/card.schema.yaml",
+            ROOT / "Tools/schemas/card.schema.yaml",
+            self.root / "Tools/schemas/card.schema.yaml",
         )
         shutil.copy(
             ROOT / "Read Set/read-set.schema.yaml",
@@ -84,7 +84,7 @@ class CiImpactTests(unittest.TestCase):
 
     def test_markdown_roots_follow_component_schema_prefixes(self):
         cases = (
-            ("Card/card.schema.yaml", "Card/", "Flight-Cards/"),
+            ("Tools/schemas/card.schema.yaml", "Card/", "Flight-Cards/"),
             ("Read Set/read-set.schema.yaml", "Read Set/", "Reading/"),
         )
         for schema_relative, old_prefix, new_prefix in cases:

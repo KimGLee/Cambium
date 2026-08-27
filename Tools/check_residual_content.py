@@ -6,18 +6,14 @@ this tool owns only deterministic traversal, matching, receipts, and failure
 semantics. Content findings are candidates (exit 2), never automatic defects.
 Exit 1 is reserved for a scan that failed to produce reliable evidence.
 
-Rule owner: "kernel/K12 Quality Assurance/09 Batch-close Closed List.md"
-(item 6 -- membership, the deterministic/whole-vault/<=60s execution contract,
-and the generic positive-control/liveness contract this tool implements). That
-module requires that "Any registered verifier whose clean result depends on
-finding no candidate MUST provide executable positive controls that exercise
-the same production classification path and collectively represent every
-required structure the verifier claims to recognise." This bundled heading
-verifier represents its synthetic controls with ``mandated_headings`` and runs
-them through ``classify`` in ``check_mandated_coverage``. For a zero-candidate
-result, ``probe_accepted_roots`` also proves repository-level liveness using
-the same configuration. The field and probe design are tool-specific; only
-the final summary Receipt's positive-control evidence fields are shared across
+Kernel binding: rule ``registered-verifier-positive-controls``, owned by
+``kernel/K12 Quality Assurance/09 Batch-close Closed List.md#batch-close-closed-list``.
+This bundled heading verifier represents its synthetic controls with
+``mandated_headings`` and runs them through ``classify`` in
+``check_mandated_coverage``. For a zero-candidate result,
+``probe_accepted_roots`` separately proves repository-level liveness using the
+same configuration. The field and probe design are tool-specific; only the
+final summary Receipt's positive-control evidence fields are shared across
 verifiers.
 """
 
@@ -38,6 +34,11 @@ TOOL = "check_residual_content"
 TOOL_VERSION = "1.2.0"
 GATE_ID = "registered-residual-content"
 GATE_CHECK = "residual-content-summary"
+POSITIVE_CONTROL_RULE_ID = "registered-verifier-positive-controls"
+POSITIVE_CONTROL_RULE_OWNER = (
+    "kernel/K12 Quality Assurance/09 Batch-close Closed List.md"
+    "#batch-close-closed-list"
+)
 CONFIG_VERSION = 1
 DEFAULT_TIME_LIMIT = 55.0
 MAX_TIME_LIMIT = 55.0
@@ -230,15 +231,12 @@ def load_config(path):
 
 
 def check_mandated_coverage(config):
-    """Run this bundled heading verifier's synthetic positive controls.
+    """Exercise this verifier's controls for ``POSITIVE_CONTROL_RULE_ID``.
 
-    K12/09 owns the generic verifier contract: positive controls exercise the
-    production classification path and collectively represent every required
-    structure the verifier claims to recognise. It deliberately does not own
-    a common control field. ``mandated_headings`` is this tool's concrete
-    representation: the profile transcribes its required heading forms, this
-    function constructs one deterministic Markdown control page, and
-    ``classify`` evaluates that page with the production matcher.
+    ``mandated_headings`` is this tool's concrete representation: the profile
+    transcribes its required heading forms, this function constructs one
+    deterministic Markdown control page, and ``classify`` evaluates that page
+    with the production matcher.
 
     1. every mandated heading is registered in ``any`` or ``combination``;
     2. a page carrying exactly the mandated headings classifies as a
@@ -437,12 +435,12 @@ def scan_scope(root, config, add):
 
 
 def probe_accepted_roots(root, config):
-    """Prove the configured matchers can still fire (K12/09 item 6).
+    """Find the repository-backed liveness witness for ``GATE_ID``.
 
     A registered residual scan asserts the absence of the registered structures
     outside the accepted roots.  That assertion is evidence only when the same
     configuration still recognises those structures where the profile declares
-    they legitimately live, so the accepted roots are used as the positive
+    they legitimately live, so the accepted roots are used as an integration
     control.  Returns ``(probed_file_count, first_matching_relative_path)``
     with a deterministic sorted traversal; the witness is ``None`` when nothing
     under the accepted roots matches.  Unreadable, symlinked, or non-regular
@@ -562,10 +560,10 @@ def produce_evidence(root, config_path, time_limit, add, receipt_context,
         if scope_valid:
             scanned, candidates = scan_scope(root, config, add)
             if candidates == 0:
-                # K12/09 item 6 non-triviality: a zero-candidate report only
-                # means "clean" when the configuration can still recognise the
-                # structures it describes.  The accepted roots are the
-                # profile's own known-residual sample.
+                # The repository-backed liveness contract for GATE_ID: a
+                # zero-candidate report only means "clean" when the same
+                # configuration can still recognise the structures it
+                # describes in the profile's accepted roots.
                 probed, witness = probe_accepted_roots(root, config)
                 receipt_context["nontriviality_witness"] = witness
                 if witness is None:

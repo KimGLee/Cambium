@@ -5,7 +5,7 @@
 # server name: cambium
 # server entry point: Tools/mcp_server.py (under the distribution root)
 # source: Tools/compiled/mcp-tools.json
-# source_hash: sha256:a383087f04850fb35b9fd24e6e202888e612adec36840001312508c83f9a4c62
+# source_hash: sha256:72aa4fb26366b5a213469585b75ea2d962c7e0871ab4132e464c0681534eb1ce
 # regenerate: python3 Tools/render_host_configs.py .
 # verify: python3 Tools/render_host_configs.py . --check
 #
@@ -35,5 +35,5 @@ command = "python3"
 cwd = "<CAMBIUM_DISTRIBUTION_ROOT>"
 
 [mcp_servers.cambium.env]
-CAMBIUM_INTERFACE_SOURCE_HASH = "sha256:a383087f04850fb35b9fd24e6e202888e612adec36840001312508c83f9a4c62"
+CAMBIUM_INTERFACE_SOURCE_HASH = "sha256:72aa4fb26366b5a213469585b75ea2d962c7e0871ab4132e464c0681534eb1ce"
 CAMBIUM_WORKSPACE_ROOT = "<CAMBIUM_WORKSPACE_ROOT>"

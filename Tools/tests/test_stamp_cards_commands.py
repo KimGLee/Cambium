@@ -23,7 +23,9 @@ class StampCardsCommandTests(unittest.TestCase):
         root = Path(temporary.name)
         for name in ("Card", "Read Set", "kernel"):
             shutil.copytree(REPOSITORY / name, root / name)
-        (root / "Tools").mkdir()
+        (root / "Tools/schemas").mkdir(parents=True)
+        shutil.copy2(REPOSITORY / "Tools/schemas/card.schema.yaml",
+                     root / "Tools/schemas/card.schema.yaml")
         shutil.copy2(REPOSITORY / "Tools/module-boundaries.yaml",
                      root / "Tools/module-boundaries.yaml")
         return root

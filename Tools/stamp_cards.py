@@ -283,7 +283,8 @@ def render_card_index(cards, read_sets):
         "---",
         "type: card-index",
         "generation_mode: generated",
-        "source: Card/card.schema.yaml, Card frontmatter, and Read Set declarations",
+        "source: %s, Card frontmatter, and Read Set declarations" %
+        card_contract.SCHEMA_PATH,
         "---",
         "# Card Index",
         "",

@@ -18,7 +18,9 @@ class CuratedCardBudgetTests(unittest.TestCase):
         shutil.copytree(REPOSITORY / "Card", root / "Card")
         shutil.copytree(REPOSITORY / "Read Set", root / "Read Set")
         shutil.copytree(REPOSITORY / "kernel", root / "kernel")
-        (root / "Tools").mkdir()
+        (root / "Tools/schemas").mkdir(parents=True)
+        shutil.copy2(REPOSITORY / "Tools/schemas/card.schema.yaml",
+                     root / "Tools/schemas/card.schema.yaml")
         shutil.copy2(REPOSITORY / "Tools/module-boundaries.yaml",
                      root / "Tools/module-boundaries.yaml")
         return root
@@ -49,9 +51,9 @@ class CuratedCardBudgetTests(unittest.TestCase):
                                     "action items"):
             stamp_cards.discover_cards(root)
 
-    def test_card_section_sequence_comes_from_the_card_owned_schema(self):
+    def test_card_section_sequence_comes_from_the_engineering_schema(self):
         root = self.fixture()
-        schema = root / "Card/card.schema.yaml"
+        schema = root / "Tools/schemas/card.schema.yaml"
         schema.write_text(
             schema.read_text(encoding="utf-8").replace(
                 "  - Read-back hook", "  - Canonical return"),

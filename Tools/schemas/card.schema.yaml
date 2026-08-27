@@ -1,6 +1,6 @@
-# Canonical machine shape for curated Cambium Cards.
-# Card owns this contract; Tooling may validate or project it without taking
-# ownership of the Card shape.
+# Repository-engineering contract for the serialized curated Card form.
+# This schema defines a machine-checkable representation only; it does not own
+# Card governance semantics or the meaning of any projected checklist item.
 
 schema_version: 1
 document_type: card

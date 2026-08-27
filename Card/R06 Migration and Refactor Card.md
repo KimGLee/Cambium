@@ -11,8 +11,8 @@ source_files:
   - kernel/K03 Note Types and Ownership/03 Split and Duplication Policy.md
   - kernel/K09 Wiki Link and Navigation/03 Path Alias and Heading Links.md
   - kernel/K12 Quality Assurance/09 Batch-close Closed List.md
-source_hash: '72c3ed661a6b'
-reviewed_source_hash: '72c3ed661a6b'
+source_hash: '7e944b5df32a'
+reviewed_source_hash: '7e944b5df32a'
 reviewed_card_hash: 'a0a06ce6be22'
 ---
 # R06 Migration and Refactor Card

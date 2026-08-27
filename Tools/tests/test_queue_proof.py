@@ -33,7 +33,10 @@ class RouteDeclarationAuthorityTests(unittest.TestCase):
         repository = TOOLS_DIR.parent
         for name in ("Card", "Read Set", "kernel"):
             shutil.copytree(repository / name, self.root / name)
-        (self.root / "Tools").mkdir()
+        (self.root / "Tools/schemas").mkdir(parents=True)
+        shutil.copy2(
+            repository / "Tools/schemas/card.schema.yaml",
+            self.root / "Tools/schemas/card.schema.yaml")
         shutil.copy2(
             repository / "Tools/module-boundaries.yaml",
             self.root / "Tools/module-boundaries.yaml")

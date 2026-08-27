@@ -1,4 +1,4 @@
-"""Owner-to-consumer projection checks for Card, Read Set, and Profile layout.
+"""Contract-to-consumer projection checks for Card, Read Set, and Profile layout.
 
 These tests deliberately change owner values in isolated repository copies.
 A consumer that keeps a second directory, index, type, mode, or phase-field
@@ -60,7 +60,9 @@ class ProjectionFixture(unittest.TestCase):
         self.root.mkdir()
         for name in ("Card", "Read Set", "kernel"):
             shutil.copytree(REPOSITORY / name, self.root / name)
-        (self.root / "Tools").mkdir()
+        (self.root / "Tools/schemas").mkdir(parents=True)
+        shutil.copy2(TOOLS / "schemas/card.schema.yaml",
+                     self.root / "Tools/schemas/card.schema.yaml")
         shutil.copy2(TOOLS / "module-boundaries.yaml",
                      self.root / "Tools/module-boundaries.yaml")
 

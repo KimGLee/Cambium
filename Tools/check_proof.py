@@ -352,11 +352,12 @@ def _uninstantiated_value(raw_value):
 def load_route_registry(root):
     """Project the canonical Card/Read Set registry through its one consumer.
 
-    ``stamp_cards.discover_cards`` validates the Card-owned shape/budget and
-    the Read Set-owned declarations and bindings. This proof checker only
-    adapts that registry to its historical ``(card_map, read_map, errors)``
-    return shape; it neither parses Card frontmatter again nor owns a second
-    route closed set. Generated indexes remain navigation only.
+    ``stamp_cards.discover_cards`` validates the repository-engineering Card
+    shape, Card-owned size budget, and Read Set-owned declarations and
+    bindings. This proof checker only adapts that registry to its historical
+    ``(card_map, read_map, errors)`` return shape; it neither parses Card
+    frontmatter again nor owns a second route closed set. Generated indexes
+    remain navigation only.
     """
     try:
         cards, declarations = stamp_cards.discover_cards(root)

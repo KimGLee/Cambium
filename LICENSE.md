@@ -172,6 +172,14 @@ for ownership traceability; such an entry is identified as not relicensing.
   from repeated Tool literals to `Read Set/read-set.schema.yaml`, released
   under CC BY 4.0. The earlier Apache-2.0 release of those identities is not
   withdrawn; Tool consumers now load the two component-owned projections.
+- 2026-08-27 — The serialized Card layout, discriminator, generation mode,
+  field list, section list, and identifier shapes moved from
+  `Card/card.schema.yaml`, released under CC BY 4.0, to
+  `Tools/schemas/card.schema.yaml`, released under Apache-2.0. This corrects
+  machine-contract ownership without changing the Card checklist semantics or
+  withdrawing the earlier CC BY 4.0 release. The independent Card size budget
+  remains under `Card/card-budget.yaml`; the Read Set contract remains under
+  `Read Set/read-set.schema.yaml`.
 - 2026-08-27 — The shipped `profiles/` namespace and its reserved
   non-candidate member set moved from duplicate declarations in
   `Tools/scaffold_profile.py` and `Tools/profile_onboarding_status.py` to

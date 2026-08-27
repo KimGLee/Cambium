@@ -31,7 +31,7 @@ MACHINE_NAVIGATION = {
     line for line in """../kernel/K00 Standards Control/profile-interface.yaml
 ../kernel/K02 Knowledge Work Construction/corpus-planning-contract.yaml
 ../kernel/K12 Quality Assurance/batch-close-closed-list.yaml
-../Card/card.schema.yaml
+schemas/card.schema.yaml
 ../Card/card-budget.yaml
 ../Read Set/read-set.schema.yaml
 operation-capabilities.yaml

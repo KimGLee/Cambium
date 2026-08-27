@@ -11,8 +11,8 @@ source_files:
   - kernel/K00 Standards Control/11 Standards Map and Rule Registry.md
   - kernel/K12 Quality Assurance/10 Standards Version Adoption.md
   - kernel/K13 Task Runtime and Execution Control/15 Standards Adoption State Transaction.md
-source_hash: 'aca921cc0386'
-reviewed_source_hash: 'aca921cc0386'
+source_hash: 'd991ad34609e'
+reviewed_source_hash: 'd991ad34609e'
 reviewed_card_hash: '755155d6fd76'
 ---
 # R09 Standards Governance Card

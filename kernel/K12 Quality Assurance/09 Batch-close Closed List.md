@@ -61,7 +61,13 @@ remain in scope even when an ignore rule matches. An export without Git
 metadata scans the filesystem outside control namespaces. Ignored untracked
 notes MUST NOT affect these verdicts.
 
-`registered_residual_content` is the only member whose predicate is supplied entirely by the selected profile, so its registered verifier MUST be shown to be live and not merely present. Any registered verifier whose clean result depends on finding no candidate MUST provide executable positive controls that exercise the same production classification path and collectively represent every required structure the verifier claims to recognise. A positive control that is rejected, skipped, or evaluated only by a separate test-only predicate invalidates the run. The verifier owns the representation and schema of its control inputs.
+`registered_residual_content` is the only member whose predicate is supplied entirely by the selected profile, so its registered verifier MUST be shown to be live and not merely present.
+
+Rule ID: `registered-verifier-positive-controls`
+
+Any registered verifier whose clean result depends on finding no candidate MUST provide executable positive controls that exercise the same production classification path and collectively represent every required structure the verifier claims to recognise.
+
+A positive control that is rejected, skipped, or evaluated only by a separate test-only predicate invalidates the run. The verifier owns the representation and schema of its control inputs.
 
 The two Gate objects remain distinct. `profile-load` proves that the selected
 Profile, its registration, predicate owners, and Profile-owned configuration

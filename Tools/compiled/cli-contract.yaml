@@ -22,7 +22,7 @@ derived_from: argparse-introspection
 source_files:
   - Tools/agent-interface-policy.yaml
   - Tools/runtime_paths.py
-  - Card/card.schema.yaml
+  - Tools/schemas/card.schema.yaml
   - Tools/adopt_standards.py
   - Tools/apply_amendment.py
   - Tools/apply_contract_amendment.py
@@ -71,7 +71,7 @@ source_files:
   - Tools/stamp_cards.py
   - Tools/update_queue.py
   - Tools/update_task.py
-source_hash: sha256:dfde2592d597b5e261c1cb48d4a76a03f18720e3443cb481c0348b932f829605
+source_hash: sha256:87285487bbec0578d5bcece4edccdc53b08294fdfea9dad29e50962c8162384e
 agent_interface_policy:
   path: Tools/agent-interface-policy.yaml
   sha256: sha256:69857d5d60052921db528e64abdbe5fbcfabe978516508a8922a98ac2ebc6d99
@@ -80,8 +80,8 @@ runtime_path_registry:
   sha256: sha256:4052ac4df0bc34952cb9f71fcaa04ae0d37897e5543c83c14171735acb0647f0
 component_path_registries:
   card-directory:
-    path: Card/card.schema.yaml
-    sha256: sha256:1cc0f827a633a2b574c8b99fb413a3a97d7f14bb31d376775f97accaab91a8a1
+    path: Tools/schemas/card.schema.yaml
+    sha256: sha256:bddf1537d6f5a53050e715390b0a8c4e80dbaf4eaad3e806c51d2e26ab74b91a
 projection_target: source-distribution
 distribution_boundary:
   path: distribution-boundary.yaml
@@ -2319,7 +2319,7 @@ tools:
       external_write: none
   - tool: check_proof
     module: Tools/check_proof.py
-    source_hash: sha256:5edfca3e90c190815eba6aa308d7010c6a9d544806e3619c55aaabe1ef37c9b2
+    source_hash: sha256:2892618fdee181078d08fa521357578eb3ed45a2380f77c221afb3bd8a66701c
     description: Terminal Proof completeness and zero-condition check
     arguments:
       - dest: proof
@@ -2859,7 +2859,7 @@ tools:
       external_write: none
   - tool: check_residual_content
     module: Tools/check_residual_content.py
-    source_hash: sha256:c680c8637c1574a73e5a5a8b7a0065f1a5fa0ce034b54803f4871e1bbf55b57e
+    source_hash: sha256:f3a8ef3121c8337b1835da63ca8af4bd2f27c4d91b7750e339ed26d032d73b08
     description: Find profile-configured residual content outside accepted roots.
     arguments:
       - dest: vault_root
@@ -5931,7 +5931,7 @@ tools:
       external_write: none
   - tool: stamp_cards
     module: Tools/stamp_cards.py
-    source_hash: sha256:785c3612d283f6c2c1fc0a1820da633c6561522459485567c7739c716980bfe8
+    source_hash: sha256:c04f488f959e418c83e56b49abc6b1d004632c366330678aa9c491609aba6d1c
     description: Validate curated Cambium Cards
     arguments:
       - dest: root

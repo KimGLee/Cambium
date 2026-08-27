@@ -49,7 +49,8 @@ copying their tables or field lists into prose.
 | Exceptable policy identities, owner references, limit domains, defaults, and effective-policy payload | [`contract-exception-policy-base.yaml`](<../kernel/K00 Standards Control/contract-exception-policy-base.yaml>) | [`contract_exception_policy.py`](contract_exception_policy.py) loads, validates, resolves, and fingerprints the policy without owning it |
 | Batch-close Closed List membership and order | [`batch-close-closed-list.yaml`](<../kernel/K12 Quality Assurance/batch-close-closed-list.yaml>) | [`batch_close_contract.py`](batch_close_contract.py) loads and validates the registry and projects its producer-era evidence fields |
 | Installed Profile scan capabilities | [`scan-capabilities.yaml`](scan-capabilities.yaml) | [`profile_contract.py`](profile_contract.py) and registered scan adapters |
-| Card layout, generated-index name, document discriminator, generation mode, shape, and independent size budget | [`Card/card.schema.yaml`](../Card/card.schema.yaml) and [`Card/card-budget.yaml`](../Card/card-budget.yaml) | [`card_contract.py`](card_contract.py) is the sole schema loader; [`stamp_cards.py`](stamp_cards.py) and [`card_activation.py`](card_activation.py) consume its projection |
+| Serialized Card layout, document discriminator, generation mode, and field shape | [`schemas/card.schema.yaml`](schemas/card.schema.yaml) | [`card_contract.py`](card_contract.py) is the sole engineering-schema loader; [`stamp_cards.py`](stamp_cards.py), [`card_activation.py`](card_activation.py), and interface tooling consume its projection without treating it as Card governance semantics |
+| Independent Card size budget | [`Card/card-budget.yaml`](../Card/card-budget.yaml) | [`stamp_cards.py`](stamp_cards.py) enforces the Card-specific body and action-item ceilings |
 | Read Set layout, generated-index name, phase fields, and declaration shape | [`Read Set/read-set.schema.yaml`](<../Read Set/read-set.schema.yaml>) | [`read_set_contract.py`](read_set_contract.py) loads and resolves the owner; Card, activation, proof, and Task Contract consumers read that projection |
 | Shipped `profiles/` namespace layout and reserved non-candidate members | [`profile_layout_contract.py`](profile_layout_contract.py) | [`scaffold_profile.py`](scaffold_profile.py) and [`profile_onboarding_status.py`](profile_onboarding_status.py) |
 | Tool capability implementation ownership | [`operation-capabilities.yaml`](operation-capabilities.yaml) | [`metadata_execution_contract.py`](metadata_execution_contract.py) and capability consumers |
@@ -90,10 +91,10 @@ python3 Tools/stamp_cards.py . --check
 python3 Tools/check_kernel_size.py .
 ```
 
-`stamp_cards.py --check` verifies the Card-owned schema, budget, source
-bindings, curated-review bindings, Card/Read Set pairing, and generated
-navigation. It does not prove that a summary is semantically correct or that
-an Agent understood it.
+`stamp_cards.py --check` verifies the serialized-Card engineering schema, the
+Card-owned size budget, source bindings, curated-review bindings, Card/Read Set
+pairing, and generated navigation. It does not prove that a summary is
+semantically correct or that an Agent understood it.
 
 `kernel-size-policy.yaml` is the sole numeric owner of Kernel leaf-size limits
 and registered measurements. `check_kernel_size.py` separates a hard failure

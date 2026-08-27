@@ -23,7 +23,7 @@ load_edges:
       - kernel/K00 Standards Control/13 Runtime Admission and Recovery.md
       - kernel/K00 Standards Control/17 Profile Dependency Closure.md
       - kernel/K00 Standards Control/19 Profile Extension Interface.md
-      - Card/card.schema.yaml
+      - Tools/schemas/card.schema.yaml
       - Card/card-budget.yaml
       - Read Set/read-set.schema.yaml
       - Tools/module-boundaries.yaml

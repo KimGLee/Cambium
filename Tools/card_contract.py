@@ -1,13 +1,14 @@
 #!/usr/bin/env python3
-"""Load and project the Card-owned machine schema.
+"""Load and project the repository's serialized-Card engineering contract.
 
-``Card/card.schema.yaml`` owns the Card directory, generated-index location,
-document discriminator, generation mode, field lists, and identifier shapes.
-This module is the single Tool loader for that owner.  It validates only the
-closed machine shape and the structural properties its consumers require,
-then derives safe repository-relative layout paths.  It does not discover
-Cards, judge curated content, calculate review hashes, generate navigation,
-or expose a command-line interface.
+``Tools/schemas/card.schema.yaml`` is the single machine source for the Card
+directory, generated-index location, document discriminator, generation mode,
+field lists, and identifier shapes used by repository tooling.  It describes
+the serialized form; it does not own Card governance semantics or checklist
+meaning.  This module validates the closed machine shape and derives safe
+repository-relative layout paths.  It does not discover Cards, judge curated
+content, calculate review hashes, generate navigation, or expose a command-line
+interface.
 """
 
 from pathlib import Path
@@ -16,7 +17,7 @@ import re
 import kblib
 
 
-SCHEMA_PATH = "Card/card.schema.yaml"
+SCHEMA_PATH = "Tools/schemas/card.schema.yaml"
 
 
 class CardContractError(ValueError):

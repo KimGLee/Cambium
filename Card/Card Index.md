@@ -1,7 +1,7 @@
 ---
 type: card-index
 generation_mode: generated
-source: Card/card.schema.yaml, Card frontmatter, and Read Set declarations
+source: Tools/schemas/card.schema.yaml, Card frontmatter, and Read Set declarations
 ---
 # Card Index
 

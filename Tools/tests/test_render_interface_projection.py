@@ -442,7 +442,7 @@ class FixtureRunTests(unittest.TestCase):
     def test_component_source_identity_is_validated_but_not_exposed_to_mcp(self):
         contract = fixture_contract(component_path_registries={
             "card-directory": {
-                "path": "Card/card.schema.yaml",
+                "path": "Tools/schemas/card.schema.yaml",
                 "sha256": kblib.sha256_bytes(b"fixture Card schema"),
             },
         })

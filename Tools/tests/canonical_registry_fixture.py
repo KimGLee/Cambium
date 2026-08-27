@@ -46,11 +46,11 @@ KERNEL_MACHINE_REGISTRY_PATHS = (
 
 COMPONENT_MACHINE_REGISTRY_PATHS = (
     "Card/card-budget.yaml",
-    "Card/card.schema.yaml",
     "Read Set/read-set.schema.yaml",
 )
 
 TOOL_MACHINE_REGISTRY_PATHS = (
+    "Tools/schemas/card.schema.yaml",
     "Tools/module-boundaries.yaml",
 )
 

@@ -11,8 +11,8 @@ source_files:
   - kernel/K06 Knowledge Intake and Evolution/07 Environmental Scanning and Watermark.md
   - kernel/K12 Quality Assurance/09 Batch-close Closed List.md
   - kernel/K13 Task Runtime and Execution Control/12 Completion Gate Bindings.md
-source_hash: 'd2ffbb622e56'
-reviewed_source_hash: 'd2ffbb622e56'
+source_hash: '516f8915c5a3'
+reviewed_source_hash: '516f8915c5a3'
 reviewed_card_hash: 'c2e9f1f0bf63'
 ---
 # R10 Maintenance Run Card

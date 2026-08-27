@@ -17,7 +17,9 @@ class ReadSetMachineDeclarationTests(unittest.TestCase):
         shutil.copytree(REPOSITORY / "Read Set", root / "Read Set")
         shutil.copytree(REPOSITORY / "kernel", root / "kernel")
         shutil.copytree(REPOSITORY / "Card", root / "Card")
-        (root / "Tools").mkdir()
+        (root / "Tools/schemas").mkdir(parents=True)
+        shutil.copy2(REPOSITORY / "Tools/schemas/card.schema.yaml",
+                     root / "Tools/schemas/card.schema.yaml")
         shutil.copy2(REPOSITORY / "Tools/module-boundaries.yaml",
                      root / "Tools/module-boundaries.yaml")
 

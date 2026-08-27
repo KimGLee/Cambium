@@ -493,8 +493,9 @@ class FixtureTests(unittest.TestCase):
         """)
         card_directory = Path(self.workspace) / "Card"
         card_directory.mkdir()
-        schema_path = card_directory / "card.schema.yaml"
-        shutil.copy(REPO_ROOT / "Card/card.schema.yaml", schema_path)
+        schema_path = Path(self.workspace) / "Tools/schemas/card.schema.yaml"
+        schema_path.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy(REPO_ROOT / "Tools/schemas/card.schema.yaml", schema_path)
         write_interface_policy(self.workspace, ["sample"])
         policy_path = Path(self.workspace) / compiler.DEFAULT_INTERFACE_POLICY
         policy = kblib.parse_yaml_subset(
