@@ -12,8 +12,8 @@ source_files:
   - kernel/K13 Task Runtime and Execution Control/08 Required Queue Contract and Lifecycle.md
   - kernel/K13 Task Runtime and Execution Control/14 Interruption Recovery and Rollover.md
   - kernel/K13 Task Runtime and Execution Control/17 Escalation Policy.md
-source_hash: 'cbb8ecd3902b'
-reviewed_source_hash: 'cbb8ecd3902b'
+source_hash: '81c007354b00'
+reviewed_source_hash: '81c007354b00'
 reviewed_card_hash: '80c3e2c1d9f9'
 ---
 # R07 Long-running Execution Card

@@ -826,6 +826,77 @@ class ApplyAmendmentTests(unittest.TestCase):
                             for error in tampered["errors"]),
                         tampered["errors"])
 
+    def test_cancelled_manifest_can_reenter_scope_through_independent_batch(self):
+        cancel_rel, cancel_plan = self.make_plan(
+            "cancel-batch", self.cancel_proposal(),
+            ["Topics/B.md"], ["B2"], cancel_batch_id="B2")
+        self.add_progress_amendment(cancel_plan)
+        cancelled = self.command(
+            cancel_rel, self.shas(), "--actor-role", "integrator", "--apply")
+        self.assertEqual(0, cancelled.returncode, cancelled.stdout)
+        cancelled_history = copy.deepcopy(
+            check_queue.validate_runtime(self.root)["items_by_id"]["B2"])
+
+        coverage = self.load(check_queue.COVERAGE_PATH)
+        coverage["scope_version"] = "s3"
+        coverage["updated_at"] = "2026-08-04T13:00:00Z"
+        page = next(entry for entry in coverage["pages"]
+                    if entry["path"] == "Topics/B.md")
+        page.update({
+            "coverage_disposition": "required",
+            "batch": None,
+            "next_batch": "B3",
+            "deferred_reason": None,
+            "reentry_condition": None,
+        })
+        coverage["batch_specs"].append({
+            "id": "B3", "family": "Core", "order_hint": 3,
+            "source_route": "R03", "execution_mode": "concurrent-worker",
+            "depends_on": [], "confirmation_required": False,
+            "work_spec_path": None, "work_spec_sha256": None,
+        })
+        replan_rel, replan_plan = self.make_plan(
+            "scope-replan", coverage, ["Topics/B.md"], ["B3"])
+        self.add_progress_amendment(replan_plan)
+        replanned = self.command(
+            replan_rel, self.shas(), "--actor-role", "integrator", "--apply")
+        self.assertEqual(0, replanned.returncode, replanned.stdout)
+
+        result = check_queue.validate_runtime(self.root)
+        self.assertEqual([], result["errors"])
+        self.assertEqual(cancelled_history, result["items_by_id"]["B2"])
+        new_batch = result["items_by_id"]["B3"]
+        self.assertEqual([], new_batch["depends_on"])
+        self.assertNotIn("successor_of", new_batch)
+        self.assertIn("B3", result["ready"])
+        landed_page = next(entry for entry in result["coverage"]["pages"]
+                           if entry["path"] == "Topics/B.md")
+        self.assertIsNone(landed_page["batch"])
+        self.assertEqual("B3", landed_page["next_batch"])
+
+        # Historical continuity cannot be disguised as current assignment.
+        # The same after-image is invalid as soon as the cancelled id is put
+        # back into either routing field.
+        for routing_field in ("batch", "next_batch"):
+            with self.subTest(routing_field=routing_field):
+                invalid_coverage = copy.deepcopy(result["coverage"])
+                invalid_page = next(entry for entry in invalid_coverage["pages"]
+                                    if entry["path"] == "Topics/B.md")
+                invalid_page[routing_field] = "B2"
+                invalid_text = kblib.canonical_yaml(invalid_coverage)
+                invalid = check_queue.validate_runtime(
+                    self.root,
+                    state_overrides={
+                        check_queue.COVERAGE_PATH:
+                            (invalid_text, invalid_coverage),
+                    },
+                )
+                self.assertIn(
+                    "cancelled B2 remains a current batch/next_batch "
+                    "assignment for Required Coverage object Topics/B.md",
+                    invalid["errors"],
+                )
+
     def test_tampered_registered_amendment_id_is_rejected(self):
         plan_rel, plan = self.make_plan(
             "scope-replan", self.scope_proposal(),

@@ -84,8 +84,13 @@ Delta, review, and QA evidence exists; invalidated evidence can return that
 same batch to `open` through the registered ordinary writer. `closed` means
 serial integration and global Gates passed. `cancelled` means an authorized
 scope or disposition Amendment retired an actionable batch. `closed` and
-`cancelled` are terminal: their history is immutable and later work uses a
-successor.
+`cancelled` are terminal and their history is immutable. Later work after a
+`closed` batch uses the explicit successor chain. Cancellation is different:
+it supplies neither completion authority nor a satisfied dependency. If an
+object from a cancelled manifest later re-enters Required scope, a new
+Amendment routes it to an independent batch; Coverage no longer names the
+cancelled id in either `batch` or `next_batch`, and the new Queue item does not
+use `successor_of` or `depends_on` merely to encode historical continuity.
 
 `hold_state` is independent of lifecycle and task state. The machine model owns
 its closed values. `none` means no hold; `confirmation-required` awaits the
@@ -103,7 +108,7 @@ The closed reference classes are:
 
 | Reference | Owner | Terminal-state invariant |
 |---|---|---|
-| Coverage page batch projection | Coverage | Ownership moves to the closing batch and unfinished work moves to a valid successor or becomes empty |
+| Coverage page batch projection | Coverage | A close moves ownership to the closing batch and later work follows an explicit successor; cancellation retires the live projection, while the immutable Queue manifest alone preserves cancelled membership |
 | Coverage open-gap routing | Coverage | Every gap routed to this batch is closed or explicitly rerouted to a valid later batch |
 | Coverage batch specification input | Coverage | The terminal Queue item owns frozen structure; stale compiler input cannot rebuild or replace it |
 | Receipt batch identity | Receipt catalog | Immutable evidence continues to name the historical batch |
@@ -119,3 +124,10 @@ The invariant is: **a terminal batch preserves its history and loses its live
 references**. Adding a new reference class requires extending this semantic
 contract and the settlement Gate together; an implementation cannot introduce
 an unaccounted reference merely because it can store one.
+
+A cancelled Queue manifest therefore remains valid when a later Scope
+Amendment makes the same object Required again, provided the current Coverage
+record does not name the cancelled id in `batch` or `next_batch`. The Required
+record may keep `batch: null` and route through `next_batch` to its newly
+authorized batch. This does not rewrite the cancelled manifest, revive its
+Receipts, satisfy a dependency, or create a successor edge.
