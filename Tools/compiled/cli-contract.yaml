@@ -71,7 +71,7 @@ source_files:
   - Tools/stamp_cards.py
   - Tools/update_queue.py
   - Tools/update_task.py
-source_hash: sha256:5b0fc241ccd1a8385bc7c05a574eee2a15762aeeacffa476e5b8ba8b91430b58
+source_hash: sha256:dfde2592d597b5e261c1cb48d4a76a03f18720e3443cb481c0348b932f829605
 agent_interface_policy:
   path: Tools/agent-interface-policy.yaml
   sha256: sha256:69857d5d60052921db528e64abdbe5fbcfabe978516508a8922a98ac2ebc6d99
@@ -4284,7 +4284,7 @@ tools:
       external_write: temporary-git-worktree
   - tool: profile_onboarding_status
     module: Tools/profile_onboarding_status.py
-    source_hash: sha256:9b935a4ca4fc1bfa059a6b38956890170304b6b7da27f361c224eee7b9da6d98
+    source_hash: sha256:578fbdbbeea4df25f27f5c0a78c9f2f7608adf26b3b6eb92d37610976e61d304
     description: "Read-only onboarding status projector: derives the adoption/onboarding state of one root and exactly one next_action token; writes nothing and owns no ledger"
     arguments:
       - dest: root

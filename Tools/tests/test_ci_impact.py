@@ -69,6 +69,10 @@ class CiImpactTests(unittest.TestCase):
 
     def test_markdown_only_change_runs_checks_only_on_ceiling(self):
         for path in (
+                "README.md",
+                "README.zh-CN.md",
+                "ROADMAP.md",
+                "ROADMAP.zh-CN.md",
                 "kernel/K00 Standards Control/README.md",
                 "Card/R01 Core Bootstrap Card.md",
                 "Read Set/R01 Core Bootstrap Read Set.md"):

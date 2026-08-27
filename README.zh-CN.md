@@ -25,7 +25,7 @@ Cambium 不是知识库、RAG 引擎、Agent 调度器，也不提供默认的�
   [从 Agent 宿主调用 Cambium](#从-agent-宿主调用-cambium)。
 - 想查看所有工具及其准确参数：阅读 [Tools/README.md](Tools/README.md)。
 - 想了解哪些能力已经完成、正在开发或有条件可用：阅读
-  [ROADMAP.md](ROADMAP.md)。
+  [ROADMAP.zh-CN.md](ROADMAP.zh-CN.md)。
 
 ## 理解 Cambium
 
@@ -101,7 +101,7 @@ Cambium 当前不包含：
 - 可安装的 OpenAI Plugin 包、Hooks、UI 或应用市场条目。
 
 这些边界是有意保留的。宿主可以补充额外能力，但不能为自己无法证明的能力声明
-证据。具体交付顺序见 [ROADMAP.md](ROADMAP.md)。
+证据。具体交付顺序见 [ROADMAP.zh-CN.md](ROADMAP.zh-CN.md)。
 
 ## 三本运行时台账
 
@@ -322,7 +322,7 @@ SHA-256 绑定可以在采用方的本地信任域中发现漂移和不一致历
 | [`Tools/`](Tools/) | 检查、写入器、schema、receipt 和生成器 |
 | [`Tools/compiled/`](Tools/compiled/) | 生成的 CLI、MCP、元数据和宿主投影 |
 | [`assets/readme/`](assets/readme/) | 根目录双语 README 使用的公共结构图 |
-| [`ROADMAP.md`](ROADMAP.md) | 按状态组织的实现路线图 |
+| [`ROADMAP.zh-CN.md`](ROADMAP.zh-CN.md) | 按状态组织的实现路线图 |
 
 示例只说明答案应写成什么形式，不是默认配置，也不能代替采用方自己拥有的
 Profile。

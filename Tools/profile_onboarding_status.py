@@ -79,8 +79,8 @@ CORPUS_PLANNING_SLOT = corpus_planning_contract.SLOT_NAME
 BASE_NON_CORPUS_TREES = frozenset((
     "kernel", profile_layout_contract.PROFILES_DIRECTORY, "Tools",
     "LICENSES", "docs"))
-NON_CORPUS_ROOT_FILES = frozenset(("ROADMAP.md", "ATTRIBUTION.md",
-                                   "LICENSE.md", "NOTICE"))
+NON_CORPUS_ROOT_FILES = frozenset(("ROADMAP.md", "ROADMAP.zh-CN.md",
+                                   "ATTRIBUTION.md", "LICENSE.md", "NOTICE"))
 NON_CORPUS_ROOT_PREFIX = "README"
 
 def read_text(path):

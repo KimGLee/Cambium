@@ -78,6 +78,7 @@ CHECK_ONLY_ROOT_FILES = {
     "README.md",
     "README.zh-CN.md",
     "ROADMAP.md",
+    "ROADMAP.zh-CN.md",
     "SECURITY.md",
 }
 

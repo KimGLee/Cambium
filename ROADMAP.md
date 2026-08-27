@@ -1,5 +1,7 @@
 # Cambium Roadmap
 
+English | [简体中文](ROADMAP.zh-CN.md)
+
 This roadmap describes product direction. It is not a kernel rule, a Profile
 requirement, or a release promise.
 

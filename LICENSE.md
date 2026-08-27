@@ -40,7 +40,7 @@ to the following Cambium-maintained files in the official distribution:
   described below.
 - Files tracked under `assets/readme/**`.
 - `README.md` and `README.zh-CN.md`.
-- `ROADMAP.md`.
+- `ROADMAP.md` and `ROADMAP.zh-CN.md`.
 - `CONTRIBUTING.md`.
 - `LICENSE.md` and `ATTRIBUTION.md`.
 

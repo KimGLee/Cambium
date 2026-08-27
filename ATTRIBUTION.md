@@ -13,7 +13,8 @@ attribution form. It does not add to or modify the license terms.
 - **License:** [Creative Commons Attribution 4.0 International](https://creativecommons.org/licenses/by/4.0/)
   ([legal code](LICENSES/CC-BY-4.0.txt))
 - **Covered paths:** `kernel/**`, `Card/**`, `Read Set/**`, `profiles/**`,
-  `assets/readme/**`, `README.md`, `README.zh-CN.md`, and `ROADMAP.md`, plus
+  `assets/readme/**`, `README.md`, `README.zh-CN.md`, `ROADMAP.md`, and
+  `ROADMAP.zh-CN.md`, plus
   `CONTRIBUTING.md`, `LICENSE.md`, and this attribution file, limited to the
   Cambium-maintained materials identified in [`LICENSE.md`](LICENSE.md)
 

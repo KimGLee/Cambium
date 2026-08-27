@@ -327,6 +327,8 @@ class AdoptedTests(unittest.TestCase):
             (root / "README.zh-CN.md").write_text("# Dist\n",
                                                   encoding="utf-8")
             (root / "ROADMAP.md").write_text("# Roadmap\n", encoding="utf-8")
+            (root / "ROADMAP.zh-CN.md").write_text(
+                "# 路线图\n", encoding="utf-8")
             (root / "docs").mkdir()
             (root / "docs" / "guide.md").write_text("# G\n",
                                                     encoding="utf-8")
