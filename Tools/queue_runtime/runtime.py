@@ -693,7 +693,6 @@ def validate_runtime(root, allowed_open_delta=None,
                 assigned_ids = assignments.get(object_path, [])
                 if (not allow_structural_drift and
                         item_id not in assigned_ids and
-                        item.get("state") != "cancelled" and
                         not (item.get("state") == "closed" and
                              _assigned_through_successors(
                                  item_id, assigned_ids))):
@@ -944,24 +943,14 @@ def validate_runtime(root, allowed_open_delta=None,
                 errors.append("%s batch %s has no matching managed delta" %
                               (item.get("state"), item_id))
 
-    # A cancelled manifest is sealed history, not a live Coverage assignment.
-    # The same object may later re-enter Required scope through an independent
-    # batch, but the cancelled id cannot remain in either current routing
-    # field.  This is deliberately not the closed-batch successor exception:
-    # cancellation satisfies no dependency and carries no completion
-    # authority into the new work.
+    # Cancellation changes disposition; it cannot erase still-Required work.
     for item_id, item in items_by_id.items():
         if item.get("state") == "cancelled":
             for path in item.get("manifest", []):
                 record = records.get(path, {})
-                if (record.get("coverage_disposition") == "required" and
-                        item_id in (record.get("batch"),
-                                    record.get("next_batch"))):
-                    errors.append(
-                        "cancelled %s remains a current batch/next_batch "
-                        "assignment for Required Coverage object %s" %
-                        (item_id, path)
-                    )
+                if record.get("coverage_disposition") == "required":
+                    errors.append("cancelled %s still contains Required Coverage object %s" %
+                                  (item_id, path))
         if item.get("state") in TERMINAL_STATES:
             for path in item.get("manifest", []):
                 if records.get(path, {}).get("next_batch") == item_id:
