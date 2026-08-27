@@ -71,7 +71,7 @@ source_files:
   - Tools/stamp_cards.py
   - Tools/update_queue.py
   - Tools/update_task.py
-source_hash: sha256:1c2bc92dbbebe8f19667c5ac4997a5a58f4044ebc701d79b46e45e85fc7b9907
+source_hash: sha256:001136ccc0e0f50675d41fe82b436940de127c227acc1d34ceee6c1aa5011596
 agent_interface_policy:
   path: Tools/agent-interface-policy.yaml
   sha256: sha256:69857d5d60052921db528e64abdbe5fbcfabe978516508a8922a98ac2ebc6d99
@@ -3881,7 +3881,7 @@ tools:
       external_write: none
   - tool: init_state
     module: Tools/init_state.py
-    source_hash: sha256:42b5193ec362781ee397009bcd5e42e2b032c6e569dbccdf66babfdcc4bb5128
+    source_hash: sha256:a092c3c2cdcae6d51853026287d493c77a20160fdf30644c205086704f163092
     description: Initialize empty Cambium runtime state
     arguments:
       - dest: root

@@ -211,6 +211,13 @@ class TaskPlanTransactionTests(unittest.TestCase):
             apply_task_plan.prepare(str(self.root), relative)
         return str(caught.exception)
 
+    def test_shipped_template_carries_the_required_page_shape(self):
+        template = kblib.load_yaml_file(
+            REPOSITORY / "Tools/schemas/task_plan.template.yaml")
+        page = template["coverage_after"]["pages"][0]
+        self.assertEqual({}, page["property_state"])
+        self.assertEqual([], sorted(set(PAGE) - set(page)))
+
     # ---- the edge it closes --------------------------------------------
 
     def test_a_dry_run_writes_nothing(self):

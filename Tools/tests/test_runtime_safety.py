@@ -18,6 +18,7 @@ sys.path.insert(0, str(TOOLS))
 
 import init_state
 import kblib
+import runtime_paths
 from profile_fixture import install_loadable_profile
 
 
@@ -428,6 +429,27 @@ class InitPublicationTests(unittest.TestCase):
                 self.assertEqual(1, completed.returncode, completed.stdout)
                 self.assertIn(expected, completed.stdout)
                 self.assert_no_task_runtime()
+
+    def test_pre_runtime_tmp_allows_only_the_free_receipt_marker(self):
+        transient = self.root / runtime_paths.TRANSIENT_ROOT
+        transient.mkdir(parents=True)
+        free = self.root / runtime_paths.RECEIPT_APPEND_FREE_PATH
+        free.write_text("free\n", encoding="utf-8")
+        self.assertEqual(
+            [], init_state._governance_only_namespace_errors(self.root))
+
+        held = self.root / runtime_paths.RECEIPT_APPEND_HELD_PATH
+        free.rename(held)
+        held_errors = init_state._governance_only_namespace_errors(self.root)
+        self.assertTrue(any("receipt-append.held" in value
+                            for value in held_errors), held_errors)
+
+        held.rename(free)
+        (transient / "unknown").write_text("x\n", encoding="utf-8")
+        unknown_errors = init_state._governance_only_namespace_errors(
+            self.root)
+        self.assertTrue(any("unknown" in value
+                            for value in unknown_errors), unknown_errors)
 
     def test_a_manifest_override_row_is_read_and_frozen(self):
         self.write_overrides("| `concurrency_cap` | `8` |\n")

@@ -53,6 +53,7 @@ import apply_profile_adoption  # noqa: E402
 import check_profile  # noqa: E402
 import kblib  # noqa: E402
 import module_boundary_facts  # noqa: E402
+import runtime_paths  # noqa: E402
 import standards_state  # noqa: E402
 import test_profile_onboarding_status as tpos  # noqa: E402
 import test_template_fill  # noqa: E402  (reused semantic fill + scan config)
@@ -361,6 +362,39 @@ class ApplyProfileAdoptionTests(unittest.TestCase):
         self.assertEqual(profile_before,
                          tree_state(root / "profiles" / PROFILE_ID))
         self.assertEqual([], stagings(root))
+
+    def test_initial_adoption_can_be_followed_by_runtime_initialization(self):
+        root = self.clone()
+        write_plan(root, initial_plan(root))
+        code, out = run_tool(root, "--apply")
+        self.assertEqual(0, code, out)
+
+        free_marker = root / runtime_paths.RECEIPT_APPEND_FREE_PATH
+        marker_bytes = free_marker.read_bytes()
+        completed = subprocess.run(
+            [
+                sys.executable, str(root / "Tools" / "init_state.py"),
+                str(root), "--task-id", "fresh-task", "--objective",
+                "Initialize a task after initial Profile adoption",
+                "--exclude", "Do not infer unconfirmed work",
+                "--scope-version", "s1", "--completion-semantics", "build",
+                "--standards-version", "1.0.0", "--profile-manifest",
+                MANIFEST, "--at", "2026-08-13T01:00:00Z", "--apply",
+            ],
+            text=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+            check=False,
+        )
+        self.assertEqual(0, completed.returncode, completed.stdout)
+        self.assertEqual(marker_bytes, free_marker.read_bytes())
+        self.assertFalse(
+            (root / runtime_paths.RECEIPT_APPEND_HELD_PATH).exists())
+        self.assertFalse(
+            (root / runtime_paths.STATE_WRITER_LOCK_PATH).exists())
+        for relative in (
+                runtime_paths.COVERAGE_PATH,
+                runtime_paths.QUEUE_PATH,
+                runtime_paths.PROGRESS_PATH):
+            self.assertTrue((root / relative).is_file(), relative)
 
     def test_profile_revision_happy_path(self):
         root = self.clone(_ADOPTED)

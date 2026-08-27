@@ -25,7 +25,7 @@ import runtime_paths
 import runtime_state_contract
 
 TOOL = "init_state"
-TOOL_VERSION = "1.4.0"
+TOOL_VERSION = "1.4.1"
 RUNTIME_DIRS = runtime_paths.TASK_RUNTIME_DIRECTORIES
 
 _STATE_DOCUMENT_PATH_BY_NAME = {
@@ -372,6 +372,8 @@ def _governance_only_namespace_errors(root):
         os.path.basename(runtime_paths.DERIVED_ROOT): {
             os.path.basename(runtime_paths.VOCAB_ARTIFACT_PATH),
             os.path.basename(runtime_paths.PAGE_CONTRACT_ARTIFACT_PATH)},
+        os.path.basename(runtime_paths.TRANSIENT_ROOT): {
+            os.path.basename(runtime_paths.RECEIPT_APPEND_FREE_PATH)},
     }
     errors = []
     if not os.path.isfile(_runtime_namespace_path(
@@ -435,6 +437,8 @@ def publish_runtime_into_governance_namespace(
         if not os.path.lexists(os.path.join(runtime, directory))
     ]
     publish_dirs = tuple(publish_dirs)
+    public_transient = os.path.isdir(_runtime_namespace_path(
+        runtime, runtime_paths.TRANSIENT_ROOT))
     try:
         for directory in publish_dirs:
             os.makedirs(os.path.join(staging, directory), exist_ok=False)
@@ -444,7 +448,12 @@ def publish_runtime_into_governance_namespace(
             kblib.atomic_write_text(
                 target, text, validator=kblib.parse_yaml_subset)
         pre_publish_validator()
-        _create_publication_lock(staging, lock_operation)
+        # Initial Profile adoption legitimately creates the receipt append
+        # marker before task runtime exists.  In that serial handoff, tmp is
+        # already public, so place this transaction's ordinary writer lock
+        # there instead of assuming staging owns a second tmp directory.
+        lock_runtime = runtime if public_transient else staging
+        _create_publication_lock(lock_runtime, lock_operation)
         try:
             for directory in publish_dirs:
                 source = os.path.join(staging, directory)
