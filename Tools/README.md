@@ -52,6 +52,7 @@ copying their tables or field lists into prose.
 | Serialized Card layout, document discriminator, generation mode, and field shape | [`schemas/card.schema.yaml`](schemas/card.schema.yaml) | [`card_contract.py`](card_contract.py) is the sole engineering-schema loader; [`stamp_cards.py`](stamp_cards.py), [`card_activation.py`](card_activation.py), and interface tooling consume its projection without treating it as Card governance semantics |
 | Independent Card size budget | [`Card/card-budget.yaml`](../Card/card-budget.yaml) | [`stamp_cards.py`](stamp_cards.py) enforces the Card-specific body and action-item ceilings |
 | Read Set layout, generated-index name, phase fields, and declaration shape | [`Read Set/read-set.schema.yaml`](<../Read Set/read-set.schema.yaml>) | [`read_set_contract.py`](read_set_contract.py) loads and resolves the owner; Card, activation, proof, and Task Contract consumers read that projection |
+| Producer-era Task Contract component-path migrations | [`schemas/component-path-migrations.yaml`](schemas/component-path-migrations.yaml) | [`queue_runtime/task_contract.py`](queue_runtime/task_contract.py) projects only a persisted Standards-adoption before-image; ordinary runtime and the proposed after-image remain strict |
 | Shipped `profiles/` namespace layout and reserved non-candidate members | [`profile_layout_contract.py`](profile_layout_contract.py) | [`scaffold_profile.py`](scaffold_profile.py) and [`profile_onboarding_status.py`](profile_onboarding_status.py) |
 | Tool capability implementation ownership | [`operation-capabilities.yaml`](operation-capabilities.yaml) | [`metadata_execution_contract.py`](metadata_execution_contract.py) and capability consumers |
 | K08 priority ordering and volatility review intervals | [`vocabulary-base.yaml`](<../kernel/K08 Metadata and Status/vocabulary-base.yaml>) | [`vocabulary_contract.py`](vocabulary_contract.py) strictly projects the owner values for [`freshness_engine.py`](freshness_engine.py), [`check_freshness.py`](check_freshness.py), and [`compile_queue.py`](compile_queue.py) |
@@ -129,6 +130,12 @@ Omitting `--apply` previews the transaction. A later Standards/Profile change
 in an existing runtime uses `adopt_standards.py` and the adoption rules owned
 by [K12/10](<../kernel/K12 Quality Assurance/10 Standards Version Adoption.md>),
 not an improvised edit to Profile or `.cambium` files.
+
+When a frozen Task Contract names a component path from a registered producer
+era, `adopt_standards.py` may use that one-way registry only to validate the
+persisted before-image against the exact current paths declared by the plan.
+The original contract bytes remain the receipt/fingerprint authority, and the
+after-image must pass ordinary runtime validation with no legacy alias.
 
 The adoption writer may refresh an observed source hash, but it cannot approve
 a curated Card summary. When it refuses a stale curated review, a human first

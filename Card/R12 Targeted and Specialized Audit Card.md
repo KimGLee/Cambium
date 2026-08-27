@@ -10,8 +10,8 @@ source_files:
   - kernel/K12 Quality Assurance/07 Audit Evidence Reuse and Invalidation.md
   - kernel/K12 Quality Assurance/08 Judgment Item Dimension Map.md
   - kernel/K12 Quality Assurance/18 Cross-page and Control-plane Dimension Map.md
-source_hash: '9672f8b9c191'
-reviewed_source_hash: '9672f8b9c191'
+source_hash: 'ff5a03a26020'
+reviewed_source_hash: 'ff5a03a26020'
 reviewed_card_hash: 'c63fe0313f28'
 ---
 # R12 Targeted and Specialized Audit Card

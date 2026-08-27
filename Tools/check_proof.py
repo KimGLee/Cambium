@@ -522,7 +522,8 @@ def _profile_load_currency_failures(root, profile_evaluation):
         return []
     target = profile_evaluation.contract.profile_repo_dir
     try:
-        current_snapshot = kblib.repository_tree_sha256(root, target)
+        current_snapshot = profile_evaluation.rebind_profile_snapshot(
+            root).sha256
     except (OSError, ValueError) as exc:
         return [(
             "proof-profile-snapshot-unreadable", target,

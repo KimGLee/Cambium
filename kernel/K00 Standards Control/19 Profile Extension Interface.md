@@ -24,8 +24,10 @@ or consume that registry; none of them may create a second interface.
   Tool capability registries retain implementation identities; runtime state
   retains the current selection and evidence.
 - A Profile may reference a stable Read Set, Tool capability, host capability,
-  or corpus artifact only where the owning extension point permits it. A
-  reference does not transfer ownership of the target.
+  corpus artifact, or adopter-runtime object ID only where the owning extension
+  point permits it. A runtime-object reference names the stable object, never
+  its current `.cambium` path or value. A reference does not transfer ownership
+  of the target.
 - `None`, `not-applicable`, `kernel-defaults`, or an inactive registration is a
   complete value only where the interface permits it and the user confirms
   that its condition is true for the repository.

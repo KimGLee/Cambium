@@ -153,7 +153,8 @@ def validate_runtime(root, allowed_open_delta=None,
                      active_standards_state_override=None,
                      authorized_profile_view=None,
                      authorized_active_standards_view=None,
-                     *, gate_evidence_errors):
+                     *, gate_evidence_errors,
+                     producer_era_load_contract_after=None):
     """Return a validation result dict without writing any state.
 
     Full ``profile-load`` is part of the default runtime invariant, so every
@@ -176,6 +177,10 @@ def validate_runtime(root, allowed_open_delta=None,
     if type(allow_active_standards_mismatch_for_adoption) is not bool:
         raise TypeError(
             "allow_active_standards_mismatch_for_adoption must be boolean")
+    if (producer_era_load_contract_after is not None and
+            not isinstance(producer_era_load_contract_after, dict)):
+        raise TypeError(
+            "producer_era_load_contract_after must be a mapping")
     if (active_standards_state_override is not None and
             (not isinstance(active_standards_state_override, str) or
              state_overrides is None)):
@@ -235,6 +240,12 @@ def validate_runtime(root, allowed_open_delta=None,
         raise ValueError(
             "active Standards mismatch escape cannot validate proposed state, "
             "pending receipts, or an injected after-image Profile view")
+    if (producer_era_load_contract_after is not None and
+            (not allow_invalid_current_profile_for_corrective_adoption or
+             not allow_active_standards_mismatch_for_adoption)):
+        raise ValueError(
+            "producer-era load path projection is restricted to the "
+            "persisted Standards adoption before-image")
     root = os.path.realpath(os.path.abspath(root))
     errors = []
     writer_lock_records = _writer_locks(root, errors)
@@ -1086,6 +1097,8 @@ def validate_runtime(root, allowed_open_delta=None,
         root, progress, catalog, queue, queue_sha, coverage_sha, progress_sha,
         remaining, items_by_id,
         coverage,
+        producer_era_load_contract_after=
+            producer_era_load_contract_after,
     )
     errors.extend(task_errors)
     # Derive the requirements map once from this validation's Progress view

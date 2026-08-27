@@ -244,6 +244,10 @@ def install_loadable_profile(root, profile_id="test-profile",
         root / "Tools/operation-capabilities.yaml",
     )
     shutil.copy2(
+        TOOLS / "runtime_paths.py",
+        root / "Tools/runtime_paths.py",
+    )
+    shutil.copy2(
         TOOLS / "scan-capabilities.yaml",
         root / "Tools/scan-capabilities.yaml",
     )

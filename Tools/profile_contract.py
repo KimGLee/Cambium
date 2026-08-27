@@ -474,6 +474,22 @@ class ProfileContract:
         return selected[0] if len(selected) == 1 else None
 
     @property
+    def profile_snapshot_paths(self):
+        """Canonical files owned by this manifest's typed Profile closure.
+
+        The manifest is always the root.  Dependency edges may also name
+        Kernel- or Tool-owned targets; only paths physically contained by the
+        selected Profile package belong to the Profile snapshot.  Root-owned
+        machine inputs remain bound by ``profile_load_inputs_sha256``.
+        """
+        paths = {self.manifest_repo_path} if self.manifest_repo_path else set()
+        prefix = self.profile_repo_dir.rstrip("/") + "/"
+        for edge in self.dependency_edges:
+            if edge.path and edge.path.startswith(prefix):
+                paths.add(edge.path)
+        return tuple(sorted(paths))
+
+    @property
     def profile_contract_fingerprint(self):
         """Fingerprint only a fully authorized typed dependency graph."""
         if not self.authorized:

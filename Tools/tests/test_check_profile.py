@@ -67,6 +67,8 @@ class ExecutionDefaultOverrideTests(unittest.TestCase):
                      "Tools/schemas/execution_defaults.template.yaml"),
                     (REPOSITORY / "Tools/operation-capabilities.yaml",
                      "Tools/operation-capabilities.yaml"),
+                    (REPOSITORY / "Tools/runtime_paths.py",
+                     "Tools/runtime_paths.py"),
                     (REPOSITORY / profile_contract.SCAN_CAPABILITY_PATH,
                      profile_contract.SCAN_CAPABILITY_PATH),
                     (REPOSITORY / "Tools/check_residual_content.py",
@@ -311,6 +313,17 @@ class ShippedRegistryTests(unittest.TestCase):
             self.assertTrue(
                 (REPOSITORY / entry["owner"]).is_file(), entry["owner"])
 
+    def test_profile_load_registry_version_matches_the_producer(self):
+        import check_profile
+        registry = kblib.load_yaml_file(
+            REPOSITORY / "kernel/K00 Standards Control/control-registry.yaml")
+        rows = [row for row in registry.get("gates", [])
+                if row.get("gate_id") == check_profile.GATE_ID]
+        self.assertEqual(1, len(rows), rows)
+        self.assertEqual(check_profile.TOOL, rows[0].get("tool"))
+        self.assertEqual(check_profile.TOOL_VERSION,
+                         rows[0].get("tool_version"))
+
 
 class ProfileCliFixture(unittest.TestCase):
     """Shared temp-root fixture and helpers for the profile-load CLI."""
@@ -326,6 +339,7 @@ class ProfileCliFixture(unittest.TestCase):
         self._copy_repository_file(
             "kernel/K00 Standards Control/execution-defaults-base.yaml")
         self._copy_repository_file("Tools/operation-capabilities.yaml")
+        self._copy_repository_file("Tools/runtime_paths.py")
         self._copy_repository_file(profile_contract.SCAN_CAPABILITY_PATH)
         self._copy_repository_file(
             "Tools/compiled/metadata-execution-contract.json")
@@ -427,6 +441,83 @@ class ProfileCliFixture(unittest.TestCase):
 class ProfileLoadCliTests(ProfileCliFixture):
     """End-to-end admission tests for the typed ``profile-load`` Gate."""
 
+    STRUCTURE_WITH_DERIVED_ROLE = """schema_version: 2
+applicability:
+  state: configured
+  reason: null
+units:
+  - id: U-NOTES
+    kind: domain
+    parent: null
+    root: "Notes"
+    entry:
+      path: "Notes/Overview.md"
+      expected_type: overview
+    global_map_entry: null
+    roles:
+      sequence:
+        mode: not-applicable
+        reason: "No sequence."
+      coverage:
+        mode: derived
+        generator_capability: structure-coverage-projection-v1
+        inputs_owner: coverage-ledger
+      quick_reference:
+        mode: not-applicable
+        reason: "No quick reference."
+      expression:
+        mode: not-applicable
+        reason: "No expression layer."
+support_layers: []
+"""
+
+    def _profile_with_derived_structure(self, profile_id):
+        copied = self._copied_profile(profile_id, self_owned=True)
+        (copied / "structure-registry.yaml").write_text(
+            self.STRUCTURE_WITH_DERIVED_ROLE, encoding="utf-8")
+        return copied
+
+    def test_profile_load_resolves_structure_capability_and_runtime_owner(self):
+        copied = self._profile_with_derived_structure(
+            "structure-reference-notes")
+
+        completed, receipts = self._run_check(
+            copied, "structure-reference.jsonl")
+
+        self.assertEqual(0, completed.returncode, completed.stdout)
+        self.assertIn("profile-check-summary",
+                      self._checks(receipts, result="pass"))
+
+    def test_profile_load_rejects_unknown_structure_projection_capability(self):
+        copied = self._profile_with_derived_structure(
+            "unknown-structure-capability-notes")
+        self._replace_exact(
+            copied / "structure-registry.yaml",
+            "structure-coverage-projection-v1",
+            "unregistered-structure-projection-v1", count=1)
+
+        completed, receipts = self._run_check(
+            copied, "unknown-structure-capability.jsonl")
+
+        self.assertEqual(1, completed.returncode, completed.stdout)
+        self.assertIn("structure-registry-capability",
+                      self._checks(receipts))
+
+    def test_profile_load_rejects_runtime_owner_not_bound_by_capability(self):
+        copied = self._profile_with_derived_structure(
+            "wrong-structure-owner-notes")
+        self._replace_exact(
+            copied / "structure-registry.yaml",
+            "inputs_owner: coverage-ledger",
+            "inputs_owner: progress-ledger", count=1)
+
+        completed, receipts = self._run_check(
+            copied, "wrong-structure-owner.jsonl")
+
+        self.assertEqual(1, completed.returncode, completed.stdout)
+        self.assertIn("structure-registry-input-owner",
+                      self._checks(receipts))
+
     def test_renaming_only_profile_id_rejects_all_stale_foreign_edges(self):
         """Exact Issue #42 reproduction: the source Profile still exists."""
         copied = self._copied_profile("copied-notes")
@@ -486,10 +577,14 @@ class ProfileLoadCliTests(ProfileCliFixture):
             14,
             len([edge for edge in contract.dependency_edges
                  if edge.kind == "manifest-slot"]))
+        full_tree = kblib.repository_tree_snapshot(
+            self.root, "profiles/examples/self-owned-notes")
         self.assertEqual(
-            kblib.repository_tree_sha256(
-                self.root, "profiles/examples/self-owned-notes"),
+            full_tree.project(contract.profile_snapshot_paths).sha256,
             summary["profile_snapshot_sha256"])
+        self.assertEqual(
+            set(contract.profile_snapshot_paths),
+            set(full_tree.project(contract.profile_snapshot_paths).files))
 
     def test_candidate_cli_receipt_does_not_mix_live_queue_identity(self):
         copied = self._copied_profile(
@@ -911,7 +1006,7 @@ class ProfileLoadCliTests(ProfileCliFixture):
                 self.assertEqual(1, completed.returncode, completed.stdout)
                 self.assertIn("unfilled-placeholder", self._checks(receipts))
 
-    def test_unbound_unknown_suffix_cannot_hide_unfilled_sentinel(self):
+    def test_unbound_unknown_suffix_is_not_profile_authority(self):
         copied = self._copied_profile("unbound-sentinel", self_owned=True)
         (copied / "unbound.bin").write_bytes(
             b"opaque prefix\nTODO(profile)\nopaque suffix\n")
@@ -919,9 +1014,9 @@ class ProfileLoadCliTests(ProfileCliFixture):
         completed, receipts = self._run_check(
             copied, "unbound-sentinel.jsonl")
 
-        self.assertEqual(1, completed.returncode, completed.stdout)
-        self.assertIn("unfilled-placeholder", self._checks(receipts))
-        self.assertFalse(any(
+        self.assertEqual(0, completed.returncode, completed.stdout)
+        self.assertNotIn("unfilled-placeholder", self._checks(receipts))
+        self.assertTrue(any(
             receipt["check"] == "profile-check-summary"
             for receipt in receipts))
 
@@ -979,14 +1074,64 @@ class ProfileLoadCliTests(ProfileCliFixture):
         self.assertIn("predicate-owner-heading-count",
                       self._checks(receipts))
 
-    def test_any_profile_text_file_must_be_strict_utf8(self):
+    def test_unbound_profile_file_is_not_a_typed_text_dependency(self):
         copied = self._copied_profile("invalid-utf8", self_owned=True)
         (copied / "role-registry.md").write_bytes(b"# Roles\n\xff\n")
 
         completed, receipts = self._run_check(copied, "invalid-utf8.jsonl")
 
-        self.assertEqual(1, completed.returncode, completed.stdout)
-        self.assertIn("profile-text-unreadable", self._checks(receipts))
+        self.assertEqual(0, completed.returncode, completed.stdout)
+        self.assertNotIn("profile-text-unreadable", self._checks(receipts))
+
+    def test_snapshot_identity_tracks_only_manifest_and_typed_closure(self):
+        copied = self._copied_profile("closure-identity", self_owned=True)
+        sys.path.insert(0, str(REPOSITORY / "Tools"))
+        import check_profile
+
+        first = check_profile.evaluate_profile_load(
+            copied, root=self.root, receipt_identity=None)
+        self.assertTrue(first.authorized, first.findings)
+
+        unrelated = copied / "editor-cache.bin"
+        unrelated.write_bytes(b"host state\x00TODO(profile)\xff")
+        second = check_profile.evaluate_profile_load(
+            copied, root=self.root, receipt_identity=None)
+        self.assertTrue(second.authorized, second.findings)
+        self.assertEqual(first.profile_snapshot_sha256,
+                         second.profile_snapshot_sha256)
+        self.assertNotIn(
+            unrelated.relative_to(self.root).as_posix(),
+            second.profile_snapshot.files)
+        self.assertEqual(
+            first.profile_snapshot_sha256,
+            first.rebind_profile_snapshot(self.root).sha256)
+
+        bound_slot = copied / "priority-rubric.md"
+        bound_slot.write_text(
+            bound_slot.read_text(encoding="utf-8") +
+            "\n<!-- typed closure revision -->\n",
+            encoding="utf-8")
+        self.assertNotEqual(
+            first.profile_snapshot_sha256,
+            first.rebind_profile_snapshot(self.root).sha256)
+        third = check_profile.evaluate_profile_load(
+            copied, root=self.root, receipt_identity=None)
+        self.assertTrue(third.authorized, third.findings)
+        self.assertNotEqual(first.profile_snapshot_sha256,
+                            third.profile_snapshot_sha256)
+
+        transitive = copied / "scan-configs/residual-scan.yaml"
+        transitive_repo_path = transitive.relative_to(self.root).as_posix()
+        self.assertIn(transitive_repo_path, third.profile_snapshot.files)
+        transitive.write_text(
+            transitive.read_text(encoding="utf-8") +
+            "\n# typed transitive dependency revision\n",
+            encoding="utf-8")
+        fourth = check_profile.evaluate_profile_load(
+            copied, root=self.root, receipt_identity=None)
+        self.assertTrue(fourth.authorized, fourth.findings)
+        self.assertNotEqual(third.profile_snapshot_sha256,
+                            fourth.profile_snapshot_sha256)
 
     def test_repeated_failure_is_deterministic_and_profile_tree_is_read_only(self):
         copied = self._copied_profile("stable-diagnostics")
@@ -1013,8 +1158,14 @@ class ProfileLoadCliTests(ProfileCliFixture):
         import check_profile
         import kblib
         import profile_contract
-        before = kblib.repository_tree_sha256(
+        before_tree = kblib.repository_tree_snapshot(
             self.root, "profiles/examples/snapshot-aba")
+        before_contract = profile_contract.load_profile_contract(
+            self.root, copied / "profile.md", profile_snapshot=before_tree)
+        self.assertTrue(before_contract.authorized,
+                        before_contract.diagnostics)
+        before = before_tree.project(
+            before_contract.profile_snapshot_paths).sha256
         real_load = profile_contract.load_profile_contract
 
         def transient_swap(*args, **kwargs):
@@ -1039,8 +1190,7 @@ class ProfileLoadCliTests(ProfileCliFixture):
         self.assertEqual(before, evaluation.profile_snapshot_sha256)
         self.assertEqual(
             before,
-            kblib.repository_tree_sha256(
-                self.root, "profiles/examples/snapshot-aba"))
+            evaluation.rebind_profile_snapshot(self.root).sha256)
     def test_receipt_output_cannot_mutate_the_profile_snapshot(self):
         copied = self._copied_profile("receipt-boundary", self_owned=True)
         receipt_path = copied / "profile-load.jsonl"

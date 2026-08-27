@@ -345,9 +345,12 @@ def profile_view_snapshot_error(root, authorized_view, phase):
     if (not nonempty_string(manifest) or not isinstance(expected, str) or
             not SHA256_RE.fullmatch(expected)):
         return "authorized Profile view has malformed snapshot identity"
-    profile_dir = os.path.dirname(manifest).replace("/", os.sep)
+    evaluation = authorized_view.get("_evaluation")
+    if (not isinstance(evaluation, check_profile.ProfileLoadEvaluation) or
+            not evaluation.authorized):
+        return "authorized Profile view has no reusable profile-load evaluation"
     try:
-        actual = kblib.repository_tree_sha256(root, profile_dir)
+        actual = evaluation.rebind_profile_snapshot(root).sha256
     except (OSError, ValueError) as exc:
         return ("selected Profile cannot be rebound %s Expression hub "
                 "derivation: %s" % (phase, exc))

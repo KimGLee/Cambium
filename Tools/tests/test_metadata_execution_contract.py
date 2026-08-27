@@ -239,17 +239,48 @@ class MetadataExecutionContractTests(unittest.TestCase):
         self.assertFalse(contract.capability_registered(
             "unknown-producer-v1", "producer", root=REPOSITORY))
 
+    def test_structure_projection_is_registered_outside_metadata_artifact(self):
+        entry = contract.capability_entry(
+            "structure-coverage-projection-v1", "projection",
+            root=REPOSITORY)
+        self.assertIsNotNone(entry)
+        self.assertEqual(
+            "Tools/render_structure_projection.py",
+            entry["implementation_owner"])
+        self.assertEqual(["coverage-ledger"], entry["input_owners"])
+        compiled = contract.compile_metadata_execution_contract(REPOSITORY)
+        self.assertFalse(any(
+            item["capability_id"] == "structure-coverage-projection-v1"
+            for item in compiled.artifact["operation_capabilities"]
+        ))
+
+    def test_projection_input_owner_must_be_registered_runtime_object(self):
+        authority, capabilities = source_documents()
+        projection = next(
+            item for item in capabilities["capabilities"]
+            if item["kind"] == "projection")
+        projection["input_owners"] = ["unregistered-runtime-object"]
+        with self.assertRaises(contract.MetadataExecutionContractError) as cm:
+            compile_documents(authority, capabilities)
+        self.assertIn("unknown runtime object", str(cm.exception))
+
     def test_capability_implementations_are_closed_and_fingerprinted(self):
         authority, capabilities = source_documents()
         paths = contract.capability_implementation_paths(capabilities)
+        metadata_paths = \
+            contract.metadata_execution_capability_implementation_paths(
+                capabilities)
         self.assertIn("Tools/apply_metadata_transition.py", paths)
         self.assertIn("Tools/metadata_property_state.py", paths)
+        self.assertIn("Tools/render_structure_projection.py", paths)
+        self.assertNotIn("Tools/render_structure_projection.py",
+                         metadata_paths)
         compiled = compile_documents(authority, capabilities)
         records = {
             item["path"]: item["sha256"]
             for item in compiled.artifact["capability_implementations"]
         }
-        self.assertEqual(set(paths), set(records))
+        self.assertEqual(set(metadata_paths), set(records))
         self.assertEqual(
             kblib.sha256_file(REPOSITORY / "Tools/record_gate_result.py"),
             records["Tools/record_gate_result.py"])

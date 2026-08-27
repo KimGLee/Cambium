@@ -1,9 +1,8 @@
 # Agent Atlas Structure Registry — the selected profile's structural units
 # (K01/05) and support layers (K01/06).
 # Interface: kernel/K00 Standards Control/profile-interface.yaml
-# The registry declares the current target state, and
-# Tools/check_structure.py is the structure-registry gate that proves the
-# adopting repository agrees with it.
+# The registry declares the current target state; the `structure-registry`
+# Gate proves that the adopting repository agrees with it.
 # The eleven Global Map submodule entries satisfy the K01/05 admission test:
 # each has a unique registered
 # responsibility, a canonical entry, one parent, Coverage projectability,
@@ -11,7 +10,7 @@
 # No other first-level directory passes the test; unregistered directories
 # stay ordinary groupings covered by their parent's entry.
 
-schema_version: 1
+schema_version: 2
 
 applicability:
   state: configured
@@ -33,7 +32,7 @@ units:
         heading: "Prerequisite Map"
       coverage:
         mode: derived
-        generator: "Tools/render_structure_projection.py"
+        generator_capability: structure-coverage-projection-v1
         inputs_owner: "Corpus Planning/capability_matrix.yaml"
         path: "Modeling Fundamentals/Modeling Fundamentals Overview.md"
         heading: "Coverage Reader View"
@@ -58,7 +57,7 @@ units:
         heading: "Prerequisite Map（前置依赖图）"
       coverage:
         mode: derived
-        generator: "Tools/render_structure_projection.py"
+        generator_capability: structure-coverage-projection-v1
         inputs_owner: "Corpus Planning/capability_matrix.yaml"
         path: "Machine Learning Knowledge/Machine Learning Overview.md"
         heading: "Coverage Reader View（Coverage 读者视图）"
@@ -83,7 +82,7 @@ units:
         heading: "Prerequisite Map（前置依赖图）"
       coverage:
         mode: derived
-        generator: "Tools/render_structure_projection.py"
+        generator_capability: structure-coverage-projection-v1
         inputs_owner: "Corpus Planning/capability_matrix.yaml"
         path: "Deep Learning Knowledge/Deep Learning Overview.md"
         heading: "Coverage Reader View（Coverage 读者视图）"
@@ -108,7 +107,7 @@ units:
         heading: "Prerequisite And Lifecycle Flow（前置与生命周期）"
       coverage:
         mode: derived
-        generator: "Tools/render_structure_projection.py"
+        generator_capability: structure-coverage-projection-v1
         inputs_owner: "Corpus Planning/capability_matrix.yaml"
         path: "LLM Knowledge/LLM Overview.md"
         heading: "Coverage Reader View（覆盖状态读者视图）"
@@ -133,7 +132,7 @@ units:
         heading: "Reader Route（读者路线）"
       coverage:
         mode: derived
-        generator: "Tools/render_structure_projection.py"
+        generator_capability: structure-coverage-projection-v1
         inputs_owner: "Corpus Planning/capability_matrix.yaml"
         path: "Agent Knowledge/Agent Overview.md"
         heading: "Coverage Reader View（Coverage 读者视图）"
@@ -158,7 +157,7 @@ units:
         heading: "Study Order"
       coverage:
         mode: derived
-        generator: "Tools/render_structure_projection.py"
+        generator_capability: structure-coverage-projection-v1
         inputs_owner: "Corpus Planning/capability_matrix.yaml"
         path: "AI Systems Engineering/AI Systems Engineering Overview.md"
         heading: "Coverage Reader View"
@@ -421,7 +420,7 @@ support_layers:
           directory: "Industry Cases/Composite Reconstructions"
     coverage:
       mode: derived
-      generator: "Tools/render_structure_projection.py"
+      generator_capability: structure-coverage-projection-v1
       inputs_owner: "Corpus Planning/capability_matrix.yaml"
     bindings:
       evidence_binding_owner: "kernel/K08 Metadata and Status/08 Relationship Metadata Contract.md"
@@ -451,7 +450,7 @@ support_layers:
           directory: "Knowledge Sources/Community Engineering"
     coverage:
       mode: derived
-      generator: "Tools/render_structure_projection.py"
+      generator_capability: structure-coverage-projection-v1
       inputs_owner: "Corpus Planning/capability_matrix.yaml"
     bindings:
       authority_taxonomy_ref: "profiles/examples/agent-atlas/source-policy.md"
@@ -469,7 +468,7 @@ support_layers:
     taxonomy: null
     coverage:
       mode: derived
-      generator: "Tools/render_structure_projection.py"
+      generator_capability: structure-coverage-projection-v1
       inputs_owner: "Corpus Planning/capability_matrix.yaml"
     bindings:
       question_identity_field: "claim_scope"
@@ -494,12 +493,12 @@ support_layers:
           directory: "Interview Preparation/Cheat Sheets"
     coverage:
       mode: derived
-      generator: "Tools/render_structure_projection.py"
+      generator_capability: structure-coverage-projection-v1
       inputs_owner: "Corpus Planning/capability_matrix.yaml"
     bindings:
       artifact_registry_ref: "profiles/examples/agent-atlas/expression-layer.md"
       preparation_route_ref: "Interview Preparation/Interview Overview.md"
       readiness_projection:
         mode: derived
-        generator: "Tools/render_structure_projection.py"
-        inputs_owner: ".cambium/state/coverage_ledger.yaml"
+        generator_capability: structure-coverage-projection-v1
+        inputs_owner: coverage-ledger

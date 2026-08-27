@@ -1044,10 +1044,12 @@ STRUCTURE_UNIT_FIELDS = frozenset((
 STRUCTURE_ENTRY_FIELDS = frozenset(("path", "expected_type"))
 STRUCTURE_UNIT_ROLES = ("sequence", "coverage", "quick_reference",
                         "expression")
+STRUCTURE_STABLE_ID_RE = re.compile(
+    r"[a-z][a-z0-9]*(?:-[a-z0-9]+)*\Z")
 STRUCTURE_ROLE_MODE_FIELDS = {
     "embedded": (frozenset(("mode", "path", "heading")), frozenset()),
     "standalone": (frozenset(("mode", "path")), frozenset()),
-    "derived": (frozenset(("mode", "generator", "inputs_owner")),
+    "derived": (frozenset(("mode", "generator_capability", "inputs_owner")),
                 frozenset(("path", "heading"))),
     "not-applicable": (frozenset(("mode", "reason")), frozenset()),
 }
@@ -1073,6 +1075,133 @@ STRUCTURE_SOURCE_INDEX_MODES = frozenset(("derived", "none"))
 
 def _structure_nonempty(value):
     return isinstance(value, str) and bool(value.strip())
+
+
+def structure_input_owner_reference_kind(value):
+    """Classify one derived-role input owner without resolving its value.
+
+    A stable runtime object is named by its object ID.  Every other accepted
+    value is a repository-relative corpus-artifact reference.  The caller
+    resolves either identity against the appropriate root-owned registry;
+    this pure classifier only prevents a Profile from carrying a Tool path or
+    the current physical spelling of adopter runtime state.
+    """
+    if not _structure_nonempty(value):
+        return None
+    value = value.strip()
+    if STRUCTURE_STABLE_ID_RE.fullmatch(value) is not None:
+        return "object-id"
+    return "corpus-artifact"
+
+
+def _structure_derived_roles(document, target):
+    """Yield the derived-role declarations from one Structure Registry."""
+    if not isinstance(document, dict):
+        return
+    units = document.get("units")
+    if isinstance(units, list):
+        for index, unit in enumerate(units):
+            if not isinstance(unit, dict):
+                continue
+            roles = unit.get("roles")
+            if not isinstance(roles, dict):
+                continue
+            for role_name, role in sorted(roles.items()):
+                if isinstance(role, dict) and role.get("mode") == "derived":
+                    yield ("%s:units[%d]:roles:%s" %
+                           (target, index, role_name), role)
+    layers = document.get("support_layers")
+    if not isinstance(layers, list):
+        return
+    for index, layer in enumerate(layers):
+        if not isinstance(layer, dict):
+            continue
+        coverage = layer.get("coverage")
+        if isinstance(coverage, dict) and coverage.get("mode") == "derived":
+            yield ("%s:support_layers[%d]:coverage" % (target, index),
+                   coverage)
+        bindings = layer.get("bindings")
+        readiness = bindings.get("readiness_projection") \
+            if isinstance(bindings, dict) else None
+        if isinstance(readiness, dict) and \
+                readiness.get("mode") == "derived":
+            yield ("%s:support_layers[%d]:bindings:readiness_projection" %
+                   (target, index), readiness)
+
+
+def validate_structure_registry_references(
+        document, projection_capabilities, target="structure-registry"):
+    """Validate stable capability and runtime-owner identities.
+
+    ``validate_structure_registry_shape`` owns the Profile representation.
+    This companion contract resolves every derived role against an already
+    validated, root-owned projection-capability mapping and the installed
+    runtime-object namespace.  It performs no corpus reads: a repository-
+    relative corpus artifact remains a stable Profile reference, while the
+    ``structure-registry`` Gate separately verifies its current path.
+    """
+    errors = []
+    if not isinstance(projection_capabilities, dict):
+        return [(
+            "structure-registry-capability", target,
+            "root-owned projection capability registry is unavailable")]
+    for label, role in _structure_derived_roles(document, target):
+        capability_id = role.get("generator_capability")
+        capability = projection_capabilities.get(capability_id)
+        if not isinstance(capability, dict) or \
+                capability.get("kind") != "projection":
+            errors.append((
+                "structure-registry-capability",
+                label + ":generator_capability",
+                "projection capability %r is not registered by the "
+                "root-owned Tool capability registry" % capability_id))
+            capability = None
+        input_owner = role.get("inputs_owner")
+        if structure_input_owner_reference_kind(input_owner) != "object-id":
+            continue
+        try:
+            runtime_paths.path_for(input_owner)
+        except KeyError:
+            errors.append((
+                "structure-registry-input-owner", label + ":inputs_owner",
+                "runtime input owner %r is not a registered stable object "
+                "ID" % input_owner))
+            continue
+        if capability is not None and input_owner not in \
+                capability.get("input_owners", ()):
+            errors.append((
+                "structure-registry-input-owner", label + ":inputs_owner",
+                "projection capability %r does not declare runtime input "
+                "owner %r" % (capability_id, input_owner)))
+    return errors
+
+
+def _structure_input_owner(errors, value, label):
+    """Validate the representation boundary of ``inputs_owner``."""
+    kind = structure_input_owner_reference_kind(value)
+    if kind is None:
+        return
+    value = value.strip()
+    if kind == "object-id":
+        return
+    if (value.startswith("/") or "\\" in value or
+            any(part in ("", ".", "..") for part in value.split("/"))):
+        errors.append((
+            "structure-registry-role", label,
+            "must be a canonical repository-relative corpus artifact path "
+            "or a stable runtime object ID"))
+        return
+    if value == "Tools" or value.startswith("Tools/"):
+        errors.append((
+            "structure-registry-role", label,
+            "must reference a stable generator capability, not a Tool "
+            "implementation path"))
+    if value == runtime_paths.RUNTIME_ROOT or value.startswith(
+            runtime_paths.RUNTIME_ROOT + "/"):
+        errors.append((
+            "structure-registry-role", label,
+            "must name adopter runtime state by stable object ID, not by its "
+            "current physical path"))
 
 
 def _structure_closed(errors, value, required, label, optional=frozenset()):
@@ -1114,6 +1243,17 @@ def _structure_role_mapping(errors, value, label):
         if not _structure_nonempty(value.get(field)):
             errors.append(("structure-registry-role", "%s:%s" % (label, field),
                            "must be a nonempty string"))
+    if mode == "derived":
+        generator = value.get("generator_capability")
+        if _structure_nonempty(generator) and \
+                STRUCTURE_STABLE_ID_RE.fullmatch(generator.strip()) is None:
+            errors.append((
+                "structure-registry-role",
+                label + ":generator_capability",
+                "must be a stable Tool capability ID, not an implementation "
+                "path"))
+        _structure_input_owner(
+            errors, value.get("inputs_owner"), label + ":inputs_owner")
     if value.get("heading") is not None and mode == "derived" and \
             value.get("path") is None:
         errors.append(("structure-registry-role", label,
@@ -1133,9 +1273,9 @@ def validate_structure_registry_shape(document, target="structure-registry"):
     document = _structure_closed(
         errors, document, STRUCTURE_REGISTRY_TOP_FIELDS, target)
     if type(document.get("schema_version")) is not int or \
-            document.get("schema_version") != 1:
+            document.get("schema_version") != 2:
         errors.append(("structure-registry-schema", target,
-                       "schema_version must be integer 1"))
+                       "schema_version must be integer 2"))
     applicability = _structure_closed(
         errors, document.get("applicability"),
         STRUCTURE_APPLICABILITY_FIELDS, target + ":applicability")
@@ -3517,6 +3657,51 @@ class RepositoryTreeSnapshot:
 
     def read_text(self, repository_relative_path):
         return self.read_bytes(repository_relative_path).decode("utf-8")
+
+    def project(self, repository_relative_paths):
+        """Return the exact path-selected projection of this bound tree.
+
+        Projection never reopens the filesystem.  It therefore preserves the
+        immutable byte observation used by the caller while allowing a typed
+        contract to exclude unrelated package files from its public identity.
+        Every selected path must already be present in this snapshot; missing
+        or non-canonical spellings fail closed instead of being ignored.
+        """
+        selected = {}
+        for repository_path in sorted(set(repository_relative_paths)):
+            if (not isinstance(repository_path, str) or
+                    not repository_path or repository_path.startswith("/") or
+                    "\\" in repository_path or
+                    any(part in ("", ".", "..")
+                        for part in repository_path.split("/"))):
+                raise ValueError(
+                    "tree projection path must be canonical and repository-"
+                    "relative: %r" % repository_path)
+            try:
+                selected[repository_path] = self.files[repository_path]
+            except KeyError as exc:
+                raise FileNotFoundError(
+                    errno.ENOENT,
+                    "tree projection path is absent from bound snapshot",
+                    repository_path) from exc
+        if not selected:
+            raise ValueError("tree projection must select at least one file")
+        return RepositoryTreeSnapshot(
+            self.root, self.relative_directory,
+            _repository_tree_snapshot_sha256(selected), selected)
+
+
+def _repository_tree_snapshot_sha256(files):
+    """Hash one already-bound path-to-bytes tree with the v1 framing."""
+    digest = hashlib.sha256()
+    digest.update(b"cambium-repository-tree-snapshot-v1\0")
+    for relative, data in sorted(files.items()):
+        encoded = relative.encode("utf-8")
+        digest.update(len(encoded).to_bytes(8, "big"))
+        digest.update(encoded)
+        digest.update(len(data).to_bytes(8, "big"))
+        digest.update(hashlib.sha256(data).digest())
+    return "sha256:" + digest.hexdigest()
 
 
 _pathcaps.register_tree_snapshot_factory(RepositoryTreeSnapshot)

@@ -2043,9 +2043,9 @@ class HubPageAdmissionTests(QueueFixture):
         # slot read would accept B; the immutable producer snapshot must still
         # supply A.
         with mock.patch.object(
-                check_queue.kblib, "repository_tree_sha256",
-                return_value=authorized_view[
-                    "profile_snapshot_sha256"]):
+                check_queue.check_profile.ProfileLoadEvaluation,
+                "rebind_profile_snapshot",
+                return_value=authorized_view["_profile_snapshot"]):
             paths, errors = check_queue.profile_hub_paths(
                 self.root, "profiles/test-profile/profile.md",
                 authorized_view=authorized_view,

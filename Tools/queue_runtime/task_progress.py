@@ -46,6 +46,7 @@ from queue_runtime.task_contract import (
     contract_sha256,
     contract_sha_at_revision,
     live_read_set_load_findings,
+    producer_era_load_contract_view,
 )
 from queue_runtime.task_record import (
     last_reconciled_guidance_id,
@@ -400,15 +401,23 @@ def progress_shape_errors(progress):
 
 def task_transition_errors(root, progress, catalog, queue, queue_sha,
                             coverage_sha, progress_sha, remaining,
-                            items_by_id, coverage):
+                            items_by_id, coverage,
+                            producer_era_load_contract_after=None):
     """Validate the sole task-state history and its restart checkpoint."""
     errors = []
     task_id = progress.get("task_id")
     task_state = progress.get("task_state")
     contract = progress.get("contract") if isinstance(
         progress.get("contract"), dict) else {}
+    load_contract = contract
+    producer_era_path_migrations = []
+    if producer_era_load_contract_after is not None:
+        load_contract, producer_era_path_migrations, migration_errors = \
+            producer_era_load_contract_view(
+                root, contract, producer_era_load_contract_after)
+        errors.extend(migration_errors)
     contract_load_errors, contract_load_set_gaps = \
-        live_read_set_load_findings(root, contract)
+        live_read_set_load_findings(root, load_contract)
     errors.extend(contract_load_errors)
     accounted_versions = accounted_standards_versions(progress, queue)
     completion_semantics = contract.get("completion_semantics")
@@ -875,6 +884,7 @@ def task_transition_errors(root, progress, catalog, queue, queue_sha,
         # repaired by the next admitted adoption plan, not by refusing the
         # runtime that holds them.  Nothing in the error set reads this key.
         "contract_load_set_gaps": contract_load_set_gaps,
+        "producer_era_path_migrations": producer_era_path_migrations,
     }
 
 

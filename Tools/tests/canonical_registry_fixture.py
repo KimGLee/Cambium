@@ -50,6 +50,7 @@ COMPONENT_MACHINE_REGISTRY_PATHS = (
 )
 
 TOOL_MACHINE_REGISTRY_PATHS = (
+    "Tools/schemas/component-path-migrations.yaml",
     "Tools/schemas/card.schema.yaml",
     "Tools/module-boundaries.yaml",
 )

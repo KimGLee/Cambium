@@ -292,10 +292,11 @@ def parse_control_registry_document(document, *, audit_values=None,
         elif role == "semantic-leaf":
             owner_capability = capabilities.get(owner)
             if owner == gate_id or not isinstance(owner_capability, dict) or \
-                    owner_capability.get("role") != "native-owner":
+                    owner_capability.get("role") not in (
+                        "special-owner", "immediate-owner", "native-owner"):
                 errors.append(
                     "Revalidation semantic leaf %s must project to a distinct "
-                    "native owner; found %s" % (gate_id, owner))
+                    "boundary owner; found %s" % (gate_id, owner))
         elif owner != "none":
             errors.append(
                 "Revalidation Gate %s role %s must use owner none, not %s" %

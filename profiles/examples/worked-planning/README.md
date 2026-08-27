@@ -58,7 +58,7 @@ The public Cambium distribution is intentionally uninstantiated: it carries no `
 
 | Validator | Tool version | Command | Expected result |
 |---|---|---|---|
-| `check_profile` | `2.0.0` | `python3 Tools/check_profile.py profiles/examples/worked-planning` | exit 0 |
+| `check_profile` | `2.2.0` | `python3 Tools/check_profile.py profiles/examples/worked-planning` | exit 0 |
 | `check_corpus_plan` | `1.7.0` | `python3 Tools/check_corpus_plan.py . --profile profiles/examples/worked-planning/profile.md` | exit 0 |
 | `check_residual_content` | `1.2.0` | `python3 Tools/check_residual_content.py . --scan-id worked-planning-case-residuals --config profiles/examples/worked-planning/scan-configs/residual-scan.yaml --time-limit 55` | exit 0 |
 

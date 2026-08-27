@@ -544,9 +544,11 @@ modules:
       - sha256_file
       - strip_code
       - strip_yaml_comment
+      - structure_input_owner_reference_kind
       - validate_boundary_shape
       - validate_metadata_contract_shape
       - validate_receipt_output_path
+      - validate_structure_registry_references
       - validate_structure_registry_shape
       - write_receipts
       - write_receipts_observed
@@ -567,6 +569,7 @@ modules:
     public:
       - AuthorizedProjectionRules
       - CompiledMetadataExecutionContract
+      - DEFAULT_CAPABILITIES_PATH
       - MetadataExecutionContractError
       - VALUE_SHAPES
       - capability_implementation_paths
@@ -577,6 +580,7 @@ modules:
       - compose_profile_projection_rules
       - load_metadata_execution_contract
       - load_operation_capabilities
+      - metadata_execution_capability_implementation_paths
       - profile_extension_enum_projection_rule
       - rules_for_capability
       - source_adapter_owner_record_keys
@@ -1260,6 +1264,7 @@ modules:
       - contract_sha256
       - contract_sha_at_revision
       - live_read_set_load_findings
+      - producer_era_load_contract_view
       - read_set_load_closure
   - module: queue_runtime.task_progress
     path: Tools/queue_runtime/task_progress.py
@@ -1391,6 +1396,7 @@ modules:
       - WORK_SPEC_ROOT
       - child_path
       - ensure_directory
+      - path_for
       - path_reference_for
       - roots_for
   - module: runtime_state_contract

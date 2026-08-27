@@ -71,7 +71,7 @@ source_files:
   - Tools/stamp_cards.py
   - Tools/update_queue.py
   - Tools/update_task.py
-source_hash: sha256:87285487bbec0578d5bcece4edccdc53b08294fdfea9dad29e50962c8162384e
+source_hash: sha256:1c2bc92dbbebe8f19667c5ac4997a5a58f4044ebc701d79b46e45e85fc7b9907
 agent_interface_policy:
   path: Tools/agent-interface-policy.yaml
   sha256: sha256:69857d5d60052921db528e64abdbe5fbcfabe978516508a8922a98ac2ebc6d99
@@ -154,7 +154,7 @@ tool_count: 48
 tools:
   - tool: adopt_standards
     module: Tools/adopt_standards.py
-    source_hash: sha256:ce4e6a3b751d0450a38ad76a1f9659b14bc3dde35feddc940483c20b1088dc31
+    source_hash: sha256:30149f994f073374ed819e082d3caa2f0b7eca140d50192dd0430acfe214e3fa
     description: Adopt one approved Standards/Profile revision
     arguments:
       - dest: root
@@ -2173,7 +2173,7 @@ tools:
       external_write: none
   - tool: check_profile
     module: Tools/check_profile.py
-    source_hash: sha256:a5dc4aed19b5e0802ae5d40059b2ad45eeee9ac4bb58a004364f651d2fb0e4cd
+    source_hash: sha256:6e5479b8856b1bef0131114dc39934fc858b5ad060dd56f77fab95797e369beb
     description: Profile manifest completeness and unfilled-template check
     arguments:
       - dest: profile_dir
@@ -2319,7 +2319,7 @@ tools:
       external_write: none
   - tool: check_proof
     module: Tools/check_proof.py
-    source_hash: sha256:2892618fdee181078d08fa521357578eb3ed45a2380f77c221afb3bd8a66701c
+    source_hash: sha256:74c04d54410ca55939f441a6f440ae938fac80033f34d9f6b9be62e5ce5436dd
     description: Terminal Proof completeness and zero-condition check
     arguments:
       - dest: proof
@@ -2979,7 +2979,7 @@ tools:
       external_write: none
   - tool: check_structure
     module: Tools/check_structure.py
-    source_hash: sha256:21bfc060c8892ec2cdf8887e2ee2d656b04c02d1f2541959a12c318a514ae132
+    source_hash: sha256:73fafced20ba3dd0604c81ad7324a5457d67addc1c82b6f6b3d69d5996800399
     description: "Validate the selected profile's Structure Registry against the vault (gate: structure-registry)."
     arguments:
       - dest: vault_root
@@ -4049,7 +4049,7 @@ tools:
       external_write: none
   - tool: metadata_execution_contract
     module: Tools/metadata_execution_contract.py
-    source_hash: sha256:cc91d0a25c3a4b42aa2807d436eac5121aed57b5756bb24fb0c54c3bdd13fbb2
+    source_hash: sha256:942aa6417491d06e210e0d34269693c4e4f85cf81e67bf9d6b083c6fb6dda3a3
     description: Compile and load Cambium's closed metadata-execution authority contract. This module is deliberately the single authority boundary between metadata declarations and executable writers. A field rule is executable only when an installed writer capability declares the same ``(field, transition, adapter)`` operation, and every installed writer operation must be authorized by exactly one rule. Unknown keys, unknown adapters, orphan implementations, and partial evidence bindings fail closed.
     arguments:
       - dest: root
@@ -5623,7 +5623,7 @@ tools:
       external_write: none
   - tool: render_structure_projection
     module: Tools/render_structure_projection.py
-    source_hash: sha256:6e208ad48a64b7e919482a0d0c4e813d648995ebec896aba4dfce1543f10b34d
+    source_hash: sha256:359488e1841ec7708a7d5dae414c269e7e561c8dca3ebd18a3e3627036289869
     description: Render derived Structure Registry coverage projections (K01/05 derived roles).
     arguments:
       - dest: vault_root

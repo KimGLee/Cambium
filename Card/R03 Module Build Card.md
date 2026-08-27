@@ -11,8 +11,8 @@ source_files:
   - kernel/K02 Knowledge Work Construction/01 Inventory and Coverage Ledger.md
   - kernel/K02 Knowledge Work Construction/09 Knowledge Batch Production.md
   - kernel/K12 Quality Assurance/03 Module and Coverage Review.md
-source_hash: 'a8217de3cdd0'
-reviewed_source_hash: 'a8217de3cdd0'
+source_hash: '673f20ea6c58'
+reviewed_source_hash: '673f20ea6c58'
 reviewed_card_hash: 'bfd8b3b8c502'
 ---
 # R03 Module Build Card

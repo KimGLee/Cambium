@@ -34,7 +34,7 @@ standards_state_sha256_before: "sha256:replace-with-current-standards-state-fing
 upstream_source_ref: TODO(adoption-upstream)
 upstream_revision_id: TODO(adoption-upstream)
 standards_snapshot_sha256_after: "sha256:replace-with-kernel-tree-fingerprint"
-profile_snapshot_sha256_after: "sha256:replace-with-selected-profile-tree-fingerprint"
+profile_snapshot_sha256_after: "sha256:replace-with-selected-profile-closure-fingerprint"
 profile_contract_fingerprint_after: "sha256:replace-with-profile-contract-fingerprint"
 profile_load_inputs_sha256_after: "sha256:replace-with-root-profile-load-input-fingerprint"
 

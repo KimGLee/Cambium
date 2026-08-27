@@ -187,10 +187,20 @@ class DeterministicGateReceiptIdentityTests(unittest.TestCase):
                 self.assertEqual("owner-member-chain",
                                  capabilities[leaf]["binding_protocol"])
 
+        self.assertEqual("semantic-leaf",
+                         capabilities["structure-registry"]["role"])
+        self.assertEqual("profile-load",
+                         capabilities["structure-registry"]["owner"])
+        self.assertEqual(
+            "profile-load",
+            gate_registry_contract.standards_revalidation_owner(
+                "structure-registry", capabilities))
+
         immediate, native, projection_errors = \
             check_queue.project_adoption_gate_ids(
                 ["frontmatter-vocabulary", "page-contract",
-                 "required-queue-consistency"], capabilities)
+                 "required-queue-consistency", "structure-registry"],
+                capabilities)
         self.assertEqual([], projection_errors)
         self.assertEqual(["required-queue-consistency"], immediate)
         self.assertEqual(["batch-close"], native)

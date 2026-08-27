@@ -297,8 +297,8 @@ def currency_errors(admission):
             "against one stable rule interface"
         ]
     try:
-        current = kblib.repository_tree_sha256(
-            admission.root, admission.contract.profile_repo_dir)
+        current = admission.evaluation.rebind_profile_snapshot(
+            admission.root).sha256
     except (OSError, ValueError) as exc:
         return ["cannot re-bind the admitted Profile snapshot: %s" % exc]
     if current != admission.profile_snapshot_sha256:

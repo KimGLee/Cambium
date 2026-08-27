@@ -78,7 +78,7 @@ role_contracts:
 gates:
   - gate_id: profile-load
     tool: check_profile
-    tool_version: 2.0.0
+    tool_version: 2.2.0
     check: profile-check-summary
     mode: "*"
     dimensions:
@@ -246,18 +246,18 @@ gates:
     binding_protocol: native-owner-receipt
   - gate_id: structure-registry
     tool: check_structure
-    tool_version: 1.1.0
+    tool_version: 1.2.0
     check: structure-registry-summary
     mode: "*"
     dimensions:
       - "*"
     lifecycle:
       - not-batch-scoped
-    revalidation_role: unsupported
-    revalidation_owner: none
-    claim_edge: none
-    scope_protocol: none
-    binding_protocol: not-authorizing
+    revalidation_role: semantic-leaf
+    revalidation_owner: profile-load
+    claim_edge: project-to-owner
+    scope_protocol: inherit-owner-scope
+    binding_protocol: owner-member-chain
   - gate_id: page-contract
     tool: check_page_contract
     tool_version: 1.5.0
@@ -381,7 +381,7 @@ gates:
     binding_protocol: not-authorizing
   - gate_id: standards-adoption
     tool: adopt_standards
-    tool_version: 1.7.0
+    tool_version: 1.8.0
     check: standards_adoption
     mode: "*"
     dimensions:

@@ -96,8 +96,22 @@ class ControlRegistryContractTests(unittest.TestCase):
         unknown_owner = self.document()
         self.gate(unknown_owner)["revalidation_owner"] = "missing-owner"
         _registry, _capabilities, _metadata, errors = self.parse(unknown_owner)
-        self.assertTrue(any("must project to a distinct native owner" in item
+        self.assertTrue(any("must project to a distinct boundary owner" in item
                             for item in errors), errors)
+
+    def test_structure_leaf_projects_to_profile_after_image_owner(self):
+        _registry, capabilities, _metadata, errors = self.parse(
+            self.document())
+        self.assertEqual([], errors)
+        self.assertEqual({
+            "role": "semantic-leaf",
+            "owner": "profile-load",
+            "claim_edge": "project-to-owner",
+            "scope_protocol": "inherit-owner-scope",
+            "binding_protocol": "owner-member-chain",
+        }, capabilities["structure-registry"])
+        self.assertEqual("special-owner",
+                         capabilities["profile-load"]["role"])
 
     def test_selector_markers_cannot_mix_or_replace_exact_identity(self):
         document = self.document()

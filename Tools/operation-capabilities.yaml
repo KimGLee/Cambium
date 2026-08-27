@@ -5,7 +5,10 @@
 # state or governed pages; `checkers` lists read-only verdict/evidence
 # producers; `consumers` lists other callers. These roles do not grant
 # authority -- they make implementation ownership and dependency direction
-# machine-checkable.
+# machine-checkable. A `projection` capability additionally closes the stable
+# adopter-runtime object IDs it can consume; Profile declarations reference
+# the capability and those object IDs, never these implementation paths or a
+# current `.cambium` spelling.
 
 schema_version: 2
 
@@ -220,4 +223,16 @@ capabilities:
       - Tools/check_queue.py
     consumers:
       - Tools/register_amendment.py
+    operations: []
+
+  - capability_id: structure-coverage-projection-v1
+    kind: projection
+    capability_version: 1.0.0
+    implementation_owner: Tools/render_structure_projection.py
+    writers: []
+    checkers:
+      - Tools/check_structure.py
+    consumers: []
+    input_owners:
+      - coverage-ledger
     operations: []

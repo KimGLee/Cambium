@@ -23,7 +23,7 @@ import runtime_state_contract
 import standards_state
 
 TOOL = "adopt_standards"
-TOOL_VERSION = "1.7.0"
+TOOL_VERSION = "1.8.0"
 GATE_ID = "standards-adoption"
 # The `Check` cell K00/12 registers for this Gate; every receipt this
 # tool offers as gate evidence carries it verbatim.
@@ -36,6 +36,17 @@ LOAD_FIELDS = (
     "selected_profile_route_ids", "selected_read_sets",
     "loaded_module_paths",
 )
+PRODUCER_ERA_LOAD_PATH_FIELDS = (
+    "selected_card_paths", "selected_read_sets",
+)
+
+
+def _producer_era_load_contract_after(plan):
+    """Return the exact current component paths proposed by this plan."""
+    return {
+        field: copy.deepcopy(plan.get(field + "_after"))
+        for field in PRODUCER_ERA_LOAD_PATH_FIELDS
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -353,12 +364,17 @@ def _prepare_result(root, plan_relative):
     current = check_queue.validate_runtime(
         root,
         allow_invalid_current_profile_for_corrective_adoption=True,
-        allow_active_standards_mismatch_for_adoption=True)
+        allow_active_standards_mismatch_for_adoption=True,
+        producer_era_load_contract_after=
+            _producer_era_load_contract_after(plan))
     if current["errors"]:
         raise ValueError("current runtime is inconsistent: %s" %
                          "; ".join(current["errors"]))
     if current.get("_writer_locks"):
         raise ValueError("runtime has an active or interrupted writer lock")
+    producer_era_path_migrations = list(
+        (current.get("task_runtime") or {}).get(
+            "producer_era_path_migrations") or [])
     barrier = check_queue.delta_apply_write_barrier(
         current, TOOL, "apply")
     if barrier:
@@ -624,6 +640,7 @@ def _prepare_result(root, plan_relative):
         "transaction_id": transaction_id,
         "projection_shas": projection_shas,
         "profile_evidence": profile_evidence,
+        "producer_era_path_migrations": producer_era_path_migrations,
     }
 
 
@@ -704,12 +721,20 @@ def _commit_transaction(prepared, receipt_path):
             locked = check_queue.validate_runtime(
                 prepared["root"],
                 allow_invalid_current_profile_for_corrective_adoption=True,
-                allow_active_standards_mismatch_for_adoption=True)
+                allow_active_standards_mismatch_for_adoption=True,
+                producer_era_load_contract_after=
+                    _producer_era_load_contract_after(prepared["plan"]))
             if locked["errors"]:
                 raise ValueError("runtime changed before write: %s" %
                                  "; ".join(locked["errors"]))
             if locked.get("_writer_locks") and len(locked["_writer_locks"]) > 1:
                 raise ValueError("another runtime writer lock appeared")
+            if list((locked.get("task_runtime") or {}).get(
+                    "producer_era_path_migrations") or []) != \
+                    prepared["producer_era_path_migrations"]:
+                raise ValueError(
+                    "producer-era component path migration changed after "
+                    "adoption planning")
             _after_profile_evidence(
                 prepared["root"], prepared["plan"],
                 expected=prepared["profile_evidence"],

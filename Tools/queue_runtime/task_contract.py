@@ -6,7 +6,9 @@ selects.  These are one subject: the fingerprint is only meaningful against
 the revision the chain places it at.
 """
 
+import copy
 import os
+from pathlib import PurePosixPath
 
 import kblib
 import read_set_contract
@@ -16,6 +18,211 @@ from queue_runtime.primitives import nonempty_string
 
 
 READ_SET_BOUNDARY_OWNER_PATH = read_set_contract.SCHEMA_PATH
+_COMPONENT_PATH_MIGRATIONS_PATH = \
+    "Tools/schemas/component-path-migrations.yaml"
+_MIGRATABLE_LOAD_PATH_FIELDS = frozenset((
+    "selected_card_paths", "selected_read_sets",
+))
+
+
+def _migration_prefix(value, label):
+    """Return one canonical repository-relative directory prefix."""
+    if (not isinstance(value, str) or not value or
+            value != value.strip() or not value.endswith("/") or
+            value.endswith("//") or "\\" in value or "\x00" in value):
+        raise ValueError("%s must be a canonical path prefix ending in /" %
+                         label)
+    directory = value[:-1]
+    candidate = PurePosixPath(directory)
+    if (candidate.is_absolute() or not candidate.parts or
+            any(part in ("", ".", "..") for part in candidate.parts) or
+            candidate.as_posix() != directory):
+        raise ValueError("%s must stay repository-relative" % label)
+    return value
+
+
+def _component_path_migrations(root):
+    """Load the Tool-owned closed registry of persisted path migrations."""
+    path = kblib.managed_repository_path(
+        root, _COMPONENT_PATH_MIGRATIONS_PATH, "Tools/schemas",
+        suffixes=(".yaml",), must_exist=True)
+    document = kblib.load_yaml_file(path)
+    if not isinstance(document, dict):
+        raise ValueError("%s must be a mapping" %
+                         _COMPONENT_PATH_MIGRATIONS_PATH)
+    expected = {
+        "schema_version", "migration_fields", "path_field_fields",
+        "migrations",
+    }
+    if set(document) != expected:
+        raise ValueError(
+            "%s fields are not closed: missing=%s extra=%s" % (
+                _COMPONENT_PATH_MIGRATIONS_PATH,
+                sorted(expected - set(document)),
+                sorted(set(document) - expected)))
+    if document.get("schema_version") != 1:
+        raise ValueError("unsupported component path migration schema_version")
+    migration_fields = document.get("migration_fields")
+    path_field_fields = document.get("path_field_fields")
+    if migration_fields != ["migration_id", "path_fields"]:
+        raise ValueError(
+            "%s.migration_fields must define the canonical closed order" %
+            _COMPONENT_PATH_MIGRATIONS_PATH)
+    if path_field_fields != [
+            "contract_field", "producer_prefix", "current_prefix"]:
+        raise ValueError(
+            "%s.path_field_fields must define the canonical closed order" %
+            _COMPONENT_PATH_MIGRATIONS_PATH)
+    migrations = document.get("migrations")
+    if not isinstance(migrations, list) or not migrations:
+        raise ValueError("%s.migrations must be a non-empty list" %
+                         _COMPONENT_PATH_MIGRATIONS_PATH)
+
+    normalized = []
+    seen_ids = set()
+    prefixes_by_field = {}
+    for index, migration in enumerate(migrations):
+        label = "%s.migrations[%d]" % (
+            _COMPONENT_PATH_MIGRATIONS_PATH, index)
+        if not isinstance(migration, dict) or set(migration) != \
+                set(migration_fields):
+            raise ValueError("%s fields differ from migration_fields" % label)
+        migration_id = migration.get("migration_id")
+        if (not isinstance(migration_id, str) or not migration_id or
+                migration_id != migration_id.strip()):
+            raise ValueError("%s.migration_id must be non-empty" % label)
+        if migration_id in seen_ids:
+            raise ValueError("%s repeats migration_id %s" %
+                             (_COMPONENT_PATH_MIGRATIONS_PATH, migration_id))
+        seen_ids.add(migration_id)
+        rows = migration.get("path_fields")
+        if not isinstance(rows, list) or not rows:
+            raise ValueError("%s.path_fields must be a non-empty list" % label)
+        normalized_rows = []
+        seen_fields = set()
+        for row_index, row in enumerate(rows):
+            row_label = "%s.path_fields[%d]" % (label, row_index)
+            if not isinstance(row, dict) or set(row) != \
+                    set(path_field_fields):
+                raise ValueError(
+                    "%s fields differ from path_field_fields" % row_label)
+            field = row.get("contract_field")
+            if field not in _MIGRATABLE_LOAD_PATH_FIELDS:
+                raise ValueError("%s.contract_field is not migratable: %r" %
+                                 (row_label, field))
+            if field in seen_fields:
+                raise ValueError("%s repeats contract_field %s" %
+                                 (label, field))
+            seen_fields.add(field)
+            producer = _migration_prefix(
+                row.get("producer_prefix"),
+                "%s.producer_prefix" % row_label)
+            current = _migration_prefix(
+                row.get("current_prefix"),
+                "%s.current_prefix" % row_label)
+            if producer == current:
+                raise ValueError("%s does not change its path prefix" %
+                                 row_label)
+            known = prefixes_by_field.setdefault(field, [])
+            if any(producer.startswith(other) or other.startswith(producer)
+                   for other in known):
+                raise ValueError(
+                    "%s producer_prefix overlaps another migration" %
+                    row_label)
+            known.append(producer)
+            normalized_rows.append({
+                "contract_field": field,
+                "producer_prefix": producer,
+                "current_prefix": current,
+            })
+        normalized.append({
+            "migration_id": migration_id,
+            "path_fields": normalized_rows,
+        })
+    return normalized
+
+
+def producer_era_load_contract_view(root, contract, after_fields):
+    """Project registered producer paths only for one adoption before-image.
+
+    The returned contract is an in-memory traversal view.  It never replaces
+    the persisted contract used by fingerprints, history, or receipts.  A
+    producer path is projected only when the adoption's declared after-image
+    contains the exact registered current path and that target exists.  This
+    makes the bridge a one-way, plan-bound migration rather than a permanent
+    alias accepted by ordinary runtime validation.
+    """
+    errors = []
+    if not isinstance(contract, dict):
+        return None, [], ["producer-era load contract must be a mapping"]
+    if not isinstance(after_fields, dict) or set(after_fields) != \
+            _MIGRATABLE_LOAD_PATH_FIELDS:
+        return None, [], [
+            "producer-era load after-image must contain exactly %s" %
+            ", ".join(sorted(_MIGRATABLE_LOAD_PATH_FIELDS))]
+    for field in _MIGRATABLE_LOAD_PATH_FIELDS:
+        values = after_fields.get(field)
+        if (not isinstance(values, list) or
+                any(not isinstance(value, str) or not value
+                    for value in values) or len(values) != len(set(values))):
+            errors.append(
+                "producer-era load after-image %s must be an explicit unique "
+                "string list" % field)
+    if errors:
+        return None, [], errors
+    try:
+        migrations = _component_path_migrations(root)
+    except (OSError, UnicodeError, ValueError, kblib.YamlSubsetError) as exc:
+        return None, [], [
+            "component path migration registry is invalid: %s" % exc]
+
+    projected = copy.deepcopy(contract)
+    evidence = []
+    for migration in migrations:
+        for row in migration["path_fields"]:
+            field = row["contract_field"]
+            before_values = projected.get(field)
+            if not isinstance(before_values, list):
+                continue
+            after_values = set(after_fields[field])
+            replaced = []
+            for before in before_values:
+                if (not isinstance(before, str) or
+                        not before.startswith(row["producer_prefix"])):
+                    replaced.append(before)
+                    continue
+                suffix = before[len(row["producer_prefix"]):]
+                target = row["current_prefix"] + suffix
+                if not suffix or target not in after_values:
+                    errors.append(
+                        "producer-era %s path %s has registered target %s, "
+                        "but the adoption after-image does not declare it" %
+                        (field, before, target))
+                    replaced.append(before)
+                    continue
+                try:
+                    kblib.repository_path(
+                        root, target, must_exist=True, reject_symlink=True)
+                except (OSError, UnicodeError, ValueError) as exc:
+                    errors.append(
+                        "producer-era %s path %s maps to unsafe or missing "
+                        "current path %s: %s" %
+                        (field, before, target, exc))
+                    replaced.append(before)
+                    continue
+                replaced.append(target)
+                evidence.append({
+                    "migration_id": migration["migration_id"],
+                    "contract_field": field,
+                    "producer_path": before,
+                    "current_path": target,
+                })
+            if len(replaced) != len(set(replaced)):
+                errors.append(
+                    "producer-era projection creates duplicate %s paths" %
+                    field)
+            projected[field] = replaced
+    return projected, evidence, errors
 
 
 def contract_sha256(progress):

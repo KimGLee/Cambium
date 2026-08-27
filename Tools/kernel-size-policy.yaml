@@ -37,7 +37,7 @@ exceptions:
     growth_cap_bytes: 10240
     record_id: EXC-006
   - path: kernel/K12 Quality Assurance/07 Audit Evidence Reuse and Invalidation.md
-    measured_bytes: 17142
+    measured_bytes: 17165
     growth_cap_bytes: 26112
     record_id: EXC-007
   - path: kernel/K00 Standards Control/09 Default Constraints Snapshot.md

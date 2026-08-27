@@ -38,7 +38,7 @@ an absent or ambiguous heading is unresolved. The closure is all-or-nothing:
 an invalid edge does not disappear and the foreign target's bytes cannot stand
 in for an authorized dependency.
 
-The `profile-load` Gate in [[kernel/K00 Standards Control/12 Control Registry#Control Registry|Control Registry]] is the sole control owner. Its producer derives the closure from one immutable Profile snapshot and emits that snapshot fingerprint, a typed contract fingerprint, and one fingerprint over the complete canonical root-input closure. Consumers invoke that producer once or consume a current receipt; they MUST NOT reparse explanatory prose, reopen slot bytes into a second authority observation, or substitute caller-selected rule inputs into another authority graph. Which root inputs and capability implementations form the closure is owned by the producer's machine contract, not this prose.
+The `profile-load` Gate in [[kernel/K00 Standards Control/12 Control Registry#Control Registry|Control Registry]] is the sole control owner. Its `profile_snapshot_sha256` binds exactly the manifest and every Profile-owned file reachable through the authorized typed dependency closure; an unrelated file merely colocated in the Profile directory is not Profile authority and does not enter that identity. The producer additionally emits a typed contract fingerprint and one fingerprint over the complete canonical root-input closure. Consumers invoke that producer once or consume a current receipt; they MUST NOT reparse explanatory prose, reopen slot bytes into a second authority observation, or substitute caller-selected rule inputs into another authority graph. Which root inputs and capability implementations form the closure is owned by the producer's machine contract, not this prose.
 
 Runtime authority membership is a closed machine-readable registry. Active
 Standards and `profile-load` are primary authorities; a derived authority is
@@ -49,9 +49,20 @@ boundary rather than combine observations from different snapshots.
 
 The closure is not a Read Set, selects no route, and is never copied into
 `selected_read_sets` or `loaded_module_paths`. Because every Profile-owned
-target of a passing closure remains inside one Profile directory, the directory
-snapshot binds its bytes while the contract fingerprint binds dependency kind,
-owner and target identity, canonical path, and optional heading.
+target of a passing closure remains inside one Profile directory, the projected
+Profile snapshot binds exactly those target bytes while the contract
+fingerprint binds dependency kind, owner and target identity, canonical path,
+and optional heading. Root-owned interface, capability, and contract inputs
+remain separately bound by `profile_load_inputs_sha256`.
+
+For a Structure Registry, package admission validates both the Kernel-owned
+version-2 shape and every derived role's stable projection-capability/runtime-
+object identity against that root-input closure. It does not replace the
+`structure-registry` Gate's current corpus-path, heading, Global Map, or
+Coverage resolution. During Standards adoption the Structure predicate names
+both affected Gates: `profile-load` owns candidate after-image admission, and
+`structure-registry` is its semantic leaf for the structural resolution that
+the admitted package requires.
 
 A consumer that freezes this identity into mutable runtime state treats a
 passing evaluation as a compare value, not a lease. Before committing a result

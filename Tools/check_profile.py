@@ -100,7 +100,7 @@ import profile_contract
 import profile_layout_contract
 
 TOOL = "check_profile"
-TOOL_VERSION = "2.0.0"
+TOOL_VERSION = "2.2.0"
 GATE_ID = "profile-load"
 GATE_CHECK = "profile-check-summary"
 GATE_DIMENSION = "guidance_and_contract"
@@ -152,6 +152,21 @@ class ProfileLoadEvaluation:
             self.profile_load_inputs_sha256 is not None
         )
 
+    def rebind_profile_snapshot(self, root=None):
+        """Re-read only the typed Profile closure authorized by this view."""
+        if not self.authorized:
+            raise ValueError(
+                "cannot re-bind a Profile snapshot from an unauthorized "
+                "evaluation")
+        effective_root = self.contract.root if root is None else os.path.realpath(
+            os.path.abspath(os.fspath(root)))
+        if effective_root != os.path.realpath(self.contract.root):
+            raise ValueError(
+                "Profile evaluation belongs to a different repository root")
+        candidate_tree = kblib.repository_tree_snapshot(
+            effective_root, self.contract.profile_repo_dir)
+        return candidate_tree.project(self.contract.profile_snapshot_paths)
+
 
 REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
@@ -165,6 +180,7 @@ DEFAULT_EXECUTION_DEFAULTS = (
     "kernel/K00 Standards Control/execution-defaults-base.yaml"
 )
 DEFAULT_OPERATION_CAPABILITIES = "Tools/operation-capabilities.yaml"
+DEFAULT_RUNTIME_PATH_REGISTRY = "Tools/runtime_paths.py"
 DEFAULT_SCAN_CAPABILITIES = profile_contract.SCAN_CAPABILITY_PATH
 DEFAULT_METADATA_AUTHORITY = (
     "kernel/K08 Metadata and Status/metadata-authority-base.yaml")
@@ -181,6 +197,7 @@ CANONICAL_PROFILE_LOAD_INPUTS = (
     DEFAULT_DEFAULTS,
     DEFAULT_EXECUTION_DEFAULTS,
     DEFAULT_OPERATION_CAPABILITIES,
+    DEFAULT_RUNTIME_PATH_REGISTRY,
     DEFAULT_SCAN_CAPABILITIES,
     DEFAULT_METADATA_AUTHORITY,
     DEFAULT_METADATA_CONTRACT,
@@ -323,6 +340,8 @@ _MECHANICAL_CHECKS = frozenset((
     "structure-registry-layer",
     "structure-registry-layout",
     "structure-registry-role",
+    "structure-registry-capability",
+    "structure-registry-input-owner",
     # Priority Rubric quota block
     "priority-quota-policy",
     # Metadata Contract slot shape (kblib validator)
@@ -681,6 +700,58 @@ def profile_declarations(profile_snapshot):
                     )
 
 
+def _validate_profile_declarations(profile_snapshot, profile_disp, sentinel,
+                                   add):
+    """Validate declarations only in the typed Profile snapshot closure."""
+    declaration_count = 0
+    for rel, heading, kind, value, tables in profile_declarations(
+            profile_snapshot):
+        declaration_count += 1
+        target = "%s/%s#%s" % (profile_disp, rel, heading)
+        if sentinel in value:
+            continue
+        active = value == "Configured"
+        registration_inactive = value == "None"
+        applicability_inactive = bool(
+            re.fullmatch(r"Not applicable — .+", value))
+        inactive = registration_inactive or applicability_inactive
+        valid = (
+            kind == "Registration" and (active or registration_inactive)
+        ) or (
+            kind == "Applicability" and (active or applicability_inactive)
+        )
+        if not valid:
+            expected = ("`None` or `Configured`"
+                        if kind == "Registration"
+                        else "`Configured` or `Not applicable — <reason>`")
+            add("declaration-invalid", target, "fail",
+                "%s declaration %r is invalid; use %s" %
+                (kind, value, expected))
+            continue
+        if active:
+            if not tables:
+                add("configured-table-missing", target, "fail",
+                    "Configured declares an active block, but the section has "
+                    "no table to carry its bindings")
+            for table_no, (header, rows) in enumerate(tables, 1):
+                if not rows:
+                    add("configured-table-empty", target, "fail",
+                        "Configured table %d has no data row" % table_no)
+                    continue
+                for row_no, cells in enumerate(rows, 1):
+                    if (len(cells) != len(header) or
+                            any(not cell for cell in cells)):
+                        add("configured-table-incomplete", target, "fail",
+                            "Configured table %d row %d has %d/%d cells or "
+                            "an empty cell" %
+                            (table_no, row_no, len(cells), len(header)))
+        elif inactive and any(rows for _, rows in tables):
+            add("inactive-table-has-rows", target, "fail",
+                "%s leaves active table rows behind; remove those rows so "
+                "the single declaration is authoritative" % value)
+    return declaration_count
+
+
 def unbacktick(value):
     value = value.strip()
     m = re.fullmatch(r"`([^`]*)`", value)
@@ -932,6 +1003,8 @@ def main(argv=None, *, _evaluation_out=None,
     profile_id = None
     profile_snapshot_sha256 = None
     profile_snapshot = None
+    profile_tree_snapshot = None
+    profile_snapshot_before = None
     profile_load_inputs_sha256 = None
     resolved_overrides = ()
     summary = None
@@ -1081,6 +1154,8 @@ def main(argv=None, *, _evaluation_out=None,
             normative_snapshots[DEFAULT_METADATA_AUTHORITY].read_text())
         operation_capabilities = kblib.parse_yaml_subset(
             normative_snapshots[DEFAULT_OPERATION_CAPABILITIES].read_text())
+        operation_capabilities = metadata_execution_contract.\
+            validate_operation_capabilities_document(operation_capabilities)
         compiled_metadata = \
             metadata_execution_contract.compile_metadata_execution_document(
                 metadata_authority, operation_capabilities,
@@ -1112,13 +1187,15 @@ def main(argv=None, *, _evaluation_out=None,
             % exc)
         return finish()
 
-    # Bind the exact Profile bytes before any existence judgment or read.  A
-    # pathname-level isdir/isfile preflight after MCP admission would merely
+    # Bind the candidate Profile bytes before any existence judgment or read.
+    # The typed linker below projects the public manifest/dependency closure;
+    # unrelated package files never enter the Profile authority fingerprint.
+    # A pathname-level isdir/isfile preflight after MCP admission would merely
     # reopen the race before this snapshot.
     # A second digest below must match before a pass receipt can describe this
     # snapshot; otherwise the run combined observations from two revisions.
     try:
-        profile_snapshot = kblib.repository_tree_snapshot(
+        profile_tree_snapshot = kblib.repository_tree_snapshot(
             root, profile_disp)
     except (OSError, ValueError) as exc:
         missing = (isinstance(exc, FileNotFoundError) or
@@ -1136,8 +1213,6 @@ def main(argv=None, *, _evaluation_out=None,
             add("profile-snapshot-invalid", profile_disp, "fail", details)
         say("check_profile: FAIL — %s" % details)
         return finish()
-    profile_snapshot_before = profile_snapshot.sha256
-
     manifest_path = os.path.join(
         profile_dir, profile_layout_contract.PROFILE_MANIFEST_NAME)
     manifest_relative = (
@@ -1145,7 +1220,7 @@ def main(argv=None, *, _evaluation_out=None,
         if profile_disp == "." else
         "%s/%s" % (
             profile_disp, profile_layout_contract.PROFILE_MANIFEST_NAME))
-    if manifest_relative not in profile_snapshot.files:
+    if manifest_relative not in profile_tree_snapshot.files:
         add("manifest-missing", manifest_relative, "fail",
             "the profile manifest %s is missing; every slot binding is "
             "declared there, so nothing about this profile can be verified"
@@ -1157,7 +1232,7 @@ def main(argv=None, *, _evaluation_out=None,
     def profile_snapshot_text(path):
         relative = os.path.relpath(
             os.path.abspath(path), root).replace(os.sep, "/")
-        return profile_snapshot.read_text(relative)
+        return profile_tree_snapshot.read_text(relative)
 
     try:
         interface_text = normative_snapshots[DEFAULT_INTERFACE].read_text()
@@ -1199,8 +1274,6 @@ def main(argv=None, *, _evaluation_out=None,
                       if isinstance(e, dict) and e.get("item")}
 
     try:
-        hits, files_read, files_skipped = scan_sentinel(
-            profile_snapshot, sentinel)
         manifest_text = profile_snapshot_text(manifest_path)
     except (OSError, UnicodeError) as exc:
         add("profile-text-unreadable", profile_disp, "fail",
@@ -1230,14 +1303,7 @@ def main(argv=None, *, _evaluation_out=None,
             "linker's closed ordered registry; interface=%r linker=%r" %
             (tuple(slots), profile_contract.PROFILE_FILE_SLOTS))
 
-    # ---- block 1: unfilled sentinel anywhere under the profile directory ----
-    for rel, lineno in hits:
-        add("unfilled-placeholder", "%s/%s:%d" % (profile_disp, rel, lineno), "fail",
-            "line still carries the unfilled sentinel %r; a profile with any "
-            "TODO left is a template skeleton, not a runnable profile"
-            % sentinel)
-
-    # ---- block 2: placeholder profile_id ----
+    # ---- placeholder profile_id ----
     profile_id, identity_errors = kblib.profile_identity(
         manifest_text, os.path.basename(profile_dir), reserved_ids
     )
@@ -1246,53 +1312,6 @@ def main(argv=None, *, _evaluation_out=None,
                   if check == "profile-id-missing"
                   else "%s#profile_id" % manifest_disp)
         add(check, target, "fail", details)
-
-    # ---- explicit optional/conditional block declarations ----
-    declaration_count = 0
-    for rel, heading, kind, value, tables in profile_declarations(
-            profile_snapshot):
-        declaration_count += 1
-        target = "%s/%s#%s" % (profile_disp, rel, heading)
-        if sentinel in value:
-            continue
-        active = value == "Configured"
-        registration_inactive = value == "None"
-        applicability_inactive = bool(
-            re.fullmatch(r"Not applicable — .+", value)
-        )
-        inactive = registration_inactive or applicability_inactive
-        valid = (
-            kind == "Registration" and (active or registration_inactive)
-        ) or (
-            kind == "Applicability" and (active or applicability_inactive)
-        )
-        if not valid:
-            expected = ("`None` or `Configured`" if kind == "Registration"
-                        else "`Configured` or `Not applicable — <reason>`")
-            add("declaration-invalid", target, "fail",
-                "%s declaration %r is invalid; use %s"
-                % (kind, value, expected))
-            continue
-        if active:
-            if not tables:
-                add("configured-table-missing", target, "fail",
-                    "Configured declares an active block, but the section has "
-                    "no table to carry its bindings")
-            for table_no, (header, rows) in enumerate(tables, 1):
-                if not rows:
-                    add("configured-table-empty", target, "fail",
-                        "Configured table %d has no data row" % table_no)
-                    continue
-                for row_no, cells in enumerate(rows, 1):
-                    if len(cells) != len(header) or any(not cell for cell in cells):
-                        add("configured-table-incomplete", target, "fail",
-                            "Configured table %d row %d has %d/%d cells or an "
-                            "empty cell" %
-                            (table_no, row_no, len(cells), len(header)))
-        elif inactive and any(rows for _, rows in tables):
-            add("inactive-table-has-rows", target, "fail",
-                "%s leaves active table rows behind; remove those rows so the "
-                "single declaration is authoritative" % value)
 
     # ---- slot coverage and binding resolution ----
     bindings, duplicate_bindings = parse_bindings(manifest_text)
@@ -1343,10 +1362,24 @@ def main(argv=None, *, _evaluation_out=None,
                         add("structure-registry-yaml", target, "fail",
                             "cannot parse restricted YAML: %s" % exc)
                     else:
-                        for check, label, details in \
-                                kblib.validate_structure_registry_shape(
-                                    document, target):
+                        shape_errors = \
+                            kblib.validate_structure_registry_shape(
+                                document, target)
+                        for check, label, details in shape_errors:
                             add(check, label, "fail", details)
+                        if not shape_errors:
+                            projection_capabilities = {
+                                entry["capability_id"]: entry
+                                for entry in operation_capabilities[
+                                    "capabilities"]
+                                if entry["kind"] == "projection"
+                            }
+                            for check, label, details in \
+                                    kblib.\
+                                    validate_structure_registry_references(
+                                        document, projection_capabilities,
+                                        target):
+                                add(check, label, "fail", details)
             elif slot == PRIORITY_RUBRIC_SLOT:
                 target = os.path.relpath(
                     detail, root).replace(os.sep, "/")
@@ -1416,8 +1449,39 @@ def main(argv=None, *, _evaluation_out=None,
     # keep executing another Profile's config or citing its predicate owner.
     contract = profile_contract.load_profile_contract(
         root, manifest_path, sentinel=sentinel,
-        profile_snapshot=profile_snapshot,
+        profile_snapshot=profile_tree_snapshot,
         root_input_snapshots=normative_snapshots)
+
+    hits = []
+    files_read = 0
+    files_skipped = len(profile_tree_snapshot.files)
+    declaration_count = 0
+    try:
+        profile_snapshot = profile_tree_snapshot.project(
+            contract.profile_snapshot_paths)
+        profile_snapshot_before = profile_snapshot.sha256
+        hits, files_read, closure_skipped = scan_sentinel(
+            profile_snapshot, sentinel)
+        files_skipped = (
+            len(profile_tree_snapshot.files) - len(profile_snapshot.files) +
+            closure_skipped)
+        declaration_count = _validate_profile_declarations(
+            profile_snapshot, profile_disp, sentinel, add)
+    except (OSError, UnicodeError, ValueError) as exc:
+        add("profile-snapshot-invalid", profile_disp, "fail",
+            "cannot project the selected Profile's typed dependency "
+            "closure from its immutable candidate tree: %s" % exc)
+
+    # An unbound file is not part of the selected Profile contract.  Sentinel
+    # and declaration validation therefore operate on the same projected
+    # bytes that the public snapshot fingerprint identifies.
+    for rel, lineno in hits:
+        target = ("%s/%s:%d" % (profile_disp, rel, lineno)
+                  if profile_disp != "." else "%s:%d" % (rel, lineno))
+        add("unfilled-placeholder", target, "fail",
+            "line still carries the unfilled sentinel %r; a typed Profile "
+            "dependency with any TODO left is not runnable" % sentinel)
+
     sentinel_targets = {
         "%s:%d" % (("%s/%s" % (profile_disp, rel))
                     if profile_disp != "." else rel, lineno)
@@ -1504,18 +1568,20 @@ def main(argv=None, *, _evaluation_out=None,
 
     if profile_snapshot_before is not None:
         try:
-            profile_snapshot_after = kblib.repository_tree_sha256(
+            current_profile_tree = kblib.repository_tree_snapshot(
                 root, contract.profile_repo_dir or profile_disp)
+            profile_snapshot_after = current_profile_tree.project(
+                contract.profile_snapshot_paths).sha256
         except (OSError, ValueError) as exc:
             add("profile-snapshot-invalid", profile_disp, "fail",
-                "cannot re-bind the selected Profile directory snapshot: %s" %
-                exc)
+                "cannot re-bind the selected Profile dependency closure: %s"
+                % exc)
         else:
             if profile_snapshot_after != profile_snapshot_before:
                 add("profile-snapshot-changed-during-check", profile_disp,
-                    "fail", "selected Profile bytes changed while "
-                    "profile-load was deriving its contract; rerun against "
-                    "one stable snapshot")
+                    "fail", "selected Profile dependency bytes changed "
+                    "while profile-load was deriving its contract; rerun "
+                    "against one stable snapshot")
             else:
                 profile_snapshot_sha256 = profile_snapshot_after
 

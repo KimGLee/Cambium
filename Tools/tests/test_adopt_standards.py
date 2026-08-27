@@ -26,6 +26,7 @@ import check_queue
 # that name in the module the caller lives in.
 import queue_runtime.runtime
 import queue_runtime.adoption
+import queue_runtime.task_contract
 import check_vocab
 import kblib
 import seal_receipts
@@ -1304,6 +1305,95 @@ class PausedPlanAdmissionTests(_TemplateBackedCase):
     # then writes its own plan bytes -- and sometimes governance bytes or a
     # pre-seeded receipt register -- so each takes a private copy.
     TEMPLATE = "paused"
+
+    def test_producer_era_component_paths_migrate_only_through_adoption(self):
+        """The sole load-contract writer must cross a namespace move.
+
+        This fixture is deliberately adopter-neutral: it starts from the
+        shared runtime's three ordinary routes, rewrites only their persisted
+        producer-era Card/Read Set path identities, and leaves the current
+        distribution with only the canonical top-level paths.  Ordinary
+        runtime validation must continue to reject that before-image.  The
+        Standards adoption writer, however, must be able to read it long
+        enough to atomically publish the strictly valid current after-image.
+        """
+        progress_path = self.root / check_queue.PROGRESS_PATH
+        progress = self.load(check_queue.PROGRESS_PATH)
+        contract = progress["contract"]
+        current_cards = list(contract["selected_card_paths"])
+        current_read_sets = list(contract["selected_read_sets"])
+        contract["selected_card_paths"] = sorted(
+            path.replace("Card/", "kernel/Cards/", 1)
+            for path in current_cards)
+        contract["selected_read_sets"] = sorted(
+            path.replace("Read Set/", "kernel/Read Sets/", 1)
+            for path in current_read_sets)
+        progress_path.write_text(
+            kblib.canonical_yaml(progress), encoding="utf-8")
+
+        # Restamp only fixture evidence so it represents bytes a legitimate
+        # earlier producer would have written.  Production history remains
+        # append-only; the test is manufacturing the historical before-image,
+        # not exercising a repair by receipt rewrite.
+        planned = kblib.load_yaml_file(FIXTURE / check_queue.PROGRESS_PATH)
+        planned["contract"] = copy.deepcopy(contract)
+        planned_sha = kblib.sha256_bytes(kblib.canonical_yaml(planned))
+        current_sha = kblib.sha256_file(progress_path)
+        contract_sha = check_queue.contract_sha256(progress)
+        receipt_path = self.root / \
+            ".cambium/receipts/task-transitions.jsonl"
+        rows = [json.loads(line) for line in receipt_path.read_text(
+            encoding="utf-8").splitlines() if line.strip()]
+        for row in rows:
+            if row.get("receipt_id") == "audit-fixture-initial-queue":
+                row["contract_sha256"] = contract_sha
+                row["after_progress_sha256"] = planned_sha
+            elif row.get("tool") == "update_task":
+                row["contract_sha256"] = contract_sha
+                row["before_progress_sha256"] = planned_sha
+                row["after_progress_sha256"] = current_sha
+        receipt_path.write_text(
+            "".join(json.dumps(row, separators=(",", ":")) + "\n"
+                    for row in rows), encoding="utf-8")
+
+        strict_before = check_queue.validate_runtime(self.root)
+        self.assertTrue(any(
+            "kernel/Read Sets/" in error and
+            "selected Read Set" in error
+            for error in strict_before["errors"]), strict_before["errors"])
+
+        self.plan(overrides={
+            "contract_version_after": "c2",
+            "selected_card_paths_after": current_cards,
+            "selected_read_sets_after": current_read_sets,
+        })
+        code, output = self.command(apply=True, actor="integrator")
+        self.assertEqual(0, code, output)
+
+        final = check_queue.validate_runtime(self.root)
+        self.assertEqual([], final["errors"])
+        self.assertEqual(
+            current_cards,
+            final["progress"]["contract"]["selected_card_paths"])
+        self.assertEqual(
+            current_read_sets,
+            final["progress"]["contract"]["selected_read_sets"])
+        adoption_receipts = [json.loads(line) for line in (
+            self.root / self.RECEIPTS).read_text(
+                encoding="utf-8").splitlines() if line.strip()]
+        commit = next(row for row in adoption_receipts
+                      if row.get("transaction_phase") == "commit")
+        self.assertEqual(
+            sorted(path.replace("Card/", "kernel/Cards/", 1)
+                   for path in current_cards),
+            commit["selected_card_paths_before"])
+        self.assertEqual(current_cards, commit["selected_card_paths_after"])
+        self.assertEqual(
+            sorted(path.replace("Read Set/", "kernel/Read Sets/", 1)
+                   for path in current_read_sets),
+            commit["selected_read_sets_before"])
+        self.assertEqual(
+            current_read_sets, commit["selected_read_sets_after"])
 
     def test_a_declared_null_upstream_pair_is_an_answer(self):
         plan = self.plan(overrides={
@@ -3290,6 +3380,51 @@ class SealedAggregateTests(_TemplateBackedCase):
 class PureFunctionTests(AdoptStandardsFixture, unittest.TestCase):
     # No scenario: these tests exercise pure parsers and in-memory
     # projections, so no repository tree is built and nothing is walked.
+
+    def test_component_path_projection_is_exact_and_plan_bound(self):
+        contract = {
+            "selected_card_paths": [
+                "kernel/Cards/R01 Core Bootstrap Card.md"],
+            "selected_read_sets": [
+                "kernel/Read Sets/R01 Core Bootstrap Read Set.md"],
+        }
+        after = {
+            "selected_card_paths": [
+                "Card/R01 Core Bootstrap Card.md"],
+            "selected_read_sets": [
+                "Read Set/R01 Core Bootstrap Read Set.md"],
+        }
+        projected, evidence, errors = \
+            queue_runtime.task_contract.producer_era_load_contract_view(
+                TOOLS.parent, contract, after)
+        self.assertEqual([], errors)
+        self.assertEqual(after, projected)
+        self.assertEqual(2, len(evidence))
+        self.assertEqual(
+            {"top-level-card-read-set-v1"},
+            {row["migration_id"] for row in evidence})
+
+        missing_after = copy.deepcopy(after)
+        missing_after["selected_read_sets"] = []
+        projected, _evidence, errors = \
+            queue_runtime.task_contract.producer_era_load_contract_view(
+                TOOLS.parent, contract, missing_after)
+        self.assertTrue(any(
+            "adoption after-image does not declare" in error
+            for error in errors), errors)
+        self.assertEqual(
+            contract["selected_read_sets"],
+            projected["selected_read_sets"])
+
+    def test_component_path_projection_is_not_a_runtime_alias(self):
+        with self.assertRaisesRegex(
+                ValueError, "restricted to the persisted Standards adoption"):
+            check_queue.validate_runtime(
+                TOOLS.parent,
+                producer_era_load_contract_after={
+                    "selected_card_paths": [],
+                    "selected_read_sets": [],
+                })
 
     def test_read_set_type_must_be_a_scalar_string(self):
         """Malformed YAML types are rejected without raising TypeError."""

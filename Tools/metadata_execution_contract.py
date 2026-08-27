@@ -18,10 +18,11 @@ import re
 import sys
 
 import kblib
+import runtime_paths
 
 
 TOOL = "metadata_execution_contract"
-TOOL_VERSION = "1.0.0"
+TOOL_VERSION = "1.1.0"
 SCHEMA_VERSION = 1
 ARTIFACT = "metadata-execution-contract"
 DEFAULT_AUTHORITY_PATH = (
@@ -54,6 +55,7 @@ LEGACY_CAPABILITY_KEYS = frozenset((
 CAPABILITY_KEYS = frozenset((
     "capability_id", "kind", "capability_version", "implementation_owner",
     "writers", "checkers", "consumers", "operations"))
+PROJECTION_CAPABILITY_KEYS = CAPABILITY_KEYS | frozenset(("input_owners",))
 IMPLEMENTATION_ROLE_KEYS = ("writers", "checkers", "consumers")
 WRITER_OPERATION_KEYS = frozenset((
     "field", "transition", "source_adapter"))
@@ -76,7 +78,8 @@ AUTHORITY_CLASSES = frozenset((
     "content-authored", "user-owned", "ledger-projection",
     "evidence-projection", "derived-transient"))
 CAPABILITY_KINDS = frozenset((
-    "writer", "consumer", "producer", "receipt-schema"))
+    "writer", "consumer", "producer", "receipt-schema", "projection"))
+METADATA_EXECUTION_CAPABILITY_KINDS = CAPABILITY_KINDS - {"projection"}
 CAPABILITIES_SCHEMA_VERSION = 2
 FIELD_ID_RE = re.compile(r"[a-z][a-z0-9_]*\Z")
 STABLE_ID_RE = re.compile(r"[a-z][a-z0-9]*(?:-[a-z0-9]+)*\Z")
@@ -340,16 +343,23 @@ def _validate_capabilities(document):
     seen_generic_writer_operations = {}
     for index, entry in enumerate(entries):
         target = "capabilities[%d]" % index
-        entry_keys = (CAPABILITY_KEYS if schema_version == 2 else
-                      LEGACY_CAPABILITY_KEYS)
+        kind = entry.get("kind") if isinstance(entry, dict) else None
+        entry_keys = (
+            PROJECTION_CAPABILITY_KEYS
+            if schema_version == 2 and kind == "projection"
+            else CAPABILITY_KEYS if schema_version == 2
+            else LEGACY_CAPABILITY_KEYS)
         if not _closed_keys(entry, entry_keys, target, errors):
             continue
         capability_id = entry.get("capability_id")
-        kind = entry.get("kind")
         _nonempty_id(capability_id, STABLE_ID_RE,
                      target + ".capability_id", errors)
         if kind not in CAPABILITY_KINDS:
             errors.append("%s.kind is not registered" % target)
+        if kind == "projection" and schema_version != 2:
+            errors.append(
+                "%s projection capabilities require schema_version 2" %
+                target)
         if capability_id in seen_capability_ids:
             errors.append(
                 "duplicate capability_id %s across capabilities[%d] and %s; "
@@ -386,6 +396,27 @@ def _validate_capabilities(document):
         if schema_version == 2:
             if validate_path(owner, target + ".implementation_owner"):
                 seen_paths.add(owner)
+            if kind == "projection":
+                input_owners = entry.get("input_owners")
+                if (not isinstance(input_owners, list) or not input_owners or
+                        any(not isinstance(item, str) or
+                            STABLE_ID_RE.fullmatch(item) is None
+                            for item in input_owners) or
+                        len(input_owners) != len(set(input_owners))):
+                    errors.append(
+                        "%s.input_owners must be a non-empty unique stable-ID "
+                        "list" % target)
+                else:
+                    unknown = []
+                    for input_owner in sorted(input_owners):
+                        try:
+                            runtime_paths.path_for(input_owner)
+                        except KeyError:
+                            unknown.append(input_owner)
+                    if unknown:
+                        errors.append(
+                            "%s.input_owners names unknown runtime object(s): "
+                            "%s" % (target, ", ".join(unknown)))
         for group_name, implementation_paths in implementation_groups:
             if (not isinstance(implementation_paths, list) or
                     (schema_version == 1 and not implementation_paths)):
@@ -408,7 +439,7 @@ def _validate_capabilities(document):
         if not isinstance(operations, list):
             errors.append("%s.operations must be a list" % target)
             continue
-        if kind in ("producer", "receipt-schema") and operations:
+        if kind in ("producer", "receipt-schema", "projection") and operations:
             errors.append("%s kind %s must have closed empty operations" %
                           (target, kind))
             continue
@@ -628,10 +659,14 @@ def _validate_authority(document, capabilities):
     return errors
 
 
-def _normalized_capabilities(document, kind=None):
+def _normalized_capabilities(document, kind=None, kinds=None):
     result = []
+    if kind is not None and kinds is not None:
+        raise ValueError("kind and kinds are mutually exclusive")
     for entry in document["capabilities"]:
         if kind is not None and entry["kind"] != kind:
+            continue
+        if kinds is not None and entry["kind"] not in kinds:
             continue
         copied = copy.deepcopy(entry)
         if document.get("schema_version") == 1:
@@ -678,6 +713,25 @@ def capability_implementation_paths(document):
     return tuple(sorted(paths))
 
 
+def metadata_execution_capability_implementation_paths(document):
+    """Return only implementation paths owned by the metadata contract.
+
+    ``operation-capabilities.yaml`` is the repository-wide Tool capability
+    registry.  Projection capabilities are valid registry members and remain
+    in Profile-load's root-owned input closure, but they are not silently
+    absorbed into the compiled metadata-execution artifact.
+    """
+    errors = _validate_capabilities(document)
+    if errors:
+        raise MetadataExecutionContractError(errors)
+    filtered = copy.deepcopy(document)
+    filtered["capabilities"] = [
+        entry for entry in filtered["capabilities"]
+        if entry["kind"] in METADATA_EXECUTION_CAPABILITY_KINDS
+    ]
+    return capability_implementation_paths(filtered)
+
+
 def _capability_implementation_records(capabilities,
                                        implementation_snapshots):
     paths = capability_implementation_paths(capabilities)
@@ -713,8 +767,13 @@ def _build_contract(document, capabilities, implementation_snapshots):
         errors.extend(_validate_authority(document, capabilities))
     if errors:
         raise MetadataExecutionContractError(errors)
+    metadata_capabilities = copy.deepcopy(capabilities)
+    metadata_capabilities["capabilities"] = [
+        entry for entry in metadata_capabilities["capabilities"]
+        if entry["kind"] in METADATA_EXECUTION_CAPABILITY_KINDS
+    ]
     implementation_records = _capability_implementation_records(
-        capabilities, implementation_snapshots)
+        metadata_capabilities, implementation_snapshots)
 
     core = {
         "artifact": ARTIFACT,
@@ -731,7 +790,8 @@ def _build_contract(document, capabilities, implementation_snapshots):
         # The fingerprint binds Gate-era producer, receipt-schema, and
         # consumer facts as well as writer facts.  ``writer_capabilities`` is
         # retained as a narrow convenience view for page projectors.
-        "operation_capabilities": _normalized_capabilities(capabilities),
+        "operation_capabilities": _normalized_capabilities(
+            capabilities, kinds=METADATA_EXECUTION_CAPABILITY_KINDS),
         "writer_capabilities": _normalized_capabilities(
             capabilities, kind="writer"),
         "capability_implementations": implementation_records,
@@ -841,12 +901,15 @@ def compile_metadata_execution_contract(root=None, authority_path=None,
     capabilities = load_operation_capabilities(
         repository, capabilities_path=capabilities_path)
     implementation_snapshots = {}
-    # The 47 implementations are mostly siblings, so resolving them one at a
-    # time re-lists the same handful of directories once per file.  This
+    # Metadata implementations are mostly siblings, so resolving them one at
+    # a time re-lists the same handful of directories once per file.  This
     # block already means to read one consistent view -- that is what the
-    # compiled artifact is -- so it says so.
+    # compiled artifact is -- so it says so.  Non-metadata projection
+    # implementations remain in Profile-load's generic root-input closure but
+    # are not consumed merely because this compiler shares the registry.
     with kblib.directory_listing_scope():
-        for path in capability_implementation_paths(capabilities):
+        for path in metadata_execution_capability_implementation_paths(
+                capabilities):
             try:
                 implementation_snapshots[path] = (
                     kblib.repository_file_snapshot(
