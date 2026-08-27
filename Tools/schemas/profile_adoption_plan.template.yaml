@@ -10,11 +10,9 @@
 # sole writer for the two R09 branches that exist BEFORE any runtime does:
 # initial adoption (adopter Standards state absent) and a later pre-runtime
 # profile revision (state present). It advances only the canonical adopter
-# state, appends receipt history, recomposes vocab.yaml/page_contract.yaml, and
-# updates only the observed source hash and Standards version of curated Cards
-# through their producer. It never acknowledges semantic Card review: stale
-# reviewed source/body bindings must be independently reviewed and acknowledged
-# before this transaction is retried.
+# state, appends receipt history, and recomposes vocab.yaml/page_contract.yaml.
+# It never rewrites Cards; their bytes are verified as part of the immutable
+# upstream component boundary.
 # It never creates task-runtime state; an existing task runtime routes the
 # revision to adopt_standards.py instead.
 # =============================================================================
@@ -24,6 +22,8 @@ plan_id: "PA-001"
 # `initial-adoption` requires adopter Standards state absent and null before
 # identity; `profile-revision` requires state present and matching before data.
 branch: initial-adoption
+# Compatibility alias only. It MUST be the same full Git commit SHA as
+# upstream_revision_id; it is never a release label chosen by the adopter.
 standards_version_after: TODO(profile-adoption)
 # The no-runtime writer records only released governance; `approved` is the
 # sole admissible current-state status.
@@ -41,7 +41,9 @@ selected_profile_manifest_before: null
 change_summary: TODO(profile-adoption)
 
 # Upstream provenance belongs to receipt history, not Kernel prose. Both
-# values are nonempty or both null when no upstream is tracked.
+# values are required. The writer also requires --upstream-root and
+# --upstream-ref, resolves that ref locally, and refuses unless the result is
+# this exact full upstream_revision_id.
 upstream_source_ref: TODO(profile-adoption)
 upstream_revision_id: TODO(profile-adoption)
 

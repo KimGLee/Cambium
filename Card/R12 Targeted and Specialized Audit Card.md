@@ -4,7 +4,6 @@ generation_mode: curated
 route_id: R12
 read_set_id: R12
 read_set: Read Set/R12 Targeted and Specialized Audit Read Set.md
-standards_version: '{{ standards_version }}'
 source_files:
   - Read Set/R12 Targeted and Specialized Audit Read Set.md
   - kernel/K12 Quality Assurance/07 Audit Evidence Reuse and Invalidation.md

@@ -29,6 +29,7 @@ for path in (str(TOOLS_DIR / "tests"), str(TOOLS_DIR)):
         sys.path.insert(0, path)
 
 import kblib  # noqa: E402
+import runtime_paths  # noqa: E402
 import tool_availability  # noqa: E402
 from canonical_registry_fixture import (  # noqa: E402
     install_isolated_tool_registry_bundle,
@@ -37,6 +38,7 @@ from canonical_registry_fixture import (  # noqa: E402
 COMPILER = TOOLS_DIR / "compile_cli_contract.py"
 SERVER = TOOLS_DIR / "mcp_server.py"
 CONTRACT = "Tools/compiled/cli-contract.yaml"
+CARRIED_CONTRACT = runtime_paths.CLI_CONTRACT_ARTIFACT_PATH
 
 
 def boundary_excluded_tools():
@@ -129,7 +131,7 @@ class CarriedRuntimeFixture(unittest.TestCase):
 
     def compiled(self, root):
         return kblib.parse_yaml_subset(
-            (root / CONTRACT).read_text(encoding="utf-8"))
+            (root / CARRIED_CONTRACT).read_text(encoding="utf-8"))
 
     # -- the boundary is honoured -------------------------------------------
 
@@ -215,7 +217,7 @@ class CarriedRuntimeFixture(unittest.TestCase):
             capture_output=True, text=True)
         self.assertEqual(2, mismatched.returncode,
                          mismatched.stdout + mismatched.stderr)
-        self.assertIn("projection target",
+        self.assertIn(CARRIED_CONTRACT,
                       mismatched.stdout + mismatched.stderr)
 
     def test_a_source_projection_cannot_be_compiled_where_a_tool_is_absent(
@@ -243,7 +245,7 @@ class CarriedRuntimeFixture(unittest.TestCase):
         foreign = dict(local)
         foreign["included_tools"] = [
             name for name in local["included_tools"]][:-1]
-        (root / CONTRACT).write_text(
+        (root / CARRIED_CONTRACT).write_text(
             kblib.canonical_yaml(foreign), encoding="utf-8")
 
         result = self.compile_in(root, check=True)
@@ -259,12 +261,18 @@ class CarriedRuntimeFixture(unittest.TestCase):
         render = subprocess.run(
             [sys.executable,
              str(root / "Tools" / "render_interface_projection.py"),
-             str(root)], capture_output=True, text=True)
+             str(root), "--projection-target",
+             tool_availability.CARRIED_RUNTIME],
+            capture_output=True, text=True)
         self.assertEqual(0, render.returncode,
                          render.stdout + render.stderr)
 
         environment = dict(os.environ)
         environment["CAMBIUM_WORKSPACE_ROOT"] = str(root)
+        environment["CAMBIUM_INTERFACE_PROJECTION"] = str(
+            root / runtime_paths.MCP_TOOLS_ARTIFACT_PATH)
+        environment["CAMBIUM_INTERFACE_SOURCE_HASH"] = kblib.sha256_bytes(
+            (root / runtime_paths.MCP_TOOLS_ARTIFACT_PATH).read_bytes())
         requests = [
             {"jsonrpc": "2.0", "id": 1, "method": "initialize",
              "params": {"protocolVersion": "2024-11-05", "capabilities": {},

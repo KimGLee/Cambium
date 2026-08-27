@@ -4,7 +4,6 @@ generation_mode: curated
 route_id: R07
 read_set_id: R07
 read_set: Read Set/R07 Long-running Execution Read Set.md
-standards_version: '{{ standards_version }}'
 source_files:
   - Read Set/R07 Long-running Execution Read Set.md
   - kernel/K13 Task Runtime and Execution Control/01 Runtime State Model and Namespace.md

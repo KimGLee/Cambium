@@ -28,7 +28,8 @@ CODE_SPAN_RE = re.compile(r"`([^`\n]+)`")
 LINK_RE = re.compile(r"\]\((<[^>]+>|[^)\s]+)\)")
 
 MACHINE_NAVIGATION = {
-    line for line in """../kernel/K00 Standards Control/profile-interface.yaml
+    line for line in """../distribution-boundary.yaml
+../kernel/K00 Standards Control/profile-interface.yaml
 ../kernel/K02 Knowledge Work Construction/corpus-planning-contract.yaml
 ../kernel/K12 Quality Assurance/batch-close-closed-list.yaml
 schemas/card.schema.yaml
@@ -50,6 +51,9 @@ module_boundary_report.py
 kernel-size-policy.yaml
 kernel-size-exceptions.md
 check_kernel_size.py
+check_upstream_components.py
+upstream_component_boundary.py
+upstream_identity.py
 schemas/
 compiled/""".splitlines()
 }
@@ -57,6 +61,7 @@ compiled/""".splitlines()
 USER_ENTRY_POINTS = set("""run_gates.py
 stamp_cards.py
 check_kernel_size.py
+check_upstream_components.py
 scaffold_profile.py
 check_profile.py
 apply_profile_adoption.py

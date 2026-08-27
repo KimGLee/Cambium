@@ -15,7 +15,9 @@ from unittest import mock
 TOOLS_DIR = Path(__file__).resolve().parents[1]
 SCRIPT = TOOLS_DIR / "check_proof.py"
 TEMPLATE = TOOLS_DIR / "schemas" / "terminal_proof.template.yaml"
-SYNTHETIC_STANDARDS_VERSION = "3.2.0"
+SYNTHETIC_STANDARDS_VERSION = (
+    "23456789abcdef0123456789abcdef0123456789"
+)
 sys.path.insert(0, str(TOOLS_DIR / "tests"))
 sys.path.insert(0, str(TOOLS_DIR))
 
@@ -103,7 +105,6 @@ class RouteDeclarationAuthorityTests(unittest.TestCase):
             "route_id: R99\n"
             "read_set_id: R99\n"
             "read_set: Read Set/R99 Fixture Read Set.md\n"
-            "standards_version: fixture\n"
             "source_files:\n"
             "  - Read Set/R99 Fixture Read Set.md\n"
             "source_hash: '%s'\n"
@@ -129,8 +130,8 @@ def materialize_synthetic_standards_state(profile_manifest):
         "effective_date": "2026-08-04",
         "selected_profile_manifest": profile_manifest,
         "latest_adoption_receipt": "audit-fixture-standards-adoption",
-        "upstream_source_ref": None,
-        "upstream_revision_id": None,
+        "upstream_source_ref": "fixture://cambium",
+        "upstream_revision_id": SYNTHETIC_STANDARDS_VERSION,
     })
 
 
@@ -140,7 +141,8 @@ class ActiveStandardsFixtureTests(unittest.TestCase):
             "profiles/test-profile/profile.md"
         )
         parsed = kblib.parse_yaml_subset(rendered)
-        self.assertEqual("3.2.0", parsed["standards_version"])
+        self.assertEqual(SYNTHETIC_STANDARDS_VERSION,
+                         parsed["standards_version"])
         self.assertEqual("approved", parsed["status"])
         self.assertEqual(
             "profiles/test-profile/profile.md",

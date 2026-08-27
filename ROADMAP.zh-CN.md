@@ -430,6 +430,20 @@ Receipt 是只追加 JSONL，许多授权字段已经与状态、计划或锚点
 
 目标、排除项、验收条件、时间安排和暂停策略仍需要后续任务。只有具备显式权威规则、完整前后绑定、锁内重新验证、恢复和消费方测试，一个字段才能获得受保护事务。通用的任意 Contract 差异并非目标。
 
+### 采纳恢复加固
+
+Atlas 本次采用的受支持路径是干净、单进程的硬切换事务；旧 runtime 兼容不是其
+前置条件。后续应由独立 Cambium 任务测试并闭合硬中断恢复，包括：`committing`
+journal 发布或重建最终 Receipt 之前，必须精确回读 planned-after 状态，并重新执行
+selected Profile CAS。并发、冷状态迁移和旧协议修复仍不属于该任务，除非另行明确
+立项。
+
+### Python 入口执行打包
+
+后续执行打包任务需要把所有被直接调用的 Python Tool 统一路由到一个只依赖
+stdlib、隔离缓存的 launcher。本轮有界修复只保护采纳/checker 与 carried MCP 启动
+路径；它不重定义全部 source-distribution 开发命令，也不提前决定后续安装形式。
+
 ### Sealed-evidence 加固
 
 最初的热存储到冷存储可达性缺陷已经修复。仍有三项更广泛的债务：

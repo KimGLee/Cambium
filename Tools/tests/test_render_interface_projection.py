@@ -31,6 +31,7 @@ SCRIPT = TOOLS_DIR / "render_interface_projection.py"
 sys.path.insert(0, str(TOOLS_DIR))
 import kblib  # noqa: E402
 import render_interface_projection as projector  # noqa: E402
+import tool_availability  # noqa: E402
 
 CONTRACT = REPO_ROOT / projector.DEFAULT_CONTRACT
 MCP_ARTIFACT = REPO_ROOT / projector.FORMS["mcp"]["output"]
@@ -55,6 +56,7 @@ def fixture_contract(**overrides):
     data = {
         "schema_version": projector.UPSTREAM_SCHEMA_VERSION,
         "artifact": projector.UPSTREAM_ARTIFACT,
+        "projection_target": tool_availability.SOURCE_DISTRIBUTION,
         "source_hash": kblib.sha256_bytes(b"fixture manifest"),
         "component_path_registries": {},
         "tool_count": 1,
@@ -121,6 +123,11 @@ class ShippedArtifactTests(unittest.TestCase):
         projected = {tool["name"] for tool in self.artifact["tools"]}
 
         self.assertTrue(cli_only)
+        self.assertTrue({
+            "adopt_standards",
+            "apply_profile_adoption",
+            "stamp_cards",
+        }.issubset(cli_only))
         self.assertEqual(cli_only & projected, set())
 
     def test_every_projected_tool_carries_workspace_and_path_capabilities(self):
@@ -168,7 +175,6 @@ class ShippedArtifactTests(unittest.TestCase):
             ("check_vocab", "vocab"): ".cambium/derived/vocab.yaml",
             ("check_proof", "template"):
                 "Tools/schemas/terminal_proof.template.yaml",
-            ("stamp_cards", "cards_dir"): "Card",
         }
         for (tool_name, argument), value in exact.items():
             with self.subTest(tool=tool_name, argument=argument):
@@ -379,6 +385,14 @@ class FixtureRunTests(unittest.TestCase):
         with open(self.contract_path, "w", encoding="utf-8") as handle:
             handle.write(kblib.canonical_yaml(fixture_contract(**overrides)))
 
+    def write_carried_contract(self):
+        path = Path(self.workspace, projector.CARRIED_RUNTIME_CONTRACT)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(kblib.canonical_yaml(fixture_contract(
+            projection_target=tool_availability.CARRIED_RUNTIME)),
+            encoding="utf-8")
+        return path
+
     def project(self, *extra):
         return run(self.workspace, "--form", "mcp", "--contract",
                    self.contract_path, *extra)
@@ -389,6 +403,50 @@ class FixtureRunTests(unittest.TestCase):
         result = self.project("--check")
 
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+
+    def test_carried_runtime_writes_only_the_registered_derived_projection(self):
+        self.write_carried_contract()
+
+        result = run(
+            self.workspace, "--form", "mcp", "--projection-target",
+            tool_availability.CARRIED_RUNTIME)
+
+        self.assertEqual(result.returncode, 0,
+                         result.stdout + result.stderr)
+        runtime_output = Path(
+            self.workspace, projector.FORMS["mcp"]["runtime_output"])
+        self.assertTrue(runtime_output.is_file())
+        self.assertFalse(Path(self.output).exists())
+        artifact = json.loads(runtime_output.read_text(encoding="utf-8"))
+        self.assertEqual(artifact["projection_target"],
+                         tool_availability.CARRIED_RUNTIME)
+
+    def test_carried_runtime_refuses_the_distribution_output(self):
+        self.write_carried_contract()
+
+        result = run(
+            self.workspace, "--form", "mcp", "--projection-target",
+            tool_availability.CARRIED_RUNTIME, "--output", self.output)
+
+        self.assertEqual(result.returncode, 1,
+                         result.stdout + result.stderr)
+        self.assertFalse(Path(self.output).exists())
+
+    def test_carried_runtime_refuses_an_alternate_contract_input(self):
+        self.write_contract(
+            projection_target=tool_availability.CARRIED_RUNTIME)
+
+        result = run(
+            self.workspace, "--form", "mcp", "--contract",
+            self.contract_path, "--projection-target",
+            tool_availability.CARRIED_RUNTIME)
+
+        self.assertEqual(result.returncode, 1,
+                         result.stdout + result.stderr)
+        self.assertIn("unsafe carried-runtime contract input", result.stdout)
+        self.assertFalse(Path(
+            self.workspace,
+            projector.FORMS["mcp"]["runtime_output"]).exists())
 
     def test_runtime_source_identity_does_not_change_mcp_path_semantics(self):
         contract = fixture_contract()

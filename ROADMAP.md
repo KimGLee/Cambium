@@ -766,6 +766,23 @@ successor task. Each field may gain a guarded transaction only with an explicit
 authority rule, complete before/after binding, lock-time revalidation, recovery,
 and consumer tests. A generic arbitrary Contract diff is not a goal.
 
+### Adoption Recovery Hardening
+
+The supported Atlas hard-cut adoption path is a clean, single-process
+transaction; compatibility with legacy runtime state is not its prerequisite.
+A later Cambium task must separately test and close hard-interruption recovery,
+including exact planned-after read-back and selected-Profile CAS before a
+`committing` journal can publish or reconstruct its final Receipt. Concurrency,
+cold-state migration, and legacy-protocol repair remain outside that task unless
+they receive their own explicit scope.
+
+### Python Entrypoint Packaging
+
+A separate execution-packaging task must route every directly invoked Python
+Tool through one stdlib-only, cache-isolating launcher. The present bounded fix
+protects the adoption/checker and carried MCP startup path; it does not redefine
+all source-distribution developer commands or the later installation model.
+
 ### Sealed-evidence Hardening
 
 The original hot-to-cold reachability defect is fixed. Three broader debts

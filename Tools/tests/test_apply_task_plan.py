@@ -50,7 +50,10 @@ for path in (str(TOOLS), str(TESTS)):
 import check_queue  # noqa: E402
 import compile_queue  # noqa: E402
 import kblib  # noqa: E402
-from profile_fixture import install_loadable_profile  # noqa: E402
+from profile_fixture import (  # noqa: E402
+    FIXTURE_UPSTREAM_REVISION,
+    install_loadable_profile,
+)
 
 
 def _load_tool():
@@ -117,7 +120,8 @@ class TaskPlanTransactionTests(unittest.TestCase):
             [sys.executable, str(TOOLS / "init_state.py"), str(self.root),
              "--task-id", TASK_ID, "--objective", "Exercise task planning",
              "--scope-version", "s1", "--completion-semantics", "build",
-             "--standards-version", "3.0.0", "--profile-manifest", PROFILE,
+             "--standards-version", FIXTURE_UPSTREAM_REVISION,
+             "--profile-manifest", PROFILE,
              "--at", "2026-08-04T00:00:00Z", "--apply"],
             text=True, capture_output=True, check=False)
         self.assertEqual(0, result.returncode,
@@ -169,7 +173,7 @@ class TaskPlanTransactionTests(unittest.TestCase):
                 "exclusions": [],
                 "scope_version": "s1",
                 "concurrency_cap": 1,
-                "standards_version": "3.0.0",
+                "standards_version": FIXTURE_UPSTREAM_REVISION,
                 "selected_profile_manifest": PROFILE,
                 "selected_route_ids": ["R02"],
                 "selected_card_paths": [],

@@ -36,6 +36,7 @@ import metadata_execution_contract  # noqa: E402
 import scaffold_profile  # noqa: E402
 import standards_state  # noqa: E402
 import test_template_fill  # noqa: E402  (reused semantic fill + scan config)
+from profile_fixture import FIXTURE_UPSTREAM_REVISION  # noqa: E402
 from canonical_registry_fixture import (  # noqa: E402
     KERNEL_MACHINE_REGISTRY_PATHS,
     install_isolated_tool_registry_bundle,
@@ -137,13 +138,13 @@ def adopt(root, manifest_relative, fields=None):
     values = {
         "schema_version": 1,
         "state_revision": 1,
-        "standards_version": "adopt-v1",
+        "standards_version": FIXTURE_UPSTREAM_REVISION,
         "status": "approved",
         "effective_date": "2026-08-13",
         "selected_profile_manifest": manifest_relative,
         "latest_adoption_receipt": "audit-fixture-adoption",
-        "upstream_source_ref": None,
-        "upstream_revision_id": None,
+        "upstream_source_ref": "fixture://cambium",
+        "upstream_revision_id": FIXTURE_UPSTREAM_REVISION,
     }
     if fields is not None:
         values = {field: values[field] for field in fields}
@@ -271,7 +272,7 @@ class AdoptedTests(unittest.TestCase):
             self.assertEqual(0, code)
             self.assertEqual("adopted", view["standards_state"])
             self.assertEqual(
-                {"standards_version": "adopt-v1",
+                {"standards_version": FIXTURE_UPSTREAM_REVISION,
                  "status": "approved",
                  "effective_date": "2026-08-13",
                  "selected_profile_manifest":

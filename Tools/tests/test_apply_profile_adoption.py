@@ -3,16 +3,16 @@
 The writer is the sibling of `adopt_standards.py`: initial adoption creates
 the canonical adopter Standards state, while a pre-runtime Profile revision
 advances it. Both branches append immutable receipt history and drive the
-existing producers (`compose_vocab`, `compose_page_contract`,
-`stamp_cards --set-version`, `stamp_cards --check`) against the new state.
+existing adopter-derived producers (`compose_vocab`, `compose_page_contract`)
+against the new state while preserving every upstream Card byte.
 K00/03 remains unchanged normative governance. This module pins the
 transaction's safety contract:
 
 1. dry-run writes nothing anywhere (tree byte-hash unchanged, no staging
    directory) and reports the complete planned change;
 2. both happy paths leave the exact promised state: canonical state advanced,
-   receipt history appended, vocab.yaml/page_contract.yaml composed, already
-   reviewed curated Cards version-stamped, `stamp_cards --check` exit 0, two receipts
+   receipt history appended, vocab.yaml/page_contract.yaml composed, upstream
+   Cards byte-identical, two receipts
    appended (the canonical `profile-load` pass receipt plus the commit
    receipt, which registers no Gate ID of its own);
 3. every refusal (existing task runtime, K00/03 drift, candidate
@@ -55,12 +55,15 @@ import kblib  # noqa: E402
 import module_boundary_facts  # noqa: E402
 import runtime_paths  # noqa: E402
 import standards_state  # noqa: E402
+import upstream_identity  # noqa: E402
 import test_profile_onboarding_status as tpos  # noqa: E402
 import test_template_fill  # noqa: E402  (reused semantic fill + scan config)
 
 _BASE = None  # pristine adopting root, built once
 _ADOPTED = None  # the same root after one committed initial adoption
 _MODULE_TMP = None
+UPSTREAM_REF = "HEAD"
+UPSTREAM_REVISION = upstream_identity.resolve_revision(REPOSITORY, UPSTREAM_REF)
 
 
 def _build_base(target):
@@ -88,6 +91,11 @@ def _build_base(target):
     # caused new metadata contract inputs to look like path-spelling drift
     # before the candidate Profile was evaluated.
     tpos.copy_profile_load_fixture(target)
+    # The source checkout may contain the implementation under review while its
+    # committed source-distribution projection still represents HEAD. Compile
+    # the scratch adopter's own exact copied inputs before profile-load.
+    assert tpos.metadata_execution_contract.main(
+        ["--root", str(target)]) == 0
     profile = target / "profiles" / PROFILE_ID
     shutil.copytree(TEMPLATE, profile)
     for name in test_template_fill.ORIENTATION:
@@ -133,7 +141,7 @@ def initial_plan(root, **overrides):
         "schema_version": 2,
         "plan_id": "PA-001",
         "branch": "initial-adoption",
-        "standards_version_after": "1.0.0",
+        "standards_version_after": UPSTREAM_REVISION,
         "standards_status_after": "approved",
         "standards_effective_date_after": "2026-08-13",
         "selected_profile_manifest_after": MANIFEST,
@@ -141,13 +149,13 @@ def initial_plan(root, **overrides):
         "selected_profile_manifest_before": None,
         "change_summary": "Initial adoption: selected %s; upstream "
                           "https://example.test/corpus.git @ "
-                          "0123456789abcdef" % MANIFEST,
+                          "%s" % (MANIFEST, UPSTREAM_REVISION),
         "changed_predicates": [],
         "adoption_requirement": "none",
         "k00_03_sha256_before": kblib.sha256_file(root / GOVERNANCE),
         "standards_state_sha256_before": None,
         "upstream_source_ref": "https://example.test/corpus.git",
-        "upstream_revision_id": "0123456789abcdef",
+        "upstream_revision_id": UPSTREAM_REVISION,
         "profile_snapshot_sha256_after": evaluation.profile_snapshot_sha256,
         "profile_contract_fingerprint_after":
             evaluation.profile_contract_fingerprint,
@@ -163,9 +171,9 @@ def revision_plan(root, **overrides):
     plan.update({
         "plan_id": "PA-002",
         "branch": "profile-revision",
-        "standards_version_after": "1.1.0",
+        "standards_version_after": UPSTREAM_REVISION,
         "standards_effective_date_after": "2026-08-14",
-        "standards_version_before": "1.0.0",
+        "standards_version_before": UPSTREAM_REVISION,
         "selected_profile_manifest_before": MANIFEST,
         "standards_state_sha256_before": (
             kblib.sha256_file(root / standards_state.STATE_PATH)
@@ -185,11 +193,26 @@ def write_plan(root, plan, relative=PLAN_RELATIVE):
     return relative
 
 
-def run_tool(root, *extra, plan=PLAN_RELATIVE):
+def run_tool(root, *extra, plan=PLAN_RELATIVE, component_errors=(),
+             component_reports=None):
     buffer = io.StringIO()
-    with contextlib.redirect_stdout(buffer):
+    component_report = mock.Mock(
+        upstream_revision_id=UPSTREAM_REVISION,
+        errors=tuple(component_errors),
+    )
+    if component_reports is None:
+        component_patch = mock.patch.object(
+            apply_profile_adoption.upstream_component_boundary, "evaluate",
+            return_value=component_report)
+    else:
+        component_patch = mock.patch.object(
+            apply_profile_adoption.upstream_component_boundary, "evaluate",
+            side_effect=list(component_reports))
+    with contextlib.redirect_stdout(buffer), component_patch:
         code = apply_profile_adoption.main(
-            [str(root), "--plan", plan, *extra])
+            [str(root), "--plan", plan,
+             "--upstream-root", str(REPOSITORY),
+             "--upstream-ref", UPSTREAM_REF, *extra])
     return code, buffer.getvalue()
 
 
@@ -266,12 +289,11 @@ class ApplyProfileAdoptionTests(unittest.TestCase):
 
     # ---- dry run -----------------------------------------------------
 
-    def test_transaction_never_acknowledges_curated_card_review(self):
-        stamp_args = next(
-            builder("/repo", {"standards_version_after": "1.0.0"})
-            for step, script, builder in apply_profile_adoption.COMPOSER_STEPS
-            if step == "stamp-set-version" and script == "stamp_cards.py")
-        self.assertNotIn("--acknowledge-curated-review", stamp_args)
+    def test_transaction_has_no_card_producer_step(self):
+        self.assertEqual(
+            ["compose-vocab", "compose-page-contract"],
+            [step for step, _script, _builder in
+             apply_profile_adoption.COMPOSER_STEPS])
 
     def test_dry_run_writes_nothing_and_reports_the_planned_change(self):
         root = self.clone()
@@ -283,12 +305,12 @@ class ApplyProfileAdoptionTests(unittest.TestCase):
         self.assertEqual(before, tree_state(root))
         self.assertEqual([], stagings(root))
         for expected in (
-                "initial-adoption", "1.0.0", MANIFEST,
+                "initial-adoption", UPSTREAM_REVISION, MANIFEST,
                 plan["k00_03_sha256_before"],
                 plan["profile_snapshot_sha256_after"],
                 plan["profile_contract_fingerprint_after"],
                 plan["profile_load_inputs_sha256_after"],
-                "history: append one transaction record", "compose-vocab", "stamp-check",
+                "history: append one transaction record", "compose-vocab",
                 "dry run"):
             self.assertIn(expected, out)
 
@@ -299,11 +321,13 @@ class ApplyProfileAdoptionTests(unittest.TestCase):
         plan = initial_plan(root)
         write_plan(root, plan)
         profile_before = tree_state(root / "profiles" / PROFILE_ID)
+        cards_before = tree_state(root / "Card")
         code, out = run_tool(root, "--apply")
         self.assertEqual(0, code, out)
 
         state = governance_state(root)
-        self.assertEqual("1.0.0", state["standards_version"])
+        self.assertEqual(UPSTREAM_REVISION, state["standards_version"])
+        self.assertEqual(UPSTREAM_REVISION, state["upstream_revision_id"])
         self.assertEqual("approved", state["status"])
         self.assertEqual("2026-08-13", state["effective_date"])
         self.assertEqual(MANIFEST, state["selected_profile_manifest"])
@@ -315,15 +339,7 @@ class ApplyProfileAdoptionTests(unittest.TestCase):
             (root / apply_profile_adoption.VOCAB_ARTIFACT).is_file())
         self.assertTrue(
             (root / apply_profile_adoption.PAGE_CONTRACT_ARTIFACT).is_file())
-        card = (root / "Card" /
-                "R09 Standards Governance Card.md").read_text(
-                    encoding="utf-8")
-        self.assertIn("standards_version: '1.0.0'", card)
-        check = subprocess.run(
-            [sys.executable, str(root / "Tools" / "stamp_cards.py"),
-             str(root), "--check"],
-            text=True, capture_output=True, check=False)
-        self.assertEqual(0, check.returncode, check.stdout)
+        self.assertEqual(cards_before, tree_state(root / "Card"))
 
         receipts = [
             json.loads(line) for line in
@@ -378,7 +394,7 @@ class ApplyProfileAdoptionTests(unittest.TestCase):
                 "Initialize a task after initial Profile adoption",
                 "--exclude", "Do not infer unconfirmed work",
                 "--scope-version", "s1", "--completion-semantics", "build",
-                "--standards-version", "1.0.0", "--profile-manifest",
+                "--standards-version", UPSTREAM_REVISION, "--profile-manifest",
                 MANIFEST, "--at", "2026-08-13T01:00:00Z", "--apply",
             ],
             text=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
@@ -407,7 +423,7 @@ class ApplyProfileAdoptionTests(unittest.TestCase):
         self.assertEqual(0, code, out)
 
         state = governance_state(root)
-        self.assertEqual("1.1.0", state["standards_version"])
+        self.assertEqual(UPSTREAM_REVISION, state["standards_version"])
         self.assertEqual("2026-08-14", state["effective_date"])
         self.assertEqual(MANIFEST, state["selected_profile_manifest"])
         rows = change_summary_rows(root)
@@ -415,15 +431,6 @@ class ApplyProfileAdoptionTests(unittest.TestCase):
         self.assertEqual(first_rows[0]["receipt_id"], rows[0]["receipt_id"],
                          "the first adoption receipt must be preserved")
         self.assertIn("Profile revision", rows[1]["change_summary"])
-        card = (root / "Card" /
-                "R09 Standards Governance Card.md").read_text(
-                    encoding="utf-8")
-        self.assertIn("standards_version: '1.1.0'", card)
-        check = subprocess.run(
-            [sys.executable, str(root / "Tools" / "stamp_cards.py"),
-             str(root), "--check"],
-            text=True, capture_output=True, check=False)
-        self.assertEqual(0, check.returncode, check.stdout)
         self.assertEqual(profile_before,
                          tree_state(root / "profiles" / PROFILE_ID))
         self.assertFalse((root / ".cambium/state").exists())
@@ -474,28 +481,79 @@ class ApplyProfileAdoptionTests(unittest.TestCase):
         out = self.assert_refused(root, "profile-load")
         self.assertIn("unfilled-placeholder", out)
 
-    def test_stale_curated_review_aborts_without_acknowledging_it(self):
+    def test_unresolved_or_freely_chosen_version_identity_is_refused(self):
+        root = self.clone()
+        invented = "f" * 40
+        write_plan(root, initial_plan(
+            root, standards_version_after=invented,
+            upstream_revision_id=invented))
+        self.assert_refused(root, "upstream Git ref resolves to")
+
+        root = self.clone()
+        write_plan(root, initial_plan(
+            root, standards_version_after="3.17.0"))
+        self.assert_refused(root, "compatibility alias")
+
+    def test_component_byte_drift_is_refused_without_rewriting_card(self):
         root = self.clone()
         write_plan(root, initial_plan(root))
-        source = (root / "kernel" / "K12 Quality Assurance" /
-                  "10 Standards Version Adoption.md")
-        source.write_text(
-            source.read_text(encoding="utf-8") + "\n",
-            encoding="utf-8")
+        card = root / "Card" / "R09 Standards Governance Card.md"
+        card.write_text(card.read_text(encoding="utf-8") + "\n", encoding="utf-8")
+        cards_before = tree_state(root / "Card")
         before = tree_state(root)
+        code, out = run_tool(
+            root, "--apply",
+            component_errors=(
+                "component bytes differ from upstream: Card/R09 Standards "
+                "Governance Card.md",))
+        self.assertEqual(1, code, out)
+        self.assertIn("immutable components do not match", out)
+        self.assertEqual(before, tree_state(root))
+        self.assertEqual(cards_before, tree_state(root / "Card"))
 
-        code, out = run_tool(root, "--apply")
+    def test_component_drift_after_prepare_is_rejected_before_state_write(self):
+        root = self.clone()
+        write_plan(root, initial_plan(root))
+        before = tree_state(root)
+        clean = mock.Mock(
+            upstream_revision_id=UPSTREAM_REVISION, errors=())
+        drifted = mock.Mock(
+            upstream_revision_id=UPSTREAM_REVISION,
+            errors=("component bytes differ from upstream: Card/R09.md",))
+
+        code, out = run_tool(
+            root, "--apply", component_reports=(clean, drifted))
 
         self.assertEqual(1, code, out)
-        self.assertIn("producer step stamp-set-version", out)
-        self.assertIn("exited 2", out)
-        self.assertIn("review_stale=", out)
+        self.assertIn("locked pre-write", out)
         self.assertEqual(before, tree_state(root))
-        names = stagings(root)
-        self.assertEqual(1, len(names))
-        journal = journal_of(root, names[0])
+        self.assertFalse((root / ".cambium").exists())
+        journal = journal_of(root, stagings(root)[0])
         self.assertEqual("aborted", journal["status"])
-        self.assertTrue(journal["restore_verified"])
+
+    def test_component_drift_before_final_receipt_rolls_back_all_state(self):
+        root = self.clone()
+        write_plan(root, initial_plan(root))
+        before = tree_state(root)
+        clean = mock.Mock(
+            upstream_revision_id=UPSTREAM_REVISION, errors=())
+        drifted = mock.Mock(
+            upstream_revision_id=UPSTREAM_REVISION,
+            errors=("component bytes differ from upstream: Tools/runtime.py",))
+
+        code, out = run_tool(
+            root, "--apply", component_reports=(clean, clean, drifted))
+
+        self.assertEqual(1, code, out)
+        self.assertIn("pre-final-receipt", out)
+        self.assertEqual(before, tree_state(root))
+        self.assertFalse((root / ".cambium").exists())
+        journal = journal_of(root, stagings(root)[0])
+        self.assertEqual("aborted", journal["status"])
+        self.assertTrue(any(
+            step["step"] == "reverify-profile-load" and
+            step["status"] == "done"
+            for step in journal["steps"]))
 
     def test_nonempty_changed_predicates_refused_toward_adopt_standards(
             self):
@@ -527,8 +585,8 @@ class ApplyProfileAdoptionTests(unittest.TestCase):
         original = apply_profile_adoption._run_step
 
         def failing(command, cwd):
-            if any("stamp_cards.py" in str(part) for part in command):
-                return 1, "injected stamp failure"
+            if any("compose_page_contract.py" in str(part) for part in command):
+                return 1, "injected projection failure"
             return original(command, cwd)
 
         with mock.patch.object(
@@ -546,10 +604,10 @@ class ApplyProfileAdoptionTests(unittest.TestCase):
         journal = journal_of(root, names[0])
         self.assertEqual("aborted", journal["status"])
         self.assertTrue(journal["restore_verified"])
-        self.assertIn("injected stamp failure", journal["failure"])
+        self.assertIn("injected projection failure", journal["failure"])
         step_status = {step["step"]: step["status"]
                        for step in journal["steps"]}
-        self.assertEqual("failed", step_status["stamp-set-version"])
+        self.assertEqual("failed", step_status["compose-page-contract"])
 
     def test_interruption_then_retry_with_same_plan_completes(self):
         root = self.clone()
@@ -571,21 +629,16 @@ class ApplyProfileAdoptionTests(unittest.TestCase):
         self.assertEqual(1, len(names))
         self.assertEqual("writing", journal_of(root, names[0])["status"])
         self.assertEqual(
-            "1.0.0", governance_state(root)["standards_version"])
+            UPSTREAM_REVISION, governance_state(root)["standards_version"])
 
         code, out = run_tool(root, "--apply")
         self.assertEqual(0, code, out)
         self.assertIn("restored", out)
         self.assertEqual([], stagings(root))
         self.assertEqual(
-            "1.0.0", governance_state(root)["standards_version"])
+            UPSTREAM_REVISION, governance_state(root)["standards_version"])
         self.assertEqual(1, len(change_summary_rows(root)),
                          "recovery must never duplicate the adoption")
-        check = subprocess.run(
-            [sys.executable, str(root / "Tools" / "stamp_cards.py"),
-             str(root), "--check"],
-            text=True, capture_output=True, check=False)
-        self.assertEqual(0, check.returncode, check.stdout)
 
     def test_retry_with_a_different_plan_while_journal_exists_is_refused(
             self):

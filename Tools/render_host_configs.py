@@ -2,7 +2,8 @@
 """render_host_configs.py -- host registration and corpus binding for the
 Cambium MCP server, rendered once per host from one server definition.
 
-`Tools/compiled/mcp-tools.json` states what the server offers. It does not
+The selected target's registered `mcp-tools.json` states what the server
+offers. It does not
 state where the server is or which corpus this run governs, and no host
 reads it: a host reads its own configuration file. This tool renders those
 files from one definition body, so "how Cambium is launched" is written
@@ -53,15 +54,16 @@ them to it.
   dsh-profile-patch  -> $DSH_HOME/profiles/<name>/        registration only
 
 These are templates for an *adopter's* corpus repository, not files for
-this repository. They are rendered under `Tools/compiled/host-configs/`
-under names that carry their destination, so nothing here is ever at a
-path a host would load. This distribution registers no MCP server with
-itself.
+this repository. Source-distribution templates are rendered under
+`Tools/compiled/host-configs/`. A carried runtime renders the same derived
+products under adopter-owned `.cambium/derived/host-configs/`; it never writes
+back into the distributed `Tools/` component. Neither location is itself a
+path a host loads.
 
 Upstream binding
 ----------------
 Every product carries `CAMBIUM_INTERFACE_SOURCE_HASH`, the sha256 of the
-exact `Tools/compiled/mcp-tools.json` bytes it was rendered against, in
+exact registered `mcp-tools.json` bytes it was rendered against, in
 the environment the server is launched with -- so a server can refuse to
 serve a tool list it was not registered against, and so one upstream
 change makes all five products stale at once. It travels as an
@@ -109,6 +111,8 @@ REPO_ROOT = os.path.dirname(TOOLS_DIR)
 sys.path.insert(0, TOOLS_DIR)
 
 import kblib  # noqa: E402
+import runtime_paths  # noqa: E402
+import tool_availability  # noqa: E402
 
 try:  # Python 3.11+
     import tomllib
@@ -116,13 +120,15 @@ except ImportError:  # pragma: no cover - older interpreters
     tomllib = None
 
 TOOL = "render_host_configs"
-TOOL_VERSION = "1.1.0"
+TOOL_VERSION = "1.2.0"
 
 DEFAULT_PROJECTION = "Tools/compiled/mcp-tools.json"
 DEFAULT_OUTPUT_DIR = "Tools/compiled/host-configs"
+CARRIED_RUNTIME_PROJECTION = runtime_paths.MCP_TOOLS_ARTIFACT_PATH
+CARRIED_RUNTIME_OUTPUT_DIR = runtime_paths.HOST_CONFIG_ARTIFACT_ROOT
 UPSTREAM_ARTIFACT = "agent-interface-projection"
 UPSTREAM_FORM = "mcp"
-UPSTREAM_SCHEMA_VERSION = 3
+UPSTREAM_SCHEMA_VERSION = 4
 
 # ---------------------------------------------------------------------------
 # The server name
@@ -195,6 +201,8 @@ SERVER_ENTRY_POINT = "Tools/mcp_server.py"
 
 WORKSPACE_ENV = "CAMBIUM_WORKSPACE_ROOT"
 SOURCE_HASH_ENV = "CAMBIUM_INTERFACE_SOURCE_HASH"
+PROJECTION_PATH_ENV = "CAMBIUM_INTERFACE_PROJECTION"
+PROJECTION_PATH_PLACEHOLDER = "<CAMBIUM_INTERFACE_PROJECTION>"
 
 MCP_SERVER = {
     # -- registration -----------------------------------------------------
@@ -205,6 +213,7 @@ MCP_SERVER = {
     "env": {
         WORKSPACE_ENV: WORKSPACE_PLACEHOLDER,
         SOURCE_HASH_ENV: SOURCE_HASH_PLACEHOLDER,
+        PROJECTION_PATH_ENV: PROJECTION_PATH_PLACEHOLDER,
     },
     # -- the dsh superset -------------------------------------------------
     # Three connection-resilience fields only `dsh` accepts. They are a
@@ -278,6 +287,10 @@ def invocation(context, check=False):
     render still prints the short form it is actually reproduced by.
     """
     parts = [BASE_INVOCATION]
+    if context["projection_target"] != \
+            tool_availability.SOURCE_DISTRIBUTION:
+        parts.append("--projection-target %s" %
+                     context["projection_target"])
     if check:
         parts.append("--check")
     bound = dict(context["bindings"])
@@ -368,9 +381,13 @@ _SERVER_SOURCE = {
         "and the migration direction MCP 2026-07-28 named when it "
         "deprecated roots" % WORKSPACE_ENV,
     "env.%s" % SOURCE_HASH_ENV:
-        "sha256 of the Tools/compiled/mcp-tools.json bytes this run read "
+        "sha256 of the selected mcp-tools.json bytes this run read "
         "(kblib.sha256_bytes), substituted for MCP_SERVER['env'][%r]"
         % SOURCE_HASH_ENV,
+    "env.%s" % PROJECTION_PATH_ENV:
+        "Tools/render_host_configs.py: projection_path_binding() selects "
+        "the registered source-distribution or adopter-runtime projection; "
+        "substituted for MCP_SERVER['env'][%r]" % PROJECTION_PATH_ENV,
 }
 
 _RESILIENCE_SOURCE = {
@@ -424,23 +441,28 @@ FIELD_SOURCES.update(_header_paths("claude-code", False))
 FIELD_SOURCES.update(_server_paths(
     "claude-code.document.mcpServers.%s" % SERVER_NAME,
     ("command", "args[]", "cwd",
-     "env.%s" % WORKSPACE_ENV, "env.%s" % SOURCE_HASH_ENV)))
+     "env.%s" % WORKSPACE_ENV, "env.%s" % SOURCE_HASH_ENV,
+     "env.%s" % PROJECTION_PATH_ENV)))
 FIELD_SOURCES.update(_header_paths("kimi-code", False))
 FIELD_SOURCES.update(_server_paths(
     "kimi-code.document.mcpServers.%s" % SERVER_NAME,
     ("command", "args[]", "cwd",
-     "env.%s" % WORKSPACE_ENV, "env.%s" % SOURCE_HASH_ENV)))
+     "env.%s" % WORKSPACE_ENV, "env.%s" % SOURCE_HASH_ENV,
+     "env.%s" % PROJECTION_PATH_ENV)))
 FIELD_SOURCES.update(_header_paths("codex", True))
 FIELD_SOURCES.update(_server_paths(
     "codex.document.mcp_servers.%s" % SERVER_NAME,
     ("command", "args[]", "cwd",
-     "env.%s" % WORKSPACE_ENV, "env.%s" % SOURCE_HASH_ENV)))
+     "env.%s" % WORKSPACE_ENV, "env.%s" % SOURCE_HASH_ENV,
+     "env.%s" % PROJECTION_PATH_ENV)))
 FIELD_SOURCES.update(_header_paths("dsh-env", True))
 FIELD_SOURCES.update({
     "dsh-env.document.%s" % WORKSPACE_ENV:
         _SERVER_SOURCE["env.%s" % WORKSPACE_ENV],
     "dsh-env.document.%s" % SOURCE_HASH_ENV:
         _SERVER_SOURCE["env.%s" % SOURCE_HASH_ENV],
+    "dsh-env.document.%s" % PROJECTION_PATH_ENV:
+        _SERVER_SOURCE["env.%s" % PROJECTION_PATH_ENV],
 })
 FIELD_SOURCES.update(_header_paths("dsh-profile-patch", True))
 _DSH_ENTRY = "dsh-profile-patch.document[].insert[]"
@@ -515,6 +537,9 @@ def read_projection(path):
                                     UPSTREAM_SCHEMA_VERSION))
     if not isinstance(projection.get("source_hash"), str):
         raise RenderError("%s carries no source_hash" % path)
+    if projection.get("projection_target") not in \
+            tool_availability.PROJECTION_TARGETS:
+        raise RenderError("%s carries no valid projection_target" % path)
     tools = projection.get("tools")
     if not isinstance(tools, list) or not tools:
         raise RenderError(
@@ -536,6 +561,38 @@ def relativize(root, path):
     if path.startswith(prefix):
         return path[len(prefix):].replace(os.sep, "/")
     return path
+
+
+def projection_for_target(projection_target):
+    if projection_target == tool_availability.SOURCE_DISTRIBUTION:
+        return DEFAULT_PROJECTION
+    if projection_target == tool_availability.CARRIED_RUNTIME:
+        return CARRIED_RUNTIME_PROJECTION
+    raise ValueError("unknown projection target: %r" % projection_target)
+
+
+def output_dir_for_target(projection_target):
+    if projection_target == tool_availability.SOURCE_DISTRIBUTION:
+        return DEFAULT_OUTPUT_DIR
+    if projection_target == tool_availability.CARRIED_RUNTIME:
+        return CARRIED_RUNTIME_OUTPUT_DIR
+    raise ValueError("unknown projection target: %r" % projection_target)
+
+
+def projection_path_binding(root, projection_path, projection_target):
+    """Host-visible absolute projection path without component mutation."""
+    expected = os.path.join(root, projection_for_target(projection_target))
+    if os.path.realpath(os.path.abspath(projection_path)) == \
+            os.path.realpath(os.path.abspath(expected)):
+        if projection_target == tool_availability.SOURCE_DISTRIBUTION:
+            return "%s/%s" % (
+                DISTRIBUTION_PLACEHOLDER, DEFAULT_PROJECTION)
+        return "%s/%s" % (WORKSPACE_PLACEHOLDER,
+                           CARRIED_RUNTIME_PROJECTION)
+    # Source-distribution fixture and installation renders may bind a
+    # different explicit projection. Carried runtime is forced to its
+    # adopter-owned registered path in main(), so it never reaches this arm.
+    return os.path.abspath(projection_path)
 
 
 # ---------------------------------------------------------------------------
@@ -596,7 +653,8 @@ def header_lines(host, context):
         paragraphs.append(CWD_NOTE)
     paragraphs.append(SOURCE_HASH_NOTE)
     remaining = [name for name in context["unsubstituted"]
-                 if registers or name == WORKSPACE_PLACEHOLDER]
+                 if registers or name in (
+                     WORKSPACE_PLACEHOLDER, PROJECTION_PATH_PLACEHOLDER)]
     if remaining:
         paragraphs.append(PLACEHOLDER_NOTE_TEMPLATE % " and ".join(remaining))
     for paragraph in paragraphs:
@@ -1047,12 +1105,18 @@ def main(argv=None):
         help="render only this host's product (default: every host)")
     parser.add_argument(
         "--projection", default=None,
-        help="compiled interface projection to bind to (default: <root>/%s)"
-             % DEFAULT_PROJECTION)
+        help="compiled interface projection to bind to; defaults to the one "
+             "owned by --projection-target")
+    parser.add_argument(
+        "--projection-target",
+        choices=list(tool_availability.PROJECTION_TARGETS),
+        default=tool_availability.SOURCE_DISTRIBUTION,
+        help="render tracked distribution templates or adopter-owned "
+             "carried-runtime products (default: source-distribution)")
     parser.add_argument(
         "--output-dir", default=None,
-        help="directory to write or verify the products in (default: "
-             "<root>/%s)" % DEFAULT_OUTPUT_DIR)
+        help="directory to write or verify the products in; carried-runtime "
+             "is fixed to <root>/%s" % CARRIED_RUNTIME_OUTPUT_DIR)
     parser.add_argument(
         "--distribution-root", default=None,
         help="absolute path of the Cambium checkout the server is launched "
@@ -1095,21 +1159,44 @@ def main(argv=None):
         return fail("the declared server name %r is %s; the four hosts do "
                     "not all accept it" % (SERVER_NAME, "; ".join(problems)))
 
+    projection_relative = projection_for_target(args.projection_target)
     projection_path = args.projection or os.path.join(
-        root, DEFAULT_PROJECTION)
+        root, projection_relative)
     if not os.path.isabs(projection_path):
         projection_path = os.path.join(root, projection_path)
+
+    if args.projection_target == tool_availability.CARRIED_RUNTIME:
+        try:
+            projection_path = kblib.registered_repository_artifact_path(
+                root, projection_path, CARRIED_RUNTIME_PROJECTION)
+        except ValueError as exc:
+            return fail("unsafe carried-runtime projection input: %s" % exc)
 
     try:
         projection, projection_hash = read_projection(projection_path)
     except RenderError as exc:
         return fail("evidence is unreliable: %s" % exc)
+    if projection["projection_target"] != args.projection_target:
+        return fail(
+            "evidence is unreliable: %s was built for projection target %r, "
+            "not requested target %r"
+            % (relativize(root, projection_path),
+               projection["projection_target"], args.projection_target))
 
-    output_dir = args.output_dir or os.path.join(root, DEFAULT_OUTPUT_DIR)
+    output_relative = output_dir_for_target(args.projection_target)
+    output_dir = args.output_dir or os.path.join(root, output_relative)
     if not os.path.isabs(output_dir):
         output_dir = os.path.join(root, output_dir)
+    if args.projection_target == tool_availability.CARRIED_RUNTIME:
+        try:
+            output_dir = kblib.registered_repository_artifact_path(
+                root, output_dir, CARRIED_RUNTIME_OUTPUT_DIR)
+        except ValueError as exc:
+            return fail("unsafe carried-runtime host-config output: %s" % exc)
 
     bindings = (
+        (PROJECTION_PATH_PLACEHOLDER, projection_path_binding(
+            root, projection_path, args.projection_target)),
         (DISTRIBUTION_PLACEHOLDER,
          args.distribution_root or DISTRIBUTION_PLACEHOLDER),
         (WORKSPACE_PLACEHOLDER,
@@ -1119,6 +1206,7 @@ def main(argv=None):
     context = {
         "source": relativize(root, projection_path),
         "source_hash": projection_hash,
+        "projection_target": args.projection_target,
         "bindings": bindings,
         # Named so a header speaks only of the placeholders its own file
         # still carries; a bound render says nothing about substitution.

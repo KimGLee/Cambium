@@ -27,7 +27,7 @@ import project_page_state
 import runtime_paths
 import stamp_cards
 import standards_state
-from profile_fixture import install_loadable_profile
+from profile_fixture import FIXTURE_UPSTREAM_REVISION, install_loadable_profile
 
 
 # ---------------------------------------------------------------------------
@@ -1118,7 +1118,7 @@ class RequiredQueueEndToEndTests(RequiredQueueFixture, unittest.TestCase):
             "queue_check_receipt": proof_queue_receipt,
             "corpus_plan_check_receipt": corpus_plan_receipt,
             "corpus_plan_semantic_acceptance_receipt": None,
-            "standards_version": "3.0.0",
+            "standards_version": FIXTURE_UPSTREAM_REVISION,
             "selected_profile_manifest": "profiles/test-profile/profile.md",
             **{
                 field: progress_contract[field]

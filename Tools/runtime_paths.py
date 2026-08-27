@@ -34,6 +34,8 @@ RECEIPT_COLD_EVIDENCE_ROOT = RECEIPT_COLD_ROOT + "/close-evidence"
 RECEIPT_COLD_PENDING_ROOT = RECEIPT_COLD_ROOT + "/pending"
 TRANSIENT_ROOT = RUNTIME_ROOT + "/tmp"
 DERIVED_ROOT = RUNTIME_ROOT + "/derived"
+DERIVED_INTERFACE_ROOT = DERIVED_ROOT + "/interfaces"
+DERIVED_HOST_CONFIG_ROOT = DERIVED_ROOT + "/host-configs"
 REPORT_ROOT = RUNTIME_ROOT + "/reports"
 
 _CHILD_NAMESPACE_ROOTS = frozenset((
@@ -49,6 +51,8 @@ _CHILD_NAMESPACE_ROOTS = frozenset((
     RECEIPT_COLD_PENDING_ROOT,
     TRANSIENT_ROOT,
     DERIVED_ROOT,
+    DERIVED_INTERFACE_ROOT,
+    DERIVED_HOST_CONFIG_ROOT,
     REPORT_ROOT,
 ))
 
@@ -132,6 +136,8 @@ CATEGORY_ROOTS = {
     ),
     DERIVED_PROJECTION: (
         DERIVED_ROOT,
+        DERIVED_INTERFACE_ROOT,
+        DERIVED_HOST_CONFIG_ROOT,
         REPORT_ROOT,
     ),
 }
@@ -229,6 +235,19 @@ RUNTIME_OBJECTS = {
         TRANSIENT, TRANSIENT_ROOT),
     "derived-root": RuntimeObject(
         DERIVED_PROJECTION, DERIVED_ROOT),
+    "derived-interface-root": RuntimeObject(
+        DERIVED_PROJECTION, DERIVED_INTERFACE_ROOT),
+    "derived-cli-contract": RuntimeObject(
+        DERIVED_PROJECTION,
+        child_path(DERIVED_INTERFACE_ROOT, "cli-contract.yaml")),
+    "derived-mcp-tools": RuntimeObject(
+        DERIVED_PROJECTION,
+        child_path(DERIVED_INTERFACE_ROOT, "mcp-tools.json")),
+    "upstream-component-byte-manifest": RuntimeObject(
+        DERIVED_PROJECTION,
+        child_path(DERIVED_ROOT, "upstream-component-byte-manifest.tsv")),
+    "derived-host-config-root": RuntimeObject(
+        DERIVED_PROJECTION, DERIVED_HOST_CONFIG_ROOT),
     "effective-vocabulary": RuntimeObject(
         DERIVED_PROJECTION, DERIVED_ROOT + "/vocab.yaml"),
     "effective-page-contract": RuntimeObject(
@@ -350,6 +369,11 @@ RECEIPT_COLD_MANIFEST_PATH = path_for("receipt-cold-manifest")
 RECEIPT_COLD_INDEX_PATH = path_for("receipt-cold-index")
 VOCAB_ARTIFACT_PATH = path_for("effective-vocabulary")
 PAGE_CONTRACT_ARTIFACT_PATH = path_for("effective-page-contract")
+CLI_CONTRACT_ARTIFACT_PATH = path_for("derived-cli-contract")
+MCP_TOOLS_ARTIFACT_PATH = path_for("derived-mcp-tools")
+HOST_CONFIG_ARTIFACT_ROOT = path_for("derived-host-config-root")
+UPSTREAM_COMPONENT_MANIFEST_PATH = path_for(
+    "upstream-component-byte-manifest")
 
 STANDARDS_ADOPTION_RECEIPT_PATH = path_for("standards-adoption-receipts")
 CONTRACT_AMENDMENT_RECEIPT_PATH = path_for("contract-amendment-receipts")

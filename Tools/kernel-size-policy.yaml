@@ -17,7 +17,7 @@ exceptions:
     growth_cap_bytes: 7168
     record_id: EXC-001
   - path: kernel/K00 Standards Control/03 Standards Governance.md
-    measured_bytes: 4561
+    measured_bytes: 4934
     growth_cap_bytes: 12288
     record_id: EXC-002
   - path: kernel/K00 Standards Control/06 Completion Precedence and Task Contract.md
@@ -61,7 +61,7 @@ exceptions:
     growth_cap_bytes: 16896
     record_id: EXC-012
   - path: kernel/K12 Quality Assurance/10 Standards Version Adoption.md
-    measured_bytes: 8021
+    measured_bytes: 8282
     growth_cap_bytes: 16384
     record_id: EXC-013
   - path: kernel/K12 Quality Assurance/15 Terminal Audit and Convergence.md
@@ -85,7 +85,7 @@ exceptions:
     growth_cap_bytes: 12288
     record_id: EXC-018
   - path: kernel/K13 Task Runtime and Execution Control/06 Amendment Log and Controlled Replanning.md
-    measured_bytes: 6067
+    measured_bytes: 6182
     growth_cap_bytes: 9728
     record_id: EXC-019
   - path: kernel/K13 Task Runtime and Execution Control/08 Required Queue Contract and Lifecycle.md

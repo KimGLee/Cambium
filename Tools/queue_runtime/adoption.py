@@ -11,6 +11,7 @@ import datetime
 import kblib
 import runtime_state_contract
 import standards_state
+import upstream_identity
 
 from queue_runtime.canon import (
     ANY_PRODUCER_ERA_VERSION,
@@ -40,6 +41,7 @@ from queue_runtime.producer_era import (
     standards_adoption_owner_projection_required,
     standards_adoption_profile_contract_required,
     standards_adoption_profile_inputs_required,
+    standards_adoption_resolved_identity_required,
     standards_adoption_state_file_required,
     standards_adoption_upstream_required,
     accounted_standards_versions,
@@ -114,6 +116,8 @@ def standards_adoption_plan_errors(
         standards_adoption_owner_projection_required(producer_tool_version)
     state_file_required = validate_current or \
         standards_adoption_state_file_required(producer_tool_version)
+    resolved_identity_required = validate_current or \
+        standards_adoption_resolved_identity_required(producer_tool_version)
     optional_fields = []
     if not profile_contract_required:
         optional_fields.append("profile_contract_fingerprint_after")
@@ -153,7 +157,21 @@ def standards_adoption_plan_errors(
                  set(plan)):
         source = plan.get("upstream_source_ref")
         revision = plan.get("upstream_revision_id")
-        if (source is None) != (revision is None):
+        if resolved_identity_required:
+            if not nonempty_string(source):
+                errors.append(
+                    "Standards adoption plan upstream_source_ref must name "
+                    "the adopted Cambium source")
+            if not upstream_identity.is_full_commit_sha(revision):
+                errors.append(
+                    "Standards adoption plan upstream_revision_id must be one "
+                    "full Git commit SHA")
+            if (nonempty_string(plan.get("standards_version_after")) and
+                    plan.get("standards_version_after") != revision):
+                errors.append(
+                    "Standards adoption plan standards_version_after is a "
+                    "compatibility alias and must equal upstream_revision_id")
+        elif (source is None) != (revision is None):
             errors.append(
                 "Standards adoption plan upstream_source_ref and "
                 "upstream_revision_id must both name the upstream or both "
@@ -175,7 +193,8 @@ def standards_adoption_plan_errors(
             errors.append(
                 "Standards adoption plan standards_effective_date_after "
                 "must be YYYY-MM-DD")
-    if (plan.get("standards_version_before") ==
+    if (not resolved_identity_required and
+            plan.get("standards_version_before") ==
             plan.get("standards_version_after")):
         errors.append("Standards adoption must change standards_version")
     for field in ("queue_revision_before", "queue_revision_after",

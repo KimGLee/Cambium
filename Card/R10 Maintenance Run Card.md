@@ -4,7 +4,6 @@ generation_mode: curated
 route_id: R10
 read_set_id: R10
 read_set: Read Set/R10 Maintenance Run Read Set.md
-standards_version: '{{ standards_version }}'
 source_files:
   - Read Set/R10 Maintenance Run Read Set.md
   - kernel/K00 Standards Control/08 Maintenance Run Envelope.md

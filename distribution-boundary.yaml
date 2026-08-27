@@ -28,8 +28,11 @@
 #
 # Consumers: `Tools/run_gates.py` reports a candidate for each declared entry
 # present in an adopter runtime (selected profile outside profiles/examples/).
-# The declaration speaks only to adopters; the distribution repository and
-# its fixtures legitimately carry everything below.
+# `Tools/upstream_component_boundary.py` reads this declaration from the exact
+# upstream Git revision being adopted; it alone may excuse a missing component
+# file, so an adopter-edited copy cannot create a local omission whitelist.
+# The declaration speaks only to adopters; the distribution repository and its
+# fixtures legitimately carry everything below.
 #
 # Only the restricted YAML subset (Tools/kblib.py parse_yaml_subset).
 # =============================================================================
@@ -39,6 +42,12 @@ schema_version: 1
 distribution_only:
   - path: Tools/tests/
     reason: "the unit suite verifies tool behavior; its subject is the code and its owner is the distribution, which runs it in CI once for every adopter -- a carried mirror is an ungoverned obligation with no gate and no disposition when it turns red"
+  - path: Tools/compiled/cli-contract.yaml
+    reason: "source-distribution CLI projection compiled from every shipped tool; a carried runtime derives its own target-bound projection under .cambium/derived instead of retaining this distribution view"
+  - path: Tools/compiled/mcp-tools.json
+    reason: "source-distribution agent interface projection; a carried runtime must pair a target-bound projection with its own consumer rather than carry this distribution artifact"
+  - path: Tools/compiled/host-configs/
+    reason: "source-distribution host templates contain placeholders rather than adopter bindings; an adopter materializes compatible host products in runtime-derived or host configuration space"
   - path: Tools/check_kernel_size.py
     reason: "repository-engineering checker for Cambium's own Kernel source-file budget; adopter knowledge governance does not consume this distribution-maintenance constraint"
   - path: Tools/kernel-size-policy.yaml

@@ -4,7 +4,6 @@ generation_mode: curated
 route_id: R06
 read_set_id: R06
 read_set: Read Set/R06 Migration and Refactor Read Set.md
-standards_version: '{{ standards_version }}'
 source_files:
   - Read Set/R06 Migration and Refactor Read Set.md
   - kernel/K02 Knowledge Work Construction/10 Existing Changes and Migration Safety.md

@@ -4,7 +4,6 @@ generation_mode: curated
 route_id: R01
 read_set_id: R01
 read_set: Read Set/R01 Core Bootstrap Read Set.md
-standards_version: '{{ standards_version }}'
 source_files:
   - Read Set/R01 Core Bootstrap Read Set.md
   - kernel/K00 Standards Control/02 Task Routing.md

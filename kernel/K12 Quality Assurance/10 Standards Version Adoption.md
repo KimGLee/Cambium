@@ -54,12 +54,15 @@ prose copy or second state table is authoritative. The plan must bind:
 - the immediate and deferred Gate projection required by K00/12.
 
 All references must resolve and all managed paths must remain repository
-contained. Before values must equal current authoritative bytes; the Standards
-identity must actually change; `queue_revision` advances by one while
-`state_revision` remains unchanged. The proposed Profile must pass
+contained. Before values must equal current authoritative bytes. The upstream
+revision is resolved from an explicit Git repository and ref to one full commit
+SHA; `standards_version` is its compatibility alias and MUST equal it. A
+Profile-only revision MUST retain that upstream identity and instead bind its
+new Profile snapshot and typed contract fingerprint. `queue_revision` advances
+by one while `state_revision` remains unchanged. The proposed Profile must pass
 `profile-load`; its dependency closure is not thereby added to the task's
 loaded Kernel set. A predicate, Profile, or loaded-set change advances the
-Contract version; a pure identity change may retain it.
+Contract version; a pure upstream-identity change may retain it.
 
 ### Gate Ownership Projection
 

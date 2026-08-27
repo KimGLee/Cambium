@@ -4,7 +4,6 @@ generation_mode: curated
 route_id: R02
 read_set_id: R02
 read_set: Read Set/R02 Single Note Authoring Read Set.md
-standards_version: '{{ standards_version }}'
 source_files:
   - Read Set/R02 Single Note Authoring Read Set.md
   - kernel/K03 Note Types and Ownership/02 Ownership and Canonical Notes.md

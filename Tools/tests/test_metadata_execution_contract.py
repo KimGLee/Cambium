@@ -326,10 +326,7 @@ class MetadataExecutionContractTests(unittest.TestCase):
             "Tools/stamp_cards.py",
             card_currentness["implementation_owner"],
         )
-        self.assertEqual(
-            {"Tools/apply_profile_adoption.py"},
-            set(card_currentness["writers"]),
-        )
+        self.assertEqual(set(), set(card_currentness["writers"]))
         self.assertEqual(
             {"Tools/run_gates.py"}, set(card_currentness["checkers"]))
         self.assertEqual(

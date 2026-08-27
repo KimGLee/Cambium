@@ -17,6 +17,8 @@ task_state_before: paused
 contract_version_before: "c1"
 contract_version_after: "c2"
 standards_version_before: TODO(adoption-before)
+# Compatibility alias only. It MUST equal the full upstream_revision_id below;
+# a Profile-only revision keeps the same upstream commit identity.
 standards_version_after: TODO(adoption-after)
 standards_effective_date_after: TODO(adoption-after)
 selected_profile_manifest_before: "profiles/my-profile/profile.md"
@@ -24,13 +26,10 @@ selected_profile_manifest_after: "profiles/my-profile/profile.md"
 governance_revision_ref: "kernel/K00 Standards Control/03 Standards Governance.md"
 governance_revision_sha256: "sha256:replace-with-current-governance-file-fingerprint"
 standards_state_sha256_before: "sha256:replace-with-current-standards-state-fingerprint"
-# Where the adopted revision came from.  The distribution publishes no
-# version numbers by design, so this pair is what makes upstream and
-# downstream comparable: name the upstream source (repository URL or name)
-# and its revision identifier -- for a git upstream, the exact commit hash
-# the adopted kernel bytes were taken from.  A corpus that tracks no
-# upstream declares that with an explicit null pair; absence is not an
-# answer, and half a pair identifies nothing.
+# Where the adopted revision came from. Both fields are required. The writer
+# resolves its required --upstream-ref inside --upstream-root and refuses unless
+# the result is this exact full commit SHA; a source label, tag spelling, or
+# adopter-defined release number is not an upstream identity.
 upstream_source_ref: TODO(adoption-upstream)
 upstream_revision_id: TODO(adoption-upstream)
 standards_snapshot_sha256_after: "sha256:replace-with-kernel-tree-fingerprint"

@@ -31,6 +31,7 @@ import check_vocab
 import adopt_standards
 import kblib
 import record_corpus_acceptance
+from Tools.tests.profile_fixture import FIXTURE_UPSTREAM_REVISION
 
 # K12/18 files these two Gates' canonical judgment items under more than one
 # receipt dimension, so K00/12 registers every one of them.
@@ -1128,7 +1129,8 @@ class RuntimeReceiptIdentityTests(unittest.TestCase):
     def test_identity_is_read_from_the_canonical_required_queue(self):
         root = self.runtime_root()
         self.assertEqual(
-            {"task_id": "fixture-task", "standards_version": "3.0.0",
+            {"task_id": "fixture-task",
+             "standards_version": FIXTURE_UPSTREAM_REVISION,
              "selected_profile_manifest": "profiles/test-profile/profile.md"},
             kblib.runtime_receipt_identity(root))
 

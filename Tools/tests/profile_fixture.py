@@ -25,6 +25,7 @@ from canonical_registry_fixture import (  # noqa: E402
 
 RUNTIME_ROUTES = ["R%02d" % number for number in range(1, 14)]
 RUNTIME_SELECTED_ROUTES = ("R01", "R03", "R07")
+FIXTURE_UPSTREAM_REVISION = "0123456789abcdef0123456789abcdef01234567"
 
 
 def _runtime_route_paths(route_id):
@@ -117,7 +118,6 @@ def _install_runtime_activation_fixture(root):
             "route_id": route_id,
             "read_set_id": route_id,
             "read_set": read_relative,
-            "standards_version": "3.0.0",
             "source_files": [read_relative],
             "source_hash": source_hash,
             "reviewed_source_hash": source_hash,
@@ -184,7 +184,8 @@ def _install_runtime_activation_fixture(root):
 
 
 def install_loadable_profile(root, profile_id="test-profile",
-                             override_rows="", standards_version="3.0.0"):
+                             override_rows="",
+                             standards_version=FIXTURE_UPSTREAM_REVISION):
     """Overlay a real Profile and the production dependencies it consumes.
 
     Runtime tests consume one shared R01-R13 activation declaration set so
@@ -262,6 +263,14 @@ def install_loadable_profile(root, profile_id="test-profile",
         TOOLS / "compiled/metadata-execution-contract.json",
         root / "Tools/compiled/metadata-execution-contract.json",
     )
+    # Bind the fixture projection to the exact implementation bytes copied
+    # above. The source checkout may legitimately be testing an uncommitted
+    # implementation revision while its committed projection still names HEAD.
+    compiled = metadata_execution_contract.compile_metadata_execution_contract(
+        str(root))
+    kblib.atomic_write_text(
+        root / metadata_execution_contract.DEFAULT_COMPILED_PATH,
+        compiled.canonical_bytes.decode("utf-8"))
     active = root / standards_state.STATE_PATH
     active.parent.mkdir(parents=True, exist_ok=True)
     if not active.exists():
@@ -274,8 +283,8 @@ def install_loadable_profile(root, profile_id="test-profile",
             "selected_profile_manifest":
                 "profiles/%s/profile.md" % profile_id,
             "latest_adoption_receipt": "audit-fixture-standards-adoption",
-            "upstream_source_ref": None,
-            "upstream_revision_id": None,
+            "upstream_source_ref": "fixture://cambium",
+            "upstream_revision_id": standards_version,
         }), encoding="utf-8")
     _install_runtime_activation_fixture(root)
     return profile

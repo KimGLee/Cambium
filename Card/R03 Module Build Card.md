@@ -4,7 +4,6 @@ generation_mode: curated
 route_id: R03
 read_set_id: R03
 read_set: Read Set/R03 Module Build Read Set.md
-standards_version: '{{ standards_version }}'
 source_files:
   - Read Set/R03 Module Build Read Set.md
   - kernel/K01 Scope and Architecture/05 Structural Unit Interface.md

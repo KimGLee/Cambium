@@ -25,11 +25,9 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import card_contract
 import kblib
 import read_set_contract
-import standards_state
 
 
 CARD_BUDGET_PATH = "Card/card-budget.yaml"
-ACTIVE_STATE_PATH = standards_state.STATE_PATH
 PROHIBITED_BODY_RE = re.compile(
     r"(?:python3\s+Tools/|`?Tools/[A-Za-z0-9_./-]+\.py|"
     r"compiled\s+(?:kernel\s+)?guidance)", re.IGNORECASE)
@@ -203,9 +201,6 @@ def discover_cards(root, cards_dir=None):
         expected_read_set = read_sets[route_id]["path"]
         if data.get("read_set") != expected_read_set:
             raise CardContractError("%s must bind %s" % (relative, expected_read_set))
-        version = data.get("standards_version")
-        if not isinstance(version, str) or not version:
-            raise CardContractError("%s standards_version is missing" % relative)
         sources = _string_list(data.get("source_files"),
                                "%s source_files" % relative, nonempty=True)
         for source in sources:
@@ -255,7 +250,6 @@ def discover_cards(root, cards_dir=None):
             "reviewed_source_hash": reviewed,
             "reviewed_card_hash": reviewed_card,
             "body_hash": body_hash,
-            "standards_version": version,
             "read_set": expected_read_set,
             "body_bytes": body_bytes,
             "action_items": action_items,
@@ -328,17 +322,6 @@ def render_read_set_index(read_sets):
     return "\n".join(lines) + "\n"
 
 
-def _active_version(root, set_version=None):
-    state_path = Path(root).resolve() / ACTIVE_STATE_PATH
-    if not state_path.exists():
-        return set_version or "{{ standards_version }}"
-    state, _view, errors = standards_state.snapshot(root)
-    if errors or state is None:
-        raise CardContractError("active Standards state is invalid: %s" %
-                                "; ".join(errors))
-    return str(state["standards_version"]).strip()
-
-
 def _write_changes(changes):
     originals = []
     try:
@@ -359,8 +342,6 @@ def main(argv=None):
         "--cards-dir", default=None,
         help="Card directory relative to <root> (default: schema path_prefix)")
     parser.add_argument(
-        "--set-version", help="set every Card standards_version value")
-    parser.add_argument(
         "--acknowledge-curated-review", dest="acknowledge_review",
         action="store_true",
         help="after human review, bind the current sources and Card bodies")
@@ -375,11 +356,6 @@ def main(argv=None):
         print("stamp_cards: FAIL — repository root does not exist: %s" % root)
         return 1
     try:
-        active_version = _active_version(root, args.set_version)
-        if args.check and args.set_version and args.set_version != active_version:
-            print("stamp_cards: FAIL — --check cannot judge candidate version %s while active version is %s" %
-                  (args.set_version, active_version))
-            return 1
         cards, read_sets = discover_cards(root, args.cards_dir)
     except (CardContractError,
             read_set_contract.ReadSetContractError) as exc:
@@ -406,9 +382,6 @@ def main(argv=None):
             reasons.append("reviewed_card_hash %s -> %s" %
                            (record["reviewed_card_hash"],
                             record["body_hash"]))
-        if record["standards_version"] != active_version:
-            reasons.append("standards_version %s -> %s" %
-                           (record["standards_version"], active_version))
         if args.check:
             if reasons:
                 stale.append(record["path"])
@@ -421,9 +394,6 @@ def main(argv=None):
                 text, "reviewed_source_hash", expected_hash)
             text = replace_frontmatter_scalar(
                 text, "reviewed_card_hash", record["body_hash"])
-        if args.set_version:
-            text = replace_frontmatter_scalar(
-                text, "standards_version", args.set_version)
         if ((record["reviewed_source_hash"] != expected_hash or
              record["reviewed_card_hash"] != record["body_hash"]) and
                 not args.acknowledge_review):

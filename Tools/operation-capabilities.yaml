@@ -151,8 +151,7 @@ capabilities:
     kind: producer
     capability_version: 1.0.0
     implementation_owner: Tools/stamp_cards.py
-    writers:
-      - Tools/apply_profile_adoption.py
+    writers: []
     checkers:
       - Tools/run_gates.py
     consumers:

@@ -19,7 +19,7 @@ sys.path.insert(0, str(TOOLS))
 import init_state
 import kblib
 import runtime_paths
-from profile_fixture import install_loadable_profile
+from profile_fixture import FIXTURE_UPSTREAM_REVISION, install_loadable_profile
 
 
 class ReceiptSafetyTests(unittest.TestCase):
@@ -380,7 +380,8 @@ class InitPublicationTests(unittest.TestCase):
             "Exercise safe runtime publication", "--exclude",
             "Do not create Required work", "--scope-version", "s1",
             "--completion-semantics", "build",
-            "--standards-version", "3.0.0", "--profile-manifest",
+            "--standards-version", FIXTURE_UPSTREAM_REVISION,
+            "--profile-manifest",
             "profiles/sample/profile.md", "--at", "2026-08-04T00:00:00Z",
             "--apply",
         ]
@@ -646,7 +647,8 @@ class InitPublicationTests(unittest.TestCase):
     def test_staging_write_failure_leaves_no_runtime_or_staging_tree(self):
         shutil.rmtree(self.root / ".cambium")
         arguments = SimpleNamespace(
-            task_id="new-task", scope_version="s1", standards_version="3.0.0",
+            task_id="new-task", scope_version="s1",
+            standards_version=FIXTURE_UPSTREAM_REVISION,
             profile_manifest="profiles/sample/profile.md", at="2026-08-04T00:00:00Z",
             contract_version="c1", concurrency_cap=2,
             completion_semantics="build",
@@ -674,7 +676,8 @@ class InitPublicationTests(unittest.TestCase):
     def test_empty_runtime_winning_publication_race_is_never_replaced(self):
         shutil.rmtree(self.root / ".cambium")
         arguments = SimpleNamespace(
-            task_id="new-task", scope_version="s1", standards_version="3.0.0",
+            task_id="new-task", scope_version="s1",
+            standards_version=FIXTURE_UPSTREAM_REVISION,
             profile_manifest="profiles/sample/profile.md",
             at="2026-08-04T00:00:00Z", contract_version="c1",
             concurrency_cap=2, completion_semantics="build",

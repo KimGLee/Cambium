@@ -26,7 +26,7 @@ import kblib
 import queue_runtime.property_state
 import queue_runtime.runtime
 import standards_state
-from profile_fixture import install_loadable_profile
+from profile_fixture import FIXTURE_UPSTREAM_REVISION, install_loadable_profile
 
 
 class QueueFixture(unittest.TestCase):
@@ -293,7 +293,7 @@ class QueueFixture(unittest.TestCase):
             "task_id": "fixture-task", "queue_revision": 1,
             "queue_state_revision": 0,
             "required_queue_sha256": before_sha,
-            "standards_version": "3.0.0",
+            "standards_version": FIXTURE_UPSTREAM_REVISION,
         }
         activation.update(receipt_overrides)
         receipts = [activation, {
@@ -386,7 +386,9 @@ class QueueRuntimeIdentityTests(QueueFixture):
         self.assertEqual([], baseline["errors"])
         active = self.root / standards_state.STATE_PATH
         state = kblib.load_yaml_file(active)
-        state["standards_version"] = "9.9.9"
+        replacement_revision = "f" * 40
+        state["standards_version"] = replacement_revision
+        state["upstream_revision_id"] = replacement_revision
         state["state_revision"] += 1
         active.write_text(
             standards_state.canonical_text(state), encoding="utf-8")
@@ -394,7 +396,8 @@ class QueueRuntimeIdentityTests(QueueFixture):
         result = check_queue.validate_runtime(self.root)
 
         self.assertTrue(any(
-            "runtime standards_version" in error and "9.9.9" in error
+            "runtime standards_version" in error and
+            replacement_revision in error
             for error in result["errors"]), result["errors"])
 
     def test_live_legacy_property_state_requires_migration_admission(self):
@@ -4131,7 +4134,8 @@ class CheckQueueTests(QueueFixture):
                 "task_id=fixture-task", "task_state=planned",
                 'objective="Complete fixture Required Queue batches with durable evidence."',
                 'exclusions=["Do not modify profile policy."]',
-                "scope_version=s1", "standards_version=3.0.0",
+                "scope_version=s1",
+                "standards_version=%s" % FIXTURE_UPSTREAM_REVISION,
                 "selected_profile_manifest=profiles/test-profile/profile.md",
                 "queue_revision=1", "state_revision=0",
                 "checkpoint.recorded_at=None",
@@ -4433,7 +4437,8 @@ class CheckQueueTests(QueueFixture):
              "--task-id", "cap-task", "--objective", "Exercise the cap",
              "--exclude", "Do not infer Required work",
              "--scope-version", "s1", "--completion-semantics", "build",
-             "--standards-version", "3.0.0", "--profile-manifest",
+             "--standards-version", FIXTURE_UPSTREAM_REVISION,
+             "--profile-manifest",
              "profiles/sample/profile.md", "--at", "2026-08-04T00:00:00Z",
              "--apply", *extra],
             text=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
@@ -4497,7 +4502,8 @@ class CheckQueueTests(QueueFixture):
             "Exercise an empty resumable task", "--exclude",
             "Do not infer Required work", "--scope-version", "s1",
             "--completion-semantics", "build",
-            "--standards-version", "3.0.0", "--profile-manifest",
+            "--standards-version", FIXTURE_UPSTREAM_REVISION,
+            "--profile-manifest",
             "profiles/sample/profile.md", "--at", "2026-08-04T00:00:00Z",
             "--apply",
         ]
@@ -4556,7 +4562,8 @@ class CheckQueueTests(QueueFixture):
             sys.executable, str(TOOLS / "init_state.py"), str(fresh),
             "--task-id", "maintenance-task", "--objective",
             "Run bounded maintenance", "--scope-version", "s1",
-            "--standards-version", "3.0.0", "--profile-manifest",
+            "--standards-version", FIXTURE_UPSTREAM_REVISION,
+            "--profile-manifest",
             "profiles/sample/profile.md", "--at", "2026-08-04T00:00:00Z",
             "--apply",
         ]

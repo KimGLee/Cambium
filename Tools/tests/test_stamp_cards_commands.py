@@ -42,6 +42,26 @@ class StampCardsCommandTests(unittest.TestCase):
         self.assertEqual(1, result.returncode)
         self.assertIn("must be exactly Card", result.stdout)
 
+    def test_adopter_state_never_rebinds_immutable_card_bytes(self):
+        root = self.fixture()
+        state = root / ".cambium/governance/standards_state.yaml"
+        state.parent.mkdir(parents=True)
+        state.write_text(
+            "standards_version: " + "a" * 40 + "\n",
+            encoding="utf-8")
+
+        current = self.run_tool(root, "--check")
+
+        self.assertEqual(0, current.returncode,
+                         current.stdout + current.stderr)
+
+    def test_version_stamping_interface_has_been_removed(self):
+        result = self.run_tool(
+            REPOSITORY, "--set-version", "adopter-invented")
+
+        self.assertNotEqual(0, result.returncode)
+        self.assertIn("unrecognized arguments", result.stderr)
+
     def test_source_update_does_not_acknowledge_curated_review(self):
         root = self.fixture()
         source = root / "Read Set/R01 Core Bootstrap Read Set.md"

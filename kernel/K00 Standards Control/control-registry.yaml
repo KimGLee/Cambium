@@ -381,7 +381,7 @@ gates:
     binding_protocol: not-authorizing
   - gate_id: standards-adoption
     tool: adopt_standards
-    tool_version: 1.8.0
+    tool_version: 1.9.0
     check: standards_adoption
     mode: "*"
     dimensions:

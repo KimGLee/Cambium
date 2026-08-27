@@ -32,8 +32,15 @@ import kblib
 import seal_receipts
 import standards_state
 import update_queue
-from profile_fixture import install_loadable_profile
+from profile_fixture import FIXTURE_UPSTREAM_REVISION, install_loadable_profile
 import test_update_queue
+import upstream_identity
+
+
+REPOSITORY = TOOLS.parent
+UPSTREAM_REF = "HEAD"
+ADOPTED_UPSTREAM_REVISION = upstream_identity.resolve_revision(
+    REPOSITORY, UPSTREAM_REF)
 
 
 # ---------------------------------------------------------------------------
@@ -131,8 +138,9 @@ class AdoptStandardsFixture:
         return gate["receipt_id"]
 
     def plan(self, *, invalidated_receipt=None, overrides=None):
-        # The live adopter state starts aligned to approved 3.0.  The plan
-        # proposes 3.1 while K00/03 remains an unchanged rules owner.
+        # The live adopter state carries a full fixture commit identity. The
+        # plan adopts the current upstream Git commit while K00/03 remains an
+        # unchanged rules owner.
         queue = self.load(check_queue.QUEUE_PATH)
         progress = self.load(check_queue.PROGRESS_PATH)
         contract = progress["contract"]
@@ -149,7 +157,7 @@ class AdoptStandardsFixture:
             "contract_version_after": "c2" if semantic else
                 contract["contract_version"],
             "standards_version_before": queue["standards_version"],
-            "standards_version_after": "3.1.0",
+            "standards_version_after": ADOPTED_UPSTREAM_REVISION,
             "standards_effective_date_after": "2026-08-06",
             "standards_state_sha256_before": kblib.sha256_file(
                 self.root / standards_state.STATE_PATH),
@@ -163,7 +171,7 @@ class AdoptStandardsFixture:
             # The 1.5 upstream identity pair; the fixture corpus tracks a
             # nominal upstream so the recorded form is exercised.
             "upstream_source_ref": "https://example.test/cambium.git",
-            "upstream_revision_id": "0123456789abcdef0123456789abcdef01234567",
+            "upstream_revision_id": ADOPTED_UPSTREAM_REVISION,
             "standards_snapshot_sha256_after":
                 kblib.repository_tree_sha256(self.root, "kernel"),
             "profile_snapshot_sha256_after":
@@ -229,12 +237,29 @@ class AdoptStandardsFixture:
         path.write_text(kblib.canonical_yaml(plan), encoding="utf-8")
         return plan
 
-    def command(self, *, apply=False, actor="worker"):
-        args = [str(self.root), "--plan", self.PLAN]
+    def _component_report(self, errors=()):
+        return mock.Mock(
+            upstream_revision_id=ADOPTED_UPSTREAM_REVISION,
+            errors=tuple(errors),
+        )
+
+    def prepare_result(self):
+        with mock.patch.object(
+                adopt_standards.upstream_component_boundary, "evaluate",
+                return_value=self._component_report()):
+            return adopt_standards._prepare_result(
+                self.root, self.PLAN, REPOSITORY, UPSTREAM_REF)
+
+    def command(self, *, apply=False, actor="worker", component_errors=()):
+        args = [str(self.root), "--plan", self.PLAN,
+                "--upstream-root", str(REPOSITORY),
+                "--upstream-ref", UPSTREAM_REF]
         if apply:
             args.extend(["--apply", "--actor-role", actor])
         stdout = io.StringIO()
-        with redirect_stdout(stdout):
+        with redirect_stdout(stdout), mock.patch.object(
+                adopt_standards.upstream_component_boundary, "evaluate",
+                return_value=self._component_report(component_errors)):
             code = adopt_standards.main(args)
         return code, stdout.getvalue()
 
@@ -1132,10 +1157,9 @@ class AdoptedScenarioTests(_TemplateBackedCase):
     def test_upstream_identity_is_recorded_and_half_a_pair_is_refused(self):
         """1.5: the adoption record is what makes up/downstream comparable.
 
-        The distribution publishes no version numbers, so the upstream pair
-        (or its explicit null form) is required, recorded, receipt-bound,
-        and surfaced by resume-status.  Half a pair identifies nothing and
-        is refused; a legacy record without the fields stays valid history.
+        The upstream source and resolved full commit are required, recorded,
+        receipt-bound, and surfaced by resume-status. A missing or invented
+        identity is refused; legacy records remain producer-era history.
         """
         self.assertEqual(0, self.scenario["apply_code"],
                          self.scenario["apply_output"])
@@ -1144,12 +1168,12 @@ class AdoptedScenarioTests(_TemplateBackedCase):
         record = result["progress"]["standards_adoptions"][0]
         self.assertEqual("https://example.test/cambium.git",
                          record["upstream_source_ref"])
-        self.assertEqual("0123456789abcdef0123456789abcdef01234567",
+        self.assertEqual(ADOPTED_UPSTREAM_REVISION,
                          record["upstream_revision_id"])
         resume = self.run_tool("check_queue.py", "--resume-status")
         self.assertIn(
-            "standards_upstream=https://example.test/cambium.git@0123456789"
-            "abcdef0123456789abcdef01234567", resume.stdout)
+            "standards_upstream=https://example.test/cambium.git@%s" %
+            ADOPTED_UPSTREAM_REVISION, resume.stdout)
 
     def test_legacy_present_fingerprint_stays_sealed_across_the_chain(self):
         self.assert_committed_scenario()
@@ -1177,13 +1201,13 @@ class AdoptedScenarioTests(_TemplateBackedCase):
         self.assert_committed_scenario()
         runtime = check_queue.validate_runtime(self.root)
         self.assertEqual(
-            {"3.0.0", "3.1.0"},
+            {FIXTURE_UPSTREAM_REVISION, ADOPTED_UPSTREAM_REVISION},
             check_queue.accounted_standards_versions(
                 runtime["progress"], runtime["queue"]))
         self.assertEqual(
-            {"3.0.0"},
+            {FIXTURE_UPSTREAM_REVISION},
             check_queue.accounted_standards_versions(
-                {"contract": {"standards_version": "3.0.0"},
+                {"contract": {"standards_version": FIXTURE_UPSTREAM_REVISION},
                  "standards_adoptions": []}))
 
 
@@ -1306,6 +1330,24 @@ class PausedPlanAdmissionTests(_TemplateBackedCase):
     # pre-seeded receipt register -- so each takes a private copy.
     TEMPLATE = "paused"
 
+    def test_component_byte_drift_refuses_before_any_runtime_write(self):
+        self.plan()
+        paths = [self.root / path for path in (
+            check_queue.COVERAGE_PATH, check_queue.QUEUE_PATH,
+            check_queue.PROGRESS_PATH, standards_state.STATE_PATH)]
+        before = [path.read_bytes() for path in paths]
+
+        code, output = self.command(
+            apply=True, actor="integrator",
+            component_errors=(
+                "component bytes differ from upstream: Card/R01 Core "
+                "Bootstrap Card.md",))
+
+        self.assertEqual(1, code, output)
+        self.assertIn("immutable components do not match", output)
+        self.assertEqual(before, [path.read_bytes() for path in paths])
+        self.assertFalse((self.root / self.RECEIPTS).exists())
+
     def test_producer_era_component_paths_migrate_only_through_adoption(self):
         """The sole load-contract writer must cross a namespace move.
 
@@ -1395,24 +1437,18 @@ class PausedPlanAdmissionTests(_TemplateBackedCase):
         self.assertEqual(
             current_read_sets, commit["selected_read_sets_after"])
 
-    def test_a_declared_null_upstream_pair_is_an_answer(self):
-        plan = self.plan(overrides={
+    def test_a_declared_null_upstream_pair_is_refused_for_new_adoption(self):
+        self.plan(overrides={
             "upstream_source_ref": None, "upstream_revision_id": None})
         code, output = self.command(apply=True, actor="integrator")
-        self.assertEqual(0, code, output)
-        result = check_queue.validate_runtime(self.root)
-        self.assertEqual([], result["errors"])
-        record = result["progress"]["standards_adoptions"][0]
-        self.assertIsNone(record["upstream_source_ref"])
-        self.assertIsNone(record["upstream_revision_id"])
-        resume = self.run_tool("check_queue.py", "--resume-status")
-        self.assertIn("standards_upstream=none-declared", resume.stdout)
+        self.assertEqual(1, code, output)
+        self.assertIn("upstream Git ref resolves to", output)
 
     def test_half_an_upstream_pair_is_refused(self):
         self.plan(overrides={"upstream_revision_id": None})
         code, output = self.command(apply=True, actor="integrator")
         self.assertEqual(1, code, output)
-        self.assertIn("both name the upstream or both be null", output)
+        self.assertIn("upstream Git ref resolves to", output)
 
     def test_apply_appends_to_existing_receipt_register(self):
         existing = kblib.make_receipt(
@@ -1483,6 +1519,56 @@ class AdoptionTransactionFailureTests(_TemplateBackedCase):
     # rollback, so every test needs -- and gets -- a private tree.
     TEMPLATE = "paused"
 
+    def test_locked_prewrite_component_cas_rejects_post_admission_drift(self):
+        self.plan()
+        prepared = self.prepare_result()
+        state_paths = [self.root / path for path in (
+            check_queue.COVERAGE_PATH, check_queue.QUEUE_PATH,
+            check_queue.PROGRESS_PATH, standards_state.STATE_PATH)]
+        before = [path.read_bytes() for path in state_paths]
+        receipt_path = self.root / self.RECEIPTS
+
+        with mock.patch.object(
+                adopt_standards.upstream_component_boundary, "evaluate",
+                return_value=self._component_report((
+                    "component bytes differ from upstream: Card/R01.md",))):
+            with self.assertRaisesRegex(ValueError, "locked pre-write"):
+                adopt_standards._commit_transaction(prepared, receipt_path)
+
+        self.assertEqual(before, [path.read_bytes() for path in state_paths])
+        self.assertFalse(receipt_path.exists())
+        self.assertFalse(
+            (self.root / ".cambium/tmp/state-writer.lock").exists())
+
+    def test_pre_final_component_cas_rolls_back_and_records_abort(self):
+        self.plan()
+        prepared = self.prepare_result()
+        state_paths = [self.root / path for path in (
+            check_queue.COVERAGE_PATH, check_queue.QUEUE_PATH,
+            check_queue.PROGRESS_PATH, standards_state.STATE_PATH)]
+        before = [path.read_bytes() for path in state_paths]
+        receipt_path = self.root / self.RECEIPTS
+
+        with mock.patch.object(
+                adopt_standards.upstream_component_boundary, "evaluate",
+                side_effect=[
+                    self._component_report(),
+                    self._component_report((
+                        "component bytes differ from upstream: Tools/runtime.py",
+                    )),
+                ]):
+            with self.assertRaisesRegex(ValueError, "pre-final-receipt"):
+                adopt_standards._commit_transaction(prepared, receipt_path)
+
+        self.assertEqual(before, [path.read_bytes() for path in state_paths])
+        rows = [json.loads(line) for line in
+                receipt_path.read_text(encoding="utf-8").splitlines()]
+        self.assertEqual(
+            ["prepare", "abort"],
+            [row["transaction_phase"] for row in rows])
+        self.assertFalse(
+            (self.root / ".cambium/tmp/state-writer.lock").exists())
+
     def test_state_write_failure_restores_before_bytes_and_records_abort(self):
         self.plan()
         paths = [self.root / path for path in (
@@ -1524,7 +1610,7 @@ class AdoptionTransactionFailureTests(_TemplateBackedCase):
 
     def test_locked_prewrite_profile_cas_rejects_post_admission_drift(self):
         self.plan()
-        prepared = adopt_standards._prepare_result(self.root, self.PLAN)
+        prepared = self.prepare_result()
         state_paths = [self.root / path for path in (
             check_queue.COVERAGE_PATH, check_queue.QUEUE_PATH,
             check_queue.PROGRESS_PATH)]
@@ -1543,7 +1629,7 @@ class AdoptionTransactionFailureTests(_TemplateBackedCase):
 
     def test_locked_prewrite_cas_compares_the_typed_contract_fingerprint(self):
         self.plan()
-        prepared = adopt_standards._prepare_result(self.root, self.PLAN)
+        prepared = self.prepare_result()
         prepared["profile_evidence"]["profile_contract_fingerprint"] = \
             "sha256:" + "0" * 64
 
@@ -1558,7 +1644,7 @@ class AdoptionTransactionFailureTests(_TemplateBackedCase):
 
     def test_locked_prewrite_cas_compares_profile_load_inputs(self):
         self.plan()
-        prepared = adopt_standards._prepare_result(self.root, self.PLAN)
+        prepared = self.prepare_result()
         prepared["profile_evidence"]["profile_load_inputs_sha256"] = \
             "sha256:" + "0" * 64
 

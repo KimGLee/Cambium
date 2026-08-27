@@ -40,8 +40,9 @@ status label alone.
 - `queue_revision` advances for Queue structural or verification-contract
   change under K13/08.
 - `queue_state_revision` advances only for Queue lifecycle or hold change.
-- `standards_version` advances only for a reusable governance change authorized
-  through Standards governance.
+- `standards_version` changes only when Standards adoption selects a different
+  upstream Git commit. A Profile-only revision retains it and binds the new
+  Profile snapshot and typed contract fingerprint in adoption evidence.
 
 One Guidance item may advance several versions. A research lead not yet
 accepted into scope does not advance scope early.

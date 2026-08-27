@@ -60,7 +60,10 @@ import test_apply_task_plan as ttp  # noqa: E402 (task-plan fixtures)
 import test_check_corpus_plan as tccp  # noqa: E402 (configured-slot fixture)
 import test_profile_onboarding_status as tpos  # noqa: E402 (status fixtures)
 import test_template_fill  # noqa: E402 (reused semantic fill + scan config)
-from profile_fixture import install_loadable_profile  # noqa: E402
+from profile_fixture import (  # noqa: E402
+    FIXTURE_UPSTREAM_REVISION,
+    install_loadable_profile,
+)
 
 PROFILE_ID = tap.PROFILE_ID  # "cand": lets tap's plan helpers be reused
 MANIFEST = tap.MANIFEST
@@ -735,7 +738,7 @@ class FoundingFlowTests(unittest.TestCase):
     def test_revision_closes_and_the_active_selection_then_passes(self):
         self.assertEqual(0, self.revision_code, self.revision_out)
         state = self.governance_after_revision
-        self.assertEqual("1.1.0", state["standards_version"])
+        self.assertEqual(tap.UPSTREAM_REVISION, state["standards_version"])
         self.assertEqual(MANIFEST, state["selected_profile_manifest"])
         result = self.post_close_result
         self.assertEqual([], result["errors"])
@@ -784,7 +787,7 @@ class RuntimeCreationTests(unittest.TestCase):
              "--task-id", ttp.TASK_ID,
              "--objective", "Exercise task planning",
              "--scope-version", "s1", "--completion-semantics", "build",
-             "--standards-version", "3.0.0",
+             "--standards-version", FIXTURE_UPSTREAM_REVISION,
              "--profile-manifest", ttp.PROFILE,
              "--at", "2026-08-13T00:00:00Z", "--apply"],
             text=True, capture_output=True, check=False)
@@ -856,7 +859,7 @@ class RuntimeCreationTests(unittest.TestCase):
                 "exclusions": [],
                 "scope_version": "s1",
                 "concurrency_cap": 1,
-                "standards_version": "3.0.0",
+                "standards_version": FIXTURE_UPSTREAM_REVISION,
                 "selected_profile_manifest": ttp.PROFILE,
                 "selected_route_ids": ["R02"],
                 "selected_card_paths": [],

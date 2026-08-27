@@ -170,10 +170,10 @@ path_activation_overrides:
     inactive_when_any: []
 tools:
   - tool: adopt_standards
-    exposure: mcp
+    exposure: cli-only
     workspace_argument: root
     workspace_access: write
-    value_arguments: [actor_role, apply, json]
+    value_arguments: [actor_role, apply, json, upstream_root, upstream_ref]
     read_paths: [plan]
     write_paths: [receipts]
     read_write_paths: []
@@ -215,10 +215,10 @@ tools:
     read_write_paths: [page]
     external_write: none
   - tool: apply_profile_adoption
-    exposure: mcp
+    exposure: cli-only
     workspace_argument: root
     workspace_access: write
-    value_arguments: [apply, json]
+    value_arguments: [apply, json, upstream_root, upstream_ref]
     read_paths: [plan]
     write_paths: [receipts]
     read_write_paths: []
@@ -347,6 +347,15 @@ tools:
     value_arguments: [json]
     read_paths: [profile]
     write_paths: [receipts]
+    read_write_paths: []
+    external_write: none
+  - tool: check_upstream_components
+    exposure: cli-only
+    workspace_argument: root
+    workspace_access: write
+    value_arguments: [upstream_root, revision, write_manifest, check_manifest, json]
+    read_paths: []
+    write_paths: []
     read_write_paths: []
     external_write: none
   - tool: check_vocab
@@ -515,7 +524,7 @@ tools:
     exposure: cli-only
     workspace_argument: root
     workspace_access: read
-    value_arguments: [host, distribution_root, workspace_root, check, sources]
+    value_arguments: [host, projection_target, distribution_root, workspace_root, check, sources]
     read_paths: [projection]
     write_paths: []
     read_write_paths: [output_dir]
@@ -524,7 +533,7 @@ tools:
     exposure: cli-only
     workspace_argument: root
     workspace_access: write
-    value_arguments: [form, check, sources]
+    value_arguments: [form, projection_target, check, sources]
     read_paths: [contract]
     write_paths: []
     read_write_paths: [output]
@@ -575,10 +584,10 @@ tools:
     read_write_paths: []
     external_write: none
   - tool: stamp_cards
-    exposure: mcp
+    exposure: cli-only
     workspace_argument: root
     workspace_access: write
-    value_arguments: [set_version, acknowledge_review, check]
+    value_arguments: [acknowledge_review, check]
     read_paths: []
     write_paths: []
     read_write_paths: [cards_dir]

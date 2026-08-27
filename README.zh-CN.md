@@ -170,17 +170,18 @@ Agent 可以准备候选答案，但不能批准 Profile，也不能自行发明
 为模板准备采用计划，然后先预览，再正式应用：
 
 ```text
-python3 Tools/apply_profile_adoption.py . --plan <plan>.yaml
-python3 Tools/apply_profile_adoption.py . --plan <plan>.yaml --apply
+python3 Tools/apply_profile_adoption.py . --plan <plan>.yaml \
+  --upstream-root <本地-Cambium-仓库> --upstream-ref <git-ref>
+python3 Tools/apply_profile_adoption.py . --plan <plan>.yaml \
+  --upstream-root <本地-Cambium-仓库> --upstream-ref <git-ref> --apply
 ```
 
-这个事务会把已批准的 Standards 版本、所选 Profile、生成合同和相应证据绑定在一起。
-任何一步失败，工具都会恢复之前的控制面。
-
-如果事务报告经过人工策划的 Card 已过期，需要由审阅者另行核对发生变化的
-canonical sources 与受影响的 Card 正文。完成语义审阅后，才可运行
-`python3 Tools/stamp_cards.py . --acknowledge-curated-review` 记录新的绑定，
-然后重新执行采用事务。采用事务本身不会代替审阅者确认 Card 语义。
+这个事务会把上游 ref 解析为完整 Git commit SHA，并绑定所选 Profile、采用者
+自己的生成合同和证据；任何一步失败，工具都会恢复之前的控制面。它不会重新
+stamp 或改写采用者持有的上游 Card 字节；`standards_version` 只保留为该 commit
+的兼容字段。
+采用仍是明确的 CLI 维护操作：其外部上游仓库输入不会作为不受约束的 MCP 参数
+暴露给 Agent。
 
 空语料库也使用同一份采用合同。先进行有界的 founding 工作，创建真实的
 canonical owner 和残留扫描见证——语义自然时一页可以同时充当 owner 和见证，
@@ -209,9 +210,13 @@ python3 Tools/init_state.py . \
   --exclude "写明至少一项明确边界" \
   --completion-semantics build \
   --scope-version s1 \
-  --standards-version YOUR_VERSION \
+  --standards-version APPROVED_UPSTREAM_COMMIT_SHA \
   --profile-manifest profiles/my-profile/profile.md
 ```
+
+`APPROVED_UPSTREAM_COMMIT_SHA` 应读取当前
+`.cambium/governance/standards_state.yaml` 中的完整上游 commit SHA，而不是
+`3.17.0` 之类的发布标签。
 
 先检查预览结果，再加上 `--apply` 重复运行。
 
@@ -301,6 +306,9 @@ Card 交付也有严格的证据边界。server 可以证明自己发送了什�
 - 退出码 `2` 表示 hold，既不是成功，也不是普通失败。
 - report 和生成投影只是视图，不能作为权威输入。
 - 仓库提供的 verifier 代码不会自动运行；运行前必须明确授权并检查其源码和影响。
+- 上游组件字节比较必须从独立可信的上游 checkout（或受保护 runner）运行，并把
+  adopter 作为被检查目标。它用于发现漂移，不能让 adopter 内尚未校验的 Tool
+  自证可信。
 
 SHA-256 绑定可以在采用方的本地信任域中发现漂移和不一致历史，但它不是数字签名。
 没有受保护 runner 或外部证明时，Cambium 无法认证 actor/reviewer 标签、操作系统

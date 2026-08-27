@@ -62,6 +62,7 @@ copying their tables or field lists into prose.
 | Public CLI and agent interface policy | [`agent-interface-policy.yaml`](agent-interface-policy.yaml) | [`compile_cli_contract.py`](compile_cli_contract.py) resolves runtime `runtime_path_id` references through [`runtime_paths.py`](runtime_paths.py); [`render_interface_projection.py`](render_interface_projection.py) consumes the compiled result |
 | Adopter runtime path spelling, lifecycle class, and policy path-reference projection | [`runtime_paths.py`](runtime_paths.py) | Runtime producers, consumers, and the CLI-contract compiler |
 | Tool and package dependency direction | [`module-boundaries.yaml`](module-boundaries.yaml) | [`module_boundary_facts.py`](module_boundary_facts.py), [`module_boundary_report.py`](module_boundary_report.py), boundary tests |
+| Upstream commit identity and immutable adopter component bytes | [`distribution-boundary.yaml`](../distribution-boundary.yaml) | [`upstream_identity.py`](upstream_identity.py) resolves a Git ref to its full commit SHA; [`upstream_component_boundary.py`](upstream_component_boundary.py) reads component bytes and permitted omissions from that commit; [`check_upstream_components.py`](check_upstream_components.py) verifies an adopter and optionally writes its derived manifest |
 | Kernel leaf-size implementation policy | [`kernel-size-policy.yaml`](kernel-size-policy.yaml) and [`kernel-size-exceptions.md`](kernel-size-exceptions.md) | [`check_kernel_size.py`](check_kernel_size.py) |
 | Host adapter observations | [`host-conformance.yaml`](host-conformance.yaml) | Host conformance tests and interface generation |
 | Input templates | [`schemas/`](schemas/) | The checker or writer named by each workflow |
@@ -84,6 +85,21 @@ python3 Tools/run_gates.py . --list
 python3 Tools/run_gates.py .
 ```
 
+Verify adopter components against an upstream Git revision. The result records
+the resolved full SHA; only `profiles/README.md` belongs to the shared Profile
+boundary, and omissions require that revision's `distribution-boundary.yaml`.
+
+```text
+python3 Tools/check_upstream_components.py <adopter-root> --upstream-root <cambium-git-root> --revision <git-ref> --check-manifest
+```
+
+Run it from a separately trusted upstream checkout, not from the adopter copy:
+this is drift detection, not self-attestation. Unregistered executable
+artifacts, including `__pycache__/`, fail the boundary.
+
+After a clean comparison, `--write-manifest` atomically writes only
+`.cambium/derived/upstream-component-byte-manifest.tsv`.
+
 Card currentness and Kernel size are independent repository-engineering Tool
 preflights, not Kernel Gates:
 
@@ -95,7 +111,9 @@ python3 Tools/check_kernel_size.py .
 `stamp_cards.py --check` verifies the serialized-Card engineering schema, the
 Card-owned size budget, source bindings, curated-review bindings, Card/Read Set
 pairing, and generated navigation. It does not prove that a summary is
-semantically correct or that an Agent understood it.
+semantically correct or that an Agent understood it. Card bytes are never
+bound to an adopter's active Standards identity; the Card layer remains an
+immutable upstream component.
 
 `kernel-size-policy.yaml` is the sole numeric owner of Kernel leaf-size limits
 and registered measurements. `check_kernel_size.py` separates a hard failure
@@ -123,7 +141,8 @@ supplying a confirmed plan:
 
 ```text
 python3 Tools/apply_profile_adoption.py --help
-python3 Tools/apply_profile_adoption.py . --plan <root-relative-plan.yaml>
+python3 Tools/apply_profile_adoption.py . --plan <root-relative-plan.yaml> \
+  --upstream-root <local-cambium-git-root> --upstream-ref <git-ref>
 ```
 
 Omitting `--apply` previews the transaction. A later Standards/Profile change
@@ -137,14 +156,16 @@ persisted before-image against the exact current paths declared by the plan.
 The original contract bytes remain the receipt/fingerprint authority, and the
 after-image must pass ordinary runtime validation with no legacy alias.
 
-The adoption writer may refresh an observed source hash, but it cannot approve
-a curated Card summary. When it refuses a stale curated review, a human first
-reviews the changed sources and Card body, then explicitly records that review
-with `python3 Tools/stamp_cards.py . --acknowledge-curated-review` before
-retrying adoption.
+Adoption writers never modify Card bytes. Curated review is a separate
+source-distribution maintainer operation: after reviewing changed sources and
+the Card body, a maintainer may run
+`python3 Tools/stamp_cards.py . --acknowledge-curated-review`. This CLI is not
+projected into the adopter-facing MCP surface.
 
 ```text
 python3 Tools/adopt_standards.py --help
+python3 Tools/adopt_standards.py . --plan <root-relative-plan.yaml> \
+  --upstream-root <local-cambium-git-root> --upstream-ref <git-ref>
 ```
 
 ## Runtime workflow
@@ -196,6 +217,20 @@ The generation chain is:
 4. `render_host_configs.py` creates host registration and workspace-binding
    products for a selected environment.
 
+The projection target fixes the storage boundary. `source-distribution`
+continues to own and verify the tracked products in `Tools/compiled/`.
+`carried-runtime` may write only these adopter-owned derived paths:
+
+- `.cambium/derived/interfaces/cli-contract.yaml`;
+- `.cambium/derived/interfaces/mcp-tools.json`;
+- `.cambium/derived/host-configs/`.
+
+Passing a `Tools/compiled/` output while selecting `carried-runtime` is
+rejected; the target cannot relocate its own artifact. Rendered host products
+set `CAMBIUM_INTERFACE_PROJECTION` to the exact registered projection path.
+The MCP server accepts only the distributed projection or that exact path
+under the bound adopter workspace, and never discovers an arbitrary JSON file.
+
 Check the tracked products without rewriting them:
 
 ```text
@@ -203,6 +238,15 @@ python3 Tools/metadata_execution_contract.py --root . --check
 python3 Tools/compile_cli_contract.py . --check
 python3 Tools/render_interface_projection.py . --check
 python3 Tools/render_host_configs.py . --check
+```
+
+Build or verify the carried-runtime projections without changing distributed
+component bytes:
+
+```text
+python3 Tools/compile_cli_contract.py . --projection-target carried-runtime
+python3 Tools/render_interface_projection.py . --projection-target carried-runtime
+python3 Tools/render_host_configs.py . --projection-target carried-runtime
 ```
 
 Use `--help` and `--sources` where available before regenerating or installing

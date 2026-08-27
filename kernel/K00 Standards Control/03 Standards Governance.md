@@ -10,12 +10,14 @@ This page owns governance rules only. It MUST NOT carry an adopter's current
 version/Profile values or a chronological adoption register.
 
 The adopter-owned runtime state stores exactly one current Standards/Profile
-identity under the stable `standards-state` schema contract: version, approval
-status, effective date, selected Profile identity, upstream identity, state
-revision, and latest adoption evidence. Kernel owns the meaning and required
-invariants of that identity, not its physical path or current values. A content
-task cannot freeze a Task Contract until an authorized adoption has established
-the identity.
+identity under the stable `standards-state` schema contract: immutable upstream
+Git commit, approval status, effective date, selected Profile identity, state
+revision, and latest adoption evidence. The legacy `standards_version` spelling
+is only a compatibility projection of that full commit SHA; it is not a second
+release identity and cannot be chosen independently. Kernel owns the meaning
+and required invariants of that identity, not its physical path or current
+values. A content task cannot freeze a Task Contract until an authorized
+adoption has established the identity.
 
 The canonical history is the append-only Standards-adoption receipt stream.
 Each adoption receipt binds its plan, before/after identity, upstream
@@ -36,7 +38,10 @@ When modifying rules, you MUST:
 
 1. Make explicit that this is a governance change, not ordinary content editing.
 2. Record the affected Standards and the reason.
-3. Bump `standards_version`; changing the selected profile manifest always requires a bump.
+3. Resolve the adopted upstream Git ref to its full commit SHA and bind that
+   value as the upstream identity. A Profile-only revision retains the same
+   upstream identity and is distinguished by its Profile snapshot, typed
+   contract fingerprint, state revision, and adoption evidence.
 4. Update affected routing and normative owners; never append history to a
    Kernel page or Card.
 5. For every existing affected runtime task, publish the changed-predicate input required by [[kernel/K12 Quality Assurance/10 Standards Version Adoption|K12/10]]. R09 owns the governance revision; R07 later executes or resumes the active-task adoption through the sole K13/15 writer. An empty changed-predicate list takes K12/10's no-predicate-change branch rather than bypassing state synchronization.

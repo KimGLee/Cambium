@@ -164,6 +164,17 @@ class ShippedArtifactTests(unittest.TestCase):
         self.assertEqual(parsed["artifact"], "cli-invocation-contract")
         self.assertTrue(parsed["tools"])
 
+    def test_adoption_writers_classify_the_resolved_upstream_identity(self):
+        contract = compiler.compile_contract(str(REPO_ROOT),
+            tool_availability.SOURCE_DISTRIBUTION)
+        by_tool = {record["tool"]: record for record in contract["tools"]}
+
+        for tool in ("adopt_standards", "apply_profile_adoption"):
+            with self.subTest(tool=tool):
+                interface = by_tool[tool]["agent_interface"]
+                self.assertIn("upstream_root", interface["value_arguments"])
+                self.assertIn("upstream_ref", interface["value_arguments"])
+
 
 class DeterminismTests(unittest.TestCase):
     def test_two_runs_agree_across_hash_seeds(self):
@@ -651,6 +662,39 @@ class ExitCodeTests(unittest.TestCase):
         result = run(self.workspace, "--check", "--projection-target", tool_availability.SOURCE_DISTRIBUTION)
 
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+
+    def test_carried_runtime_writes_only_the_registered_derived_contract(self):
+        result = run(
+            self.workspace, "--projection-target",
+            tool_availability.CARRIED_RUNTIME)
+
+        self.assertEqual(result.returncode, 0,
+                         result.stdout + result.stderr)
+        runtime_output = Path(
+            self.workspace, runtime_paths.CLI_CONTRACT_ARTIFACT_PATH)
+        self.assertTrue(runtime_output.is_file())
+        self.assertFalse(Path(self.output).exists())
+        contract = kblib.parse_yaml_subset(
+            runtime_output.read_text(encoding="utf-8"))
+        self.assertEqual(contract["projection_target"],
+                         tool_availability.CARRIED_RUNTIME)
+        header = runtime_output.read_text(encoding="utf-8").splitlines()[:12]
+        self.assertTrue(any(
+            "--projection-target carried-runtime" in line
+            for line in header))
+        self.assertFalse(any(
+            "compile_cli_contract.py . --check" in line
+            for line in header))
+
+    def test_carried_runtime_refuses_the_distribution_output(self):
+        result = run(
+            self.workspace, "--projection-target",
+            tool_availability.CARRIED_RUNTIME,
+            "--output", self.output)
+
+        self.assertEqual(result.returncode, 1,
+                         result.stdout + result.stderr)
+        self.assertFalse(Path(self.output).exists())
 
     def test_a_hand_edited_artifact_holds_with_2(self):
         self.compile_once()

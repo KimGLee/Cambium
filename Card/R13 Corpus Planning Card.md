@@ -4,7 +4,6 @@ generation_mode: curated
 route_id: R13
 read_set_id: R13
 read_set: Read Set/R13 Corpus Planning Read Set.md
-standards_version: '{{ standards_version }}'
 source_files:
   - Read Set/R13 Corpus Planning Read Set.md
   - kernel/K02 Knowledge Work Construction/03 Corpus Planning Applicability and Lifecycle.md

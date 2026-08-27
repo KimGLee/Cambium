@@ -6,11 +6,10 @@ current canonical adopter Standards state, upstream identity, and one exact
 passing `profile-load` evaluation. Initial adoption creates
 `.cambium/governance/standards_state.yaml`; a pre-task revision advances it.
 Both append `.cambium/receipts/standards-adoptions.jsonl`, then regenerate
-vocabulary and page-contract projections and update the observed Card source
-hashes/version.  The transaction never acknowledges a curated Card review;
-stale review bindings refuse the adoption and must be acknowledged separately
-by a human before retry. K00/03 and Cards never store the chronological
-adoption register.
+adopter-owned vocabulary and page-contract projections. Cards remain immutable
+upstream components: the transaction checks their bytes through the common
+component boundary, but never stamps or rewrites them. K00/03 and Cards never
+store the chronological adoption register.
 
 Every touched byte is staged and recoverable. Any task runtime under
 `.cambium/state/` redirects the caller to `adopt_standards.py`; governance and
@@ -21,28 +20,68 @@ follow the writer convention: 0 = success (dry-run or applied), 1 = refusal
 or failure.
 
 Usage: python3 Tools/apply_profile_adoption.py <root> --plan <path>
+       --upstream-root <cambium-git-root> --upstream-ref <git-ref>
        [--apply] [--json] [--receipts PATH]
 """
 
+import os
+import sys
+import tempfile
+
+# Bootstrap the interpreter before importing any repository-local Tool.
+# Adoption validates every immutable component byte, so its own imports must
+# neither consume a pre-existing local ``__pycache__`` nor create one before
+# that validation runs.  Setting the live interpreter prefix prevents local
+# cache reads; exporting the same prefix makes every Python child inherit the
+# boundary.  A high-entropy path under an operating-system temp root stays
+# outside the adopter and is intentionally never created: cache reads miss,
+# while bytecode writes are disabled below.  An adopter-controlled TMPDIR is
+# not trusted merely because ``tempfile`` selected it.
+def _external_pycache_prefix():
+    repository_root = os.path.realpath(os.path.join(
+        os.path.dirname(os.path.abspath(__file__)), os.pardir))
+    for raw_root in (tempfile.gettempdir(), "/var/tmp", "/tmp"):
+        candidate_root = os.path.realpath(os.path.abspath(raw_root))
+        if not os.path.isdir(candidate_root):
+            continue
+        try:
+            if os.path.commonpath(
+                    (repository_root, candidate_root)) == repository_root:
+                continue
+        except ValueError:
+            pass
+        candidate = os.path.join(
+            candidate_root,
+            "cambium-adoption-pycache-%s" % os.urandom(16).hex())
+        if not os.path.lexists(candidate):
+            return candidate
+    raise RuntimeError("no repository-external Python cache root is available")
+
+
+_CAMBIUM_PYCACHE_PREFIX = _external_pycache_prefix()
+os.environ["PYTHONPYCACHEPREFIX"] = _CAMBIUM_PYCACHE_PREFIX
+os.environ["PYTHONDONTWRITEBYTECODE"] = "1"
+sys.pycache_prefix = _CAMBIUM_PYCACHE_PREFIX
+sys.dont_write_bytecode = True
+
 import errno
 import json
-import os
 import re
 import shutil
 import subprocess
-import sys
 import uuid
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import check_profile
-import card_contract
 import kblib
 import profile_layout_contract
 import runtime_paths
 import standards_state
+import upstream_component_boundary
+import upstream_identity
 
 TOOL = "apply_profile_adoption"
-TOOL_VERSION = "2.0.0"
+TOOL_VERSION = "2.1.0"
 # Consumed gate identity (K00/12 Stable Gate ID Registry); this tool registers
 # no Gate ID of its own and `check_profile` remains the sole producer.
 PROFILE_LOAD_GATE_ID = check_profile.GATE_ID
@@ -76,18 +115,13 @@ PLAN_FIELDS = frozenset((
     "upstream_revision_id",
 ))
 
-# The four producer steps, in README "Adopt Cambium" step-4 order.  Each entry
+# The adopter-derived producer steps.  Each entry
 # is (step name, script under <root>/Tools, extra arguments builder).
 COMPOSER_STEPS = (
     ("compose-vocab", "compose_vocab.py",
      lambda root, plan: []),
     ("compose-page-contract", "compose_page_contract.py",
      lambda root, plan: ["--root", root]),
-    ("stamp-set-version", "stamp_cards.py",
-     lambda root, plan: [root, "--set-version",
-                         plan["standards_version_after"]]),
-    ("stamp-check", "stamp_cards.py",
-     lambda root, plan: [root, "--check"]),
 )
 
 
@@ -232,15 +266,15 @@ def validate_plan_values(plan, plan_relative):
             raise AdoptionRefusal(
                 "plan field %s must be one canonical sha256:<hex> "
                 "fingerprint; found %r" % (field, value))
-    source = plan.get("upstream_source_ref")
-    revision = plan.get("upstream_revision_id")
-    if (source is None) != (revision is None):
+    _string_field(plan, "upstream_source_ref")
+    revision = _string_field(plan, "upstream_revision_id")
+    if not upstream_identity.is_full_commit_sha(revision):
         raise AdoptionRefusal(
-            "upstream_source_ref and upstream_revision_id must both be null "
-            "or both be non-empty")
-    if source is not None:
-        _string_field(plan, "upstream_source_ref")
-        _string_field(plan, "upstream_revision_id")
+            "upstream_revision_id must be one full Git commit SHA")
+    if version_after != revision:
+        raise AdoptionRefusal(
+            "standards_version_after is a compatibility alias and must equal "
+            "upstream_revision_id")
     before_version = plan.get("standards_version_before")
     before_manifest = plan.get("selected_profile_manifest_before")
     if branch == BRANCH_INITIAL:
@@ -257,12 +291,6 @@ def validate_plan_values(plan, plan_relative):
         for field in ("standards_version_before",
                       "selected_profile_manifest_before"):
             _string_field(plan, field)
-        if before_version == version_after:
-            raise AdoptionRefusal(
-                "profile-revision must bump standards_version: before and "
-                "after are both %r (changing the selected profile "
-                "manifest or its content always requires a bump)" %
-                version_after)
         state_sha = _string_field(plan, "standards_state_sha256_before")
         if not SHA_RE.fullmatch(state_sha):
             raise AdoptionRefusal(
@@ -299,6 +327,54 @@ def require_tools(root):
             raise AdoptionRefusal(
                 "root does not carry the Tools distribution the transaction "
                 "drives: missing Tools/%s" % script)
+
+
+def verify_upstream_identity(plan, upstream_root, upstream_ref):
+    """Resolve external Git authority and bind it to the declared plan SHA."""
+    try:
+        resolved = upstream_identity.resolve_revision(
+            upstream_root, upstream_ref)
+    except upstream_identity.UpstreamIdentityError as exc:
+        raise AdoptionRefusal(str(exc))
+    if plan["upstream_revision_id"] != resolved:
+        raise AdoptionRefusal(
+            "upstream Git ref resolves to %s but plan upstream_revision_id is "
+            "%s" % (resolved, plan["upstream_revision_id"]))
+    return resolved
+
+
+def verify_upstream_components(root, plan, upstream_root, upstream_ref):
+    """Require every immutable component byte to match the same Git commit."""
+    try:
+        report = upstream_component_boundary.evaluate(
+            root, upstream_root, upstream_ref)
+    except upstream_component_boundary.ComponentBoundaryError as exc:
+        raise AdoptionRefusal(
+            "cannot verify the upstream component byte boundary: %s" % exc)
+    if report.upstream_revision_id != plan["upstream_revision_id"]:
+        raise AdoptionRefusal(
+            "component boundary resolved upstream revision %s but plan "
+            "upstream_revision_id is %s" %
+            (report.upstream_revision_id, plan["upstream_revision_id"]))
+    if report.errors:
+        raise AdoptionRefusal(
+            "adopter immutable components do not match upstream revision %s: "
+            "%s" % (report.upstream_revision_id,
+                     "; ".join(report.errors)))
+    return report
+
+
+def reverify_prepared_upstream_components(prepared, phase):
+    """CAS immutable component bytes against the revision frozen at prepare."""
+    try:
+        return verify_upstream_components(
+            prepared["root"], prepared["plan"],
+            prepared["upstream_root"],
+            prepared["resolved_upstream_revision_id"])
+    except AdoptionRefusal as exc:
+        raise TransactionError(
+            "%s upstream component revalidation failed: %s" %
+            (phase, exc)) from exc
 
 
 def read_governance(root):
@@ -458,17 +534,8 @@ def write_journal(staging, journal):
 
 def touched_paths(root):
     """Every repo-relative path the transaction may write, sorted."""
-    paths = [standards_state.STATE_PATH, RECEIPT_RELATIVE,
-             VOCAB_ARTIFACT, PAGE_CONTRACT_ARTIFACT]
-    cards_directory = card_contract.load_schema(root)["directory"]
-    cards_dir = os.path.join(root, *cards_directory.split("/"))
-    for current, directories, files in os.walk(cards_dir):
-        directories.sort()
-        for name in sorted(files):
-            relative = os.path.relpath(
-                os.path.join(current, name), root).replace(os.sep, "/")
-            paths.append(relative)
-    return sorted(set(paths))
+    return sorted({standards_state.STATE_PATH, RECEIPT_RELATIVE,
+                   VOCAB_ARTIFACT, PAGE_CONTRACT_ARTIFACT})
 
 
 def prepare_staging(root, plan_relative, plan_sha, plan):
@@ -530,9 +597,8 @@ def restore_from_staging(root, staging, journal):
     """Put back the pre-transaction bytes of every touched path.
 
     Returns a list of restoration failures; empty means the restoration was
-    byte-verified: every backed-up file matches its recorded fingerprint,
-    every file that did not exist is absent again, and no file the
-    transaction may have created under Card/ survives.
+    byte-verified: every backed-up file matches its recorded fingerprint and
+    every file that did not exist is absent again.
     """
     failures = []
     backups = journal.get("backups") or {}
@@ -565,22 +631,6 @@ def restore_from_staging(root, staging, journal):
             except OSError as exc:
                 if exc.errno not in (errno.ENOTEMPTY, errno.EEXIST):
                     failures.append("%s cleanup: %s" % (relative, exc))
-    cards_directory = card_contract.load_schema(root)["directory"]
-    cards_dir = os.path.join(root, *cards_directory.split("/"))
-    if os.path.isdir(cards_dir):
-        for current, directories, files in os.walk(cards_dir):
-            directories.sort()
-            for name in sorted(files):
-                absolute = os.path.join(current, name)
-                relative = os.path.relpath(
-                    absolute, root).replace(os.sep, "/")
-                if relative not in backups:
-                    try:
-                        os.unlink(absolute)
-                    except OSError as exc:
-                        failures.append(
-                            "%s: cannot remove transaction-created file: %s"
-                            % (relative, exc))
     for relative in sorted(backups):
         record = backups[relative]
         absolute = os.path.join(root, *relative.split("/"))
@@ -711,6 +761,7 @@ def commit_transaction(prepared):
                 standards_state.STATE_PATH)
         journal["status"] = "writing"
         write_journal(staging, journal)
+        reverify_prepared_upstream_components(prepared, "locked pre-write")
         state_path = os.path.join(root, *standards_state.STATE_PATH.split("/"))
         os.makedirs(os.path.dirname(state_path), exist_ok=True)
         kblib.atomic_write_text(
@@ -746,6 +797,7 @@ def commit_transaction(prepared):
         journal["receipts"] = receipts
         write_journal(staging, journal)
         os.makedirs(os.path.dirname(prepared["receipts_path"]), exist_ok=True)
+        reverify_prepared_upstream_components(prepared, "pre-final-receipt")
         kblib.write_receipts(prepared["receipts_path"], receipts)
         journal["status"] = "committed"
         write_journal(staging, journal)
@@ -866,8 +918,13 @@ def resolve_receipts_path(root, plan_path, plan, receipts_argument):
         raise AdoptionRefusal("invalid --receipts destination: %s" % exc)
 
 
-def prepare(root, plan_argument, receipts_argument):
+def prepare(root, plan_argument, receipts_argument, upstream_root,
+            upstream_ref):
     plan_path, plan_relative, plan_raw, plan = load_plan(root, plan_argument)
+    canonical_upstream_root = os.path.realpath(
+        os.path.abspath(os.fspath(upstream_root)))
+    resolved_upstream_revision_id = verify_upstream_identity(
+        plan, canonical_upstream_root, upstream_ref)
     plan_sha = kblib.sha256_bytes(plan_raw)
     receipts_path = resolve_receipts_path(root, plan_path, plan,
                                           receipts_argument)
@@ -891,6 +948,9 @@ def prepare(root, plan_argument, receipts_argument):
             "plan was prepared -- re-prepare the plan against the current "
             "bytes" % (GOVERNANCE_PATH, live_sha,
                        plan["k00_03_sha256_before"]))
+    verify_upstream_components(
+        root, plan, canonical_upstream_root,
+        resolved_upstream_revision_id)
     observed_state_sha = (
         kblib.sha256_bytes(state_raw) if state_raw is not None else None)
     if observed_state_sha != plan["standards_state_sha256_before"]:
@@ -904,7 +964,6 @@ def prepare(root, plan_argument, receipts_argument):
     commit_stub = build_commit_stub(plan, transaction_id)
     state_after = standards_state.next_state(
         state,
-        standards_version=plan["standards_version_after"],
         effective_date=plan["standards_effective_date_after"],
         selected_profile_manifest=plan["selected_profile_manifest_after"],
         latest_adoption_receipt=commit_stub["receipt_id"],
@@ -926,6 +985,8 @@ def prepare(root, plan_argument, receipts_argument):
         "commit_stub": commit_stub,
         "evaluation": evaluation,
         "transaction_id": transaction_id,
+        "upstream_root": canonical_upstream_root,
+        "resolved_upstream_revision_id": resolved_upstream_revision_id,
     }
 
 
@@ -948,6 +1009,13 @@ def main(argv=None):
     parser.add_argument("--receipts", default=None,
                         help="must be the canonical Standards history stream "
                              "%s" % RECEIPT_RELATIVE)
+    parser.add_argument(
+        "--upstream-root", required=True,
+        help="local Cambium Git repository used to resolve upstream identity")
+    parser.add_argument(
+        "--upstream-ref", required=True,
+        help="Git revision in --upstream-root that must resolve to the plan's "
+             "full upstream_revision_id")
     args = parser.parse_args(argv)
 
     report = {
@@ -991,8 +1059,20 @@ def main(argv=None):
     # re-diagnosed as a branch mismatch.
     try:
         plan_path, _rel, plan_raw, plan = load_plan(root, args.plan)
+        canonical_upstream_root = os.path.realpath(
+            os.path.abspath(os.fspath(args.upstream_root)))
+        resolved_upstream_revision_id = verify_upstream_identity(
+            plan, canonical_upstream_root, args.upstream_ref)
         plan_sha = kblib.sha256_bytes(plan_raw)
-        for staging_name in existing_stagings(root):
+        staging_names = existing_stagings(root)
+        if staging_names:
+            # Recovery itself can restore or remove repository bytes.  The
+            # immutable component boundary therefore closes before recovery,
+            # not merely before a fresh transaction's state write.
+            verify_upstream_components(
+                root, plan, canonical_upstream_root,
+                resolved_upstream_revision_id)
+        for staging_name in staging_names:
             outcome = recover_staging(
                 root, staging_name, plan_sha, args.apply, say)
             if outcome == "completed":
@@ -1000,7 +1080,9 @@ def main(argv=None):
                 say("[PASS] adoption for this exact plan was already "
                     "committed; recovery completed the cleanup")
                 return emit(0)
-        prepared = prepare(root, args.plan, args.receipts)
+        prepared = prepare(
+            root, args.plan, args.receipts,
+            canonical_upstream_root, resolved_upstream_revision_id)
     except AdoptionRefusal as exc:
         return refuse(str(exc))
     except (OSError, UnicodeError, ValueError, TypeError,

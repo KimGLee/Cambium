@@ -4,7 +4,6 @@ generation_mode: curated
 route_id: R04
 read_set_id: R04
 read_set: Read Set/R04 Source-driven Expansion Read Set.md
-standards_version: '{{ standards_version }}'
 source_files:
   - Read Set/R04 Source-driven Expansion Read Set.md
   - kernel/K06 Knowledge Intake and Evolution/03 Source-to-Knowledge Pipeline.md

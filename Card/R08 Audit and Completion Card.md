@@ -4,7 +4,6 @@ generation_mode: curated
 route_id: R08
 read_set_id: R08
 read_set: Read Set/R08 Audit and Completion Read Set.md
-standards_version: '{{ standards_version }}'
 source_files:
   - Read Set/R08 Audit and Completion Read Set.md
   - kernel/K12 Quality Assurance/15 Terminal Audit and Convergence.md

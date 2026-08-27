@@ -325,6 +325,9 @@ modules:
   - module: check_structure
     path: Tools/check_structure.py
     public: []
+  - module: check_upstream_components
+    path: Tools/check_upstream_components.py
+    public: []
   - module: check_vocab
     path: Tools/check_vocab.py
     provisional: true
@@ -1140,6 +1143,7 @@ modules:
       - standards_adoption_owner_projection_required
       - standards_adoption_profile_contract_required
       - standards_adoption_profile_inputs_required
+      - standards_adoption_resolved_identity_required
       - standards_adoption_state_file_required
       - standards_adoption_upstream_required
       - terminal_proof_profile_binding_errors
@@ -1348,6 +1352,7 @@ modules:
       - BATCH_CLOSE_RECEIPT_PATH
       - BATCH_JUDGMENT_RECEIPT_PATH
       - CANONICAL_STATE
+      - CLI_CONTRACT_ARTIFACT_PATH
       - CONTRACT_AMENDMENT_DELTA_ROOT
       - CONTRACT_AMENDMENT_RECEIPT_PATH
       - CORPUS_PLAN_ACCEPTANCE_DELTA_ROOT
@@ -1358,7 +1363,9 @@ modules:
       - GATE_ATTESTATION_RECEIPT_PATH
       - GATE_RESULT_RECEIPT_PATH
       - GOVERNANCE_ROOT
+      - HOST_CONFIG_ARTIFACT_ROOT
       - INVALIDATED_DELTA_RECEIPT_ROOT
+      - MCP_TOOLS_ARTIFACT_PATH
       - PAGE_CONTRACT_ARTIFACT_PATH
       - PAGE_STATE_RECOVERY_JOURNAL_PATH
       - PRE_APPLY_COVERAGE_RECEIPT_ROOT
@@ -1391,6 +1398,7 @@ modules:
       - TASK_RUNTIME_DIRECTORIES
       - TASK_TRANSITION_RECEIPT_PATH
       - TRANSIENT_ROOT
+      - UPSTREAM_COMPONENT_MANIFEST_PATH
       - VOCAB_ARTIFACT_PATH
       - WATERMARK_PATH
       - WORK_SPEC_ROOT
@@ -1480,7 +1488,9 @@ modules:
     provisional: true
     public:
       - AvailabilityError
+      - CARRIED_RUNTIME
       - PROJECTION_TARGETS
+      - SOURCE_DISTRIBUTION
       - resolve
   - module: update_queue
     path: Tools/update_queue.py
@@ -1491,6 +1501,20 @@ modules:
     public:
       - RECEIPT_PATH
       - build_task_transition
+  - module: upstream_component_boundary
+    path: Tools/upstream_component_boundary.py
+    public:
+      - ComponentBoundaryError
+      - DEFAULT_MANIFEST_PATH
+      - evaluate
+      - manifest_path
+      - manifest_text
+  - module: upstream_identity
+    path: Tools/upstream_identity.py
+    public:
+      - UpstreamIdentityError
+      - is_full_commit_sha
+      - resolve_revision
   - module: vocabulary_contract
     path: Tools/vocabulary_contract.py
     provisional: true

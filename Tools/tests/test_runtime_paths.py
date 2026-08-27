@@ -24,6 +24,7 @@ import project_page_state  # noqa: E402
 import runtime_paths  # noqa: E402
 import seal_receipts  # noqa: E402
 import standards_state  # noqa: E402
+import upstream_component_boundary  # noqa: E402
 from queue_runtime import canon  # noqa: E402
 
 
@@ -78,6 +79,10 @@ class RuntimePathRegistryTests(unittest.TestCase):
         self.assertEqual(
             runtime_paths.PAGE_CONTRACT_ARTIFACT_PATH,
             compose_page_contract.DEFAULT_OUTPUT,
+        )
+        self.assertEqual(
+            runtime_paths.UPSTREAM_COMPONENT_MANIFEST_PATH,
+            upstream_component_boundary.DEFAULT_MANIFEST_PATH,
         )
         self.assertEqual(runtime_paths.QUEUE_PATH, kblib.RUNTIME_QUEUE_PATH)
         self.assertEqual(

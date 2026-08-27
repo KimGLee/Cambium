@@ -34,6 +34,7 @@ SERVER_SOURCE = TOOLS / "mcp_server.py"
 
 sys.path.insert(0, str(TOOLS))
 import mcp_server  # noqa: E402
+import runtime_paths  # noqa: E402
 import module_boundary_facts  # noqa: E402
 import path_capability  # noqa: E402
 
@@ -81,7 +82,10 @@ FAKE_TOOLS = {
         "                  'workspace': os.environ.get("
         "'CAMBIUM_WORKSPACE_ROOT'),\n"
         "                  'execution_context': os.environ.get("
-        "'CAMBIUM_EXECUTION_CONTEXT_ID')}))\n"
+        "'CAMBIUM_EXECUTION_CONTEXT_ID'),\n"
+        "                  'pycache_prefix': sys.pycache_prefix,\n"
+        "                  'dont_write_bytecode': "
+        "sys.dont_write_bytecode}))\n"
         "sys.exit(0)\n"
     ),
     "odd_tool": (
@@ -185,6 +189,7 @@ def fake_projection():
     return {
         "artifact": "agent-interface-projection",
         "form": "mcp",
+        "projection_target": mcp_server.SOURCE_DISTRIBUTION_TARGET,
         "schema_version": mcp_server.PROJECTION_SCHEMA_VERSION,
         "tool_count": len(tools),
         "tools": tools,
@@ -283,10 +288,11 @@ class LayerBoundaryTests(unittest.TestCase):
                     names.add(node.module.split(".")[0])
         return names
 
-    def test_no_module_shipped_under_tools_is_imported(self):
+    def test_only_the_runtime_path_registry_is_imported_from_tools(self):
         shipped = {path.stem for path in TOOLS.glob("*.py")}
 
-        self.assertEqual(sorted(self.imported_module_names() & shipped), [])
+        self.assertEqual(sorted(self.imported_module_names() & shipped),
+                         ["runtime_paths"])
 
     def test_no_judgment_module_is_imported_by_name(self):
         judgment_prefixes = ("check_", "apply_", "update_", "compile_",
@@ -302,10 +308,10 @@ class LayerBoundaryTests(unittest.TestCase):
 
         self.assertEqual(offenders, [])
 
-    def test_every_import_is_standard_library(self):
+    def test_every_other_import_is_standard_library(self):
         allowed = {
             "hashlib", "json", "os", "stat", "subprocess", "sys", "traceback",
-            "uuid",
+            "tempfile", "uuid", "runtime_paths",
         }
 
         self.assertEqual(self.imported_module_names() - allowed, set())
@@ -467,6 +473,25 @@ class BindingTests(SyntheticCase):
         self.assertEqual(payload["workspace"],
                          os.path.realpath(str(self.dist.workspace)))
 
+    def test_child_overrides_host_local_python_cache_settings(self):
+        local_cache = self.dist.root / "Tools/__pycache__/host-controlled"
+        server = started(
+            self.dist,
+            PYTHONPYCACHEPREFIX=str(local_cache),
+            PYTHONDONTWRITEBYTECODE="0")
+
+        result = request(server, "tools/call", {
+            "name": "echo_tool",
+            "arguments": {"root": ".", "first": "a", "second": "b"},
+        })["result"]
+
+        payload = result["structuredContent"]["stdout_json"]
+        self.assertEqual(
+            mcp_server._CAMBIUM_PYCACHE_PREFIX,
+            payload["pycache_prefix"])
+        self.assertTrue(payload["dont_write_bytecode"])
+        self.assertFalse(local_cache.exists())
+
     def test_a_session_refuses_a_replaced_workspace_directory(self):
         server = started(self.dist)
         original = self.dist.workspace
@@ -591,6 +616,95 @@ class ProjectionLoadTests(SyntheticCase):
             "initialize", INITIALIZE)
 
         self.assertIn("result", response)
+
+    def carried_projection(self, **overrides):
+        path = self.dist.workspace / runtime_paths.MCP_TOOLS_ARTIFACT_PATH
+        path.parent.mkdir(parents=True, exist_ok=True)
+        tools = self.dist.workspace / "Tools"
+        tools.mkdir(exist_ok=True)
+        for name, source in FAKE_TOOLS.items():
+            (tools / (name + ".py")).write_text(source, encoding="utf-8")
+        document = fake_projection()
+        document["projection_target"] = mcp_server.CARRIED_RUNTIME_TARGET
+        document.update(overrides)
+        path.write_text(json.dumps(document, sort_keys=True), encoding="utf-8")
+        return path
+
+    def test_an_explicit_carried_runtime_projection_is_loaded_from_the_adopter(self):
+        path = self.carried_projection()
+        digest = mcp_server.sha256_of(path.read_bytes())
+
+        response = request(
+            mcp_server.Server(
+                distribution_root=str(self.dist.workspace),
+                environ=self.dist.environ(**{
+                    mcp_server.PROJECTION_PATH_ENV: str(path),
+                    mcp_server.SOURCE_HASH_ENV: digest})),
+            "initialize", INITIALIZE)
+
+        self.assertIn("result", response, response)
+
+    def test_a_carried_projection_refuses_an_external_distribution_root(self):
+        path = self.carried_projection()
+        digest = mcp_server.sha256_of(path.read_bytes())
+
+        response = request(
+            self.dist.server(**{
+                mcp_server.PROJECTION_PATH_ENV: str(path),
+                mcp_server.SOURCE_HASH_ENV: digest}),
+            "initialize", INITIALIZE)
+
+        self.assertEqual(response["error"]["code"],
+                         mcp_server.UNRELIABLE_EVIDENCE)
+        self.assertIn("may execute only the Tools carried",
+                      response["error"]["message"])
+
+    def test_a_carried_projection_refuses_an_alternate_workspace_path(self):
+        canonical = self.carried_projection()
+        foreign = self.dist.workspace / "host-selected-projection.json"
+        foreign.write_bytes(canonical.read_bytes())
+        digest = mcp_server.sha256_of(foreign.read_bytes())
+
+        response = request(
+            mcp_server.Server(
+                distribution_root=str(self.dist.workspace),
+                environ=self.dist.environ(**{
+                    mcp_server.PROJECTION_PATH_ENV: str(foreign),
+                    mcp_server.SOURCE_HASH_ENV: digest})),
+            "initialize", INITIALIZE)
+
+        self.assertEqual(response["error"]["code"],
+                         mcp_server.UNRELIABLE_EVIDENCE)
+        self.assertIn("registered workspace artifact",
+                      response["error"]["message"])
+
+    def test_an_explicit_projection_without_its_hash_binding_fails(self):
+        foreign = self.dist.workspace / "foreign.json"
+        foreign.write_text(json.dumps(fake_projection()), encoding="utf-8")
+
+        response = request(
+            self.dist.server(**{
+                mcp_server.PROJECTION_PATH_ENV: str(foreign)}),
+            "initialize", INITIALIZE)
+
+        self.assertEqual(response["error"]["code"],
+                         mcp_server.UNRELIABLE_EVIDENCE)
+        self.assertIn(mcp_server.SOURCE_HASH_ENV,
+                      response["error"]["message"])
+
+    def test_an_explicit_bound_path_is_authorized_by_configuration(self):
+        path = self.dist.workspace / "host-selected-projection.json"
+        path.write_text(json.dumps(fake_projection(), sort_keys=True),
+                        encoding="utf-8")
+        digest = mcp_server.sha256_of(path.read_bytes())
+
+        response = request(
+            self.dist.server(**{
+                mcp_server.PROJECTION_PATH_ENV: str(path),
+                mcp_server.SOURCE_HASH_ENV: digest}),
+            "initialize", INITIALIZE)
+
+        self.assertIn("result", response, response)
 
 
 # ---------------------------------------------------------------------------

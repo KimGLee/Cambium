@@ -4,7 +4,6 @@ generation_mode: curated
 route_id: R05
 read_set_id: R05
 read_set: Read Set/R05 Expression Layer Read Set.md
-standards_version: '{{ standards_version }}'
 source_files:
   - Read Set/R05 Expression Layer Read Set.md
   - kernel/K11 Expression Layer/01 Expression Architecture and Separation.md

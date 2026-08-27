@@ -37,6 +37,7 @@ SCRIPT = TOOLS_DIR / "render_host_configs.py"
 sys.path.insert(0, str(TOOLS_DIR))
 import kblib  # noqa: E402
 import render_host_configs as renderer  # noqa: E402
+import tool_availability  # noqa: E402
 
 PROJECTION = REPO_ROOT / renderer.DEFAULT_PROJECTION
 OUTPUT_DIR = REPO_ROOT / renderer.DEFAULT_OUTPUT_DIR
@@ -58,6 +59,7 @@ def fixture_projection(**overrides):
         "schema_version": renderer.UPSTREAM_SCHEMA_VERSION,
         "artifact": renderer.UPSTREAM_ARTIFACT,
         "form": renderer.UPSTREAM_FORM,
+        "projection_target": "source-distribution",
         "source_hash": kblib.sha256_bytes(b"fixture contract"),
         "tool_count": 1,
         "tools": [{"name": "sample", "inputSchema": {"type": "object"}}],
@@ -337,7 +339,8 @@ class FieldSourceTests(unittest.TestCase):
         self.addCleanup(setattr, renderer, "SERVER_NAME", original)
         renderer.SERVER_NAME = "renamed"
         context = {"source": "x", "source_hash": "sha256:x",
-                   "bindings": (), "unsubstituted": ()}
+                   "bindings": (), "unsubstituted": (),
+                   "projection_target": "source-distribution"}
 
         products = [("claude-code",
                      renderer.build_claude_code("claude-code", context))]
@@ -360,7 +363,8 @@ class FieldSourceTests(unittest.TestCase):
         """The table is the admission rule, not a place entries accumulate."""
         context = {"source": renderer.DEFAULT_PROJECTION,
                    "source_hash": "sha256:x",
-                   "bindings": (), "unsubstituted": ()}
+                   "bindings": (), "unsubstituted": (),
+                   "projection_target": "source-distribution"}
         rendered = set()
         for host, entry in renderer.HOSTS.items():
             product = entry["build"](host, context)
@@ -372,10 +376,23 @@ class FieldSourceTests(unittest.TestCase):
 class DeterminismTests(unittest.TestCase):
     def test_two_runs_agree_across_hash_seeds(self):
         with tempfile.TemporaryDirectory() as workspace:
+            projection = Path(workspace, renderer.DEFAULT_PROJECTION)
+            projection.parent.mkdir(parents=True, exist_ok=True)
+            projection.write_text(json.dumps(fixture_projection()),
+                                  encoding="utf-8")
             first = os.path.join(workspace, "first")
             second = os.path.join(workspace, "second")
-            run(".", "--output-dir", first, env={"PYTHONHASHSEED": "0"})
-            run(".", "--output-dir", second, env={"PYTHONHASHSEED": "12345"})
+            first_run = run(
+                workspace, "--projection", str(projection),
+                "--output-dir", first, env={"PYTHONHASHSEED": "0"})
+            second_run = run(
+                workspace, "--projection", str(projection),
+                "--output-dir", second,
+                env={"PYTHONHASHSEED": "12345"})
+            self.assertEqual(first_run.returncode, 0,
+                             first_run.stdout + first_run.stderr)
+            self.assertEqual(second_run.returncode, 0,
+                             second_run.stdout + second_run.stderr)
 
             for host in renderer.HOSTS:
                 name = renderer.HOSTS[host]["output"]
@@ -412,6 +429,51 @@ class FixtureRunTests(unittest.TestCase):
         result = self.render("--check")
 
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+
+    def write_carried_projection(self):
+        path = Path(self.workspace, renderer.CARRIED_RUNTIME_PROJECTION)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps(fixture_projection(
+            projection_target=tool_availability.CARRIED_RUNTIME)),
+            encoding="utf-8")
+        return path
+
+    def test_carried_runtime_writes_only_adopter_derived_host_configs(self):
+        self.write_carried_projection()
+
+        result = run(
+            self.workspace, "--projection-target",
+            tool_availability.CARRIED_RUNTIME)
+
+        self.assertEqual(result.returncode, 0,
+                         result.stdout + result.stderr)
+        output = Path(self.workspace, renderer.CARRIED_RUNTIME_OUTPUT_DIR)
+        for entry in renderer.HOSTS.values():
+            self.assertTrue((output / entry["output"]).is_file())
+        claude = json.loads((output / renderer.HOSTS[
+            "claude-code"]["output"]).read_text(encoding="utf-8"))
+        projection_path = claude["mcpServers"][renderer.SERVER_NAME][
+            "env"][renderer.PROJECTION_PATH_ENV]
+        self.assertEqual(
+            projection_path,
+            "%s/%s" % (renderer.WORKSPACE_PLACEHOLDER,
+                       renderer.CARRIED_RUNTIME_PROJECTION))
+        self.assertNotIn("Tools/compiled", projection_path)
+        self.assertFalse(Path(
+            self.workspace, renderer.DEFAULT_OUTPUT_DIR).exists())
+
+    def test_carried_runtime_refuses_an_alternate_output_directory(self):
+        self.write_carried_projection()
+        alternate = Path(self.workspace, "elsewhere")
+
+        result = run(
+            self.workspace, "--projection-target",
+            tool_availability.CARRIED_RUNTIME,
+            "--output-dir", str(alternate))
+
+        self.assertEqual(result.returncode, 1,
+                         result.stdout + result.stderr)
+        self.assertFalse(alternate.exists())
 
     def test_a_single_changed_byte_holds_with_2(self):
         for host in renderer.HOSTS:

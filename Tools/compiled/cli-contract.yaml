@@ -3,9 +3,9 @@
 #   declaration plus Tools/agent-interface-policy.yaml. Invocation
 #   shape comes from argparse; capability shape comes from the closed
 #   policy. A hand edit is reported by --check as a HOLD.
-# regenerate with: python3 Tools/compile_cli_contract.py .
-# verify with:     python3 Tools/compile_cli_contract.py . --check
-# `source_hash` covers the policy, path registries, and 48
+# regenerate with: python3 Tools/compile_cli_contract.py . --projection-target source-distribution
+# verify with:     python3 Tools/compile_cli_contract.py . --projection-target source-distribution --check
+# `source_hash` covers the policy, path registries, and 49
 #   CLI tool sources listed under source_files.
 # A positional argument is one whose `option_strings` is empty.
 # `choices` is the admissible SET in canonical order, not the
@@ -17,7 +17,7 @@
 schema_version: 5
 artifact: cli-invocation-contract
 generator: Tools/compile_cli_contract.py
-generator_version: 1.3.0
+generator_version: 1.5.0
 derived_from: argparse-introspection
 source_files:
   - Tools/agent-interface-policy.yaml
@@ -43,6 +43,7 @@ source_files:
   - Tools/check_queue.py
   - Tools/check_residual_content.py
   - Tools/check_structure.py
+  - Tools/check_upstream_components.py
   - Tools/check_vocab.py
   - Tools/compile_cli_contract.py
   - Tools/compile_queue.py
@@ -71,21 +72,21 @@ source_files:
   - Tools/stamp_cards.py
   - Tools/update_queue.py
   - Tools/update_task.py
-source_hash: sha256:001136ccc0e0f50675d41fe82b436940de127c227acc1d34ceee6c1aa5011596
+source_hash: sha256:39adf7cde24447b87e3b698dfa3bc6c292bd0762fea4a1e0415017c35fa99793
 agent_interface_policy:
   path: Tools/agent-interface-policy.yaml
-  sha256: sha256:69857d5d60052921db528e64abdbe5fbcfabe978516508a8922a98ac2ebc6d99
+  sha256: sha256:56f3c5b362dd98d4ebdedb9ec417a619e59e0ae9db0d973103f56697d9d4b706
 runtime_path_registry:
   path: Tools/runtime_paths.py
-  sha256: sha256:4052ac4df0bc34952cb9f71fcaa04ae0d37897e5543c83c14171735acb0647f0
+  sha256: sha256:e6c307bd93aa569a84ba915efeb6d890e1f3ad314103f2ff312e8f1a67642d9d
 component_path_registries:
   card-directory:
     path: Tools/schemas/card.schema.yaml
-    sha256: sha256:bddf1537d6f5a53050e715390b0a8c4e80dbaf4eaad3e806c51d2e26ab74b91a
+    sha256: sha256:efcf14bac67f5831cae0b598391d1f71868fddbd9bc2dc27024df387961fd4f0
 projection_target: source-distribution
 distribution_boundary:
   path: distribution-boundary.yaml
-  sha256: sha256:18a9e75038e7838818f02de9c738ee31026f1c8e381a7b4d713d45a41ddfa058
+  sha256: sha256:2f19d3dff429f900589ddf074518121386e09436efee63aab487a3a866d22d2c
 included_tools:
   - adopt_standards
   - apply_amendment
@@ -107,6 +108,7 @@ included_tools:
   - check_queue
   - check_residual_content
   - check_structure
+  - check_upstream_components
   - check_vocab
   - compile_cli_contract
   - compile_queue
@@ -150,11 +152,11 @@ receipt_shape:
   conditional_fields:
     - gate_id
   extension_policy: derived-per-tool-from-source
-tool_count: 48
+tool_count: 49
 tools:
   - tool: adopt_standards
     module: Tools/adopt_standards.py
-    source_hash: sha256:30149f994f073374ed819e082d3caa2f0b7eca140d50192dd0430acfe214e3fa
+    source_hash: sha256:5c60faf0a134d0bb26a4514007e9cf100f01a246442456a1a988e3ff7a94511b
     description: Adopt one approved Standards/Profile revision
     arguments:
       - dest: root
@@ -224,6 +226,28 @@ tools:
         action: store_true
         type: null
         help: write this run's receipt objects to stdout as one canonical JSON array and move the human-readable report to stderr; receipt writing, verdicts, and exit codes are unchanged
+      - dest: upstream_root
+        option_strings:
+          - --upstream-root
+        required: true
+        default: null
+        default_type: NoneType
+        choices: null
+        nargs: null
+        action: store
+        type: null
+        help: local Cambium Git repository used to resolve upstream identity
+      - dest: upstream_ref
+        option_strings:
+          - --upstream-ref
+        required: true
+        default: null
+        default_type: NoneType
+        choices: null
+        nargs: null
+        action: store
+        type: null
+        help: Git revision in --upstream-root that must resolve to the plan's full upstream_revision_id
     mutually_exclusive_groups: []
     receipt_extensions:
       - actor_role
@@ -291,13 +315,15 @@ tools:
       - upstream_source_ref
     receipt_extensions_extraction: complete
     agent_interface:
-      exposure: mcp
+      exposure: cli-only
       workspace_argument: root
       workspace_access: write
       value_arguments:
         - actor_role
         - apply
         - json
+        - upstream_ref
+        - upstream_root
       path_arguments:
         - argument: plan
           access: read
@@ -1028,7 +1054,7 @@ tools:
       external_write: none
   - tool: apply_profile_adoption
     module: Tools/apply_profile_adoption.py
-    source_hash: sha256:e93e0d96e3fe6d5196d30446d5aed0dcbd6f864039290a55a682c0f15965c48e
+    source_hash: sha256:9015f6e501ef795494b81627cf5ae7dfcccc57ba2cb93fe6c2e700e8014612f6
     description: Apply one no-runtime R09 Profile adoption (initial adoption or pre-runtime profile revision) from a restricted-YAML plan
     arguments:
       - dest: root
@@ -1085,18 +1111,42 @@ tools:
         action: store
         type: null
         help: must be the canonical Standards history stream .cambium/receipts/standards-adoptions.jsonl
+      - dest: upstream_root
+        option_strings:
+          - --upstream-root
+        required: true
+        default: null
+        default_type: NoneType
+        choices: null
+        nargs: null
+        action: store
+        type: null
+        help: local Cambium Git repository used to resolve upstream identity
+      - dest: upstream_ref
+        option_strings:
+          - --upstream-ref
+        required: true
+        default: null
+        default_type: NoneType
+        choices: null
+        nargs: null
+        action: store
+        type: null
+        help: Git revision in --upstream-root that must resolve to the plan's full upstream_revision_id
     mutually_exclusive_groups: []
     receipt_extensions:
       - identity
       - transaction_id
     receipt_extensions_extraction: complete
     agent_interface:
-      exposure: mcp
+      exposure: cli-only
       workspace_argument: root
       workspace_access: write
       value_arguments:
         - apply
         - json
+        - upstream_ref
+        - upstream_root
       path_arguments:
         - argument: plan
           access: read
@@ -3062,6 +3112,95 @@ tools:
           active_when_any: []
           inactive_when_any: []
       external_write: none
+  - tool: check_upstream_components
+    module: Tools/check_upstream_components.py
+    source_hash: sha256:524bbacd7a388256f5d540495948f881528780fb3dc1e9b0ff803df221ac09ba
+    description: Compare adopter Cambium component bytes with one exact upstream Git revision
+    arguments:
+      - dest: root
+        option_strings: []
+        required: true
+        default: null
+        default_type: NoneType
+        choices: null
+        nargs: null
+        action: store
+        type: null
+        help: adopter repository root
+      - dest: upstream_root
+        option_strings:
+          - --upstream-root
+        required: true
+        default: null
+        default_type: NoneType
+        choices: null
+        nargs: null
+        action: store
+        type: null
+        help: Cambium source Git repository (read-only)
+      - dest: revision
+        option_strings:
+          - --revision
+        required: true
+        default: null
+        default_type: NoneType
+        choices: null
+        nargs: null
+        action: store
+        type: null
+        help: upstream ref to resolve to a full commit SHA
+      - dest: write_manifest
+        option_strings:
+          - --write-manifest
+        required: false
+        default: false
+        default_type: bool
+        choices: null
+        nargs: 0
+        action: store_true
+        type: null
+        help: atomically write and read back the derived manifest
+      - dest: check_manifest
+        option_strings:
+          - --check-manifest
+        required: false
+        default: false
+        default_type: bool
+        choices: null
+        nargs: 0
+        action: store_true
+        type: null
+        help: require the existing derived manifest to match
+      - dest: json
+        option_strings:
+          - --json
+        required: false
+        default: false
+        default_type: bool
+        choices: null
+        nargs: 0
+        action: store_true
+        type: null
+        help: emit one structured result
+    mutually_exclusive_groups:
+      - required: false
+        dests:
+          - write_manifest
+          - check_manifest
+    receipt_extensions: []
+    receipt_extensions_extraction: complete
+    agent_interface:
+      exposure: cli-only
+      workspace_argument: root
+      workspace_access: write
+      value_arguments:
+        - check_manifest
+        - json
+        - revision
+        - upstream_root
+        - write_manifest
+      path_arguments: []
+      external_write: none
   - tool: check_vocab
     module: Tools/check_vocab.py
     source_hash: sha256:ddcde3a5d8ceb03891160d44606bc80c25db1d756d24b8d14efc0e2665068fe1
@@ -3219,7 +3358,7 @@ tools:
       external_write: none
   - tool: compile_cli_contract
     module: Tools/compile_cli_contract.py
-    source_hash: sha256:0cee99b4d7314d8618e50e0c910e37b571c99683d20b18ccf48adf2457ba5c2c
+    source_hash: sha256:a66f1eb9b76e5ddec7c8d778978cbc0ec8ec4442948b55e22f2c9912bf4a2b87
     description: Compile the machine-readable CLI invocation contract from every Tools/*.py argparse declaration.
     arguments:
       - dest: root
@@ -3253,7 +3392,7 @@ tools:
         nargs: null
         action: store
         type: null
-        help: "artifact path to write or verify (default: <root>/Tools/compiled/cli-contract.yaml)"
+        help: artifact path to write or verify; the selected projection target fixes this path to <root>/Tools/compiled/cli-contract.yaml or <root>/.cambium/derived/interfaces/cli-contract.yaml
       - dest: projection_target
         option_strings:
           - --projection-target
@@ -5307,7 +5446,7 @@ tools:
       external_write: none
   - tool: render_host_configs
     module: Tools/render_host_configs.py
-    source_hash: sha256:3a2931c1709b381cce5909cb2cc44fe96aff6b1e953da0ac2f652af6545fa287
+    source_hash: sha256:8ae767fc3019ba97233df3594ef206592120d215e1ffe68eba7fe5f17a829c06
     description: Render the Cambium MCP server's registration and corpus binding into the configuration file each supported host reads.
     arguments:
       - dest: root
@@ -5346,7 +5485,20 @@ tools:
         nargs: null
         action: store
         type: null
-        help: "compiled interface projection to bind to (default: <root>/Tools/compiled/mcp-tools.json)"
+        help: compiled interface projection to bind to; defaults to the one owned by --projection-target
+      - dest: projection_target
+        option_strings:
+          - --projection-target
+        required: false
+        default: source-distribution
+        default_type: str
+        choices:
+          - carried-runtime
+          - source-distribution
+        nargs: null
+        action: store
+        type: null
+        help: "render tracked distribution templates or adopter-owned carried-runtime products (default: source-distribution)"
       - dest: output_dir
         option_strings:
           - --output-dir
@@ -5357,7 +5509,7 @@ tools:
         nargs: null
         action: store
         type: null
-        help: "directory to write or verify the products in (default: <root>/Tools/compiled/host-configs)"
+        help: directory to write or verify the products in; carried-runtime is fixed to <root>/.cambium/derived/host-configs
       - dest: distribution_root
         option_strings:
           - --distribution-root
@@ -5417,6 +5569,7 @@ tools:
         - check
         - distribution_root
         - host
+        - projection_target
         - sources
         - workspace_root
       path_arguments:
@@ -5443,7 +5596,7 @@ tools:
       external_write: host-config-installation
   - tool: render_interface_projection
     module: Tools/render_interface_projection.py
-    source_hash: sha256:742ac3205f220de995b7ed78e60ca345b7b50b8ef61523c2224532f28b37a6be
+    source_hash: sha256:8913d34811aeaf6cf655a23e8541784de33faca7e5ddba6af48effb1ec4710b0
     description: Project the compiled CLI invocation contract into the agent-facing interface forms registered in this tool.
     arguments:
       - dest: root
@@ -5478,7 +5631,20 @@ tools:
         nargs: null
         action: store
         type: null
-        help: "compiled CLI contract to project (default: <root>/Tools/compiled/cli-contract.yaml)"
+        help: compiled CLI contract to project; defaults to the one owned by --projection-target
+      - dest: projection_target
+        option_strings:
+          - --projection-target
+        required: false
+        default: source-distribution
+        default_type: str
+        choices:
+          - carried-runtime
+          - source-distribution
+        nargs: null
+        action: store
+        type: null
+        help: "project the tracked source distribution or adopter-owned carried runtime (default: source-distribution)"
       - dest: output
         option_strings:
           - --output
@@ -5526,6 +5692,7 @@ tools:
       value_arguments:
         - check
         - form
+        - projection_target
         - sources
       path_arguments:
         - argument: contract
@@ -5931,7 +6098,7 @@ tools:
       external_write: none
   - tool: stamp_cards
     module: Tools/stamp_cards.py
-    source_hash: sha256:c04f488f959e418c83e56b49abc6b1d004632c366330678aa9c491609aba6d1c
+    source_hash: sha256:f4a47f7b5ce44bf6ff38a088f0f07f799f86d2b2ebbc7e79bd21839c812aee94
     description: Validate curated Cambium Cards
     arguments:
       - dest: root
@@ -5955,17 +6122,6 @@ tools:
         action: store
         type: null
         help: "Card directory relative to <root> (default: schema path_prefix)"
-      - dest: set_version
-        option_strings:
-          - --set-version
-        required: false
-        default: null
-        default_type: NoneType
-        choices: null
-        nargs: null
-        action: store
-        type: null
-        help: set every Card standards_version value
       - dest: acknowledge_review
         option_strings:
           - --acknowledge-curated-review
@@ -5992,13 +6148,12 @@ tools:
     receipt_extensions: []
     receipt_extensions_extraction: complete
     agent_interface:
-      exposure: mcp
+      exposure: cli-only
       workspace_argument: root
       workspace_access: write
       value_arguments:
         - acknowledge_review
         - check
-        - set_version
       path_arguments:
         - argument: cards_dir
           access: read-write

@@ -182,20 +182,19 @@ Prepare a plan from
 then dry-run and apply it:
 
 ```text
-python3 Tools/apply_profile_adoption.py . --plan <plan>.yaml
-python3 Tools/apply_profile_adoption.py . --plan <plan>.yaml --apply
+python3 Tools/apply_profile_adoption.py . --plan <plan>.yaml \
+  --upstream-root <local-cambium-repository> --upstream-ref <git-ref>
+python3 Tools/apply_profile_adoption.py . --plan <plan>.yaml \
+  --upstream-root <local-cambium-repository> --upstream-ref <git-ref> --apply
 ```
 
-The transaction binds the approved Standards version, selected Profile, and
-the resulting generated contracts and evidence. It restores the previous
-control plane if any step fails.
-
-If the transaction reports a stale curated Card, review the changed canonical
-sources and the affected Card body as a separate human step. Only after that
-review may the reviewer record the new binding with
-`python3 Tools/stamp_cards.py . --acknowledge-curated-review`; rerun the
-adoption transaction afterwards. Adoption never acknowledges Card semantics
-on the reviewer's behalf.
+The transaction resolves the upstream ref to its full Git commit SHA, binds the
+selected Profile and resulting adopter-owned contracts/evidence, and restores
+the previous control plane if any step fails. It never restamps or rewrites the
+adopter's upstream Card bytes; `standards_version` is only a compatibility alias
+for the resolved commit.
+Adoption remains an explicit CLI maintenance operation: its external upstream
+repository input is never exposed as an unrestricted MCP argument.
 
 An empty corpus follows the same adoption contract. First perform bounded
 founding work to create real canonical owners and the residual-scan witness —
@@ -227,9 +226,13 @@ python3 Tools/init_state.py . \
   --exclude "State one explicit boundary" \
   --completion-semantics build \
   --scope-version s1 \
-  --standards-version YOUR_VERSION \
+  --standards-version APPROVED_UPSTREAM_COMMIT_SHA \
   --profile-manifest profiles/my-profile/profile.md
 ```
+
+Read `APPROVED_UPSTREAM_COMMIT_SHA` from the active
+`.cambium/governance/standards_state.yaml`; it is the full upstream commit SHA,
+not a release label such as `3.17.0`.
 
 Review the dry run, then repeat the command with `--apply`.
 
@@ -321,6 +324,9 @@ claim of cognition or independent execution.
 - A surviving writer lock is recovery evidence. Do not delete it until the
   writer, state files, receipts, pending deltas, and archive moves are
   reconciled.
+- Component-byte comparison must run from a separately trusted upstream
+  checkout (or protected runner) against the adopter. It detects drift but
+  cannot make an adopter's unchecked Tool copy authenticate itself.
 - JSONL receipts are append-only. An uncertain append keeps the lock rather
   than guessing whether the receipt landed.
 - Exit code `2` is a hold, not success and not an ordinary failure.

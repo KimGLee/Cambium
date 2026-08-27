@@ -16,7 +16,6 @@ document_fields:
   - route_id
   - read_set_id
   - read_set
-  - standards_version
   - source_files
   - source_hash
   - reviewed_source_hash

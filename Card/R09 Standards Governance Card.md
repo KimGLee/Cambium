@@ -4,16 +4,15 @@ generation_mode: curated
 route_id: R09
 read_set_id: R09
 read_set: Read Set/R09 Standards Governance Read Set.md
-standards_version: '{{ standards_version }}'
 source_files:
   - Read Set/R09 Standards Governance Read Set.md
   - kernel/K00 Standards Control/03 Standards Governance.md
   - kernel/K00 Standards Control/11 Standards Map and Rule Registry.md
   - kernel/K12 Quality Assurance/10 Standards Version Adoption.md
   - kernel/K13 Task Runtime and Execution Control/15 Standards Adoption State Transaction.md
-source_hash: 'd991ad34609e'
-reviewed_source_hash: 'd991ad34609e'
-reviewed_card_hash: '755155d6fd76'
+source_hash: '198316af879e'
+reviewed_source_hash: '198316af879e'
+reviewed_card_hash: '100b865de8c0'
 ---
 # R09 Standards Governance Card
 
@@ -31,7 +30,7 @@ this Card does not grant the authorization or define the adoption transaction.
 - Invoke `card-currentness-v1`, `profile-load`, and every Gate affected by
   the candidate after-image.
 - Use `standards-adoption` for the authorized transition and read back the
-  selected version, Profile, and invalidation result.
+  selected full upstream revision, Profile snapshot, and invalidation result.
 
 ## Stop or escalate
 

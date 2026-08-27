@@ -4,7 +4,9 @@
 Deterministically derives one machine-readable calling contract for every
 CLI tool shipped under `Tools/`, closes the host-facing capability surface
 against `Tools/agent-interface-policy.yaml`, and writes the result to the
-registered `Tools/compiled/cli-contract.yaml` artifact.
+registered CLI-contract artifact. The source distribution owns the tracked
+`Tools/compiled/cli-contract.yaml`; an adopter carrying the runtime owns only
+the derived `.cambium/derived/interfaces/cli-contract.yaml` projection.
 
 Why this exists: an agent should not have to read every argparse block or
 trust prose that restates them. Argparse is the single source of invocation
@@ -75,11 +77,15 @@ import runtime_paths  # noqa: E402
 import tool_availability  # noqa: E402
 
 TOOL = "compile_cli_contract"
-TOOL_VERSION = "1.3.0"
+TOOL_VERSION = "1.5.0"
 
 SCHEMA_VERSION = 5
 INTERFACE_POLICY_SCHEMA_VERSION = 4
-DEFAULT_OUTPUT = "Tools/compiled/cli-contract.yaml"
+SOURCE_DISTRIBUTION_OUTPUT = "Tools/compiled/cli-contract.yaml"
+CARRIED_RUNTIME_OUTPUT = runtime_paths.CLI_CONTRACT_ARTIFACT_PATH
+# Kept as the source-distribution spelling for callers that import the
+# historical constant. Output selection itself is target-dependent below.
+DEFAULT_OUTPUT = SOURCE_DISTRIBUTION_OUTPUT
 DEFAULT_INTERFACE_POLICY = "Tools/agent-interface-policy.yaml"
 DEFAULT_RUNTIME_PATH_REGISTRY = "Tools/runtime_paths.py"
 CARD_DIRECTORY_COMPONENT_PATH_ID = "card-directory"
@@ -1092,14 +1098,18 @@ def compile_contract(root, projection_target):
 
 
 def build_header(contract):
+    target = contract["projection_target"]
+    command = (
+        "python3 Tools/compile_cli_contract.py . --projection-target %s" %
+        target)
     return [
         "# Generated artifact -- do not edit directly.",
         "# Compiled by Tools/compile_cli_contract.py from each CLI's argparse",
         "#   declaration plus Tools/agent-interface-policy.yaml. Invocation",
         "#   shape comes from argparse; capability shape comes from the closed",
         "#   policy. A hand edit is reported by --check as a HOLD.",
-        "# regenerate with: python3 Tools/compile_cli_contract.py .",
-        "# verify with:     python3 Tools/compile_cli_contract.py . --check",
+        "# regenerate with: %s" % command,
+        "# verify with:     %s --check" % command,
         "# `source_hash` covers the policy, path registries, and %d"
         % contract["tool_count"],
         "#   CLI tool sources listed under source_files.",
@@ -1135,6 +1145,34 @@ def _recorded_projection_target(output):
     recorded = stored.get("projection_target")
     return recorded if recorded in tool_availability.PROJECTION_TARGETS \
         else None
+
+
+def output_for_projection_target(projection_target):
+    """The one repository-relative artifact owned by ``projection_target``."""
+    if projection_target == tool_availability.SOURCE_DISTRIBUTION:
+        return SOURCE_DISTRIBUTION_OUTPUT
+    if projection_target == tool_availability.CARRIED_RUNTIME:
+        return CARRIED_RUNTIME_OUTPUT
+    raise ValueError("unknown projection target: %r" % projection_target)
+
+
+def _registered_check_output(root, requested_path):
+    """Resolve an existing check target without guessing its projection.
+
+    `--check` historically permits omitting `--projection-target` because the
+    stored artifact declares it. There are now two registered locations, so
+    the path must first match exactly one of them; arbitrary files still never
+    become compiler outputs.
+    """
+    errors = []
+    for registered in (SOURCE_DISTRIBUTION_OUTPUT, CARRIED_RUNTIME_OUTPUT):
+        try:
+            return kblib.registered_repository_artifact_path(
+                root, requested_path, registered)
+        except ValueError as exc:
+            errors.append(str(exc))
+    raise ValueError("artifact path is not a registered CLI contract: %s" %
+                     "; ".join(errors))
 
 
 def _recorded_binding_drift(existing_text, contract):
@@ -1187,8 +1225,9 @@ def main(argv=None):
              "when byte-identical, 2 when it is stale or hand-edited")
     parser.add_argument(
         "--output", default=None,
-        help="artifact path to write or verify (default: <root>/%s)"
-             % DEFAULT_OUTPUT)
+        help="artifact path to write or verify; the selected projection "
+             "target fixes this path to <root>/%s or <root>/%s"
+             % (SOURCE_DISTRIBUTION_OUTPUT, CARRIED_RUNTIME_OUTPUT))
     parser.add_argument(
         "--projection-target",
         choices=list(tool_availability.PROJECTION_TARGETS),
@@ -1204,13 +1243,6 @@ def main(argv=None):
     root = os.path.abspath(args.root)
     if not os.path.isdir(root):
         return fail("root is not a directory: %s" % args.root)
-    requested_output = args.output or DEFAULT_OUTPUT
-    try:
-        output = kblib.registered_repository_artifact_path(
-            root, requested_output, DEFAULT_OUTPUT)
-    except ValueError as exc:
-        return fail("unsafe artifact output: %s" % exc)
-
     projection_target = args.projection_target
     if projection_target is None:
         # Reading the target the artifact recorded is not inference: the
@@ -1220,12 +1252,35 @@ def main(argv=None):
             return fail("--projection-target is required to write the "
                         "contract; declare %s"
                         % " or ".join(tool_availability.PROJECTION_TARGETS))
+        requested_output = args.output or SOURCE_DISTRIBUTION_OUTPUT
+        try:
+            output = _registered_check_output(root, requested_output)
+        except ValueError as exc:
+            return fail("unsafe artifact output: %s" % exc)
         projection_target = _recorded_projection_target(output)
         if projection_target is None:
             return fail(
                 "%s records no projection target, so there is nothing to "
                 "check it against; recompile it with an explicit "
                 "--projection-target" % output)
+        expected_output = output_for_projection_target(projection_target)
+        try:
+            kblib.registered_repository_artifact_path(
+                root, output, expected_output)
+        except ValueError:
+            return fail(
+                "%s declares projection target %r but that target owns %s; "
+                "a stored artifact cannot relocate its own authority"
+                % (output, projection_target, expected_output))
+    else:
+        expected_output = output_for_projection_target(projection_target)
+        requested_output = args.output or expected_output
+        try:
+            output = kblib.registered_repository_artifact_path(
+                root, requested_output, expected_output)
+        except ValueError as exc:
+            return fail("unsafe artifact output for projection target %s: %s"
+                        % (projection_target, exc))
 
     try:
         contract = compile_contract(root, projection_target)
