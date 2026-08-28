@@ -43,7 +43,6 @@ from pathlib import Path
 REPOSITORY = Path(__file__).resolve().parents[2]
 TOOLS = REPOSITORY / "Tools"
 TESTS = TOOLS / "tests"
-EXAMPLE = REPOSITORY / "profiles" / "examples" / "minimal-notes"
 
 if str(TESTS) not in sys.path:
     sys.path.insert(0, str(TESTS))
@@ -181,18 +180,17 @@ class ProfileLoadDoesNotResolveThePlanningArtifacts(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp).resolve()
             tpos.copy_profile_load_fixture(root)
-            # Same relative location: the example materializes its own
-            # self-paths, and profile-load fails closed on a foreign one.
-            profile = root / "profiles" / "examples" / "minimal-notes"
-            shutil.copytree(EXAMPLE, profile)
-            (profile / "README.md").unlink(missing_ok=True)
+            # Materialize the sole candidate template into this temporary
+            # adopter. Its self-paths are derived from the test Profile ID,
+            # so the test does not depend on a retired shipped example.
+            profile = tpos.fill_candidate(root, "bootstrap-test")
             (profile / "corpus-planning.yaml").write_text(
                 CONFIGURED_SLOT, encoding="utf-8")
 
             self.assertFalse((root / GLOBAL_MAP).exists())
             result = subprocess.run(
                 [sys.executable, str(TOOLS / "check_profile.py"),
-                 "profiles/examples/minimal-notes", "--root", str(root)],
+                 "profiles/bootstrap-test", "--root", str(root)],
                 cwd=str(root), text=True, capture_output=True, check=False)
             self.assertEqual(
                 0, result.returncode,

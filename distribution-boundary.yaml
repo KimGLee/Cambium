@@ -16,8 +16,8 @@
 # a file leaves executable code that can never run.
 #
 # The profile-creation kit is one such closure and is declared whole:
-# `profiles/_template/` and `profiles/_template-minimal/` (the forms),
-# `profiles/template-files.yaml` (the full form's whitelist),
+# `profiles/_template/` (the candidate form),
+# `profiles/template-files.yaml` (the candidate template's whitelist),
 # `Tools/scaffold_profile.py` (the copier that reads that whitelist), and the
 # two fill-guidance documents the copy is answered with.
 # The onboarding tools that survive adoption are NOT here:
@@ -56,12 +56,10 @@ distribution_only:
     reason: "human engineering record paired with the distribution-only Kernel size policy; it preserves maintenance rationale and follow-up rather than adopter rules"
   - path: profiles/_template/
     reason: "scaffolding for authoring a new profile; an adopter that has instantiated its own profile has consumed the scaffold, and a carried copy drifts against upstream revisions nobody re-answers"
-  - path: profiles/_template-minimal/
-    reason: "minimal scaffolding for authoring a new profile; like the full template it is a shipped form rather than an adopter-owned Profile and has no runtime consumer after adoption"
   - path: profiles/examples/
     reason: "shipped example instances for evaluation and fixtures; they carry their own vocabularies and answers, and judging an adopter's corpus against a foreign example's answers fails the first close"
   - path: profiles/template-files.yaml
-    reason: "the exact whitelist of profiles/_template contents that scaffold_profile.py copies; with the template retired it names nothing, so it is the same entry in a second file"
+    reason: "the exact whitelist of profiles/_template contents that scaffold_profile.py copies; it is the machine companion to the sole candidate template and has no adopter-runtime role"
   - path: Tools/scaffold_profile.py
     reason: "its whole job is copying profiles/_template through profiles/template-files.yaml; both are declared here, so in an adopter runtime it is code that cannot run rather than a tool held in reserve"
   - path: profiles/interview.yaml

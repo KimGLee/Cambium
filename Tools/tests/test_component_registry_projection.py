@@ -186,6 +186,14 @@ class ReadSetProjectionTests(ProjectionFixture):
 
 class ProfileLayoutProjectionTests(unittest.TestCase):
     def test_manifest_parser_classifies_candidates_and_shipped_namespaces(self):
+        self.assertEqual(
+            frozenset((profile_layout_contract.TEMPLATE_PROFILE_ID,)),
+            profile_layout_contract.TEMPLATE_PROFILE_IDS)
+        self.assertEqual(
+            frozenset((profile_layout_contract.TEMPLATE_PROFILE_ID,
+                       profile_layout_contract.EXAMPLES_PROFILE_ID)),
+            profile_layout_contract.RESERVED_PROFILE_IDS)
+
         candidate = profile_layout_contract.\
             validate_selectable_profile_manifest_path(
                 "profiles/candidate/profile.md")
@@ -194,8 +202,8 @@ class ProfileLayoutProjectionTests(unittest.TestCase):
         self.assertIsNone(candidate.reserved_namespace)
 
         example = profile_layout_contract.parse_profile_manifest_path(
-            "profiles/examples/minimal-notes/profile.md")
-        self.assertEqual("minimal-notes", example.profile_id)
+            "profiles/examples/worked-planning/profile.md")
+        self.assertEqual("worked-planning", example.profile_id)
         self.assertTrue(example.example)
         self.assertFalse(example.selectable)
 

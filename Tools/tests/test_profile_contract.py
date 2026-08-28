@@ -376,7 +376,6 @@ class AuthorizedContractTests(unittest.TestCase):
 
     def test_shipped_examples_link(self):
         for relative in (
-                "profiles/examples/minimal-notes/profile.md",
                 "profiles/examples/worked-planning/profile.md",
                 "profiles/examples/agent-atlas/profile.md"):
             with self.subTest(profile=relative):

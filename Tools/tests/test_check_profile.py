@@ -28,11 +28,13 @@ PLACEHOLDER_DEFAULTS = (
     REPOSITORY / "Tools/schemas/execution_defaults.template.yaml"
 )
 sys.path.insert(0, str(REPOSITORY / "Tools"))
+sys.path.insert(0, str(REPOSITORY / "Tools/tests"))
 import kblib  # noqa: E402
 import check_queue  # noqa: E402
 import corpus_planning_contract  # noqa: E402
 import metadata_execution_contract  # noqa: E402
 import profile_contract  # noqa: E402
+import test_profile_onboarding_status as profile_fixture  # noqa: E402
 
 
 def capability_implementation_paths():
@@ -357,11 +359,8 @@ class ProfileCliFixture(unittest.TestCase):
         self._copy_repository_file("Tools/check_residual_content.py")
         for relative in capability_implementation_paths():
             self._copy_repository_file(relative)
-        self.original_profile = (
-            self.root / "profiles/examples/minimal-notes")
-        shutil.copytree(
-            REPOSITORY / "profiles/examples/minimal-notes",
-            self.original_profile)
+        self.original_profile = profile_fixture.fill_candidate(
+            self.root, "base-profile")
 
     def _copy_repository_file(self, relative):
         destination = self.root / relative
@@ -378,16 +377,16 @@ class ProfileCliFixture(unittest.TestCase):
         path.write_text(text.replace(old, new), encoding="utf-8")
 
     def _copied_profile(self, profile_id, self_owned=False):
-        profile = self.root / "profiles/examples" / profile_id
+        profile = self.root / "profiles" / profile_id
         shutil.copytree(self.original_profile, profile)
         self._replace_exact(
             profile / "profile.md",
-            "- `profile_id`: `minimal-notes`",
+            "- `profile_id`: `base-profile`",
             "- `profile_id`: `%s`" % profile_id,
             count=1)
         if self_owned:
-            old_prefix = "profiles/examples/minimal-notes"
-            new_prefix = "profiles/examples/%s" % profile_id
+            old_prefix = "profiles/base-profile"
+            new_prefix = "profiles/%s" % profile_id
             for relative in (
                     "registries/audit-dimensions.md",
                     "registries/registered-scans.md"):
@@ -532,7 +531,7 @@ support_layers: []
             checks.count("predicate-owner-path-outside-profile"), 2,
             receipts)
         details = "\n".join(receipt["details"] for receipt in receipts)
-        self.assertIn("profiles/examples/minimal-notes", details)
+        self.assertIn("profiles/base-profile", details)
         self.assertFalse(any(
             receipt["check"] == "profile-check-summary"
             for receipt in receipts))
@@ -549,7 +548,7 @@ support_layers: []
         ]
         self.assertEqual(1, len(summaries), receipts)
         summary = summaries[0]
-        manifest = "profiles/examples/self-owned-notes/profile.md"
+        manifest = "profiles/self-owned-notes/profile.md"
         self.assertEqual("pass", summary["result"])
         self.assertEqual("profile-load", summary["gate_id"])
         self.assertEqual("guidance_and_contract", summary["dimension"])
@@ -578,7 +577,7 @@ support_layers: []
             len([edge for edge in contract.dependency_edges
                  if edge.kind == "manifest-slot"]))
         full_tree = kblib.repository_tree_snapshot(
-            self.root, "profiles/examples/self-owned-notes")
+            self.root, "profiles/self-owned-notes")
         self.assertEqual(
             full_tree.project(contract.profile_snapshot_paths).sha256,
             summary["profile_snapshot_sha256"])
@@ -595,7 +594,7 @@ support_layers: []
             "task_id: live-task\n"
             "standards_version: live-v1\n"
             "selected_profile_manifest: "
-            "profiles/examples/minimal-notes/profile.md\n",
+            "profiles/base-profile/profile.md\n",
             encoding="utf-8",
         )
 
@@ -607,7 +606,7 @@ support_layers: []
             receipt for receipt in receipts
             if receipt["check"] == "profile-check-summary")
         self.assertEqual(
-            "profiles/examples/candidate-identity-notes/profile.md",
+            "profiles/candidate-identity-notes/profile.md",
             summary["selected_profile_manifest"])
         self.assertNotIn("task_id", summary)
         self.assertNotIn("standards_version", summary)
@@ -625,7 +624,8 @@ support_layers: []
         queue.write_text(
             "task_id: live-task\n"
             "standards_version: live-v1\n"
-            "selected_profile_manifest: profiles/examples/api-notes/profile.md\n",
+            "selected_profile_manifest: "
+            "profiles/api-notes/profile.md\n",
             encoding="utf-8",
         )
 
@@ -664,7 +664,7 @@ support_layers: []
             "task_id": "planned-task",
             "standards_version": "planned-v2",
             "selected_profile_manifest":
-                "profiles/examples/api-notes/profile.md",
+                "profiles/api-notes/profile.md",
         }
         injected = check_profile.evaluate_profile_load(
             copied, root=self.root, receipt_identity=identity)
@@ -1039,9 +1039,9 @@ support_layers: []
         scans = copied / "registries/registered-scans.md"
         self._replace_exact(
             scans,
-            "profiles/examples/missing-config/scan-configs/"
+            "profiles/missing-config/scan-configs/"
             "residual-scan.yaml",
-            "profiles/examples/missing-config/scan-configs/absent.yaml",
+            "profiles/missing-config/scan-configs/absent.yaml",
             count=1)
 
         completed, receipts = self._run_check(copied, "missing.jsonl")
@@ -1159,7 +1159,7 @@ support_layers: []
         import kblib
         import profile_contract
         before_tree = kblib.repository_tree_snapshot(
-            self.root, "profiles/examples/snapshot-aba")
+            self.root, "profiles/snapshot-aba")
         before_contract = profile_contract.load_profile_contract(
             self.root, copied / "profile.md", profile_snapshot=before_tree)
         self.assertTrue(before_contract.authorized,
@@ -1170,7 +1170,7 @@ support_layers: []
 
         def transient_swap(*args, **kwargs):
             text = original.decode("utf-8").replace(
-                "minimal-notes-scratch-residuals", "transient-scan")
+                "base-profile-scratch-residuals", "transient-scan")
             scans.write_text(text, encoding="utf-8")
             try:
                 return real_load(*args, **kwargs)
@@ -1185,7 +1185,7 @@ support_layers: []
 
         self.assertTrue(evaluation.authorized, evaluation.findings)
         self.assertEqual(
-            "minimal-notes-scratch-residuals",
+            "base-profile-scratch-residuals",
             evaluation.contract.required_scan.scan_id)
         self.assertEqual(before, evaluation.profile_snapshot_sha256)
         self.assertEqual(
@@ -1392,7 +1392,7 @@ class JsonDiagnosticsTests(ProfileCliFixture):
         self.assertEqual(1, completed.returncode)
         self.assertEqual("check_profile", report["tool"])
         self.assertEqual("fail", report["result"])
-        self.assertEqual("profiles/examples/json-broken-notes",
+        self.assertEqual("profiles/json-broken-notes",
                          report["profile_dir"])
         self.assertTrue(report["findings"])
         for finding in report["findings"]:

@@ -84,7 +84,7 @@ class ChangedScopeEvidenceTest(unittest.TestCase):
             "standards_version": "K-1",
             "active_standards_sha256": digest("standards"),
             "selected_profile_manifest":
-                "profiles/examples/minimal-notes/profile.md",
+                "profiles/test-profile/profile.md",
             "profile_snapshot_sha256": digest("profile"),
             "profile_contract_fingerprint": digest("profile-contract"),
         }
@@ -234,7 +234,7 @@ class ChangedScopeEvidenceTest(unittest.TestCase):
             "standards_version": "K-1",
             "active_standards_sha256": digest("standards"),
             "selected_profile_manifest":
-                "profiles/examples/minimal-notes/profile.md",
+                "profiles/test-profile/profile.md",
             "profile_snapshot_sha256": digest("profile"),
             "profile_contract_fingerprint": digest("profile-contract"),
         }

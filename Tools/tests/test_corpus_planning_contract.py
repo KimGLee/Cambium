@@ -12,9 +12,11 @@ from pathlib import Path
 REPOSITORY = Path(__file__).resolve().parents[2]
 TOOLS = REPOSITORY / "Tools"
 sys.path.insert(0, str(TOOLS))
+sys.path.insert(0, str(TOOLS / "tests"))
 
 import corpus_planning_contract as contract  # noqa: E402
 import kblib  # noqa: E402
+import test_profile_onboarding_status as profile_fixture  # noqa: E402
 
 
 class CorpusPlanningRegistryTests(unittest.TestCase):
@@ -69,17 +71,27 @@ class CorpusPlanningRegistryTests(unittest.TestCase):
 
 
 class CorpusPlanningEnvelopeTests(unittest.TestCase):
+    def setUp(self):
+        self.temporary = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temporary.cleanup)
+        self.template_profile = profile_fixture.fill_candidate(
+            Path(self.temporary.name), "planning-template")
+
     def load(self, relative):
         return kblib.parse_yaml_subset(
             (REPOSITORY / relative).read_text(encoding="utf-8"))
+
+    def load_template(self):
+        return kblib.parse_yaml_subset(
+            (self.template_profile / "corpus-planning.yaml").read_text(
+                encoding="utf-8"))
 
     def test_both_existing_applicability_branches_validate(self):
         configured, configured_issues = \
             contract.validate_corpus_planning_envelope(self.load(
                 "profiles/examples/worked-planning/corpus-planning.yaml"))
         inactive, inactive_issues = \
-            contract.validate_corpus_planning_envelope(self.load(
-                "profiles/examples/minimal-notes/corpus-planning.yaml"))
+            contract.validate_corpus_planning_envelope(self.load_template())
 
         self.assertEqual((), configured_issues)
         self.assertEqual(contract.CONFIGURED_STATE, configured["mode"])
@@ -89,8 +101,7 @@ class CorpusPlanningEnvelopeTests(unittest.TestCase):
         self.assertEqual({}, inactive["artifact_bindings"])
 
     def test_inactive_payload_and_configured_scale_use_one_branch_algorithm(self):
-        inactive = self.load(
-            "profiles/examples/minimal-notes/corpus-planning.yaml")
+        inactive = self.load_template()
         inactive["artifact_bindings"]["global_map"] = "planning/map.yaml"
         _, inactive_issues = \
             contract.validate_corpus_planning_envelope(inactive)

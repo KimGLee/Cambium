@@ -167,9 +167,10 @@ class BoundaryTests(unittest.TestCase):
         target.write_text(source.read_text(encoding="utf-8"),
                           encoding="utf-8")
 
-    def test_an_example_profile_selects_the_distribution_context(self):
+    def test_a_selected_profile_selects_the_distribution_context(self):
+        self.install_declaration()
         findings, errors = run_gates._boundary_findings(
-            self.root, "profiles/examples/minimal-notes/profile.md")
+            self.root, "profiles/selected/profile.md")
         self.assertEqual(([], []), (findings, errors))
 
     def test_a_missing_declaration_is_a_failure_not_a_shrug(self):
@@ -188,15 +189,15 @@ class BoundaryTests(unittest.TestCase):
         self.assertIn("Tools/tests", findings[0])
         self.assertIn("distribution-only", findings[0])
 
-    def test_minimal_template_is_a_distribution_only_candidate(self):
+    def test_the_canonical_template_is_a_distribution_only_candidate(self):
         self.install_declaration()
         os.makedirs(os.path.join(
-            self.root, "profiles", "_template-minimal"))
+            self.root, "profiles", "_template"))
         findings, errors = run_gates._boundary_findings(
             self.root, "profiles/mine/profile.md")
         self.assertEqual([], errors)
         self.assertEqual(1, len(findings))
-        self.assertIn("profiles/_template-minimal", findings[0])
+        self.assertIn("profiles/_template", findings[0])
 
     def test_a_declared_single_file_is_a_candidate_like_a_tree(self):
         """An entry may be one file, not only a directory.
@@ -222,7 +223,7 @@ class BoundaryTests(unittest.TestCase):
             str(TOOLS.parent))
         self.assertEqual([], errors)
         declared = {entry["path"].rstrip("/") for entry in declaration}
-        for member in ("profiles/_template", "profiles/_template-minimal",
+        for member in ("profiles/_template",
                        "profiles/template-files.yaml",
                        "Tools/scaffold_profile.py", "profiles/interview.yaml",
                        "profiles/answer-patterns.md"):

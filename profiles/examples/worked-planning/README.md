@@ -46,7 +46,7 @@ A Global Map entry must name a Markdown file that really exists, and a Profile S
 - **Gap statuses `promoted` and `resolved` are absent.** Both require a real Coverage object and initialized runtime state under `.cambium/`; this repository deliberately carries neither, and `check_corpus_plan.py` refuses to reconcile a promotion without them. Four of the six statuses appear here; the promotion handoff itself has no worked example anywhere.
 - **No semantic acceptance receipt.** `check_corpus_plan.py` reports `semantic_acceptance=not-recorded` for this package. Structure is not acceptance: recording acceptance requires `record_corpus_acceptance.py`, the bound authority role, and runtime state.
 - **No expression layer, readiness axis, supplemental route, profile Read Set, or extension gate.** See [agent-atlas](../agent-atlas/README.md) for the first two; the last two still have no example.
-- **Not a minimal profile.** For the shortest legal path, read [minimal-notes](../minimal-notes/README.md) first.
+- **Not a template.** This is a worked example. For a new Profile, start from the sole candidate template [`profiles/_template/`](../../_template/README.md) and determine the appropriate depth through the interview.
 
 ## Materialization Warning
 

@@ -21,7 +21,7 @@ python3 Tools/scaffold_profile.py . --profile-id my-profile --apply
 
 Then use [`interview.yaml`](interview.yaml) and [`answer-patterns.md`](answer-patterns.md) to discuss the repository's actual needs with the user. Replace every `TODO(profile)` only with a confirmed answer. Inactive forms such as `None`, `not-applicable`, or `kernel-defaults` are decisions too; they must not be silently accepted from the template.
 
-The copyable candidate lives in [`_template/`](_template/). The exact copied file set is declared by [`template-files.yaml`](template-files.yaml); the template's README is orientation and is deliberately not copied.
+The sole copyable candidate template lives in [`_template/`](_template/). The exact copied file set is declared by [`template-files.yaml`](template-files.yaml); the template's README is orientation and is deliberately not copied. Answer depth is determined during the user interview, not by selecting another template directory.
 
 ## Mechanical validation and adoption
 

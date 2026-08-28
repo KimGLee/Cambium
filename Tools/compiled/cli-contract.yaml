@@ -93,7 +93,7 @@ component_path_registries:
 projection_target: source-distribution
 distribution_boundary:
   path: distribution-boundary.yaml
-  sha256: sha256:7f4f57b010f513814f82175448ccd90179c146b7bbd9d89a4ae0931a169da80e
+  sha256: sha256:d37f6f63cd4a1ef6b48083f9c977fe74faab2b06a303fe1da1a5ea1336e417f2
 included_tools:
   - adopt_standards
   - apply_amendment

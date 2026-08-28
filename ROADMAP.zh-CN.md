@@ -498,7 +498,7 @@ Cambium 已经能够通过生成的 MCP 配置运行。因此，OpenAI Plugin �
 
 - **Plugin 优先交付。** 宿主无关 CLI/MCP 接口已经先行交付；Plugin 工作现在属于可选打包。
 - **把一份通用 Operation Capability Registry 作为 MCP 来源。** CLI 合同拥有可调用接口形态；状态权限仍属于 Kernel 规则和受控 Tool。
-- **两种 Profile 模板深度。** 当前支持的设计是一套预先关闭可选项的模板加访谈扩展包。
+- **并行的 minimal/full Profile 模板。** 已退役。`profiles/_template/` 是唯一候选模板；用户在访谈中决定回答深度，并回答所有适用的扩展问题包。
 - **由调度器拥有的批次账本。** Required Queue 仍是唯一的权威批次生命周期。
 - **把 Queue 准入当作执行者交付的证明。** 准入与 Assignment 交付是两个不同事实。
 - **自动执行采用方验证器。** 验证器代码保持披露并需要明确授权。

@@ -1,6 +1,6 @@
 # Answer Patterns
 
-Shapes harvested from the shipped examples (`profiles/examples/minimal-notes/`, `profiles/examples/agent-atlas/`) and from the Agent Systems Atlas adopter's field experience. **A pattern is a shape, never an answer**: instantiate it with this corpus's own content, and do not reuse an example's identity, paths, or scale of ambition. These patterns only help discuss candidate answers; they do not add defaults or another template tier.
+Shapes harvested from the shipped examples (`profiles/examples/agent-atlas/`, `profiles/examples/worked-planning/`) and from the Agent Systems Atlas adopter's field experience. **A pattern is a shape, never an answer**: instantiate it with this corpus's own content, and do not reuse an example's identity, paths, or scale of ambition. These patterns only help discuss candidate answers for the single `profiles/_template/` candidate template; they do not add defaults or another template tier. The interview determines the required depth and the user confirms each answer.
 
 ## 1. One-line Knowledge Spine (Q9)
 
@@ -36,4 +36,4 @@ Body prose defaults to the body language; a foreign-language term appears only i
 
 ## Also Available As Worked Examples
 
-Two-provider comparison rules and evaluation-provenance extensions (metric-reporting corpora) have configured forms in `profiles/examples/agent-atlas/source-policy.md`; the inactive forms of every switch are in `profiles/examples/minimal-notes/`.
+Two-provider comparison rules and evaluation-provenance extensions (metric-reporting corpora) have configured forms in `profiles/examples/agent-atlas/source-policy.md`; inactive and default forms remain available in the sole `profiles/_template/` candidate template.

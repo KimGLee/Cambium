@@ -49,7 +49,7 @@ The kernel is normative. A profile can fill or tighten an extension point, but c
 
 Cards are short, curated checklists, not routes or a second copy of the standard. Read Sets own the static loading boundary. When a Card is insufficient or disputed, its read-back hook resolves through the paired Read Set to the canonical owner.
 
-This repository is intentionally uninstantiated. It contains templates and examples, but selects no adopter profile and creates no fabricated task state.
+This repository is intentionally uninstantiated. It contains one candidate Profile template and non-authoritative examples, but selects no adopter profile and creates no fabricated task state.
 
 ## What Ships Today
 

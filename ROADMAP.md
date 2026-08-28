@@ -498,7 +498,7 @@ The following older directions should not be revived without a new decision:
 
 - **Plugin-first delivery.** The host-neutral CLI/MCP interface shipped first; Plugin work is now optional packaging.
 - **One universal Operation Capability Registry as the MCP source.** The CLI contract owns callable shape; state permission remains with kernel rules and controlled tools.
-- **Two Profile template depths.** One pre-closed template plus interview expansion packs is the supported design.
+- **Parallel minimal/full Profile templates.** Retired. `profiles/_template/` is the sole candidate template; the interview determines how deeply the user answers it, including any applicable expansion packs.
 - **A scheduler-owned batch ledger.** The Required Queue remains the only canonical batch lifecycle.
 - **Queue admission as proof of worker delivery.** Admission and Assignment delivery are separate facts.
 - **Automatic execution of adopter verifiers.** Verifier code stays disclosed and explicitly authorized.
