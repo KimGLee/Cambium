@@ -79,13 +79,13 @@ source_files:
   - Tools/stamp_cards.py
   - Tools/update_queue.py
   - Tools/update_task.py
-source_hash: sha256:3e394fec2ad95ff42b558fea8a92be0e577bcc60d173902ffaddc369e248efc9
+source_hash: sha256:f9c702a190d62d9bf5856ce4ea285ab71d33394ee164a124fc4f1e7c36c11af3
 agent_interface_policy:
   path: Tools/agent-interface-policy.yaml
-  sha256: sha256:574130ec08346a318c621a840b5d8568819ce93f2572cd6b2ead9b5a659d0438
+  sha256: sha256:4d622b3e3927861cb36f5eda5e27c9eca1e1899d3beea2885135f9a8ec2a6839
 runtime_path_registry:
   path: Tools/runtime_paths.py
-  sha256: sha256:a0ab7ce0f1f1262540aa097d7c13d7c6c4dc268dfcd11ba34faa3c8fbf1f7868
+  sha256: sha256:b6e997b29173cf3d54f3d3d8690235e03e66fee80046902f224d71d2da825106
 component_path_registries:
   card-directory:
     path: Tools/schemas/card.schema.yaml
@@ -93,7 +93,7 @@ component_path_registries:
 projection_target: source-distribution
 distribution_boundary:
   path: distribution-boundary.yaml
-  sha256: sha256:2f19d3dff429f900589ddf074518121386e09436efee63aab487a3a866d22d2c
+  sha256: sha256:7f4f57b010f513814f82175448ccd90179c146b7bbd9d89a4ae0931a169da80e
 included_tools:
   - adopt_standards
   - apply_amendment
@@ -4166,7 +4166,7 @@ tools:
       external_write: none
   - tool: init_state
     module: Tools/init_state.py
-    source_hash: sha256:a092c3c2cdcae6d51853026287d493c77a20160fdf30644c205086704f163092
+    source_hash: sha256:cd6432a1b0206afaf86f20a4b24941f5755961e5dad824207d747770d72e9558
     description: Initialize empty Cambium runtime state
     arguments:
       - dest: root
@@ -6647,7 +6647,7 @@ tools:
       external_write: none
   - tool: render_host_configs
     module: Tools/render_host_configs.py
-    source_hash: sha256:8ae767fc3019ba97233df3594ef206592120d215e1ffe68eba7fe5f17a829c06
+    source_hash: sha256:d49981a21acdbae089923a551194dca0961132cb6dee53105b089a53acc67c2b
     description: Render the Cambium MCP server's registration and corpus binding into the configuration file each supported host reads.
     arguments:
       - dest: root
@@ -6699,7 +6699,7 @@ tools:
         nargs: null
         action: store
         type: null
-        help: "render tracked distribution templates or adopter-owned carried-runtime products (default: source-distribution)"
+        help: "render tracked distribution templates or products bound to an adopter's carried interface (default: source-distribution)"
       - dest: output_dir
         option_strings:
           - --output-dir
@@ -6710,7 +6710,7 @@ tools:
         nargs: null
         action: store
         type: null
-        help: directory to write or verify the products in; carried-runtime is fixed to <root>/.cambium/derived/host-configs
+        help: directory to write or verify the products in; carried-runtime requires an explicit repository-contained staging directory outside .cambium
       - dest: distribution_root
         option_strings:
           - --distribution-root
@@ -6794,7 +6794,7 @@ tools:
           suffixes: []
           active_when_any: []
           inactive_when_any: []
-      external_write: host-config-installation
+      external_write: none
   - tool: render_interface_projection
     module: Tools/render_interface_projection.py
     source_hash: sha256:8913d34811aeaf6cf655a23e8541784de33faca7e5ddba6af48effb1ec4710b0

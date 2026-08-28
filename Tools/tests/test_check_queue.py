@@ -1,6 +1,5 @@
 import copy
 import json
-import os
 from pathlib import Path
 import shutil
 import subprocess
@@ -25,6 +24,7 @@ import kblib
 # lands on the caller's globals.
 import queue_runtime.property_state
 import queue_runtime.runtime
+import runtime_paths
 import standards_state
 from profile_fixture import FIXTURE_UPSTREAM_REVISION, install_loadable_profile
 
@@ -4444,6 +4444,86 @@ class CheckQueueTests(QueueFixture):
             text=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
             check=False,
         )
+
+    def install_registered_pre_task_projections(self, root):
+        payloads = {
+            runtime_paths.UPSTREAM_COMPONENT_MANIFEST_PATH:
+                b"path\tsha256\n",
+            runtime_paths.CLI_CONTRACT_ARTIFACT_PATH:
+                b"artifact: cli-invocation-contract\n",
+            runtime_paths.MCP_TOOLS_ARTIFACT_PATH:
+                b'{"artifact":"agent-interface-projection"}\n',
+        }
+        for relative, payload in payloads.items():
+            path = root / relative
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_bytes(payload)
+        return payloads
+
+    def test_registered_nested_pre_task_projections_survive_initialization(self):
+        fresh = self.init_profile_repo()
+        payloads = self.install_registered_pre_task_projections(fresh)
+
+        completed = self.run_init(fresh)
+
+        self.assertEqual(0, completed.returncode, completed.stdout)
+        for relative, payload in payloads.items():
+            self.assertEqual(payload, (fresh / relative).read_bytes(), relative)
+        self.assertTrue((fresh / runtime_paths.QUEUE_PATH).is_file())
+
+    def test_unregistered_nested_pre_task_projection_is_refused(self):
+        fresh = self.init_profile_repo()
+        self.install_registered_pre_task_projections(fresh)
+        rogue = fresh / runtime_paths.DERIVED_INTERFACE_ROOT / "rogue.json"
+        rogue.write_text("{}\n", encoding="utf-8")
+
+        completed = self.run_init(fresh)
+
+        self.assertEqual(1, completed.returncode, completed.stdout)
+        self.assertIn("derived/interfaces/rogue.json", completed.stdout)
+        self.assertFalse((fresh / runtime_paths.STATE_ROOT).exists())
+
+    def test_host_installation_products_are_refused_as_pre_task_runtime(self):
+        fresh = self.init_profile_repo()
+        host_product = fresh / ".cambium/derived/host-configs/codex.toml"
+        host_product.parent.mkdir(parents=True)
+        host_product.write_text("[mcp_servers.cambium]\n", encoding="utf-8")
+
+        completed = self.run_init(fresh)
+
+        self.assertEqual(1, completed.returncode, completed.stdout)
+        self.assertIn("derived/host-configs", completed.stdout)
+        self.assertFalse((fresh / runtime_paths.STATE_ROOT).exists())
+
+    def test_registered_pre_task_projection_symlink_is_refused(self):
+        fresh = self.init_profile_repo()
+        outside = fresh.parent / "outside-interface.json"
+        outside.write_text("{}\n", encoding="utf-8")
+        target = fresh / runtime_paths.MCP_TOOLS_ARTIFACT_PATH
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.symlink_to(outside)
+
+        completed = self.run_init(fresh)
+
+        self.assertEqual(1, completed.returncode, completed.stdout)
+        self.assertIn("must be a regular file", completed.stdout)
+        self.assertFalse((fresh / runtime_paths.STATE_ROOT).exists())
+
+    def test_unreadable_registered_pre_task_directory_is_refused(self):
+        fresh = self.init_profile_repo()
+        derived = fresh / runtime_paths.DERIVED_ROOT
+        derived.mkdir(parents=True, exist_ok=True)
+        mode = derived.stat().st_mode
+        derived.chmod(0)
+        try:
+            completed = self.run_init(fresh)
+        finally:
+            derived.chmod(mode)
+
+        if completed.returncode == 0:
+            self.skipTest("current process can inspect mode-000 directories")
+        self.assertIn("cannot inspect derived", completed.stdout)
+        self.assertFalse((fresh / runtime_paths.STATE_ROOT).exists())
 
     def test_profile_manifest_concurrency_cap_override_reaches_progress(self):
         fresh = self.init_profile_repo("| `concurrency_cap` | `5` |\n")

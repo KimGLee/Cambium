@@ -171,13 +171,12 @@ The generation chain is:
 3. `render_interface_projection.py` creates the agent-facing MCP projection.
 4. `render_host_configs.py` creates host registration and workspace-binding products for a selected environment.
 
-The projection target fixes the storage boundary. `source-distribution` continues to own and verify the tracked products in `Tools/compiled/`. `carried-runtime` may write only these adopter-owned derived paths:
+The target fixes storage: `source-distribution` owns `Tools/compiled/`; `carried-runtime` may write only:
 
 - `.cambium/derived/interfaces/cli-contract.yaml`;
-- `.cambium/derived/interfaces/mcp-tools.json`;
-- `.cambium/derived/host-configs/`.
+- `.cambium/derived/interfaces/mcp-tools.json`.
 
-Passing a `Tools/compiled/` output while selecting `carried-runtime` is rejected; the target cannot relocate its own artifact. Rendered host products set `CAMBIUM_INTERFACE_PROJECTION` to the exact registered projection path. The MCP server accepts only the distributed projection or that exact path under the bound adopter workspace, and never discovers an arbitrary JSON file.
+Targets cannot relocate these artifacts. Host and transport configuration stay outside `.cambium`; a carried render stages inside the adopter workspace and binds both roots to that adopter. The server accepts only the registered distribution or carried projection.
 
 Check the tracked products without rewriting them:
 
@@ -193,7 +192,7 @@ Build or verify the carried-runtime projections without changing distributed com
 ```text
 python3 Tools/compile_cli_contract.py . --projection-target carried-runtime
 python3 Tools/render_interface_projection.py . --projection-target carried-runtime
-python3 Tools/render_host_configs.py . --projection-target carried-runtime
+python3 Tools/render_host_configs.py . --projection-target carried-runtime --output-dir /absolute/adopter/.host-config-staging --distribution-root /absolute/adopter --workspace-root /absolute/adopter
 ```
 
 Use `--help` and `--sources` where available before regenerating or installing a host product. [`mcp_server.py`](mcp_server.py) is launched by a rendered host configuration; it preserves the child tool's structured result and exit code instead of making a new governance judgment.

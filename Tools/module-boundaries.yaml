@@ -290,17 +290,12 @@ modules:
     path: Tools/changed_scope_evidence_contract.py
     provisional: true
     public:
-      - AUDIT_PRODUCER_RECORD_FIELDS
       - ChangedScopeEvidenceContractError
-      - DIRECT_RECORD_FIELDS
       - INPUT_BINDING_FIELDS
       - PLAN_BINDING_FIELDS
       - REGISTRY_PATH
-      - SHA256_RE
-      - SOURCE_SELECTOR_FIELDS
       - TOOL
       - TOOL_VERSION
-      - UTC_RE
       - direct_contract_fingerprint
       - direct_dependency_fingerprint
       - load_control_registry
@@ -333,12 +328,9 @@ modules:
       - COVERAGE_RULE_ID
       - GUIDANCE_RULE_ID
       - TASK_CONTRACT_RULE_ID
-      - TOOL
-      - TOOL_VERSION
       - coverage_routing_state
       - frozen_task_contract_references
       - guidance_state_zero_counts
-      - validate_check_result
   - module: check_batch_close
     path: Tools/check_batch_close.py
     public: []
@@ -1608,12 +1600,13 @@ modules:
       - GATE_ATTESTATION_RECEIPT_PATH
       - GATE_RESULT_RECEIPT_PATH
       - GOVERNANCE_ROOT
-      - HOST_CONFIG_ARTIFACT_ROOT
       - INVALIDATED_DELTA_RECEIPT_ROOT
       - MCP_TOOLS_ARTIFACT_PATH
       - PAGE_CONTRACT_ARTIFACT_PATH
       - PAGE_STATE_RECOVERY_JOURNAL_PATH
       - PRE_APPLY_COVERAGE_RECEIPT_ROOT
+      - PRE_TASK_FILE_PATHS
+      - PRE_TASK_REQUIRED_FILE_PATHS
       - PROGRESS_PATH
       - QUEUE_PATH
       - QUEUE_STRUCTURE_RECEIPT_PATH
@@ -1643,6 +1636,7 @@ modules:
       - TASK_PLAN_DELTA_ROOT
       - TASK_PLAN_RECEIPT_PATH
       - TASK_RUNTIME_DIRECTORIES
+      - TASK_RUNTIME_ROOTS
       - TASK_TRANSITION_RECEIPT_PATH
       - TRANSIENT_ROOT
       - UPSTREAM_COMPONENT_MANIFEST_PATH

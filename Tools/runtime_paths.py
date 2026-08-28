@@ -35,7 +35,6 @@ RECEIPT_COLD_PENDING_ROOT = RECEIPT_COLD_ROOT + "/pending"
 TRANSIENT_ROOT = RUNTIME_ROOT + "/tmp"
 DERIVED_ROOT = RUNTIME_ROOT + "/derived"
 DERIVED_INTERFACE_ROOT = DERIVED_ROOT + "/interfaces"
-DERIVED_HOST_CONFIG_ROOT = DERIVED_ROOT + "/host-configs"
 REPORT_ROOT = RUNTIME_ROOT + "/reports"
 
 _CHILD_NAMESPACE_ROOTS = frozenset((
@@ -52,7 +51,6 @@ _CHILD_NAMESPACE_ROOTS = frozenset((
     TRANSIENT_ROOT,
     DERIVED_ROOT,
     DERIVED_INTERFACE_ROOT,
-    DERIVED_HOST_CONFIG_ROOT,
     REPORT_ROOT,
 ))
 
@@ -140,7 +138,6 @@ CATEGORY_ROOTS = {
     DERIVED_PROJECTION: (
         DERIVED_ROOT,
         DERIVED_INTERFACE_ROOT,
-        DERIVED_HOST_CONFIG_ROOT,
         REPORT_ROOT,
     ),
 }
@@ -261,8 +258,6 @@ RUNTIME_OBJECTS = {
     "upstream-component-byte-manifest": RuntimeObject(
         DERIVED_PROJECTION,
         child_path(DERIVED_ROOT, "upstream-component-byte-manifest.tsv")),
-    "derived-host-config-root": RuntimeObject(
-        DERIVED_PROJECTION, DERIVED_HOST_CONFIG_ROOT),
     "effective-vocabulary": RuntimeObject(
         DERIVED_PROJECTION, DERIVED_ROOT + "/vocab.yaml"),
     "effective-page-contract": RuntimeObject(
@@ -367,6 +362,40 @@ if set(entry.category for entry in RUNTIME_OBJECTS.values()) != \
     raise RuntimeError("runtime object registry/category roots are incomplete")
 
 
+# Exact registered files that may exist after Standards/Profile adoption but
+# before any Task runtime is initialized.  This is a lifecycle projection of
+# the physical object registry, not a second schema or governance rule.  The
+# initializer derives every permitted ancestor directory from these leaves and
+# rejects everything else.  Host installation products are deliberately absent:
+# Constitution RTS-02 keeps installation and MCP transport configuration out of
+# adopter runtime state.
+PRE_TASK_FILE_OBJECT_IDS = frozenset((
+    "active-standards",
+    "standards-adoption-receipts",
+    "effective-vocabulary",
+    "effective-page-contract",
+    "upstream-component-byte-manifest",
+    "derived-cli-contract",
+    "derived-mcp-tools",
+    "receipt-append-free",
+))
+PRE_TASK_REQUIRED_FILE_OBJECT_IDS = frozenset(("active-standards",))
+
+if not PRE_TASK_REQUIRED_FILE_OBJECT_IDS <= PRE_TASK_FILE_OBJECT_IDS:
+    raise RuntimeError("required pre-task objects are outside the allowed set")
+if not PRE_TASK_FILE_OBJECT_IDS <= set(RUNTIME_OBJECTS):
+    raise RuntimeError("pre-task object registry names an unknown runtime object")
+
+PRE_TASK_FILE_PATHS = frozenset(
+    RUNTIME_OBJECTS[object_id].path
+    for object_id in PRE_TASK_FILE_OBJECT_IDS
+)
+PRE_TASK_REQUIRED_FILE_PATHS = frozenset(
+    RUNTIME_OBJECTS[object_id].path
+    for object_id in PRE_TASK_REQUIRED_FILE_OBJECT_IDS
+)
+
+
 ACTIVE_STANDARDS_PATH = path_for("active-standards")
 QUEUE_PATH = path_for("required-queue")
 COVERAGE_PATH = path_for("coverage-ledger")
@@ -386,7 +415,6 @@ VOCAB_ARTIFACT_PATH = path_for("effective-vocabulary")
 PAGE_CONTRACT_ARTIFACT_PATH = path_for("effective-page-contract")
 CLI_CONTRACT_ARTIFACT_PATH = path_for("derived-cli-contract")
 MCP_TOOLS_ARTIFACT_PATH = path_for("derived-mcp-tools")
-HOST_CONFIG_ARTIFACT_ROOT = path_for("derived-host-config-root")
 UPSTREAM_COMPONENT_MANIFEST_PATH = path_for(
     "upstream-component-byte-manifest")
 

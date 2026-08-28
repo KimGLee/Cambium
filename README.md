@@ -214,16 +214,20 @@ Cambium renders registration and corpus binding for Claude Code, Codex, Kimi Cod
 
 ```bash
 python3 Tools/render_host_configs.py . \
-  --distribution-root /absolute/path/to/cambium \
+  --projection-target carried-runtime \
+  --output-dir /absolute/path/to/corpus/.host-config-staging \
+  --distribution-root /absolute/path/to/corpus \
   --workspace-root /absolute/path/to/corpus
 
 python3 Tools/render_host_configs.py . \
-  --distribution-root /absolute/path/to/cambium \
+  --projection-target carried-runtime \
+  --output-dir /absolute/path/to/corpus/.host-config-staging \
+  --distribution-root /absolute/path/to/corpus \
   --workspace-root /absolute/path/to/corpus \
   --check
 ```
 
-Generated files land under `Tools/compiled/host-configs/`.
+Run this from the adopted corpus root after its carried interface has been generated. Bound products land in `.host-config-staging/`; install the selected product through the host's own mechanism. `Tools/compiled/host-configs/` remains the source-distribution template set and is only regenerated or checked by Cambium maintenance.
 
 | Host | Install the generated configuration at |
 |---|---|

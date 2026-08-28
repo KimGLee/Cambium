@@ -47,7 +47,7 @@ distribution_only:
   - path: Tools/compiled/mcp-tools.json
     reason: "source-distribution agent interface projection; a carried runtime must pair a target-bound projection with its own consumer rather than carry this distribution artifact"
   - path: Tools/compiled/host-configs/
-    reason: "source-distribution host templates contain placeholders rather than adopter bindings; an adopter materializes compatible host products in runtime-derived or host configuration space"
+    reason: "source-distribution host templates contain placeholders rather than adopter bindings; an adopter materializes compatible host products only in workspace-contained staging outside .cambium, then installs them through the host's own mechanism"
   - path: Tools/check_kernel_size.py
     reason: "repository-engineering checker for Cambium's own Kernel source-file budget; adopter knowledge governance does not consume this distribution-maintenance constraint"
   - path: Tools/kernel-size-policy.yaml

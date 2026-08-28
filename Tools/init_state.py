@@ -25,7 +25,7 @@ import runtime_paths
 import runtime_state_contract
 
 TOOL = "init_state"
-TOOL_VERSION = "1.4.1"
+TOOL_VERSION = "1.4.2"
 RUNTIME_DIRS = runtime_paths.TASK_RUNTIME_DIRECTORIES
 
 _STATE_DOCUMENT_PATH_BY_NAME = {
@@ -364,46 +364,84 @@ def _governance_only_namespace_errors(root):
         return []
     if os.path.islink(runtime) or not os.path.isdir(runtime):
         return ["%s must be a real directory" % runtime_paths.RUNTIME_ROOT]
-    allowed = {
-        os.path.basename(runtime_paths.GOVERNANCE_ROOT): {
-            os.path.basename(runtime_paths.ACTIVE_STANDARDS_PATH)},
-        os.path.basename(runtime_paths.RECEIPT_ROOT): {
-            os.path.basename(runtime_paths.STANDARDS_ADOPTION_RECEIPT_PATH)},
-        os.path.basename(runtime_paths.DERIVED_ROOT): {
-            os.path.basename(runtime_paths.VOCAB_ARTIFACT_PATH),
-            os.path.basename(runtime_paths.PAGE_CONTRACT_ARTIFACT_PATH)},
-        os.path.basename(runtime_paths.TRANSIENT_ROOT): {
-            os.path.basename(runtime_paths.RECEIPT_APPEND_FREE_PATH)},
-    }
+    allowed_files = frozenset(
+        os.path.normpath(_runtime_relative_path(path))
+        for path in runtime_paths.PRE_TASK_FILE_PATHS
+    )
+    required_files = frozenset(
+        os.path.normpath(_runtime_relative_path(path))
+        for path in runtime_paths.PRE_TASK_REQUIRED_FILE_PATHS
+    )
+    allowed_directories = set()
+    for relative in allowed_files:
+        parent = os.path.dirname(relative)
+        while parent:
+            allowed_directories.add(parent)
+            parent = os.path.dirname(parent)
+
     errors = []
-    if not os.path.isfile(_runtime_namespace_path(
-            runtime, runtime_paths.ACTIVE_STANDARDS_PATH)):
-        errors.append(
-            "pre-runtime %s must contain %s" % (
-                runtime_paths.RUNTIME_ROOT,
-                _runtime_relative_path(runtime_paths.ACTIVE_STANDARDS_PATH),
-            ))
-    for name in sorted(os.listdir(runtime)):
-        path = os.path.join(runtime, name)
-        if name not in allowed:
-            errors.append("pre-runtime %s contains %s" %
-                          (runtime_paths.RUNTIME_ROOT, name))
-            continue
-        if os.path.islink(path) or not os.path.isdir(path):
-            errors.append("pre-runtime %s/%s must be a real directory" %
-                          (runtime_paths.RUNTIME_ROOT, name))
-            continue
-        entries = set(os.listdir(path))
-        unexpected = sorted(entries - allowed[name])
-        for entry in unexpected:
-            errors.append("pre-runtime %s/%s contains %s" %
-                          (runtime_paths.RUNTIME_ROOT, name, entry))
-        for entry in sorted(entries & allowed[name]):
-            target = os.path.join(path, entry)
-            if os.path.islink(target) or not os.path.isfile(target):
-                errors.append("pre-runtime %s/%s/%s must be a regular file" %
-                              (runtime_paths.RUNTIME_ROOT, name, entry))
+    for relative in sorted(required_files):
+        target = os.path.join(runtime, *relative.split(os.sep))
+        if os.path.islink(target) or not os.path.isfile(target):
+            errors.append("pre-runtime %s must contain regular file %s" % (
+                runtime_paths.RUNTIME_ROOT, relative.replace(os.sep, "/")))
+
+    def record_walk_error(error):
+        filename = getattr(error, "filename", None) or runtime
+        try:
+            relative = os.path.relpath(filename, runtime)
+        except (TypeError, ValueError):
+            relative = str(filename)
+        if relative == ".":
+            relative = ""
+        display = relative.replace(os.sep, "/")
+        errors.append("pre-runtime %s cannot inspect %s: %s" % (
+            runtime_paths.RUNTIME_ROOT,
+            display or runtime_paths.RUNTIME_ROOT,
+            error,
+        ))
+
+    for current, directories, files in os.walk(
+            runtime, topdown=True, onerror=record_walk_error,
+            followlinks=False):
+        current_relative = os.path.relpath(current, runtime)
+        if current_relative == ".":
+            current_relative = ""
+
+        traversable = []
+        for name in sorted(directories):
+            path = os.path.join(current, name)
+            relative = os.path.normpath(os.path.join(current_relative, name))
+            display = relative.replace(os.sep, "/")
+            if os.path.islink(path) or not os.path.isdir(path):
+                errors.append("pre-runtime %s/%s must be a real directory" %
+                              (runtime_paths.RUNTIME_ROOT, display))
+            elif relative not in allowed_directories:
+                errors.append("pre-runtime %s contains unregistered path %s" %
+                              (runtime_paths.RUNTIME_ROOT, display))
+            else:
+                traversable.append(name)
+        directories[:] = traversable
+
+        for name in sorted(files):
+            path = os.path.join(current, name)
+            relative = os.path.normpath(os.path.join(current_relative, name))
+            display = relative.replace(os.sep, "/")
+            if os.path.islink(path) or not os.path.isfile(path):
+                errors.append("pre-runtime %s/%s must be a regular file" %
+                              (runtime_paths.RUNTIME_ROOT, display))
+            elif relative not in allowed_files:
+                errors.append("pre-runtime %s contains unregistered path %s" %
+                              (runtime_paths.RUNTIME_ROOT, display))
     return errors
+
+
+def _task_runtime_publication_roots():
+    """Return the registered task roots with the lock namespace first."""
+    return (runtime_paths.TRANSIENT_ROOT,) + tuple(
+        path for path in runtime_paths.TASK_RUNTIME_ROOTS
+        if path != runtime_paths.TRANSIENT_ROOT
+    )
 
 
 def publish_runtime_into_governance_namespace(
@@ -422,14 +460,7 @@ def publish_runtime_into_governance_namespace(
     moved = []
     # A governance-only namespace is already public. Publish the writer lock
     # before any task state, matching the pre-registry transaction ordering.
-    publication_roots = (
-        runtime_paths.TRANSIENT_ROOT,
-        runtime_paths.STATE_ROOT,
-        runtime_paths.WORK_SPEC_ROOT,
-        runtime_paths.DELTA_ROOT,
-        runtime_paths.REPORT_ROOT,
-        runtime_paths.RECEIPT_ROOT,
-    )
+    publication_roots = _task_runtime_publication_roots()
     publication_dirs = tuple(
         _runtime_relative_path(directory) for directory in publication_roots)
     publish_dirs = [

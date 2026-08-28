@@ -51,6 +51,35 @@ class RuntimePathRegistryTests(unittest.TestCase):
             {entry.category for entry in runtime_paths.RUNTIME_OBJECTS.values()},
         )
 
+    def test_pre_task_file_set_is_a_closed_registry_projection(self):
+        expected = {
+            "active-standards",
+            "standards-adoption-receipts",
+            "effective-vocabulary",
+            "effective-page-contract",
+            "upstream-component-byte-manifest",
+            "derived-cli-contract",
+            "derived-mcp-tools",
+            "receipt-append-free",
+        }
+
+        self.assertEqual(expected, runtime_paths.PRE_TASK_FILE_OBJECT_IDS)
+        self.assertEqual(
+            {"active-standards"},
+            runtime_paths.PRE_TASK_REQUIRED_FILE_OBJECT_IDS,
+        )
+        self.assertEqual(
+            {runtime_paths.RUNTIME_OBJECTS[object_id].path
+             for object_id in expected},
+            runtime_paths.PRE_TASK_FILE_PATHS,
+        )
+        self.assertNotIn("derived-host-config-root",
+                         runtime_paths.RUNTIME_OBJECTS)
+        self.assertFalse(any(
+            "host-config" in path
+            for path in runtime_paths.PRE_TASK_FILE_PATHS
+        ))
+
     def test_durable_lock_and_journal_objects_are_not_transient(self):
         recovery_objects = (
             "state-writer-lock",
@@ -294,6 +323,12 @@ class RuntimePathRegistryTests(unittest.TestCase):
             }
             for path in runtime_paths.TASK_RUNTIME_ROOTS
         ))
+        publication_roots = init_state._task_runtime_publication_roots()
+        self.assertEqual(
+            set(runtime_paths.TASK_RUNTIME_ROOTS), set(publication_roots))
+        self.assertEqual(
+            runtime_paths.TRANSIENT_ROOT, publication_roots[0],
+            "the lock namespace must publish before task state")
 
     def test_initializer_projects_state_documents_from_registered_objects(self):
         expected = {

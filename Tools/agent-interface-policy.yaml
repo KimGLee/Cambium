@@ -670,7 +670,7 @@ tools:
     read_paths: [projection]
     write_paths: []
     read_write_paths: [output_dir]
-    external_write: host-config-installation
+    external_write: none
   - tool: render_interface_projection
     exposure: cli-only
     workspace_argument: root

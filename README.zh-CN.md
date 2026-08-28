@@ -216,16 +216,20 @@ Cambium 从一份权威 server 定义，为 Claude Code、Codex、Kimi Code 和 
 
 ```bash
 python3 Tools/render_host_configs.py . \
-  --distribution-root /cambium/的绝对路径 \
+  --projection-target carried-runtime \
+  --output-dir /语料库/的绝对路径/.host-config-staging \
+  --distribution-root /语料库/的绝对路径 \
   --workspace-root /语料库/的绝对路径
 
 python3 Tools/render_host_configs.py . \
-  --distribution-root /cambium/的绝对路径 \
+  --projection-target carried-runtime \
+  --output-dir /语料库/的绝对路径/.host-config-staging \
+  --distribution-root /语料库/的绝对路径 \
   --workspace-root /语料库/的绝对路径 \
   --check
 ```
 
-生成文件位于 `Tools/compiled/host-configs/`。
+请在 adopted corpus 根目录、完成 carried interface 生成后运行。绑定产品写入 `.host-config-staging/`，再通过对应宿主自己的机制安装。`Tools/compiled/host-configs/` 只保留 source-distribution 模板，由 Cambium 维护流程生成或检查。
 
 | 宿主 | 生成配置应安装到 |
 |---|---|
