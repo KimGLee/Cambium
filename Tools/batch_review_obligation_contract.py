@@ -14,6 +14,7 @@ import re
 import audit_fingerprint
 import audit_dimension_contract
 import audit_plan_contract
+import audit_receipt_contract
 import kblib
 
 
@@ -768,6 +769,54 @@ def _catalog_record(entry):
     return entry if isinstance(entry, dict) else None
 
 
+def _matches_consumed_obligation(record, plan, plan_sha256, obligation,
+                                 selector):
+    """Match evidence through its native record contract and plan binding."""
+    evidence_kind = obligation["evidence_kind"]
+    if evidence_kind == "audit-receipt":
+        try:
+            audit_receipt_contract.validate_audit_receipt(record)
+        except (TypeError, ValueError):
+            return False
+
+    expected = {
+        "record_kind": evidence_kind,
+        "plan_id": plan["plan_id"],
+        "audit_plan_sha256": plan_sha256,
+        "obligation_id": obligation["obligation_id"],
+        "owner_kind": obligation["owner_kind"],
+        "owner_rule_id": obligation["owner_rule_id"],
+        "kernel_extension_point": obligation["kernel_extension_point"],
+        "due_stage": obligation["due_stage"],
+        "evidence_role": obligation["evidence_role"],
+        "evidence_kind": evidence_kind,
+        "acceptance_predicate": obligation["acceptance_predicate"],
+        "producer_check": obligation["producer_check"],
+        "producer_capability": obligation["producer_capability"],
+        "producer_gate_id": obligation["producer_gate_id"],
+        "consumer_gate_id": obligation["consumer_gate_id"],
+        "fingerprint_binding": obligation["fingerprint_binding"],
+        "invalidated_by": None,
+    }
+    if evidence_kind == "audit-receipt":
+        expected["dimension"] = obligation["dimension"]
+        scope = record.get("scope")
+        target_matches = isinstance(scope, list) and \
+            obligation["target"] in scope
+    else:
+        # Native changed-scope Gate evidence carries the plan partition and a
+        # direct target.  Full AuditReceipt deliberately carries neither: its
+        # governed target is represented by the closed `scope` field above.
+        expected["partition"] = obligation["partition"]
+        expected["target"] = obligation["target"]
+        expected["dimension"] = None
+        target_matches = True
+    return (target_matches and
+            all(record.get(field) == value
+                for field, value in expected.items()) and
+            record.get("result") in selector["evidence_result_values"])
+
+
 def resolve_consumed_evidence(plan, plan_sha256, spec, target, catalog,
                               referenced_receipt_ids, disposition,
                               registry=None):
@@ -865,30 +914,8 @@ def resolve_consumed_evidence(plan, plan_sha256, spec, target, catalog,
         obligation = next(
             row for row in expected_obligations
             if row["obligation_id"] == obligation_id)
-        expected_dimension = (
-            obligation["dimension"]
-            if obligation["evidence_kind"] == "audit-receipt" else None)
-        expected = {
-            "record_kind": obligation["evidence_kind"],
-            "plan_id": plan["plan_id"],
-            "audit_plan_sha256": plan_sha256,
-            "obligation_id": obligation_id,
-            "owner_kind": obligation["owner_kind"],
-            "owner_rule_id": obligation["owner_rule_id"],
-            "target": obligation["target"],
-            "partition": obligation["partition"],
-            "due_stage": obligation["due_stage"],
-            "evidence_role": obligation["evidence_role"],
-            "evidence_kind": obligation["evidence_kind"],
-            "dimension": expected_dimension,
-            "acceptance_predicate": obligation["acceptance_predicate"],
-            "producer_check": obligation["producer_check"],
-            "consumer_gate_id": obligation["consumer_gate_id"],
-            "invalidated_by": None,
-        }
-        if all(record.get(field) == value for field, value in expected.items()) \
-                and record.get("result") in \
-                selector["evidence_result_values"]:
+        if _matches_consumed_obligation(
+                record, plan, plan_sha256, obligation, selector):
             records_by_obligation[obligation_id].append(record)
 
     resolved = []

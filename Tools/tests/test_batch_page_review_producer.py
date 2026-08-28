@@ -18,6 +18,7 @@ import audit_plan_contract  # noqa: E402
 import audit_obligation_projection  # noqa: E402
 import audit_evidence_runtime  # noqa: E402
 import audit_producer_runtime  # noqa: E402
+import audit_receipt_contract  # noqa: E402
 import batch_review_obligation_contract as contract  # noqa: E402
 import kblib  # noqa: E402
 import record_batch_page_review as producer  # noqa: E402
@@ -200,7 +201,7 @@ class BatchPageReviewProducerTests(unittest.TestCase):
 
     @staticmethod
     def passing_evidence(plan, obligation, index):
-        return {
+        common = {
             "receipt_id": "audit-changed-%04d" % index,
             "record_kind": obligation["evidence_kind"],
             "plan_id": plan["plan_id"],
@@ -208,21 +209,55 @@ class BatchPageReviewProducerTests(unittest.TestCase):
             "obligation_id": obligation["obligation_id"],
             "owner_kind": obligation["owner_kind"],
             "owner_rule_id": obligation["owner_rule_id"],
-            "target": obligation["target"],
-            "partition": obligation["partition"],
+            "kernel_extension_point": obligation["kernel_extension_point"],
             "due_stage": obligation["due_stage"],
             "evidence_role": obligation["evidence_role"],
             "evidence_kind": obligation["evidence_kind"],
-            "dimension": (
-                obligation["dimension"]
-                if obligation["evidence_kind"] == "audit-receipt"
-                else None),
             "acceptance_predicate": obligation["acceptance_predicate"],
             "producer_check": obligation["producer_check"],
+            "producer_capability": obligation["producer_capability"],
+            "producer_gate_id": obligation["producer_gate_id"],
             "consumer_gate_id": obligation["consumer_gate_id"],
-            "result": "passed",
+            "fingerprint_binding": obligation["fingerprint_binding"],
             "invalidated_by": None,
         }
+        if obligation["evidence_kind"] == "gate-receipt":
+            common.update({
+                "target": obligation["target"],
+                "partition": obligation["partition"],
+                "dimension": None,
+                "result": "pass",
+            })
+            return common
+        receipt = {
+            "schema_version": 1,
+            **common,
+            "task_id": plan["task_id"],
+            "batch_id": plan["batch_id"],
+            "opening_transition_receipt":
+                plan["opening_transition_receipt"],
+            "standards_version": plan["standards_version"],
+            "active_standards_sha256": plan["active_standards_sha256"],
+            "selected_profile_manifest": plan["selected_profile_manifest"],
+            "profile_snapshot_sha256": plan["profile_snapshot_sha256"],
+            "profile_contract_fingerprint":
+                plan["profile_contract_fingerprint"],
+            "dimension": obligation["dimension"],
+            "scope": [obligation["target"]],
+            "artifact_fingerprint": SHA_A,
+            "dependency_fingerprint": SHA_B,
+            "contract_fingerprint": SHA_C,
+            "verifier": "test-producer",
+            "method": "test-producer@1.0.0/check",
+            "evidence_ref": "producer-evidence-%04d" % index,
+            "checked_at": "2026-08-29T00:00:00Z",
+            "review_due": obligation["review_due"],
+            "result": "passed",
+            "reused_receipt_id": None,
+            "reuse_reason": None,
+        }
+        audit_receipt_contract.validate_audit_receipt(receipt)
+        return receipt
 
     @staticmethod
     def frozen(path):
@@ -479,6 +514,75 @@ class BatchPageReviewProducerTests(unittest.TestCase):
             tuple(sorted(dependencies, key=lambda row: row["receipt_id"])),
             contract.validate_receipt_consumption(
                 plan, plan_sha256, receipt, catalog, self.registry))
+
+    def test_m07_consumes_native_gate_and_full_audit_receipt(self):
+        plan, manifest, tiers, _selection = self.full_plan(s_count=0)
+        plan, source_obligations = self.with_same_page_changed_scope(
+            plan, "M.md", rule_ids=(
+                "k12-02-level0-wiki-link-resolution",
+                "k12-02-level0-fence-closure",
+            ))
+        closure = contract.validate_plan_base_closure(
+            plan, manifest, tiers, self.registry)
+        item = next(
+            row for row in self.registry["m_tier_atomic_items"]
+            if row["item_id"] ==
+            "m07-applicable-deterministic-checks-pass")
+        obligation = closure["obligations_by_target_rule"][
+            ("M.md", item["rule_id"])]
+        spec = contract.obligation_spec_for_rule(
+            item["rule_id"], self.registry)
+        dependencies = tuple(
+            self.passing_evidence(plan, row, index)
+            for index, row in enumerate(source_obligations, 1))
+        gate = next(row for row in dependencies
+                    if row["record_kind"] == "gate-receipt")
+        full = next(row for row in dependencies
+                    if row["record_kind"] == "audit-receipt")
+        self.assertEqual("changed-scope-deterministic", gate["partition"])
+        self.assertNotIn("partition", full)
+        self.assertNotIn("target", full)
+        audit_receipt_contract.validate_audit_receipt(full)
+        kwargs = {
+            "root": str(REPOSITORY), "plan": plan,
+            "plan_sha256": audit_plan_contract.plan_sha256(plan),
+            "obligation": obligation, "spec": spec,
+            "page_snapshot": self.frozen("M.md"),
+            "reviewer_context_id": "review-context",
+            "reviewer_role": "batch-reviewer", "verdict": "passed",
+            "statement": "native Gate and full AuditReceipt consumed",
+            "applicability_disposition": "applicable",
+            "registry": self.registry, "identity": {},
+        }
+        receipt = producer.build_review_receipt(
+            **kwargs, consumed_records=dependencies)
+        self.assertEqual(
+            sorted(row["receipt_id"] for row in dependencies),
+            receipt["consumed_evidence_refs"])
+
+        mutations = (
+            (0, "plan_id", "wrong-plan"),
+            (1, "obligation_id", "wrong-obligation"),
+            (0, "owner_rule_id", "wrong-owner"),
+            (1, "scope", ["Other.md"]),
+        )
+        for index, field, value in mutations:
+            with self.subTest(field=field):
+                changed = copy.deepcopy(dependencies)
+                changed[index][field] = value
+                with self.assertRaisesRegex(ValueError, "exactly one current"):
+                    producer.build_review_receipt(
+                        **kwargs, consumed_records=changed)
+
+        extra = {
+            "receipt_id": "extra-nonmatching-record",
+            "obligation_id": "not-in-the-plan-selector",
+            "result": "pass",
+            "invalidated_by": None,
+        }
+        with self.assertRaisesRegex(ValueError, "references differ"):
+            producer.build_review_receipt(
+                **kwargs, consumed_records=dependencies + (extra,))
 
     def test_m05_consumes_only_the_exact_premerge_wiki_link_gate(self):
         plan, manifest, tiers, _selection = self.full_plan(s_count=0)
