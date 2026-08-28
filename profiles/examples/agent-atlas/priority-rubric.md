@@ -11,12 +11,7 @@ Interface: [Kernel-owned Profile interface](../../../kernel/K00%20Standards%20Co
 
 ## Priority Quota
 
-The standing quota targets this corpus holds its P0/P1 shares to. K00/07 owns
-the quota model; this registration replaces the retired
-`priority_quota.*` execution-default override rows (same values, now the
-instrument K00/07 names for long-lived shares). A temporary excess is not
-registered here -- it is a bounded contract policy exception via
-`apply_contract_amendment.py`, and it dies with its task.
+The standing quota targets this corpus holds its P0/P1 shares to. K00/07 owns the quota model; this registration replaces the retired `priority_quota.*` execution-default override rows (same values, now the instrument K00/07 names for long-lived shares). A temporary excess is not registered here -- it is a bounded contract policy exception via `apply_contract_amendment.py`, and it dies with its task.
 
 - Registration: Configured
 

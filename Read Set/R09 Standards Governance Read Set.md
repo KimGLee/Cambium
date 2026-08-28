@@ -54,12 +54,9 @@ load_edges:
 
 ## Purpose
 
-Loads the Standards ownership, governance, validation, and adoption boundary
-after an R09 governance transition has already been authorized.
+Loads the Standards ownership, governance, validation, and adoption boundary after an R09 governance transition has already been authorized.
 
 ## Non-deterministic triggers
 
-- `governance-transition-requested` means the task has entered an authorized
-  Standards or Profile revision; this Read Set does not grant authorization.
-- `governance-gate-requested` fires before the candidate governance after-image
-  is accepted.
+- `governance-transition-requested` means the task has entered an authorized Standards or Profile revision; this Read Set does not grant authorization.
+- `governance-gate-requested` fires before the candidate governance after-image is accepted.

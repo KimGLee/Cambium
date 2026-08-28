@@ -12,20 +12,13 @@ This module owns the review that an execution context other than the author perf
 
 Substantive correctness review is mandatory for L-tier pages; it is not mandatory for S / M tiers, which are covered by batch spot checks.
 
-Execution is performed by a procedurally separate review context carrying only
-the note body and its Sources, not the author's working context. The recorded
-context identifier is a declared label; actual isolation is supplied by the
-operator or Host. The authoring context MUST NOT produce its own review
-receipt. Review may begin once the page is drafted and its changed-scope
-self-check passes. Batch admission requires current `substantive_review`
-evidence for every L-tier manifest page. Review content:
+Execution is performed by a procedurally separate review context carrying only the note body and its Sources, not the author's working context. The recorded context identifier is a declared label; actual isolation is supplied by the operator or Host. The authoring context MUST NOT produce its own review receipt. Review may begin once the page is drafted and its changed-scope self-check passes. Batch admission requires current `substantive_review` evidence for every L-tier manifest page. Review content:
 
 - Re-derive the key reasoning chains and confirm the conclusions actually follow from the premises.
 - Spot check 2–3 key claims against the source's original text.
 - Check for over-extension of the "the source does not say it that strongly" kind.
 
-The review produces a `substantive_review` receipt under the registered receipt
-machine contract.
+The review produces a `substantive_review` receipt under the registered receipt machine contract.
 
 Trigger points:
 

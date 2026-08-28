@@ -24,6 +24,4 @@ A migration is valid only when all of the following observable outcomes hold:
   [[kernel/K12 Quality Assurance/09 Batch-close Closed List#Batch-close Closed List|Batch-close Closed List]]
   pass for the batch in which the migration closes.
 
-This semantic owner does not prescribe the implementation or action sequence
-for producing these outcomes. Deleting the old owner before the replacement
-is verified violates the conservation invariant.
+This semantic owner does not prescribe the implementation or action sequence for producing these outcomes. Deleting the old owner before the replacement is verified violates the conservation invariant.

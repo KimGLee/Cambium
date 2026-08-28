@@ -432,17 +432,11 @@ Receipt 是只追加 JSONL，许多授权字段已经与状态、计划或锚点
 
 ### 采纳恢复加固
 
-Atlas 本次采用的受支持路径是干净、单进程的硬切换事务；旧 runtime 兼容不是其
-前置条件。后续应由独立 Cambium 任务测试并闭合硬中断恢复，包括：`committing`
-journal 发布或重建最终 Receipt 之前，必须精确回读 planned-after 状态，并重新执行
-selected Profile CAS。并发、冷状态迁移和旧协议修复仍不属于该任务，除非另行明确
-立项。
+Atlas 本次采用的受支持路径是干净、单进程的硬切换事务；旧 runtime 兼容不是其前置条件。后续应由独立 Cambium 任务测试并闭合硬中断恢复，包括：`committing` journal 发布或重建最终 Receipt 之前，必须精确回读 planned-after 状态，并重新执行 selected Profile CAS。并发、冷状态迁移和旧协议修复仍不属于该任务，除非另行明确立项。
 
 ### Python 入口执行打包
 
-后续执行打包任务需要把所有被直接调用的 Python Tool 统一路由到一个只依赖
-stdlib、隔离缓存的 launcher。本轮有界修复只保护采纳/checker 与 carried MCP 启动
-路径；它不重定义全部 source-distribution 开发命令，也不提前决定后续安装形式。
+后续执行打包任务需要把所有被直接调用的 Python Tool 统一路由到一个只依赖 stdlib、隔离缓存的 launcher。本轮有界修复只保护采纳/checker 与 carried MCP 启动路径；它不重定义全部 source-distribution 开发命令，也不提前决定后续安装形式。
 
 ### Sealed-evidence 加固
 

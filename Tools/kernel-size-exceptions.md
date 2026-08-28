@@ -2,21 +2,9 @@
 
 ## Purpose
 
-This Tool-owned record preserves the human necessity and follow-up judgments
-behind the exceptions in [kernel-size-policy.yaml](kernel-size-policy.yaml).
-That YAML file is the sole authority for the target, soft cap, recorded byte
-measurements, growth caps, and outside-cap membership. This
-record carries no current numeric limit and is never interpreted as a Kernel
-rule or as a checker verdict.
+This Tool-owned record preserves the human necessity and follow-up judgments behind the exceptions in [kernel-size-policy.yaml](kernel-size-policy.yaml). That YAML file is the sole authority for the target, soft cap, recorded byte measurements, growth caps, and outside-cap membership. This record carries no current numeric limit and is never interpreted as a Kernel rule or as a checker verdict.
 
-The active entries below were migrated from `K00/16 Leaf Module Size Register`
-after the component responsibility review. Narrative text is retained as the
-engineering decision record; references to the former in-Kernel Card and Read
-Set locations are updated only to their current top-level paths. Measurements
-were deterministically refreshed against the post-move files in the machine
-contract. The migrated narratives describe the decision context at the time
-of approval; they are not a second description of the current component
-architecture.
+The active entries below were migrated from `K00/16 Leaf Module Size Register` after the component responsibility review. Narrative text is retained as the engineering decision record; references to the former in-Kernel Card and Read Set locations are updated only to their current top-level paths. Measurements were deterministically refreshed against the post-move files in the machine contract. The migrated narratives describe the decision context at the time of approval; they are not a second description of the current component architecture.
 
 ## Approved exceptions
 
@@ -47,9 +35,7 @@ architecture.
 
 ## Outside-cap declarations
 
-These pages are structural registries rather than prose leaves. Their current
-membership is machine-owned by `kernel-size-policy.yaml`; the reasons below
-are the human engineering record only.
+These pages are structural registries rather than prose leaves. Their current membership is machine-owned by `kernel-size-policy.yaml`; the reasons below are the human engineering record only.
 
 | Record ID | Kernel leaf | Reason |
 |---|---|---|

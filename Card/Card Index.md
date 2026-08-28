@@ -5,9 +5,7 @@ source: Tools/schemas/card.schema.yaml, Card frontmatter, and Read Set declarati
 ---
 # Card Index
 
-This is a generated navigation view. It does not select a route, define a load
-boundary, or authorize activation. Route selection remains with its canonical
-owner; each Card and Read Set frontmatter supplies the machine identity below.
+This is a generated navigation view. It does not select a route, define a load boundary, or authorize activation. Route selection remains with its canonical owner; each Card and Read Set frontmatter supplies the machine identity below.
 
 | Route ID | Card | Read Set |
 |---|---|---|

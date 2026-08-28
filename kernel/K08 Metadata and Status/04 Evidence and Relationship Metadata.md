@@ -8,8 +8,7 @@
 
 `authoring_status` represents page authoring and review progress; `evidence_maturity` represents the evidence strength of time-sensitive or empirical conclusions. The two MUST NOT substitute for each other.
 
-The registered vocabulary base is the sole normative source for closed value
-membership. This page owns the values' meanings:
+The registered vocabulary base is the sole normative source for closed value membership. This page owns the values' meanings:
 
 - `signal`: worth investigating, but without sufficient evidence yet.
 - `single-source`: supported by one traceable source.

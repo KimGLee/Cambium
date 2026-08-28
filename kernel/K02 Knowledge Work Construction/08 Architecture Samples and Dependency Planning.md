@@ -18,17 +18,6 @@ Each vertical slice runs from the foundational mechanism through runtime use, th
 
 The actual order MAY be adjusted per user priorities, but dependency gaps and the batches that fill them MUST be recorded.
 
-Coverage records the Required objects, their explicit prerequisites, and their
-approved batch projection. The registered Queue-compilation capability uses
-only those explicit inputs and approved before/after overrides to produce a
-deterministic Required Queue proposal; it MUST NOT infer dependencies from
-semantic similarity or backlinks. The canonical Queue then owns the complete
-batch order, frozen manifests, and dependency graph as defined by
-[[kernel/K13 Task Runtime and Execution Control/08 Required Queue Contract and Lifecycle|K13/08]].
+Coverage records the Required objects, their explicit prerequisites, and their approved batch projection. The registered Queue-compilation capability uses only those explicit inputs and approved before/after overrides to produce a deterministic Required Queue proposal; it MUST NOT infer dependencies from semantic similarity or backlinks. The canonical Queue then owns the complete batch order, frozen manifests, and dependency graph as defined by [[kernel/K13 Task Runtime and Execution Control/08 Required Queue Contract and Lifecycle|K13/08]].
 
-The Progress Ledger records only the accepted Queue identity, revisions, and
-fingerprint; any next dependency, ready list, active list, or merge queue shown
-there is a derived view reproducible from the Queue. A derived first candidate
-cannot replace the full Queue. After closing a batch, Coverage and Queue must
-be reconciled before the `required-queue-admission` Gate can admit the next
-batch.
+The Progress Ledger records only the accepted Queue identity, revisions, and fingerprint; any next dependency, ready list, active list, or merge queue shown there is a derived view reproducible from the Queue. A derived first candidate cannot replace the full Queue. After closing a batch, Coverage and Queue must be reconciled before the `required-queue-admission` Gate can admit the next batch.

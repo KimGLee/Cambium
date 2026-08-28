@@ -1,13 +1,10 @@
 # Synthetic Slot Fixture
 
-This file is the resolved test-only binding for slots whose domain semantics
-are outside the runtime and Terminal Proof tests.
+This file is the resolved test-only binding for slots whose domain semantics are outside the runtime and Terminal Proof tests.
 
 ## Extension Dimensions
 
-The Terminal Proof gate reads this block to enumerate the receipt dimensions a
-Proof must account for, so it is stated explicitly even where the fixture
-registers nothing: an absent block is an unreadable registry, not an empty one.
+The Terminal Proof gate reads this block to enumerate the receipt dimensions a Proof must account for, so it is stated explicitly even where the fixture registers nothing: an absent block is an unreadable registry, not an empty one.
 
 - Registration: None
 
@@ -27,8 +24,7 @@ A synthetic page has a title and one non-empty body paragraph.
 
 ## Synthetic Residual Disposition
 
-The fixture accepts no production candidate; any candidate must be removed or
-recorded as an intentional fixture exception before the batch closes.
+The fixture accepts no production candidate; any candidate must be removed or recorded as an intentional fixture exception before the batch closes.
 
 ## Scan Registrations
 

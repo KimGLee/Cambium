@@ -65,13 +65,9 @@ load_edges:
 
 ## Purpose
 
-Loads the canonical owners needed to create or change one knowledge page after
-R02 has already been selected.
+Loads the canonical owners needed to create or change one knowledge page after R02 has already been selected.
 
 ## Non-deterministic triggers
 
-- `R02:semantic-condition` fires when the page presents a terminology,
-  evidence, relationship, propagation, diagram, code, or mathematical case
-  that the start boundary does not settle.
-- `batch-gate-requested` fires before the page participates in its applicable
-  review boundary.
+- `R02:semantic-condition` fires when the page presents a terminology, evidence, relationship, propagation, diagram, code, or mathematical case that the start boundary does not settle.
+- `batch-gate-requested` fires before the page participates in its applicable review boundary.

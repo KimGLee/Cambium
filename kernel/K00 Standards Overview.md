@@ -1,9 +1,6 @@
 ## Purpose
 
-This file is the overall semantic index for the active Kernel. Detailed rules
-are maintained by folder-based leaf modules. Task selection, loading, delivery,
-and adopter runtime state are outside this index and do not become Kernel rules
-by being linked from it.
+This file is the overall semantic index for the active Kernel. Detailed rules are maintained by folder-based leaf modules. Task selection, loading, delivery, and adopter runtime state are outside this index and do not become Kernel rules by being linked from it.
 
 ## K00 Control Module Index
 

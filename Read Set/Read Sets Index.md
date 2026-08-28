@@ -5,9 +5,7 @@ source: Read Set declarations
 ---
 # Read Set Index
 
-This is a generated navigation view. It is not a route registry and is never
-an input to route selection, load resolution, activation, or proof. The
-frontmatter of each linked Read Set is the sole machine loading declaration.
+This is a generated navigation view. It is not a route registry and is never an input to route selection, load resolution, activation, or proof. The frontmatter of each linked Read Set is the sole machine loading declaration.
 
 | Route ID | Read Set |
 |---|---|

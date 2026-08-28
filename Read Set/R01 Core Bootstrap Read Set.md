@@ -26,10 +26,8 @@ load_edges:
 
 ## Purpose
 
-Loads the common control boundary after R01 has already been selected. It does
-not select another work route and does not authorize content work by itself.
+Loads the common control boundary after R01 has already been selected. It does not select another work route and does not authorize content work by itself.
 
 ## Non-deterministic triggers
 
-This Read Set has no conditional read-back edge. Questions that exceed the
-common boundary must be handled by the already selected work route.
+This Read Set has no conditional read-back edge. Questions that exceed the common boundary must be handled by the already selected work route.

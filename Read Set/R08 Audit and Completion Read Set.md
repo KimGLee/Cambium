@@ -28,10 +28,8 @@ load_edges:
 
 ## Purpose
 
-Loads the terminal audit, evidence reconciliation, completion, and proof owners
-only after the completion phase has been requested.
+Loads the terminal audit, evidence reconciliation, completion, and proof owners only after the completion phase has been requested.
 
 ## Non-deterministic triggers
 
-`task-completion-requested` means the already selected task has entered its
-completion boundary. This Read Set does not decide that transition.
+`task-completion-requested` means the already selected task has entered its completion boundary. This Read Set does not decide that transition.

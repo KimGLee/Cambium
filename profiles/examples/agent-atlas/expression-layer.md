@@ -66,12 +66,7 @@ These names are Atlas bindings, not replacements for the resolvable, bidirection
 
 ### Existing Corpus Adoption Boundary
 
-When this profile is applied to an existing corpus, no `interview_status`
-value, Card heading, or Roadmap/Cheat Sheet path is grandfathered. Each
-affected object must be evaluated under the registered gate and migrated
-through K11/07 before the relevant `interview-ready` or profile-wide
-acceptance claim. Migration never deletes an old answer or route before its
-target has been created and verified.
+When this profile is applied to an existing corpus, no `interview_status` value, Card heading, or Roadmap/Cheat Sheet path is grandfathered. Each affected object must be evaluated under the registered gate and migrated through K11/07 before the relevant `interview-ready` or profile-wide acceptance claim. Migration never deletes an old answer or route before its target has been created and verified.
 
 ### Card Granularity
 
@@ -190,31 +185,17 @@ A source note or public case cannot be presented as personal project evidence. Q
 
 ## Interview Roadmap
 
-An Interview Roadmap orders preparation by prerequisites, role relevance,
-priority, and verification milestones. Its canonical entry is
-`Interview Preparation/Roadmaps/`. Roadmaps link to both canonical knowledge
-and applicable Interview Cards. They may name a practice or review checkpoint,
-but they do not contain the complete answers owned by Cards.
+An Interview Roadmap orders preparation by prerequisites, role relevance, priority, and verification milestones. Its canonical entry is `Interview Preparation/Roadmaps/`. Roadmaps link to both canonical knowledge and applicable Interview Cards. They may name a practice or review checkpoint, but they do not contain the complete answers owned by Cards.
 
 A roadmap checkbox reports the learner's progress on that roadmap only. It does not promote `authoring_status`, `interview_status`, evidence maturity, or corpus completion; the governing progress semantics are [[kernel/K11 Expression Layer/06 Sequence and Progress Semantics|K11/06 Sequence and Progress Semantics]].
 
 ## Interview Cheat Sheet
 
-An Interview Cheat Sheet is a compact retrieval aid whose canonical entry is
-`Interview Preparation/Cheat Sheets/`. It may contain concise distinctions,
-decision cues, failure cues, formula reminders, and links to the canonical
-page and Interview Card. It does not own definitions, mechanisms, evidence,
-complete 30/90-second answers, or readiness decisions.
+An Interview Cheat Sheet is a compact retrieval aid whose canonical entry is `Interview Preparation/Cheat Sheets/`. It may contain concise distinctions, decision cues, failure cues, formula reminders, and links to the canonical page and Interview Card. It does not own definitions, mechanisms, evidence, complete 30/90-second answers, or readiness decisions.
 
 When a Cheat Sheet conflicts with a canonical owner or an accepted Card, it is stale and must be corrected from those owners; it is never used as the authority for resolving the conflict.
 
-`Interview Preparation/Cheat Sheets/ML Algorithms Cheat Sheet.md` derives from
-the canonical `Machine Learning Knowledge/Algorithms/ML Algorithms Checklist.md`
-and records that relation in its `canonical_bindings` frontmatter. The derived
-page keeps only interview retrieval cues, key distinctions, and links to
-canonical owners. When the canonical page's selection or acceptance criteria
-change, the derived page enters revalidation; the derived page's continued
-existence never proves synchronization.
+`Interview Preparation/Cheat Sheets/ML Algorithms Cheat Sheet.md` derives from the canonical `Machine Learning Knowledge/Algorithms/ML Algorithms Checklist.md` and records that relation in its `canonical_bindings` frontmatter. The derived page keeps only interview retrieval cues, key distinctions, and links to canonical owners. When the canonical page's selection or acceptance criteria change, the derived page enters revalidation; the derived page's continued existence never proves synchronization.
 
 ## Related
 

@@ -5,11 +5,7 @@
 
 ## Purpose And Boundary
 
-This module classifies common task intents into stable Route IDs. It owns only
-the shared meaning of those classifications and the choice of Route ID. It does
-not define Card selection, Read Set membership, loading order, phase mapping,
-delivery, or execution behavior. Those relationships remain with their
-respective component owners.
+This module classifies common task intents into stable Route IDs. It owns only the shared meaning of those classifications and the choice of Route ID. It does not define Card selection, Read Set membership, loading order, phase mapping, delivery, or execution behavior. Those relationships remain with their respective component owners.
 
 ## Task Classification Table
 
@@ -29,8 +25,4 @@ respective component owners.
 | Run a targeted or specialized audit | `R12 + <subject route>` | the audit is bounded by a specific finding, risk, sample, or subject area |
 | Create or reconcile the corpus map, capability coverage, or semantic-gap register | `R13` | the output is corpus-planning state rather than knowledge-content execution |
 
-Route combination records multiple independent task dimensions; it does not
-merge their meanings or transfer responsibility between their owners. If no
-row describes the task without stretching its classification boundary, the
-task requires an explicit routing decision rather than an inferred nearest
-match.
+Route combination records multiple independent task dimensions; it does not merge their meanings or transfer responsibility between their owners. If no row describes the task without stretching its classification boundary, the task requires an explicit routing decision rather than an inferred nearest match.

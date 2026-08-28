@@ -13,16 +13,9 @@ The state axes are independent and retain their own canonical owners:
 - page authoring, learning, coverage, and evidence axes: [[kernel/K08 Metadata and Status/03 Status Axes|K08/03]];
 - expression readiness values: the selected Profile's `Expression Status Axis` binding.
 
-No axis may be used as evidence for another. In particular, batch lifecycle is
-not whole-task state or page quality; authoring status is not learning progress
-or evidence strength; and expression readiness is not canonical-note depth.
+No axis may be used as evidence for another. In particular, batch lifecycle is not whole-task state or page quality; authoring status is not learning progress or evidence strength; and expression readiness is not canonical-note depth.
 
-`coverage_disposition` states whether a page or not-yet-created knowledge
-object belongs to the current scope. Coverage owns that disposition; Queue
-cancellation cannot change it. Any authorized cancellation that changes scope
-must use one controlled Amendment transaction whose observable result keeps
-Coverage, Queue, and Progress consistent. Direct Queue-only cancellation and a
-hand-edited inconsistent staging window are forbidden.
+`coverage_disposition` states whether a page or not-yet-created knowledge object belongs to the current scope. Coverage owns that disposition; Queue cancellation cannot change it. Any authorized cancellation that changes scope must use one controlled Amendment transaction whose observable result keeps Coverage, Queue, and Progress consistent. Direct Queue-only cancellation and a hand-edited inconsistent staging window are forbidden.
 
 ## Scope
 

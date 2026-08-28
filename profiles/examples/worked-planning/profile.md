@@ -27,11 +27,7 @@ Normative interface: [Profile interface](../../README.md). Example namespace rul
 
 Allowed items: [execution-default registry](../../../kernel/K00%20Standards%20Control/execution-defaults-base.yaml).
 
-The one registered row is deliberate: `concurrency_cap` is an item this
-distribution's tools actually resolve from the manifest, so the row changes
-observable behaviour rather than recording an intention. Quota targets are
-not overrides -- they live in this profile's `Priority Rubric` under
-`Priority Quota`, beside the grant predicates and their rationale.
+The one registered row is deliberate: `concurrency_cap` is an item this distribution's tools actually resolve from the manifest, so the row changes observable behaviour rather than recording an intention. Quota targets are not overrides -- they live in this profile's `Priority Rubric` under `Priority Quota`, beside the grant predicates and their rationale.
 
 | Override item ID from the registry | Non-default profile value |
 |---|---|

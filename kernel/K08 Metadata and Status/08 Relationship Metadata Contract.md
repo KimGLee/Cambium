@@ -19,11 +19,4 @@ Canonical expression bindings (a profile's `canonical_bindings` or equivalent) a
 
 An unregistered relationship-like field is a violation under the [[kernel/K08 Metadata and Status/06 Frontmatter Applicability Contract|K08/06]] unknown-field closure — legacy spellings such as `sources`, `source_note`, `source_notes`, or `source_set` do not coexist with the canonical names on any long-term basis. A profile registers additional relations only as namespaced `Metadata Contract` extensions with an explicit direction, target type, and value shape; a spelling variant or alias of a kernel field is not registrable. Migration from legacy fields judges semantic equivalence per page and records an old-field to new-field manifest; names are never merged mechanically.
 
-The `page-contract` Gate validates shape, direction plausibility, and target
-resolvability under the same advisory boundary as K08/06. Whether a source is
-credible, independent, or actually supports a claim stays with
-[[kernel/K07 Sources and Accuracy Standard|K07]] and
-[[kernel/K12 Quality Assurance Standard|K12]] substantive review; Global Map
-typed edges stay with
-[[kernel/K02 Knowledge Work Construction/05 Global Map Contract|K02/05]] and
-are not duplicated as page fields.
+The `page-contract` Gate validates shape, direction plausibility, and target resolvability under the same advisory boundary as K08/06. Whether a source is credible, independent, or actually supports a claim stays with [[kernel/K07 Sources and Accuracy Standard|K07]] and [[kernel/K12 Quality Assurance Standard|K12]] substantive review; Global Map typed edges stay with [[kernel/K02 Knowledge Work Construction/05 Global Map Contract|K02/05]] and are not duplicated as page fields.

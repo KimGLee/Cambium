@@ -31,25 +31,13 @@ The same invariant MAY be reconfirmed at multiple layers, but each time the new 
 
 ## Dimension-specific Audit Receipt
 
-Audit evidence is stored per dimension; recording only a vague
-`reviewed: true` is not allowed. The sole machine authority for the base
-receipt-dimension namespace is
-[`audit-dimension-base.yaml`](audit-dimension-base.yaml). These dimensions
-separate structural, substantive, numeric, source/currentness,
-coverage/integration, rendering, and governance-contract evidence so that a
-pass in one concern cannot silently discharge another.
+Audit evidence is stored per dimension; recording only a vague `reviewed: true` is not allowed. The sole machine authority for the base receipt-dimension namespace is [`audit-dimension-base.yaml`](audit-dimension-base.yaml). These dimensions separate structural, substantive, numeric, source/currentness, coverage/integration, rendering, and governance-contract evidence so that a pass in one concern cannot silently discharge another.
 
-The `Audit Dimension Registry` MAY append profile-owned dimensions, but MUST
-NOT delete, rename, or redefine a base dimension from that registry. Its
-append unit is a judgment item, not a dimension name, and the declarations it
-MUST carry are fixed by [[kernel/K12 Quality Assurance/08 Judgment Item Dimension Map#Profile Registration|K12/08]].
+The `Audit Dimension Registry` MAY append profile-owned dimensions, but MUST NOT delete, rename, or redefine a base dimension from that registry. Its append unit is a judgment item, not a dimension name, and the declarations it MUST carry are fixed by [[kernel/K12 Quality Assurance/08 Judgment Item Dimension Map#Profile Registration|K12/08]].
 
 Which dimension a kernel judgment item files its verdict under, and whether it emits a receipt at all, is fixed by [[kernel/K12 Quality Assurance/08 Judgment Item Dimension Map#Item Map|K12/08]]; an item that consumes evidence produced elsewhere does not open a second receipt for the same audit object.
 
-One verification produces one append-only `AuditReceipt` protocol record. The
-registered AuditReceipt machine contract is the sole normative source for its
-closed fields, shapes, result values, and serialization. This page owns these
-field meanings and evidence boundaries:
+One verification produces one append-only `AuditReceipt` protocol record. The registered AuditReceipt machine contract is the sole normative source for its closed fields, shapes, result values, and serialization. This page owns these field meanings and evidence boundaries:
 
 - `scope`: the pages, module, batch, or vault-wide snapshot the receipt actually covers.
 - `acceptance_predicate`: the specific condition evaluated against the recorded scope and bytes; writing only `QA passed` is not allowed.
@@ -62,10 +50,7 @@ field meanings and evidence boundaries:
 
 `last_reviewed`, `last_verified`, file length, or `authoring_status` cannot substitute for an AuditReceipt.
 
-Deterministic and manual producers emit the same registered receipt contract.
-A producer-level receipt is a lightweight evidence record; when it enters the
-Audit Receipt Register, the AuditPlan layer binds the complete AuditReceipt
-identity and uses the producer receipt as its evidence reference.
+Deterministic and manual producers emit the same registered receipt contract. A producer-level receipt is a lightweight evidence record; when it enters the Audit Receipt Register, the AuditPlan layer binds the complete AuditReceipt identity and uses the producer receipt as its evidence reference.
 
 Receipts are stored by default in the Batch Contract, the Audit Report, or a separately managed index; the Coverage Ledger only needs to record the affected objects' latest valid receipt IDs and invalidation state, and complete receipts are not required to be copied into every knowledge page.
 
@@ -126,34 +111,13 @@ Propagation goes only to the dimensions that genuinely depend on the change:
 
 The dependency graph is not required to treat every backlink as a semantic dependency. Prerequisites in the body, claim evidence, canonical ownership, profile-registered expression mapping, MOC membership, and contract mapping are the primary invalidation edges.
 
-A `profile-load` receipt is reusable only for its exact manifest,
-manifest-plus-typed-dependency Profile snapshot, and typed Profile-contract
-fingerprint. A change to the
-manifest, a bound slot, a registered command, a Profile-owned configuration,
-a predicate-owner path or heading, or the `profile-load` contract invalidates
-that pass. The closure cannot be transferred to another Profile even when the
-foreign target has identical bytes. The Profile snapshot covers every
-Profile-owned target reachable from the selected manifest and excludes
-unrelated colocated files; the contract fingerprint separately covers the edge
-kind, owner identity, canonical target, and optional heading.
+A `profile-load` receipt is reusable only for its exact manifest, manifest-plus-typed-dependency Profile snapshot, and typed Profile-contract fingerprint. A change to the manifest, a bound slot, a registered command, a Profile-owned configuration, a predicate-owner path or heading, or the `profile-load` contract invalidates that pass. The closure cannot be transferred to another Profile even when the foreign target has identical bytes. The Profile snapshot covers every Profile-owned target reachable from the selected manifest and excludes unrelated colocated files; the contract fingerprint separately covers the edge kind, owner identity, canonical target, and optional heading.
 
-Downstream invalidation follows the edge's meaning. A residual-scan
-registration, configuration, verifier contract, or residual predicate change
-invalidates the applicable `registered-residual-content` evidence and its
-dependent dispositions; a predicate-owner change invalidates receipts whose
-acceptance predicate it owns. Re-establishing `profile-load` proves authority
-and resolvability only. It never refreshes the downstream content or judgment
-receipt automatically.
+Downstream invalidation follows the edge's meaning. A residual-scan registration, configuration, verifier contract, or residual predicate change invalidates the applicable `registered-residual-content` evidence and its dependent dispositions; a predicate-owner change invalidates receipts whose acceptance predicate it owns. Re-establishing `profile-load` proves authority and resolvability only. It never refreshes the downstream content or judgment receipt automatically.
 
 Queue receipts bind bytes/revisions. A structural or fingerprint change invalidates structure, readiness, and completion receipts; `state_revision` changes invalidate lifecycle/hold predicates. A Terminal Proof pass binds exact Coverage, Progress, Queue, and Proof bytes, so any byte change invalidates it. The controlled `completion-candidate -> complete` transition may consume that pass once and records Progress before/after fingerprints; reuse on the new bytes requires a new pass. Other reuse requires the same canonical paths, revisions, fingerprints, mode, and checker.
 
-Corpus Planning receipts are direct byte-bound evidence. A change to the
-selected Profile manifest, Profile Scope, Corpus Planning slot, Global Map, Capability
-Matrix, Gap Register, any canonical state fingerprint or Queue revision, or
-the repository snapshot invalidates the pass. Its applicability to batch close
-is recomputed from R13 selection and the exact validator-parsed affected-path
-set; an old receipt cannot be reused merely because the three artifact paths
-still have the same names.
+Corpus Planning receipts are direct byte-bound evidence. A change to the selected Profile manifest, Profile Scope, Corpus Planning slot, Global Map, Capability Matrix, Gap Register, any canonical state fingerprint or Queue revision, or the repository snapshot invalidates the pass. Its applicability to batch close is recomputed from R13 selection and the exact validator-parsed affected-path set; an old receipt cannot be reused merely because the three artifact paths still have the same names.
 
 ### Systemic Expansion
 
@@ -183,10 +147,7 @@ If a specialized Audit finds a local receipt already invalidated, it SHOULD crea
 
 ## Receipt Sealing and the Cold Chain
 
-Receipt sealing moves verified frozen history out of the hot parse path without
-deleting, redacting, reinterpreting, or renaming any receipt identity. The
-registered receipt-sealing capability owns storage namespaces, segment and
-index schemas, concurrency controls, publication order, and recovery procedure.
+Receipt sealing moves verified frozen history out of the hot parse path without deleting, redacting, reinterpreting, or renaming any receipt identity. The registered receipt-sealing capability owns storage namespaces, segment and index schemas, concurrency controls, publication order, and recovery procedure.
 
 Kernel requires these externally observable invariants:
 
@@ -202,11 +163,7 @@ Kernel requires these externally observable invariants:
 - interruption preserves recoverable evidence and cannot be mistaken for a
   completed seal.
 
-Sealing retires repeated body deserialization, not integrity verification. A
-projection may satisfy only consumers whose declared contract needs that
-projection; a consumer requiring body fields must resolve and re-prove the
-body or fail closed. The Tool implementation and operator runbook determine
-how these results are achieved.
+Sealing retires repeated body deserialization, not integrity verification. A projection may satisfy only consumers whose declared contract needs that projection; a consumer requiring body fields must resolve and re-prove the body or fail closed. The Tool implementation and operator runbook determine how these results are achieved.
 
 ## Terminal Reconciliation Rules
 

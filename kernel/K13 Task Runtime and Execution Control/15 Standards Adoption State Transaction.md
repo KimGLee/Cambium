@@ -6,12 +6,7 @@
 
 ## Purpose And Boundary
 
-This module owns only the controlled runtime-state transaction for active-task
-Standards adoption.
-[[kernel/K12 Quality Assurance/10 Standards Version Adoption|K12/10]] owns
-semantic validity, changed predicates, invalidated evidence, enforcement
-boundaries, and required Gate projection. The registered `standards-adoption`
-transaction capability is the sole writer.
+This module owns only the controlled runtime-state transaction for active-task Standards adoption. [[kernel/K12 Quality Assurance/10 Standards Version Adoption|K12/10]] owns semantic validity, changed predicates, invalidated evidence, enforcement boundaries, and required Gate projection. The registered `standards-adoption` transaction capability is the sole writer.
 
 ## Permitted Transaction
 
@@ -30,12 +25,7 @@ The transaction may change only:
 - one append-only Progress adoption entry binding the plan, before and after
   identities, invalidations, Gate evidence, and exact state fingerprints.
 
-Everything else remains semantically and historically unchanged. Adoption
-cannot alter task state, objective, scope, completion semantics, Queue lifecycle
-revision, batch membership/order/dependencies, holds, manifests, Work Specs,
-Amendments, checkpoints, completion history, Coverage dispositions, receipts,
-or knowledge content. It is not a Queue transition, replan, schema migration,
-or batch execution.
+Everything else remains semantically and historically unchanged. Adoption cannot alter task state, objective, scope, completion semantics, Queue lifecycle revision, batch membership/order/dependencies, holds, manifests, Work Specs, Amendments, checkpoints, completion history, Coverage dispositions, receipts, or knowledge content. It is not a Queue transition, replan, schema migration, or batch execution.
 
 ## External Transaction Contract
 
@@ -56,24 +46,13 @@ The Standards-adoption transaction must:
 - preserve all historical receipt bytes and represent invalidation through new
   references rather than mutation.
 
-The multi-object result is not claimed to be one filesystem-atomic write.
-Currentness protection, publication order, rollback, and recovery belong to the
-Tool implementation. Kernel requires only that no partial or uncertain outcome
-can authorize work, before images and evidence remain recoverable, and a
-successful commit is externally verifiable against all after-state objects.
+The multi-object result is not claimed to be one filesystem-atomic write. Currentness protection, publication order, rollback, and recovery belong to the Tool implementation. Kernel requires only that no partial or uncertain outcome can authorize work, before images and evidence remain recoverable, and a successful commit is externally verifiable against all after-state objects.
 
-The commit evidence chains the before and after Task Contract anchors. Evidence
-created under the old Contract remains historical and cannot authenticate the
-new bytes.
+The commit evidence chains the before and after Task Contract anchors. Evidence created under the old Contract remains historical and cannot authenticate the new bytes.
 
 ## Resume Boundary
 
-At restart, `runtime-startup-recovery` gives any unresolved adoption transaction
-precedence over batch execution. Recovery reconciles the plan identity, current
-state fingerprints, and prepare/commit/abort chain through the registered
-transaction capability. A committed adoption resumes under K12/10 without a
-second state rewrite; an uncertain transaction remains fail-closed until its
-single outcome is established.
+At restart, `runtime-startup-recovery` gives any unresolved adoption transaction precedence over batch execution. Recovery reconciles the plan identity, current state fingerprints, and prepare/commit/abort chain through the registered transaction capability. A committed adoption resumes under K12/10 without a second state rewrite; an uncertain transaction remains fail-closed until its single outcome is established.
 
 ## Related
 

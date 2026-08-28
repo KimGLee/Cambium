@@ -36,6 +36,18 @@ class StampCardsCommandTests(unittest.TestCase):
         self.assertIn("read_sets=13 curated_cards=13 indexes=2 stale=0",
                       result.stdout)
 
+    def test_generated_index_introductions_use_one_physical_line(self):
+        for relative in ("Card/Card Index.md",
+                         "Read Set/Read Sets Index.md"):
+            lines = (REPOSITORY / relative).read_text(
+                encoding="utf-8").splitlines()
+            heading = next(index for index, line in enumerate(lines)
+                           if line.startswith("# "))
+            table = next(index for index, line in enumerate(lines)
+                         if line.startswith("| Route ID |"))
+            prose = [line for line in lines[heading + 1:table] if line]
+            self.assertEqual(1, len(prose), relative)
+
     def test_noncanonical_card_directory_is_rejected(self):
         result = self.run_tool(REPOSITORY, "--cards-dir", "cards",
                                "--check")

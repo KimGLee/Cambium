@@ -38,14 +38,4 @@ Fields sharing one YAML block does not mean they share one writer. This leaf own
 
 ## Writer Rules
 
-Applicability and mutation authority are independent axes. A writer may change
-only a transition granted to its installed capability by the compiled metadata
-execution contract, after resolving the declared owner/source/evidence and
-write timing. Compilation fails both when a machine-managed transition has no
-writer and when an installed writer claims an undeclared transition. A checker
-never rewrites user-owned state or performs an authority judgment. Writers
-re-parse targets and use the shared guarded transaction boundary; owner state,
-evidence pointer, and page projection either reconcile together or fail closed.
-Writer overreach, stale evidence, and a page projection disagreeing with its
-owner are checkable defects. Page frontmatter never becomes a second Queue or
-a personal learning database.
+Applicability and mutation authority are independent axes. A writer may change only a transition granted to its installed capability by the compiled metadata execution contract, after resolving the declared owner/source/evidence and write timing. Compilation fails both when a machine-managed transition has no writer and when an installed writer claims an undeclared transition. A checker never rewrites user-owned state or performs an authority judgment. Writers re-parse targets and use the shared guarded transaction boundary; owner state, evidence pointer, and page projection either reconcile together or fail closed. Writer overreach, stale evidence, and a page projection disagreeing with its owner are checkable defects. Page frontmatter never becomes a second Queue or a personal learning database.

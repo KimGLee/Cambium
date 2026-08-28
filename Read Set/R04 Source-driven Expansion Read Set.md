@@ -53,13 +53,9 @@ load_edges:
 
 ## Purpose
 
-Loads the intake, source-authority, evidence, and promotion owners for an
-already selected source-driven route.
+Loads the intake, source-authority, evidence, and promotion owners for an already selected source-driven route.
 
 ## Non-deterministic triggers
 
-- `R04:semantic-condition` fires when terminology, source quality,
-  uncertainty, another work route, or a broader execution boundary is actually
-  implicated by the admitted source work.
-- `batch-gate-requested` fires before source promotion or source-review
-  acceptance is requested.
+- `R04:semantic-condition` fires when terminology, source quality, uncertainty, another work route, or a broader execution boundary is actually implicated by the admitted source work.
+- `batch-gate-requested` fires before source promotion or source-review acceptance is requested.

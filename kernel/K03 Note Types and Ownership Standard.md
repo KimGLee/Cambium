@@ -1,7 +1,6 @@
 ## Purpose
 
-This page is the stable entry point for the Note Types and Ownership standard.
-Detailed rules are maintained by the responsibility-specific modules below.
+This page is the stable entry point for the Note Types and Ownership standard. Detailed rules are maintained by the responsibility-specific modules below.
 
 ## Reading Rule
 

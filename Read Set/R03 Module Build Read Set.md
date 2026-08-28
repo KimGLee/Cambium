@@ -70,12 +70,9 @@ load_edges:
 
 ## Purpose
 
-Loads the architecture, ownership, coverage, depth, and module-review owners
-for an already selected module-build route.
+Loads the architecture, ownership, coverage, depth, and module-review owners for an already selected module-build route.
 
 ## Non-deterministic triggers
 
-- `R03:related-work` fires only when the module work actually includes the
-  corresponding authoring, source, expression, migration, long-running,
-  admission, or planning concern.
+- `R03:related-work` fires only when the module work actually includes the corresponding authoring, source, expression, migration, long-running, admission, or planning concern.
 - `batch-gate-requested` fires before module or batch acceptance is requested.

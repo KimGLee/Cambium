@@ -1,14 +1,8 @@
 ## Purpose
 
-This page is the stable entry point of the Task Runtime and Execution Control
-standard. Detailed rules are maintained by the responsibility-specific modules
-below.
+This page is the stable entry point of the Task Runtime and Execution Control standard. Detailed rules are maintained by the responsibility-specific modules below.
 
-The K13 machine-readable identities, state classes, transition catalogs, and
-control-status closed sets are registered once in
-[`runtime-state-model.json`](K13%20Task%20Runtime%20and%20Execution%20Control/runtime-state-model.json).
-The modules below explain their semantics and invariants without maintaining a
-second machine contract.
+The K13 machine-readable identities, state classes, transition catalogs, and control-status closed sets are registered once in [`runtime-state-model.json`](K13%20Task%20Runtime%20and%20Execution%20Control/runtime-state-model.json). The modules below explain their semantics and invariants without maintaining a second machine contract.
 
 ## Reading Rule
 

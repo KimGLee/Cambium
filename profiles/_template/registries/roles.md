@@ -1,7 +1,6 @@
 # Role Registry
 
-Kernel owner: K00 Operating Roles. Common slot identity and table contract are
-registered in the Kernel Profile interface.
+Kernel owner: K00 Operating Roles. Common slot identity and table contract are registered in the Kernel Profile interface.
 
 ## Process Roles
 

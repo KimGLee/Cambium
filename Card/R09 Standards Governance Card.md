@@ -10,35 +10,28 @@ source_files:
   - kernel/K00 Standards Control/11 Standards Map and Rule Registry.md
   - kernel/K12 Quality Assurance/10 Standards Version Adoption.md
   - kernel/K13 Task Runtime and Execution Control/15 Standards Adoption State Transaction.md
-source_hash: '198316af879e'
-reviewed_source_hash: '198316af879e'
-reviewed_card_hash: '100b865de8c0'
+source_hash: '90de0d1ee207'
+reviewed_source_hash: '90de0d1ee207'
+reviewed_card_hash: 'fcaa61a24470'
 ---
 # R09 Standards Governance Card
 
 ## Purpose
 
-Prepare and validate an explicitly authorized Standards or Profile revision;
-this Card does not grant the authorization or define the adoption transaction.
+Prepare and validate an explicitly authorized Standards or Profile revision; this Card does not grant the authorization or define the adoption transaction.
 
 ## Actions
 
-- Confirm the user-authorized revision scope and the canonical owner of every
-  changed semantic unit.
-- Update each owner once, then update only references or generated projections
-  at lower-authority locations.
-- Invoke `card-currentness-v1`, `profile-load`, and every Gate affected by
-  the candidate after-image.
-- Use `standards-adoption` for the authorized transition and read back the
-  selected full upstream revision, Profile snapshot, and invalidation result.
+- Confirm the user-authorized revision scope and the canonical owner of every changed semantic unit.
+- Update each owner once, then update only references or generated projections at lower-authority locations.
+- Invoke `card-currentness-v1`, `profile-load`, and every Gate affected by the candidate after-image.
+- Use `standards-adoption` for the authorized transition and read back the selected full upstream revision, Profile snapshot, and invalidation result.
 
 ## Stop or escalate
 
-- Stop on missing authorization, duplicate authority, an unresolved owner, a
-  failed after-image Gate, or an uncertain adoption result.
+- Stop on missing authorization, duplicate authority, an unresolved owner, a failed after-image Gate, or an uncertain adoption result.
 - Escalate any proposed Constitution or component-boundary change.
 
 ## Read-back hook
 
-Resolve the R09 governance gate edge and return to the changed canonical owner
-when synchronization, validation, or adoption is disputed.
+Resolve the R09 governance gate edge and return to the changed canonical owner when synchronization, validation, or adoption is disputed.

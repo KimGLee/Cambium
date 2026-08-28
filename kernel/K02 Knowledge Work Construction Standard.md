@@ -1,9 +1,6 @@
 ## Purpose
 
-This page is the stable entry point of the Knowledge Work Construction
-standard. Detailed rules are maintained by the responsibility-specific modules
-below; task-runtime semantics are indexed separately by
-[[kernel/K13 Task Runtime and Execution Control Standard|K13 Task Runtime and Execution Control]].
+This page is the stable entry point of the Knowledge Work Construction standard. Detailed rules are maintained by the responsibility-specific modules below; task-runtime semantics are indexed separately by [[kernel/K13 Task Runtime and Execution Control Standard|K13 Task Runtime and Execution Control]].
 
 ## Reading Rule
 
@@ -26,11 +23,7 @@ below; task-runtime semantics are indexed separately by
 | [[kernel/K02 Knowledge Work Construction/09 Knowledge Batch Production\|Knowledge Batch Production]] | `Batch Policy`, `Source-driven Expansion Batch` |
 | [[kernel/K02 Knowledge Work Construction/10 Existing Changes and Migration Safety\|Existing Changes and Migration Safety]] | `Existing Changes`, `Migration Safety` |
 
-The closed machine projection shared by K02/03 and K02/04 is
-[`corpus-planning-contract.yaml`](<K02 Knowledge Work Construction/corpus-planning-contract.yaml>).
-It carries the existing Profile-slot envelope, applicability branches,
-receipt freshness binding, and close-trigger identities; it adds no separate
-semantic owner.
+The closed machine projection shared by K02/03 and K02/04 is [`corpus-planning-contract.yaml`](<K02 Knowledge Work Construction/corpus-planning-contract.yaml>). It carries the existing Profile-slot envelope, applicability branches, receipt freshness binding, and close-trigger identities; it adds no separate semantic owner.
 
 ## Related Standards
 

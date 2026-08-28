@@ -15,18 +15,7 @@ Gate merge rules (for tier determination see [[kernel/K00 Standards Control/07 E
 - M-tier pages pass, page by page within the batch gate, the canonical [[kernel/K12 Quality Assurance/01 Quality Dimensions and Single Note Review#M-tier Gate Checklist|M-tier Gate Checklist]].
 - L-tier pages keep an independent note gate, executed in full per [[kernel/K12 Quality Assurance/01 Quality Dimensions and Single Note Review|K12/01]], and are not folded into this section.
 
-The batch close checklist has two groups. **In-batch items** are completed before
-the batch is eligible for `merge-ready`; the integrator verifies that boundary
-and records one current `batch-review` Gate receipt under the registered
-receipt contract. The wrapper binds the exact batch, task, Delta page evidence,
-and, when the selected Profile registers Batch Review Requirements, the frozen
-expected judgment set and one current judgment receipt per expected target.
-Missing, extra, duplicated, drifted, mis-roled, or reused judgments fail. A
-reopened batch, changed page, or revised Profile invalidates the affected
-evidence. Page receipts remain historical evidence but do not independently
-authorize the lifecycle edge. **Global items** are verified by the integrator
-during serial merge, which performs deterministic integration and verification
-rather than repeating in-batch semantic review.
+The batch close checklist has two groups. **In-batch items** are completed before the batch is eligible for `merge-ready`; the integrator verifies that boundary and records one current `batch-review` Gate receipt under the registered receipt contract. The wrapper binds the exact batch, task, Delta page evidence, and, when the selected Profile registers Batch Review Requirements, the frozen expected judgment set and one current judgment receipt per expected target. Missing, extra, duplicated, drifted, mis-roled, or reused judgments fail. A reopened batch, changed page, or revised Profile invalidates the affected evidence. Page receipts remain historical evidence but do not independently authorize the lifecycle edge. **Global items** are verified by the integrator during serial merge, which performs deterministic integration and verification rather than repeating in-batch semantic review.
 
 In-batch items (merge-ready preconditions):
 
@@ -61,11 +50,6 @@ Global items (verified by the integrator during serial merge):
   publication, all frozen page identities and exact bytes pass a final CAS;
   drift refuses the close rather than dating content nobody reviewed.
 
-Only after the global items pass may the registered Queue transaction record
-`merge-ready -> closed`; the guarded close also derives the Coverage
-`next_batch` projection and updates the Progress Queue reference. Delta
-application and close are ordered, independently evidenced integrator writes,
-not one falsely atomic multi-object step. A failed merge records the failure
-and returns the item to `open`; a worker cannot write either transition.
+Only after the global items pass may the registered Queue transaction record `merge-ready -> closed`; the guarded close also derives the Coverage `next_batch` projection and updates the Progress Queue reference. Delta application and close are ordered, independently evidenced integrator writes, not one falsely atomic multi-object step. A failed merge records the failure and returns the item to `open`; a worker cannot write either transition.
 
 When Batch Review does not pass, the batch MUST NOT be closed; gaps return to the execution phase, the batch stays unaccepted, and it MUST NOT be marked closed in order to start the next topic.

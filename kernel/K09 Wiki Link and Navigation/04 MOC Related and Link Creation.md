@@ -20,18 +20,7 @@ The coverage map is the reader view of the [[kernel/K02 Knowledge Work Construct
 
 `Related` supplements neighboring pages; it does not carry the causal and dependency explanations that belong in the body.
 
-The role's applicability mode is fixed `optional`: the section is created only
-when a real supplementary relation exists, and a missing `Related` heading is
-never a checker failure. Parent, prerequisite, component, consumer, causal,
-and key evidence relations enter the body, typed frontmatter relations, or the
-Global Map first — never only a trailing list. `Related` takes no canonical
-ownership and substitutes for no Overview, sequence view, coverage map, or
-`prerequisites` field. The `wiki-link-integrity` Gate verifies that its links
-resolve; review judges only whether an important neighboring relation was
-omitted or unexplained links were dumped, and link counts are not a quality
-metric. A trailing `Related` on a Card or Read Set is that component's own
-convention and creates no obligation for knowledge pages. Forcing an empty or
-mechanically generated `Related` onto every page only manufactures link noise.
+The role's applicability mode is fixed `optional`: the section is created only when a real supplementary relation exists, and a missing `Related` heading is never a checker failure. Parent, prerequisite, component, consumer, causal, and key evidence relations enter the body, typed frontmatter relations, or the Global Map first — never only a trailing list. `Related` takes no canonical ownership and substitutes for no Overview, sequence view, coverage map, or `prerequisites` field. The `wiki-link-integrity` Gate verifies that its links resolve; review judges only whether an important neighboring relation was omitted or unexplained links were dumped, and link counts are not a quality metric. A trailing `Related` on a Card or Read Set is that component's own convention and creates no obligation for knowledge pages. Forcing an empty or mechanically generated `Related` onto every page only manufactures link noise.
 
 Related links SHOULD be organized semantically, avoiding unordered accumulation. When content is large, they MAY be split into:
 

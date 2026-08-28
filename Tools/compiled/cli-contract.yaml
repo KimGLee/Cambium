@@ -72,7 +72,7 @@ source_files:
   - Tools/stamp_cards.py
   - Tools/update_queue.py
   - Tools/update_task.py
-source_hash: sha256:39adf7cde24447b87e3b698dfa3bc6c292bd0762fea4a1e0415017c35fa99793
+source_hash: sha256:d7868011f9e8461a19e4eb5f3f257591f0060e671c9c5024148e7f26fd26e367
 agent_interface_policy:
   path: Tools/agent-interface-policy.yaml
   sha256: sha256:56f3c5b362dd98d4ebdedb9ec417a619e59e0ae9db0d973103f56697d9d4b706
@@ -6098,7 +6098,7 @@ tools:
       external_write: none
   - tool: stamp_cards
     module: Tools/stamp_cards.py
-    source_hash: sha256:f4a47f7b5ce44bf6ff38a088f0f07f799f86d2b2ebbc7e79bd21839c812aee94
+    source_hash: sha256:9c510ed6d25db209a0ad5eef6a3cf448f65fe9ef42418d82f0ad1de92f4d172c
     description: Validate curated Cambium Cards
     arguments:
       - dest: root

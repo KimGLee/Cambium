@@ -26,21 +26,7 @@ When a maintenance run starts, a budget envelope MUST be declared, choosing one 
 - The truncated portion is recorded as deferred in the Ledger and does not constitute a gap.
 - Stopping points are batch boundaries; do not stop mid-batch.
 
-For persistent execution, Coverage owns the complete fused candidate state and
-the closed budget manifest freezes the same ordered records. Each object-path
-record identifies its source kinds, priority, prior/current consecutive
-deferral age, selected/deferred partition, re-entry status, and any
-disposition/reason. Candidate IDs are partitioned exactly once; the derived
-deferred count cannot replace that set. Queue manifests equal only the selected
-object set, while deferred candidates remain outside current Required work.
-The maintenance completion gate checks these set equalities and age rules. It
-does not decide whether the four source processes made correct semantic
-judgments; that remains part of constructing and reviewing the candidate list.
-A later run may age this state only from the latest prior maintenance gate for
-the same Standards version and selected Profile that was persisted and consumed
-by exactly one canonical completed-maintenance task transition. Omitting that
-predecessor or naming an older eligible gate is invalid; neither action may
-reset deferral age.
+For persistent execution, Coverage owns the complete fused candidate state and the closed budget manifest freezes the same ordered records. Each object-path record identifies its source kinds, priority, prior/current consecutive deferral age, selected/deferred partition, re-entry status, and any disposition/reason. Candidate IDs are partitioned exactly once; the derived deferred count cannot replace that set. Queue manifests equal only the selected object set, while deferred candidates remain outside current Required work. The maintenance completion gate checks these set equalities and age rules. It does not decide whether the four source processes made correct semantic judgments; that remains part of constructing and reviewing the candidate list. A later run may age this state only from the latest prior maintenance gate for the same Standards version and selected Profile that was persisted and consumed by exactly one canonical completed-maintenance task transition. Omitting that predecessor or naming an older eligible gate is invalid; neither action may reset deferral age.
 
 ## Related
 

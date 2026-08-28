@@ -6,13 +6,7 @@
 
 ## Purpose
 
-[[kernel/K12 Quality Assurance/08 Judgment Item Dimension Map|K12/08]] files
-the judgment items whose audit object is one page. This module files the layers
-above it — Batch, Module, Specialized, Terminal — and defines the semantic
-boundary used when a Control Registry Gate needs a receipt-dimension selector.
-The current selector rows themselves are machine-owned by K00/12
-`control-registry.yaml`; `Terms`, `Evidence Role`, and `Profile Registration`
-stay with K12/08, and the halves are read together.
+[[kernel/K12 Quality Assurance/08 Judgment Item Dimension Map|K12/08]] files the judgment items whose audit object is one page. This module files the layers above it — Batch, Module, Specialized, Terminal — and defines the semantic boundary used when a Control Registry Gate needs a receipt-dimension selector. The current selector rows themselves are machine-owned by K00/12 `control-registry.yaml`; `Terms`, `Evidence Role`, and `Profile Registration` stay with K12/08, and the halves are read together.
 
 ## Item Map
 
@@ -43,14 +37,7 @@ stay with K12/08, and the halves are read together.
 
 The first two rows are uniform: every item in them emits under the dimension shown, except the graph-impact-rationale item of `K12/04 Source Intake`, which files under coverage_and_integration.
 
-A [[kernel/K12 Quality Assurance/05 Automated and Manual Checks#Domain-specific Checks|K12/05 Domain-specific]]
-item takes the dimension of the object it checks, filed above or in K12/08,
-without opening a second receipt. Two have no other owner: Standards-migration
-owner uniqueness, omission, and duplication under `coverage_and_integration`;
-and MOC/leaf consistency plus missing Sources, Related, and metadata candidates
-under `structure_and_links`. Short-file and `knowledge-freshness` scans raise
-candidates only; the changed-scope `frontmatter-vocabulary` self-check is
-evidence toward Closed List item 7.
+A [[kernel/K12 Quality Assurance/05 Automated and Manual Checks#Domain-specific Checks|K12/05 Domain-specific]] item takes the dimension of the object it checks, filed above or in K12/08, without opening a second receipt. Two have no other owner: Standards-migration owner uniqueness, omission, and duplication under `coverage_and_integration`; and MOC/leaf consistency plus missing Sources, Related, and metadata candidates under `structure_and_links`. Short-file and `knowledge-freshness` scans raise candidates only; the changed-scope `frontmatter-vocabulary` self-check is evidence toward Closed List item 7.
 
 The `K12/14 Batch` roll-up line covering automated checks, manual content review and the applicable rendering level emits nothing of its own. [[kernel/K12 Quality Assurance/06 Completion Gate and Reporting|K12/06]] and [[kernel/K12 Quality Assurance/15 Terminal Audit and Convergence|K12/15]] state no judgment items: the Completion Gate and the Terminal Audit consume receipts.
 
@@ -58,14 +45,7 @@ Closed List 3 emits a candidate list; whether two candidates are one canonical c
 
 ## Gate Receipt Dimension Boundary
 
-A Gate whose canonical judgment item is filed above or in K12/08 uses that
-item's receipt dimension. A Gate that binds member receipts carries no
-independent dimension verdict; a deterministic producer that emits no
-dimension is not implicitly authorized under every dimension. The exact
-current selector for every Gate is declared once in
-[[kernel/K00 Standards Control/12 Control Registry#Stable Gate ID Registry|K00/12's machine registry]], which must reference the K12 base registry and
-reject any unregistered dimension. This page explains the mapping boundary; it
-does not maintain a second Gate-to-dimension table.
+A Gate whose canonical judgment item is filed above or in K12/08 uses that item's receipt dimension. A Gate that binds member receipts carries no independent dimension verdict; a deterministic producer that emits no dimension is not implicitly authorized under every dimension. The exact current selector for every Gate is declared once in [[kernel/K00 Standards Control/12 Control Registry#Stable Gate ID Registry|K00/12's machine registry]], which must reference the K12 base registry and reject any unregistered dimension. This page explains the mapping boundary; it does not maintain a second Gate-to-dimension table.
 
 ## Reverse Check
 

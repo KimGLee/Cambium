@@ -26,12 +26,7 @@ Page-level acceptance intensity is executed by S/M/L tiering. This section is th
 
 ### Priority Quota
 
-Tier is derived from priority; priority inflation defeats tiering. The
-[`contract-exception-policy-base.yaml`](contract-exception-policy-base.yaml)
-machine registry is the unique authority for the P0/P1 policy IDs, their
-Kernel-default ceilings, limit domain, and effective-policy fingerprint
-protocol. This page owns why those constraints exist and how they govern
-priority assignment; it does not restate the machine values.
+Tier is derived from priority; priority inflation defeats tiering. The [`contract-exception-policy-base.yaml`](contract-exception-policy-base.yaml) machine registry is the unique authority for the P0/P1 policy IDs, their Kernel-default ceilings, limit domain, and effective-policy fingerprint protocol. This page owns why those constraints exist and how they govern priority assignment; it does not restate the machine values.
 
 - `P0` and `P1` each resolve to the registry default unless the selected
   Profile's `Priority Rubric` supplies a valid standing registration.
@@ -39,12 +34,7 @@ priority assignment; it does not restate the machine values.
 
 P0/P1 pages exceeding quota MUST be resolved through exactly one of three instruments, chosen by the lifetime of the decision. Demote the pages, and the excess ends now. Register standing targets in the selected profile's `Priority Rubric` `Priority Quota` block when this corpus's own structure justifies different long-lived shares -- the registration carries both classes, a required rationale per class, and the joint bound defined by the machine registry, and `profile-load` validates it. Register a bounded policy exception in the Task Contract when the excess is accepted temporarily -- the exception names its class, its maximum share, and the fingerprint of the quota registration it was judged against, and it dies with its task or its named snapshot. Batch close consumes the excess only through a currently valid exception; the generic candidate-acceptance flags cannot disposition a quota candidate, so the same excess is never re-accepted ad hoc close after close. Coverage reconciliation for REBASE and Maintenance Runs MUST consume the `priority-quota-distribution` Gate receipt, which carries per-class structured shares, the exceeded classes, and the effective-policy fingerprint they were measured under -- never a share re-derived from display text. The Coverage Ledger records page priorities and dispositions; it carries no quota policy and no exemptions.
 
-An overriding share is a share of the same corpus the three classes partition,
-so it is admissible only where it leaves that partition intact. Each value is
-non-negative and below the whole corpus, and the combined ceilings must leave
-a non-empty remainder for `P2`. A ceiling that consumes the whole corpus would
-both contradict that required remainder and silence this section's demotion
-rule; it is therefore not a quota override at all.
+An overriding share is a share of the same corpus the three classes partition, so it is admissible only where it leaves that partition intact. Each value is non-negative and below the whole corpus, and the combined ceilings must leave a non-empty remainder for `P2`. A ceiling that consumes the whole corpus would both contradict that required remainder and silence this section's demotion rule; it is therefore not a quota override at all.
 
 ## Related
 

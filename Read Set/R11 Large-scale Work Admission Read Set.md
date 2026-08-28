@@ -49,12 +49,9 @@ load_edges:
 
 ## Purpose
 
-Loads the planning and admission owners for large-scale creation, movement, or
-deletion. It does not select or replace the route that performs the work.
+Loads the planning and admission owners for large-scale creation, movement, or deletion. It does not select or replace the route that performs the work.
 
 ## Non-deterministic triggers
 
-- `R11:work-shape` fires when the admitted work actually has one of the listed
-  module, source, expression, migration, long-running, planning, or visual
-  shapes.
+- `R11:work-shape` fires when the admitted work actually has one of the listed module, source, expression, migration, long-running, planning, or visual shapes.
 - `large-scale-admission-requested` fires before execution admission is sought.

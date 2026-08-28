@@ -2,16 +2,9 @@
 
 ## Purpose
 
-The Profile interface is the common boundary through which one adopting
-knowledge repository binds choices that the Kernel deliberately leaves open.
-The Kernel owns the existence, meaning, minimum constraints, and invalid forms
-of each extension point. A selected Profile owns only the confirmed instance
-value bound to it.
+The Profile interface is the common boundary through which one adopting knowledge repository binds choices that the Kernel deliberately leaves open. The Kernel owns the existence, meaning, minimum constraints, and invalid forms of each extension point. A selected Profile owns only the confirmed instance value bound to it.
 
-The machine-readable authority for the common slot set is
-[`profile-interface.yaml`](profile-interface.yaml). Human-oriented Profile
-documentation, interviews, templates, examples, and validator code may project
-or consume that registry; none of them may create a second interface.
+The machine-readable authority for the common slot set is [`profile-interface.yaml`](profile-interface.yaml). Human-oriented Profile documentation, interviews, templates, examples, and validator code may project or consume that registry; none of them may create a second interface.
 
 ## Binding Contract
 
@@ -34,23 +27,10 @@ or consume that registry; none of them may create a second interface.
 
 ## Confirmation, Validation, And Selection
 
-Templates, interviews, examples, and agents can propose candidate values but
-cannot confirm them for the user. Mechanical derivations such as an ID-bound
-path may be generated when they are reproducible from confirmed inputs.
+Templates, interviews, examples, and agents can propose candidate values but cannot confirm them for the user. Mechanical derivations such as an ID-bound path may be generated when they are reproducible from confirmed inputs.
 
-Profile validation proves only structure, allowed values, identity, reference
-closure, and machine consistency. It does not prove semantic quality, user
-confirmation, or adoption. A directory, successful validation, template, or
-example never selects a Profile. Selection and its revision history exist only
-through the Standards adoption operation and belong to adopter runtime state.
+Profile validation proves only structure, allowed values, identity, reference closure, and machine consistency. It does not prove semantic quality, user confirmation, or adoption. A directory, successful validation, template, or example never selects a Profile. Selection and its revision history exist only through the Standards adoption operation and belong to adopter runtime state.
 
 ## Ownership Boundary
 
-Profile files do not carry common slot schemas, Kernel defaults, task routes,
-Read Set membership, Card actions, Tool commands or implementation paths,
-receipt schemas, state transitions, current Queue or Coverage values, receipts,
-or recovery history. If a common interface rule must change, its Kernel owner
-and the machine registry referenced by `profile-interface.yaml` change;
-instance Profiles are then revalidated without becoming owners of that
-change. For example, K12 owns audit-dimension values even though the Profile
-interface exposes a slot that binds instance-specific audit extensions.
+Profile files do not carry common slot schemas, Kernel defaults, task routes, Read Set membership, Card actions, Tool commands or implementation paths, receipt schemas, state transitions, current Queue or Coverage values, receipts, or recovery history. If a common interface rule must change, its Kernel owner and the machine registry referenced by `profile-interface.yaml` change; instance Profiles are then revalidated without becoming owners of that change. For example, K12 owns audit-dimension values even though the Profile interface exposes a slot that binds instance-specific audit extensions.

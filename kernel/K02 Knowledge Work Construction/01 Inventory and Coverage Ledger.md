@@ -5,15 +5,9 @@
 
 ## Coverage Inventory Boundary
 
-Inventory materializes the knowledge objects governed by the current Profile
-Scope into the `coverage-ledger` machine contract. The selected Profile owns
-the concrete scope, exclusions, directory bindings, and domain values; Kernel
-does not enumerate instance paths or current records.
+Inventory materializes the knowledge objects governed by the current Profile Scope into the `coverage-ledger` machine contract. The selected Profile owns the concrete scope, exclusions, directory bindings, and domain values; Kernel does not enumerate instance paths or current records.
 
-The inventory accounts for every in-scope page and every Required object that
-does not yet exist, together with the stable identity, ownership, disposition,
-evidence, and planning relationships required by the machine contract. This
-module owns the resulting Coverage invariants, not an execution sequence.
+The inventory accounts for every in-scope page and every Required object that does not yet exist, together with the stable identity, ownership, disposition, evidence, and planning relationships required by the machine contract. This module owns the resulting Coverage invariants, not an execution sequence.
 
 The inventory MUST form a persistent, queryable Coverage Ledger; it cannot exist only in transient analysis or in the executor's memory. The Coverage Ledger MAY be split by domain, but it MUST have one summary entry point and satisfy:
 
@@ -36,14 +30,8 @@ The inventory MUST form a persistent, queryable Coverage Ledger; it cannot exist
 
 The Coverage Ledger is the authoritative record of page/object-level coverage. Its object-side `batch` / `next_batch` projection MUST equal the frozen manifests in the canonical [[kernel/K13 Task Runtime and Execution Control/08 Required Queue Contract and Lifecycle|Required Queue]]; the Queue owns batch lifecycle, while the Progress Ledger owns only whole-task state and accepted Queue references.
 
-The Ledger also carries the Queue proposal inputs defined by the
-`coverage-ledger` machine contract. These inputs do not own accepted Queue
-order or lifecycle and remain separate from page records, so a successor can
-have a different configuration without rewriting closed history.
+The Ledger also carries the Queue proposal inputs defined by the `coverage-ledger` machine contract. These inputs do not own accepted Queue order or lifecycle and remain separate from page records, so a successor can have a different configuration without rewriting closed history.
 
 ## Machine-readable Ledger
 
-The `coverage-ledger` machine contract is the unique normative carrier of the
-Ledger's closed fields and syntax. The adopter runtime owns its current values.
-A Markdown view is optional, derived, and never a basis for reconciliation or
-completion.
+The `coverage-ledger` machine contract is the unique normative carrier of the Ledger's closed fields and syntax. The adopter runtime owns its current values. A Markdown view is optional, derived, and never a basis for reconciliation or completion.

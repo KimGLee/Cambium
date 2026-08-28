@@ -1,24 +1,14 @@
 # Tools: deterministic execution for Cambium
 
-`Tools/` contains the programs that check, calculate, transform, generate, and
-write Cambium data in deterministic, repeatable, and testable ways. This
-README explains how to find and run those programs. It is not a second copy of
-the governance rules, state contracts, Card checklists, or Read Set loading
-declarations.
+`Tools/` contains the programs that check, calculate, transform, generate, and write Cambium data in deterministic, repeatable, and testable ways. This README explains how to find and run those programs. It is not a second copy of the governance rules, state contracts, Card checklists, or Read Set loading declarations.
 
-All shipped scripts use the Python 3 standard library. Cambium's supported
-restricted-YAML parsing and rendering goes through [`kblib.py`](kblib.py).
+All shipped scripts use the Python 3 standard library. Cambium's supported restricted-YAML parsing and rendering goes through [`kblib.py`](kblib.py).
 
 ## Responsibility boundary
 
-Tools own implementation: algorithms, command-line interfaces, validation,
-controlled writes, generated projections, structured diagnostics, and the
-observable result guarantees promised by an implemented capability.
+Tools own implementation: algorithms, command-line interfaces, validation, controlled writes, generated projections, structured diagnostics, and the observable result guarantees promised by an implemented capability.
 
-Tools do not decide whether knowledge is deep, accurate, clear, valuable, or
-approved. They do not create a governance rule, select a Profile, choose a
-task route, author a Card, define a Read Set, or turn an asserted actor name
-into authenticated identity.
+Tools do not decide whether knowledge is deep, accurate, clear, valuable, or approved. They do not create a governance rule, select a Profile, choose a task route, author a Card, define a Read Set, or turn an asserted actor name into authenticated identity.
 
 | Component | Owns | How Tools may interact with it |
 |---|---|---|
@@ -29,16 +19,11 @@ into authenticated identity.
 | `.cambium/` | One adopter's current state, bound inputs, evidence, recovery material, transient work, and derived projections | Read or change registered objects through the responsible checker or writer |
 | [`Tools/`](./) | Deterministic implementation and Tool-owned machine contracts | Provide the program, diagnostics, and verifiable result |
 
-A checker observes and reports; it does not repair the object while checking.
-A writer changes only the transaction named by its interface and uses an
-explicit write mode such as `--apply`. A zero process exit is not, by itself,
-proof of the resulting state: critical writers perform the read-back required
-by their external contract.
+A checker observes and reports; it does not repair the object while checking. A writer changes only the transaction named by its interface and uses an explicit write mode such as `--apply`. A zero process exit is not, by itself, proof of the resulting state: critical writers perform the read-back required by their external contract.
 
 ## Canonical navigation
 
-The following files are the maintained entry points. Follow them instead of
-copying their tables or field lists into prose.
+The following files are the maintained entry points. Follow them instead of copying their tables or field lists into prose.
 
 | Concern | Canonical or machine-readable entry point | Tool consumer or producer |
 |---|---|---|
@@ -67,14 +52,9 @@ copying their tables or field lists into prose.
 | Host adapter observations | [`host-conformance.yaml`](host-conformance.yaml) | Host conformance tests and interface generation |
 | Input templates | [`schemas/`](schemas/) | The checker or writer named by each workflow |
 
-Files under [`compiled/`](compiled/) are generated projections of declared
-inputs. They can be checked or regenerated, but they do not acquire semantic
-authority from being generated. The CLI parser in each entry-point script is
-the source for its invocation shape; use `--help` for the current options.
+Files under [`compiled/`](compiled/) are generated projections of declared inputs. They can be checked or regenerated, but they do not acquire semantic authority from being generated. The CLI parser in each entry-point script is the source for its invocation shape; use `--help` for the current options.
 
-Support libraries are intentionally not repeated in an exhaustive prose
-inventory. Their ownership and permitted dependency direction are checked from
-source and `module-boundaries.yaml`.
+Support libraries are intentionally not repeated in an exhaustive prose inventory. Their ownership and permitted dependency direction are checked from source and `module-boundaries.yaml`.
 
 ## Quick verification
 
@@ -85,49 +65,32 @@ python3 Tools/run_gates.py . --list
 python3 Tools/run_gates.py .
 ```
 
-Verify adopter components against an upstream Git revision. The result records
-the resolved full SHA; only `profiles/README.md` belongs to the shared Profile
-boundary, and omissions require that revision's `distribution-boundary.yaml`.
+Verify adopter components against an upstream Git revision. The result records the resolved full SHA; only `profiles/README.md` belongs to the shared Profile boundary, and omissions require that revision's `distribution-boundary.yaml`.
 
 ```text
 python3 Tools/check_upstream_components.py <adopter-root> --upstream-root <cambium-git-root> --revision <git-ref> --check-manifest
 ```
 
-Run it from a separately trusted upstream checkout, not from the adopter copy:
-this is drift detection, not self-attestation. Unregistered executable
-artifacts, including `__pycache__/`, fail the boundary.
+Run it from a separately trusted upstream checkout, not from the adopter copy: this is drift detection, not self-attestation. Unregistered executable artifacts, including `__pycache__/`, fail the boundary.
 
-After a clean comparison, `--write-manifest` atomically writes only
-`.cambium/derived/upstream-component-byte-manifest.tsv`.
+After a clean comparison, `--write-manifest` atomically writes only `.cambium/derived/upstream-component-byte-manifest.tsv`.
 
-Card currentness and Kernel size are independent repository-engineering Tool
-preflights, not Kernel Gates:
+Card currentness and Kernel size are independent repository-engineering Tool preflights, not Kernel Gates:
 
 ```text
 python3 Tools/stamp_cards.py . --check
 python3 Tools/check_kernel_size.py .
 ```
 
-`stamp_cards.py --check` verifies the serialized-Card engineering schema, the
-Card-owned size budget, source bindings, curated-review bindings, Card/Read Set
-pairing, and generated navigation. It does not prove that a summary is
-semantically correct or that an Agent understood it. Card bytes are never
-bound to an adopter's active Standards identity; the Card layer remains an
-immutable upstream component.
+`stamp_cards.py --check` verifies the serialized-Card engineering schema, the Card-owned size budget, source bindings, curated-review bindings, Card/Read Set pairing, and generated navigation. It does not prove that a summary is semantically correct or that an Agent understood it. Card bytes are never bound to an adopter's active Standards identity; the Card layer remains an immutable upstream component.
 
-`kernel-size-policy.yaml` is the sole numeric owner of Kernel leaf-size limits
-and registered measurements. `check_kernel_size.py` separates a hard failure
-(exit `1`) from an otherwise safe result that still needs engineering review
-(exit `2`).
+`kernel-size-policy.yaml` is the sole numeric owner of Kernel leaf-size limits and registered measurements. `check_kernel_size.py` separates a hard failure (exit `1`) from an otherwise safe result that still needs engineering review (exit `2`).
 
 ## Profile candidate workflow
 
-A Profile begins as a candidate proposed through user/Agent discussion. The
-Tool can scaffold and mechanically validate it; confirmation and adoption stay
-with the user or designated authority.
+A Profile begins as a candidate proposed through user/Agent discussion. The Tool can scaffold and mechanically validate it; confirmation and adoption stay with the user or designated authority.
 
-Preview the candidate creation, apply it only after reviewing the plan, then
-validate the resulting candidate:
+Preview the candidate creation, apply it only after reviewing the plan, then validate the resulting candidate:
 
 ```text
 python3 Tools/scaffold_profile.py . --profile-id my-profile
@@ -135,9 +98,7 @@ python3 Tools/scaffold_profile.py . --profile-id my-profile --apply
 python3 Tools/check_profile.py profiles/my-profile --root .
 ```
 
-The Profile template guide is [`profiles/README.md`](../profiles/README.md).
-For initial or pre-runtime adoption, inspect the transaction interface before
-supplying a confirmed plan:
+The Profile template guide is [`profiles/README.md`](../profiles/README.md). For initial or pre-runtime adoption, inspect the transaction interface before supplying a confirmed plan:
 
 ```text
 python3 Tools/apply_profile_adoption.py --help
@@ -145,22 +106,11 @@ python3 Tools/apply_profile_adoption.py . --plan <root-relative-plan.yaml> \
   --upstream-root <local-cambium-git-root> --upstream-ref <git-ref>
 ```
 
-Omitting `--apply` previews the transaction. A later Standards/Profile change
-in an existing runtime uses `adopt_standards.py` and the adoption rules owned
-by [K12/10](<../kernel/K12 Quality Assurance/10 Standards Version Adoption.md>),
-not an improvised edit to Profile or `.cambium` files.
+Omitting `--apply` previews the transaction. A later Standards/Profile change in an existing runtime uses `adopt_standards.py` and the adoption rules owned by [K12/10](<../kernel/K12 Quality Assurance/10 Standards Version Adoption.md>), not an improvised edit to Profile or `.cambium` files.
 
-When a frozen Task Contract names a component path from a registered producer
-era, `adopt_standards.py` may use that one-way registry only to validate the
-persisted before-image against the exact current paths declared by the plan.
-The original contract bytes remain the receipt/fingerprint authority, and the
-after-image must pass ordinary runtime validation with no legacy alias.
+When a frozen Task Contract names a component path from a registered producer era, `adopt_standards.py` may use that one-way registry only to validate the persisted before-image against the exact current paths declared by the plan. The original contract bytes remain the receipt/fingerprint authority, and the after-image must pass ordinary runtime validation with no legacy alias.
 
-Adoption writers never modify Card bytes. Curated review is a separate
-source-distribution maintainer operation: after reviewing changed sources and
-the Card body, a maintainer may run
-`python3 Tools/stamp_cards.py . --acknowledge-curated-review`. This CLI is not
-projected into the adopter-facing MCP surface.
+Adoption writers never modify Card bytes. Curated review is a separate source-distribution maintainer operation: after reviewing changed sources and the Card body, a maintainer may run `python3 Tools/stamp_cards.py . --acknowledge-curated-review`. This CLI is not projected into the adopter-facing MCP surface.
 
 ```text
 python3 Tools/adopt_standards.py --help
@@ -170,27 +120,18 @@ python3 Tools/adopt_standards.py . --plan <root-relative-plan.yaml> \
 
 ## Runtime workflow
 
-Do not infer task, scope, route, Card, Read Set, or Profile choices from this
-README. Once those inputs have been confirmed, use the responsible dry-run
-writer and inspect its plan before applying it.
+Do not infer task, scope, route, Card, Read Set, or Profile choices from this README. Once those inputs have been confirmed, use the responsible dry-run writer and inspect its plan before applying it.
 
 The main runtime entry points are:
 
-- [`init_state.py`](init_state.py): initialize an empty adopter task runtime
-  from explicit inputs;
-- [`apply_task_plan.py`](apply_task_plan.py): apply the confirmed initial task
-  plan;
+- [`init_state.py`](init_state.py): initialize an empty adopter task runtime from explicit inputs;
+- [`apply_task_plan.py`](apply_task_plan.py): apply the confirmed initial task plan;
 - [`compile_queue.py`](compile_queue.py): materialize Required Queue state;
-- [`check_queue.py`](check_queue.py): validate state and report the next
-  resumable boundary;
-- [`update_task.py`](update_task.py), [`update_queue.py`](update_queue.py), and
-  [`apply_delta.py`](apply_delta.py): perform their named controlled
-  transitions;
-- [`check_proof.py`](check_proof.py): verify the terminal proof object and its
-  bound state when invoked in root mode.
+- [`check_queue.py`](check_queue.py): validate state and report the next resumable boundary;
+- [`update_task.py`](update_task.py), [`update_queue.py`](update_queue.py), and [`apply_delta.py`](apply_delta.py): perform their named controlled transitions;
+- [`check_proof.py`](check_proof.py): verify the terminal proof object and its bound state when invoked in root mode.
 
-Start from the live CLI contracts rather than copying a long example with
-instance-specific values:
+Start from the live CLI contracts rather than copying a long example with instance-specific values:
 
 ```text
 python3 Tools/init_state.py --help
@@ -198,38 +139,24 @@ python3 Tools/apply_task_plan.py --help
 python3 Tools/check_queue.py . --resume-status
 ```
 
-Runtime data belongs under `.cambium/`; do not redirect current state or
-runtime receipts into `Tools/`. Physical path spellings shared by producers
-and consumers come from `runtime_paths.py`. Agent-interface policy stores the
-same source identity as `runtime_path_id`; `compile_cli_contract.py` resolves
-that ID to the physical `value` in its generated projection and rejects an
-unknown ID, constraint mismatch, or a second literal runtime-path authority.
+Runtime data belongs under `.cambium/`; do not redirect current state or runtime receipts into `Tools/`. Physical path spellings shared by producers and consumers come from `runtime_paths.py`. Agent-interface policy stores the same source identity as `runtime_path_id`; `compile_cli_contract.py` resolves that ID to the physical `value` in its generated projection and rejects an unknown ID, constraint mismatch, or a second literal runtime-path authority.
 
 ## Generated interfaces
 
 The generation chain is:
 
-1. `metadata_execution_contract.py` combines the Kernel metadata contract with
-   installed operation capabilities.
-2. `compile_cli_contract.py` projects each entry point's `argparse` interface
-   together with `agent-interface-policy.yaml`.
+1. `metadata_execution_contract.py` combines the Kernel metadata contract with installed operation capabilities.
+2. `compile_cli_contract.py` projects each entry point's `argparse` interface together with `agent-interface-policy.yaml`.
 3. `render_interface_projection.py` creates the agent-facing MCP projection.
-4. `render_host_configs.py` creates host registration and workspace-binding
-   products for a selected environment.
+4. `render_host_configs.py` creates host registration and workspace-binding products for a selected environment.
 
-The projection target fixes the storage boundary. `source-distribution`
-continues to own and verify the tracked products in `Tools/compiled/`.
-`carried-runtime` may write only these adopter-owned derived paths:
+The projection target fixes the storage boundary. `source-distribution` continues to own and verify the tracked products in `Tools/compiled/`. `carried-runtime` may write only these adopter-owned derived paths:
 
 - `.cambium/derived/interfaces/cli-contract.yaml`;
 - `.cambium/derived/interfaces/mcp-tools.json`;
 - `.cambium/derived/host-configs/`.
 
-Passing a `Tools/compiled/` output while selecting `carried-runtime` is
-rejected; the target cannot relocate its own artifact. Rendered host products
-set `CAMBIUM_INTERFACE_PROJECTION` to the exact registered projection path.
-The MCP server accepts only the distributed projection or that exact path
-under the bound adopter workspace, and never discovers an arbitrary JSON file.
+Passing a `Tools/compiled/` output while selecting `carried-runtime` is rejected; the target cannot relocate its own artifact. Rendered host products set `CAMBIUM_INTERFACE_PROJECTION` to the exact registered projection path. The MCP server accepts only the distributed projection or that exact path under the bound adopter workspace, and never discovers an arbitrary JSON file.
 
 Check the tracked products without rewriting them:
 
@@ -240,8 +167,7 @@ python3 Tools/render_interface_projection.py . --check
 python3 Tools/render_host_configs.py . --check
 ```
 
-Build or verify the carried-runtime projections without changing distributed
-component bytes:
+Build or verify the carried-runtime projections without changing distributed component bytes:
 
 ```text
 python3 Tools/compile_cli_contract.py . --projection-target carried-runtime
@@ -249,42 +175,26 @@ python3 Tools/render_interface_projection.py . --projection-target carried-runti
 python3 Tools/render_host_configs.py . --projection-target carried-runtime
 ```
 
-Use `--help` and `--sources` where available before regenerating or installing
-a host product. [`mcp_server.py`](mcp_server.py) is launched by a rendered host
-configuration; it preserves the child tool's structured result and exit code
-instead of making a new governance judgment.
+Use `--help` and `--sources` where available before regenerating or installing a host product. [`mcp_server.py`](mcp_server.py) is launched by a rendered host configuration; it preserves the child tool's structured result and exit code instead of making a new governance judgment.
 
 ## Results and evidence
 
-Each CLI's `--help` states its write mode, output options, and required inputs.
-Where supported:
+Each CLI's `--help` states its write mode, output options, and required inputs. Where supported:
 
 - `--json` changes presentation, not the verdict;
-- `--receipts` appends the tool's structured evidence at the declared adopter
-  path;
+- `--receipts` appends the tool's structured evidence at the declared adopter path;
 - omitting `--apply` produces a dry-run plan;
 - `--apply` authorizes only the transaction named by that tool.
 
-Gate identity, receipt meaning, reuse, and completion authority remain with
-[K00/12](<../kernel/K00 Standards Control/12 Control Registry.md>) and
-[K12/07](<../kernel/K12 Quality Assurance/07 Audit Evidence Reuse and Invalidation.md>).
-A SHA-256 value binds bytes; it is not a signature. Actor and reviewer fields
-are recorded assertions unless an external authenticated runner supplies a
-stronger trust anchor. Do not collapse a documented HOLD exit into either
-success or failure; callers must preserve the tool's exact result.
+Gate identity, receipt meaning, reuse, and completion authority remain with [K00/12](<../kernel/K00 Standards Control/12 Control Registry.md>) and [K12/07](<../kernel/K12 Quality Assurance/07 Audit Evidence Reuse and Invalidation.md>). A SHA-256 value binds bytes; it is not a signature. Actor and reviewer fields are recorded assertions unless an external authenticated runner supplies a stronger trust anchor. Do not collapse a documented HOLD exit into either success or failure; callers must preserve the tool's exact result.
 
 ## Receipt-sealing maintenance runbook
 
-`seal_receipts.py --apply` removes frozen receipt bytes from the hot register,
-so it is supported only in an exclusive quiet window. This is the one recovery
-procedure that operators need in this README. The receipt semantics remain in
-[K12/07](<../kernel/K12 Quality Assurance/07 Audit Evidence Reuse and Invalidation.md>);
-implementation details remain in the tool and its tests.
+`seal_receipts.py --apply` removes frozen receipt bytes from the hot register, so it is supported only in an exclusive quiet window. This is the one recovery procedure that operators need in this README. The receipt semantics remain in [K12/07](<../kernel/K12 Quality Assurance/07 Audit Evidence Reuse and Invalidation.md>); implementation details remain in the tool and its tests.
 
 ### Before applying
 
-1. Confirm that no Cambium or adopter writer, checker, or receipt appender is
-   running against the repository on any host or session.
+1. Confirm that no Cambium or adopter writer, checker, or receipt appender is running against the repository on any host or session.
 2. Confirm that the runtime has no interrupted writer:
 
    ```text
@@ -297,8 +207,7 @@ implementation details remain in the tool and its tests.
    python3 Tools/seal_receipts.py .
    ```
 
-4. Take a restorable copy of `.cambium/` and record its hash before using
-   `--apply`.
+4. Take a restorable copy of `.cambium/` and record its hash before using `--apply`.
 
 ### After an interruption
 
@@ -314,12 +223,8 @@ implementation details remain in the tool and its tests.
    python3 Tools/seal_receipts.py . --reconcile --apply
    ```
 
-3. If reconciliation refuses because another owner is still active, wait for
-   or safely resolve that process first. If it refuses because recovery
-   evidence is missing or has changed, do not edit that evidence and do not
-   retry blindly; restore the verified pre-seal `.cambium/` copy.
-4. For any interruption the tool cannot reconcile, restore the pre-seal copy
-   and restart the sealing procedure in a new quiet window.
+3. If reconciliation refuses because another owner is still active, wait for or safely resolve that process first. If it refuses because recovery evidence is missing or has changed, do not edit that evidence and do not retry blindly; restore the verified pre-seal `.cambium/` copy.
+4. For any interruption the tool cannot reconcile, restore the pre-seal copy and restart the sealing procedure in a new quiet window.
 
 ### After applying
 
@@ -334,8 +239,7 @@ Release the maintenance window only after both checks are clean.
 
 ## Tool engineering checks
 
-Module-boundary facts and reports are Tool engineering artifacts, not Kernel
-rules. Inspect or regenerate the report through its own interface:
+Module-boundary facts and reports are Tool engineering artifacts, not Kernel rules. Inspect or regenerate the report through its own interface:
 
 ```text
 python3 Tools/module_boundary_report.py --root . --emit-manifest

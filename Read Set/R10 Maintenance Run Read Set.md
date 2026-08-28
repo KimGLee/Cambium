@@ -48,11 +48,9 @@ load_edges:
 
 ## Purpose
 
-Loads the bounded maintenance envelope, freshness, migration metadata, and
-batch-review owners after R10 has already been selected.
+Loads the bounded maintenance envelope, freshness, migration metadata, and batch-review owners after R10 has already been selected.
 
 ## Non-deterministic triggers
 
-- `R10:candidate-class` fires when an admitted maintenance candidate actually
-  requires content, source, expression, planning, or long-running treatment.
+- `R10:candidate-class` fires when an admitted maintenance candidate actually requires content, source, expression, planning, or long-running treatment.
 - `batch-gate-requested` fires before the maintenance batch seeks acceptance.

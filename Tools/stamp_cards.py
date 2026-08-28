@@ -282,9 +282,10 @@ def render_card_index(cards, read_sets):
         "---",
         "# Card Index",
         "",
-        "This is a generated navigation view. It does not select a route, define a load",
-        "boundary, or authorize activation. Route selection remains with its canonical",
-        "owner; each Card and Read Set frontmatter supplies the machine identity below.",
+        ("This is a generated navigation view. It does not select a route, "
+         "define a load boundary, or authorize activation. Route selection "
+         "remains with its canonical owner; each Card and Read Set frontmatter "
+         "supplies the machine identity below."),
         "",
         "| Route ID | Card | Read Set |",
         "|---|---|---|",
@@ -308,9 +309,10 @@ def render_read_set_index(read_sets):
         "---",
         "# Read Set Index",
         "",
-        "This is a generated navigation view. It is not a route registry and is never",
-        "an input to route selection, load resolution, activation, or proof. The",
-        "frontmatter of each linked Read Set is the sole machine loading declaration.",
+        ("This is a generated navigation view. It is not a route registry and "
+         "is never an input to route selection, load resolution, activation, "
+         "or proof. The frontmatter of each linked Read Set is the sole machine "
+         "loading declaration."),
         "",
         "| Route ID | Read Set |",
         "|---|---|",

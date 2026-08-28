@@ -44,110 +44,28 @@ The [[kernel/K00 Standards Control/11 Standards Map and Rule Registry#Cross-doma
 | `canonical-ownership-uniqueness` | Canonical ownership uniqueness | K12/03 Module Review attestation | Closed List basename candidates and K12/02 duplicate-heading findings remain inputs, not this verdict |
 | `terminal-proof` | Frozen build-completion proof | The registered Terminal Proof producer for K12/16 | The final task transition consumes this exact proof receipt; no report wording substitutes for it |
 
-`profile-load` replaces the former manual self-path warning as the canonical
-owner of Profile package integrity. It does not supersede
-`registered-residual-content`: the former proves which Profile dependencies
-are authorized and resolvable, while the latter executes the admitted scan
-against corpus bytes and produces candidates. Runtime consumers reuse the
-typed Profile contract; they do not add parallel path rules.
+`profile-load` replaces the former manual self-path warning as the canonical owner of Profile package integrity. It does not supersede `registered-residual-content`: the former proves which Profile dependencies are authorized and resolvable, while the latter executes the admitted scan against corpus bytes and produces candidates. Runtime consumers reuse the typed Profile contract; they do not add parallel path rules.
 
 ## Verification Set Contract
 
-The adopter verification set is derived from the Stable Gate ID Registry in
-[`control-registry.yaml`](control-registry.yaml) and is never maintained as a
-prose command list. Batch-positioned
-producers run at their registered boundary, manual attestations follow the Gate
-Receipt Payload Contract, and transaction producers emit evidence only inside
-their own controlled transaction.
+The adopter verification set is derived from the Stable Gate ID Registry in [`control-registry.yaml`](control-registry.yaml) and is never maintained as a prose command list. Batch-positioned producers run at their registered boundary, manual attestations follow the Gate Receipt Payload Contract, and transaction producers emit evidence only inside their own controlled transaction.
 
-Verification aggregation preserves three observable outcomes: pass, fail, and
-hold. A hold is reliable non-clean evidence that still requires a declared
-judgment; it is neither silently promoted to pass nor collapsed into failure.
-The command runner, process exit mapping, and diagnostic formatting belong to
-the Tool implementation.
+Verification aggregation preserves three observable outcomes: pass, fail, and hold. A hold is reliable non-clean evidence that still requires a declared judgment; it is neither silently promoted to pass nor collapsed into failure. The command runner, process exit mapping, and diagnostic formatting belong to the Tool implementation.
 
 ## Stable Gate ID Registry
 
-[`control-registry.yaml`](control-registry.yaml) is the sole machine registry
-for Gate receipt identity and producer availability. Values in `tool`,
-`tool_version`, `check`, and `mode`
-are stable producer-capability and protocol identifiers, not Python module,
-file, or invocation names. The revalidation fields in the same registry own
-leaf-to-owner projection and claim edges; those fields do not substitute for
-the receipt selector. `tool`, `tool_version`, `check`, `mode`, and `dimensions`
-form the canonical
-receipt selector. Tool,
-version, and check are always exact; only Mode and Dimension may use `*` when no narrower
-mode exists. `manual-attestation` is an explicit producer class with current
-protocol version `1.0.0`, not a request for an Agent to guess a tool or version
-from the descriptive table above. What a receipt of either kind MUST carry to be
-consumed for its Gate ID, and who may record a `manual-attestation` one, are
-owned by [[kernel/K12 Quality Assurance/17 Gate Receipt Payload Contract#Gate Receipt Payload|Gate Receipt Payload Contract]].
+[`control-registry.yaml`](control-registry.yaml) is the sole machine registry for Gate receipt identity and producer availability. Values in `tool`, `tool_version`, `check`, and `mode` are stable producer-capability and protocol identifiers, not Python module, file, or invocation names. The revalidation fields in the same registry own leaf-to-owner projection and claim edges; those fields do not substitute for the receipt selector. `tool`, `tool_version`, `check`, `mode`, and `dimensions` form the canonical receipt selector. Tool, version, and check are always exact; only Mode and Dimension may use `*` when no narrower mode exists. `manual-attestation` is an explicit producer class with current protocol version `1.0.0`, not a request for an Agent to guess a tool or version from the descriptive table above. What a receipt of either kind MUST carry to be consumed for its Gate ID, and who may record a `manual-attestation` one, are owned by [[kernel/K12 Quality Assurance/17 Gate Receipt Payload Contract#Gate Receipt Payload|Gate Receipt Payload Contract]].
 
-`Dimension` closes the last gap in that selector: a Gate ID whose canonical gate
-files verdicts under several receipt dimensions was, without it, satisfied by a
-receipt for any one of them, so evidence re-established in one dimension
-discharged an obligation raised in another. Named dimension identities must
-resolve in K12's `audit-dimension-base.yaml`; the
-[[kernel/K12 Quality Assurance/18 Cross-page and Control-plane Dimension Map#Gate Receipt Dimension Boundary\|Gate Receipt Dimension Boundary]]
-and the
-[[kernel/K12 Quality Assurance/08 Judgment Item Dimension Map#Item Map\|K12/08 Item Map]]
-explain their filing semantics. The exact current Gate selector is owned only
-by the corresponding row in `control-registry.yaml`; prose does not override
-that row.
+`Dimension` closes the last gap in that selector: a Gate ID whose canonical gate files verdicts under several receipt dimensions was, without it, satisfied by a receipt for any one of them, so evidence re-established in one dimension discharged an obligation raised in another. Named dimension identities must resolve in K12's `audit-dimension-base.yaml`; the [[kernel/K12 Quality Assurance/18 Cross-page and Control-plane Dimension Map#Gate Receipt Dimension Boundary\|Gate Receipt Dimension Boundary]] and the [[kernel/K12 Quality Assurance/08 Judgment Item Dimension Map#Item Map\|K12/08 Item Map]] explain their filing semantics. The exact current Gate selector is owned only by the corresponding row in `control-registry.yaml`; prose does not override that row.
 
-A cell holds one of three things. One or more base receipt dimensions: the
-receipt MUST carry `dimension` and it MUST be one of them, and a consumer that
-knows which dimension its obligation was raised in narrows to that one value.
-`none`: the Gate binds member receipts that already carry the verdicts, so its
-own receipt carries no `dimension` at all. `*`: the row's producer is a named
-tool whose identity already fixes what its receipt means and which writes no
-`dimension` field, so nothing is narrowed here; it is not a licence to file such
-a receipt under any dimension.
+A cell holds one of three things. One or more base receipt dimensions: the receipt MUST carry `dimension` and it MUST be one of them, and a consumer that knows which dimension its obligation was raised in narrows to that one value. `none`: the Gate binds member receipts that already carry the verdicts, so its own receipt carries no `dimension` at all. `*`: the row's producer is a named tool whose identity already fixes what its receipt means and which writes no `dimension` field, so nothing is narrowed here; it is not a licence to file such a receipt under any dimension.
 
-`Lifecycle` is not part of that selector. It records the position at which the
-Gate's producer can run. It is producer-availability evidence for a
-`native-owner` claim edge; it does not turn a semantic leaf into a boundary
-owner or independently decide what an adoption may consume. Those decisions
-come from the revalidation fields in the machine registry. A Lifecycle value
-holds one of three things, and the three do not mix. One or more batch lifecycle
-states, tokenized the way `Dimension` is: the producer runs against a batch at
-those positions. `queue-exhausted`: it runs only once the Queue holds no
-non-terminal batch. `not-batch-scoped`: it takes no batch and no Queue position
-constrains it, so it can run at any time. Each value is the producing tool's own
-guard, not an expectation: a producer that begins accepting a further position
-changes its single machine row. The YAML validator rejects duplicate Gate IDs,
-unknown dimensions or positions, ambiguous selectors, and producer identities
-that disagree with the implementation actually emitting receipts.
+`Lifecycle` is not part of that selector. It records the position at which the Gate's producer can run. It is producer-availability evidence for a `native-owner` claim edge; it does not turn a semantic leaf into a boundary owner or independently decide what an adoption may consume. Those decisions come from the revalidation fields in the machine registry. A Lifecycle value holds one of three things, and the three do not mix. One or more batch lifecycle states, tokenized the way `Dimension` is: the producer runs against a batch at those positions. `queue-exhausted`: it runs only once the Queue holds no non-terminal batch. `not-batch-scoped`: it takes no batch and no Queue position constrains it, so it can run at any time. Each value is the producing tool's own guard, not an expectation: a producer that begins accepting a further position changes its single machine row. The YAML validator rejects duplicate Gate IDs, unknown dimensions or positions, ambiguous selectors, and producer identities that disagree with the implementation actually emitting receipts.
 
 ## Standards Revalidation Capability Registry
 
-The `revalidation_*` fields and role contracts in
-[`control-registry.yaml`](control-registry.yaml) are the sole machine registry
-for turning a semantic Gate impact into a Standards-adoption claim. The
-receipt-selector fields still own receipt identity and producer position;
-the revalidation fields own whether that Gate is an
-adoption boundary owner, a leaf whose claim is projected to another owner, or
-not a blocking Standards-revalidation capability in this protocol version.
-Neither field group substitutes for the other. Every Gate carries exactly one
-revalidation projection, and every owner reference must resolve inside the
-same registry.
+The `revalidation_*` fields and role contracts in [`control-registry.yaml`](control-registry.yaml) are the sole machine registry for turning a semantic Gate impact into a Standards-adoption claim. The receipt-selector fields still own receipt identity and producer position; the revalidation fields own whether that Gate is an adoption boundary owner, a leaf whose claim is projected to another owner, or not a blocking Standards-revalidation capability in this protocol version. Neither field group substitutes for the other. Every Gate carries exactly one revalidation projection, and every owner reference must resolve inside the same registry.
 
-A `special-owner` is claimed only by candidate after-image admission. An
-`immediate-owner` is the one raw Gate receipt an adoption may consume directly
-after its state after-image exists. A `native-owner` is claimed only by the
-ordinary transition that already owns that Gate. A `semantic-leaf` never
-authorizes an adoption boundary directly: the planner projects it to `Owner`,
-which must be a distinct `special-owner`, `immediate-owner`, or `native-owner`.
-The owner's receipt binds the leaf through the registered member chain; for a
-Profile-owned leaf projected to `profile-load`, that chain is the exact slot
-bytes inside the typed Profile snapshot and root-input fingerprints. A
-`mechanism-only` Gate may carry or aggregate claims but creates none about
-itself. `unsupported` rejects a new affected-Gate projection until the machine
-registry is revised; `advisory` may be reported but creates no blocking claim.
+A `special-owner` is claimed only by candidate after-image admission. An `immediate-owner` is the one raw Gate receipt an adoption may consume directly after its state after-image exists. A `native-owner` is claimed only by the ordinary transition that already owns that Gate. A `semantic-leaf` never authorizes an adoption boundary directly: the planner projects it to `Owner`, which must be a distinct `special-owner`, `immediate-owner`, or `native-owner`. The owner's receipt binds the leaf through the registered member chain; for a Profile-owned leaf projected to `profile-load`, that chain is the exact slot bytes inside the typed Profile snapshot and root-input fingerprints. A `mechanism-only` Gate may carry or aggregate claims but creates none about itself. `unsupported` rejects a new affected-Gate projection until the machine registry is revised; `advisory` may be reported but creates no blocking claim.
 
-This registry governs new plan admission and current authorization only.
-Historical adoption plans, transition receipts, revalidation aggregates, and
-sealed evidence retain their recorded identities and semantics. A later
-capability role, owner, or binding protocol neither repairs nor invalidates a
-decision already consumed in history.
+This registry governs new plan admission and current authorization only. Historical adoption plans, transition receipts, revalidation aggregates, and sealed evidence retain their recorded identities and semantics. A later capability role, owner, or binding protocol neither repairs nor invalidates a decision already consumed in history.

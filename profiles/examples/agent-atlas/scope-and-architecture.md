@@ -78,11 +78,7 @@ Interview Preparation/
 
 ## New Page Placement Rule
 
-This table places corpus content. The three durable planning files use the
-exact paths bound by [Corpus Planning](corpus-planning.yaml)
-and are maintained through R13; they are not a logical knowledge layer or a
-fallback destination. Cambium runtime state is written only under `.cambium/`
-and does not enter the content-placement sequence.
+This table places corpus content. The three durable planning files use the exact paths bound by [Corpus Planning](corpus-planning.yaml) and are maintained through R13; they are not a logical knowledge layer or a fallback destination. Cambium runtime state is written only under `.cambium/` and does not enter the content-placement sequence.
 
 | Order | Testable page predicate | Registered target Layer ID |
 |---:|---|---|

@@ -6,14 +6,9 @@
 
 ## Purpose And Boundary
 
-This module owns the semantic contract of the machine-readable next action
-reported by `runtime-startup-recovery`. It does not own task state, Queue
-lifecycle, completion, or recovery implementation.
+This module owns the semantic contract of the machine-readable next action reported by `runtime-startup-recovery`. It does not own task state, Queue lifecycle, completion, or recovery implementation.
 
-The Kernel owns the priority and result invariants below. The Tool
-implementation owns token spelling, parameter encoding, deterministic
-evaluation, and routing to executable capabilities; those implementation
-details do not form a second Kernel vocabulary in this page.
+The Kernel owns the priority and result invariants below. The Tool implementation owns token spelling, parameter encoding, deterministic evaluation, and routing to executable capabilities; those implementation details do not form a second Kernel vocabulary in this page.
 
 ## Next-action Invariants
 
@@ -31,18 +26,11 @@ Every valid startup evaluation produces exactly one action under these rules:
   of a second task;
 - unresolved holds or dependencies remain attached to the existing task.
 
-A token may be emitted only when its named capability would admit the current
-state. The status result cannot recommend an operation whose own producer must
-reject it, because one impossible action would hide every later action.
+A token may be emitted only when its named capability would admit the current state. The status result cannot recommend an operation whose own producer must reject it, because one impossible action would hide every later action.
 
-Where no deterministic capability can complete the selected action, the token
-must say that operator intervention is required and preserve the occupied
-runtime state. Such a token is a truthful recovery boundary, not permission to
-infer success or discard history.
+Where no deterministic capability can complete the selected action, the token must say that operator intervention is required and preserve the occupied runtime state. Such a token is a truthful recovery boundary, not permission to infer success or discard history.
 
-The Agent consumes the exact selected action and its bound object identities.
-Token text is routing output, not independent authorization: each eventual
-operation still requires its ordinary Gate and transaction evidence.
+The Agent consumes the exact selected action and its bound object identities. Token text is routing output, not independent authorization: each eventual operation still requires its ordinary Gate and transaction evidence.
 
 ## Related
 

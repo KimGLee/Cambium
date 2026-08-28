@@ -70,11 +70,9 @@ load_edges:
 
 ## Purpose
 
-Loads the common multi-batch, checkpoint, recovery, Queue, Progress, and
-delivery boundaries after R07 has already been selected.
+Loads the common multi-batch, checkpoint, recovery, Queue, Progress, and delivery boundaries after R07 has already been selected.
 
 ## Non-deterministic triggers
 
-- `R07:runtime-event` fires when a guidance change, replan, standards change,
-  interruption, escalation, or planning reconciliation actually occurs.
+- `R07:runtime-event` fires when a guidance change, replan, standards change, interruption, escalation, or planning reconciliation actually occurs.
 - `batch-gate-requested` fires before the current batch seeks acceptance.

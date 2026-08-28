@@ -6,8 +6,7 @@ This directory contains non-normative, filled reference cases. An example shows 
 
 The distinction is deliberate:
 
-- `kernel/K00 Standards Control/profile-interface.yaml` defines the common
-  slot registry; K00/19 defines its semantic boundary.
+- `kernel/K00 Standards Control/profile-interface.yaml` defines the common slot registry; K00/19 defines its semantic boundary.
 - `profiles/_template/` asks an adopter to provide its own answers.
 - `profiles/examples/` shows completed domain-specific answers for reference.
 
@@ -50,5 +49,4 @@ Documented forms that still have **no** worked example anywhere in this reposito
 | A profile-owned extension audit dimension beyond the one Atlas registers | Not needed by the other two domains. |
 | A `boundary_projection` display-label override, or a profile-closed `boundary` concern vocabulary | The K08/09 kernel display labels and the open (shape-checked only) concern-slug state are the intended defaults during a corpus's boundary migration; closing the vocabulary is a later governance decision no example has reached. |
 
-An adopter who needs one of these starts from the Kernel-owned interface and
-the relevant semantic owner, not from an example.
+An adopter who needs one of these starts from the Kernel-owned interface and the relevant semantic owner, not from an example.

@@ -1,7 +1,6 @@
 # Language Contract
 
-Kernel owner: K10 Writing and Formatting. Common slot identity is registered
-in the Kernel Profile interface.
+Kernel owner: K10 Writing and Formatting. Common slot identity is registered in the Kernel Profile interface.
 
 ## Language Routing
 
@@ -15,8 +14,7 @@ in the Kernel Profile interface.
 
 ## Canonical Naming
 
-Confirm or replace these operational defaults; for an existing corpus, "as
-found" naming that these rows describe is preferable to a renaming campaign.
+Confirm or replace these operational defaults; for an existing corpus, "as found" naming that these rows describe is preferable to a renaming campaign.
 
 | Object | Language, casing, and separators |
 |---|---|

@@ -35,11 +35,8 @@ load_edges:
 
 ## Purpose
 
-Loads the corpus-planning object, structure, and reconciliation owners after
-R13 has already been selected. It does not author corpus pages or run audits.
+Loads the corpus-planning object, structure, and reconciliation owners after R13 has already been selected. It does not author corpus pages or run audits.
 
 ## Non-deterministic triggers
 
-`R13:planning-relation` fires when the planning change actually touches a
-structural unit, Coverage handoff, migration, architecture decision, or audit
-scope.
+`R13:planning-relation` fires when the planning change actually touches a structural unit, Coverage handoff, migration, architecture decision, or audit scope.

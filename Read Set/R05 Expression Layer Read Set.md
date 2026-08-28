@@ -59,11 +59,9 @@ load_edges:
 
 ## Purpose
 
-Loads the canonical-expression separation, binding, readiness, evidence, and
-acceptance owners for an already selected expression-layer route.
+Loads the canonical-expression separation, binding, readiness, evidence, and acceptance owners for an already selected expression-layer route.
 
 ## Non-deterministic triggers
 
-- `R05:artifact-condition` fires when the registered artifact actually needs
-  another work route, migration, rendering, visual judgment, or evidence reuse.
+- `R05:artifact-condition` fires when the registered artifact actually needs another work route, migration, rendering, visual judgment, or evidence reuse.
 - `batch-gate-requested` fires before expression-layer acceptance is requested.

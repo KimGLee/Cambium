@@ -5,16 +5,9 @@
 
 ## Migration Policy
 
-An expression migration is valid only when the canonical knowledge owner, the
-target expression owner, and the old content are mapped; the target owner and
-its evidence bindings and links are usable before the old duplicate is
-removed; and content, evidence qualifications, ownership, and resolvable links
-are conserved. This semantic owner does not prescribe the action sequence;
-registered capabilities own deterministic scanning and link verification.
+An expression migration is valid only when the canonical knowledge owner, the target expression owner, and the old content are mapped; the target owner and its evidence bindings and links are usable before the old duplicate is removed; and content, evidence qualifications, ownership, and resolvable links are conserved. This semantic owner does not prescribe the action sequence; registered capabilities own deterministic scanning and link verification.
 
-Deleting old content before the verified replacement exists is prohibited.
-Split, duplication, and owner rules are also subject to
-[[kernel/K03 Note Types and Ownership/03 Split and Duplication Policy|Split and Duplication Policy]].
+Deleting old content before the verified replacement exists is prohibited. Split, duplication, and owner rules are also subject to [[kernel/K03 Note Types and Ownership/03 Split and Duplication Policy|Split and Duplication Policy]].
 
 ## Scoped Migration Audit
 

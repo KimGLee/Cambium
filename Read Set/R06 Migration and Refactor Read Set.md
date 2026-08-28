@@ -54,12 +54,9 @@ load_edges:
 
 ## Purpose
 
-Loads the ownership, path, structure, migration-safety, and acceptance owners
-for an already selected move, split, merge, rename, or refactor route.
+Loads the ownership, path, structure, migration-safety, and acceptance owners for an already selected move, split, merge, rename, or refactor route.
 
 ## Non-deterministic triggers
 
-- `R06:affected-boundary` fires when the migration reaches another canonical
-  owner, relationship, expression, governance, planning, audit, or long-running
-  boundary.
+- `R06:affected-boundary` fires when the migration reaches another canonical owner, relationship, expression, governance, planning, audit, or long-running boundary.
 - `batch-gate-requested` fires before the migrated after-image is accepted.

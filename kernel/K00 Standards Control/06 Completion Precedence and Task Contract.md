@@ -47,13 +47,9 @@ The frozen Task Contract MUST select exactly one completion semantics:
   - The Coverage Ledger and canonical maintenance watermark have been advanced.
   - Each batch has passed the applicable QA gates.
 
-When maintenance work is persistent, resumable, or multi-batch, K13/12's gate
-MUST prove those predicates from current budget-manifest, Coverage-advance,
-watermark-advance, and applicable batch/close receipts. Bounded single-note
-maintenance does not initialize empty adopter runtime state for that gate.
+When maintenance work is persistent, resumable, or multi-batch, K13/12's gate MUST prove those predicates from current budget-manifest, Coverage-advance, watermark-advance, and applicable batch/close receipts. Bounded single-note maintenance does not initialize empty adopter runtime state for that gate.
 
-Maintenance has no corpus-wide Terminal Proof. Budget-truncated items hand off
-to the next run and are not a current gap.
+Maintenance has no corpus-wide Terminal Proof. Budget-truncated items hand off to the next run and are not a current gap.
 
 ## Standard Precedence
 

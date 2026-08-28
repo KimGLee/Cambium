@@ -6,8 +6,7 @@
 
 ## Scope
 
-The registered vocabulary base is the sole normative source for closed scope
-membership. The values have these meanings:
+The registered vocabulary base is the sole normative source for closed scope membership. The values have these meanings:
 
 - `shared`: reused by multiple top-level domains.
 - `domain-specific`: belongs primarily to one domain.
@@ -18,8 +17,7 @@ The selected profile MAY append scope values through `Vocabulary Extensions`, bu
 
 ## Level
 
-The registered vocabulary base is the sole normative source for closed level
-membership. The values have these meanings:
+The registered vocabulary base is the sole normative source for closed level membership. The values have these meanings:
 
 - `basic`: MUST be mastered before reading other core content in the current scope.
 - `intermediate`: requires basic knowledge; a core capability of the target scope.
@@ -29,14 +27,11 @@ Level represents prerequisite difficulty, not content priority.
 
 ## Depth
 
-The registered vocabulary base is the sole normative source for closed depth
-membership. Its value meanings are defined by the
-[[kernel/K04 Content Depth Standard|Content Depth Standard]].
+The registered vocabulary base is the sole normative source for closed depth membership. Its value meanings are defined by the [[kernel/K04 Content Depth Standard|Content Depth Standard]].
 
 ## Priority
 
-The registered vocabulary base is the sole normative source for closed
-priority membership. The values have these meanings:
+The registered vocabulary base is the sole normative source for closed priority membership. The values have these meanings:
 
 - `P0`: declared by the selected profile as must-master; its absence blocks dependent content or declared goals.
 - `P1`: declared by the selected profile as a high-priority extension; SHOULD reach the readiness predicate specified by that profile.

@@ -9,23 +9,13 @@ This standard defines machine-readable metadata, priority, and maturity for know
 
 ## Frontmatter Schema
 
-The registered frontmatter applicability and relationship bases are the sole
-machine owners of the Kernel field set, shapes, modes, and conditions. The
-registered vocabulary base is the sole machine owner of closed values. This
-page defines their meanings and extension boundary; it does not repeat a
-second field schema in prose.
+The registered frontmatter applicability and relationship bases are the sole machine owners of the Kernel field set, shapes, modes, and conditions. The registered vocabulary base is the sole machine owner of closed values. This page defines their meanings and extension boundary; it does not repeat a second field schema in prose.
 
-The selected Profile MAY register extension fields and values through its
-Vocabulary Extensions and Metadata Contract, within the extension rules in
-K08/06. Newly created or substantially rewritten pages use the applicable
-fields. Before any bulk migration, the Coverage Ledger remains authoritative
-for current corpus state.
+The selected Profile MAY register extension fields and values through its Vocabulary Extensions and Metadata Contract, within the extension rules in K08/06. Newly created or substantially rewritten pages use the applicable fields. Before any bulk migration, the Coverage Ledger remains authoritative for current corpus state.
 
 ## Type Vocabulary
 
-The registered vocabulary base is the sole normative source for Kernel type
-membership. A type denotes the semantic role of a page; it does not grant
-authority, choose a task route, or prove completion.
+The registered vocabulary base is the sole normative source for Kernel type membership. A type denotes the semantic role of a page; it does not grant authority, choose a task route, or prove completion.
 
 The selected profile MAY append registered type values through `Vocabulary Extensions`, but MUST NOT delete, rename, or redefine kernel base values.
 

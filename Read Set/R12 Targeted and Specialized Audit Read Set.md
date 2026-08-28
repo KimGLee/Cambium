@@ -38,11 +38,8 @@ load_edges:
 
 ## Purpose
 
-Loads the shared targeted-audit boundary after R12 and its audit scope have
-already been selected. It does not decide the audit predicate or verdict.
+Loads the shared targeted-audit boundary after R12 and its audit scope have already been selected. It does not decide the audit predicate or verdict.
 
 ## Non-deterministic triggers
 
-`R12:audit-scope` fires only for the source, rendering, planning, expression,
-migration, completion, or planning-write-back dimensions actually implicated
-by the declared audit object.
+`R12:audit-scope` fires only for the source, rendering, planning, expression, migration, completion, or planning-write-back dimensions actually implicated by the declared audit object.

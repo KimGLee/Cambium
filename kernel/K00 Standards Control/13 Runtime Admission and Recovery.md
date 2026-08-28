@@ -6,17 +6,11 @@
 
 ## Purpose And Ownership
 
-This page owns the implementation-independent admission conditions for
-runtime-state discovery and for large-scale creation, moves, or deletion. It
-does not own task routing, storage layout, recovery algorithms, or commands.
+This page owns the implementation-independent admission conditions for runtime-state discovery and for large-scale creation, moves, or deletion. It does not own task routing, storage layout, recovery algorithms, or commands.
 
 ## Runtime Startup Gate
 
-Before any task writes content or task-control state, the
-`runtime-startup-recovery` Gate determines whether a persistent task runtime
-already exists and emits one current next action. This discovery is universal
-even when the new request appears bounded; an earlier task may still be paused,
-interrupted, or awaiting integration.
+Before any task writes content or task-control state, the `runtime-startup-recovery` Gate determines whether a persistent task runtime already exists and emits one current next action. This discovery is universal even when the new request appears bounded; an earlier task may still be paused, interrupted, or awaiting integration.
 
 - When no task runtime exists, only an authorized persistent, resumable, or
   multi-batch task may initialize one, after task, Standards, scope, Profile,
@@ -32,16 +26,11 @@ interrupted, or awaiting integration.
   needed for recovery. Kernel requires a recoverable result; the lock format,
   journal, file sequence, and repair procedure belong to Tool.
 
-The startup gate discovers control state; it does not authorize the content
-work itself. A bounded task may proceed without creating task runtime state
-when no task runtime exists. When one is present, the recorded task is
-reconciled before any content or control write, regardless of the apparent size
-of the new request.
+The startup gate discovers control state; it does not authorize the content work itself. A bounded task may proceed without creating task runtime state when no task runtime exists. When one is present, the recorded task is reconciled before any content or control write, regardless of the apparent size of the new request.
 
 ## Large-scale Pre-execution Gate
 
-Large-scale creation, moves, or deletion may begin only when all of the
-following externally observable conditions hold:
+Large-scale creation, moves, or deletion may begin only when all of the following externally observable conditions hold:
 
 1. The Task Contract fixes objective, scope and exclusions, Standards/Profile
    identity, completion semantics, time bounds, and authorization.
@@ -60,8 +49,7 @@ following externally observable conditions hold:
 8. Current audit evidence is available for reuse and invalidation decisions;
    an AuditPlan is created only at its defined lifecycle boundary.
 
-When any condition is missing, first complete the plan or investigation; do not
-proceed directly to large-scale creation, moves, or deletion.
+When any condition is missing, first complete the plan or investigation; do not proceed directly to large-scale creation, moves, or deletion.
 
 ## Related
 

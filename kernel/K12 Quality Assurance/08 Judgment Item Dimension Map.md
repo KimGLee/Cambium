@@ -6,12 +6,7 @@
 
 ## Purpose
 
-An `AuditReceipt` carries one `dimension` from
-[`audit-dimension-base.yaml`](audit-dimension-base.yaml). This module assigns
-each page-level Kernel judgment item to that namespace and states whether it
-produces a receipt; higher layers are filed by
-[[kernel/K12 Quality Assurance/18 Cross-page and Control-plane Dimension Map|K12/18]].
-Without this map, one verdict can be filed under multiple names.
+An `AuditReceipt` carries one `dimension` from [`audit-dimension-base.yaml`](audit-dimension-base.yaml). This module assigns each page-level Kernel judgment item to that namespace and states whether it produces a receipt; higher layers are filed by [[kernel/K12 Quality Assurance/18 Cross-page and Control-plane Dimension Map|K12/18]]. Without this map, one verdict can be filed under multiple names.
 
 ## Terms
 
@@ -26,8 +21,7 @@ A heading is not a judgment item. The test: ask "did this pass?" If the question
 
 ## Evidence Role
 
-Every judgment item has exactly one evidence role. The closed role namespace
-is owned by `audit-dimension-base.yaml`; the meanings are:
+Every judgment item has exactly one evidence role. The closed role namespace is owned by `audit-dimension-base.yaml`; the meanings are:
 
 - `emits` — produces the canonical receipt for its dimension.
 - `consumes` — satisfied by a receipt produced elsewhere; records `reused_receipt_id` under the Reuse Gate and does not change that receipt's dimension.
@@ -72,11 +66,7 @@ A [[kernel/K12 Quality Assurance/05 Automated and Manual Checks#Manual Checks|K1
 
 ## Reverse Check
 
-Every base dimension registered in `audit-dimension-base.yaml` has an emitting
-item across this map and K12/18, which are read together for this check.
-`formula_and_numeric` draws from two `K12/01 Accuracy` items only; the
-concentration is deliberate but thin, and a profile adding numeric obligations
-SHOULD register them here rather than widening another dimension.
+Every base dimension registered in `audit-dimension-base.yaml` has an emitting item across this map and K12/18, which are read together for this check. `formula_and_numeric` draws from two `K12/01 Accuracy` items only; the concentration is deliberate but thin, and a profile adding numeric obligations SHOULD register them here rather than widening another dimension.
 
 ## Profile Registration
 

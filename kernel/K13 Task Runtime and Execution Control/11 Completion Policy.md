@@ -17,9 +17,7 @@ Completion cannot be declared early for the following reasons:
 - The Queue-derived view temporarily has no `open` batch.
 - Most pages are already `reviewed`.
 
-For `completion_semantics: build`, a task moves from `active` to
-`completion-candidate`, then enters `complete` only after completing the
-Terminal Audit of the [[kernel/K12 Quality Assurance Standard|Quality Assurance Standard]].
+For `completion_semantics: build`, a task moves from `active` to `completion-candidate`, then enters `complete` only after completing the Terminal Audit of the [[kernel/K12 Quality Assurance Standard|Quality Assurance Standard]].
 
 The canonical procedure of the Terminal Audit is at [[kernel/K12 Quality Assurance/15 Terminal Audit and Convergence#Terminal Audit|Terminal Audit]].
 
@@ -58,11 +56,4 @@ The user MAY pause or cancel the task before the Completion Gate, but that actio
 
 ## Maintenance Completion Policy
 
-For `completion_semantics: maintenance`, the Task Contract instead selects the
-bounded predicate in [[kernel/K00 Standards Control/06 Completion Precedence and Task Contract#Maintenance Completion|K00/06]]. The task MUST NOT enter
-`completion-candidate`, combine R08, or produce Terminal Proof. When persistent
-state applies, K13/12 owns the maintenance Gate and the registered task-state transaction consumes
-its pass. A direct `planned -> complete` edge is limited to a nonempty Queue
-whose batches were all validly cancelled before any opened; otherwise closure
-starts from `active`. After interruption, reuse a passed gate only when resume
-finds it compatible with current state and evidence; a stale gate is rerun.
+For `completion_semantics: maintenance`, the Task Contract instead selects the bounded predicate in [[kernel/K00 Standards Control/06 Completion Precedence and Task Contract#Maintenance Completion|K00/06]]. The task MUST NOT enter `completion-candidate`, combine R08, or produce Terminal Proof. When persistent state applies, K13/12 owns the maintenance Gate and the registered task-state transaction consumes its pass. A direct `planned -> complete` edge is limited to a nonempty Queue whose batches were all validly cancelled before any opened; otherwise closure starts from `active`. After interruption, reuse a passed gate only when resume finds it compatible with current state and evidence; a stale gate is rerun.

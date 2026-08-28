@@ -121,7 +121,7 @@ FILL = [
      "Disposition` |\n\n## Residual Disposition"),
     ("registries/audit-dimensions.md",
      "TODO(profile) — define what a reported candidate means for this "
-     "repository and\nwhich stable dispositions are acceptable.",
+     "repository and which stable dispositions are acceptable.",
      "The registered scan reports canonical notes that still carry "
      "dated-scratch structure outside `Notes/Daily Log`. Each candidate is "
      "resolved one of two ways, recorded on the candidate page: the scratch "

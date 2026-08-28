@@ -35,11 +35,7 @@ Absence of a declaration MUST NOT be used to express `not-applicable`. One page 
 
 ## Registry Contract
 
-The selected profile registers its units in the `Structure Registry` slot, one
-machine-readable document validated by the `structure-registry` Gate.
-The current registry contract is `schema_version: 2`; version 1's
-implementation-path `generator` field is not a valid Profile declaration.
-Ownership boundaries:
+The selected profile registers its units in the `Structure Registry` slot, one machine-readable document validated by the `structure-registry` Gate. The current registry contract is `schema_version: 2`; version 1's implementation-path `generator` field is not a valid Profile declaration. Ownership boundaries:
 
 - `Profile Scope` remains the sole owner of Layer IDs, top-level directory sets, and layer responsibilities.
 - The Structure Registry owns only per-unit identity, parent, root, entry, and role bindings — for domains, modules, and the support layers of [[kernel/K01 Scope and Architecture/06 Support Layer Structural Interfaces|K01/06]].

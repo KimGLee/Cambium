@@ -14,39 +14,18 @@ Interface: [Kernel-owned Profile interface](../../../kernel/K00%20Standards%20Co
 
 ## Term Band Rule
 
-The default language of reader-facing body prose is Chinese. An English word
-or phrase in body prose must belong to one of the following bands. A general
-computing term with an established Chinese rendering belongs to neither band
-and is written in Chinese.
+The default language of reader-facing body prose is Chinese. An English word or phrase in body prose must belong to one of the following bands. A general computing term with an established Chinese rendering belongs to neither band and is written in Chinese.
 
-1. **Identifier band — preserve English.** Source, configuration, and
-   documented interface identities such as `Store`, `namespace`,
-   `checkpointer`, and `thread_id`, plus official product, organization, and
-   protocol names such as LangGraph, MCP, and PostgreSQL, retain their exact
-   spelling. Translating these strings would break the evidence path to their
-   source. Machine identifiers remain in code formatting.
-2. **Term-anchor band — Chinese after one English anchor.** A domain term whose
-   Chinese rendering is unsettled, or whose Chinese form is insufficient for
-   source retrieval, appears at first meaningful use as
-   `中文译名（English term）`. Later uses on the same page use the Chinese form.
+1. **Identifier band — preserve English.** Source, configuration, and documented interface identities such as `Store`, `namespace`, `checkpointer`, and `thread_id`, plus official product, organization, and protocol names such as LangGraph, MCP, and PostgreSQL, retain their exact spelling. Translating these strings would break the evidence path to their source. Machine identifiers remain in code formatting.
+2. **Term-anchor band — Chinese after one English anchor.** A domain term whose Chinese rendering is unsettled, or whose Chinese form is insufficient for source retrieval, appears at first meaningful use as `中文译名（English term）`. Later uses on the same page use the Chinese form.
 
-Review applies this test to each English phrase independently. A compound
-phrase is split by band: in `namespace authorization`, `namespace` remains an
-identifier and `authorization` is rendered in Chinese.
+Review applies this test to each English phrase independently. A compound phrase is split by band: in `namespace authorization`, `namespace` remains an identifier and `authorization` is rendered in Chinese.
 
 ## Bilingual Answer Contract
 
-For an Interview Card, the 30-second and 90-second answers are complete in
-both English and Chinese. Follow-up prompts use bilingual labels, and every
-follow-up intended for spoken delivery includes an English answer or a usable
-English answer skeleton. The two language versions preserve the same claim,
-limitation, uncertainty, and metric meaning.
+For an Interview Card, the 30-second and 90-second answers are complete in both English and Chinese. Follow-up prompts use bilingual labels, and every follow-up intended for spoken delivery includes an English answer or a usable English answer skeleton. The two language versions preserve the same claim, limitation, uncertainty, and metric meaning.
 
-This section owns only Interview Card answer parity. General body language,
-naming, display order, protected identifiers, and formatting remain owned by
-the other sections of this Language Contract. Interview Card structure and
-evidence requirements remain owned by
-[[profiles/examples/agent-atlas/expression-layer#Interview Card Contract|Expression Layer]].
+This section owns only Interview Card answer parity. General body language, naming, display order, protected identifiers, and formatting remain owned by the other sections of this Language Contract. Interview Card structure and evidence requirements remain owned by [[profiles/examples/agent-atlas/expression-layer#Interview Card Contract|Expression Layer]].
 
 ## Canonical Naming
 
@@ -69,94 +48,43 @@ evidence requirements remain owned by
 
 ## Section Role Display
 
-This contract owns the reader-facing display forms of the kernel section roles
-defined by K07/02 (`sources`) and K09/04 (`related`). The machine projection in
-`metadata-contract.yaml` carries the same binding and never replaces this
-prose owner.
+This contract owns the reader-facing display forms of the kernel section roles defined by K07/02 (`sources`) and K09/04 (`related`). The machine projection in `metadata-contract.yaml` carries the same binding and never replaces this prose owner.
 
 | Role | Display titles | Migration-period aliases |
 |---|---|---|
 | `sources` | `Sources（来源）`; `来源` | `Sources` |
 | `related` | `Related（相关）`; `相关` | `Related`; `Related（相关内容）` |
 
-Aliases are accepted only for existing content during migration. New and
-rewritten pages use a registered display title. One page carries at most one
-sources-role section.
+Aliases are accepted only for existing content during migration. New and rewritten pages use a registered display title. One page carries at most one sources-role section.
 
 ## Content Form Review
 
-Review each content block on two independent axes. `form_class` records what
-the source block naturally is; `rewrite_disposition` records whether the
-current evidence authorizes a form change. A form classification never by
-itself authorizes content that is absent from the source.
+Review each content block on two independent axes. `form_class` records what the source block naturally is; `rewrite_disposition` records whether the current evidence authorizes a form change. A form classification never by itself authorizes content that is absent from the source.
 
 The closed `form_class` values are:
 
-1. **`contract-enumeration`.** Responsibility boundaries (`owns`, `excludes`,
-   goals, non-goals) and external-reference sets belong in the frontmatter
-   `boundary` block. `boundary-contract` validates that block, and
-   `render_boundary_projection.py` produces its reader view. Body prose may
-   refer to the projection but must not duplicate the enumeration. The author
-   chooses where the projection markers appear.
-2. **`native-structure`.** Comparison tables, sequence diagrams,
-   architecture diagrams, structure definitions, pseudocode, and formulas
-   keep their native form. Marker comments distinguish authored content from
-   generated projections.
-3. **`compressed-narrative`.** Parallel bullets qualify only when the source
-   items themselves state causal, mechanistic, trade-off, or failure
-   relations that connected prose can preserve. A noun-phrase list or bare
-   enumeration is not this class, regardless of list density, page type, or
-   the amount of surrounding prose.
-4. **`natural-prose`.** Existing prose is edited for clarity without changing
-   its form.
+1. **`contract-enumeration`.** Responsibility boundaries (`owns`, `excludes`, goals, non-goals) and external-reference sets belong in the frontmatter `boundary` block. `boundary-contract` validates that block, and `render_boundary_projection.py` produces its reader view. Body prose may refer to the projection but must not duplicate the enumeration. The author chooses where the projection markers appear.
+2. **`native-structure`.** Comparison tables, sequence diagrams, architecture diagrams, structure definitions, pseudocode, and formulas keep their native form. Marker comments distinguish authored content from generated projections.
+3. **`compressed-narrative`.** Parallel bullets qualify only when the source items themselves state causal, mechanistic, trade-off, or failure relations that connected prose can preserve. A noun-phrase list or bare enumeration is not this class, regardless of list density, page type, or the amount of surrounding prose.
+4. **`natural-prose`.** Existing prose is edited for clarity without changing its form.
 
 The closed `rewrite_disposition` values are:
 
-- **`retain`** — the natural form remains appropriate or no migration is
-  needed;
-- **`rewrite`** — the proposed form change can be completed entirely from
-  relations already supported by the current content and admitted evidence;
-- **`source-gap`** — the target prose would require a relation or mechanism
-  the source does not state. Keep the neutral source form and register the
-  missing question, evidence, or canonical owner; do not supply a connective,
-  ordering, quantity, modal strengthening, absolute, or causal explanation to
-  make the rewrite appear complete.
+- **`retain`** — the natural form remains appropriate or no migration is needed;
+- **`rewrite`** — the proposed form change can be completed entirely from relations already supported by the current content and admitted evidence;
+- **`source-gap`** — the target prose would require a relation or mechanism the source does not state. Keep the neutral source form and register the missing question, evidence, or canonical owner; do not supply a connective, ordering, quantity, modal strengthening, absolute, or causal explanation to make the rewrite appear complete.
 
-`source-gap` is a rewrite disposition, not a fifth form class. The applicable
-depth and acceptance rules decide whether the registered gap blocks the
-page's target status; the formatting rule never makes that decision.
+`source-gap` is a rewrite disposition, not a fifth form class. The applicable depth and acceptance rules decide whether the registered gap blocks the page's target status; the formatting rule never makes that decision.
 
-A responsibility block belongs only to a page that asserts who owns a
-concern. Overview, module-entry, and system-design pages commonly qualify;
-source notes, cases, and Interview Cards ordinarily express evidence or
-narrative scope instead. Concern slugs use a layer prefix and remain an open
-kebab-case vocabulary until a later Profile revision explicitly closes the
-set. Kernel projection labels remain in effect because this Profile declares
-no `boundary_projection` override.
+A responsibility block belongs only to a page that asserts who owns a concern. Overview, module-entry, and system-design pages commonly qualify; source notes, cases, and Interview Cards ordinarily express evidence or narrative scope instead. Concern slugs use a layer prefix and remain an open kebab-case vocabulary until a later Profile revision explicitly closes the set. Kernel projection labels remain in effect because this Profile declares no `boundary_projection` override.
 
-An `excludes` owner may be a kernel or Profile page. A missing boundary on an
-out-of-manifest owner remains an advisory gap; it does not excuse a qualifying
-manifest page from carrying its own boundary. When a batch introduces its
-first new boundary block, Batch Review records the slug design for integrator
-review.
+An `excludes` owner may be a kernel or Profile page. A missing boundary on an out-of-manifest owner remains an advisory gap; it does not excuse a qualifying manifest page from carrying its own boundary. When a batch introduces its first new boundary block, Batch Review records the slug design for integrator review.
 
-Before `merge-ready`, Batch Review records both axes for every reviewed block
-on every manifest page in that page's content-correctness evidence. A `retain`
-result is valid; `source-gap` additionally names the registered gap; an
-omitted axis or a bare statement such as “reviewed” is not a completed
-judgment. Rewrites of `compressed-narrative` and `natural-prose` also apply the
-Term Band Rule. The two-axis judgment is not a separate checkpoint artifact.
-Pages not reached by ordinary batches are handled by a finishing batch before
-Queue exhaustion can be claimed.
+Before `merge-ready`, Batch Review records both axes for every reviewed block on every manifest page in that page's content-correctness evidence. A `retain` result is valid; `source-gap` additionally names the registered gap; an omitted axis or a bare statement such as “reviewed” is not a completed judgment. Rewrites of `compressed-narrative` and `natural-prose` also apply the Term Band Rule. The two-axis judgment is not a separate checkpoint artifact. Pages not reached by ordinary batches are handled by a finishing batch before Queue exhaustion can be claimed.
 
 ## Registered Term Displays
 
-The following sense-aware table is the current word-level display authority.
-An unregistered term follows the Term Band Rule, and a provisional mapping
-needed during a batch is recorded as a gap. Adding or changing a stable entry
-is a governed Profile revision, not a batch-close side effect. A new entry
-does not authorize a bulk rewrite; affected pages align when they next enter
-scope unless an explicit migration is approved.
+The following sense-aware table is the current word-level display authority. An unregistered term follows the Term Band Rule, and a provisional mapping needed during a batch is recorded as a gap. Adding or changing a stable entry is a governed Profile revision, not a batch-close side effect. A new entry does not authorize a bulk rewrite; affected pages align when they next enter scope unless an explicit migration is approved.
 
 | Term | Sense | Band | First display literal | Subsequent literal | Accepted variants | Canonical owner |
 |---|---|---|---|---|---|---|
