@@ -19,6 +19,14 @@ load_edges:
       - kernel/K12 Quality Assurance/06 Completion Gate and Reporting.md
       - kernel/K12 Quality Assurance/07 Audit Evidence Reuse and Invalidation.md
       - kernel/K12 Quality Assurance/14 Batch Review.md
+      - kernel/K12 Quality Assurance/19 Incremental Audit Planning.md
+      - kernel/K12 Quality Assurance/audit-plan-contract.yaml
+      - kernel/K12 Quality Assurance/batch-close-closed-list.yaml
+      - kernel/K12 Quality Assurance/batch-review-obligation-registry.yaml
+      - kernel/K12 Quality Assurance/changed-scope-check-registry.yaml
+      - kernel/K12 Quality Assurance/deterministic-rendering-contract.yaml
+      - kernel/K12 Quality Assurance/rendering-verification-contract.yaml
+      - kernel/K12 Quality Assurance/substantive-review-contract.yaml
       - kernel/K13 Task Runtime and Execution Control/01 Runtime State Model and Namespace.md
       - kernel/K13 Task Runtime and Execution Control/02 Task Contract Binding and Time Semantics.md
       - kernel/K13 Task Runtime and Execution Control/03 Task State and Transition Rules.md
@@ -61,7 +69,10 @@ load_edges:
       - kernel/K00 Standards Control/13 Runtime Admission and Recovery.md
       - kernel/K12 Quality Assurance/07 Audit Evidence Reuse and Invalidation.md
       - kernel/K12 Quality Assurance/09 Batch-close Closed List.md
+      - kernel/K12 Quality Assurance/12 Substantive Correctness Review.md
       - kernel/K12 Quality Assurance/14 Batch Review.md
+      - kernel/K12 Quality Assurance/audit-receipt-contract.yaml
+      - kernel/K12 Quality Assurance/substantive-review-contract.yaml
       - kernel/K13 Task Runtime and Execution Control/12 Completion Gate Bindings.md
     read_sets:
       - R08

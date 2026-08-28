@@ -7,18 +7,90 @@ semantic_owner: K12/09
 # the close boundary and how their results may be interpreted or reused.
 members:
   - member_id: wiki_link_resolution
+    rule_id: k12-09-wiki-link-resolution
     meaning: Wiki link missing, ambiguous, and heading resolution
+    due_stage: post-delta-close
+    producer_capability: batch-close-producer-v1
+    producer_check: closed_list_wiki_link_resolution
+    consumer_gate_id: batch-close
+    evidence_role: emits
+    evidence_kind: audit-receipt
+    dimension: structure_and_links
+    dimension_binding: fixed
   - member_id: structural_validity
+    rule_id: k12-09-structural-validity
     meaning: Markdown, YAML, fence, and table structural validity
+    due_stage: post-delta-close
+    producer_capability: batch-close-producer-v1
+    producer_check: closed_list_structural_validity
+    consumer_gate_id: batch-close
+    evidence_role: emits
+    evidence_kind: audit-receipt
+    dimension: structure_and_links
+    dimension_binding: fixed
   - member_id: graph_and_duplicate_basenames
+    rule_id: k12-09-graph-and-duplicate-basenames
     meaning: Deterministic Markdown and Wiki-link graph JSON projection plus duplicate basename candidates
+    due_stage: post-delta-close
+    producer_capability: batch-close-producer-v1
+    producer_check: closed_list_graph_and_duplicate_basenames
+    consumer_gate_id: batch-close
+    evidence_role: emits
+    evidence_kind: audit-receipt
+    dimension: structure_and_links
+    dimension_binding: fixed
   - member_id: coverage_file_count
+    rule_id: k12-09-coverage-file-count
     meaning: Coverage file-count reconciliation
+    due_stage: post-delta-close
+    producer_capability: batch-close-producer-v1
+    producer_check: closed_list_coverage_file_count
+    consumer_gate_id: batch-close
+    evidence_role: emits
+    evidence_kind: audit-receipt
+    dimension: coverage_and_integration
+    dimension_binding: fixed
   - member_id: guidance_and_contract_continuity
+    rule_id: k12-09-guidance-and-contract-continuity
     meaning: Guidance ID and contract version continuity
+    due_stage: post-delta-close
+    producer_capability: batch-close-producer-v1
+    producer_check: closed_list_guidance_and_contract_continuity
+    consumer_gate_id: batch-close
+    evidence_role: emits
+    evidence_kind: audit-receipt
+    dimension: guidance_and_contract
+    dimension_binding: fixed
   - member_id: registered_residual_content
+    rule_id: k12-09-registered-residual-content
     meaning: The batch-close residual-content scan registered in the Registered Scan Registry
+    due_stage: post-delta-close
+    producer_capability: batch-close-producer-v1
+    producer_check: closed_list_registered_residual_content
+    consumer_gate_id: batch-close
+    evidence_role: emits
+    evidence_kind: audit-receipt
+    dimension: null
+    dimension_binding: profile-registration
   - member_id: controlled_vocabulary
+    rule_id: k12-09-controlled-vocabulary
     meaning: Frontmatter controlled-vocabulary validation by the frontmatter-vocabulary Gate over the effective vocabulary contract
+    due_stage: post-delta-close
+    producer_capability: batch-close-producer-v1
+    producer_check: closed_list_controlled_vocabulary
+    consumer_gate_id: batch-close
+    evidence_role: emits
+    evidence_kind: audit-receipt
+    dimension: guidance_and_contract
+    dimension_binding: fixed
   - member_id: manifest_page_contract
+    rule_id: k12-09-manifest-page-contract
     meaning: Page-contract debt on this batch's manifest pages
+    due_stage: post-delta-close
+    producer_gate_id: page-contract
+    producer_check: page-contract-summary
+    consumer_gate_id: batch-close
+    evidence_role: consumes
+    evidence_kind: gate-receipt
+    dimension: null
+    dimension_binding: dimensionless-gate

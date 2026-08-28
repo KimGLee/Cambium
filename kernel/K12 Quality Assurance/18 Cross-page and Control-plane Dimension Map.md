@@ -34,6 +34,7 @@
 | `K12/09` Closed List | 4 Coverage file-count reconciliation | emits | coverage_and_integration |
 | `K12/09` Closed List | 5 guidance ID and contract continuity; 7 frontmatter vocabulary | emits | guidance_and_contract |
 | `K12/09` Closed List | 6 registered residual-content scan | declared by the registered scan | declared there |
+| `K12/09` Closed List | 8 manifest-page contract | consumes | — |
 
 The first two rows are uniform: every item in them emits under the dimension shown, except the graph-impact-rationale item of `K12/04 Source Intake`, which files under coverage_and_integration.
 
@@ -42,6 +43,8 @@ A [[kernel/K12 Quality Assurance/05 Automated and Manual Checks#Domain-specific 
 The `K12/14 Batch` roll-up line covering automated checks, manual content review and the applicable rendering level emits nothing of its own. [[kernel/K12 Quality Assurance/06 Completion Gate and Reporting|K12/06]] and [[kernel/K12 Quality Assurance/15 Terminal Audit and Convergence|K12/15]] state no judgment items: the Completion Gate and the Terminal Audit consume receipts.
 
 Closed List 3 emits a candidate list; whether two candidates are one canonical concept with two owners is decided by the `K12/03 Module` duplicate item.
+
+Closed List 8 consumes the dimensionless `page-contract` Gate evidence for the batch's manifest pages. It does not emit a second judgment or acquire an invented audit dimension.
 
 ## Gate Receipt Dimension Boundary
 

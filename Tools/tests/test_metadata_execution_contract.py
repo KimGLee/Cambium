@@ -239,6 +239,71 @@ class MetadataExecutionContractTests(unittest.TestCase):
         self.assertFalse(contract.capability_registered(
             "unknown-producer-v1", "producer", root=REPOSITORY))
 
+    def test_audit_production_chain_has_one_registered_owner_per_step(self):
+        expected = {
+            "manual-attestation-v1": "Tools/manual_attestation.py",
+            "audit-plan-producer-v1": "Tools/prepare_audit_plan.py",
+            "batch-page-review-attestation-v1":
+                "Tools/record_batch_page_review.py",
+            "substantive-review-attestation-v1":
+                "Tools/record_substantive_review.py",
+            "changed-scope-evidence-adapter-v1":
+                "Tools/record_changed_scope_evidence.py",
+            "dedicated-rendering-verification-v1":
+                "Tools/record_rendering_verification.py",
+            "audit-receipt-producer-v1":
+                "Tools/complete_audit_receipt.py",
+            "batch-review-producer-v1": "Tools/record_batch_review.py",
+        }
+        for capability_id, owner in expected.items():
+            with self.subTest(capability_id=capability_id):
+                entry = contract.capability_entry(
+                    capability_id, "producer", root=REPOSITORY)
+                self.assertIsNotNone(entry)
+                self.assertEqual(owner, entry["implementation_owner"])
+
+    def test_audit_production_chain_names_its_direct_consumers(self):
+        expected = {
+            "audit-plan-producer-v1": {
+                "Tools/audit_evidence_runtime.py",
+                "Tools/complete_audit_receipt.py",
+                "Tools/record_batch_judgment.py",
+                "Tools/record_batch_page_review.py",
+                "Tools/record_batch_review.py",
+                "Tools/record_changed_scope_evidence.py",
+                "Tools/record_rendering_verification.py",
+                "Tools/record_substantive_review.py",
+            },
+            "batch-page-review-attestation-v1": {
+                "Tools/audit_evidence_runtime.py",
+                "Tools/record_batch_review.py",
+            },
+            "substantive-review-attestation-v1": {
+                "Tools/audit_evidence_runtime.py",
+                "Tools/complete_audit_receipt.py",
+            },
+            "changed-scope-evidence-adapter-v1": {
+                "Tools/audit_evidence_runtime.py",
+                "Tools/complete_audit_receipt.py",
+            },
+            "dedicated-rendering-verification-v1": {
+                "Tools/audit_evidence_runtime.py",
+                "Tools/complete_audit_receipt.py",
+            },
+            "audit-receipt-producer-v1": {
+                "Tools/audit_evidence_runtime.py",
+                "Tools/record_batch_review.py",
+                "Tools/update_queue.py",
+            },
+            "batch-review-producer-v1": {"Tools/update_queue.py"},
+        }
+        for capability_id, consumers in expected.items():
+            with self.subTest(capability_id=capability_id):
+                entry = contract.capability_entry(
+                    capability_id, "producer", root=REPOSITORY)
+                self.assertIsNotNone(entry)
+                self.assertEqual(consumers, set(entry["consumers"]))
+
     def test_structure_projection_is_registered_outside_metadata_artifact(self):
         entry = contract.capability_entry(
             "structure-coverage-projection-v1", "projection",

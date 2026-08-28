@@ -131,8 +131,8 @@
 # frontmatter-vocabulary and priority-quota-distribution;
 # check_residual_content 1.2.0 /
 # registered-residual-content; check_queue 1.25.0 / its registered
-# Required-Queue modes; check_batch_close 1.12.0 / batch-close; check_proof
-# 1.17.0 / terminal-proof; and adopt_standards 1.9.0 /
+# Required-Queue modes; check_batch_close 1.13.0 / batch-close; check_proof
+# 1.18.0 / terminal-proof; and adopt_standards 1.9.0 /
 # standards-adoption. Deterministic producers not shown above -- among them
 # check_corpus_plan and record_corpus_acceptance -- follow the same rule. Every receipt
 # created by one of these producer versions carries that exact Gate ID. The
@@ -202,12 +202,15 @@
 #   review_requirement_set_sha256 : the expansion hash the activation froze
 #   judgment_receipt_ids          : sorted unique profile_batch_judgment IDs
 #   judgment_record_set_sha256    : hash over the exact actual records
-# Each member receipt is produced by `record_batch_judgment` (check:
-# profile_batch_judgment) and binds batch_id, judgment_item_id,
-# target_selector, receipt_schema, reviewer_role, the batch's current
-# activation as opening_transition_receipt, the target's
-# semantic_content_sha256 (page targets), and the Profile contract
-# fingerprint; `open -> merge-ready` refuses one missing, extra, duplicated,
+# Each member is a `page-batch-judgment-v1` record produced by
+# `record_batch_judgment` (check: profile_batch_judgment). It binds the exact
+# plan_id / audit_plan_sha256 / obligation_id, the Profile extension owner and
+# acceptance contract, target and due stage, current Queue opening transition,
+# current Card activation, reviewer authority, and the artifact / dependency /
+# contract fingerprints resolved when the evidence is produced. The sole
+# obligation must be the AuditPlan projection of the selected typed Profile's
+# `k12-14-batch-review-requirement`; a free-standing Profile judgment is not
+# evidence. `open -> merge-ready` refuses one missing, extra, duplicated,
 # drifted, mis-roled, or reused record. A requirement-free Profile and any
 # pre-review-era activation carry none of these fields.
 # Receipt cold chain (K12/07): `.cambium/receipts/cold/` is never scanned

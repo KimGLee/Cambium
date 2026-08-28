@@ -175,6 +175,26 @@ class ShippedArtifactTests(unittest.TestCase):
                 self.assertIn("upstream_root", interface["value_arguments"])
                 self.assertIn("upstream_ref", interface["value_arguments"])
 
+    def test_plan_frozen_page_selectors_do_not_grant_path_access(self):
+        contract = compiler.compile_contract(
+            str(REPO_ROOT), tool_availability.SOURCE_DISTRIBUTION)
+        by_tool = {record["tool"]: record for record in contract["tools"]}
+
+        for tool in ("record_batch_page_review",
+                     "record_substantive_review"):
+            with self.subTest(tool=tool):
+                interface = by_tool[tool]["agent_interface"]
+                self.assertIn("page", interface["value_arguments"])
+                self.assertNotIn(
+                    "page",
+                    {row["argument"] for row in interface["path_arguments"]})
+                plan = next(
+                    row for row in interface["path_arguments"]
+                    if row["argument"] == "plan")
+                self.assertEqual("read", plan["access"])
+                self.assertEqual("namespace", plan["constraint"])
+                self.assertEqual("audit-plan-root", plan["runtime_path_id"])
+
 
 class DeterminismTests(unittest.TestCase):
     def test_two_runs_agree_across_hash_seeds(self):
@@ -491,6 +511,54 @@ class FixtureTests(unittest.TestCase):
             compiler.DEFAULT_RUNTIME_PATH_REGISTRY,
             compiled["runtime_path_registry"]["path"],
         )
+
+    def test_path_override_keeps_the_argument_consumption_default(self):
+        self.write_tool("sample.py", """
+            import argparse
+
+            def main(argv=None):
+                parser = argparse.ArgumentParser(description="Sample tool")
+                parser.add_argument("root")
+                parser.add_argument("--receipts")
+                return parser.parse_args(argv)
+        """)
+        write_interface_policy(self.workspace, ["sample"])
+        policy_path = Path(self.workspace) / compiler.DEFAULT_INTERFACE_POLICY
+        policy = kblib.parse_yaml_subset(
+            policy_path.read_text(encoding="utf-8"))
+        policy["tools"][0].update({
+            "exposure": "mcp",
+            "workspace_argument": "root",
+            "workspace_access": "write",
+            "value_arguments": [],
+            "write_paths": ["receipts"],
+        })
+        policy["path_defaults"] = [{
+            "argument": "receipts",
+            "constraint": "namespace",
+            "runtime_path_id": "receipt-root",
+            "suffixes": [".jsonl"],
+            "consumption": "append",
+        }]
+        policy["path_overrides"] = [{
+            "tool": "sample",
+            "argument": "receipts",
+            "constraint": "exact",
+            "runtime_path_id": "gate-attestation-receipts",
+            "suffixes": [],
+        }]
+        policy_path.write_text(
+            kblib.canonical_yaml(policy), encoding="utf-8")
+
+        compiled = compiler.compile_contract(
+            self.workspace, tool_availability.SOURCE_DISTRIBUTION)
+        capability = compiled["tools"][0]["agent_interface"][
+            "path_arguments"][0]
+
+        self.assertEqual("append", capability["consumption"])
+        self.assertEqual("exact", capability["constraint"])
+        self.assertEqual(
+            "gate-attestation-receipts", capability["runtime_path_id"])
 
     def test_component_path_id_tracks_card_schema_path_prefix(self):
         self.write_tool("sample.py", """

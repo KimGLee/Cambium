@@ -1,0 +1,1074 @@
+schema_version: 1
+registry_id: cambium-batch-review-obligations
+semantic_owner: K12/01-K12/14
+machine_projection_owner: K12/14
+
+# This is the sole machine projection of the Kernel-owned M-tier checklist and
+# S-tier sampling rule. The seven M-tier bullets remain human-readable source
+# groups; only the atomic items below are AuditPlan obligation members.
+closed_world:
+  m_tier_atomic_items: true
+  source_groups_are_obligations: false
+  profile_extensions_in_base_set: false
+  unknown_item_fields: reject
+
+# The plan freezes every registered atom as a definition.  A conditional atom
+# is discharged by an explicit page-review disposition, never by disappearing
+# from the plan or by silently being treated as universally applicable.
+m_applicability_contract:
+  unconditional_predicate: always
+  disposition_values:
+    - applicable
+    - not-applicable
+  applicable_reason: null
+  not_applicable_reason: nonempty
+  plan_definition_policy: freeze-all-registered-atoms
+
+audit_plan_projection:
+  owner_kind: kernel
+  kernel_extension_point: null
+  target_source: manifest-page
+  acceptance_predicate_source: acceptance_contract.contract_id
+  evidence_kind: batch-page-review-record
+  consumer_gate_id: batch-review
+  due_stage: pre-merge
+  fingerprint_binding: evidence-time
+  trigger_partition_mappings:
+    - trigger: new
+      partition: initial-semantic-review
+    - trigger: needs_rereview
+      partition: invalidated-semantic-review
+  trigger_meanings:
+    new: The page has no accepted semantic review for its current governed identity.
+    needs_rereview: The page's accepted semantic evidence was invalidated by a governed change.
+
+# These rows machine-resolve the existing K12/08 `consumes` arrows.  The two
+# M05 atoms consume the exact same-page pre-merge wiki-link Gate obligation;
+# M07 consumes the complete same-page changed-scope deterministic closure.
+# The conditional Profile-rendering atom remains HOLD until its typed Profile
+# contract registers an exact producer.  That HOLD is not completion evidence
+# and does not block a page on which the rendering condition is not applicable.
+m_consumption_contracts:
+  - item_id: m05-no-required-link-missing
+    resolution: resolved
+    selector:
+      selector_id: m05-wiki-link-resolution-v1
+      source: audit-plan-obligation-evidence
+      owner_kind: kernel
+      owner_rule_ids:
+        - k12-02-level0-wiki-link-resolution
+      kernel_extension_point: null
+      partition: changed-scope-deterministic
+      due_stage: pre-merge
+      target_binding: same-page
+      evidence_role: emits
+      obligation_status: required
+      consumer_gate_id: batch-review
+      evidence_currency: current
+      evidence_result_values:
+        - pass
+        - passed
+      match_cardinality: exactly-one
+    hold_reason: null
+  - item_id: m05-no-required-link-ambiguous
+    resolution: resolved
+    selector:
+      selector_id: m05-wiki-link-resolution-v1
+      source: audit-plan-obligation-evidence
+      owner_kind: kernel
+      owner_rule_ids:
+        - k12-02-level0-wiki-link-resolution
+      kernel_extension_point: null
+      partition: changed-scope-deterministic
+      due_stage: pre-merge
+      target_binding: same-page
+      evidence_role: emits
+      obligation_status: required
+      consumer_gate_id: batch-review
+      evidence_currency: current
+      evidence_result_values:
+        - pass
+        - passed
+      match_cardinality: exactly-one
+    hold_reason: null
+  - item_id: m06-triggered-rendering-obligations-applied
+    resolution: hold
+    selector: null
+    hold_reason: The existing Profile extension point does not register a unique rendering-obligation evidence selector for this M item.
+  - item_id: m07-applicable-deterministic-checks-pass
+    resolution: resolved
+    selector:
+      selector_id: m07-same-page-pre-merge-changed-scope-emits-v1
+      source: audit-plan-obligation-evidence
+      owner_kind: kernel
+      owner_rule_ids: null
+      kernel_extension_point: null
+      partition: changed-scope-deterministic
+      due_stage: pre-merge
+      target_binding: same-page
+      evidence_role: emits
+      obligation_status: required
+      consumer_gate_id: batch-review
+      evidence_currency: current
+      evidence_result_values:
+        - pass
+        - passed
+      match_cardinality: one-or-more-all-matching-required
+    hold_reason: null
+
+m_tier_source_groups:
+  - group_id: m01-metadata-and-status
+    display_order: 1
+    source_text: "The note type, canonical owner, scope, depth, priority, tier, and applicable status fields are explicit and internally consistent."
+  - group_id: m02-opening-mechanism-boundary-example
+    display_order: 2
+    source_text: "The opening states the problem or position; the body explains the key mechanism or causal chain, its important boundary, and at least one example appropriate to the note type."
+  - group_id: m03-failure-behavior
+    display_order: 3
+    source_text: "Applicable failure behavior is concrete enough to identify trigger, symptom, cause, detection, and mitigation; an item that is genuinely not applicable is stated as such rather than silently omitted."
+  - group_id: m04-evidence-and-claim-role
+    display_order: 4
+    source_text: "Key, time-sensitive, or quantitative claims are supported by evidence whose role is clear; reported claim, inference, synthesis, and recommendation are not conflated."
+  - group_id: m05-body-links
+    display_order: 5
+    source_text: "Parent, prerequisite, key dependency, and first meaningful terminology links are present in the body; no missing or ambiguous link remains."
+  - group_id: m06-profile-obligations
+    display_order: 6
+    source_text: "The selected profile's `Language Contract` and all triggered source, terminology, propagation, and rendering obligations have been applied."
+  - group_id: m07-deterministic-and-rendering
+    display_order: 7
+    source_text: "Applicable deterministic checks pass. Rendering remains at Level 0 / Level 1 unless an objective visual exception trigger and unresolved question are recorded."
+
+m_tier_atomic_items:
+  - item_id: m01-note-type-explicit-consistent
+    rule_id: k12-01-m-tier-note-type-explicit-consistent
+    source_group: m01-metadata-and-status
+    applicability: always
+    acceptance_contract:
+      contract_id: k12-01-m-tier-note-type-explicit-consistent-v1
+      text: The note type is explicit and internally consistent.
+    evidence_role: emits
+    evidence_kind: batch-page-review-record
+    dimension: guidance_and_contract
+    producer_capability: batch-page-review-attestation-v1
+    producer_check: batch_page_review:m01-note-type-explicit-consistent
+    consumer_gate_id: batch-review
+    due_stage: pre-merge
+    trigger_partition_mappings:
+      - trigger: new
+        partition: initial-semantic-review
+      - trigger: needs_rereview
+        partition: invalidated-semantic-review
+
+  - item_id: m01-canonical-owner-explicit-consistent
+    rule_id: k12-01-m-tier-canonical-owner-explicit-consistent
+    source_group: m01-metadata-and-status
+    applicability: always
+    acceptance_contract:
+      contract_id: k12-01-m-tier-canonical-owner-explicit-consistent-v1
+      text: The canonical owner is explicit and internally consistent.
+    evidence_role: emits
+    evidence_kind: batch-page-review-record
+    dimension: structure_and_links
+    producer_capability: batch-page-review-attestation-v1
+    producer_check: batch_page_review:m01-canonical-owner-explicit-consistent
+    consumer_gate_id: batch-review
+    due_stage: pre-merge
+    trigger_partition_mappings:
+      - trigger: new
+        partition: initial-semantic-review
+      - trigger: needs_rereview
+        partition: invalidated-semantic-review
+
+  - item_id: m01-scope-explicit-consistent
+    rule_id: k12-01-m-tier-scope-explicit-consistent
+    source_group: m01-metadata-and-status
+    applicability: always
+    acceptance_contract:
+      contract_id: k12-01-m-tier-scope-explicit-consistent-v1
+      text: The scope is explicit and internally consistent.
+    evidence_role: emits
+    evidence_kind: batch-page-review-record
+    dimension: guidance_and_contract
+    producer_capability: batch-page-review-attestation-v1
+    producer_check: batch_page_review:m01-scope-explicit-consistent
+    consumer_gate_id: batch-review
+    due_stage: pre-merge
+    trigger_partition_mappings:
+      - trigger: new
+        partition: initial-semantic-review
+      - trigger: needs_rereview
+        partition: invalidated-semantic-review
+
+  - item_id: m01-depth-explicit-consistent
+    rule_id: k12-01-m-tier-depth-explicit-consistent
+    source_group: m01-metadata-and-status
+    applicability: always
+    acceptance_contract:
+      contract_id: k12-01-m-tier-depth-explicit-consistent-v1
+      text: The depth is explicit and internally consistent.
+    evidence_role: emits
+    evidence_kind: batch-page-review-record
+    dimension: guidance_and_contract
+    producer_capability: batch-page-review-attestation-v1
+    producer_check: batch_page_review:m01-depth-explicit-consistent
+    consumer_gate_id: batch-review
+    due_stage: pre-merge
+    trigger_partition_mappings:
+      - trigger: new
+        partition: initial-semantic-review
+      - trigger: needs_rereview
+        partition: invalidated-semantic-review
+
+  - item_id: m01-priority-explicit-consistent
+    rule_id: k12-01-m-tier-priority-explicit-consistent
+    source_group: m01-metadata-and-status
+    applicability: always
+    acceptance_contract:
+      contract_id: k12-01-m-tier-priority-explicit-consistent-v1
+      text: The priority is explicit and internally consistent.
+    evidence_role: emits
+    evidence_kind: batch-page-review-record
+    dimension: guidance_and_contract
+    producer_capability: batch-page-review-attestation-v1
+    producer_check: batch_page_review:m01-priority-explicit-consistent
+    consumer_gate_id: batch-review
+    due_stage: pre-merge
+    trigger_partition_mappings:
+      - trigger: new
+        partition: initial-semantic-review
+      - trigger: needs_rereview
+        partition: invalidated-semantic-review
+
+  - item_id: m01-tier-explicit-consistent
+    rule_id: k12-01-m-tier-tier-explicit-consistent
+    source_group: m01-metadata-and-status
+    applicability: always
+    acceptance_contract:
+      contract_id: k12-01-m-tier-tier-explicit-consistent-v1
+      text: The tier is explicit and internally consistent.
+    evidence_role: emits
+    evidence_kind: batch-page-review-record
+    dimension: guidance_and_contract
+    producer_capability: batch-page-review-attestation-v1
+    producer_check: batch_page_review:m01-tier-explicit-consistent
+    consumer_gate_id: batch-review
+    due_stage: pre-merge
+    trigger_partition_mappings:
+      - trigger: new
+        partition: initial-semantic-review
+      - trigger: needs_rereview
+        partition: invalidated-semantic-review
+
+  - item_id: m01-applicable-status-explicit-consistent
+    rule_id: k12-01-m-tier-applicable-status-explicit-consistent
+    source_group: m01-metadata-and-status
+    applicability: when-status-fields-apply
+    acceptance_contract:
+      contract_id: k12-01-m-tier-applicable-status-explicit-consistent-v1
+      text: Applicable status fields are explicit and internally consistent.
+    evidence_role: emits
+    evidence_kind: batch-page-review-record
+    dimension: guidance_and_contract
+    producer_capability: batch-page-review-attestation-v1
+    producer_check: batch_page_review:m01-applicable-status-explicit-consistent
+    consumer_gate_id: batch-review
+    due_stage: pre-merge
+    trigger_partition_mappings:
+      - trigger: new
+        partition: initial-semantic-review
+      - trigger: needs_rereview
+        partition: invalidated-semantic-review
+
+  - item_id: m02-opening-problem-or-position
+    rule_id: k12-01-m-tier-opening-problem-or-position
+    source_group: m02-opening-mechanism-boundary-example
+    applicability: always
+    acceptance_contract:
+      contract_id: k12-01-m-tier-opening-problem-or-position-v1
+      text: The opening states the problem or position.
+    evidence_role: emits
+    evidence_kind: batch-page-review-record
+    dimension: content_and_depth
+    producer_capability: batch-page-review-attestation-v1
+    producer_check: batch_page_review:m02-opening-problem-or-position
+    consumer_gate_id: batch-review
+    due_stage: pre-merge
+    trigger_partition_mappings:
+      - trigger: new
+        partition: initial-semantic-review
+      - trigger: needs_rereview
+        partition: invalidated-semantic-review
+
+  - item_id: m02-key-mechanism-or-causal-chain
+    rule_id: k12-01-m-tier-key-mechanism-or-causal-chain
+    source_group: m02-opening-mechanism-boundary-example
+    applicability: always
+    acceptance_contract:
+      contract_id: k12-01-m-tier-key-mechanism-or-causal-chain-v1
+      text: The body explains the key mechanism or causal chain.
+    evidence_role: emits
+    evidence_kind: batch-page-review-record
+    dimension: content_and_depth
+    producer_capability: batch-page-review-attestation-v1
+    producer_check: batch_page_review:m02-key-mechanism-or-causal-chain
+    consumer_gate_id: batch-review
+    due_stage: pre-merge
+    trigger_partition_mappings:
+      - trigger: new
+        partition: initial-semantic-review
+      - trigger: needs_rereview
+        partition: invalidated-semantic-review
+
+  - item_id: m02-important-boundary
+    rule_id: k12-01-m-tier-important-boundary
+    source_group: m02-opening-mechanism-boundary-example
+    applicability: always
+    acceptance_contract:
+      contract_id: k12-01-m-tier-important-boundary-v1
+      text: The body explains the important boundary of the key mechanism or causal chain.
+    evidence_role: emits
+    evidence_kind: batch-page-review-record
+    dimension: content_and_depth
+    producer_capability: batch-page-review-attestation-v1
+    producer_check: batch_page_review:m02-important-boundary
+    consumer_gate_id: batch-review
+    due_stage: pre-merge
+    trigger_partition_mappings:
+      - trigger: new
+        partition: initial-semantic-review
+      - trigger: needs_rereview
+        partition: invalidated-semantic-review
+
+  - item_id: m02-note-type-appropriate-example
+    rule_id: k12-01-m-tier-note-type-appropriate-example
+    source_group: m02-opening-mechanism-boundary-example
+    applicability: always
+    acceptance_contract:
+      contract_id: k12-01-m-tier-note-type-appropriate-example-v1
+      text: The body includes at least one example appropriate to the note type.
+    evidence_role: emits
+    evidence_kind: batch-page-review-record
+    dimension: content_and_depth
+    producer_capability: batch-page-review-attestation-v1
+    producer_check: batch_page_review:m02-note-type-appropriate-example
+    consumer_gate_id: batch-review
+    due_stage: pre-merge
+    trigger_partition_mappings:
+      - trigger: new
+        partition: initial-semantic-review
+      - trigger: needs_rereview
+        partition: invalidated-semantic-review
+
+  - item_id: m03-failure-trigger
+    rule_id: k12-01-m-tier-failure-trigger
+    source_group: m03-failure-behavior
+    applicability: when-failure-behavior-applies
+    acceptance_contract:
+      contract_id: k12-01-m-tier-failure-trigger-v1
+      text: Applicable failure behavior is concrete enough to identify its trigger.
+    evidence_role: emits
+    evidence_kind: batch-page-review-record
+    dimension: content_and_depth
+    producer_capability: batch-page-review-attestation-v1
+    producer_check: batch_page_review:m03-failure-trigger
+    consumer_gate_id: batch-review
+    due_stage: pre-merge
+    trigger_partition_mappings:
+      - trigger: new
+        partition: initial-semantic-review
+      - trigger: needs_rereview
+        partition: invalidated-semantic-review
+
+  - item_id: m03-failure-symptom
+    rule_id: k12-01-m-tier-failure-symptom
+    source_group: m03-failure-behavior
+    applicability: when-failure-behavior-applies
+    acceptance_contract:
+      contract_id: k12-01-m-tier-failure-symptom-v1
+      text: Applicable failure behavior is concrete enough to identify its symptom.
+    evidence_role: emits
+    evidence_kind: batch-page-review-record
+    dimension: content_and_depth
+    producer_capability: batch-page-review-attestation-v1
+    producer_check: batch_page_review:m03-failure-symptom
+    consumer_gate_id: batch-review
+    due_stage: pre-merge
+    trigger_partition_mappings:
+      - trigger: new
+        partition: initial-semantic-review
+      - trigger: needs_rereview
+        partition: invalidated-semantic-review
+
+  - item_id: m03-failure-cause
+    rule_id: k12-01-m-tier-failure-cause
+    source_group: m03-failure-behavior
+    applicability: when-failure-behavior-applies
+    acceptance_contract:
+      contract_id: k12-01-m-tier-failure-cause-v1
+      text: Applicable failure behavior is concrete enough to identify its cause.
+    evidence_role: emits
+    evidence_kind: batch-page-review-record
+    dimension: content_and_depth
+    producer_capability: batch-page-review-attestation-v1
+    producer_check: batch_page_review:m03-failure-cause
+    consumer_gate_id: batch-review
+    due_stage: pre-merge
+    trigger_partition_mappings:
+      - trigger: new
+        partition: initial-semantic-review
+      - trigger: needs_rereview
+        partition: invalidated-semantic-review
+
+  - item_id: m03-failure-detection
+    rule_id: k12-01-m-tier-failure-detection
+    source_group: m03-failure-behavior
+    applicability: when-failure-behavior-applies
+    acceptance_contract:
+      contract_id: k12-01-m-tier-failure-detection-v1
+      text: Applicable failure behavior is concrete enough to identify its detection.
+    evidence_role: emits
+    evidence_kind: batch-page-review-record
+    dimension: content_and_depth
+    producer_capability: batch-page-review-attestation-v1
+    producer_check: batch_page_review:m03-failure-detection
+    consumer_gate_id: batch-review
+    due_stage: pre-merge
+    trigger_partition_mappings:
+      - trigger: new
+        partition: initial-semantic-review
+      - trigger: needs_rereview
+        partition: invalidated-semantic-review
+
+  - item_id: m03-failure-mitigation
+    rule_id: k12-01-m-tier-failure-mitigation
+    source_group: m03-failure-behavior
+    applicability: when-failure-behavior-applies
+    acceptance_contract:
+      contract_id: k12-01-m-tier-failure-mitigation-v1
+      text: Applicable failure behavior is concrete enough to identify its mitigation.
+    evidence_role: emits
+    evidence_kind: batch-page-review-record
+    dimension: content_and_depth
+    producer_capability: batch-page-review-attestation-v1
+    producer_check: batch_page_review:m03-failure-mitigation
+    consumer_gate_id: batch-review
+    due_stage: pre-merge
+    trigger_partition_mappings:
+      - trigger: new
+        partition: initial-semantic-review
+      - trigger: needs_rereview
+        partition: invalidated-semantic-review
+
+  - item_id: m03-not-applicable-explicit
+    rule_id: k12-01-m-tier-failure-not-applicable-explicit
+    source_group: m03-failure-behavior
+    applicability: when-failure-behavior-is-genuinely-not-applicable
+    acceptance_contract:
+      contract_id: k12-01-m-tier-failure-not-applicable-explicit-v1
+      text: A genuinely not-applicable failure-behavior item is stated as such rather than silently omitted.
+    evidence_role: emits
+    evidence_kind: batch-page-review-record
+    dimension: content_and_depth
+    producer_capability: batch-page-review-attestation-v1
+    producer_check: batch_page_review:m03-not-applicable-explicit
+    consumer_gate_id: batch-review
+    due_stage: pre-merge
+    trigger_partition_mappings:
+      - trigger: new
+        partition: initial-semantic-review
+      - trigger: needs_rereview
+        partition: invalidated-semantic-review
+
+  - item_id: m04-key-claim-evidence
+    rule_id: k12-01-m-tier-key-claim-evidence
+    source_group: m04-evidence-and-claim-role
+    applicability: when-key-claims-are-present
+    acceptance_contract:
+      contract_id: k12-01-m-tier-key-claim-evidence-v1
+      text: Key claims are supported by evidence whose role is clear.
+    evidence_role: emits
+    evidence_kind: batch-page-review-record
+    dimension: source_and_currentness
+    producer_capability: batch-page-review-attestation-v1
+    producer_check: batch_page_review:m04-key-claim-evidence
+    consumer_gate_id: batch-review
+    due_stage: pre-merge
+    trigger_partition_mappings:
+      - trigger: new
+        partition: initial-semantic-review
+      - trigger: needs_rereview
+        partition: invalidated-semantic-review
+
+  - item_id: m04-time-sensitive-claim-evidence
+    rule_id: k12-01-m-tier-time-sensitive-claim-evidence
+    source_group: m04-evidence-and-claim-role
+    applicability: when-time-sensitive-claims-are-present
+    acceptance_contract:
+      contract_id: k12-01-m-tier-time-sensitive-claim-evidence-v1
+      text: Time-sensitive claims are supported by evidence whose role is clear.
+    evidence_role: emits
+    evidence_kind: batch-page-review-record
+    dimension: source_and_currentness
+    producer_capability: batch-page-review-attestation-v1
+    producer_check: batch_page_review:m04-time-sensitive-claim-evidence
+    consumer_gate_id: batch-review
+    due_stage: pre-merge
+    trigger_partition_mappings:
+      - trigger: new
+        partition: initial-semantic-review
+      - trigger: needs_rereview
+        partition: invalidated-semantic-review
+
+  - item_id: m04-quantitative-claim-evidence
+    rule_id: k12-01-m-tier-quantitative-claim-evidence
+    source_group: m04-evidence-and-claim-role
+    applicability: when-quantitative-claims-are-present
+    acceptance_contract:
+      contract_id: k12-01-m-tier-quantitative-claim-evidence-v1
+      text: Quantitative claims are supported by evidence whose role is clear.
+    evidence_role: emits
+    evidence_kind: batch-page-review-record
+    dimension: source_and_currentness
+    producer_capability: batch-page-review-attestation-v1
+    producer_check: batch_page_review:m04-quantitative-claim-evidence
+    consumer_gate_id: batch-review
+    due_stage: pre-merge
+    trigger_partition_mappings:
+      - trigger: new
+        partition: initial-semantic-review
+      - trigger: needs_rereview
+        partition: invalidated-semantic-review
+
+  - item_id: m04-claim-role-distinction
+    rule_id: k12-01-m-tier-claim-role-distinction
+    source_group: m04-evidence-and-claim-role
+    applicability: when-any-listed-claim-role-is-present
+    acceptance_contract:
+      contract_id: k12-01-m-tier-claim-role-distinction-v1
+      text: Reported claim, inference, synthesis, and recommendation are not conflated.
+    evidence_role: emits
+    evidence_kind: batch-page-review-record
+    dimension: content_and_depth
+    producer_capability: batch-page-review-attestation-v1
+    producer_check: batch_page_review:m04-claim-role-distinction
+    consumer_gate_id: batch-review
+    due_stage: pre-merge
+    trigger_partition_mappings:
+      - trigger: new
+        partition: initial-semantic-review
+      - trigger: needs_rereview
+        partition: invalidated-semantic-review
+
+  - item_id: m05-parent-link-in-body
+    rule_id: k12-01-m-tier-parent-link-in-body
+    source_group: m05-body-links
+    applicability: always
+    acceptance_contract:
+      contract_id: k12-01-m-tier-parent-link-in-body-v1
+      text: The parent link is present in the body.
+    evidence_role: emits
+    evidence_kind: batch-page-review-record
+    dimension: structure_and_links
+    producer_capability: batch-page-review-attestation-v1
+    producer_check: batch_page_review:m05-parent-link-in-body
+    consumer_gate_id: batch-review
+    due_stage: pre-merge
+    trigger_partition_mappings:
+      - trigger: new
+        partition: initial-semantic-review
+      - trigger: needs_rereview
+        partition: invalidated-semantic-review
+
+  - item_id: m05-prerequisite-links-in-body
+    rule_id: k12-01-m-tier-prerequisite-links-in-body
+    source_group: m05-body-links
+    applicability: always
+    acceptance_contract:
+      contract_id: k12-01-m-tier-prerequisite-links-in-body-v1
+      text: Prerequisite links are present in the body.
+    evidence_role: emits
+    evidence_kind: batch-page-review-record
+    dimension: structure_and_links
+    producer_capability: batch-page-review-attestation-v1
+    producer_check: batch_page_review:m05-prerequisite-links-in-body
+    consumer_gate_id: batch-review
+    due_stage: pre-merge
+    trigger_partition_mappings:
+      - trigger: new
+        partition: initial-semantic-review
+      - trigger: needs_rereview
+        partition: invalidated-semantic-review
+
+  - item_id: m05-key-dependency-links-in-body
+    rule_id: k12-01-m-tier-key-dependency-links-in-body
+    source_group: m05-body-links
+    applicability: always
+    acceptance_contract:
+      contract_id: k12-01-m-tier-key-dependency-links-in-body-v1
+      text: Key dependency links are present in the body.
+    evidence_role: emits
+    evidence_kind: batch-page-review-record
+    dimension: structure_and_links
+    producer_capability: batch-page-review-attestation-v1
+    producer_check: batch_page_review:m05-key-dependency-links-in-body
+    consumer_gate_id: batch-review
+    due_stage: pre-merge
+    trigger_partition_mappings:
+      - trigger: new
+        partition: initial-semantic-review
+      - trigger: needs_rereview
+        partition: invalidated-semantic-review
+
+  - item_id: m05-first-meaningful-terminology-links
+    rule_id: k12-01-m-tier-first-meaningful-terminology-links
+    source_group: m05-body-links
+    applicability: always
+    acceptance_contract:
+      contract_id: k12-01-m-tier-first-meaningful-terminology-links-v1
+      text: Terminology links are present at their first meaningful occurrence in the body.
+    evidence_role: emits
+    evidence_kind: batch-page-review-record
+    dimension: structure_and_links
+    producer_capability: batch-page-review-attestation-v1
+    producer_check: batch_page_review:m05-first-meaningful-terminology-links
+    consumer_gate_id: batch-review
+    due_stage: pre-merge
+    trigger_partition_mappings:
+      - trigger: new
+        partition: initial-semantic-review
+      - trigger: needs_rereview
+        partition: invalidated-semantic-review
+
+  - item_id: m05-no-required-link-missing
+    rule_id: k12-01-m-tier-no-required-link-missing
+    source_group: m05-body-links
+    applicability: always
+    acceptance_contract:
+      contract_id: k12-01-m-tier-no-required-link-missing-v1
+      text: No required link is missing.
+    evidence_role: consumes
+    evidence_kind: batch-page-review-record
+    dimension: structure_and_links
+    producer_capability: batch-page-review-attestation-v1
+    producer_check: batch_page_review:m05-no-required-link-missing
+    consumer_gate_id: batch-review
+    due_stage: pre-merge
+    trigger_partition_mappings:
+      - trigger: new
+        partition: initial-semantic-review
+      - trigger: needs_rereview
+        partition: invalidated-semantic-review
+
+  - item_id: m05-no-required-link-ambiguous
+    rule_id: k12-01-m-tier-no-required-link-ambiguous
+    source_group: m05-body-links
+    applicability: always
+    acceptance_contract:
+      contract_id: k12-01-m-tier-no-required-link-ambiguous-v1
+      text: No required link is ambiguous.
+    evidence_role: consumes
+    evidence_kind: batch-page-review-record
+    dimension: structure_and_links
+    producer_capability: batch-page-review-attestation-v1
+    producer_check: batch_page_review:m05-no-required-link-ambiguous
+    consumer_gate_id: batch-review
+    due_stage: pre-merge
+    trigger_partition_mappings:
+      - trigger: new
+        partition: initial-semantic-review
+      - trigger: needs_rereview
+        partition: invalidated-semantic-review
+
+  - item_id: m06-language-contract-applied
+    rule_id: k12-01-m-tier-language-contract-applied
+    source_group: m06-profile-obligations
+    applicability: always
+    acceptance_contract:
+      contract_id: k12-01-m-tier-language-contract-applied-v1
+      text: The selected profile's Language Contract has been applied.
+    evidence_role: emits
+    evidence_kind: batch-page-review-record
+    dimension: guidance_and_contract
+    producer_capability: batch-page-review-attestation-v1
+    producer_check: batch_page_review:m06-language-contract-applied
+    consumer_gate_id: batch-review
+    due_stage: pre-merge
+    trigger_partition_mappings:
+      - trigger: new
+        partition: initial-semantic-review
+      - trigger: needs_rereview
+        partition: invalidated-semantic-review
+
+  - item_id: m06-triggered-source-obligations-applied
+    rule_id: k12-01-m-tier-triggered-source-obligations-applied
+    source_group: m06-profile-obligations
+    applicability: when-source-obligations-are-triggered
+    acceptance_contract:
+      contract_id: k12-01-m-tier-triggered-source-obligations-applied-v1
+      text: All triggered source obligations have been applied.
+    evidence_role: emits
+    evidence_kind: batch-page-review-record
+    dimension: source_and_currentness
+    producer_capability: batch-page-review-attestation-v1
+    producer_check: batch_page_review:m06-triggered-source-obligations-applied
+    consumer_gate_id: batch-review
+    due_stage: pre-merge
+    trigger_partition_mappings:
+      - trigger: new
+        partition: initial-semantic-review
+      - trigger: needs_rereview
+        partition: invalidated-semantic-review
+
+  - item_id: m06-triggered-terminology-obligations-applied
+    rule_id: k12-01-m-tier-triggered-terminology-obligations-applied
+    source_group: m06-profile-obligations
+    applicability: when-terminology-obligations-are-triggered
+    acceptance_contract:
+      contract_id: k12-01-m-tier-triggered-terminology-obligations-applied-v1
+      text: All triggered terminology obligations have been applied.
+    evidence_role: emits
+    evidence_kind: batch-page-review-record
+    dimension: structure_and_links
+    producer_capability: batch-page-review-attestation-v1
+    producer_check: batch_page_review:m06-triggered-terminology-obligations-applied
+    consumer_gate_id: batch-review
+    due_stage: pre-merge
+    trigger_partition_mappings:
+      - trigger: new
+        partition: initial-semantic-review
+      - trigger: needs_rereview
+        partition: invalidated-semantic-review
+
+  - item_id: m06-triggered-propagation-obligations-applied
+    rule_id: k12-01-m-tier-triggered-propagation-obligations-applied
+    source_group: m06-profile-obligations
+    applicability: when-propagation-obligations-are-triggered
+    acceptance_contract:
+      contract_id: k12-01-m-tier-triggered-propagation-obligations-applied-v1
+      text: All triggered propagation obligations have been applied.
+    evidence_role: emits
+    evidence_kind: batch-page-review-record
+    dimension: guidance_and_contract
+    producer_capability: batch-page-review-attestation-v1
+    producer_check: batch_page_review:m06-triggered-propagation-obligations-applied
+    consumer_gate_id: batch-review
+    due_stage: pre-merge
+    trigger_partition_mappings:
+      - trigger: new
+        partition: initial-semantic-review
+      - trigger: needs_rereview
+        partition: invalidated-semantic-review
+
+  - item_id: m06-triggered-rendering-obligations-applied
+    rule_id: k12-01-m-tier-triggered-rendering-obligations-applied
+    source_group: m06-profile-obligations
+    applicability: when-rendering-obligations-are-triggered
+    acceptance_contract:
+      contract_id: k12-01-m-tier-triggered-rendering-obligations-applied-v1
+      text: All triggered rendering obligations have been applied.
+    evidence_role: consumes
+    evidence_kind: batch-page-review-record
+    dimension: rendering
+    producer_capability: batch-page-review-attestation-v1
+    producer_check: batch_page_review:m06-triggered-rendering-obligations-applied
+    consumer_gate_id: batch-review
+    due_stage: pre-merge
+    trigger_partition_mappings:
+      - trigger: new
+        partition: initial-semantic-review
+      - trigger: needs_rereview
+        partition: invalidated-semantic-review
+
+  - item_id: m07-applicable-deterministic-checks-pass
+    rule_id: k12-01-m-tier-applicable-deterministic-checks-pass
+    source_group: m07-deterministic-and-rendering
+    applicability: always
+    acceptance_contract:
+      contract_id: k12-01-m-tier-applicable-deterministic-checks-pass-v1
+      text: Applicable deterministic checks pass.
+    evidence_role: consumes
+    evidence_kind: batch-page-review-record
+    dimension: guidance_and_contract
+    producer_capability: batch-page-review-attestation-v1
+    producer_check: batch_page_review:m07-applicable-deterministic-checks-pass
+    consumer_gate_id: batch-review
+    due_stage: pre-merge
+    trigger_partition_mappings:
+      - trigger: new
+        partition: initial-semantic-review
+      - trigger: needs_rereview
+        partition: invalidated-semantic-review
+
+  - item_id: m07-rendering-level-or-exception
+    rule_id: k12-01-m-tier-rendering-level-or-exception
+    source_group: m07-deterministic-and-rendering
+    applicability: always
+    acceptance_contract:
+      contract_id: k12-01-m-tier-rendering-level-or-exception-v1
+      text: Rendering remains at Level 0 / Level 1 unless an objective visual exception trigger and unresolved question are recorded.
+    evidence_role: emits
+    evidence_kind: batch-page-review-record
+    dimension: rendering
+    producer_capability: batch-page-review-attestation-v1
+    producer_check: batch_page_review:m07-rendering-level-or-exception
+    consumer_gate_id: batch-review
+    due_stage: pre-merge
+    trigger_partition_mappings:
+      - trigger: new
+        partition: initial-semantic-review
+      - trigger: needs_rereview
+        partition: invalidated-semantic-review
+
+s_tier_sampling:
+  rule_id: k12-14-s-tier-bounded-sampling
+  population:
+    target_source: current-batch-manifest-pages
+    tier: S
+    variable: n
+  sample_count:
+    when_n_less_than_minimum: all
+    minimum_count: 2
+    percentage_numerator: 20
+    percentage_denominator: 100
+    rounding: ceiling
+    otherwise: max(2, ceil(n * 20 / 100))
+    integer_equivalent: max(2, (n * 20 + 99) // 100)
+  selection_execution:
+    authority: tool
+    kernel_meaning: none
+    requirements:
+      - The same frozen population and Tool algorithm identity produce the same selected target set.
+      - The Tool freezes the population, required count, selected target set, and selection fingerprint before review begins.
+      - The Tool does not treat its selection algorithm as a Kernel judgment rule.
+  sampled_review_obligation:
+    applicability: selected-by-frozen-tool-sample
+    acceptance_contract:
+      contract_id: k12-14-s-tier-sampled-review-v1
+      text: S-tier pages are reviewed by sampling; when sampling finds problems, expand the scope per K12/07.
+    evidence_role: emits
+    evidence_kind: batch-page-review-record
+    dimension: null
+    producer_capability: batch-page-review-attestation-v1
+    producer_check: batch_page_review:s-tier-sampled-review
+    consumer_gate_id: batch-review
+    due_stage: pre-merge
+    partition: bounded-sampling
+    fingerprint_binding: evidence-time
+
+producer_evidence_contract:
+  contract_id: cambium-batch-page-review-record
+  record_kind: batch-page-review-record
+  unknown_fields: reject
+  fields:
+    - field: schema_version
+      type: integer
+    - field: record_kind
+      type: string
+    - field: receipt_id
+      type: string
+    - field: review_variant
+      type: string
+    - field: tool
+      type: string
+    - field: tool_version
+      type: string
+    - field: check
+      type: string
+    - field: target
+      type: string
+    - field: result
+      type: string
+    - field: details
+      type: string
+    - field: checked_at
+      type: utc-timestamp
+    - field: invalidated_by
+      type: nullable-string
+    - field: plan_id
+      type: string
+    - field: audit_plan_sha256
+      type: sha256
+    - field: obligation_id
+      type: string
+    - field: task_id
+      type: string
+    - field: batch_id
+      type: string
+    - field: opening_transition_receipt
+      type: string
+    - field: standards_version
+      type: string
+    - field: active_standards_sha256
+      type: sha256
+    - field: selected_profile_manifest
+      type: string
+    - field: profile_snapshot_sha256
+      type: sha256
+    - field: profile_contract_fingerprint
+      type: sha256
+    - field: tier
+      type: string
+    - field: applicability_disposition
+      type: string
+    - field: applicability_reason
+      type: nullable-string
+    - field: item_id
+      type: string
+    - field: rule_id
+      type: string
+    - field: source_group
+      type: string
+    - field: partition
+      type: string
+    - field: due_stage
+      type: string
+    - field: evidence_role
+      type: string
+    - field: evidence_kind
+      type: string
+    - field: dimension
+      type: nullable-string
+    - field: acceptance_predicate
+      type: string
+    - field: producer_capability
+      type: string
+    - field: consumer_gate_id
+      type: string
+    - field: fingerprint_binding
+      type: string
+    - field: artifact_fingerprint
+      type: sha256
+    - field: dependency_fingerprint
+      type: sha256
+    - field: contract_fingerprint
+      type: sha256
+    - field: semantic_content_fingerprint
+      type: sha256
+    - field: reviewer_context_id
+      type: string
+    - field: reviewer_role
+      type: string
+    - field: verdict
+      type: string
+    - field: consumed_evidence_refs
+      type: string-list
+    - field: sample_rule_id
+      type: string
+    - field: sample_population_count
+      type: integer
+    - field: sample_population_targets
+      type: string-list
+    - field: sample_population_sha256
+      type: sha256
+    - field: sample_required_count
+      type: integer
+    - field: sample_selected_targets
+      type: string-list
+    - field: sample_selected_set_sha256
+      type: sha256
+    - field: selection_algorithm_id
+      type: string
+    - field: selection_fingerprint
+      type: sha256
+    - field: selection_frozen_at
+      type: utc-timestamp
+  required_common_fields:
+    - schema_version
+    - record_kind
+    - receipt_id
+    - review_variant
+    - tool
+    - tool_version
+    - check
+    - target
+    - result
+    - details
+    - checked_at
+    - invalidated_by
+    - plan_id
+    - audit_plan_sha256
+    - obligation_id
+    - task_id
+    - batch_id
+    - opening_transition_receipt
+    - standards_version
+    - active_standards_sha256
+    - selected_profile_manifest
+    - profile_snapshot_sha256
+    - profile_contract_fingerprint
+    - tier
+    - partition
+    - due_stage
+    - evidence_role
+    - evidence_kind
+    - dimension
+    - acceptance_predicate
+    - producer_capability
+    - consumer_gate_id
+    - fingerprint_binding
+    - artifact_fingerprint
+    - dependency_fingerprint
+    - contract_fingerprint
+    - semantic_content_fingerprint
+    - reviewer_context_id
+    - reviewer_role
+    - verdict
+    - consumed_evidence_refs
+  variants:
+    - review_variant: m-atomic-item
+      tier: M
+      required_fields:
+        - applicability_disposition
+        - applicability_reason
+        - item_id
+        - rule_id
+        - source_group
+      forbidden_fields:
+        - sample_rule_id
+        - sample_population_count
+        - sample_population_targets
+        - sample_population_sha256
+        - sample_required_count
+        - sample_selected_targets
+        - sample_selected_set_sha256
+        - selection_algorithm_id
+        - selection_fingerprint
+        - selection_frozen_at
+      invariants:
+        - item_id, rule_id, source_group, check, evidence_role, dimension, acceptance_predicate, producer_capability, consumer_gate_id, due_stage, and partition equal the named registry item and its resolved trigger partition.
+        - dimension is exactly one registered receipt dimension.
+        - An always-applicable item records applicable with a null reason; a conditional item records applicable with a null reason or not-applicable with a nonempty reason.
+        - An emits item has an empty consumed_evidence_refs list. An applicable consumes item binds exactly the canonical evidence selected by its resolved consumption contract; an unresolved selector is HOLD. A not-applicable conditional consumes item binds no evidence.
+    - review_variant: s-sampled-page
+      tier: S
+      required_fields:
+        - sample_rule_id
+        - sample_population_count
+        - sample_population_targets
+        - sample_population_sha256
+        - sample_required_count
+        - sample_selected_targets
+        - sample_selected_set_sha256
+        - selection_algorithm_id
+        - selection_fingerprint
+        - selection_frozen_at
+      forbidden_fields:
+        - applicability_disposition
+        - applicability_reason
+        - item_id
+        - rule_id
+        - source_group
+      invariants:
+        - dimension is null; this record is not disguised as a dimension-specific AuditReceipt.
+        - sample_rule_id, sample_required_count, check, evidence_role, acceptance_predicate, producer_capability, consumer_gate_id, due_stage, and partition equal the S-tier sampling registry entry.
+        - sample_population_targets and sample_selected_targets are sorted and unique; the selected set contains target, is a subset of the frozen population, and has sample_required_count members.
+        - sample_population_sha256, sample_selected_set_sha256, and selection_fingerprint bind the exact frozen population, selected set, and Tool algorithm identity.
+  result_values:
+    - pass
+    - fail
+  verdict_result_mappings:
+    - verdict: passed
+      result: pass
+    - verdict: changes-required
+      result: fail

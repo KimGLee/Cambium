@@ -33,11 +33,11 @@ exceptions:
     growth_cap_bytes: 7680
     record_id: EXC-005
   - path: kernel/K12 Quality Assurance/05 Automated and Manual Checks.md
-    measured_bytes: 9384
+    measured_bytes: 9299
     growth_cap_bytes: 10240
     record_id: EXC-006
   - path: kernel/K12 Quality Assurance/07 Audit Evidence Reuse and Invalidation.md
-    measured_bytes: 17165
+    measured_bytes: 19082
     growth_cap_bytes: 26112
     record_id: EXC-007
   - path: kernel/K00 Standards Control/09 Default Constraints Snapshot.md
@@ -57,7 +57,7 @@ exceptions:
     growth_cap_bytes: 7168
     record_id: EXC-011
   - path: kernel/K12 Quality Assurance/09 Batch-close Closed List.md
-    measured_bytes: 11924
+    measured_bytes: 12747
     growth_cap_bytes: 16896
     record_id: EXC-012
   - path: kernel/K12 Quality Assurance/10 Standards Version Adoption.md
@@ -77,7 +77,7 @@ exceptions:
     growth_cap_bytes: 10752
     record_id: EXC-016
   - path: kernel/K12 Quality Assurance/14 Batch Review.md
-    measured_bytes: 6060
+    measured_bytes: 6030
     growth_cap_bytes: 7680
     record_id: EXC-017
   - path: kernel/K13 Task Runtime and Execution Control/19 Card Context Activation and Read-back Delivery.md

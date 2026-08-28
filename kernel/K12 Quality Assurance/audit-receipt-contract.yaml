@@ -1,0 +1,197 @@
+schema_version: 1
+contract_id: cambium-audit-receipt
+semantic_owner: K12/07-K12/08
+record_kind: audit-receipt
+fingerprint_phase: evidence-time
+dimension_requirement: registered-non-null
+producer_binding: exactly-one-of-capability-or-gate
+
+# K12/07 owns this projection. A page fingerprint binds the canonical
+# repository-relative path, the exact body bytes after any complete
+# frontmatter fence, and only the six listed semantic frontmatter fields.
+# YAML spelling and mapping order do not change the fingerprint; presence and
+# normalized value do. Every other frontmatter field is deliberately excluded.
+page_artifact_fingerprint:
+  protocol_id: cambium-page-artifact-v1
+  digest_serialization: sha256-prefixed-canonical-json-utf8
+  page_material_fields:
+    - protocol_id
+    - path
+    - frontmatter
+    - body
+  path_binding: canonical-repository-relative-posix
+  body_binding: exact-bytes-after-frontmatter
+  frontmatter_normalization: restricted-yaml-semantic
+  opening_frontmatter_marker: "---"
+  included_frontmatter_fields:
+    - type
+    - priority
+    - tier
+    - coverage_disposition
+    - lifecycle
+    - prerequisites
+  excluded_frontmatter_policy: all-other-fields
+  absent_included_field_policy: omit
+  closing_frontmatter_markers:
+    - "---"
+    - "..."
+  page_set_protocol_id: cambium-page-artifact-set-v1
+  page_set_material_fields:
+    - protocol_id
+    - members
+  page_set_member_fields:
+    - path
+    - artifact_fingerprint
+  page_set_order: canonical-path-ascending
+fields:
+  - field: schema_version
+    type: integer
+    nullable: false
+  - field: record_kind
+    type: string
+    nullable: false
+  - field: receipt_id
+    type: string
+    nullable: false
+  - field: plan_id
+    type: string
+    nullable: false
+  - field: audit_plan_sha256
+    type: sha256
+    nullable: false
+  - field: obligation_id
+    type: string
+    nullable: false
+  - field: owner_kind
+    type: string
+    nullable: false
+  - field: owner_rule_id
+    type: string
+    nullable: false
+  - field: kernel_extension_point
+    type: string
+    nullable: true
+  - field: task_id
+    type: string
+    nullable: false
+  - field: batch_id
+    type: string
+    nullable: false
+  - field: opening_transition_receipt
+    type: string
+    nullable: false
+  - field: standards_version
+    type: string
+    nullable: false
+  - field: active_standards_sha256
+    type: sha256
+    nullable: false
+  - field: selected_profile_manifest
+    type: string
+    nullable: false
+  - field: profile_snapshot_sha256
+    type: sha256
+    nullable: false
+  - field: profile_contract_fingerprint
+    type: sha256
+    nullable: false
+  - field: due_stage
+    type: string
+    nullable: false
+  - field: evidence_role
+    type: string
+    nullable: false
+  - field: evidence_kind
+    type: string
+    nullable: false
+  - field: dimension
+    type: string
+    nullable: false
+  - field: scope
+    type: string-list
+    nullable: false
+  - field: acceptance_predicate
+    type: string
+    nullable: false
+  - field: producer_check
+    type: string
+    nullable: false
+  - field: producer_capability
+    type: string
+    nullable: true
+  - field: producer_gate_id
+    type: string
+    nullable: true
+  - field: consumer_gate_id
+    type: string
+    nullable: false
+  - field: fingerprint_binding
+    type: string
+    nullable: false
+  - field: artifact_fingerprint
+    type: sha256
+    nullable: false
+  - field: dependency_fingerprint
+    type: sha256
+    nullable: false
+  - field: contract_fingerprint
+    type: sha256
+    nullable: false
+  - field: verifier
+    type: string
+    nullable: false
+  - field: method
+    type: string
+    nullable: false
+  - field: evidence_ref
+    type: string
+    nullable: false
+  - field: checked_at
+    type: utc-timestamp
+    nullable: false
+  - field: review_due
+    type: utc-timestamp
+    nullable: true
+  - field: result
+    type: string
+    nullable: false
+  - field: invalidated_by
+    type: string
+    nullable: true
+  - field: reused_receipt_id
+    type: string
+    nullable: true
+  - field: reuse_reason
+    type: string
+    nullable: true
+result_values:
+  - passed
+  - failed
+
+due_stage_values:
+  - pre-merge
+  - post-delta-close
+
+evidence_role_values:
+  - emits
+
+# A dimensionless Gate record remains Gate evidence. It is never normalized
+# into this dimension-specific record kind by assigning an arbitrary dimension.
+evidence_kind_values:
+  - audit-receipt
+
+owner_kind_values:
+  - kernel
+  - profile-extension
+
+fingerprint_binding_values:
+  - evidence-time
+  - reused-receipt
+
+fingerprint_fields:
+  - artifact_fingerprint
+  - dependency_fingerprint
+  - contract_fingerprint
+reuse_fields:
+  - reused_receipt_id
+  - reuse_reason

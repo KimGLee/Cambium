@@ -1,36 +1,42 @@
-# =============================================================================
-# AuditPlan template (machine-readable state layer; the template is the schema doc)
-# Owner standard: "kernel/K12 Quality Assurance/07 Audit Evidence Reuse and Invalidation.md"
-#   -- Incremental Audit Planning: each batch generates an AuditPlan exactly
-#      once, before close; at batch start only the Audit Receipt Register is
-#      loaded, with no separate AuditPlan (K12/07). The close-time sequence:
-#      freeze snapshot -> diff -> resolve direct/dependency invalidation ->
-#      partition the checks -> run them and produce new receipts ->
-#      reconcile -> close only when required invalidations reach zero.
-#
-# Only the restricted YAML subset is allowed (parseable by Tools/kblib.py parse_yaml_subset):
-#   - `key: value` scalars (string/number/boolean/null, quoted strings, inline `[]`);
-#   - `- item` lists indented under `key:`;
-#   - list items may be a one-level flat map; two-level indented nested maps.
-#   Not allowed: anchors/aliases, block scalars (| >), non-empty flow maps, tags, multi-document.
-#   The exact empty mapping `{}` is allowed where a schema requires an explicit empty state.
-# =============================================================================
-
-generated_at: "2026-07-21T00:00:00Z"  # AuditPlan generation time = artifact/contract snapshot freeze time (K12/07 step 1)
-
-changed_objects:                   # objects changed relative to the latest accepted snapshot (K12/07 step 2; input to invalidation)
-  - "Topics/Example Topic.md"
-
-reused_receipts:                   # historical receipts that passed the Reuse Gate (K12/07: reuse must record reused_receipt_id and a reuse reason)
-  - receipt_id: "audit-check_links-20260701T000000Z-11111111111111111111111111111111-0001"  # the reused receipt_id
-    reason: "artifact/dependency/contract fingerprints all unchanged; acceptance predicate unchanged"  # reuse reason (must not just say "already checked before")
-
-invalidated_receipts:              # receipts judged invalid in this round (K12/07 Direct / Dependency Invalidation)
-  - receipt_id: "audit-check_vocab-20260701T000000Z-22222222222222222222222222222222-0002"  # the invalidated receipt_id
-    reason: "file content within scope changed (direct invalidation)"  # invalidation reason, pointing to the K12/07 invalidation clause
-
-required_checks:                   # check partitions that must run this round (the six partitions of K12/07 step 4)
-  - check: "check_links full-vault"          # check item and scope
-    partition: mandatory-full-deterministic  # partition vocabulary owner: K12/07 (mandatory-full-deterministic/changed-scope-deterministic/invalidated-semantic-review/high-risk-targeted-review/bounded-sampling/reusable-evidence)
-  - check: "content_and_depth review of changed pages"
+# Non-authoritative example only. The unique field, shape, and partition owner
+# is kernel/K12 Quality Assurance/audit-plan-contract.yaml (K12/19).
+schema_version: 1
+plan_id: audit-plan-example-task-example-batch
+task_id: example-task
+batch_id: example-batch
+generated_at: "2026-08-28T00:00:00Z"
+queue_revision: 1
+queue_state_revision: 1
+required_queue_sha256: sha256:1111111111111111111111111111111111111111111111111111111111111111
+standards_version: 3.17.0
+active_standards_sha256: sha256:2222222222222222222222222222222222222222222222222222222222222222
+selected_profile_manifest: profiles/example/profile.md
+profile_snapshot_sha256: sha256:3333333333333333333333333333333333333333333333333333333333333333
+profile_contract_fingerprint: sha256:4444444444444444444444444444444444444444444444444444444444444444
+opening_transition_receipt: audit-update_queue-example-open
+artifact_snapshot_sha256: sha256:6666666666666666666666666666666666666666666666666666666666666666
+contract_snapshot_sha256: sha256:7777777777777777777777777777777777777777777777777777777777777777
+accepted_baseline_sha256: sha256:8888888888888888888888888888888888888888888888888888888888888888
+obligations:
+  - obligation_id: obligation-001
+    owner_kind: kernel
+    owner_rule_id: k12-12-substantive-correctness-review
+    kernel_extension_point: null
     partition: invalidated-semantic-review
+    due_stage: pre-merge
+    target: Topics/Example.md
+    applicability: "tier=L AND trigger in [new,needs_rereview,review_by_expired]"
+    evidence_role: emits
+    evidence_kind: audit-receipt
+    dimension: content_and_depth
+    acceptance_predicate: content-correctness
+    producer_check: substantive_review
+    producer_capability: substantive-review-attestation-v1
+    producer_gate_id: null
+    consumer_gate_id: batch-review
+    fingerprint_binding: evidence-time
+    review_due: null
+    status: required
+    evidence_ref: null
+    reused_receipt_id: null
+    reuse_reason: null

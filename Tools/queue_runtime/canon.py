@@ -17,14 +17,15 @@ Gate rows is unaffected -- that is a registry fact, not an import.
 import re
 
 import runtime_paths
-from runtime_state_contract import (
-    ACTIVE_STATES,
-    EXECUTION_MODES,
-    HOLDS,
-    STATES,
-    TASK_STATES,
-    TERMINAL_STATES,
-)
+import runtime_state_contract
+
+
+ACTIVE_STATES = runtime_state_contract.ACTIVE_STATES
+EXECUTION_MODES = runtime_state_contract.EXECUTION_MODES
+HOLDS = runtime_state_contract.HOLDS
+STATES = runtime_state_contract.STATES
+TASK_STATES = runtime_state_contract.TASK_STATES
+TERMINAL_STATES = runtime_state_contract.TERMINAL_STATES
 
 
 TOOL = "check_queue"
@@ -65,7 +66,7 @@ BATCH_ID_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9_-]*\Z")
 
 
 BATCH_CLOSE_TOOL = "check_batch_close"
-BATCH_CLOSE_TOOL_VERSION = "1.12.0"
+BATCH_CLOSE_TOOL_VERSION = "1.13.0"
 # Queue-transition *evidence protocol* emitted by
 # ``kblib.make_queue_receipt``.  This is deliberately independent from
 # ``Tools/update_queue.py``'s CLI/distribution TOOL_VERSION: changing the
@@ -89,7 +90,7 @@ BATCH_REVIEW_GATE_ID = "batch-review"
 
 
 TERMINAL_PROOF_TOOL = "check_proof"
-TERMINAL_PROOF_TOOL_VERSION = "1.17.0"
+TERMINAL_PROOF_TOOL_VERSION = "1.18.0"
 
 
 LEGACY_PROPERTY_ADOPTION_OPERATION = "legacy-property-adoption-v1"

@@ -31,6 +31,8 @@ The following files are the maintained entry points. Follow them instead of copy
 | Profile extension interface | [Profile Extension Interface](<../kernel/K00 Standards Control/19 Profile Extension Interface.md>) and [`profile-interface.yaml`](<../kernel/K00 Standards Control/profile-interface.yaml>) | [`profile_contract.py`](profile_contract.py), [`profile_admission.py`](profile_admission.py), [`check_profile.py`](check_profile.py) |
 | Corpus Planning slot envelope, applicability branches, receipt freshness binding, and close triggers | [K02 Corpus Planning](<../kernel/K02 Knowledge Work Construction/03 Corpus Planning Applicability and Lifecycle.md>) and [`corpus-planning-contract.yaml`](<../kernel/K02 Knowledge Work Construction/corpus-planning-contract.yaml>) | [`corpus_planning_contract.py`](corpus_planning_contract.py) projects the shared contract for [`check_profile.py`](check_profile.py), [`check_corpus_plan.py`](check_corpus_plan.py), and receipt producers/consumers |
 | Base audit dimensions, evidence roles, and Profile extension-target mappings | [K12 audit evidence semantics](<../kernel/K12 Quality Assurance/07 Audit Evidence Reuse and Invalidation.md>) and [`audit-dimension-base.yaml`](<../kernel/K12 Quality Assurance/audit-dimension-base.yaml>) | [`audit_dimension_contract.py`](audit_dimension_contract.py), [`profile_contract.py`](profile_contract.py), [`check_proof.py`](check_proof.py), and Gate consumers |
+| AuditPlan and full AuditReceipt contracts | [K12/19](<../kernel/K12 Quality Assurance/19 Incremental Audit Planning.md>), [`audit-plan-contract.yaml`](<../kernel/K12 Quality Assurance/audit-plan-contract.yaml>), and [`audit-receipt-contract.yaml`](<../kernel/K12 Quality Assurance/audit-receipt-contract.yaml>) | [`audit_plan_contract.py`](audit_plan_contract.py), [`audit_receipt_contract.py`](audit_receipt_contract.py), and their registered producers/consumers |
+| Substantive and Batch Review protocols | [K12/12](<../kernel/K12 Quality Assurance/12 Substantive Correctness Review.md>), [`substantive-review-contract.yaml`](<../kernel/K12 Quality Assurance/substantive-review-contract.yaml>), and [K12/14](<../kernel/K12 Quality Assurance/14 Batch Review.md>) | [`record_substantive_review.py`](record_substantive_review.py), [`complete_audit_receipt.py`](complete_audit_receipt.py), and [`record_batch_review.py`](record_batch_review.py) |
 | Exceptable policy identities, owner references, limit domains, defaults, and effective-policy payload | [`contract-exception-policy-base.yaml`](<../kernel/K00 Standards Control/contract-exception-policy-base.yaml>) | [`contract_exception_policy.py`](contract_exception_policy.py) loads, validates, resolves, and fingerprints the policy without owning it |
 | Batch-close Closed List membership and order | [`batch-close-closed-list.yaml`](<../kernel/K12 Quality Assurance/batch-close-closed-list.yaml>) | [`batch_close_contract.py`](batch_close_contract.py) loads and validates the registry and projects its producer-era evidence fields |
 | Installed Profile scan capabilities | [`scan-capabilities.yaml`](scan-capabilities.yaml) | [`profile_contract.py`](profile_contract.py) and registered scan adapters |
@@ -140,6 +142,25 @@ python3 Tools/check_queue.py . --resume-status
 ```
 
 Runtime data belongs under `.cambium/`; do not redirect current state or runtime receipts into `Tools/`. Physical path spellings shared by producers and consumers come from `runtime_paths.py`. Agent-interface policy stores the same source identity as `runtime_path_id`; `compile_cli_contract.py` resolves that ID to the physical `value` in its generated projection and rejects an unknown ID, constraint mismatch, or a second literal runtime-path authority.
+
+For an open batch, create its AuditPlan and invoke the producer named by each due obligation:
+
+```text
+python3 Tools/prepare_audit_plan.py --help
+python3 Tools/record_substantive_review.py --help
+python3 Tools/record_batch_page_review.py --help
+python3 Tools/record_batch_judgment.py --help
+python3 Tools/record_changed_scope_evidence.py --help
+python3 Tools/record_rendering_verification.py --help
+python3 Tools/complete_audit_receipt.py --help
+python3 Tools/record_batch_review.py --help
+```
+
+Substantive, changed-scope, and rendering producers may emit precursors. Use `complete_audit_receipt` only for obligations requiring a full AuditReceipt; other evidence keeps its kind. Run `record_batch_review` after pre-merge closure. Writes require `--apply`.
+
+[`agent-interface-policy.yaml`](agent-interface-policy.yaml) constrains runtime paths. Page and target select AuditPlan identities; they grant no read access.
+
+Profile Rendering status: the production AuditPlan path has no typed Profile slot/validator or Tool/Host capability binding, so `ready` is not runnable. Without it, selector-owned Mermaid fences or outer-pipe tables resolve to `contract-gap` / HOLD; pages with neither resolve to scoped `not-applicable`. Tools must not infer selectors. A basic adopter run may choose plain pages and validates only the ordinary lifecycle. Complex rendering needs a later focused batch and is not a first-run prerequisite.
 
 ## Generated interfaces
 

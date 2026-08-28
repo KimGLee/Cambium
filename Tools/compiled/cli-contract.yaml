@@ -5,7 +5,7 @@
 #   policy. A hand edit is reported by --check as a HOLD.
 # regenerate with: python3 Tools/compile_cli_contract.py . --projection-target source-distribution
 # verify with:     python3 Tools/compile_cli_contract.py . --projection-target source-distribution --check
-# `source_hash` covers the policy, path registries, and 49
+# `source_hash` covers the policy, path registries, and 56
 #   CLI tool sources listed under source_files.
 # A positional argument is one whose `option_strings` is empty.
 # `choices` is the admissible SET in canonical order, not the
@@ -47,6 +47,7 @@ source_files:
   - Tools/check_vocab.py
   - Tools/compile_cli_contract.py
   - Tools/compile_queue.py
+  - Tools/complete_audit_receipt.py
   - Tools/compose_page_contract.py
   - Tools/compose_vocab.py
   - Tools/duplicate_check.py
@@ -54,12 +55,18 @@ source_files:
   - Tools/metadata_execution_contract.py
   - Tools/migrate_standards_state.py
   - Tools/module_boundary_report.py
+  - Tools/prepare_audit_plan.py
   - Tools/profile_onboarding_status.py
   - Tools/project_page_state.py
   - Tools/record_batch_judgment.py
+  - Tools/record_batch_page_review.py
+  - Tools/record_batch_review.py
+  - Tools/record_changed_scope_evidence.py
   - Tools/record_corpus_acceptance.py
   - Tools/record_gate_attestation.py
   - Tools/record_gate_result.py
+  - Tools/record_rendering_verification.py
+  - Tools/record_substantive_review.py
   - Tools/register_amendment.py
   - Tools/render_boundary_projection.py
   - Tools/render_host_configs.py
@@ -72,13 +79,13 @@ source_files:
   - Tools/stamp_cards.py
   - Tools/update_queue.py
   - Tools/update_task.py
-source_hash: sha256:d7868011f9e8461a19e4eb5f3f257591f0060e671c9c5024148e7f26fd26e367
+source_hash: sha256:3e394fec2ad95ff42b558fea8a92be0e577bcc60d173902ffaddc369e248efc9
 agent_interface_policy:
   path: Tools/agent-interface-policy.yaml
-  sha256: sha256:56f3c5b362dd98d4ebdedb9ec417a619e59e0ae9db0d973103f56697d9d4b706
+  sha256: sha256:574130ec08346a318c621a840b5d8568819ce93f2572cd6b2ead9b5a659d0438
 runtime_path_registry:
   path: Tools/runtime_paths.py
-  sha256: sha256:e6c307bd93aa569a84ba915efeb6d890e1f3ad314103f2ff312e8f1a67642d9d
+  sha256: sha256:a0ab7ce0f1f1262540aa097d7c13d7c6c4dc268dfcd11ba34faa3c8fbf1f7868
 component_path_registries:
   card-directory:
     path: Tools/schemas/card.schema.yaml
@@ -112,6 +119,7 @@ included_tools:
   - check_vocab
   - compile_cli_contract
   - compile_queue
+  - complete_audit_receipt
   - compose_page_contract
   - compose_vocab
   - duplicate_check
@@ -119,12 +127,18 @@ included_tools:
   - metadata_execution_contract
   - migrate_standards_state
   - module_boundary_report
+  - prepare_audit_plan
   - profile_onboarding_status
   - project_page_state
   - record_batch_judgment
+  - record_batch_page_review
+  - record_batch_review
+  - record_changed_scope_evidence
   - record_corpus_acceptance
   - record_gate_attestation
   - record_gate_result
+  - record_rendering_verification
+  - record_substantive_review
   - register_amendment
   - render_boundary_projection
   - render_host_configs
@@ -152,7 +166,7 @@ receipt_shape:
   conditional_fields:
     - gate_id
   extension_policy: derived-per-tool-from-source
-tool_count: 49
+tool_count: 56
 tools:
   - tool: adopt_standards
     module: Tools/adopt_standards.py
@@ -1268,7 +1282,7 @@ tools:
       external_write: none
   - tool: check_batch_close
     module: Tools/check_batch_close.py
-    source_hash: sha256:fda4202eb601445f61660260a6bd51092109d9195f964aa78a6af858e6117cb6
+    source_hash: sha256:a26b6730e227cb79e154a5b17ab83f296bf73f860e6acbc06fd2a18017d37ced
     description: Run and publish the K12/09 batch-close evidence bundle
     arguments:
       - dest: root
@@ -1396,9 +1410,13 @@ tools:
       - accepted_by_type_counts
       - accepted_candidate_count
       - accepted_candidate_types
+      - active_standards_sha256
       - after_coverage_sha256
       - after_progress_sha256
       - after_required_queue_sha256
+      - artifact_fingerprint
+      - audit_plan_path
+      - audit_plan_sha256
       - batch_id
       - before_coverage_sha256
       - before_progress_sha256
@@ -1413,12 +1431,16 @@ tools:
       - carried_candidate_count
       - carried_candidate_set_sha256
       - closed_list_evidence
+      - closed_list_producer_evidence
+      - contract_fingerprint
       - corpus_plan_receipt
       - corpus_plan_required
       - corpus_plan_triggers
       - coverage_ledger_sha256
       - delta_apply_receipt
       - delta_sha256
+      - dependency_fingerprint
+      - fingerprint_binding
       - fresh_candidate_count
       - fresh_candidate_set_sha256
       - gate_id
@@ -1426,9 +1448,14 @@ tools:
       - integrator_id
       - merged_snapshot_sha256
       - metadata_execution_contract_fingerprint
+      - obligation_id
+      - opening_transition_receipt
       - page_review_receipt_count
       - page_review_receipt_set_sha256
       - page_review_receipts
+      - plan_id
+      - profile_contract_fingerprint
+      - profile_snapshot_sha256
       - progress_ledger_sha256
       - queue_consistency_receipt
       - queue_revision
@@ -1439,9 +1466,11 @@ tools:
       - reviewer_attestation_receipt
       - reviewer_id
       - root
+      - selected_profile_manifest
       - semantic_content_sha256
       - seq
       - source_command
+      - standards_version
       - task_id
       - work_spec_path
       - work_spec_sha256
@@ -1905,7 +1934,7 @@ tools:
       external_write: none
   - tool: check_links
     module: Tools/check_links.py
-    source_hash: sha256:310281e70c906fc04c24e95a99835960c2475ff023667a32d37004c704fc2698
+    source_hash: sha256:783f81ffe3b2de38b0adee6a2e081ac870edebb07660155a5e462f3bd8de9252
     description: Wiki link missing/ambiguous/heading check
     arguments:
       - dest: vault_root
@@ -2369,7 +2398,7 @@ tools:
       external_write: none
   - tool: check_proof
     module: Tools/check_proof.py
-    source_hash: sha256:74c04d54410ca55939f441a6f440ae938fac80033f34d9f6b9be62e5ce5436dd
+    source_hash: sha256:d8401e6317040a4b066cc8e7eb9cbacb4efad356e251a127a6587a92fbae7374
     description: Terminal Proof completeness and zero-condition check
     arguments:
       - dest: proof
@@ -3203,7 +3232,7 @@ tools:
       external_write: none
   - tool: check_vocab
     module: Tools/check_vocab.py
-    source_hash: sha256:ddcde3a5d8ceb03891160d44606bc80c25db1d756d24b8d14efc0e2665068fe1
+    source_hash: sha256:44a92247a944ac808b67cc6f2fe7d00c07f121852064a6db67b271c56fcdcffd
     description: Frontmatter controlled-vocabulary check
     arguments:
       - dest: vault_root
@@ -3358,7 +3387,7 @@ tools:
       external_write: none
   - tool: compile_cli_contract
     module: Tools/compile_cli_contract.py
-    source_hash: sha256:a66f1eb9b76e5ddec7c8d778978cbc0ec8ec4442948b55e22f2c9912bf4a2b87
+    source_hash: sha256:4ca93fd442192e72b010a135078d594249029d1809b6da9055507f6988812006
     description: Compile the machine-readable CLI invocation contract from every Tools/*.py argparse declaration.
     arguments:
       - dest: root
@@ -3691,6 +3720,123 @@ tools:
           suffixes: []
           active_when_any:
             - apply_replan
+          inactive_when_any: []
+      external_write: none
+  - tool: complete_audit_receipt
+    module: Tools/complete_audit_receipt.py
+    source_hash: sha256:c475bbfdfb78ebef0131ff58dd64dbf42b910c799d5a91092fc91a5c7ab553ac
+    description: Complete one plan obligation into a full AuditReceipt
+    arguments:
+      - dest: root
+        option_strings: []
+        required: true
+        default: null
+        default_type: NoneType
+        choices: null
+        nargs: null
+        action: store
+        type: null
+        help: adopting repository root
+      - dest: batch
+        option_strings:
+          - --batch
+        required: true
+        default: null
+        default_type: NoneType
+        choices: null
+        nargs: null
+        action: store
+        type: null
+        help: null
+      - dest: plan
+        option_strings:
+          - --plan
+        required: true
+        default: null
+        default_type: NoneType
+        choices: null
+        nargs: null
+        action: store
+        type: null
+        help: null
+      - dest: obligation_id
+        option_strings:
+          - --obligation-id
+        required: true
+        default: null
+        default_type: NoneType
+        choices: null
+        nargs: null
+        action: store
+        type: null
+        help: null
+      - dest: evidence_receipt
+        option_strings:
+          - --evidence-receipt
+        required: true
+        default: null
+        default_type: NoneType
+        choices: null
+        nargs: null
+        action: store
+        type: null
+        help: null
+      - dest: receipts
+        option_strings:
+          - --receipts
+        required: false
+        default: .cambium/receipts/audit-receipts.jsonl
+        default_type: str
+        choices: null
+        nargs: null
+        action: store
+        type: null
+        help: null
+      - dest: apply
+        option_strings:
+          - --apply
+        required: false
+        default: false
+        default_type: bool
+        choices: null
+        nargs: 0
+        action: store_true
+        type: null
+        help: null
+    mutually_exclusive_groups: []
+    receipt_extensions: []
+    receipt_extensions_extraction: complete
+    agent_interface:
+      exposure: mcp
+      workspace_argument: root
+      workspace_access: write
+      value_arguments:
+        - apply
+        - batch
+        - evidence_receipt
+        - obligation_id
+      path_arguments:
+        - argument: plan
+          access: read
+          consumption: snapshot
+          constraint: namespace
+          value: .cambium/work_specs/audit-plans
+          runtime_path_id: audit-plan-root
+          component_path_id: null
+          suffixes:
+            - .yaml
+          active_when_any: []
+          inactive_when_any: []
+        - argument: receipts
+          access: write
+          consumption: append
+          constraint: exact
+          value: .cambium/receipts/audit-receipts.jsonl
+          runtime_path_id: audit-receipt-register
+          component_path_id: null
+          suffixes: []
+          active_when_any:
+            - apply
           inactive_when_any: []
       external_write: none
   - tool: compose_page_contract
@@ -4421,6 +4567,67 @@ tools:
           active_when_any: []
           inactive_when_any: []
       external_write: temporary-git-worktree
+  - tool: prepare_audit_plan
+    module: Tools/prepare_audit_plan.py
+    source_hash: sha256:b0b52dafbb5be2ae0a5dd3b3180db92c012049756f2eb07cf1d17447ed6ab90e
+    description: Prepare the complete immutable AuditPlan for an open batch
+    arguments:
+      - dest: root
+        option_strings: []
+        required: true
+        default: null
+        default_type: NoneType
+        choices: null
+        nargs: null
+        action: store
+        type: null
+        help: adopting repository root
+      - dest: batch
+        option_strings:
+          - --batch
+        required: true
+        default: null
+        default_type: NoneType
+        choices: null
+        nargs: null
+        action: store
+        type: null
+        help: current open Queue batch ID
+      - dest: at
+        option_strings:
+          - --at
+        required: false
+        default: null
+        default_type: NoneType
+        choices: null
+        nargs: null
+        action: store
+        type: null
+        help: canonical UTC generation time; defaults to now
+      - dest: apply
+        option_strings:
+          - --apply
+        required: false
+        default: false
+        default_type: bool
+        choices: null
+        nargs: 0
+        action: store_true
+        type: null
+        help: write the plan; omit for dry-run
+    mutually_exclusive_groups: []
+    receipt_extensions: []
+    receipt_extensions_extraction: complete
+    agent_interface:
+      exposure: mcp
+      workspace_argument: root
+      workspace_access: write
+      value_arguments:
+        - apply
+        - at
+        - batch
+      path_arguments: []
+      external_write: none
   - tool: profile_onboarding_status
     module: Tools/profile_onboarding_status.py
     source_hash: sha256:578fbdbbeea4df25f27f5c0a78c9f2f7608adf26b3b6eb92d37610976e61d304
@@ -4530,8 +4737,8 @@ tools:
       external_write: none
   - tool: record_batch_judgment
     module: Tools/record_batch_judgment.py
-    source_hash: sha256:f8dbb4a83bb3a4f0cdaa243ea0514b815e73e7acf75558a656ab194057fa7f3c
-    description: Record one snapshot-bound Batch Review judgment
+    source_hash: sha256:70ac0eb07df0ab91d957cee41090c7c02ae7784406b487d5bf723980c93b5e16
+    description: Record one AuditPlan-bound Batch Review judgment
     arguments:
       - dest: root
         option_strings: []
@@ -4633,19 +4840,45 @@ tools:
         help: write the applied receipt as one JSON array
     mutually_exclusive_groups: []
     receipt_extensions:
+      - acceptance_predicate
+      - activation_receipt_id
+      - active_standards_sha256
+      - audit_plan_sha256
       - batch_id
+      - consumer_gate_id
+      - dimension
+      - due_stage
+      - evidence_kind
+      - evidence_role
+      - fingerprint_binding
       - judgment_item_id
+      - kernel_extension_point
+      - obligation_id
       - opening_transition_receipt
+      - owner_kind
+      - owner_rule_id
+      - partition
       - pass_authority_role_id
+      - plan_id
+      - producer_capability
+      - producer_check
+      - producer_gate_id
+      - producer_kind
       - profile_contract_fingerprint
       - profile_snapshot_sha256
       - receipt_schema
+      - record_kind
       - review_requirement_set_sha256
       - reviewer_role
       - root
+      - schema_version
+      - selected_profile_manifest
       - semantic_content_sha256
+      - standards_version
       - target_selector
-    receipt_extensions_extraction: complete
+      - task_id
+      - trigger
+    receipt_extensions_extraction: partial
     agent_interface:
       exposure: mcp
       workspace_argument: root
@@ -4662,15 +4895,544 @@ tools:
         - argument: receipts
           access: write
           consumption: append
-          constraint: namespace
-          value: .cambium/receipts
-          runtime_path_id: receipt-root
+          constraint: exact
+          value: .cambium/receipts/batch-judgments.jsonl
+          runtime_path_id: batch-judgment-receipts
           component_path_id: null
-          suffixes:
-            - .jsonl
+          suffixes: []
           active_when_any:
             - apply
           inactive_when_any: []
+      external_write: none
+  - tool: record_batch_page_review
+    module: Tools/record_batch_page_review.py
+    source_hash: sha256:8e5c9117aaca1ec08d454692a1766d1edfc6b55a9e57e06c13e39f7df0807b51
+    description: Record one plan-bound Batch Review page judgment
+    arguments:
+      - dest: root
+        option_strings: []
+        required: true
+        default: null
+        default_type: NoneType
+        choices: null
+        nargs: null
+        action: store
+        type: null
+        help: adopting repository root
+      - dest: batch
+        option_strings:
+          - --batch
+        required: true
+        default: null
+        default_type: NoneType
+        choices: null
+        nargs: null
+        action: store
+        type: null
+        help: null
+      - dest: plan
+        option_strings:
+          - --plan
+        required: true
+        default: null
+        default_type: NoneType
+        choices: null
+        nargs: null
+        action: store
+        type: null
+        help: null
+      - dest: obligation_id
+        option_strings:
+          - --obligation-id
+        required: true
+        default: null
+        default_type: NoneType
+        choices: null
+        nargs: null
+        action: store
+        type: null
+        help: null
+      - dest: page
+        option_strings:
+          - --page
+        required: true
+        default: null
+        default_type: NoneType
+        choices: null
+        nargs: null
+        action: store
+        type: null
+        help: null
+      - dest: variant
+        option_strings:
+          - --variant
+        required: true
+        default: null
+        default_type: NoneType
+        choices:
+          - m-atomic-item
+          - s-sampled-page
+        nargs: null
+        action: store
+        type: null
+        help: null
+      - dest: reviewer_context_id
+        option_strings:
+          - --reviewer-context-id
+        required: true
+        default: null
+        default_type: NoneType
+        choices: null
+        nargs: null
+        action: store
+        type: null
+        help: null
+      - dest: reviewer_role
+        option_strings:
+          - --reviewer-role
+        required: true
+        default: null
+        default_type: NoneType
+        choices: null
+        nargs: null
+        action: store
+        type: null
+        help: null
+      - dest: verdict
+        option_strings:
+          - --verdict
+        required: true
+        default: null
+        default_type: NoneType
+        choices:
+          - changes-required
+          - passed
+        nargs: null
+        action: store
+        type: null
+        help: null
+      - dest: statement
+        option_strings:
+          - --statement
+        required: true
+        default: null
+        default_type: NoneType
+        choices: null
+        nargs: null
+        action: store
+        type: null
+        help: null
+      - dest: applicability_disposition
+        option_strings:
+          - --applicability-disposition
+        required: false
+        default: null
+        default_type: NoneType
+        choices:
+          - applicable
+          - not-applicable
+        nargs: null
+        action: store
+        type: null
+        help: required for M atoms; evidence-time disposition, not plan status
+      - dest: applicability_reason
+        option_strings:
+          - --applicability-reason
+        required: false
+        default: null
+        default_type: NoneType
+        choices: null
+        nargs: null
+        action: store
+        type: null
+        help: required only when a conditional M atom is not applicable
+      - dest: consumed_evidence_ref
+        option_strings:
+          - --consumed-evidence-ref
+        required: false
+        default: []
+        default_type: list
+        choices: null
+        nargs: null
+        action: append
+        type: null
+        help: current canonical evidence consumed by a consumes-role M atom
+      - dest: apply
+        option_strings:
+          - --apply
+        required: false
+        default: false
+        default_type: bool
+        choices: null
+        nargs: 0
+        action: store_true
+        type: null
+        help: null
+    mutually_exclusive_groups: []
+    receipt_extensions:
+      - acceptance_predicate
+      - active_standards_sha256
+      - applicability_disposition
+      - applicability_reason
+      - artifact_fingerprint
+      - audit_plan_sha256
+      - batch_id
+      - consumed_evidence_refs
+      - consumer_gate_id
+      - contract_fingerprint
+      - dependency_fingerprint
+      - dimension
+      - due_stage
+      - evidence_kind
+      - evidence_role
+      - fingerprint_binding
+      - identity
+      - item_id
+      - obligation_id
+      - opening_transition_receipt
+      - partition
+      - plan_id
+      - producer_capability
+      - profile_contract_fingerprint
+      - profile_snapshot_sha256
+      - record_kind
+      - review_variant
+      - reviewer_context_id
+      - reviewer_role
+      - root
+      - rule_id
+      - schema_version
+      - selected_profile_manifest
+      - selection_frozen_at
+      - semantic_content_fingerprint
+      - source_group
+      - standards_version
+      - task_id
+      - tier
+      - verdict
+    receipt_extensions_extraction: partial
+    agent_interface:
+      exposure: mcp
+      workspace_argument: root
+      workspace_access: write
+      value_arguments:
+        - applicability_disposition
+        - applicability_reason
+        - apply
+        - batch
+        - consumed_evidence_ref
+        - obligation_id
+        - page
+        - reviewer_context_id
+        - reviewer_role
+        - statement
+        - variant
+        - verdict
+      path_arguments:
+        - argument: plan
+          access: read
+          consumption: snapshot
+          constraint: namespace
+          value: .cambium/work_specs/audit-plans
+          runtime_path_id: audit-plan-root
+          component_path_id: null
+          suffixes:
+            - .yaml
+          active_when_any: []
+          inactive_when_any: []
+      external_write: none
+  - tool: record_batch_review
+    module: Tools/record_batch_review.py
+    source_hash: sha256:8453399009a88ab0c244754e6e58ee2e577da39989b0cce928794cc2aeb6eb7c
+    description: Record one current, evidence-complete Batch Review wrapper
+    arguments:
+      - dest: root
+        option_strings: []
+        required: true
+        default: null
+        default_type: NoneType
+        choices: null
+        nargs: null
+        action: store
+        type: null
+        help: adopting repository root
+      - dest: batch
+        option_strings:
+          - --batch
+        required: true
+        default: null
+        default_type: NoneType
+        choices: null
+        nargs: null
+        action: store
+        type: null
+        help: exact current open Queue batch ID
+      - dest: actor_role
+        option_strings:
+          - --actor-role
+        required: true
+        default: null
+        default_type: NoneType
+        choices: null
+        nargs: null
+        action: store
+        type: null
+        help: declared recording role; must be integrator
+      - dest: statement
+        option_strings:
+          - --statement
+        required: true
+        default: null
+        default_type: NoneType
+        choices: null
+        nargs: null
+        action: store
+        type: null
+        help: bounded integrator Batch Review statement
+      - dest: receipts
+        option_strings:
+          - --receipts
+        required: false
+        default: .cambium/receipts/gate-attestations.jsonl
+        default_type: str
+        choices: null
+        nargs: null
+        action: store
+        type: null
+        help: receipt JSONL path under .cambium/receipts
+      - dest: apply
+        option_strings:
+          - --apply
+        required: false
+        default: false
+        default_type: bool
+        choices: null
+        nargs: 0
+        action: store_true
+        type: null
+        help: append the wrapper; omit for a dry run
+      - dest: json
+        option_strings:
+          - --json
+        required: false
+        default: false
+        default_type: bool
+        choices: null
+        nargs: 0
+        action: store_true
+        type: null
+        help: write the applied wrapper as one JSON array
+    mutually_exclusive_groups: []
+    receipt_extensions:
+      - actor_role
+      - attestation_statement
+      - audit_evidence_bindings
+      - audit_evidence_set_sha256
+      - audit_plan_id
+      - audit_plan_path
+      - audit_plan_sha256
+      - audit_receipt_ids
+      - audit_receipt_set_sha256
+      - batch_id
+      - delta_page_receipt_ids
+      - delta_path
+      - delta_sha256
+      - gate_id
+      - judgment_receipt_ids
+      - judgment_record_set_sha256
+      - opening_transition_receipt
+      - review_requirement_set_sha256
+      - root
+    receipt_extensions_extraction: complete
+    agent_interface:
+      exposure: mcp
+      workspace_argument: root
+      workspace_access: write
+      value_arguments:
+        - actor_role
+        - apply
+        - batch
+        - json
+        - statement
+      path_arguments:
+        - argument: receipts
+          access: write
+          consumption: append
+          constraint: exact
+          value: .cambium/receipts/gate-attestations.jsonl
+          runtime_path_id: gate-attestation-receipts
+          component_path_id: null
+          suffixes: []
+          active_when_any:
+            - apply
+          inactive_when_any: []
+      external_write: none
+  - tool: record_changed_scope_evidence
+    module: Tools/record_changed_scope_evidence.py
+    source_hash: sha256:a62e8b6033168961718792a34c1f951861ec2064ffc3e0a7a8e6c22e8bee8b80
+    description: Record exact plan-bound K12/05 changed-scope evidence
+    arguments:
+      - dest: root
+        option_strings: []
+        required: true
+        default: null
+        default_type: NoneType
+        choices: null
+        nargs: null
+        action: store
+        type: null
+        help: adopting repository root
+      - dest: list_producers
+        option_strings:
+          - --list-producers
+        required: false
+        default: false
+        default_type: bool
+        choices: null
+        nargs: 0
+        action: store_true
+        type: null
+        help: report every Kernel base row and exact producer availability
+      - dest: batch
+        option_strings:
+          - --batch
+        required: false
+        default: null
+        default_type: NoneType
+        choices: null
+        nargs: null
+        action: store
+        type: null
+        help: null
+      - dest: plan
+        option_strings:
+          - --plan
+        required: false
+        default: null
+        default_type: NoneType
+        choices: null
+        nargs: null
+        action: store
+        type: null
+        help: null
+      - dest: obligation_id
+        option_strings:
+          - --obligation-id
+        required: false
+        default: null
+        default_type: NoneType
+        choices: null
+        nargs: null
+        action: store
+        type: null
+        help: null
+      - dest: receipts
+        option_strings:
+          - --receipts
+        required: false
+        default: .cambium/receipts/changed-scope-evidence.jsonl
+        default_type: str
+        choices: null
+        nargs: null
+        action: store
+        type: null
+        help: null
+      - dest: apply
+        option_strings:
+          - --apply
+        required: false
+        default: false
+        default_type: bool
+        choices: null
+        nargs: 0
+        action: store_true
+        type: null
+        help: null
+    mutually_exclusive_groups: []
+    receipt_extensions:
+      - acceptance_predicate
+      - active_standards_sha256
+      - applicability
+      - artifact_fingerprint
+      - audit_plan_sha256
+      - batch_id
+      - check_owner_source_sha256
+      - check_owner_tool
+      - check_owner_tool_version
+      - check_result
+      - check_result_sha256
+      - consumer_gate_id
+      - contract_fingerprint
+      - dependency_fingerprint
+      - dimension
+      - due_stage
+      - evidence_kind
+      - evidence_role
+      - fingerprint_binding
+      - gate_id
+      - identity
+      - input_binding
+      - kernel_extension_point
+      - obligation_id
+      - opening_transition_receipt
+      - owner_kind
+      - owner_rule_id
+      - partition
+      - plan_id
+      - producer_capability
+      - producer_check
+      - producer_gate_id
+      - profile_contract_fingerprint
+      - profile_snapshot_sha256
+      - record_kind
+      - root
+      - schema_version
+      - scope
+      - selected_profile_manifest
+      - source_exit_code
+      - source_gate_id
+      - source_gate_selector
+      - source_receipt_set_sha256
+      - source_receipts
+      - source_scope
+      - source_summary_receipt_id
+      - standards_version
+      - task_id
+    receipt_extensions_extraction: complete
+    agent_interface:
+      exposure: mcp
+      workspace_argument: root
+      workspace_access: write
+      value_arguments:
+        - apply
+        - batch
+        - list_producers
+        - obligation_id
+      path_arguments:
+        - argument: plan
+          access: read
+          consumption: snapshot
+          constraint: namespace
+          value: .cambium/work_specs/audit-plans
+          runtime_path_id: audit-plan-root
+          component_path_id: null
+          suffixes:
+            - .yaml
+          active_when_any: []
+          inactive_when_any:
+            - list_producers
+        - argument: receipts
+          access: write
+          consumption: append
+          constraint: exact
+          value: .cambium/receipts/changed-scope-evidence.jsonl
+          runtime_path_id: changed-scope-evidence-receipts
+          component_path_id: null
+          suffixes: []
+          active_when_any:
+            - apply
+          inactive_when_any:
+            - list_producers
       external_write: none
   - tool: record_corpus_acceptance
     module: Tools/record_corpus_acceptance.py
@@ -4779,7 +5541,7 @@ tools:
       external_write: none
   - tool: record_gate_attestation
     module: Tools/record_gate_attestation.py
-    source_hash: sha256:78e46a3cc090c81d653100922959a3132ceb32616975fce0226bc0a7a4682a39
+    source_hash: sha256:352cc0b3c9960a2a1ead69bff9f5d84c5e4caf793e99686b070392fc73ef4293
     description: Record snapshot-bound manual Extension Gate evidence
     arguments:
       - dest: root
@@ -5043,6 +5805,445 @@ tools:
           component_path_id: null
           suffixes:
             - .jsonl
+          active_when_any:
+            - apply
+          inactive_when_any: []
+      external_write: none
+  - tool: record_rendering_verification
+    module: Tools/record_rendering_verification.py
+    source_hash: sha256:7d376428be83ae3eab2c10eca786017b5666f9fdf4475f53808d73b0dd7979d9
+    description: Record one plan-bound K12/02 rendering record shape
+    arguments:
+      - dest: root
+        option_strings: []
+        required: true
+        default: null
+        default_type: NoneType
+        choices: null
+        nargs: null
+        action: store
+        type: null
+        help: adopting repository root
+      - dest: batch
+        option_strings:
+          - --batch
+        required: true
+        default: null
+        default_type: NoneType
+        choices: null
+        nargs: null
+        action: store
+        type: null
+        help: null
+      - dest: plan
+        option_strings:
+          - --plan
+        required: true
+        default: null
+        default_type: NoneType
+        choices: null
+        nargs: null
+        action: store
+        type: null
+        help: null
+      - dest: obligation_id
+        option_strings:
+          - --obligation-id
+        required: true
+        default: null
+        default_type: NoneType
+        choices: null
+        nargs: null
+        action: store
+        type: null
+        help: null
+      - dest: rendering_mode
+        option_strings:
+          - --rendering-mode
+        required: true
+        default: null
+        default_type: NoneType
+        choices:
+          - deterministic-static
+          - expanded-ui
+          - source-only
+          - targeted-visual-exception
+          - temporal-recording
+        nargs: null
+        action: store
+        type: null
+        help: null
+      - dest: visual_trigger
+        option_strings:
+          - --visual-trigger
+        required: false
+        default: null
+        default_type: NoneType
+        choices: null
+        nargs: null
+        action: store
+        type: null
+        help: null
+      - dest: unresolved_question
+        option_strings:
+          - --unresolved-question
+        required: false
+        default: null
+        default_type: NoneType
+        choices: null
+        nargs: null
+        action: store
+        type: null
+        help: null
+      - dest: verification_target
+        option_strings:
+          - --verification-target
+        required: false
+        default: null
+        default_type: NoneType
+        choices: null
+        nargs: null
+        action: store
+        type: null
+        help: null
+      - dest: verification_result
+        option_strings:
+          - --verification-result
+        required: false
+        default: null
+        default_type: NoneType
+        choices: null
+        nargs: null
+        action: store
+        type: null
+        help: null
+      - dest: receipts
+        option_strings:
+          - --receipts
+        required: false
+        default: .cambium/receipts/rendering-verification.jsonl
+        default_type: str
+        choices: null
+        nargs: null
+        action: store
+        type: null
+        help: null
+      - dest: apply
+        option_strings:
+          - --apply
+        required: false
+        default: false
+        default_type: bool
+        choices: null
+        nargs: 0
+        action: store_true
+        type: null
+        help: null
+    mutually_exclusive_groups: []
+    receipt_extensions:
+      - acceptance_predicate
+      - active_standards_sha256
+      - artifact_fingerprint
+      - audit_plan_sha256
+      - batch_id
+      - contract_fingerprint
+      - dependency_fingerprint
+      - dimension
+      - fingerprint_binding
+      - identity
+      - obligation_id
+      - opening_transition_receipt
+      - plan_id
+      - profile_contract_fingerprint
+      - profile_snapshot_sha256
+      - record_kind
+      - root
+      - schema_version
+      - scope
+      - selected_profile_manifest
+      - standards_version
+      - task_id
+    receipt_extensions_extraction: partial
+    agent_interface:
+      exposure: mcp
+      workspace_argument: root
+      workspace_access: write
+      value_arguments:
+        - apply
+        - batch
+        - obligation_id
+        - rendering_mode
+        - unresolved_question
+        - verification_result
+        - verification_target
+        - visual_trigger
+      path_arguments:
+        - argument: plan
+          access: read
+          consumption: snapshot
+          constraint: namespace
+          value: .cambium/work_specs/audit-plans
+          runtime_path_id: audit-plan-root
+          component_path_id: null
+          suffixes:
+            - .yaml
+          active_when_any: []
+          inactive_when_any: []
+        - argument: receipts
+          access: write
+          consumption: append
+          constraint: exact
+          value: .cambium/receipts/rendering-verification.jsonl
+          runtime_path_id: rendering-verification-receipts
+          component_path_id: null
+          suffixes: []
+          active_when_any:
+            - apply
+          inactive_when_any: []
+      external_write: none
+  - tool: record_substantive_review
+    module: Tools/record_substantive_review.py
+    source_hash: sha256:f973af1423f82da35c866fdcb6647b3d5ef39c131e862287a88a3882a0bd89a9
+    description: Record one plan-bound substantive correctness review
+    arguments:
+      - dest: root
+        option_strings: []
+        required: true
+        default: null
+        default_type: NoneType
+        choices: null
+        nargs: null
+        action: store
+        type: null
+        help: adopting repository root
+      - dest: batch
+        option_strings:
+          - --batch
+        required: true
+        default: null
+        default_type: NoneType
+        choices: null
+        nargs: null
+        action: store
+        type: null
+        help: null
+      - dest: plan
+        option_strings:
+          - --plan
+        required: true
+        default: null
+        default_type: NoneType
+        choices: null
+        nargs: null
+        action: store
+        type: null
+        help: null
+      - dest: obligation_id
+        option_strings:
+          - --obligation-id
+        required: true
+        default: null
+        default_type: NoneType
+        choices: null
+        nargs: null
+        action: store
+        type: null
+        help: null
+      - dest: page
+        option_strings:
+          - --page
+        required: true
+        default: null
+        default_type: NoneType
+        choices: null
+        nargs: null
+        action: store
+        type: null
+        help: null
+      - dest: authoring_context_id
+        option_strings:
+          - --authoring-context-id
+        required: true
+        default: null
+        default_type: NoneType
+        choices: null
+        nargs: null
+        action: store
+        type: null
+        help: null
+      - dest: reviewer_context_id
+        option_strings:
+          - --reviewer-context-id
+        required: true
+        default: null
+        default_type: NoneType
+        choices: null
+        nargs: null
+        action: store
+        type: null
+        help: null
+      - dest: reviewer_role
+        option_strings:
+          - --reviewer-role
+        required: true
+        default: null
+        default_type: NoneType
+        choices: null
+        nargs: null
+        action: store
+        type: null
+        help: null
+      - dest: round
+        option_strings:
+          - --round
+        required: true
+        default: null
+        default_type: NoneType
+        choices:
+          - 1
+          - 2
+        nargs: null
+        action: store
+        type: int
+        help: null
+      - dest: verdict
+        option_strings:
+          - --verdict
+        required: true
+        default: null
+        default_type: NoneType
+        choices:
+          - changes-required
+          - escalated
+          - passed
+        nargs: null
+        action: store
+        type: null
+        help: null
+      - dest: finding
+        option_strings:
+          - --finding
+        required: false
+        default: []
+        default_type: list
+        choices: null
+        nargs: null
+        action: append
+        type: null
+        help: one finding object encoded as JSON; repeat for each finding
+      - dest: statement
+        option_strings:
+          - --statement
+        required: true
+        default: null
+        default_type: NoneType
+        choices: null
+        nargs: null
+        action: store
+        type: null
+        help: null
+      - dest: round_1_receipt_id
+        option_strings:
+          - --round-1-receipt-id
+        required: false
+        default: null
+        default_type: NoneType
+        choices: null
+        nargs: null
+        action: store
+        type: null
+        help: null
+      - dest: receipts
+        option_strings:
+          - --receipts
+        required: false
+        default: .cambium/receipts/substantive-reviews.jsonl
+        default_type: str
+        choices: null
+        nargs: null
+        action: store
+        type: null
+        help: null
+      - dest: apply
+        option_strings:
+          - --apply
+        required: false
+        default: false
+        default_type: bool
+        choices: null
+        nargs: 0
+        action: store_true
+        type: null
+        help: null
+    mutually_exclusive_groups: []
+    receipt_extensions:
+      - acceptance_predicate
+      - active_standards_sha256
+      - artifact_fingerprint
+      - audit_plan_sha256
+      - authoring_context_id
+      - batch_id
+      - contract_fingerprint
+      - dependency_fingerprint
+      - findings
+      - fingerprint_binding
+      - obligation_id
+      - opening_transition_receipt
+      - page_sha256
+      - plan_id
+      - profile_contract_fingerprint
+      - profile_snapshot_sha256
+      - record_kind
+      - reviewer_context_id
+      - reviewer_role
+      - root
+      - round
+      - round_1_receipt_id
+      - schema_version
+      - selected_profile_manifest
+      - semantic_content_fingerprint
+      - sources_sha256
+      - standards_version
+      - task_id
+      - verdict
+    receipt_extensions_extraction: complete
+    agent_interface:
+      exposure: mcp
+      workspace_argument: root
+      workspace_access: write
+      value_arguments:
+        - apply
+        - authoring_context_id
+        - batch
+        - finding
+        - obligation_id
+        - page
+        - reviewer_context_id
+        - reviewer_role
+        - round
+        - round_1_receipt_id
+        - statement
+        - verdict
+      path_arguments:
+        - argument: plan
+          access: read
+          consumption: snapshot
+          constraint: namespace
+          value: .cambium/work_specs/audit-plans
+          runtime_path_id: audit-plan-root
+          component_path_id: null
+          suffixes:
+            - .yaml
+          active_when_any: []
+          inactive_when_any: []
+        - argument: receipts
+          access: write
+          consumption: append
+          constraint: exact
+          value: .cambium/receipts/substantive-reviews.jsonl
+          runtime_path_id: substantive-review-receipts
+          component_path_id: null
+          suffixes: []
           active_when_any:
             - apply
           inactive_when_any: []
@@ -5991,7 +7192,7 @@ tools:
       external_write: none
   - tool: seal_receipts
     module: Tools/seal_receipts.py
-    source_hash: sha256:60092a926463eb11850b8b452bf40eba4b20aec376d3bd1264203e75f680b64c
+    source_hash: sha256:141a63a8be5af98f1c6b70bf454378472ad3c5088c31046577ec2d8501bc3cfd
     description: "Seal verified frozen receipt history (K12/07). --apply is a maintenance-window operation: run it only with no other Cambium or adopter writer, checker or receipt appender active against this repository."
     arguments:
       - dest: root
@@ -6168,7 +7369,7 @@ tools:
       external_write: none
   - tool: update_queue
     module: Tools/update_queue.py
-    source_hash: sha256:f985a5542eb86e4c49810cfe5a7f26e46085f7d60a4800e49fa7b167141670e7
+    source_hash: sha256:a9c3cd6794975a3b7ffbd9ee0b3b8d5eaf5bcff9fc1d0165ecf831bef109ab80
     description: Apply one Required Queue transition
     arguments:
       - dest: root
@@ -6480,7 +7681,7 @@ tools:
       external_write: none
   - tool: update_task
     module: Tools/update_task.py
-    source_hash: sha256:39d5acae3c5fcfeaf42373e9523fe4cf9b1dc5e880fe4b8539a1600e2d9c2447
+    source_hash: sha256:b50027d388058d34ebbd167e53087fc55e123e80c1e7b09f58488b4f5c1f0b7e
     description: Apply one canonical task-state transition
     arguments:
       - dest: root

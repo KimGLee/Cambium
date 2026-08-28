@@ -10,10 +10,13 @@ source_files:
   - kernel/K04 Content Depth/01 Depth Model and Foundation.md
   - kernel/K08 Metadata and Status/06 Frontmatter Applicability Contract.md
   - kernel/K12 Quality Assurance/01 Quality Dimensions and Single Note Review.md
+  - kernel/K12 Quality Assurance/02 Rendering Verification.md
   - kernel/K12 Quality Assurance/05 Automated and Manual Checks.md
-source_hash: '9a25701eedd8'
-reviewed_source_hash: '9a25701eedd8'
-reviewed_card_hash: 'aad66858ce3d'
+  - kernel/K12 Quality Assurance/14 Batch Review.md
+  - kernel/K12 Quality Assurance/19 Incremental Audit Planning.md
+source_hash: '1b831264ece5'
+reviewed_source_hash: '1b831264ece5'
+reviewed_card_hash: 'ddc08602fdcf'
 ---
 # R02 Single Note Authoring Card
 
@@ -25,8 +28,9 @@ Create or change one canonical page within an already confirmed scope and owner 
 
 - Confirm the page owner, note type, intended reader, and applicable Profile bindings before writing.
 - Write to the applicable depth and preserve claim/source distinctions.
-- Invoke `page-contract`, `frontmatter-vocabulary`, and `wiki-link-integrity` for the changed page.
-- Obtain `content-correctness` and any triggered rendering evidence before the applicable review boundary.
+- After the batch enters `open`, materialize its immutable AuditPlan; satisfy each obligation when due through its unique registered producer without changing its native evidence kind.
+- Send L-tier pages through independent substantive review and M-tier pages only through the M checklist inside Batch Review.
+- Treat applicable rendering predicates and the separate rendering-verification record as distinct obligations; neither substitutes for the other.
 
 ## Stop or escalate
 

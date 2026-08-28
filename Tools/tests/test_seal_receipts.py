@@ -48,7 +48,9 @@ for path in (str(TOOLS), str(TESTS)):
 
 import kblib  # noqa: E402
 import check_queue  # noqa: E402
+import runtime_paths  # noqa: E402
 import seal_receipts  # noqa: E402
+from test_required_queue_e2e import RequiredQueueFixture  # noqa: E402
 from test_update_queue import UpdateQueueTests  # noqa: E402
 
 
@@ -168,11 +170,59 @@ def _run_seal(root, *arguments):
 class SealFixture(UpdateQueueTests):
     """Runs against the same live-writer fixture the queue suite uses."""
 
+    def setUp(self):
+        """Install a current, dischargeable audit lifecycle fixture.
+
+        A seal scenario needs one fully valid closed batch before it can test
+        reachability and cold storage.  Build that shared prologue with the
+        same plain S-tier pages and compiled Profile contracts as the
+        production lifecycle E2E fixture; legacy hand-written evidence must
+        not bypass the AuditPlan merely to manufacture sealable history.
+        """
+        super().setUp()
+        for name in ("deltas", "receipts", "reports"):
+            (self.root / ".cambium" / name).mkdir(exist_ok=True)
+        RequiredQueueFixture.install_plain_s_audit_fixture(self)
+
     def runTest(self):  # pragma: no cover - harness artifact
         pass
 
     def seal(self, *arguments):
         return _run_seal(self.root, *arguments)
+
+    def run_tool(self, name, *arguments):
+        return RequiredQueueFixture.run_tool(self, name, *arguments)
+
+    def prepare_premerge_audit_evidence(self, batch_id):
+        return RequiredQueueFixture.prepare_premerge_audit_evidence(
+            self, batch_id)
+
+    def record_batch_review_wrapper(self, batch_id):
+        return RequiredQueueFixture.record_batch_review_wrapper(
+            self, batch_id)
+
+    def write_delta(self, batch_id, object_path, receipt_id):
+        return RequiredQueueFixture.write_delta(
+            self, batch_id, object_path, receipt_id)
+
+    def merge_b1(self):
+        """Reach merge-ready through the real pre-merge AuditPlan closure."""
+        self.open_b1()
+        _plan_path, page_receipt_id = \
+            self.prepare_premerge_audit_evidence("B1")
+        delta = self.write_delta("B1", "Topics/A.md", page_receipt_id)
+        batch_receipt = self.record_batch_review_wrapper("B1")
+        revision, fingerprint = self.expected()
+        completed = self.command(
+            "--id", "B1", "--transition", "merge-ready",
+            "--delta-path", delta,
+            "--batch-receipt", batch_receipt,
+            "--expected-state-revision", revision,
+            "--expected-sha256", fingerprint,
+            "--actor-role", "integrator", "--apply",
+        )
+        self.assertEqual(0, completed.returncode, completed.stdout)
+        return completed
 
     def close_b1(self):
         """Close B1 and leave one genuinely superseded B1 row to archive.
@@ -184,7 +234,46 @@ class SealFixture(UpdateQueueTests):
         than owner reachability, so give them an unrelated historical B1 row
         that is already unreferenced and may legitimately become cold.
         """
-        completed = super().close_b1()
+        self.merge_b1()
+        delta_apply_receipt = self.apply_b1()
+        previous_batch = self.load(
+            check_queue.COVERAGE_PATH)["pages"][0]["batch"]
+
+        closed = self.run_tool(
+            "check_batch_close.py", "--batch", "B1",
+            "--integrator", "fixture-integrator",
+            "--reviewer", "fixture-reviewer",
+            "--review-attestation",
+            "fixture reviewer independently confirms the merged batch",
+            "--json",
+        )
+        self.assertEqual(0, closed.returncode, closed.stdout)
+        json_lines = [
+            line for line in closed.stdout.splitlines()
+            if line.startswith("[{")
+        ]
+        self.assertEqual(1, len(json_lines), closed.stdout)
+        close_rows = json.loads(json_lines[0])
+        close_gate_rows = [
+            receipt for receipt in close_rows
+            if receipt.get("check") == "batch_close_gate"
+        ]
+        self.assertEqual(1, len(close_gate_rows), close_rows)
+        close_gate = close_gate_rows[0]
+
+        revision, fingerprint = self.expected()
+        completed = self.command(
+            "--id", "B1", "--transition", "closed",
+            "--gate-receipt", close_gate["queue_consistency_receipt"],
+            "--close-gate-receipt", close_gate["receipt_id"],
+            "--delta-apply-receipt", delta_apply_receipt,
+            "--expected-state-revision", revision,
+            "--expected-sha256", fingerprint,
+            "--actor-role", "integrator", "--apply",
+        )
+        self.assertEqual(0, completed.returncode, completed.stdout)
+        coverage = self.load(check_queue.COVERAGE_PATH)
+        self.assertEqual(previous_batch, coverage["pages"][0]["batch"])
         self.append_receipt(
             "audit-superseded-b1-history", check="fixture_history",
             target="B1", batch_id="B1", tool="fixture",
@@ -262,7 +351,7 @@ class SealFixture(UpdateQueueTests):
         self.assertTrue(self.sealed_ids(), point)
         self.assertEqual(0, self.seal("--verify").returncode, point)
 
-    ATTESTATION_REGISTER = ".cambium/receipts/fixture.jsonl"
+    ATTESTATION_REGISTER = runtime_paths.BATCH_CLOSE_RECEIPT_PATH
     CRAFTED_EVIDENCE = "%s/crafted-B1.jsonl" % kblib.RECEIPT_COLD_EVIDENCE_PREFIX
 
     def stock_evidence(self, payload):
@@ -378,6 +467,8 @@ class UnsealedFixtureTests(SealFixture):
         attestation_id = "audit-reviewer-attestation-b1"
         global_review_id = "audit-global-review-b1"
         closed_list_id = "audit-closed-list-b1"
+        full_audit_id = "audit-full-k1209-b1"
+        raw_producer_id = "audit-raw-k1209-b1"
         transition_id = "audit-close-transition-b1"
         relative = ".cambium/receipts/close-gates.jsonl"
         result = {
@@ -428,7 +519,14 @@ class UnsealedFixtureTests(SealFixture):
                     "global_review_receipt": global_review_id,
                     "reviewer_attestation_receipt": attestation_id,
                     "page_review_receipts": [current_id],
-                    "closed_list_evidence": {"links": closed_list_id},
+                    "closed_list_evidence": {
+                        "links": closed_list_id,
+                        "structural_validity": full_audit_id,
+                    },
+                    "closed_list_producer_evidence": {
+                        "links": closed_list_id,
+                        "structural_validity": raw_producer_id,
+                    },
                 }),
                 attestation_id: (relative, {
                     "receipt_id": attestation_id,
@@ -441,6 +539,16 @@ class UnsealedFixtureTests(SealFixture):
                 closed_list_id: (relative, {
                     "receipt_id": closed_list_id,
                     "check": "closed_list_links",
+                }),
+                full_audit_id: (relative, {
+                    "receipt_id": full_audit_id,
+                    "record_kind": "audit-receipt",
+                    "evidence_ref": raw_producer_id,
+                }),
+                raw_producer_id: (relative, {
+                    "receipt_id": raw_producer_id,
+                    "batch_id": "B1",
+                    "check": "closed_list_structural_validity",
                 }),
                 consistency_id: (relative, {
                     "receipt_id": consistency_id,
@@ -468,9 +576,43 @@ class UnsealedFixtureTests(SealFixture):
         self.assertNotIn(current_id, planned_ids)
         self.assertFalse(
             {close_id, consistency_id, delta_id, attestation_id,
-             global_review_id, closed_list_id}.intersection(planned_ids),
+             global_review_id, closed_list_id, full_audit_id,
+             raw_producer_id}.intersection(planned_ids),
             "a current owner reference keeps the hot close replay whole")
         self.assertIn(superseded_id, planned_ids)
+
+    def test_hot_close_replay_follows_both_raw_producer_reference_edges(self):
+        """Both the aggregate map and AuditReceipt ref enter the closure."""
+        full_id = "audit-full-k1209-b1"
+        mapped_raw_id = "audit-raw-mapped-k1209-b1"
+        wrapped_raw_id = "audit-raw-wrapped-k1209-b1"
+        close = {
+            "closed_list_evidence": {"structural_validity": full_id},
+            # Probe the two declared edges independently.  Whole-close
+            # validation separately requires them to agree for a real member.
+            "closed_list_producer_evidence": {
+                "controlled_vocabulary": mapped_raw_id,
+            },
+        }
+        catalog = {
+            full_id: (".cambium/receipts/audit.jsonl", {
+                "receipt_id": full_id,
+                "record_kind": "audit-receipt",
+                "evidence_ref": wrapped_raw_id,
+            }),
+            mapped_raw_id: (".cambium/receipts/audit.jsonl", {
+                "receipt_id": mapped_raw_id,
+                "check": "closed_list_controlled_vocabulary",
+            }),
+            wrapped_raw_id: (".cambium/receipts/audit.jsonl", {
+                "receipt_id": wrapped_raw_id,
+                "check": "closed_list_structural_validity",
+            }),
+        }
+
+        self.assertEqual(
+            {full_id, mapped_raw_id, wrapped_raw_id},
+            seal_receipts._hot_close_replay_receipts(catalog, close))
 
     def test_open_batches_never_seal(self):
         self.open_b1()
@@ -830,8 +972,17 @@ class SealedTreeTests(SealFixture):
         self.assertEqual(0, self.seal_apply.returncode)
         segment = self.root / self.sealed_segment()
         text = segment.read_text(encoding="utf-8")
-        self.assertIn('"result": "pass"', text)
-        edited = text.replace('"result": "pass"', '"result": "fail"', 1)
+        replacements = (
+            ('"result": "passed"', '"result": "failed"'),
+            ('"result": "pass"', '"result": "fail"'),
+        )
+        source, target = next(
+            ((source, target) for source, target in replacements
+             if source in text),
+            (None, None),
+        )
+        self.assertIsNotNone(source, "sealed segment has no verdict to edit")
+        edited = text.replace(source, target, 1)
         self.assertEqual(len(edited), len(text), "the edit keeps the length")
         segment.write_text(edited, encoding="utf-8")
         result = check_queue.validate_runtime(self.root)

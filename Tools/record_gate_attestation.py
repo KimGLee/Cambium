@@ -15,6 +15,7 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import check_queue
 import kblib
+import manual_attestation
 import metadata_gate_runtime
 import runtime_paths
 
@@ -52,13 +53,13 @@ def build_attestation_receipt(context, requested_value, actor_role,
         raise ValueError(
             "actor role %r cannot pass Gate %s; expected %r" %
             (actor_role, gate.gate_id, gate.pass_authority_role_id))
-    if not isinstance(statement, str) or not statement.strip():
-        raise ValueError("manual Gate attestation requires a non-empty statement")
+    statement = manual_attestation.require_statement(
+        statement, "manual Gate attestation")
     bindings = metadata_gate_runtime.receipt_bindings(
         context, requested_value)
     receipt = kblib.make_receipt(
         TOOL, TOOL_VERSION, metadata_gate_runtime.GATE_CHECK,
-        context.page_path, "pass", statement.strip(), seq,
+        context.page_path, "pass", statement, seq,
         root=context.root)
     receipt.update({
         "gate_id": bindings["gate_id"],
@@ -89,7 +90,7 @@ def build_attestation_receipt(context, requested_value, actor_role,
         "active_standards_sha256": bindings["active_standards_sha256"],
         "metadata_execution_contract_fingerprint":
             bindings["metadata_execution_contract_fingerprint"],
-        "attestation_statement": statement.strip(),
+        "attestation_statement": statement,
     })
     # Validate the producer's own output through the same closed consumer
     # schema before any bytes enter the receipt catalog.
@@ -181,29 +182,20 @@ def main(argv=None):
     operation.update(check_queue.runtime_authority_lock_fields(
         context.authority))
     try:
-        authority_kwargs = check_queue.runtime_authority_validation_kwargs(
-            context.authority)
-        with kblib.runtime_write_lock(
-                root, owner_metadata=operation) as lease:
-            with kblib.no_authoritative_write_guard(lease):
-                locked = check_queue.validate_runtime(
-                    root, **authority_kwargs)
-                if locked.get("errors"):
-                    raise ValueError(
-                        "runtime changed before evidence publication: %s" %
-                        "; ".join(locked["errors"]))
-                _require_context_current(
-                    context, "manual Gate evidence publication", runtime=locked)
-                before = kblib.receipt_append_observation(
-                    receipt_path, [receipt])
-            outcome, error, _observation = kblib.write_receipts_observed(
-                receipt_path, [receipt], before=before)
-            if outcome != "present" or error is not None:
-                if outcome == "absent":
-                    lease.mark_reconciled()
-                raise ValueError(
-                    "manual Gate receipt publication outcome=%s error=%s" %
-                    (outcome, error))
+        def rebuild(locked):
+            _require_context_current(
+                context, "manual Gate evidence publication", runtime=locked)
+            return build_attestation_receipt(
+                context, args.value, args.actor_role, args.statement)
+
+        def validate(_locked, candidate):
+            metadata_gate_runtime.validate_gate_receipt(
+                context, candidate, args.value)
+
+        receipt = manual_attestation.publish_receipt(
+            root, receipt_path, receipt, authority=context.authority,
+            operation=operation, rebuild=rebuild, validate=validate,
+            publication_label="manual Gate receipt publication")
     except (OSError, TypeError, ValueError,
             kblib.RuntimeStateLockedError) as exc:
         print("[FAIL] %s" % exc, file=sys.stderr)

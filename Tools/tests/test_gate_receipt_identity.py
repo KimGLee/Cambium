@@ -462,6 +462,7 @@ class DeterministicGateReceiptIdentityTests(unittest.TestCase):
                              completed.stdout + completed.stderr)
             rows = self.receipt_rows(receipts)
             self.assertEqual("link-check-summary", rows[-1]["check"])
+            self.assertEqual(".", rows[-1]["target"])
             self.assert_producer_identity(
                 rows, check_links.TOOL, check_links.TOOL_VERSION,
                 check_links.GATE_ID)
@@ -498,6 +499,7 @@ class DeterministicGateReceiptIdentityTests(unittest.TestCase):
             summary_rows = [row for row in rows
                             if row["check"] != "priority-quota-distribution"]
             self.assertEqual("vocab-check-summary", summary_rows[-1]["check"])
+            self.assertEqual(".", summary_rows[-1]["target"])
             self.assert_producer_identity(
                 summary_rows, check_vocab.TOOL, check_vocab.TOOL_VERSION,
                 check_vocab.GATE_ID)

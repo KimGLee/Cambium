@@ -67,21 +67,24 @@ class QuotaExceptionLifecycleTests(CheckBatchCloseTests):
     # when in the batch lifecycle to grant.
     def setUp(self):
         self.temporary = __import__("tempfile").TemporaryDirectory()
-        import shutil
-        from test_check_batch_close import FIXTURE
         self.root = Path(self.temporary.name) / "repo"
-        shutil.copytree(FIXTURE, self.root)
-        for name in ("deltas", "receipts", "reports"):
-            (self.root / ".cambium" / name).mkdir(exist_ok=True)
-        self.install_profile_and_tools()
+        self.build_repository_fixture()
         page = self.root / "Topics/A.md"
-        page.write_text("---\npriority: P0\n---\n\n# A\n", encoding="utf-8")
+        page.write_text(
+            page.read_text(encoding="utf-8").replace(
+                "priority: P2", "priority: P0"),
+            encoding="utf-8")
         # B stays P2 so the P0 share is 1/2 = 50%: over the 15% default, and
         # coverable by a bounded limit -- a corpus whose only counted page is
         # P0 sits at 100%, which no valid limit (< 100) may cover.
-        other = self.root / "Topics/B.md"
-        other.write_text("---\npriority: P2\n---\n\n# B\n",
-                         encoding="utf-8")
+        coverage_path = self.root / check_queue.COVERAGE_PATH
+        coverage = kblib.load_yaml_file(coverage_path)
+        next(row for row in coverage["pages"]
+             if row["path"] == "Topics/A.md")["priority"] = "P0"
+        coverage_path.write_text(
+            kblib.canonical_yaml(coverage), encoding="utf-8")
+        self.refresh_initial_fixture_origin()
+        self.assertEqual([], check_queue.validate_runtime(self.root)["errors"])
         # The task stays planned: batch activation owns planned -> active,
         # and a bounded exception is grantable at planning time -- that is
         # exactly when a known migration excess should be declared.

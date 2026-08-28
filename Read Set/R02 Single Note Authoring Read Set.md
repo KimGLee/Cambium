@@ -25,6 +25,14 @@ load_edges:
       - kernel/K08 Metadata and Status/07 Frontmatter Writer and Projection Authority.md
       - kernel/K09 Wiki Link and Navigation/01 Link Semantics and Body Links.md
       - kernel/K10 Writing and Formatting/01 Naming Language and Prose.md
+      - kernel/K12 Quality Assurance/19 Incremental Audit Planning.md
+      - kernel/K12 Quality Assurance/audit-plan-contract.yaml
+      - kernel/K12 Quality Assurance/batch-close-closed-list.yaml
+      - kernel/K12 Quality Assurance/batch-review-obligation-registry.yaml
+      - kernel/K12 Quality Assurance/changed-scope-check-registry.yaml
+      - kernel/K12 Quality Assurance/deterministic-rendering-contract.yaml
+      - kernel/K12 Quality Assurance/rendering-verification-contract.yaml
+      - kernel/K12 Quality Assurance/substantive-review-contract.yaml
     read_sets:
       - R01
   - edge_id: R02:conditional
@@ -59,6 +67,7 @@ load_edges:
       - kernel/K12 Quality Assurance/05 Automated and Manual Checks.md
       - kernel/K12 Quality Assurance/12 Substantive Correctness Review.md
       - kernel/K12 Quality Assurance/13 Visual Verification Escalation.md
+      - kernel/K12 Quality Assurance/14 Batch Review.md
     read_sets: []
 ---
 # R02 Single Note Authoring Read Set

@@ -10,12 +10,14 @@ Under concurrent execution, a batch's body may link only to already-merged conte
 
 Gate merge rules (for tier determination see [[kernel/K00 Standards Control/07 Effort Tiering and Priority Quota|K00/07]] Effort Tiering):
 
-- Note-level acceptance for S/M-tier pages is folded into Batch Review; no separate note gate is opened.
-- S-tier pages are reviewed by sampling: by default sample `max(2, 20%)` of the batch's S-tier pages (check all if fewer than 2); when sampling finds problems, expand the scope per [[kernel/K12 Quality Assurance/07 Audit Evidence Reuse and Invalidation|Audit Evidence Reuse and Invalidation]].
-- M-tier pages pass, page by page within the batch gate, the canonical [[kernel/K12 Quality Assurance/01 Quality Dimensions and Single Note Review#M-tier Gate Checklist|M-tier Gate Checklist]].
+- Note-level acceptance for S/M-tier pages is folded into Batch Review; no separate note gate is opened, and an M-tier page MUST NOT produce an independent `substantive-review-record`.
+- For `n` S-tier pages, check all when `n < 2`; otherwise sample `max(2, ceil(n × 20 / 100))`. The Tool deterministically selects and freezes the set. Findings expand scope under [[kernel/K12 Quality Assurance/07 Audit Evidence Reuse and Invalidation|K12/07]].
+- M-tier pages pass the canonical [[kernel/K12 Quality Assurance/01 Quality Dimensions and Single Note Review#M-tier Gate Checklist|M-tier checklist]] page by page. Its sole atomic projection is [`batch-review-obligation-registry.yaml`](batch-review-obligation-registry.yaml); every atom stays in the AuditPlan, and conditional `not-applicable` requires a reason.
 - L-tier pages keep an independent note gate, executed in full per [[kernel/K12 Quality Assurance/01 Quality Dimensions and Single Note Review|K12/01]], and are not folded into this section.
 
-The batch close checklist has two groups. **In-batch items** are completed before the batch is eligible for `merge-ready`; the integrator verifies that boundary and records one current `batch-review` Gate receipt under the registered receipt contract. The wrapper binds the exact batch, task, Delta page evidence, and, when the selected Profile registers Batch Review Requirements, the frozen expected judgment set and one current judgment receipt per expected target. Missing, extra, duplicated, drifted, mis-roled, or reused judgments fail. A reopened batch, changed page, or revised Profile invalidates the affected evidence. Page receipts remain historical evidence but do not independently authorize the lifecycle edge. **Global items** are verified by the integrator during serial merge, which performs deterministic integration and verification rather than repeating in-batch semantic review.
+The registry also owns the M/S producer-evidence contract. A `consumes` atom has an exact selector or `hold`; a Tool cannot substitute an arbitrary pass. Sampled-S evidence remains dimensionless and is never fabricated as an `AuditReceipt`.
+
+**In-batch items** precede `merge-ready`; one current `batch-review` Gate receipt binds the batch, task, Delta evidence, complete applicable AuditPlan closure, and any Profile-registered judgments. Missing, extra, stale, or mis-bound evidence fails. **Global items** are verified during serial merge without repeating semantic review.
 
 In-batch items (merge-ready preconditions):
 
@@ -24,12 +26,10 @@ In-batch items (merge-ready preconditions):
 - Required expression migrations registered by the `Expression Layer Entry` are complete or have an explicit disposition and pass R05; any supplemental profile gate is also closed.
 - Changed-scope automated checks, manual content review, and the applicable
   rendering level are complete.
-- An AuditPlan has been generated from changed objects, acceptance predicates, and dependency changes; still-valid historical evidence has an explicit `reused_receipt_id`, and new checks produce dimension-specific AuditReceipts.
+- The [`AuditPlan`](audit-plan-contract.yaml) is complete; reuse is explicit, and each obligation retains its planned evidence kind. Only dimension-specific obligations produce an [`AuditReceipt`](audit-receipt-contract.yaml).
 - Page frontmatter projections of every page the batch touched agree with the
   post-delta Coverage owner state, per [[kernel/K08 Metadata and Status/07 Frontmatter Writer and Projection Authority|K08/07]]. A substantive change advances evidence-bound `last_content_modified` and invalidates the old review; `last_reviewed` returns only from review evidence for the current semantic fingerprint. Any `last_verified` change cites the separate verification evidence that earned it.
-- Every Batch Review Requirement registered by the selected Profile has one
-  current per-target judgment receipt produced before this boundary; close
-  cannot reconstruct missing judgments.
+- Each Profile-registered Batch Review Requirement has one current per-target judgment bound to its `profile-extension` plan row and fingerprints; close cannot reconstruct or accept a free-standing judgment.
 - The delta has been written out; no unverified modifications are left to the next batch.
 
 Global items (verified by the integrator during serial merge):
@@ -50,6 +50,6 @@ Global items (verified by the integrator during serial merge):
   publication, all frozen page identities and exact bytes pass a final CAS;
   drift refuses the close rather than dating content nobody reviewed.
 
-Only after the global items pass may the registered Queue transaction record `merge-ready -> closed`; the guarded close also derives the Coverage `next_batch` projection and updates the Progress Queue reference. Delta application and close are ordered, independently evidenced integrator writes, not one falsely atomic multi-object step. A failed merge records the failure and returns the item to `open`; a worker cannot write either transition.
+Only after the global items pass and the complete frozen AuditPlan closure has been consumed may the registered Queue transaction record `merge-ready -> closed`; the guarded close also derives the Coverage `next_batch` projection and updates the Progress Queue reference. Delta application and close are ordered, independently evidenced integrator writes, not one falsely atomic multi-object step. A failed merge records the failure and returns the item to `open`; a worker cannot write either transition.
 
 When Batch Review does not pass, the batch MUST NOT be closed; gaps return to the execution phase, the batch stays unaccepted, and it MUST NOT be marked closed in order to start the next topic.

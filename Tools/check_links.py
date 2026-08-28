@@ -242,7 +242,7 @@ def _main():
         # A gate that scans nothing must fail, not silently pass. This applies
         # equally to a scoped run, an empty whole root, and a root whose files
         # were all removed by explicit exclusions.
-        target = (args.scope or ".") + " @ " + os.path.abspath(args.vault_root)
+        target = args.scope or "."
         receipts = [_make_receipt(
             "scan-empty", target, "fail",
             "effective scan set contains no .md files (path missing, empty, "
@@ -337,7 +337,7 @@ def _main():
         seq += 1
         receipts.append(_make_receipt(
             GATE_CHECK,
-            (args.scope or ".") + " @ " + os.path.abspath(args.vault_root), "pass",
+            args.scope or ".", "pass",
             "missing=0 ambiguous=0 bad_heading=0 (%d link(s) total)"
             % counts["links"], seq, root=args.vault_root))
 

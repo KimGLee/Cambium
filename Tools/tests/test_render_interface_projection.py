@@ -168,9 +168,17 @@ class ShippedArtifactTests(unittest.TestCase):
                 capability = receipts[projector.PATH_EXTENSION_KEY]
                 self.assertEqual(capability["access"], "write")
                 self.assertEqual(capability["consumption"], "append")
-                self.assertEqual(capability["constraint"], "namespace")
-                self.assertEqual(capability["value"], ".cambium/receipts")
-                self.assertEqual(capability["suffixes"], [".jsonl"])
+                self.assertIn(
+                    capability["constraint"], ("namespace", "exact"))
+                if capability["constraint"] == "namespace":
+                    self.assertEqual(
+                        capability["value"], ".cambium/receipts")
+                    self.assertEqual(capability["suffixes"], [".jsonl"])
+                else:
+                    self.assertTrue(capability["value"].startswith(
+                        ".cambium/receipts/"))
+                    self.assertTrue(capability["value"].endswith(".jsonl"))
+                    self.assertEqual(capability["suffixes"], [])
         exact = {
             ("check_vocab", "vocab"): ".cambium/derived/vocab.yaml",
             ("check_proof", "template"):

@@ -18,7 +18,6 @@ sys.path.insert(0, str(TOOLS / "tests"))
 sys.path.insert(0, str(TOOLS))
 
 import adopt_standards
-import check_batch_close
 import check_page_contract
 import check_profile
 import check_queue
@@ -27,13 +26,14 @@ import check_queue
 import queue_runtime.runtime
 import queue_runtime.adoption
 import queue_runtime.task_contract
-import check_vocab
+import compose_vocab
 import kblib
+import profile_admission
+import record_rendering_verification
 import seal_receipts
 import standards_state
 import update_queue
 from profile_fixture import FIXTURE_UPSTREAM_REVISION, install_loadable_profile
-import test_update_queue
 import upstream_identity
 
 
@@ -73,6 +73,23 @@ class AdoptStandardsFixture:
         """Lay down the fixture tree the original setUp built per test."""
         shutil.copytree(FIXTURE, self.root)
         install_loadable_profile(self.root)
+        self.install_s_tier_audit_fixture()
+        canonical_root = str(self.root.resolve())
+        admission, admission_errors = profile_admission.admit_profile(
+            canonical_root, require_approved=True)
+        self.assertEqual([], admission_errors)
+        vocab_text, _vocab, vocab_errors = compose_vocab.compiled_artifact(
+            canonical_root, admission)
+        self.assertEqual([], vocab_errors)
+        vocab_path = self.root / compose_vocab.DEFAULT_OUTPUT
+        vocab_path.parent.mkdir(parents=True, exist_ok=True)
+        vocab_path.write_text(vocab_text, encoding="utf-8")
+        compiled = subprocess.run(
+            [sys.executable, str(TOOLS / "compose_page_contract.py"),
+             "--root", str(self.root)],
+            text=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+            check=False)
+        self.assertEqual(0, compiled.returncode, compiled.stdout)
         governance = self.root / self.GOVERNANCE
         governance.parent.mkdir(parents=True, exist_ok=True)
         governance.write_text(
@@ -83,6 +100,69 @@ class AdoptStandardsFixture:
         # ``install_loadable_profile`` installs the complete current
         # K00-owned YAML Control registry and its K12 registry dependency.
         # Tests must not recreate either machine contract as Markdown.
+
+    def install_s_tier_audit_fixture(self):
+        """Keep this Standards fixture outside unresolved M-review policy.
+
+        These tests exercise Standards adoption, revalidation, and historical
+        sealing; they do not make or inspect M-tier semantic judgments.  The
+        current Kernel deliberately holds several M atoms whose acceptance
+        selectors do not yet exist.  Treating the two synthetic ``# A``/``#
+        B`` pages as S-tier therefore keeps this independent fixture honest:
+        its one-page B1 still owes the registry-derived S sample and the full
+        deterministic changed-scope closure, but it never manufactures an M
+        verdict merely to reach the lifecycle edge under test.
+        """
+        for name in ("A", "B"):
+            (self.root / ("Topics/%s.md" % name)).write_text(
+                "---\n"
+                "type: concept\n"
+                "domain: general\n"
+                "scope: shared\n"
+                "level: basic\n"
+                "depth: atomic\n"
+                "priority: P2\n"
+                "---\n"
+                "# %s\n\n"
+                "## Synthetic Residual\n\n"
+                "Accepted-root liveness marker for the registered fixture "
+                "scan.\n" % name,
+                encoding="utf-8")
+
+        coverage_path = self.root / check_queue.COVERAGE_PATH
+        coverage = kblib.load_yaml_file(coverage_path)
+        for page in coverage["pages"]:
+            page["tier"] = "S"
+            page["priority"] = "P2"
+        coverage_path.write_text(
+            kblib.canonical_yaml(coverage), encoding="utf-8")
+        coverage_sha256 = kblib.sha256_file(coverage_path)
+
+        progress_path = self.root / check_queue.PROGRESS_PATH
+        progress = kblib.load_yaml_file(progress_path)
+        checkpoint = progress.get("checkpoint") or {}
+        if checkpoint.get("coverage_sha256") is not None:
+            checkpoint["coverage_sha256"] = coverage_sha256
+            progress_path.write_text(
+                kblib.canonical_yaml(progress), encoding="utf-8")
+
+        receipt_path = self.root / \
+            ".cambium/receipts/task-transitions.jsonl"
+        receipts = [
+            json.loads(line) for line in
+            receipt_path.read_text(encoding="utf-8").splitlines()
+            if line.strip()
+        ]
+        initial = next(
+            row for row in receipts
+            if row.get("receipt_id") == "audit-fixture-initial-queue")
+        initial["before_coverage_sha256"] = coverage_sha256
+        initial["after_coverage_sha256"] = coverage_sha256
+        initial["after_progress_sha256"] = kblib.sha256_file(progress_path)
+        receipt_path.write_text(
+            "".join(json.dumps(row, separators=(",", ":")) + "\n"
+                    for row in receipts),
+            encoding="utf-8")
 
     def load(self, relative):
         return kblib.load_yaml_file(self.root / relative)
@@ -375,7 +455,7 @@ class AdoptStandardsFixture:
         self.assertEqual(1, len(receipt_ids))
         return receipt_ids[0]
 
-    def lifecycle_boundary_plan(self, invalidated_gate):
+    def lifecycle_boundary_plan(self, invalidated_gate, batch_id="B1"):
         """Adopt one immediate owner and one future native owner."""
         self.register_link_gate()
         self.plan(invalidated_receipt=invalidated_gate, overrides={
@@ -391,13 +471,13 @@ class AdoptStandardsFixture:
                 "dimension_ids": ["coverage_and_integration"],
                 "boundary_ids": ["INV-B1-LIFECYCLE"],
                 "reason_code": "predicate-changed",
-                "revalidation_scope_ids": ["B1"],
+                    "revalidation_scope_ids": [batch_id],
             }],
             "invalidation_boundaries": [{
                 "boundary_id": "INV-B1-LIFECYCLE",
                 "predicate_ids": ["PRED-LIFECYCLE-001"],
                 "target_kind": "batch",
-                "target_ids": ["B1"],
+                "target_ids": [batch_id],
                 "required_gate_ids": list(self.LIFECYCLE_GATES),
             }],
             "boundary_gate_reruns": list(self.LIFECYCLE_GATES),
@@ -414,7 +494,7 @@ class AdoptStandardsFixture:
         return json.loads(receipts.read_text(
             encoding="utf-8").splitlines()[-1])["receipt_id"]
 
-    def revalidation_aggregate(self, link_receipt):
+    def revalidation_aggregate(self, link_receipt, batch_id="B1"):
         """Run the aggregate with the adoption's immediate owner receipt.
 
         ``link_receipt`` remains an input to the helper so the surrounding
@@ -423,9 +503,9 @@ class AdoptStandardsFixture:
         """
         del link_receipt
         consistency = self.adoption_consistency_receipt()
-        relative = ".cambium/receipts/revalidation.jsonl"
+        relative = ".cambium/receipts/revalidation-%s.jsonl" % batch_id
         completed = self.run_tool(
-            "check_queue.py", "--require-revalidation", "B1",
+            "check_queue.py", "--require-revalidation", batch_id,
             "--boundary-gate-receipt",
             "required-queue-consistency=%s" % consistency,
             "--receipts", relative)
@@ -458,50 +538,100 @@ class AdoptStandardsFixture:
         self.assertEqual(0, completed.returncode, completed.stdout)
         return transition_at
 
-    def append_fixture_receipt(self, receipt_id, **fields):
-        """Append one hand-written receipt to the fixture register."""
-        receipt = {"receipt_id": receipt_id, "result": "pass",
-                   "invalidated_by": None}
-        receipt.update(fields)
-        kblib.write_receipts(
-            self.root / ".cambium/receipts/fixture.jsonl", [receipt])
-        return receipt_id
+    def materialize_b1_premerge_audit(self, batch_id="B1"):
+        """Discharge one pre-merge AuditPlan through production producers."""
+        prepared = self.run_tool(
+            "prepare_audit_plan.py", "--batch", batch_id, "--apply")
+        self.assertEqual(0, prepared.returncode, prepared.stdout)
+        prepared_result = json.loads(prepared.stdout)
+        plan_path = prepared_result["plan_path"]
+        plan = self.load(plan_path)
+        page_receipts = []
 
-    def merge_and_apply_b1(self, at):
+        for obligation in plan["obligations"]:
+            if (obligation.get("status") != "required" or
+                    obligation.get("due_stage") != "pre-merge"):
+                continue
+            common = (
+                "--batch", batch_id, "--plan", plan_path,
+                "--obligation-id", obligation["obligation_id"],
+            )
+            if obligation["evidence_kind"] == "batch-page-review-record":
+                produced = self.run_tool(
+                    "record_batch_page_review.py", *common,
+                    "--page", obligation["target"],
+                    "--variant", "s-sampled-page",
+                    "--reviewer-context-id",
+                    "standards-fixture-reviewer-context",
+                    "--reviewer-role", "batch-reviewer",
+                    "--verdict", "passed", "--statement",
+                    "S-tier fixture sample satisfies the frozen review "
+                    "contract", "--apply")
+                self.assertEqual(0, produced.returncode, produced.stdout)
+                page_receipts.append(json.loads(produced.stdout)["receipt_id"])
+                continue
+
+            if obligation["producer_check"] == \
+                    record_rendering_verification.CHECK:
+                produced = self.run_tool(
+                    "record_rendering_verification.py", *common,
+                    "--rendering-mode", "source-only", "--apply")
+            else:
+                produced = self.run_tool(
+                    "record_changed_scope_evidence.py", *common, "--apply")
+            self.assertEqual(0, produced.returncode, produced.stdout)
+            evidence = json.loads(produced.stdout)
+            if obligation["evidence_kind"] == "audit-receipt":
+                completed = self.run_tool(
+                    "complete_audit_receipt.py", *common,
+                    "--evidence-receipt", evidence["receipt_id"], "--apply")
+                self.assertEqual(0, completed.returncode, completed.stdout)
+
+        self.assertEqual(1, len(page_receipts), plan)
+        return {
+            "plan_path": plan_path,
+            "page_receipt": page_receipts[0],
+        }
+
+    def merge_and_apply_b1(self, at, *, batch_id="B1",
+                           object_path="Topics/A.md"):
         """Carry the cleared batch to `merge-ready` and apply its Delta."""
-        queue = self.load(check_queue.QUEUE_PATH)
-        self.append_fixture_receipt(
-            "audit-page-1", check="fixture", target="Topics/A.md")
-        self.append_fixture_receipt(
-            "audit-batch-1", check=check_queue.BATCH_REVIEW_CHECK,
-            target="B1", tool=check_queue.MANUAL_ATTESTATION_TOOL,
-            tool_version=check_queue.MANUAL_ATTESTATION_TOOL_VERSION,
-            gate_id=check_queue.BATCH_REVIEW_GATE_ID,
-            task_id=queue["task_id"], batch_id="B1",
-            delta_page_receipt_ids=["audit-page-1"])
-        delta = self.root / ".cambium/deltas/B1.yaml"
+        audit = self.materialize_b1_premerge_audit(batch_id)
+        delta_relative = ".cambium/deltas/%s.yaml" % batch_id
+        delta = self.root / delta_relative
         delta.parent.mkdir(parents=True, exist_ok=True)
         delta.write_text(
-            "batch: B1\ngenerated_at: %s\n"
-            "pages:\n  - path: Topics/A.md\n"
-            "    gate_receipts:\n      - audit-page-1\n"
+            "batch: %s\ngenerated_at: %s\n"
+            "pages:\n  - path: %s\n"
+            "    gate_receipts:\n      - %s\n"
             "open_gaps_added: []\nopen_gaps_closed: []\n"
-            "next_batch_updates: []\nwatermark_advance: null\n" % at,
+            "next_batch_updates: []\nwatermark_advance: null\n" %
+            (batch_id, at, object_path, audit["page_receipt"]),
             encoding="utf-8")
+        reviewed = self.run_tool(
+            "record_batch_review.py", "--batch", batch_id,
+            "--actor-role", "integrator", "--statement",
+            "Standards fixture integrator confirms the frozen pre-merge "
+            "AuditPlan closure", "--apply", "--json")
+        self.assertEqual(0, reviewed.returncode, reviewed.stdout)
+        wrappers = json.loads(reviewed.stdout)
+        self.assertEqual(1, len(wrappers), wrappers)
+        batch_receipt = wrappers[0]["receipt_id"]
         result = check_queue.validate_runtime(self.root)
         merged = self.run_tool(
-            "update_queue.py", "--id", "B1", "--transition", "merge-ready",
-            "--delta-path", ".cambium/deltas/B1.yaml",
-            "--batch-receipt", "audit-batch-1",
+            "update_queue.py", "--id", batch_id,
+            "--transition", "merge-ready",
+            "--delta-path", delta_relative,
+            "--batch-receipt", batch_receipt,
             "--expected-state-revision",
             str(result["queue"]["state_revision"]),
             "--expected-sha256", result["queue_sha256"],
-            "--actor-role", "integrator", "--at", at, "--apply")
+            "--actor-role", "integrator", "--apply")
         self.assertEqual(0, merged.returncode, merged.stdout)
-        relative = ".cambium/receipts/delta-B1.jsonl"
+        relative = ".cambium/receipts/delta-%s.jsonl" % batch_id
         applied = subprocess.run(
             [sys.executable, str(TOOLS / "apply_delta.py"),
-             check_queue.COVERAGE_PATH, ".cambium/deltas/B1.yaml",
+             check_queue.COVERAGE_PATH, delta_relative,
              "--root", str(self.root),
              "--expected-coverage-sha256",
              kblib.sha256_file(self.root / check_queue.COVERAGE_PATH),
@@ -513,6 +643,79 @@ class AdoptStandardsFixture:
         self.assertEqual(0, applied.returncode, applied.stdout)
         return json.loads((self.root / relative).read_text(
             encoding="utf-8").splitlines()[-1])["receipt_id"]
+
+    def open_batch(self, batch_id, standards_revalidation_receipt=None):
+        """Open one queued batch through the current production activation."""
+        gate = self.queue_gate("--require-ready", batch_id)
+        result = check_queue.validate_runtime(self.root)
+        arguments = [
+            "update_queue.py", "--id", batch_id,
+            "--transition", "open", "--gate-receipt", gate,
+            "--expected-state-revision",
+            str(result["queue"]["state_revision"]),
+            "--expected-sha256", result["queue_sha256"],
+            "--actor-role", "integrator",
+        ]
+        if standards_revalidation_receipt is not None:
+            arguments.extend([
+                "--standards-revalidation-receipt",
+                standards_revalidation_receipt])
+        arguments.append("--apply")
+        opened = self.run_tool(*arguments)
+        self.assertEqual(0, opened.returncode, opened.stdout)
+        return gate
+
+    def close_applied_batch(self, batch_id, delta_apply_receipt):
+        """Close one applied batch through the production close bundle."""
+        consistency = self.queue_gate()
+        close_gate = self.close_gate(batch_id, consistency)
+        consistency = self.close_consistency(close_gate)
+        result = check_queue.validate_runtime(self.root)
+        closed = self.run_tool(
+            "update_queue.py", "--id", batch_id,
+            "--transition", "closed",
+            "--gate-receipt", consistency,
+            "--close-gate-receipt", close_gate,
+            "--delta-apply-receipt", delta_apply_receipt,
+            "--expected-state-revision",
+            str(result["queue"]["state_revision"]),
+            "--expected-sha256", result["queue_sha256"],
+            "--actor-role", "integrator", "--apply")
+        self.assertEqual(0, closed.returncode, closed.stdout)
+        return close_gate
+
+    def revalidated_b2_applied(self):
+        """Build a fresh post-adoption attempt without rebasing an open one.
+
+        B1 completes under the initial Standards so the task is active.  B2
+        remains queued while its old admission evidence is invalidated.  The
+        queued revalidation aggregate is consumed by B2's normal new-Standards
+        activation, after which every audit producer runs through its current
+        CLI.  No old open attempt or activation is carried across adoption.
+        """
+        self.open_batch("B1")
+        now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+        first_apply = self.merge_and_apply_b1(now)
+        self.close_applied_batch("B1", first_apply)
+
+        invalidated_gate = self.queue_gate("--require-ready", "B2")
+        self.lifecycle_boundary_plan(invalidated_gate, batch_id="B2")
+        link_receipt = self.link_gate_receipt()
+        historical = self.revalidation_aggregate(
+            link_receipt, batch_id="B2")
+        aggregate = self.revalidation_aggregate(
+            link_receipt, batch_id="B2")
+        self.assertNotEqual(historical["receipt_id"], aggregate["receipt_id"])
+        self.open_batch("B2", aggregate["receipt_id"])
+        second_apply = self.merge_and_apply_b1(
+            datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+            batch_id="B2", object_path="Topics/B.md")
+        return {
+            "aggregate": aggregate,
+            "historical_aggregate": historical,
+            "delta_apply_receipt": second_apply,
+            "batch_id": "B2",
+        }
 
     def passed_only_boundary_plan(self, invalidated_gate, target_ids):
         """A boundary naming only a gate its targets have already left."""
@@ -768,12 +971,45 @@ class AdoptStandardsFixture:
     # Zero errors were reported the whole time.
     # ------------------------------------------------------------------
 
-    # Borrowed from the Queue suite, which drives the same fixture: this
-    # file can adopt and revalidate but has no hand-built close bundle, and
-    # `check_batch_close.py` itself needs scaffolding this fixture lacks.
-    append_receipt = test_update_queue.UpdateQueueTests.append_receipt
-    queue_gate = test_update_queue.UpdateQueueTests.queue_gate
-    close_gate = test_update_queue.UpdateQueueTests.close_gate
+    def queue_gate(self, *mode):
+        relative = ".cambium/receipts/gates.jsonl"
+        completed = self.run_tool(
+            "check_queue.py", *mode, "--receipts", relative)
+        self.assertEqual(0, completed.returncode, completed.stdout)
+        rows = [json.loads(line) for line in
+                (self.root / relative).read_text(
+                    encoding="utf-8").splitlines() if line.strip()]
+        return rows[-1]["receipt_id"]
+
+    def close_gate(self, batch_id, consistency_receipt):
+        """Run the complete production post-Delta close producer chain."""
+        catalog = check_queue.current_receipt_catalog(
+            check_queue.validate_runtime(self.root))
+        self.assertIn(consistency_receipt, catalog)
+        completed = self.run_tool(
+            "check_batch_close.py", "--batch", batch_id,
+            "--integrator", "fixture-integrator",
+            "--reviewer", "fixture-reviewer",
+            "--review-attestation",
+            "fixture reviewer independently confirms the merged batch",
+            "--receipts", ".cambium/receipts/close-gates.jsonl",
+            "--json")
+        self.assertEqual(0, completed.returncode, completed.stdout)
+        payloads = [line for line in completed.stdout.splitlines()
+                    if line.startswith("[{")]
+        self.assertEqual(1, len(payloads), completed.stdout)
+        gates = [record for record in json.loads(payloads[0])
+                 if record.get("check") == "batch_close_gate"]
+        self.assertEqual(1, len(gates), gates)
+        return gates[0]["receipt_id"]
+
+    def close_consistency(self, close_gate_id):
+        rows = [json.loads(line) for line in
+                (self.root / ".cambium/receipts/close-gates.jsonl").read_text(
+                    encoding="utf-8").splitlines() if line.strip()]
+        gate = next(row for row in rows
+                    if row.get("receipt_id") == close_gate_id)
+        return gate["queue_consistency_receipt"]
 
     # Named fields whose consumers may resolve a sealed receipt.  Each entry
     # is a promise that a declared sealed branch handles that field; the
@@ -837,42 +1073,25 @@ class AdoptStandardsFixture:
             text=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
             check=False)
 
-    def closed_b1_that_consumed_an_aggregate(self, invalidated_gate):
-        """Drive B1 through a real revalidation and out to `closed`."""
-        self.lifecycle_boundary_plan(invalidated_gate)
-        link_receipt = self.link_gate_receipt()
-        # Produce one complete, legitimate attempt that no transition
-        # consumes, then consume a fresh attempt.  Current metadata property
-        # owners can correctly keep the entire close replay bundle hot; this
-        # independent historical aggregate gives the sealing assertions a
-        # cold candidate without weakening that owner-evidence guarantee.
-        historical = self.revalidation_aggregate(link_receipt)
-        aggregate = self.revalidation_aggregate(link_receipt)
-        self.assertNotEqual(historical["receipt_id"], aggregate["receipt_id"])
-        cleared_at = self.clear_b1_hold(aggregate)
-        self.merge_and_apply_b1(self.seconds_after(cleared_at, 1))
-        gate = self.queue_gate()
-        close_gate = self.close_gate("B1", gate)
-        result = check_queue.validate_runtime(self.root)
-        applied = next(entry for entry in result["applied_delta_receipts"]
-                       if entry.get("batch") == "B1")
-        completed = self.run_tool(
-            "update_queue.py", "--id", "B1", "--transition", "closed",
-            "--gate-receipt", gate, "--close-gate-receipt", close_gate,
-            "--delta-apply-receipt", applied["selected_receipt"],
-            "--expected-state-revision",
-            str(result["queue"]["state_revision"]),
-            "--expected-sha256", result["queue_sha256"],
-            "--actor-role", "integrator",
-            "--at", self.seconds_after(cleared_at, 3), "--apply")
-        self.assertEqual(0, completed.returncode, completed.stdout)
+    def closed_batch_that_consumed_an_aggregate(self):
+        """Close a fresh post-adoption batch that consumed revalidation.
+
+        The pre-adoption B1 attempt is completed under its own Standards.
+        Queued B2 then consumes the aggregate during a normal new-Standards
+        activation and runs the current audit/Delta/close producer chain.
+        Nothing rebases an active attempt across the adoption boundary.
+        """
+        scenario = self.revalidated_b2_applied()
+        batch_id = scenario["batch_id"]
+        self.close_applied_batch(
+            batch_id, scenario["delta_apply_receipt"])
         final = check_queue.validate_runtime(self.root)
         self.assertEqual([], final["errors"])
-        self.assertEqual("closed", final["items_by_id"]["B1"]["state"])
+        self.assertEqual("closed", final["items_by_id"][batch_id]["state"])
         # The premise of every test below: this consumption really happened.
         self.assertEqual([], check_queue.outstanding_standards_revalidation(
-            final, "B1"))
-        return aggregate["receipt_id"], final
+            final, batch_id))
+        return scenario["aggregate"]["receipt_id"], final, batch_id
 
     def seal_ignoring_the_rule(self, result):
         """Reproduce an archive sealed by the protocol that had no rule.
@@ -970,9 +1189,10 @@ def _build_adopted(walker, inherited):
 
 
 def _build_closed_b1(walker, inherited):
-    aggregate_id, _final = walker.closed_b1_that_consumed_an_aggregate(
-        inherited["invalidated_gate"])
-    return {"aggregate_id": aggregate_id}
+    del inherited
+    aggregate_id, _final, batch_id = \
+        walker.closed_batch_that_consumed_an_aggregate()
+    return {"aggregate_id": aggregate_id, "closed_batch_id": batch_id}
 
 
 _TEMPLATE_PARENTS = {
@@ -980,7 +1200,7 @@ _TEMPLATE_PARENTS = {
     "paused": "base",
     "held": "base",
     "adopted": "paused",
-    "closed-b1": "held",
+    "closed-b1": "base",
 }
 _TEMPLATE_BUILDERS = {
     "base": _build_base,
@@ -2694,37 +2914,37 @@ class HeldRevalidationTests(_TemplateBackedCase):
         close transition -- which is where that Gate's producer can run --
         must still refuse without it.
         """
-        invalidated_gate = self.invalidated_gate
-        self.lifecycle_boundary_plan(invalidated_gate)
-        aggregate = self.revalidation_aggregate(self.link_gate_receipt())
-        self.assertEqual(["batch-close"],
-                         aggregate["deferred_to_later_transition_gate_ids"])
-        cleared_at = self.clear_b1_hold(aggregate)
-        delta_apply_receipt = self.merge_and_apply_b1(
-            self.seconds_after(cleared_at, 1))
+        with tempfile.TemporaryDirectory() as holder:
+            root = Path(holder) / "repo"
+            walker = _ScenarioWalker.at(root)
+            walker.build_repository_fixture()
+            scenario = walker.revalidated_b2_applied()
+            aggregate = scenario["aggregate"]
+            batch_id = scenario["batch_id"]
+            self.assertEqual(
+                ["batch-close"],
+                aggregate["deferred_to_later_transition_gate_ids"])
 
-        consistency = self.run_tool(
-            "check_queue.py", "--receipts", ".cambium/receipts/close.jsonl")
-        self.assertEqual(0, consistency.returncode, consistency.stdout)
-        consistency_receipt = json.loads(
-            (self.root / ".cambium/receipts/close.jsonl").read_text(
-                encoding="utf-8").splitlines()[-1])["receipt_id"]
-        result = check_queue.validate_runtime(self.root)
-        self.assertEqual("merge-ready", result["items_by_id"]["B1"]["state"])
-        attempted = self.run_tool(
-            "update_queue.py", "--id", "B1", "--transition", "closed",
-            "--gate-receipt", consistency_receipt,
-            "--delta-apply-receipt", delta_apply_receipt,
-            "--expected-state-revision",
-            str(result["queue"]["state_revision"]),
-            "--expected-sha256", result["queue_sha256"],
-            "--actor-role", "integrator", "--at",
-            self.seconds_after(cleared_at, 2), "--apply")
-        self.assertEqual(1, attempted.returncode, attempted.stdout)
-        self.assertIn("requires --close-gate-receipt", attempted.stdout)
-        self.assertEqual(
-            "merge-ready",
-            self.load(check_queue.QUEUE_PATH)["required_queue"][0]["state"])
+            consistency_receipt = walker.queue_gate()
+            result = check_queue.validate_runtime(root)
+            self.assertEqual(
+                "merge-ready", result["items_by_id"][batch_id]["state"])
+            attempted = walker.run_tool(
+                "update_queue.py", "--id", batch_id,
+                "--transition", "closed",
+                "--gate-receipt", consistency_receipt,
+                "--delta-apply-receipt", scenario["delta_apply_receipt"],
+                "--expected-state-revision",
+                str(result["queue"]["state_revision"]),
+                "--expected-sha256", result["queue_sha256"],
+                "--actor-role", "integrator", "--apply")
+            self.assertEqual(1, attempted.returncode, attempted.stdout)
+            self.assertIn(
+                "requires --close-gate-receipt", attempted.stdout)
+            self.assertEqual(
+                "merge-ready",
+                check_queue.validate_runtime(root)["items_by_id"]
+                [batch_id]["state"])
 
     def test_a_boundary_of_only_passed_gates_is_refused_at_admission(self):
         """A current plan cannot retroactively defer an owner edge."""
@@ -3303,18 +3523,19 @@ class ReadSetClosureTests(_TemplateBackedCase):
 
 
 class SealedAggregateTests(_TemplateBackedCase):
-    # Shared scenario: B1 driven from the held position through a real
-    # revalidation, merge, Delta application, and close -- the walk
-    # `closed_b1_that_consumed_an_aggregate` makes, performed once into the
-    # "closed-b1" template with the consumed aggregate's receipt ID as an
-    # artifact.  Every test then seals (or mis-seals) its private copy of
-    # that archive, so each starts from its own tree and re-derives the
-    # pre-seal runtime view from it.
+    # Shared scenario: B1 completes under the initial Standards; queued B2
+    # consumes a real revalidation aggregate while opening under the adopted
+    # Standards, then completes the production audit/Delta/close chain.  The
+    # walk is performed once into the "closed-b1" template with the consumed
+    # aggregate's receipt ID as an artifact.  Every test then seals (or
+    # mis-seals) its private copy of that archive, so each starts from its own
+    # tree and re-derives the pre-seal runtime view from it.
     TEMPLATE = "closed-b1"
 
     def setUp(self):
         super().setUp()
         self.aggregate_id = self.scenario["aggregate_id"]
+        self.batch_id = self.scenario["closed_batch_id"]
 
     def test_a_consumed_revalidation_aggregate_is_never_sealed(self):
         aggregate_id = self.aggregate_id
@@ -3332,7 +3553,7 @@ class SealedAggregateTests(_TemplateBackedCase):
         self.assertIn(aggregate_id, after["receipt_catalog"])
         self.assertNotIn(aggregate_id, after["receipt_catalog"].cold)
         self.assertEqual([], check_queue.outstanding_standards_revalidation(
-            after, "B1"))
+            after, self.batch_id))
 
     def test_an_archive_sealed_before_the_rule_still_replays(self):
         aggregate_id = self.aggregate_id
@@ -3353,7 +3574,7 @@ class SealedAggregateTests(_TemplateBackedCase):
 
         self.assertEqual([], after["errors"])
         self.assertEqual([], check_queue.outstanding_standards_revalidation(
-            after, "B1"))
+            after, self.batch_id))
 
     def test_a_sealed_body_whose_bytes_drifted_does_not_resolve(self):
         aggregate_id = self.aggregate_id
@@ -3393,14 +3614,15 @@ class SealedAggregateTests(_TemplateBackedCase):
             aggregate_id in error and
             "resolves neither in the hot register" in error
             for error in after["errors"]), after["errors"])
-        # The replay cannot know what it cannot read, so B1's bindings do
-        # come back as outstanding here -- that is exactly the reading this
-        # rule refuses to let pass unremarked.  The guarantee is that the
-        # run is not clean while it says so, and that recovery is routed to
-        # the unreachable evidence rather than to a revalidation the closed
-        # batch could never run.
+        # The replay cannot know what it cannot read, so the closed batch's
+        # bindings do come back as outstanding here -- that is exactly the
+        # reading this rule refuses to let pass unremarked.  The guarantee is
+        # that the run is not clean while it says so, and that recovery is
+        # routed to the unreachable evidence rather than to a revalidation
+        # the closed batch could never run.
         self.assertIn(
-            "B1", after.get("standards_revalidation_outstanding") or {})
+            self.batch_id,
+            after.get("standards_revalidation_outstanding") or {})
         self.assertEqual("repair-runtime",
                          check_queue.resume_next_action(after,
                                                          after["errors"]))
@@ -3409,7 +3631,8 @@ class SealedAggregateTests(_TemplateBackedCase):
         """Sealing is a parse-cost move; it may not change an answer."""
         before = check_queue.validate_runtime(self.root)
         consumed_before = check_queue.consumed_standards_revalidation_keys(
-            before["items_by_id"]["B1"], before["receipt_catalog"])
+            before["items_by_id"][self.batch_id],
+            before["receipt_catalog"])
         self.assertTrue(consumed_before, "the premise: something was consumed")
 
         completed = self.seal("--apply")
@@ -3419,18 +3642,21 @@ class SealedAggregateTests(_TemplateBackedCase):
         self.assertEqual(
             consumed_before,
             check_queue.consumed_standards_revalidation_keys(
-                after["items_by_id"]["B1"], after["receipt_catalog"]))
+                after["items_by_id"][self.batch_id],
+                after["receipt_catalog"]))
 
     def test_consumption_survives_an_archive_sealed_before_the_rule(self):
         before = check_queue.validate_runtime(self.root)
         consumed_before = check_queue.consumed_standards_revalidation_keys(
-            before["items_by_id"]["B1"], before["receipt_catalog"])
+            before["items_by_id"][self.batch_id],
+            before["receipt_catalog"])
         self.seal_ignoring_the_rule(before)
         after = check_queue.validate_runtime(self.root)
         self.assertEqual(
             consumed_before,
             check_queue.consumed_standards_revalidation_keys(
-                after["items_by_id"]["B1"], after["receipt_catalog"]))
+                after["items_by_id"][self.batch_id],
+                after["receipt_catalog"]))
 
     def test_every_sealed_reference_a_named_field_makes_has_a_branch(self):
         """The closed-set assertion whose absence let this ship.

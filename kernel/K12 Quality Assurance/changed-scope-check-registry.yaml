@@ -1,0 +1,135 @@
+schema_version: 1
+registry_id: changed-scope-check-registry
+semantic_owner: K12/05
+
+# This registry machine-projects only deterministic K12/05 rules that can be
+# applicable to an ordinary batch's changed or invalidated scope. Maintenance-
+# only, Standards-governance-only, and Terminal-only checks are not base rows.
+base_rules:
+  - rule_id: k12-05-guidance-state-zero-counts
+    applicability: every-batch-close
+    producer_capability: audit-receipt-producer-v1
+    producer_check: changed_scope_guidance_state_zero_counts
+    evidence_role: emits
+    evidence_kind: audit-receipt
+    dimension: guidance_and_contract
+    dimension_binding: fixed
+    consumer_gate_id: batch-review
+    due_stage: pre-merge
+    nonblocking: false
+  - rule_id: k12-05-coverage-routing-state
+    applicability: changed-scope-includes-coverage-or-required-routing-state
+    producer_capability: audit-receipt-producer-v1
+    producer_check: changed_scope_coverage_routing_state
+    evidence_role: emits
+    evidence_kind: audit-receipt
+    dimension: coverage_and_integration
+    dimension_binding: fixed
+    consumer_gate_id: batch-review
+    due_stage: pre-merge
+    nonblocking: false
+  - rule_id: k12-05-page-contract-candidates
+    applicability: changed-scope-includes-page-contract-applicable-markdown
+    producer_gate_id: page-contract
+    producer_check: page-contract-summary
+    evidence_role: triggers
+    evidence_kind: gate-receipt
+    dimension: structure_and_links
+    dimension_binding: fixed
+    consumer_gate_id: batch-review
+    due_stage: pre-merge
+    nonblocking: true
+  - rule_id: k12-05-frontmatter-vocabulary-self-check
+    applicability: changed-scope-includes-frontmatter
+    producer_gate_id: frontmatter-vocabulary
+    producer_check: vocab-check-summary
+    evidence_role: emits
+    evidence_kind: gate-receipt
+    dimension: guidance_and_contract
+    dimension_binding: fixed
+    consumer_gate_id: batch-review
+    due_stage: pre-merge
+    nonblocking: false
+  - rule_id: k12-05-frozen-task-contract-references
+    applicability: batch-contract-freezes-machine-checkable-component-references
+    producer_capability: audit-receipt-producer-v1
+    producer_check: changed_scope_frozen_task_contract_references
+    evidence_role: emits
+    evidence_kind: audit-receipt
+    dimension: guidance_and_contract
+    dimension_binding: fixed
+    consumer_gate_id: batch-review
+    due_stage: pre-merge
+    nonblocking: false
+  - rule_id: k12-02-level0-fence-closure
+    applicability: every-changed-markdown-page
+    producer_capability: audit-receipt-producer-v1
+    producer_check: changed_scope_level0_fence_closure
+    evidence_role: emits
+    evidence_kind: audit-receipt
+    dimension: structure_and_links
+    dimension_binding: fixed
+    consumer_gate_id: batch-review
+    due_stage: pre-merge
+    nonblocking: false
+  - rule_id: k12-02-level0-wiki-link-resolution
+    applicability: every-changed-markdown-page
+    producer_gate_id: wiki-link-integrity
+    producer_check: link-check-summary
+    evidence_role: emits
+    evidence_kind: gate-receipt
+    dimension: structure_and_links
+    dimension_binding: fixed
+    consumer_gate_id: batch-review
+    due_stage: pre-merge
+    nonblocking: false
+  - rule_id: k12-02-level0-mermaid-fence-closure
+    applicability: changed-scope-includes-mermaid-fence
+    producer_capability: audit-receipt-producer-v1
+    producer_check: changed_scope_level0_mermaid_fence_closure
+    evidence_role: emits
+    evidence_kind: audit-receipt
+    dimension: rendering
+    dimension_binding: fixed
+    consumer_gate_id: batch-review
+    due_stage: pre-merge
+    nonblocking: false
+  - rule_id: k12-02-level1-markdown-table-static
+    applicability: changed-scope-includes-markdown-table
+    producer_capability: audit-receipt-producer-v1
+    producer_check: changed_scope_level1_markdown_table_static
+    evidence_role: emits
+    evidence_kind: audit-receipt
+    dimension: rendering
+    dimension_binding: fixed
+    consumer_gate_id: batch-review
+    due_stage: pre-merge
+    nonblocking: false
+  - rule_id: k12-02-rendering-verification-record
+    applicability: every-batch
+    producer_capability: audit-receipt-producer-v1
+    producer_check: changed_scope_rendering_escalation_record
+    evidence_role: emits
+    evidence_kind: audit-receipt
+    dimension: rendering
+    dimension_binding: fixed
+    consumer_gate_id: batch-review
+    due_stage: pre-merge
+    nonblocking: false
+
+# A selected Profile may add rows only through this extension point. Its
+# registration supplies the concrete rule ID, applicability, producer check,
+# target dimension, candidate boundary, and acceptance owner; none is promoted
+# into the Kernel base list above.
+extension_points:
+  - extension_point_id: k12-05-registered-scan
+    applicability: selected-profile-registers-changed-scope-candidate-scan
+    producer_capability: registered-scan-v1
+    producer_check_binding: profile-registration
+    evidence_role: triggers
+    evidence_kind: candidate-set-receipt
+    dimension: null
+    dimension_binding: profile-registration
+    consumer_gate_id: batch-review
+    due_stage: pre-merge
+    nonblocking: true

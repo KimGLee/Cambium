@@ -9,9 +9,9 @@ source_files:
   - kernel/K00 Standards Control/13 Runtime Admission and Recovery.md
   - kernel/K02 Knowledge Work Construction/03 Corpus Planning Applicability and Lifecycle.md
   - kernel/K12 Quality Assurance/19 Incremental Audit Planning.md
-source_hash: '46a5e309bff5'
-reviewed_source_hash: '46a5e309bff5'
-reviewed_card_hash: '05c362111d82'
+source_hash: '79aa7fa4d3b6'
+reviewed_source_hash: '79aa7fa4d3b6'
+reviewed_card_hash: '1aeaaed4ba97'
 ---
 # R11 Large-scale Work Admission Card
 
@@ -24,7 +24,7 @@ Decide whether already scoped large-scale work is ready to enter execution; R11 
 - Confirm the scope, affected objects, planning applicability, dependencies, execution units, and rollback or recovery boundary.
 - Submit the actual work and any planning need to task routing before admission.
 - Require `large-scale-execution-admission` before large-scale creation, movement, or deletion begins.
-- Preserve the admitted plan and resulting readiness evidence for the runtime.
+- Preserve admission artifacts and readiness evidence without creating an AuditPlan during admission; the performing route creates it only when the first batch enters `open`.
 
 ## Stop or escalate
 

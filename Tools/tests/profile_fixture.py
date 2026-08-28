@@ -16,6 +16,7 @@ for path in (str(TESTS), str(TOOLS)):
         sys.path.insert(0, path)
 import kblib  # noqa: E402
 import metadata_execution_contract  # noqa: E402
+import module_boundary_facts  # noqa: E402
 import standards_state  # noqa: E402
 import stamp_cards  # noqa: E402
 from canonical_registry_fixture import (  # noqa: E402
@@ -231,10 +232,12 @@ def install_loadable_profile(root, profile_id="test-profile",
         TOOLS / "schemas/execution_defaults.template.yaml",
         root / "Tools/schemas/execution_defaults.template.yaml",
     )
-    shutil.copy2(
-        TOOLS / "check_residual_content.py",
-        root / "Tools/check_residual_content.py",
-    )
+    # A registered production consumer needs the verifier's whole shipped
+    # dependency closure, not one copied entry-point file that crashes when
+    # invoked in the adopting repository.  Derive that closure from the same
+    # module-boundary owner used by distribution.
+    module_boundary_facts.stage_shipped_modules(
+        str(REPOSITORY), str(root), ["check_residual_content"])
     # ``profile-load`` and every metadata writer share one compiled authority
     # bundle.  Runtime fixtures install its canonical sources and after-image
     # together so tests exercise currentness rather than an implicit fallback

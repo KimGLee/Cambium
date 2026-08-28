@@ -17,9 +17,14 @@ sys.path.insert(0, str(TOOLS))
 
 import apply_delta
 import check_queue
+import compose_page_contract
+import compose_vocab
 import kblib
 import metadata_execution_contract
+import metadata_property_state
+import profile_admission
 import project_page_state
+import runtime_paths
 from profile_fixture import install_loadable_profile
 
 
@@ -29,6 +34,7 @@ class CanonicalApplyDeltaTests(unittest.TestCase):
         self.root = Path(self.temporary.name) / "repo"
         shutil.copytree(FIXTURE, self.root)
         install_loadable_profile(self.root)
+        self.install_current_audit_fixture_contracts()
 
     def tearDown(self):
         self.temporary.cleanup()
@@ -36,26 +42,56 @@ class CanonicalApplyDeltaTests(unittest.TestCase):
     def load(self, relative):
         return kblib.load_yaml_file(self.root / relative)
 
-    def append_receipt(self, receipt_id, target, check="fixture"):
-        receipt = {
-            "receipt_id": receipt_id,
-            "check": check,
-            "target": target,
-            "result": "pass",
-            "invalidated_by": None,
-        }
-        if check == check_queue.BATCH_REVIEW_CHECK:
-            receipt.update({
-                "tool": check_queue.MANUAL_ATTESTATION_TOOL,
-                "tool_version":
-                    check_queue.MANUAL_ATTESTATION_TOOL_VERSION,
-                "gate_id": check_queue.BATCH_REVIEW_GATE_ID,
-                "task_id": "fixture-task", "batch_id": target,
-                "delta_page_receipt_ids": ["audit-page-a"],
-            })
-        kblib.write_receipts(
-            self.root / ".cambium/receipts/fixture.jsonl",
-            [receipt],
+    def install_current_audit_fixture_contracts(self):
+        """Give this Delta-only fixture one legal, low-cost audit shape.
+
+        The shared historical runtime fixture predates AuditPlan closure and
+        classifies both pages as M.  These tests exercise the canonical Delta
+        writer, not M-tier semantic review, so this local copy uses S and
+        compiles the selected Profile's two deterministic artifacts before a
+        batch opens.  The original Queue origin is then rebound to the exact
+        Coverage bytes, just as the fixture's initial materializer would have
+        done.
+        """
+        admission, errors = profile_admission.admit_profile(
+            self.root, require_approved=True)
+        self.assertIsNotNone(admission, errors)
+        self.assertEqual([], errors)
+        artifacts = (
+            (runtime_paths.PAGE_CONTRACT_ARTIFACT_PATH,
+             compose_page_contract.compiled_artifact(
+                 self.root, admission)),
+            (runtime_paths.VOCAB_ARTIFACT_PATH,
+             compose_vocab.compiled_artifact(self.root, admission)),
+        )
+        for relative, (text, _document, compile_errors) in artifacts:
+            self.assertEqual([], compile_errors)
+            self.assertIsInstance(text, str)
+            path = self.root / relative
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(text, encoding="utf-8")
+
+        coverage_path = self.root / check_queue.COVERAGE_PATH
+        coverage = self.load(check_queue.COVERAGE_PATH)
+        for page in coverage["pages"]:
+            page["tier"] = "S"
+        coverage_path.write_text(
+            kblib.canonical_yaml(coverage), encoding="utf-8")
+        origin_path = (
+            self.root / ".cambium/receipts/task-transitions.jsonl")
+        records = [
+            json.loads(line) for line in
+            origin_path.read_text(encoding="utf-8").splitlines()
+            if line.strip()
+        ]
+        for record in records:
+            if record.get("receipt_id") == "audit-fixture-initial-queue":
+                record["after_coverage_sha256"] = \
+                    kblib.sha256_file(coverage_path)
+        origin_path.write_text(
+            "".join(json.dumps(record, separators=(",", ":")) + "\n"
+                    for record in records),
+            encoding="utf-8",
         )
 
     def run_tool(self, name, *arguments):
@@ -87,6 +123,67 @@ class CanonicalApplyDeltaTests(unittest.TestCase):
         completed = self.run_tool("update_queue.py", *arguments)
         self.assertEqual(0, completed.returncode, completed.stdout)
 
+    def record_pre_merge_audit_evidence(self):
+        prepared = self.run_tool(
+            "prepare_audit_plan.py", "--batch", "B1", "--at",
+            "2026-08-04T01:01:00Z", "--apply")
+        self.assertEqual(0, prepared.returncode, prepared.stdout)
+        prepared_payload = json.loads(prepared.stdout)
+        plan_path = prepared_payload["plan_path"]
+        plan = self.load(plan_path)
+
+        sampled_page_receipts = []
+        for obligation in plan["obligations"]:
+            if obligation["due_stage"] != "pre-merge":
+                continue
+            common = (
+                "--batch", "B1", "--plan", plan_path,
+                "--obligation-id", obligation["obligation_id"],
+            )
+            if obligation["partition"] == "bounded-sampling":
+                produced = self.run_tool(
+                    "record_batch_page_review.py", *common,
+                    "--page", obligation["target"],
+                    "--variant", "s-sampled-page",
+                    "--reviewer-context-id", "fixture-reviewer-context",
+                    "--reviewer-role", "reviewer", "--verdict", "passed",
+                    "--statement", "Fixture sampled S page review passed.",
+                    "--apply",
+                )
+            elif obligation["producer_check"] == \
+                    "changed_scope_rendering_escalation_record":
+                produced = self.run_tool(
+                    "record_rendering_verification.py", *common,
+                    "--rendering-mode", "source-only", "--apply")
+            else:
+                produced = self.run_tool(
+                    "record_changed_scope_evidence.py", *common, "--apply")
+
+            # A triggers-role Gate may legitimately record a candidate with
+            # exit 2.  Its structured record is still the exact evidence the
+            # AuditPlan requests; audit-receipt producers must pass with 0.
+            expected_codes = (0, 2) \
+                if obligation["evidence_role"] == "triggers" else (0,)
+            self.assertIn(
+                produced.returncode, expected_codes, produced.stdout)
+            payload = json.loads(produced.stdout)
+            self.assertEqual([], payload["errors"])
+            self.assertEqual("recorded", payload["status"])
+            if obligation["evidence_kind"] == "batch-page-review-record":
+                sampled_page_receipts.append(payload["receipt_id"])
+
+            if obligation["evidence_kind"] == "audit-receipt":
+                completed = self.run_tool(
+                    "complete_audit_receipt.py", *common,
+                    "--evidence-receipt", payload["receipt_id"], "--apply")
+                self.assertEqual(0, completed.returncode, completed.stdout)
+                completion = json.loads(completed.stdout)
+                self.assertEqual([], completion["errors"])
+                self.assertEqual("recorded", completion["status"])
+
+        self.assertEqual(1, len(sampled_page_receipts), plan)
+        return plan_path, sampled_page_receipts[0]
+
     def make_merge_ready(self, page_fields=None):
         gate = self.queue_gate("--require-ready", "B1")
         revision, queue_sha = self.queue_expected()
@@ -98,12 +195,13 @@ class CanonicalApplyDeltaTests(unittest.TestCase):
             "--actor-role", "integrator",
             "--at", "2026-08-04T01:00:00Z", "--apply",
         )
-        self.append_receipt("audit-page-a", "Topics/A.md")
-        self.append_receipt("audit-batch-b1", "B1", check="batch_gate")
+        _plan_path, page_receipt_id = \
+            self.record_pre_merge_audit_evidence()
+        self.page_review_receipt_id = page_receipt_id
         page = {
             "path": "Topics/A.md",
             "authoring_status": "reviewed",
-            "gate_receipts": ["audit-page-a"],
+            "gate_receipts": [page_receipt_id],
         }
         page.update(page_fields or {})
         delta = {
@@ -118,11 +216,20 @@ class CanonicalApplyDeltaTests(unittest.TestCase):
         delta_path = self.root / ".cambium/deltas/B1.yaml"
         delta_path.parent.mkdir(parents=True, exist_ok=True)
         delta_path.write_text(kblib.canonical_yaml(delta), encoding="utf-8")
+        reviewed = self.run_tool(
+            "record_batch_review.py", "--batch", "B1",
+            "--actor-role", "integrator", "--statement",
+            "Fixture evidence-complete Batch Review passed.",
+            "--receipts", ".cambium/receipts/fixture.jsonl",
+            "--apply", "--json",
+        )
+        self.assertEqual(0, reviewed.returncode, reviewed.stdout)
+        batch_receipt = json.loads(reviewed.stdout)[0]["receipt_id"]
         revision, queue_sha = self.queue_expected()
         self.transition(
             "--id", "B1", "--transition", "merge-ready",
             "--delta-path", ".cambium/deltas/B1.yaml",
-            "--batch-receipt", "audit-batch-b1",
+            "--batch-receipt", batch_receipt,
             "--expected-state-revision", revision,
             "--expected-sha256", queue_sha,
             "--actor-role", "integrator",
@@ -397,7 +504,8 @@ class CanonicalApplyDeltaTests(unittest.TestCase):
         coverage = self.load(check_queue.COVERAGE_PATH)
         page = coverage["pages"][0]
         self.assertEqual("reviewed", page["authoring_status"])
-        self.assertEqual(["audit-page-a"], page["gate_receipts"])
+        self.assertEqual(
+            [self.page_review_receipt_id], page["gate_receipts"])
         self.assertEqual("B1", page["next_batch"])
         self.assertEqual([], check_queue.validate_runtime(self.root)["errors"])
         receipt = json.loads(
@@ -523,7 +631,7 @@ raise SystemExit(apply_delta.main(sys.argv[3:]))
     def test_semantic_content_change_updates_date_and_invalidates_old_review(self):
         page_path = self.root / "Topics/A.md"
         page_path.write_text(
-            "---\ntitle: A\nlast_reviewed: 2026-08-01\n---\nBefore\n",
+            "# A\n\nBefore\n",
             encoding="utf-8")
         contract = metadata_execution_contract.load_metadata_execution_contract(
             self.root)
@@ -533,11 +641,15 @@ raise SystemExit(apply_delta.main(sys.argv[3:]))
             "Topics/A.md", page_path.read_text(encoding="utf-8"), rules)
         coverage_path = self.root / check_queue.COVERAGE_PATH
         coverage = self.load(check_queue.COVERAGE_PATH)
-        coverage["pages"][0]["property_state"] = {
+        # This test targets the content-change writer's retirement of an old
+        # review, not frontmatter-vocabulary production.  Model that old
+        # review at the runtime's explicit legacy/unverified boundary so the
+        # batch can open without manufacturing a current frontmatter copy.
+        coverage["pages"][0]["property_state"] = {}
+        coverage["pages"][0]["legacy_property_state"] = {
             "last_reviewed": {
+                "status": metadata_property_state.LEGACY_PROPERTY_STATUS,
                 "value": "2026-08-01",
-                "evidence_receipt": "audit-review-before",
-                "content_fingerprint": before_fingerprint,
             },
         }
         coverage_path.write_text(
@@ -553,6 +665,52 @@ raise SystemExit(apply_delta.main(sys.argv[3:]))
         profile_view, profile_errors = check_queue.profile_load_authorized_view(
             self.root, coverage["selected_profile_manifest"])
         self.assertEqual([], profile_errors)
+        legacy_records = [{
+            "path": "Topics/A.md",
+            "before_page_sha256": kblib.sha256_bytes(
+                b"---\nlast_reviewed: 2026-08-01\n---\n# A\n\nBefore\n"),
+            "after_page_sha256": kblib.sha256_file(page_path),
+            "legacy_property_state": {
+                "last_reviewed": {
+                    "status":
+                        metadata_property_state.LEGACY_PROPERTY_STATUS,
+                    "value": "2026-08-01",
+                },
+            },
+        }]
+        kblib.write_receipts(
+            self.root / ".cambium/receipts/task-plans.jsonl",
+            [{
+                "receipt_id": "audit-property-adoption",
+                "tool": "apply_task_plan",
+                "tool_version": "1.2.0",
+                "check": "task_plan",
+                "target": "fixture-task",
+                "transaction_phase": "commit",
+                "result": "pass",
+                "invalidated_by": None,
+                "operation_capability":
+                    metadata_execution_contract.
+                    LEGACY_PROPERTY_ADOPTION_OPERATION,
+                "property_state_adoption_records": legacy_records,
+                "property_state_adoption_count": len(legacy_records),
+                "property_state_adoption_set_sha256":
+                    metadata_property_state.
+                    legacy_property_migration_set_sha256(legacy_records),
+                "metadata_execution_contract_fingerprint":
+                    contract.contract_fingerprint,
+                "metadata_execution_rule_fingerprint":
+                    project_page_state._rules_fingerprint(rules),
+                "selected_profile_manifest":
+                    profile_view["selected_profile_manifest"],
+                "profile_snapshot_sha256":
+                    profile_view["profile_snapshot_sha256"],
+                "profile_contract_fingerprint":
+                    profile_view["profile_contract_fingerprint"],
+                "profile_load_inputs_sha256":
+                    profile_view["profile_load_inputs_sha256"],
+            }],
+        )
         attestation_id = "audit-review-before-attestation"
         merged_snapshot = "sha256:" + "7" * 64
         kblib.write_receipts(
@@ -602,7 +760,7 @@ raise SystemExit(apply_delta.main(sys.argv[3:]))
         )
         self.make_merge_ready()
         page_path.write_text(
-            "---\ntitle: A\nlast_reviewed: 2026-08-01\n---\nAfter\n",
+            "---\ntitle: A\n---\nAfter\n",
             encoding="utf-8")
 
         code, output = self.invoke(self.apply_arguments())
@@ -640,9 +798,9 @@ raise SystemExit(apply_delta.main(sys.argv[3:]))
 
     def test_receipt_failure_rolls_back_content_property_page_and_owner_state(self):
         page_path = self.root / "Topics/A.md"
+        self.make_merge_ready()
         page_path.write_text(
             "---\ntitle: A\n---\nChanged body\n", encoding="utf-8")
-        self.make_merge_ready()
         before_page = page_path.read_bytes()
         coverage_path = self.root / check_queue.COVERAGE_PATH
         before_coverage = coverage_path.read_bytes()

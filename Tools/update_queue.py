@@ -17,6 +17,7 @@ import time
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import check_queue
 import check_corpus_plan
+import audit_evidence_runtime
 import corpus_planning_contract
 import card_activation
 import kblib
@@ -28,7 +29,7 @@ import project_page_state
 import runtime_paths
 import runtime_state_contract
 
-TOOL_VERSION = "1.8.0"
+TOOL_VERSION = "1.9.0"
 # Compatibility projection for callers of this writer.  The Kernel-owned K13
 # state model, parsed once by runtime_state_contract, owns every edge.
 TRANSITIONS = runtime_state_contract.BATCH_LIFECYCLE_TRANSITIONS
@@ -615,19 +616,15 @@ def _transition_item(item, args, result):
         if replayed:
             raise ValueError("open -> merge-ready reuses invalidated receipt(s): %s" %
                              ", ".join(replayed))
-        # K12/12: substantive correctness review is mandatory for L-tier
-        # pages and MUST be produced by a context other than the author.
-        # The obligation existed only as prose until here — nothing counted
-        # the receipts, and a batch could reach merge-ready with the review
-        # skipped (the distillation-erosion class).  A write-time guard on
-        # the transition, not a runtime-wide validation: sealed history
-        # closed before this guard shipped is never re-judged by it.
-        review_errors = check_queue.substantive_review_errors(
-            result, item)
-        if review_errors:
+        wrapper_entry = check_queue.current_receipt_catalog(result).get(
+            args.batch_receipt[0])
+        wrapper_receipt = wrapper_entry[1] if wrapper_entry else None
+        audit_errors = audit_evidence_runtime.wrapper_binding_errors(
+            result, item, wrapper_receipt)
+        if audit_errors:
             raise ValueError(
-                "open -> merge-ready requires the K12/12 substantive "
-                "review evidence: %s" % "; ".join(review_errors))
+                "open -> merge-ready requires the complete pre-merge "
+                "AuditPlan closure: %s" % "; ".join(audit_errors))
         # Batch Review Requirements: the Profile's frozen per-target
         # judgment obligations are counted here, not attested in prose.
         # The activation froze the expected set; the wrapper must bind the
@@ -635,9 +632,6 @@ def _transition_item(item, args, result):
         # carries no obligations and must carry no judgment bindings —
         # sealed evidence keeps its own shape, exactly like the K12/12
         # guard above.
-        wrapper_entry = check_queue.current_receipt_catalog(result).get(
-            args.batch_receipt[0])
-        wrapper_receipt = wrapper_entry[1] if wrapper_entry else None
         judgment_errors = check_queue.batch_review_judgment_errors(
             result, item, wrapper_receipt)
         if judgment_errors:
@@ -771,6 +765,16 @@ def _transition_item(item, args, result):
         if close_gate_errors:
             raise ValueError("invalid batch-close gate: %s" %
                              "; ".join(close_gate_errors))
+        close_entry = check_queue.current_receipt_catalog(result).get(
+            args.close_gate_receipt)
+        close_receipt = close_entry[1] if close_entry else None
+        audit_closure_errors = \
+            audit_evidence_runtime.closed_plan_closure_errors(
+                result, item, close_receipt)
+        if audit_closure_errors:
+            raise ValueError(
+                "merge-ready -> closed requires the complete AuditPlan "
+                "closure: %s" % "; ".join(audit_closure_errors))
         item["state"] = "closed"
         item["closed_at"] = now
         item["queue_consistency_receipt"] = args.gate_receipt

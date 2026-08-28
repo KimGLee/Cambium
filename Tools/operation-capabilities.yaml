@@ -92,12 +92,102 @@ capabilities:
   - capability_id: manual-attestation-v1
     kind: producer
     capability_version: 1.0.0
-    implementation_owner: Tools/record_gate_attestation.py
+    implementation_owner: Tools/manual_attestation.py
     writers: []
     checkers:
       - Tools/check_queue.py
     consumers:
       - Tools/apply_metadata_transition.py
+      - Tools/record_batch_judgment.py
+      - Tools/record_batch_review.py
+      - Tools/record_gate_attestation.py
+    operations: []
+
+  - capability_id: audit-plan-producer-v1
+    kind: producer
+    capability_version: 1.0.0
+    implementation_owner: Tools/prepare_audit_plan.py
+    writers: []
+    checkers:
+      - Tools/check_batch_close.py
+      - Tools/check_proof.py
+    consumers:
+      - Tools/audit_evidence_runtime.py
+      - Tools/complete_audit_receipt.py
+      - Tools/record_batch_judgment.py
+      - Tools/record_batch_page_review.py
+      - Tools/record_batch_review.py
+      - Tools/record_changed_scope_evidence.py
+      - Tools/record_rendering_verification.py
+      - Tools/record_substantive_review.py
+    operations: []
+
+  - capability_id: batch-page-review-attestation-v1
+    kind: producer
+    capability_version: 1.0.0
+    implementation_owner: Tools/record_batch_page_review.py
+    writers: []
+    checkers: []
+    consumers:
+      - Tools/audit_evidence_runtime.py
+      - Tools/record_batch_review.py
+    operations: []
+
+  - capability_id: substantive-review-attestation-v1
+    kind: producer
+    capability_version: 1.0.0
+    implementation_owner: Tools/record_substantive_review.py
+    writers: []
+    checkers: []
+    consumers:
+      - Tools/audit_evidence_runtime.py
+      - Tools/complete_audit_receipt.py
+    operations: []
+
+  - capability_id: changed-scope-evidence-adapter-v1
+    kind: producer
+    capability_version: 1.0.0
+    implementation_owner: Tools/record_changed_scope_evidence.py
+    writers: []
+    checkers: []
+    consumers:
+      - Tools/audit_evidence_runtime.py
+      - Tools/complete_audit_receipt.py
+    operations: []
+
+  - capability_id: dedicated-rendering-verification-v1
+    kind: producer
+    capability_version: 1.0.0
+    implementation_owner: Tools/record_rendering_verification.py
+    writers: []
+    checkers: []
+    consumers:
+      - Tools/audit_evidence_runtime.py
+      - Tools/complete_audit_receipt.py
+    operations: []
+
+  - capability_id: audit-receipt-producer-v1
+    kind: producer
+    capability_version: 1.0.0
+    implementation_owner: Tools/complete_audit_receipt.py
+    writers: []
+    checkers:
+      - Tools/check_proof.py
+    consumers:
+      - Tools/audit_evidence_runtime.py
+      - Tools/record_batch_review.py
+      - Tools/update_queue.py
+    operations: []
+
+  - capability_id: batch-review-producer-v1
+    kind: producer
+    capability_version: 1.0.0
+    implementation_owner: Tools/record_batch_review.py
+    writers: []
+    checkers:
+      - Tools/check_queue.py
+    consumers:
+      - Tools/update_queue.py
     operations: []
 
   - capability_id: registered-scan-v1

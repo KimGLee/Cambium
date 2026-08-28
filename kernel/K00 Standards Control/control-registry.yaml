@@ -232,7 +232,7 @@ gates:
     binding_protocol: native-owner-receipt
   - gate_id: batch-close
     tool: check_batch_close
-    tool_version: 1.12.0
+    tool_version: 1.13.0
     check: batch_close_gate
     mode: "*"
     dimensions:
@@ -537,7 +537,7 @@ gates:
     binding_protocol: not-authorizing
   - gate_id: terminal-proof
     tool: check_proof
-    tool_version: 1.17.0
+    tool_version: 1.18.0
     check: proof-check-summary
     mode: "*"
     dimensions:

@@ -13,6 +13,7 @@ load_edges:
       - kernel/K02 Knowledge Work Construction/04 Corpus Planning Runtime Audit and Gate Boundaries.md
       - kernel/K12 Quality Assurance/06 Completion Gate and Reporting.md
       - kernel/K12 Quality Assurance/07 Audit Evidence Reuse and Invalidation.md
+      - kernel/K12 Quality Assurance/audit-receipt-contract.yaml
       - kernel/K12 Quality Assurance/08 Judgment Item Dimension Map.md
       - kernel/K12 Quality Assurance/09 Batch-close Closed List.md
       - kernel/K12 Quality Assurance/15 Terminal Audit and Convergence.md

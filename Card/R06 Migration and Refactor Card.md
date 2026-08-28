@@ -10,9 +10,10 @@ source_files:
   - kernel/K03 Note Types and Ownership/03 Split and Duplication Policy.md
   - kernel/K09 Wiki Link and Navigation/03 Path Alias and Heading Links.md
   - kernel/K12 Quality Assurance/09 Batch-close Closed List.md
-source_hash: '210a9e07c36f'
-reviewed_source_hash: '210a9e07c36f'
-reviewed_card_hash: 'aef395ac8be1'
+  - kernel/K12 Quality Assurance/19 Incremental Audit Planning.md
+source_hash: '45bd111f5597'
+reviewed_source_hash: '45bd111f5597'
+reviewed_card_hash: '70f79fde556d'
 ---
 # R06 Migration and Refactor Card
 
@@ -24,7 +25,9 @@ Move, rename, split, merge, or restructure governed content without losing owner
 
 - Freeze the admitted before-image, affected closure, target ownership, and rollback boundary.
 - Preserve unrelated existing changes and route every changed canonical object to its sole owner.
-- Invoke the applicable structure, link, metadata, and batch-close Gates for the resulting after-image.
+- When the batch enters `open`, materialize its immutable AuditPlan.
+- Before `merge-ready`, satisfy the complete pre-merge closure through the registered producers.
+- After Delta application, satisfy every post-delta-close obligation against one identical after-image before invoking the batch-close Gate.
 - Read back the resulting state and verify the old and new paths or owners have the intended disposition.
 
 ## Stop or escalate

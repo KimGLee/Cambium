@@ -25,6 +25,16 @@ path_defaults:
     suffixes: [.jsonl]
     consumption: append
 path_overrides:
+  - tool: complete_audit_receipt
+    argument: plan
+    constraint: namespace
+    runtime_path_id: audit-plan-root
+    suffixes: [.yaml]
+  - tool: complete_audit_receipt
+    argument: receipts
+    constraint: exact
+    runtime_path_id: audit-receipt-register
+    suffixes: []
   - tool: check_boundary_contract
     argument: contract
     constraint: exact
@@ -80,6 +90,51 @@ path_overrides:
     constraint: namespace
     runtime_path_id: runtime-root
     suffixes: [.yaml]
+  - tool: record_batch_review
+    argument: receipts
+    constraint: exact
+    runtime_path_id: gate-attestation-receipts
+    suffixes: []
+  - tool: record_batch_judgment
+    argument: receipts
+    constraint: exact
+    runtime_path_id: batch-judgment-receipts
+    suffixes: []
+  - tool: record_batch_page_review
+    argument: plan
+    constraint: namespace
+    runtime_path_id: audit-plan-root
+    suffixes: [.yaml]
+  - tool: record_changed_scope_evidence
+    argument: plan
+    constraint: namespace
+    runtime_path_id: audit-plan-root
+    suffixes: [.yaml]
+  - tool: record_changed_scope_evidence
+    argument: receipts
+    constraint: exact
+    runtime_path_id: changed-scope-evidence-receipts
+    suffixes: []
+  - tool: record_rendering_verification
+    argument: plan
+    constraint: namespace
+    runtime_path_id: audit-plan-root
+    suffixes: [.yaml]
+  - tool: record_rendering_verification
+    argument: receipts
+    constraint: exact
+    runtime_path_id: rendering-verification-receipts
+    suffixes: []
+  - tool: record_substantive_review
+    argument: plan
+    constraint: namespace
+    runtime_path_id: audit-plan-root
+    suffixes: [.yaml]
+  - tool: record_substantive_review
+    argument: receipts
+    constraint: exact
+    runtime_path_id: substantive-review-receipts
+    suffixes: []
   - tool: render_queue
     argument: output
     constraint: namespace
@@ -132,10 +187,26 @@ path_activation_overrides:
     argument: replan_diff
     active_when_any: [apply_replan]
     inactive_when_any: []
+  - tool: complete_audit_receipt
+    argument: receipts
+    active_when_any: [apply]
+    inactive_when_any: []
+  - tool: record_batch_review
+    argument: receipts
+    active_when_any: [apply]
+    inactive_when_any: []
   - tool: record_batch_judgment
     argument: receipts
     active_when_any: [apply]
     inactive_when_any: []
+  - tool: record_changed_scope_evidence
+    argument: plan
+    active_when_any: []
+    inactive_when_any: [list_producers]
+  - tool: record_changed_scope_evidence
+    argument: receipts
+    active_when_any: [apply]
+    inactive_when_any: [list_producers]
   - tool: record_corpus_acceptance
     argument: receipts
     active_when_any: [apply]
@@ -145,6 +216,14 @@ path_activation_overrides:
     active_when_any: [apply]
     inactive_when_any: []
   - tool: record_gate_result
+    argument: receipts
+    active_when_any: [apply]
+    inactive_when_any: []
+  - tool: record_rendering_verification
+    argument: receipts
+    active_when_any: [apply]
+    inactive_when_any: []
+  - tool: record_substantive_review
     argument: receipts
     active_when_any: [apply]
     inactive_when_any: []
@@ -385,6 +464,15 @@ tools:
     write_paths: [output, receipts]
     read_write_paths: []
     external_write: none
+  - tool: complete_audit_receipt
+    exposure: mcp
+    workspace_argument: root
+    workspace_access: write
+    value_arguments: [batch, obligation_id, evidence_receipt, apply]
+    read_paths: [plan]
+    write_paths: [receipts]
+    read_write_paths: []
+    external_write: none
   - tool: compose_page_contract
     exposure: cli-only
     workspace_argument: root
@@ -448,6 +536,15 @@ tools:
     write_paths: []
     read_write_paths: [output]
     external_write: temporary-git-worktree
+  - tool: prepare_audit_plan
+    exposure: mcp
+    workspace_argument: root
+    workspace_access: write
+    value_arguments: [batch, at, apply]
+    read_paths: []
+    write_paths: []
+    read_write_paths: []
+    external_write: none
   - tool: profile_onboarding_status
     exposure: mcp
     workspace_argument: root
@@ -466,12 +563,39 @@ tools:
     write_paths: []
     read_write_paths: [page]
     external_write: none
+  - tool: record_batch_review
+    exposure: mcp
+    workspace_argument: root
+    workspace_access: write
+    value_arguments: [batch, actor_role, statement, apply, json]
+    read_paths: []
+    write_paths: [receipts]
+    read_write_paths: []
+    external_write: none
+  - tool: record_batch_page_review
+    exposure: mcp
+    workspace_argument: root
+    workspace_access: write
+    value_arguments: [batch, obligation_id, page, variant, reviewer_context_id, reviewer_role, verdict, statement, applicability_disposition, applicability_reason, consumed_evidence_ref, apply]
+    read_paths: [plan]
+    write_paths: []
+    read_write_paths: []
+    external_write: none
   - tool: record_batch_judgment
     exposure: mcp
     workspace_argument: root
     workspace_access: write
     value_arguments: [batch, judgment_item, target, reviewer_role, statement, apply, json]
     read_paths: []
+    write_paths: [receipts]
+    read_write_paths: []
+    external_write: none
+  - tool: record_changed_scope_evidence
+    exposure: mcp
+    workspace_argument: root
+    workspace_access: write
+    value_arguments: [list_producers, batch, obligation_id, apply]
+    read_paths: [plan]
     write_paths: [receipts]
     read_write_paths: []
     external_write: none
@@ -499,6 +623,24 @@ tools:
     workspace_access: write
     value_arguments: [gate_id, apply, json]
     read_paths: [page]
+    write_paths: [receipts]
+    read_write_paths: []
+    external_write: none
+  - tool: record_rendering_verification
+    exposure: mcp
+    workspace_argument: root
+    workspace_access: write
+    value_arguments: [batch, obligation_id, rendering_mode, visual_trigger, unresolved_question, verification_target, verification_result, apply]
+    read_paths: [plan]
+    write_paths: [receipts]
+    read_write_paths: []
+    external_write: none
+  - tool: record_substantive_review
+    exposure: mcp
+    workspace_argument: root
+    workspace_access: write
+    value_arguments: [batch, obligation_id, page, authoring_context_id, reviewer_context_id, reviewer_role, round, verdict, finding, statement, round_1_receipt_id, apply]
+    read_paths: [plan]
     write_paths: [receipts]
     read_write_paths: []
     external_write: none

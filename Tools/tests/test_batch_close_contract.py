@@ -51,7 +51,9 @@ class RegistryShapeTests(unittest.TestCase):
 
         open_shape = self.document()
         open_shape["members"][0]["tool"] = "check_links"
-        with self.assertRaisesRegex(ValueError, "fields must be exactly"):
+        with self.assertRaisesRegex(
+                ValueError,
+                "fields are not closed or do not bind exactly one producer"):
             contract.validate_batch_close_closed_list(open_shape)
 
     def test_missing_registry_fails_closed(self):

@@ -9,6 +9,7 @@ partial reviews.
 import card_activation
 import kblib
 import metadata_property_state
+import profile_batch_judgment_contract
 
 from queue_runtime.canon import (
     ACTIVE_STATES,
@@ -271,6 +272,18 @@ def batch_review_judgment_errors(result, item, wrapper_receipt):
             "%s judgment validation requires one authorized typed Profile "
             "contract" % item_id)
         return errors
+    wrapper = wrapper_receipt or {}
+    try:
+        plan_sha256 = wrapper.get("audit_plan_sha256")
+        plan = profile_batch_judgment_contract.load_bound_plan(
+            result["root"], wrapper.get("audit_plan_path"),
+            wrapper.get("audit_plan_id"), plan_sha256)
+    except (OSError, TypeError, UnicodeError, ValueError) as exc:
+        errors.append(
+            "%s Profile judgment validation requires the wrapper-bound "
+            "AuditPlan: "
+            "%s" % (item_id, exc))
+        return errors
     try:
         expected = card_activation.expand_batch_review_requirements(
             contract, item)
@@ -289,7 +302,6 @@ def batch_review_judgment_errors(result, item, wrapper_receipt):
         for row in getattr(contract, "batch_review_requirements", ())
     }
 
-    wrapper = wrapper_receipt or {}
     if not expected:
         # A Profile with no requirements owes nothing: an absent binding IS
         # the empty set, so requirement-free adopters keep their exact
@@ -329,8 +341,12 @@ def batch_review_judgment_errors(result, item, wrapper_receipt):
         if receipt.get("invalidated_by") is not None:
             errors.append("%s is invalidated" % label)
             continue
-        if (receipt.get("tool") != "record_batch_judgment" or
-                receipt.get("check") != "profile_batch_judgment" or
+        if (receipt.get("tool") !=
+                profile_batch_judgment_contract.PRODUCER_TOOL or
+                receipt.get("check") !=
+                profile_batch_judgment_contract.PRODUCER_CHECK or
+                receipt.get("record_kind") !=
+                profile_batch_judgment_contract.RECORD_KIND or
                 receipt.get("result") != "pass"):
             errors.append("%s is not a passing profile_batch_judgment" %
                           label)
@@ -339,7 +355,7 @@ def batch_review_judgment_errors(result, item, wrapper_receipt):
             errors.append("%s binds a different task" % label)
         if receipt.get("batch_id") != item_id:
             errors.append("%s binds a different batch" % label)
-        if receipt.get("opening_transition_receipt") != item.get(
+        if receipt.get("activation_receipt_id") != item.get(
                 "activation_receipt"):
             errors.append(
                 "%s binds a different activation; a reopened batch redoes "
@@ -348,6 +364,13 @@ def batch_review_judgment_errors(result, item, wrapper_receipt):
             errors.append("%s binds a different requirement set" % label)
         if receipt.get("profile_contract_fingerprint") !=                 current_fingerprint:
             errors.append("%s binds a superseded Profile contract" % label)
+        binding_errors = profile_batch_judgment_contract.\
+            receipt_binding_errors(
+                result["root"], plan, plan_sha256, contract, item, receipt,
+                view)
+        errors.extend(
+            "%s fails its Profile/AuditPlan evidence contract in %s" %
+            (label, field) for field in binding_errors)
         target = receipt.get("target")
         judgment_item_id = receipt.get("judgment_item_id")
         requirement = requirements.get(judgment_item_id)

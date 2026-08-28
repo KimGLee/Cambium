@@ -52,6 +52,8 @@ from collections import defaultdict
 from pathlib import Path
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import audit_evidence_runtime
+import batch_close_audit
 import batch_close_contract
 import batch_settlement
 import card_contract
@@ -65,6 +67,7 @@ import check_vocab
 import contract_exception_policy
 import corpus_planning_contract
 import kblib
+import markdown_structure_checks
 import metadata_property_state
 import project_page_state
 import profile_admission
@@ -74,7 +77,7 @@ import runtime_paths
 
 
 TOOL = "check_batch_close"
-TOOL_VERSION = "1.12.0"
+TOOL_VERSION = "1.13.0"
 GATE_ID = "batch-close"
 # The `Check` cell K00/12 registers for this Gate; every receipt this
 # tool offers as gate evidence carries it verbatim.
@@ -485,18 +488,13 @@ def _stable_candidate(receipt, member):
 
 
 def _split_pipe_row(line):
-    value = line.strip()
-    if not value.startswith("|") or not value.endswith("|"):
-        return []
-    cells = re.split(r"(?<!\\)\|", value[1:-1])
-    return [cell.replace("\\|", "|").strip() for cell in cells]
+    """Compatibility wrapper around the single Markdown structure owner."""
+    return markdown_structure_checks.split_pipe_row(line)
 
 
 def _table_separator(cells):
-    return bool(cells) and all(
-        re.fullmatch(r":?-{3,}:?", cell.replace(" ", ""))
-        for cell in cells
-    )
+    """Compatibility wrapper around the single Markdown structure owner."""
+    return markdown_structure_checks.table_separator(cells)
 
 
 def _structural_check(root, runtime):
@@ -559,63 +557,24 @@ def _structural_check(root, runtime):
                     errors.append("%s has invalid frontmatter YAML: %s" %
                                   (relative, exc))
 
-        fence = None
-        fence_start = None
-        fence_language = ""
-        fence_body = []
-        lines = text.splitlines()
-        for line_number, line in enumerate(lines, 1):
-            match = re.match(r"^[ ]{0,3}(`{3,}|~{3,})(.*)$", line)
-            if not match:
-                if fence is not None:
-                    fence_body.append(line)
-                continue
-            marker, tail = match.groups()
-            if fence is None:
-                fence = marker
-                fence_start = line_number
-                fence_language = tail.strip().split(None, 1)[0].lower() \
-                    if tail.strip() else ""
-                fence_body = []
-            elif (marker[0] == fence[0] and len(marker) >= len(fence) and
-                  not tail.strip()):
-                fence = None
-                fence_start = None
-                fence_language = ""
-                fence_body = []
-            else:
-                fence_body.append(line)
-        if fence is not None:
+        _fences, unclosed_fence = markdown_structure_checks.fence_scan(text)
+        if unclosed_fence is not None:
             errors.append("%s:%d has an unclosed %s fence" %
-                          (relative, fence_start, fence[0] * len(fence)))
+                          (relative, unclosed_fence["line"],
+                           unclosed_fence["marker"]))
 
-        table_lines = kblib.strip_code(text).splitlines()
-        index = 0
-        while index < len(table_lines):
-            if not (table_lines[index].strip().startswith("|") and
-                    table_lines[index].strip().endswith("|")):
-                index += 1
-                continue
-            start = index
-            block = []
-            while (index < len(table_lines) and
-                   table_lines[index].strip().startswith("|") and
-                   table_lines[index].strip().endswith("|")):
-                block.append(_split_pipe_row(table_lines[index]))
-                index += 1
-            if len(block) < 2:
-                continue
+        for table in markdown_structure_checks.table_scan(text):
             table_count += 1
-            width = len(block[0])
-            if not _table_separator(block[1]):
+            width = table["expected_columns"]
+            if not table["delimiter_valid"]:
                 errors.append("%s:%d table has no valid delimiter row" %
-                              (relative, start + 1))
+                              (relative, table["line"]))
                 continue
-            for offset, cells in enumerate(block):
-                if len(cells) != width:
+            for offset, actual in enumerate(table["row_columns"]):
+                if actual != width:
                     errors.append("%s:%d table has %d columns, expected %d" %
-                                  (relative, start + offset + 1,
-                                   len(cells), width))
+                                  (relative, table["line"] + offset,
+                                   actual, width))
     details = ("strict_utf8=pass markdown=%d cambium_yaml=%d tables=%d "
                "structural_errors=%d" %
                (markdown_count, yaml_count, table_count, len(errors)))
@@ -1034,6 +993,20 @@ def _manifest_page_contract_member(run, manifest_paths, member):
             errors.append(
                 "manifest page fails the compiled page contract: %s (%s)" %
                 (receipt.get("target"), receipt.get("details")))
+    summaries = [
+        receipt for receipt in run.get("receipts") or []
+        if receipt.get("gate_id") == "page-contract" and
+        receipt.get("check") == "page-contract-summary"
+    ]
+    gate_evidence = summaries[0] if len(summaries) == 1 else None
+    if len(summaries) != 1:
+        errors.append(
+            "page-contract Gate must produce exactly one current summary "
+            "receipt, found %d" % len(summaries))
+    elif gate_evidence.get("dimension") is not None:
+        errors.append(
+            "page-contract Gate evidence for Closed List item 8 must be "
+            "dimensionless")
     total = len(run.get("candidates") or [])
     details = ("%s exit=%s receipts=%d manifest_candidates=%d "
                "corpus_candidates=%d" % (
@@ -1044,6 +1017,7 @@ def _manifest_page_contract_member(run, manifest_paths, member):
         "candidates": candidates,
         "details": details,
         "source_command": run.get("command"),
+        "gate_evidence": gate_evidence,
     }
 
 
@@ -1388,9 +1362,12 @@ def _quota_candidate_dispositions(candidates, exceptions, snapshot,
 
 
 def _member_receipt(field, run, snapshot, runtime, item, integrator,
-                    reviewer, accepted_candidates, sequence):
+                    reviewer, accepted_candidates, sequence, stage_plan,
+                    obligation):
+    plan = stage_plan["plan"]
     receipt = _make_receipt(
-        TOOL, TOOL_VERSION, "closed_list_%s" % field, ".", "pass",
+        TOOL, TOOL_VERSION, "closed_list_%s" % field,
+        obligation["target"], "pass",
         run["details"], sequence, root=runtime.get("root"),
     )
     type_counts = {}
@@ -1407,6 +1384,26 @@ def _member_receipt(field, run, snapshot, runtime, item, integrator,
         "candidate_type_counts": dict(sorted(type_counts.items())),
         "candidate_set_sha256": _candidate_set_sha256(
             [entry["candidate_id"] for entry in accepted_candidates]),
+        "plan_id": stage_plan["audit_plan_id"],
+        "audit_plan_path": stage_plan["audit_plan_path"],
+        "audit_plan_sha256": stage_plan["audit_plan_sha256"],
+        "obligation_id": obligation["obligation_id"],
+        "opening_transition_receipt": plan["opening_transition_receipt"],
+        "standards_version": plan["standards_version"],
+        "active_standards_sha256": plan["active_standards_sha256"],
+        "selected_profile_manifest": plan["selected_profile_manifest"],
+        "profile_snapshot_sha256": plan["profile_snapshot_sha256"],
+        "profile_contract_fingerprint":
+            plan["profile_contract_fingerprint"],
+        # The raw producer evidence and its completed AuditReceipt discharge
+        # one immutable AuditPlan obligation.  Persist the plan's fingerprint
+        # mode here so every later consumer can prove the three digests were
+        # taken at the required evidence boundary rather than merely finding
+        # digest-shaped values on an otherwise unbound record.
+        "fingerprint_binding": obligation["fingerprint_binding"],
+        "artifact_fingerprint": snapshot,
+        "dependency_fingerprint": plan["profile_snapshot_sha256"],
+        "contract_fingerprint": plan["contract_snapshot_sha256"],
     })
     if run.get("source_command"):
         receipt["source_command"] = run["source_command"]
@@ -1693,6 +1690,24 @@ def _main(argv=None):
             try:
                 profile_evaluation = _profile_evaluation(
                     root, runtime, authorized_profile_view=profile_view)
+                closed_list_registry = \
+                    batch_close_contract.load_batch_close_closed_list(root)
+                closed_list_rows = tuple(
+                    dict(row) for row in closed_list_registry["members"])
+                closed_list_fields = tuple(
+                    row["member_id"] for row in closed_list_rows)
+                if closed_list_fields != \
+                        batch_close_contract.CLOSED_LIST_EVIDENCE_FIELDS:
+                    raise ValueError(
+                        "repository K12/09 registry differs from the current "
+                        "batch-close producer contract")
+                stage_plan = audit_evidence_runtime.resolve_stage_plan(
+                    runtime, item, "post-delta-close",
+                    required_state="merge-ready")
+                post_delta_projection = \
+                    batch_close_audit.resolve_post_delta_projection(
+                        stage_plan, closed_list_rows,
+                        profile_view["_contract"])
                 metadata_contract = \
                     check_queue.runtime_metadata_execution_contract(runtime)
                 projection_rules = \
@@ -1802,19 +1817,11 @@ def _main(argv=None):
                             page_contract, item.get("manifest") or [],
                             "manifest_page_contract")
                 else:
-                    # Like the composed vocabulary, the compiled page
-                    # contract exists only where an instance composed it
-                    # (K08/06).  Without the artifact the member is
-                    # vacuously clean and says so; composing the contract
-                    # is what arms it.
-                    checks["manifest_page_contract"] = {
-                        "errors": [],
-                        "candidates": [],
-                        "details": ("no composed page contract (%s absent); "
-                                    "member vacuously clean — "
-                                    "compose_page_contract.py arms it" %
-                                    runtime_paths.PAGE_CONTRACT_ARTIFACT_PATH),
-                    }
+                    raise ValueError(
+                        "Closed List item 8 requires a real current "
+                        "page-contract-summary Gate receipt; compiled "
+                        "contract %s is absent" %
+                        runtime_paths.PAGE_CONTRACT_ARTIFACT_PATH)
             except (OSError, UnicodeError, ValueError,
                     subprocess.SubprocessError) as exc:
                 _assert_authoritative_state_unchanged(root, state_anchor)
@@ -1832,7 +1839,7 @@ def _main(argv=None):
                 "corpus_plan: %s" % error
                 for error in corpus_plan_check["errors"])
             all_candidates = []
-            for field in batch_close_contract.CLOSED_LIST_EVIDENCE_FIELDS:
+            for field in closed_list_fields:
                 run = checks[field]
                 check_errors.extend("%s: %s" % (field, error)
                                     for error in run["errors"])
@@ -1950,21 +1957,58 @@ def _main(argv=None):
 
             records = []
             evidence = {}
-            for sequence, field in enumerate(
-                    batch_close_contract.CLOSED_LIST_EVIDENCE_FIELDS, 1):
+            producer_evidence = {}
+            final_evidence_records = {}
+            for sequence, pair in enumerate(post_delta_projection, 1):
+                field = pair["member"]["member_id"]
                 member_candidates = [entry for entry in accepted
                                      if entry["member"] == field]
-                receipt = _member_receipt(
-                    field, checks[field], snapshot, runtime, item,
-                    args.integrator, args.reviewer, member_candidates,
-                    sequence)
-                records.append(receipt)
-                evidence[field] = receipt["receipt_id"]
+                if pair["member"]["evidence_kind"] == "gate-receipt":
+                    receipt = checks[field].get("gate_evidence")
+                    if not isinstance(receipt, dict):
+                        raise ValueError(
+                            "%s has no real Gate evidence" % field)
+                    records.append(receipt)
+                    producer_evidence[field] = receipt["receipt_id"]
+                    final_evidence_records[field] = receipt
+                else:
+                    raw_receipt = _member_receipt(
+                        field, checks[field], snapshot, runtime, item,
+                        args.integrator, args.reviewer, member_candidates,
+                        sequence, stage_plan, pair["obligation"])
+                    full_receipt = \
+                        batch_close_audit.build_full_audit_receipt(
+                            stage_plan, pair, raw_receipt)
+                    records.extend((raw_receipt, full_receipt))
+                    producer_evidence[field] = raw_receipt["receipt_id"]
+                    final_evidence_records[field] = full_receipt
+                evidence[field] = \
+                    final_evidence_records[field]["receipt_id"]
+
+            post_delta_closure = \
+                batch_close_audit.build_post_delta_evidence_set(
+                    stage_plan, post_delta_projection,
+                    final_evidence_records, snapshot)
+            plan_binding = {
+                "audit_plan_id": stage_plan["audit_plan_id"],
+                "audit_plan_path": stage_plan["audit_plan_path"],
+                "audit_plan_sha256": stage_plan["audit_plan_sha256"],
+                "post_delta_evidence_bindings":
+                    post_delta_closure["bindings"],
+                "post_delta_evidence_count":
+                    len(post_delta_closure["bindings"]),
+                "post_delta_evidence_set_sha256":
+                    post_delta_closure["evidence_set_sha256"],
+                "post_delta_audit_receipt_ids":
+                    post_delta_closure["audit_receipt_ids"],
+                "post_delta_audit_receipt_set_sha256":
+                    post_delta_closure["audit_receipt_set_sha256"],
+            }
 
             attestation = _make_receipt(
                 TOOL, TOOL_VERSION, "batch_global_review_attestation",
                 args.batch, "pass", args.review_attestation.strip(),
-                len(batch_close_contract.CLOSED_LIST_EVIDENCE_FIELDS) + 1,
+                len(closed_list_fields) + 1,
                 root=root)
             accepted_type_counts = {}
             for entry in accepted:
@@ -2002,6 +2046,7 @@ def _main(argv=None):
                         "policy-exception:")
                 ],
             })
+            attestation.update(plan_binding)
             attestation.update(evidence_binding)
             records.append(attestation)
 
@@ -2015,7 +2060,7 @@ def _main(argv=None):
                 for page in frozen_pages
             }
             page_sequence = \
-                len(batch_close_contract.CLOSED_LIST_EVIDENCE_FIELDS) + 2
+                len(closed_list_fields) + 2
             for offset, frozen_page in enumerate(frozen_pages):
                 page_review = _make_receipt(
                     TOOL, TOOL_VERSION, "page_review_acceptance",
@@ -2051,7 +2096,7 @@ def _main(argv=None):
             global_review = _make_receipt(
                 TOOL, TOOL_VERSION, "batch_global_review", args.batch,
                 "pass", "declared reviewer attestation recorded for the Closed List merged-snapshot review",
-                (len(batch_close_contract.CLOSED_LIST_EVIDENCE_FIELDS) + 2 +
+                (len(closed_list_fields) + 2 +
                  len(frozen_pages)), root=root)
             global_review.update({
                 "task_id": runtime["queue"].get("task_id"),
@@ -2061,7 +2106,9 @@ def _main(argv=None):
                 "merged_snapshot_sha256": snapshot,
                 "reviewer_attestation_receipt": attestation["receipt_id"],
                 "closed_list_evidence": evidence,
+                "closed_list_producer_evidence": producer_evidence,
             })
+            global_review.update(plan_binding)
             records.append(global_review)
 
             queue_details = "errors=0 candidates=0 remaining=%s ready=%s" % (
@@ -2082,7 +2129,7 @@ def _main(argv=None):
             aggregator = _make_receipt(
                 TOOL, TOOL_VERSION, GATE_CHECK, args.batch, "pass",
                 "Closed List checks passed and declared review attestation was recorded",
-                len(batch_close_contract.CLOSED_LIST_EVIDENCE_FIELDS) + 4 +
+                len(closed_list_fields) + 4 +
                 len(frozen_pages), root=root)
             aggregator["receipt_id"] = attempt_id
             aggregator.update({
@@ -2115,6 +2162,7 @@ def _main(argv=None):
                 "reviewer_attestation_receipt": attestation["receipt_id"],
                 "global_review_receipt": global_review["receipt_id"],
                 "closed_list_evidence": evidence,
+                "closed_list_producer_evidence": producer_evidence,
                 "page_review_receipts": page_review_receipts,
                 "page_review_receipt_count": len(page_review_receipts),
                 "page_review_receipt_set_sha256":
@@ -2123,6 +2171,7 @@ def _main(argv=None):
                     metadata_contract.contract_fingerprint,
                 **profile_bindings,
             })
+            aggregator.update(plan_binding)
             aggregator.update(batch_settlement.close_binding(
                 locked_settlement))
             records.append(aggregator)

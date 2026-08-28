@@ -19,6 +19,14 @@ load_edges:
       - kernel/K08 Metadata and Status/05 Review Source and Migration Metadata.md
       - kernel/K09 Wiki Link and Navigation/03 Path Alias and Heading Links.md
       - kernel/K09 Wiki Link and Navigation/05 Verification and Anti-patterns.md
+      - kernel/K12 Quality Assurance/19 Incremental Audit Planning.md
+      - kernel/K12 Quality Assurance/audit-plan-contract.yaml
+      - kernel/K12 Quality Assurance/batch-close-closed-list.yaml
+      - kernel/K12 Quality Assurance/batch-review-obligation-registry.yaml
+      - kernel/K12 Quality Assurance/changed-scope-check-registry.yaml
+      - kernel/K12 Quality Assurance/deterministic-rendering-contract.yaml
+      - kernel/K12 Quality Assurance/rendering-verification-contract.yaml
+      - kernel/K12 Quality Assurance/substantive-review-contract.yaml
       - kernel/K13 Task Runtime and Execution Control/10 Batch Admission Transitions and Serial Integration.md
     read_sets:
       - R01

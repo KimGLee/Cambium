@@ -278,7 +278,7 @@ def _run(args, produced, authorized_admission):
     if not scan_files:
         # The post-exclusion effective set owns the gate result. A scoped run,
         # an empty whole root, and a fully excluded root all fail closed.
-        target = (args.scope or ".") + " @ " + os.path.abspath(args.vault_root)
+        target = args.scope or "."
         receipts = [_make_receipt(
             "scan-empty", target, "fail",
             "effective scan set contains no .md files (path missing, empty, "
@@ -359,7 +359,7 @@ def _run(args, produced, authorized_admission):
         seq += 1
         _summary = _make_receipt(
             GATE_CHECK,
-            (args.scope or ".") + " @ " + os.path.abspath(args.vault_root), "pass",
+            args.scope or ".", "pass",
             "no illegal controlled-vocabulary values found "
             "(unknown_value=0; missingness belongs to the page contract)",
             seq, root=args.vault_root)

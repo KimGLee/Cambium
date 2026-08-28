@@ -1,0 +1,175 @@
+schema_version: 1
+contract_id: cambium-audit-plan
+semantic_owner: K12/19
+
+# Publication at open freezes obligation definitions. The plan deliberately
+# carries no per-obligation artifact, dependency, or contract fingerprint.
+# Those three actual fingerprints are resolved only when the obligation is due
+# and its target exists, then recorded in its evidence without mutating this
+# plan or adding an obligation.
+producer_binding: exactly-one-of-capability-or-gate
+
+registry_references:
+  audit_dimension_base: kernel/K12 Quality Assurance/audit-dimension-base.yaml
+
+fields:
+  - field: schema_version
+    type: integer
+    nullable: false
+  - field: plan_id
+    type: string
+    nullable: false
+  - field: task_id
+    type: string
+    nullable: false
+  - field: batch_id
+    type: string
+    nullable: false
+  - field: generated_at
+    type: utc-timestamp
+    nullable: false
+  - field: queue_revision
+    type: integer
+    nullable: false
+  - field: queue_state_revision
+    type: integer
+    nullable: false
+  - field: required_queue_sha256
+    type: sha256
+    nullable: false
+  - field: standards_version
+    type: string
+    nullable: false
+  - field: active_standards_sha256
+    type: sha256
+    nullable: false
+  - field: selected_profile_manifest
+    type: string
+    nullable: false
+  - field: profile_snapshot_sha256
+    type: sha256
+    nullable: false
+  - field: profile_contract_fingerprint
+    type: sha256
+    nullable: false
+  - field: opening_transition_receipt
+    type: string
+    nullable: false
+  - field: artifact_snapshot_sha256
+    type: sha256
+    nullable: false
+  - field: contract_snapshot_sha256
+    type: sha256
+    nullable: false
+  - field: accepted_baseline_sha256
+    type: sha256
+    nullable: false
+  - field: obligations
+    type: obligation-list
+    nullable: false
+
+obligation_fields:
+  - field: obligation_id
+    type: string
+    nullable: false
+  - field: owner_kind
+    type: string
+    nullable: false
+  - field: owner_rule_id
+    type: string
+    nullable: false
+  - field: kernel_extension_point
+    type: string
+    nullable: true
+  - field: partition
+    type: string
+    nullable: false
+  - field: due_stage
+    type: string
+    nullable: false
+  - field: target
+    type: string
+    nullable: false
+  - field: applicability
+    type: string
+    nullable: false
+  - field: evidence_role
+    type: string
+    nullable: false
+  - field: evidence_kind
+    type: string
+    nullable: false
+  - field: dimension
+    type: string
+    nullable: true
+  - field: acceptance_predicate
+    type: string
+    nullable: false
+  - field: producer_check
+    type: string
+    nullable: false
+  - field: producer_capability
+    type: string
+    nullable: true
+  - field: producer_gate_id
+    type: string
+    nullable: true
+  - field: consumer_gate_id
+    type: string
+    nullable: false
+  - field: fingerprint_binding
+    type: string
+    nullable: false
+  - field: review_due
+    type: utc-timestamp
+    nullable: true
+  - field: status
+    type: string
+    nullable: false
+  - field: evidence_ref
+    type: string
+    nullable: true
+  - field: reused_receipt_id
+    type: string
+    nullable: true
+  - field: reuse_reason
+    type: string
+    nullable: true
+
+partitions:
+  - mandatory-full-deterministic
+  - changed-scope-deterministic
+  - initial-semantic-review
+  - invalidated-semantic-review
+  - overdue-targeted-review
+  - bounded-sampling
+  - profile-registered-review
+  - reusable-evidence
+
+due_stage_values:
+  - pre-merge
+  - post-delta-close
+
+evidence_kind_values:
+  - audit-receipt
+  - gate-receipt
+  - batch-page-review-record
+  - candidate-set-receipt
+  - closed-list-member-receipt
+  - page-batch-judgment-v1
+
+owner_kind_values:
+  - kernel
+  - profile-extension
+
+kernel_extension_point_values:
+  - k12-14-batch-review-requirement
+  - k12-05-registered-scan
+
+fingerprint_binding_values:
+  - evidence-time
+  - reused-receipt
+
+obligation_status_values:
+  - required
+  - reused

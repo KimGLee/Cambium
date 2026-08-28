@@ -108,14 +108,122 @@ modules:
       - EVIDENCE_ROLES
       - EXTENSION_TARGET_MAPPINGS
       - current_audit_dimension_values
+      - load_audit_dimension_base
+      - validate_audit_dimension_base
+  - module: audit_evidence_runtime
+    path: Tools/audit_evidence_runtime.py
+    provisional: true
+    public:
+      - batch_review_evidence
+      - closed_plan_closure_errors
+      - resolve_stage_plan
+      - validate_audit_receipt_for_obligation
+      - wrapper_binding_errors
+  - module: audit_fingerprint
+    path: Tools/audit_fingerprint.py
+    provisional: true
+    public:
+      - obligation_contract_fingerprint
+      - page_artifact_fingerprint
+      - page_set_artifact_fingerprint
+  - module: audit_obligation_projection
+    path: Tools/audit_obligation_projection.py
+    provisional: true
+    public:
+      - BATCH_CLOSE_REGISTRY_PATH
+      - CHANGED_SCOPE_REGISTRY_PATH
+      - base_obligation_specs
+      - compose_profile_extensions
+      - load_changed_scope_registry
+      - obligation_spec_for_rule
+      - resolve_obligation_definition
+      - validate_changed_scope_registry
+  - module: audit_plan_contract
+    path: Tools/audit_plan_contract.py
+    provisional: true
+    public:
+      - closed_string_list
+      - field_specs
+      - is_sha256
+      - load_contract
+      - nonempty_string
+      - plan_sha256
+      - required_obligation_ids
+      - validate_contract
+      - validate_plan
+      - validate_value
+  - module: audit_producer_runtime
+    path: Tools/audit_producer_runtime.py
+    provisional: true
+    public:
+      - AuditProducerError
+      - admitted_runtime
+      - freeze_manifest_pages
+      - managed_plan_path
+      - managed_receipt_path
+      - obligation_contract_fingerprint
+      - open_batch
+      - page_artifact_fingerprint
+      - page_set_artifact_fingerprint
+      - page_set_sha256
+      - profile_bindings
+      - read_receipt_records
+      - receipt_by_id
+      - require_pages_current
+      - require_runtime_current
+      - runtime_lock_metadata
+      - runtime_state_bindings
+      - sources_sha256
+      - standards_bindings
+  - module: audit_receipt_contract
+    path: Tools/audit_receipt_contract.py
+    provisional: true
+    public:
+      - load_contract
+      - page_artifact_fingerprint_contract
+      - receipt_set_sha256
+      - validate_audit_receipt
+  - module: batch_close_audit
+    path: Tools/batch_close_audit.py
+    provisional: true
+    public:
+      - build_full_audit_receipt
+      - build_post_delta_evidence_set
+      - resolve_post_delta_projection
+      - validate_post_delta_evidence_set
   - module: batch_close_contract
     path: Tools/batch_close_contract.py
     provisional: true
     public:
+      - BATCH_CLOSE_CLOSED_LIST_PATH
       - CLOSED_LIST_EVIDENCE_FIELDS
       - LEGACY_CLOSED_LIST_EVIDENCE_FIELDS
       - LEGACY_CLOSED_LIST_VERSIONS
       - closed_list_evidence_fields_for_producer_version
+      - closed_list_member_rows
+      - load_batch_close_closed_list
+      - validate_batch_close_closed_list
+  - module: batch_review_obligation_contract
+    path: Tools/batch_review_obligation_contract.py
+    provisional: true
+    public:
+      - BATCH_REVIEW_OBLIGATION_REGISTRY_PATH
+      - PRODUCER_TOOL
+      - PRODUCER_TOOL_VERSION
+      - base_obligation_specs
+      - contract_fingerprint
+      - dependency_fingerprint
+      - load_registry
+      - obligation_spec_for_rule
+      - registry_sha256
+      - resolve_consumed_evidence
+      - s_sample_count
+      - select_s_targets
+      - validate_applicability_disposition
+      - validate_page_fingerprint_binding
+      - validate_plan_base_closure
+      - validate_producer_receipt
+      - validate_receipt_consumption
   - module: batch_settlement
     path: Tools/batch_settlement.py
     provisional: true
@@ -178,6 +286,59 @@ modules:
       - CardContractError
       - SCHEMA_PATH
       - load_schema
+  - module: changed_scope_evidence_contract
+    path: Tools/changed_scope_evidence_contract.py
+    provisional: true
+    public:
+      - AUDIT_PRODUCER_RECORD_FIELDS
+      - ChangedScopeEvidenceContractError
+      - DIRECT_RECORD_FIELDS
+      - INPUT_BINDING_FIELDS
+      - PLAN_BINDING_FIELDS
+      - REGISTRY_PATH
+      - SHA256_RE
+      - SOURCE_SELECTOR_FIELDS
+      - TOOL
+      - TOOL_VERSION
+      - UTC_RE
+      - direct_contract_fingerprint
+      - direct_dependency_fingerprint
+      - load_control_registry
+      - load_registry
+      - normalized_base_rules
+      - pure_check_owner
+      - registry_sha256
+      - runtime_check_source_sha256
+      - runtime_contract_fingerprint
+      - source_gate_selector
+      - source_summary
+      - validate_audit_producer_record
+      - validate_audit_producer_record_for_plan
+      - validate_direct_record
+      - validate_direct_record_for_plan
+      - validate_record_for_plan
+  - module: changed_scope_rendering_checks
+    path: Tools/changed_scope_rendering_checks.py
+    provisional: true
+    public:
+      - CHECKS_BY_RULE_ID
+      - ProfileRenderingContractGap
+      - RUNNERS_BY_RULE_ID
+      - profile_rendering_contract_gap_targets
+      - require_profile_rendering_contract_state
+  - module: changed_scope_runtime_checks
+    path: Tools/changed_scope_runtime_checks.py
+    provisional: true
+    public:
+      - COVERAGE_RULE_ID
+      - GUIDANCE_RULE_ID
+      - TASK_CONTRACT_RULE_ID
+      - TOOL
+      - TOOL_VERSION
+      - coverage_routing_state
+      - frozen_task_contract_references
+      - guidance_state_zero_counts
+      - validate_check_result
   - module: check_batch_close
     path: Tools/check_batch_close.py
     public: []
@@ -255,6 +416,8 @@ modules:
     public:
       - APPLY_DELTA_TOOL_VERSION
       - BATCH_ID_RE
+      - BATCH_REVIEW_CHECK
+      - BATCH_REVIEW_GATE_ID
       - COMPLETION_SEMANTICS
       - CONTRACT_AMENDMENT_PLAN_PREFIX
       - CONTRACT_FIELDS
@@ -263,6 +426,7 @@ modules:
       - HOLDS
       - LEGACY_PROPERTY_STATE_FIELD
       - MANUAL_ATTESTATION_TOOL
+      - MANUAL_ATTESTATION_TOOL_VERSION
       - PROGRESS_PATH
       - QUEUE_PATH
       - SHA256_RE
@@ -292,6 +456,7 @@ modules:
       - historical_receipt_catalog
       - item_revalidation_discharges
       - item_undischarged_revalidation_hold
+      - judgment_record_set_sha256
       - live_read_set_load_findings
       - maintenance_completion_gate_errors
       - maintenance_gate_time_errors
@@ -313,7 +478,6 @@ modules:
       - standards_adoption_plan_errors
       - standards_gate_registry
       - standards_revalidation_receipt_errors
-      - substantive_review_errors
       - task_phase_delivery_errors
       - timestamp_value
       - valid_timestamp
@@ -360,6 +524,9 @@ modules:
         content_sha256: sha256:8bb87f64160308e8f88171ad04c5419f38dbd51f1c7ff80012da3cd95ac28901
         necessity: the same diff the compiler uses to decide which batches a replan touches
         retires_when: same as _build_replanned_queue
+  - module: complete_audit_receipt
+    path: Tools/complete_audit_receipt.py
+    public: []
   - module: compose_page_contract
     path: Tools/compose_page_contract.py
     provisional: true
@@ -442,6 +609,13 @@ modules:
       - gap_key
       - project_coverage_text
       - project_open_gaps
+  - module: deterministic_rendering_contract
+    path: Tools/deterministic_rendering_contract.py
+    provisional: true
+    public:
+      - load_contract
+      - validate_contract
+      - validate_registry_projection
   - module: duplicate_check
     path: Tools/duplicate_check.py
     public: []
@@ -563,6 +737,22 @@ modules:
       - candidate_state_sha256
       - validate_candidates
       - validate_partition
+  - module: manual_attestation
+    path: Tools/manual_attestation.py
+    provisional: true
+    public:
+      - publish_receipt
+      - require_statement
+  - module: markdown_structure_checks
+    path: Tools/markdown_structure_checks.py
+    provisional: true
+    public:
+      - fence_scan
+      - has_markdown_table
+      - has_mermaid_fence
+      - split_pipe_row
+      - table_scan
+      - table_separator
   - module: mcp_server
     path: Tools/mcp_server.py
     public: []
@@ -583,7 +773,6 @@ modules:
       - compose_profile_projection_rules
       - load_metadata_execution_contract
       - load_operation_capabilities
-      - metadata_execution_capability_implementation_paths
       - profile_extension_enum_projection_rule
       - rules_for_capability
       - source_adapter_owner_record_keys
@@ -673,6 +862,11 @@ modules:
       - tree_contains
       - tree_is_bound
       - verify_named_target
+  - module: prepare_audit_plan
+    path: Tools/prepare_audit_plan.py
+    provisional: true
+    public:
+      - require_plan_current
   - module: profile_admission
     path: Tools/profile_admission.py
     provisional: true
@@ -681,6 +875,24 @@ modules:
       - admit_profile
       - currency_errors
       - require_slot
+  - module: profile_batch_judgment_contract
+    path: Tools/profile_batch_judgment_contract.py
+    provisional: true
+    public:
+      - DUE_STAGE
+      - EXTENSION_POINT
+      - PRODUCER_CHECK
+      - PRODUCER_TOOL
+      - PRODUCER_TOOL_VERSION
+      - RECORD_KIND
+      - evidence_fingerprints
+      - expand_requirements
+      - expected_projection
+      - load_bound_plan
+      - receipt_binding_errors
+      - requirement_set_sha256
+      - resolve_obligation
+      - semantic_content_fingerprint
   - module: profile_contract
     path: Tools/profile_contract.py
     provisional: true
@@ -688,6 +900,7 @@ modules:
       - AUDIT_DIMENSION_BASE_PATH
       - KERNEL_APPLICABILITY_PATH
       - KERNEL_RELATIONSHIP_PATH
+      - PRODUCER_CAPABILITY_BY_KIND
       - PROFILE_FILE_SLOTS
       - PROFILE_INTERFACE_PATH
       - PROFILE_LOAD_EVIDENCE_FIELDS
@@ -1312,6 +1525,15 @@ modules:
   - module: record_batch_judgment
     path: Tools/record_batch_judgment.py
     public: []
+  - module: record_batch_page_review
+    path: Tools/record_batch_page_review.py
+    public: []
+  - module: record_batch_review
+    path: Tools/record_batch_review.py
+    public: []
+  - module: record_changed_scope_evidence
+    path: Tools/record_changed_scope_evidence.py
+    public: []
   - module: record_corpus_acceptance
     path: Tools/record_corpus_acceptance.py
     public: []
@@ -1321,6 +1543,14 @@ modules:
   - module: record_gate_result
     path: Tools/record_gate_result.py
     public: []
+  - module: record_rendering_verification
+    path: Tools/record_rendering_verification.py
+    public: []
+  - module: record_substantive_review
+    path: Tools/record_substantive_review.py
+    provisional: true
+    public:
+      - load_current_plan
   - module: register_amendment
     path: Tools/register_amendment.py
     public: []
@@ -1339,6 +1569,17 @@ modules:
   - module: render_structure_projection
     path: Tools/render_structure_projection.py
     public: []
+  - module: rendering_verification_contract
+    path: Tools/rendering_verification_contract.py
+    provisional: true
+    public:
+      - RENDERING_MODES
+      - contract_sha256
+      - load_contract
+      - record_dependency_fingerprint
+      - validate_contract
+      - validate_record
+      - validate_record_for_obligation
   - module: run_gates
     path: Tools/run_gates.py
     public: []
@@ -1349,9 +1590,13 @@ modules:
       - ACTIVE_STANDARDS_PATH
       - AMENDMENT_DELTA_ROOT
       - AMENDMENT_RECEIPT_PATH
+      - AUDIT_PLAN_ROOT
+      - AUDIT_RECEIPT_REGISTER_PATH
       - BATCH_CLOSE_RECEIPT_PATH
       - BATCH_JUDGMENT_RECEIPT_PATH
+      - BATCH_PAGE_REVIEW_RECEIPT_PATH
       - CANONICAL_STATE
+      - CHANGED_SCOPE_EVIDENCE_RECEIPT_PATH
       - CLI_CONTRACT_ARTIFACT_PATH
       - CONTRACT_AMENDMENT_DELTA_ROOT
       - CONTRACT_AMENDMENT_RECEIPT_PATH
@@ -1383,6 +1628,7 @@ modules:
       - RECEIPT_COLD_SEGMENT_ROOT
       - RECEIPT_ROOT
       - RECEIPT_SEAL_JOURNAL_PATH
+      - RENDERING_VERIFICATION_RECEIPT_PATH
       - REPLAN_DELTA_ROOT
       - REPORT_ROOT
       - REQUIRED_QUEUE_REPORT_PATH
@@ -1393,6 +1639,7 @@ modules:
       - STATE_ROOT
       - STATE_WRITER_LOCK_PATH
       - STATE_WRITER_OWNER_PATH
+      - SUBSTANTIVE_REVIEW_RECEIPT_PATH
       - TASK_PLAN_DELTA_ROOT
       - TASK_PLAN_RECEIPT_PATH
       - TASK_RUNTIME_DIRECTORIES
@@ -1483,6 +1730,15 @@ modules:
       - next_state
       - parse
       - snapshot
+  - module: substantive_review_contract
+    path: Tools/substantive_review_contract.py
+    provisional: true
+    public:
+      - SUBSTANTIVE_REVIEW_CONTRACT_PATH
+      - load_contract
+      - validate_contract
+      - validate_review_pair
+      - validate_review_receipt
   - module: tool_availability
     path: Tools/tool_availability.py
     provisional: true
@@ -1503,6 +1759,7 @@ modules:
       - build_task_transition
   - module: upstream_component_boundary
     path: Tools/upstream_component_boundary.py
+    provisional: true
     public:
       - ComponentBoundaryError
       - DEFAULT_MANIFEST_PATH
@@ -1511,6 +1768,7 @@ modules:
       - manifest_text
   - module: upstream_identity
     path: Tools/upstream_identity.py
+    provisional: true
     public:
       - UpstreamIdentityError
       - is_full_commit_sha

@@ -204,6 +204,64 @@ def _closed_bundle_trios(result, closed):
     return trio_ids
 
 
+def _hot_close_replay_receipts(catalog, close):
+    """Return every receipt body a hot 1.13+ close replay must resolve.
+
+    The close aggregate does not only reference its visible Closed List
+    receipts.  For each K12/09 ``audit-receipt`` member it also binds the raw
+    producer record twice: directly through
+    ``closed_list_producer_evidence`` and from the full AuditReceipt's
+    ``evidence_ref``.  The close consumer replays the full pair and compares
+    their producer-era fields; a cold projection cannot answer that contract.
+
+    This is deliberately the exact body-reference closure of the hot close
+    consumer, not a string sweep and not a sealed-body bypass.  Sealing remains
+    available once the complete close bundle is no longer kept hot by a live
+    owner reference.
+    """
+    replay_ids = set()
+    if not isinstance(close, dict):
+        return replay_ids
+
+    for field in (
+            "global_review_receipt", "reviewer_attestation_receipt",
+            "corpus_plan_receipt"):
+        value = close.get(field)
+        if isinstance(value, str) and value.strip():
+            replay_ids.add(value)
+    for value in close.get("page_review_receipts") or []:
+        if isinstance(value, str) and value.strip():
+            replay_ids.add(value)
+
+    closed_list_ids = set()
+    for field in ("closed_list_evidence",
+                  "closed_list_producer_evidence"):
+        evidence = close.get(field)
+        if not isinstance(evidence, dict):
+            continue
+        for value in evidence.values():
+            if isinstance(value, str) and value.strip():
+                replay_ids.add(value)
+                if field == "closed_list_evidence":
+                    closed_list_ids.add(value)
+
+    # A full AuditReceipt is itself the Closed List evidence and names the raw
+    # producer record whose exact body the close consumer compares.  Follow
+    # that declared edge as well as the aggregate's parallel producer map so
+    # either formal reference can never be stranded by the seal planner.
+    for receipt_id in closed_list_ids:
+        entry = catalog.get(receipt_id)
+        receipt = entry[1] if isinstance(entry, tuple) and len(entry) == 2 \
+            else None
+        if not isinstance(receipt, dict) or \
+                receipt.get("record_kind") != "audit-receipt":
+            continue
+        evidence_ref = receipt.get("evidence_ref")
+        if isinstance(evidence_ref, str) and evidence_ref.strip():
+            replay_ids.add(evidence_ref)
+    return replay_ids
+
+
 def _hot_closed_bundle_receipts(result, closed, hot_references):
     """Keep a hot trio and every body its hot replay must still read.
 
@@ -217,9 +275,9 @@ def _hot_closed_bundle_receipts(result, closed, hot_references):
     receipt bodies (global review, reviewer attestation, page-review children,
     Closed List members, and the optional Corpus Planning child).  Those rows
     may use the cold projection only after the trio itself takes the sealed
-    branch.  Retain that exact one-hop dependency closure with the trio; a
-    later owner transition that supersedes the Coverage pointer makes the
-    whole old bundle sealable again.
+    branch.  Retain that exact body dependency closure with the trio; a later
+    owner transition that supersedes the Coverage pointer makes the whole old
+    bundle sealable again.
     """
     keep = set()
     catalog = result.get("receipt_catalog") or {}
@@ -236,22 +294,7 @@ def _hot_closed_bundle_receipts(result, closed, hot_references):
         entry = catalog.get(close_id)
         close = entry[1] if isinstance(entry, tuple) and len(entry) == 2 \
             else None
-        replay_ids = set()
-        if isinstance(close, dict):
-            for field in (
-                    "global_review_receipt", "reviewer_attestation_receipt",
-                    "corpus_plan_receipt"):
-                value = close.get(field)
-                if isinstance(value, str) and value.strip():
-                    replay_ids.add(value)
-            for value in close.get("page_review_receipts") or []:
-                if isinstance(value, str) and value.strip():
-                    replay_ids.add(value)
-            evidence = close.get("closed_list_evidence")
-            if isinstance(evidence, dict):
-                for value in evidence.values():
-                    if isinstance(value, str) and value.strip():
-                        replay_ids.add(value)
+        replay_ids = _hot_close_replay_receipts(catalog, close)
 
         # A Coverage owner may be a child of the close gate (most commonly a
         # page-review acceptance), not one of the trio records themselves.

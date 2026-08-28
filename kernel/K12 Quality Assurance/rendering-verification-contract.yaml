@@ -1,0 +1,159 @@
+schema_version: 1
+contract_id: cambium-rendering-verification-record
+semantic_owner: K12/02
+semantic_dependencies:
+  - K12/08
+  - K12/13
+record_kind: rendering-verification-evidence
+
+# Passing this contract proves only that the batch-level rendering record has
+# the shape required by K12/02 and K12/13. It does not prove that Level 0 or
+# Level 1 checks ran, that an escalated observation was accurate, or that the
+# rendered artifact passed its separate acceptance checks.
+proof_boundary: record-shape-only
+acceptance_predicate: k12-02-rendering-verification-record
+
+# The highest rendering level is known only after the batch has run. The
+# AuditPlan therefore freezes one every-batch record-shape obligation at open;
+# this producer fills the final mode and record fields at evidence time.
+obligation_projection:
+  owner_kind: kernel
+  owner_rule_id: k12-02-rendering-verification-record
+  kernel_extension_point: null
+  target_source: batch
+  applicability: every-batch
+  partition: changed-scope-deterministic
+  due_stage: pre-merge
+  producer_check: changed_scope_rendering_escalation_record
+  producer_capability: audit-receipt-producer-v1
+  producer_gate_id: null
+  consumer_gate_id: batch-review
+  evidence_kind: audit-receipt
+  evidence_role: emits
+  dimension: rendering
+  acceptance_predicate: k12-02-rendering-verification-record
+  fingerprint_binding: evidence-time
+
+rendering_modes:
+  - rendering_mode: source-only
+    highest_level: 0
+    escalation: false
+  - rendering_mode: deterministic-static
+    highest_level: 1
+    escalation: false
+  - rendering_mode: targeted-visual-exception
+    highest_level: 2
+    escalation: true
+  - rendering_mode: expanded-ui
+    highest_level: 3
+    escalation: true
+  - rendering_mode: temporal-recording
+    highest_level: 4
+    escalation: true
+
+fields:
+  - field: schema_version
+    type: integer
+    nullable: false
+  - field: record_kind
+    type: string
+    nullable: false
+  - field: receipt_id
+    type: string
+    nullable: false
+  - field: tool
+    type: string
+    nullable: false
+  - field: tool_version
+    type: string
+    nullable: false
+  - field: check
+    type: string
+    nullable: false
+  - field: target
+    type: string
+    nullable: false
+  - field: result
+    type: string
+    nullable: false
+  - field: details
+    type: string
+    nullable: false
+  - field: checked_at
+    type: utc-timestamp
+    nullable: false
+  - field: invalidated_by
+    type: string
+    nullable: true
+  - field: plan_id
+    type: string
+    nullable: false
+  - field: audit_plan_sha256
+    type: sha256
+    nullable: false
+  - field: obligation_id
+    type: string
+    nullable: false
+  - field: task_id
+    type: string
+    nullable: false
+  - field: batch_id
+    type: string
+    nullable: false
+  - field: opening_transition_receipt
+    type: string
+    nullable: false
+  - field: standards_version
+    type: string
+    nullable: false
+  - field: active_standards_sha256
+    type: sha256
+    nullable: false
+  - field: selected_profile_manifest
+    type: string
+    nullable: false
+  - field: profile_snapshot_sha256
+    type: sha256
+    nullable: false
+  - field: profile_contract_fingerprint
+    type: sha256
+    nullable: false
+  - field: scope
+    type: string-list
+    nullable: false
+  - field: artifact_fingerprint
+    type: sha256
+    nullable: false
+  - field: dependency_fingerprint
+    type: sha256
+    nullable: false
+  - field: contract_fingerprint
+    type: sha256
+    nullable: false
+  - field: fingerprint_binding
+    type: string
+    nullable: false
+  - field: acceptance_predicate
+    type: string
+    nullable: false
+  - field: dimension
+    type: string
+    nullable: false
+  - field: rendering_mode
+    type: string
+    nullable: false
+  - field: highest_level
+    type: integer
+    nullable: false
+  - field: visual_trigger
+    type: string
+    nullable: true
+  - field: unresolved_question
+    type: string
+    nullable: true
+  - field: verification_target
+    type: string
+    nullable: true
+  - field: verification_result
+    type: string
+    nullable: true

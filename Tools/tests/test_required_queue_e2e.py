@@ -19,10 +19,13 @@ import check_queue
 import check_batch_close
 import batch_settlement
 import candidate_lifecycle
+import compose_page_contract
+import compose_vocab
 import kblib
 import maintenance_candidates
 import metadata_execution_contract
 import metadata_property_state
+import profile_admission
 import project_page_state
 import runtime_paths
 import stamp_cards
@@ -59,6 +62,81 @@ class RequiredQueueFixture:
         install_loadable_profile(self.root)
         for name in ("deltas", "receipts", "reports"):
             (self.root / ".cambium" / name).mkdir(exist_ok=True)
+        self.install_plain_s_audit_fixture()
+
+    def install_plain_s_audit_fixture(self):
+        """Make the shared lifecycle fixture a real, bounded S-tier run.
+
+        These tests exercise Queue and close mechanics rather than M-tier
+        semantic judgment.  The fixture therefore uses plain Markdown pages
+        that satisfy the selected Profile's page contract, and the Kernel's
+        real deterministic sampling rule supplies their review obligation.
+        No production obligation is bypassed or replaced by fixture prose.
+        """
+        pages = (("A", "B1"), ("B", "B2"))
+        for name, _batch in pages:
+            (self.root / ("Topics/%s.md" % name)).write_text(
+                "---\n"
+                "type: concept\n"
+                "domain: general\n"
+                "scope: shared\n"
+                "level: basic\n"
+                "depth: atomic\n"
+                "priority: P2\n"
+                "---\n"
+                "# %s\n\n"
+                "## Synthetic Residual\n\n"
+                "Accepted-root liveness marker for the registered fixture "
+                "scan.\n" % name,
+                encoding="utf-8",
+            )
+
+        coverage_path = self.root / check_queue.COVERAGE_PATH
+        progress_path = self.root / check_queue.PROGRESS_PATH
+        receipt_path = (
+            self.root / ".cambium/receipts/task-transitions.jsonl")
+        coverage = kblib.load_yaml_file(coverage_path)
+        for page in coverage["pages"]:
+            page["tier"] = "S"
+            page["priority"] = "P2"
+        coverage_path.write_text(
+            kblib.canonical_yaml(coverage), encoding="utf-8")
+
+        progress = kblib.load_yaml_file(progress_path)
+        progress["checkpoint"]["coverage_sha256"] = \
+            kblib.sha256_file(coverage_path)
+        progress_path.write_text(
+            kblib.canonical_yaml(progress), encoding="utf-8")
+
+        records = [json.loads(line) for line in receipt_path.read_text(
+            encoding="utf-8").splitlines() if line.strip()]
+        for record in records:
+            if record.get("receipt_id") == "audit-fixture-initial-queue":
+                coverage_sha256 = kblib.sha256_file(coverage_path)
+                record["before_coverage_sha256"] = coverage_sha256
+                record["after_coverage_sha256"] = coverage_sha256
+                record["after_progress_sha256"] = \
+                    kblib.sha256_file(progress_path)
+        receipt_path.write_text(
+            "".join(json.dumps(record, separators=(",", ":")) + "\n"
+                    for record in records), encoding="utf-8")
+
+        admission, errors = profile_admission.admit_profile(self.root)
+        self.assertEqual([], errors, errors)
+        self.assertIsNotNone(admission)
+        vocab_text, _vocab, errors = compose_vocab.compiled_artifact(
+            self.root, admission)
+        self.assertEqual([], errors, errors)
+        page_contract_text, _contract, errors = \
+            compose_page_contract.compiled_artifact(self.root, admission)
+        self.assertEqual([], errors, errors)
+        derived = self.root / runtime_paths.DERIVED_ROOT
+        derived.mkdir(parents=True, exist_ok=True)
+        (derived / "vocab.yaml").write_text(vocab_text, encoding="utf-8")
+        (derived / "page_contract.yaml").write_text(
+            page_contract_text, encoding="utf-8")
+        self.assertEqual(
+            [], check_queue.validate_runtime(self.root)["errors"])
 
     def run_tool(self, name, *arguments):
         return subprocess.run(
@@ -102,22 +180,6 @@ class RequiredQueueFixture:
 
     def queue(self):
         return kblib.load_yaml_file(self.root / check_queue.QUEUE_PATH)
-
-    def write_batch_receipt(self, batch_id, page_receipt_id):
-        receipt = kblib.make_receipt(
-            check_queue.MANUAL_ATTESTATION_TOOL,
-            check_queue.MANUAL_ATTESTATION_TOOL_VERSION,
-            check_queue.BATCH_REVIEW_CHECK, batch_id,
-            "pass", "fixture batch evidence", 1 if batch_id == "B1" else 2,
-        )
-        receipt.update({
-            "gate_id": check_queue.BATCH_REVIEW_GATE_ID,
-            "task_id": "fixture-task", "batch_id": batch_id,
-            "delta_page_receipt_ids": [page_receipt_id],
-        })
-        path = self.root / ".cambium/receipts/batch-evidence.jsonl"
-        kblib.write_receipts(path, [receipt])
-        return receipt["receipt_id"]
 
     def ready_receipt(self, batch_id):
         relative = ".cambium/receipts/ready-%s.jsonl" % batch_id
@@ -565,6 +627,86 @@ class RequiredQueueFixture:
             kblib.canonical_yaml(delta), encoding="utf-8")
         return relative
 
+    def prepare_premerge_audit_evidence(self, batch_id):
+        """Prepare and discharge the real pre-merge AuditPlan closure."""
+        prepared = self.run_tool(
+            "prepare_audit_plan.py", "--batch", batch_id, "--apply")
+        self.assertEqual(0, prepared.returncode, prepared.stdout)
+        plan_result = json.loads(prepared.stdout)
+        plan_path = plan_result["plan_path"]
+        plan = kblib.load_yaml_file(self.root / plan_path)
+        sampled_page_receipts = []
+
+        for obligation in plan["obligations"]:
+            if (obligation.get("status") != "required" or
+                    obligation.get("due_stage") != "pre-merge"):
+                continue
+            common = (
+                "--batch", batch_id,
+                "--plan", plan_path,
+                "--obligation-id", obligation["obligation_id"],
+            )
+            if obligation["evidence_kind"] == "batch-page-review-record":
+                produced = self.run_tool(
+                    "record_batch_page_review.py", *common,
+                    "--page", obligation["target"],
+                    "--variant", "s-sampled-page",
+                    "--reviewer-context-id", "fixture-review-context",
+                    "--reviewer-role", "reviewer",
+                    "--verdict", "passed",
+                    "--statement",
+                    "fixture page satisfies the frozen sampled-review "
+                    "acceptance contract",
+                    "--apply",
+                )
+                self.assertEqual(0, produced.returncode, produced.stdout)
+                evidence = json.loads(produced.stdout)
+                sampled_page_receipts.append(evidence["receipt_id"])
+                continue
+
+            if obligation["producer_check"] == \
+                    "changed_scope_rendering_escalation_record":
+                produced = self.run_tool(
+                    "record_rendering_verification.py", *common,
+                    "--rendering-mode", "source-only", "--apply")
+            elif (obligation.get("producer_capability") ==
+                  "audit-receipt-producer-v1" or
+                  obligation.get("producer_gate_id") is not None):
+                produced = self.run_tool(
+                    "record_changed_scope_evidence.py", *common, "--apply")
+            else:
+                self.fail(
+                    "fixture has no producer dispatch for AuditPlan "
+                    "obligation %s" % obligation["obligation_id"])
+            self.assertEqual(0, produced.returncode, produced.stdout)
+            evidence = json.loads(produced.stdout)
+
+            if obligation["evidence_kind"] == "audit-receipt":
+                completed = self.run_tool(
+                    "complete_audit_receipt.py", *common,
+                    "--evidence-receipt", evidence["receipt_id"],
+                    "--apply",
+                )
+                self.assertEqual(0, completed.returncode, completed.stdout)
+
+        self.assertEqual(1, len(sampled_page_receipts), plan)
+        return plan_path, sampled_page_receipts[0]
+
+    def record_batch_review_wrapper(self, batch_id):
+        """Publish the production wrapper over the complete pre-merge plan."""
+        reviewed = self.run_tool(
+            "record_batch_review.py", "--batch", batch_id,
+            "--actor-role", "integrator",
+            "--statement",
+            "fixture integrator confirms the complete frozen pre-merge "
+            "AuditPlan evidence closure",
+            "--apply", "--json",
+        )
+        self.assertEqual(0, reviewed.returncode, reviewed.stdout)
+        receipts = json.loads(reviewed.stdout)
+        self.assertEqual(1, len(receipts), receipts)
+        return receipts[0]["receipt_id"]
+
     def install_terminal_proof_environment(self):
         shutil.copytree(
             REPOSITORY / "kernel", self.root / "kernel", dirs_exist_ok=True)
@@ -640,18 +782,11 @@ class RequiredQueueFixture:
     def merge_and_apply(self, batch_id, object_path):
         ready = self.ready_receipt(batch_id)
         self.transition(batch_id, "open", "--gate-receipt", ready)
-        page_receipt = kblib.make_receipt(
-            "fixture_page_evidence", "0.9.0", "page_review", object_path,
-            "pass", "reusable historical page evidence",
-            1 if batch_id == "B1" else 2,
-        )
-        kblib.write_receipts(
-            self.root / ".cambium/receipts/page-evidence.jsonl",
-            [page_receipt])
-        batch_receipt = self.write_batch_receipt(
-            batch_id, page_receipt["receipt_id"])
+        _plan_path, page_receipt_id = \
+            self.prepare_premerge_audit_evidence(batch_id)
         delta = self.write_delta(
-            batch_id, object_path, page_receipt["receipt_id"])
+            batch_id, object_path, page_receipt_id)
+        batch_receipt = self.record_batch_review_wrapper(batch_id)
         self.transition(
             batch_id, "merge-ready", "--delta-path", delta,
             "--batch-receipt", batch_receipt,
@@ -680,13 +815,28 @@ class RequiredQueueFixture:
             .read_text(encoding="utf-8").splitlines()[-1]
         )["receipt_id"]
 
-        close_register = ".cambium/receipts/close-%s.jsonl" % batch_id
-        checked = self.run_tool(
-            "check_queue.py", "--receipts", close_register)
-        self.assertEqual(0, checked.returncode, checked.stdout)
-        close_receipt = json.loads((self.root / close_register).read_text(
-            encoding="utf-8").splitlines()[-1])["receipt_id"]
-        close_gate = self.close_gate_receipt(batch_id, close_receipt)
+        closed = self.run_tool(
+            "check_batch_close.py", "--batch", batch_id,
+            "--integrator", "fixture-integrator",
+            "--reviewer", "fixture-reviewer",
+            "--review-attestation",
+            "fixture reviewer independently confirms the merged batch",
+            "--json",
+        )
+        self.assertEqual(0, closed.returncode, closed.stdout)
+        json_lines = [
+            line for line in closed.stdout.splitlines()
+            if line.startswith("[{")
+        ]
+        self.assertEqual(1, len(json_lines), closed.stdout)
+        close_rows = json.loads(json_lines[0])
+        close_gate_rows = [
+            receipt for receipt in close_rows
+            if receipt.get("check") == "batch_close_gate"
+        ]
+        self.assertEqual(1, len(close_gate_rows), close_rows)
+        close_receipt = close_gate_rows[0]["queue_consistency_receipt"]
+        close_gate = close_gate_rows[0]["receipt_id"]
         return delta_apply_receipt, close_receipt, close_gate
 
     def merge_and_close(self, batch_id, object_path):
@@ -1041,7 +1191,12 @@ class RequiredQueueEndToEndTests(RequiredQueueFixture, unittest.TestCase):
         self.install_terminal_proof_environment()
         self.merge_and_close("B1", "Topics/A.md")
         self.merge_and_close("B2", "Topics/B.md")
-        completion_register = ".cambium/receipts/queue-complete.jsonl"
+        # Terminal Proof names one physical register that must contain both
+        # its fresh Queue/Corpus receipts and the exact full AuditReceipts it
+        # cites for dimension coverage.  Reuse the production batch-close
+        # register: copying an AuditReceipt into a second JSONL would create a
+        # duplicate global receipt identity rather than a stronger proof.
+        completion_register = runtime_paths.BATCH_CLOSE_RECEIPT_PATH
         completed_queue = self.run_tool(
             "check_queue.py", "--require-complete", "--receipts",
             completion_register)
@@ -1073,28 +1228,29 @@ class RequiredQueueEndToEndTests(RequiredQueueFixture, unittest.TestCase):
                 encoding="utf-8").splitlines()[-1]
         )["receipt_id"]
 
-        # K12/07: a script-level receipt entering the Audit Receipt Register is
-        # completed to the full AuditReceipt fields -- including the dimension
-        # it files its verdict under -- with the script receipt_id as
-        # evidence_ref. dimension_coverage cites those completed records.
-        dimension_receipts = {}
-        # This test already writes manual-attestation sequence 1/2 into the
-        # same second-scoped register; reserve a disjoint range so generated
-        # receipt IDs stay unique even on a fast run.
-        for index, (dimension, evidence_ref) in enumerate((
-                ("coverage_and_integration", proof_queue_receipt),
-                ("guidance_and_contract", corpus_plan_receipt),
-        ), start=101):
-            record = kblib.make_receipt(
-                "manual-attestation", "1.0.0", "audit_dimension",
-                "frozen snapshot", "pass",
-                "AuditPlan completion of %s for the frozen snapshot"
-                % evidence_ref, index)
-            record["dimension"] = dimension
-            record["evidence_ref"] = evidence_ref
-            dimension_receipts[dimension] = record["receipt_id"]
-            kblib.write_receipts(
-                self.root / completion_register, [record])
+        # Dimension coverage consumes the full Kernel-owned AuditReceipts
+        # produced by B2's real post-Delta AuditPlan closure.  Queue and Corpus
+        # Gate receipts remain their own evidence kinds; they are never
+        # relabelled as dimension-specific AuditReceipts merely to satisfy the
+        # Terminal Proof schema.
+        dimension_receipts = {
+            "coverage_and_integration": [],
+            "guidance_and_contract": [],
+        }
+        for line in (self.root / completion_register).read_text(
+                encoding="utf-8").splitlines():
+            record = json.loads(line)
+            dimension = record.get("dimension")
+            if (record.get("record_kind") == "audit-receipt" and
+                    record.get("batch_id") == "B2" and
+                    record.get("result") == "passed" and
+                    dimension in dimension_receipts):
+                dimension_receipts[dimension].append(record["receipt_id"])
+        for dimension, receipt_ids in dimension_receipts.items():
+            self.assertTrue(
+                receipt_ids,
+                "B2 close produced no full AuditReceipt for %s" % dimension,
+            )
 
         proof = kblib.parse_yaml_subset((
             TOOLS / "schemas/terminal_proof.template.yaml"
@@ -1137,9 +1293,9 @@ class RequiredQueueEndToEndTests(RequiredQueueFixture, unittest.TestCase):
             # explicit not-applicable declaration rather than silence.
             "dimension_coverage": {
                 "coverage_and_integration": [
-                    dimension_receipts["coverage_and_integration"]],
+                    *dimension_receipts["coverage_and_integration"]],
                 "guidance_and_contract": [
-                    dimension_receipts["guidance_and_contract"]],
+                    *dimension_receipts["guidance_and_contract"]],
                 "structure_and_links":
                     "not-applicable: the frozen fixture scope holds no "
                     "authored knowledge page to review for links",

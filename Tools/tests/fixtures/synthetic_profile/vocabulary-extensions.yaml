@@ -1,0 +1,11 @@
+# Synthetic fixture Vocabulary Extensions: no additional fields.
+
+schema_version: 1
+
+frontmatter_extensions:
+  fields: []
+
+fields:
+
+volatility_defaults:
+  general: slow

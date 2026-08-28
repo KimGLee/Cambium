@@ -6,7 +6,7 @@
 
 ## Purpose
 
-An `AuditReceipt` carries one `dimension` from [`audit-dimension-base.yaml`](audit-dimension-base.yaml). This module assigns each page-level Kernel judgment item to that namespace and states whether it produces a receipt; higher layers are filed by [[kernel/K12 Quality Assurance/18 Cross-page and Control-plane Dimension Map|K12/18]]. Without this map, one verdict can be filed under multiple names.
+An `AuditReceipt` carries one `dimension` from [`audit-dimension-base.yaml`](audit-dimension-base.yaml). This module maps page-level judgments; K12/18 maps higher layers, and [`batch-review-obligation-registry.yaml`](batch-review-obligation-registry.yaml) maps M-tier atoms.
 
 ## Terms
 
@@ -27,7 +27,7 @@ Every judgment item has exactly one evidence role. The closed role namespace is 
 - `consumes` — satisfied by a receipt produced elsewhere; records `reused_receipt_id` under the Reuse Gate and does not change that receipt's dimension.
 - `triggers` — raises review candidates only; produces no receipt and cannot fail a gate alone.
 
-An item MUST NOT both emit and consume for the same audit object. Which layer owns a risk object's canonical gate is decided by [[kernel/K00 Standards Control/12 Control Registry#Control Registry|Control Registry]]; this module files verdicts under those assignments and does not restate them. The lightweight script receipt of a scoped self-check is evidence toward the canonical receipt, not a second receipt for the same object.
+An item MUST NOT both emit and consume for the same audit object. [[kernel/K00 Standards Control/12 Control Registry#Control Registry|K00/12]] owns its canonical gate; this module only files the verdict. A scoped self-check is evidence toward that verdict, not a second receipt.
 
 ## Uniform Sections
 
@@ -47,7 +47,7 @@ The language-acceptance line of `K12/01 Content` is a registry pointer, not a ch
 |---|---|---|---|
 | `K12/01 Structure` | opening; section order; no meaningless meta | emits | structure_and_links |
 | `K12/01 Structure` | note type explicit | consumes ← Closed List 7 | — |
-| `K12/01 Structure` | no duplicate headings or dates | consumes ← `K12/02` Level 0 | — |
+| `K12/01 Structure` | no duplicate headings or dates | emits | structure_and_links |
 | `K12/01 Links` | key dependencies; first-occurrence term links; Related not the only place; intake / synthesis / canonical / case relations | emits | structure_and_links |
 | `K12/01 Links` | parent, prerequisite, dependency links resolve; none unresolved or ambiguous | consumes ← Closed List 1 | — |
 | `K12/01 Links` | expression-layer structural links | consumes ← R05 bidirectional binding | — |
@@ -55,18 +55,20 @@ The language-acceptance line of `K12/01 Content` is a registry pointer, not a ch
 | `K12/01 Accuracy` | time-sensitive facts; sources support key conclusions | emits | source_and_currentness |
 | `K12/01 Accuracy` | empirical advice not absolute; claim / inference / synthesis / recommendation distinguished | emits | content_and_depth |
 | `K12/01 Rendering` | constructs readable as actually used; diagrams not truncated | emits | rendering |
-| `K12/01 Rendering` | formulas display; alias pipes; image paths and dimensions | consumes ← `K12/02` Level 1 | — |
-| `K12/01 Rendering` | code fences and languages | consumes ← `K12/02` Level 0 | — |
-| `K12/02` Level 0 | heading / fence / link / table pipe; body extraction for structure, duplication, missing sections, term links | emits | structure_and_links |
-| `K12/02` Level 0 | formula delimiter / image / embed / Mermaid fence | emits | rendering |
+| `K12/01 Rendering` | alias pipes; fence closure | consumes ← applicable `K12/02` predicate | — |
+| `K12/01 Rendering` | formulas, image paths, dimensions | consumes ← selected Profile Rendering Contract when registered | — |
+| `K12/01 Rendering` | code-fence language appropriateness | emits | rendering |
+| `K12/02` Level 0 | Markdown fence closure; canonical wiki-link resolution | emits | structure_and_links |
+| `K12/02` Level 0 | Mermaid fence closure | emits | rendering |
+| `K12/02` Level 1 | Markdown-table delimiter, column count, and escaped wiki alias pipe | emits | rendering |
 
-Within one page, duplicate headings are a `K12/02` Level 0 finding.
+Duplicate-heading identity stays a K12/01 judgment until it has one normalization contract. The K12/02 rows map only predicates admitted by [`deterministic-rendering-contract.yaml`](deterministic-rendering-contract.yaml); its gaps emit nothing and cannot pass. M-tier roles, selectors, and explicit holds are read only from the M registry.
 
 A [[kernel/K12 Quality Assurance/05 Automated and Manual Checks#Manual Checks|K12/05 Manual]] item reviewing one page emits under content_and_depth, except its three visual-escalation items, which emit under rendering.
 
 ## Reverse Check
 
-Every base dimension registered in `audit-dimension-base.yaml` has an emitting item across this map and K12/18, which are read together for this check. `formula_and_numeric` draws from two `K12/01 Accuracy` items only; the concentration is deliberate but thin, and a profile adding numeric obligations SHOULD register them here rather than widening another dimension.
+Every base dimension has an emitting item across this map, the M registry, and K12/18. `formula_and_numeric` remains deliberately thin; a Profile adding numeric obligations SHOULD register them rather than widen another dimension.
 
 ## Profile Registration
 

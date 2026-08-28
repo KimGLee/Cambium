@@ -19,6 +19,7 @@ import re
 import card_contract
 import kblib
 import profile_layout_contract
+import profile_batch_judgment_contract
 import read_set_contract
 import stamp_cards
 
@@ -579,57 +580,16 @@ def expand_batch_review_requirements(profile_contract, item):
     batch-selector row expands to the batch itself.  No natural-language
     applicability exists by construction.
     """
-    batch_id = item.get("id") if isinstance(item, dict) else None
-    if not isinstance(batch_id, str) or not batch_id:
-        raise ActivationError("review expansion batch has no id")
-    requirements = ()
-    if profile_contract is not None:
-        if not getattr(profile_contract, "authorized", False):
-            raise ActivationError(
-                "review expansion requires one authorized typed Profile "
-                "contract")
-        requirements = getattr(
-            profile_contract, "batch_review_requirements", ())
-    manifest = item.get("manifest")
-    if not isinstance(manifest, list) or not all(
-            isinstance(page, str) and page for page in manifest):
-        raise ActivationError("review expansion manifest must be a string list")
-    records = []
-    for requirement in requirements:
-        if requirement.target_selector == "each-manifest-page":
-            targets = sorted(set(manifest))
-        elif requirement.target_selector == "batch":
-            targets = [batch_id]
-        else:
-            raise ActivationError(
-                "review expansion target selector %r is unsupported" %
-                requirement.target_selector)
-        for target in targets:
-            records.append({
-                "batch_id": batch_id,
-                "target": target,
-                "judgment_item_id": requirement.judgment_item_id,
-                "target_selector": requirement.target_selector,
-                "trigger": requirement.trigger,
-                "producer_kind": requirement.producer_kind,
-                "receipt_schema": requirement.receipt_schema,
-                "pass_authority_role_id": requirement.pass_authority_role_id,
-            })
-    records.sort(key=lambda row: (row["judgment_item_id"], row["target"]))
-    return records
+    try:
+        return profile_batch_judgment_contract.expand_requirements(
+            profile_contract, item)
+    except (TypeError, ValueError) as exc:
+        raise ActivationError(str(exc)) from exc
 
 
 def review_requirement_set_sha256(records):
     """Hash only the closed obligation identity of one expansion."""
-    identity = [
-        {
-            "batch_id": row["batch_id"],
-            "target": row["target"],
-            "judgment_item_id": row["judgment_item_id"],
-        }
-        for row in records
-    ]
-    return kblib.sha256_bytes(kblib.canonical_json_bytes(identity))
+    return profile_batch_judgment_contract.requirement_set_sha256(records)
 
 
 def build_activation_context(root, progress, item, *, runtime_state,

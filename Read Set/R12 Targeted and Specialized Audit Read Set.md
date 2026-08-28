@@ -13,7 +13,17 @@ load_edges:
       - kernel/K12 Quality Assurance/05 Automated and Manual Checks.md
       - kernel/K12 Quality Assurance/07 Audit Evidence Reuse and Invalidation.md
       - kernel/K12 Quality Assurance/08 Judgment Item Dimension Map.md
+      - kernel/K12 Quality Assurance/12 Substantive Correctness Review.md
       - kernel/K12 Quality Assurance/18 Cross-page and Control-plane Dimension Map.md
+      - kernel/K12 Quality Assurance/19 Incremental Audit Planning.md
+      - kernel/K12 Quality Assurance/audit-plan-contract.yaml
+      - kernel/K12 Quality Assurance/audit-receipt-contract.yaml
+      - kernel/K12 Quality Assurance/batch-close-closed-list.yaml
+      - kernel/K12 Quality Assurance/batch-review-obligation-registry.yaml
+      - kernel/K12 Quality Assurance/changed-scope-check-registry.yaml
+      - kernel/K12 Quality Assurance/deterministic-rendering-contract.yaml
+      - kernel/K12 Quality Assurance/rendering-verification-contract.yaml
+      - kernel/K12 Quality Assurance/substantive-review-contract.yaml
     read_sets:
       - R01
   - edge_id: R12:conditional

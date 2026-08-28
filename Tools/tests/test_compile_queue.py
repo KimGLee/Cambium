@@ -22,6 +22,10 @@ import kblib
 import register_amendment
 import batch_settlement
 import candidate_lifecycle
+import compose_page_contract
+import compose_vocab
+import profile_admission
+import runtime_paths
 from profile_fixture import install_loadable_profile
 
 
@@ -527,6 +531,155 @@ class CompileQueueTests(unittest.TestCase):
             check=False,
         )
 
+    def run_tool(self, name, *arguments):
+        return subprocess.run(
+            [sys.executable, str(TOOLS / name), str(self.root), *arguments],
+            text=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+            check=False,
+        )
+
+    def install_s_audit_fixture(self):
+        """Give this replan test one real, bounded S-tier audit target."""
+        for name in ("A", "B"):
+            (self.root / ("Topics/%s.md" % name)).write_text(
+                "---\n"
+                "type: concept\n"
+                "domain: general\n"
+                "scope: shared\n"
+                "level: basic\n"
+                "depth: atomic\n"
+                "priority: P2\n"
+                "---\n"
+                "# %s\n\n"
+                "## Synthetic Residual\n\n"
+                "Accepted-root liveness marker for the registered fixture "
+                "scan.\n" % name,
+                encoding="utf-8",
+            )
+
+        coverage_path = self.root / check_queue.COVERAGE_PATH
+        progress_path = self.root / check_queue.PROGRESS_PATH
+        receipt_path = self.root / ".cambium/receipts/task-transitions.jsonl"
+        coverage = self.load(check_queue.COVERAGE_PATH)
+        for page in coverage["pages"]:
+            page["tier"] = "S"
+            page["priority"] = "P2"
+        coverage_path.write_text(
+            kblib.canonical_yaml(coverage), encoding="utf-8")
+
+        progress = self.load(check_queue.PROGRESS_PATH)
+        progress["checkpoint"]["coverage_sha256"] = \
+            kblib.sha256_file(coverage_path)
+        progress_path.write_text(
+            kblib.canonical_yaml(progress), encoding="utf-8")
+
+        records = [json.loads(line) for line in receipt_path.read_text(
+            encoding="utf-8").splitlines() if line.strip()]
+        for record in records:
+            if record.get("receipt_id") == "audit-fixture-initial-queue":
+                coverage_sha256 = kblib.sha256_file(coverage_path)
+                record["before_coverage_sha256"] = coverage_sha256
+                record["after_coverage_sha256"] = coverage_sha256
+                record["after_progress_sha256"] = \
+                    kblib.sha256_file(progress_path)
+        receipt_path.write_text(
+            "".join(json.dumps(record, separators=(",", ":")) + "\n"
+                    for record in records), encoding="utf-8")
+
+        admission, errors = profile_admission.admit_profile(self.root)
+        self.assertEqual([], errors, errors)
+        self.assertIsNotNone(admission)
+        vocab_text, _vocab, errors = compose_vocab.compiled_artifact(
+            self.root, admission)
+        self.assertEqual([], errors, errors)
+        page_contract_text, _contract, errors = \
+            compose_page_contract.compiled_artifact(self.root, admission)
+        self.assertEqual([], errors, errors)
+        derived = self.root / runtime_paths.DERIVED_ROOT
+        derived.mkdir(parents=True, exist_ok=True)
+        (derived / "vocab.yaml").write_text(vocab_text, encoding="utf-8")
+        (derived / "page_contract.yaml").write_text(
+            page_contract_text, encoding="utf-8")
+        self.assertEqual([], check_queue.validate_runtime(self.root)["errors"])
+
+    def prepare_premerge_audit_evidence(self, batch_id):
+        """Freeze and discharge the production pre-merge AuditPlan."""
+        prepared = self.run_tool(
+            "prepare_audit_plan.py", "--batch", batch_id, "--apply")
+        self.assertEqual(0, prepared.returncode, prepared.stdout)
+        plan_result = json.loads(prepared.stdout)
+        plan_path = plan_result["plan_path"]
+        plan = self.load(plan_path)
+        sampled_page_receipts = []
+
+        for obligation in plan["obligations"]:
+            if (obligation.get("status") != "required" or
+                    obligation.get("due_stage") != "pre-merge"):
+                continue
+            common = (
+                "--batch", batch_id,
+                "--plan", plan_path,
+                "--obligation-id", obligation["obligation_id"],
+            )
+            if obligation["evidence_kind"] == "batch-page-review-record":
+                produced = self.run_tool(
+                    "record_batch_page_review.py", *common,
+                    "--page", obligation["target"],
+                    "--variant", "s-sampled-page",
+                    "--reviewer-context-id", "compile-queue-fixture-review",
+                    "--reviewer-role", "reviewer",
+                    "--verdict", "passed",
+                    "--statement",
+                    "fixture page satisfies the frozen sampled-review "
+                    "acceptance contract",
+                    "--apply",
+                )
+                self.assertEqual(0, produced.returncode, produced.stdout)
+                sampled_page_receipts.append(
+                    json.loads(produced.stdout)["receipt_id"])
+                continue
+
+            if obligation["producer_check"] == \
+                    "changed_scope_rendering_escalation_record":
+                produced = self.run_tool(
+                    "record_rendering_verification.py", *common,
+                    "--rendering-mode", "source-only", "--apply")
+            elif (obligation.get("producer_capability") ==
+                  "audit-receipt-producer-v1" or
+                  obligation.get("producer_gate_id") is not None):
+                produced = self.run_tool(
+                    "record_changed_scope_evidence.py", *common, "--apply")
+            else:
+                self.fail(
+                    "fixture has no producer for AuditPlan obligation %s" %
+                    obligation["obligation_id"])
+            self.assertEqual(0, produced.returncode, produced.stdout)
+            evidence = json.loads(produced.stdout)
+            if obligation["evidence_kind"] == "audit-receipt":
+                completed = self.run_tool(
+                    "complete_audit_receipt.py", *common,
+                    "--evidence-receipt", evidence["receipt_id"],
+                    "--apply",
+                )
+                self.assertEqual(0, completed.returncode, completed.stdout)
+
+        self.assertEqual(1, len(sampled_page_receipts), plan)
+        return plan_path, sampled_page_receipts[0]
+
+    def record_batch_review_wrapper(self, batch_id):
+        reviewed = self.run_tool(
+            "record_batch_review.py", "--batch", batch_id,
+            "--actor-role", "integrator",
+            "--statement",
+            "fixture integrator confirms the complete frozen pre-merge "
+            "AuditPlan evidence closure",
+            "--apply", "--json",
+        )
+        self.assertEqual(0, reviewed.returncode, reviewed.stdout)
+        receipts = json.loads(reviewed.stdout)
+        self.assertEqual(1, len(receipts), receipts)
+        return receipts[0]["receipt_id"]
+
     def append_receipt(self, receipt_id, target="B1", check="fixture"):
         receipt = {
             "receipt_id": receipt_id, "check": check, "target": target,
@@ -570,27 +723,29 @@ class CompileQueueTests(unittest.TestCase):
         return completed
 
     def merge_then_invalidate_b1(self):
+        self.install_s_audit_fixture()
         gate = self.queue_gate("--require-ready", "B1")
         self.transition(
             "B1", "open", "2026-08-04T01:00:00Z",
             "--gate-receipt", gate,
         )
-        self.append_receipt("audit-replan-page-1", target="Topics/A.md")
-        self.append_receipt("audit-replan-batch-1", check="batch_gate")
+        _plan_path, page_receipt = self.prepare_premerge_audit_evidence("B1")
         delta = self.root / ".cambium/deltas/B1.yaml"
         delta.parent.mkdir(parents=True, exist_ok=True)
         delta.write_text(
-            "batch: B1\ngenerated_at: 2026-08-04T02:00:00Z\n"
-            "pages:\n  - path: Topics/A.md\n"
-            "    gate_receipts:\n      - audit-replan-page-1\n"
-            "open_gaps_added: []\nopen_gaps_closed: []\n"
-            "next_batch_updates: []\nwatermark_advance: null\n",
+            ("batch: B1\ngenerated_at: 2026-08-04T02:00:00Z\n"
+             "pages:\n  - path: Topics/A.md\n"
+             "    gate_receipts:\n      - %s\n"
+             "open_gaps_added: []\nopen_gaps_closed: []\n"
+             "next_batch_updates: []\nwatermark_advance: null\n") %
+            page_receipt,
             encoding="utf-8",
         )
+        batch_receipt = self.record_batch_review_wrapper("B1")
         self.transition(
             "B1", "merge-ready", "2026-08-04T02:00:00Z",
             "--delta-path", ".cambium/deltas/B1.yaml",
-            "--batch-receipt", "audit-replan-batch-1",
+            "--batch-receipt", batch_receipt,
         )
         self.transition(
             "B1", "open", "2026-08-04T03:00:00Z",
@@ -1014,7 +1169,6 @@ class CompileQueueTests(unittest.TestCase):
         })
         proposal_relative = self.write_proposal(coverage)
         self.add_amendment(proposal_relative)
-        queue_before = self.load(check_queue.QUEUE_PATH)
         fingerprint = kblib.sha256_file(self.root / check_queue.QUEUE_PATH)
         completed = self.apply_replan(proposal_relative)
         self.assertEqual(0, completed.returncode, completed.stdout)

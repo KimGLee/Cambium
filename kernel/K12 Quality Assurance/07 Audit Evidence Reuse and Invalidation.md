@@ -11,7 +11,7 @@ This module specifies how verification evidence is reused across single pages, b
 1. Every layer repeating expensive manual review from scratch, wasting execution time and context;
 2. Continuing to rely on an old conclusion after content, dependencies, or rules have changed, merely because a page once passed.
 
-The core chain: changed objects and acceptance predicates generate a dimension-specific AuditPlan, which produces append-only AuditReceipt records carrying dependency / contract fingerprints; receipts are reusable while predicates and fingerprints remain valid, relevant changes trigger invalidation, bounded expansion applies when local failures show systemic impact, and finally Terminal reconciliation runs on the frozen snapshot. Append-only and immutable mean protocol-level history preservation, not cryptographic tamper resistance.
+The core chain: changed objects, applicability conditions, and acceptance predicates generate one complete AuditPlan whose obligations name their legal evidence kinds; obligations that require dimension-specific audit evidence produce append-only AuditReceipt records carrying artifact / dependency / contract fingerprints. Receipts are reusable while predicates and fingerprints remain valid, relevant changes trigger invalidation, bounded expansion applies when local failures show systemic impact, and finally Terminal reconciliation runs on the frozen snapshot. Append-only and immutable mean protocol-level history preservation, not cryptographic tamper resistance.
 
 The `AuditPlan` a batch generates from this decision, and the checks that are incremental by default, are owned by [[kernel/K12 Quality Assurance/19 Incremental Audit Planning|Incremental Audit Planning]].
 
@@ -37,10 +37,16 @@ The `Audit Dimension Registry` MAY append profile-owned dimensions, but MUST NOT
 
 Which dimension a kernel judgment item files its verdict under, and whether it emits a receipt at all, is fixed by [[kernel/K12 Quality Assurance/08 Judgment Item Dimension Map#Item Map|K12/08]]; an item that consumes evidence produced elsewhere does not open a second receipt for the same audit object.
 
-One verification produces one append-only `AuditReceipt` protocol record. The registered AuditReceipt machine contract is the sole normative source for its closed fields, shapes, result values, and serialization. This page owns these field meanings and evidence boundaries:
+One dimension-specific verification produces one append-only `AuditReceipt` protocol record. [`audit-receipt-contract.yaml`](audit-receipt-contract.yaml) is the sole normative source for its closed fields, shapes, result values, and serialization. Its `dimension` is mandatory and MUST resolve through the current Audit Dimension Registry.
+
+An AuditPlan is not a demand that every obligation emit an AuditReceipt. It MAY consume any evidence kind admitted by its closed machine contract. In particular, `manifest_page_contract` consumes the dimensionless evidence of the registered `page-contract` Gate. That evidence remains a Gate record: a producer or consumer MUST NOT wrap it as an AuditReceipt or assign an arbitrary dimension merely to satisfy the AuditReceipt shape. A nullable AuditPlan `dimension` expresses this distinction; it does not make AuditReceipt dimensionless.
+
+This page owns these AuditReceipt field meanings and evidence boundaries:
 
 - `scope`: the pages, module, batch, or vault-wide snapshot the receipt actually covers.
 - `acceptance_predicate`: the specific condition evaluated against the recorded scope and bytes; writing only `QA passed` is not allowed.
+- `owner_rule_id`, `due_stage`, and `consumer_gate_id`: the stable Kernel or registered extension obligation, the stage at which it came due, and the one Gate authorized to consume it.
+- Exactly one of `producer_capability` or `producer_gate_id` identifies the legal producer route. A label in either field does not by itself authenticate an actor or executable.
 - `artifact_fingerprint`: covers body content, file path, and the frontmatter fields `type`, `priority`, `tier`, `coverage_disposition`, `lifecycle`, `prerequisites`. **Explicitly excluded**: `authoring_status`, `learning_status`, the readiness statuses registered by the selected `Vocabulary Extensions`, and `last_reviewed`, `last_verified`, `review_by`, `next_batch` — write-backs of status axes and scheduling fields **do not invalidate the receipt**.
 - `dependency_fingerprint`: the canonical owners, sources, schemas, MOC, or configuration this dimension depends on.
 - `contract_fingerprint`: the relevant control state such as scope, acceptance, exclusions, and queue/guidance cutoff.
@@ -48,9 +54,11 @@ One verification produces one append-only `AuditReceipt` protocol record. The re
 - `evidence_ref`: the location of the command result, review record, compiled artifact, or Batch Review evidence.
 - `review_due`: when time-sensitive facts need re-verification; stable mechanisms MAY leave it empty.
 
+The AuditPlan freezes the obligation definition when the batch opens; it does not prefill these three actual fingerprints. When the obligation reaches its declared due stage and the actual target exists, the producer recomputes and freezes the three fingerprints in the evidence. That due-stage resolution is immutably bound to the original AuditPlan and MUST NOT modify the plan or add an obligation. Reuse instead binds the exact historical receipt through `fingerprint_binding: reused-receipt` and re-proves the reuse gate below.
+
 `last_reviewed`, `last_verified`, file length, or `authoring_status` cannot substitute for an AuditReceipt.
 
-Deterministic and manual producers emit the same registered receipt contract. A producer-level receipt is a lightweight evidence record; when it enters the Audit Receipt Register, the AuditPlan layer binds the complete AuditReceipt identity and uses the producer receipt as its evidence reference.
+Deterministic and manual producers assigned an `audit-receipt` obligation emit the same registered dimension-specific receipt contract. A producer-level record is lightweight evidence; when it enters the Audit Receipt Register, the AuditPlan layer binds the complete AuditReceipt identity and uses that producer record as its evidence reference. Producers assigned another admitted evidence kind retain that kind's registered contract and are never normalized into an AuditReceipt merely for uniformity.
 
 Receipts are stored by default in the Batch Contract, the Audit Report, or a separately managed index; the Coverage Ledger only needs to record the affected objects' latest valid receipt IDs and invalidation state, and complete receipts are not required to be copied into every knowledge page.
 

@@ -49,7 +49,7 @@ load_edges:
 
 ## Purpose
 
-Loads the planning and admission owners for large-scale creation, movement, or deletion. It does not select or replace the route that performs the work.
+Loads the planning and admission owners for large-scale creation, movement, or deletion. It does not select or replace the route that performs the work, and it does not create an AuditPlan before the performing route opens the first batch.
 
 ## Non-deterministic triggers
 

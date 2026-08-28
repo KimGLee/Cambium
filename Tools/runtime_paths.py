@@ -88,6 +88,7 @@ STANDARDS_ADOPTION_DELTA_ROOT = child_path(
 TASK_PLAN_DELTA_ROOT = child_path(DELTA_ROOT, "task-plans")
 CORPUS_PLAN_ACCEPTANCE_DELTA_ROOT = child_path(
     DELTA_ROOT, "corpus-plan-acceptances")
+AUDIT_PLAN_ROOT = child_path(WORK_SPEC_ROOT, "audit-plans")
 INVALIDATED_DELTA_RECEIPT_ROOT = child_path(
     RECEIPT_ROOT, "invalidated-deltas")
 PRE_APPLY_COVERAGE_RECEIPT_ROOT = child_path(
@@ -100,6 +101,7 @@ _CHILD_NAMESPACE_ROOTS = _CHILD_NAMESPACE_ROOTS.union((
     STANDARDS_ADOPTION_DELTA_ROOT,
     TASK_PLAN_DELTA_ROOT,
     CORPUS_PLAN_ACCEPTANCE_DELTA_ROOT,
+    AUDIT_PLAN_ROOT,
     INVALIDATED_DELTA_RECEIPT_ROOT,
     PRE_APPLY_COVERAGE_RECEIPT_ROOT,
 ))
@@ -119,6 +121,7 @@ CATEGORY_ROOTS = {
     ),
     BOUND_INPUT: (
         WORK_SPEC_ROOT,
+        AUDIT_PLAN_ROOT,
         DELTA_ROOT,
     ),
     EVIDENCE: (
@@ -160,6 +163,8 @@ RUNTIME_OBJECTS = {
         CANONICAL_STATE, STATE_ROOT + "/watermark.yaml"),
     "work-spec-root": RuntimeObject(
         BOUND_INPUT, WORK_SPEC_ROOT),
+    "audit-plan-root": RuntimeObject(
+        BOUND_INPUT, AUDIT_PLAN_ROOT),
     "delta-root": RuntimeObject(
         BOUND_INPUT, DELTA_ROOT),
     "receipt-root": RuntimeObject(
@@ -196,6 +201,16 @@ RUNTIME_OBJECTS = {
         EVIDENCE, child_path(RECEIPT_ROOT, "amendments.jsonl")),
     "batch-judgment-receipts": RuntimeObject(
         EVIDENCE, child_path(RECEIPT_ROOT, "batch-judgments.jsonl")),
+    "substantive-review-receipts": RuntimeObject(
+        EVIDENCE, child_path(RECEIPT_ROOT, "substantive-reviews.jsonl")),
+    "batch-page-review-receipts": RuntimeObject(
+        EVIDENCE, child_path(RECEIPT_ROOT, "batch-page-reviews.jsonl")),
+    "changed-scope-evidence-receipts": RuntimeObject(
+        EVIDENCE, child_path(RECEIPT_ROOT, "changed-scope-evidence.jsonl")),
+    "rendering-verification-receipts": RuntimeObject(
+        EVIDENCE, child_path(RECEIPT_ROOT, "rendering-verification.jsonl")),
+    "audit-receipt-register": RuntimeObject(
+        EVIDENCE, child_path(RECEIPT_ROOT, "audit-receipts.jsonl")),
     "gate-result-receipts": RuntimeObject(
         EVIDENCE, child_path(RECEIPT_ROOT, "gate-results.jsonl")),
     "queue-transition-receipts": RuntimeObject(
@@ -386,6 +401,15 @@ BATCH_CLOSE_RECEIPT_PATH = path_for("batch-close-receipts")
 QUEUE_STRUCTURE_RECEIPT_PATH = path_for("queue-structure-receipts")
 AMENDMENT_RECEIPT_PATH = path_for("amendment-receipts")
 BATCH_JUDGMENT_RECEIPT_PATH = path_for("batch-judgment-receipts")
+SUBSTANTIVE_REVIEW_RECEIPT_PATH = path_for(
+    "substantive-review-receipts")
+BATCH_PAGE_REVIEW_RECEIPT_PATH = path_for(
+    "batch-page-review-receipts")
+CHANGED_SCOPE_EVIDENCE_RECEIPT_PATH = path_for(
+    "changed-scope-evidence-receipts")
+RENDERING_VERIFICATION_RECEIPT_PATH = path_for(
+    "rendering-verification-receipts")
+AUDIT_RECEIPT_REGISTER_PATH = path_for("audit-receipt-register")
 GATE_RESULT_RECEIPT_PATH = path_for("gate-result-receipts")
 QUEUE_TRANSITION_RECEIPT_PATH = path_for("queue-transition-receipts")
 SEAL_RECEIPT_PATH = path_for("seal-receipts")

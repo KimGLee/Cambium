@@ -792,15 +792,20 @@ def load_interface_policy(root, records, availability):
                 "workspace_access write" % name)
         path_arguments = []
         for argument in sorted(path_access):
+            argument_default = defaults.get(argument)
             capability = overrides.get(
-                (name, argument), defaults.get(argument, {
+                (name, argument), argument_default or {
                     "constraint": "contained", "value": None,
                     "runtime_path_id": None,
                     "component_path_id": None,
                     "suffixes": [],
-                }))
+                })
+            default_consumption = (
+                argument_default.get("consumption")
+                if isinstance(argument_default, dict)
+                else consumption_defaults[path_access[argument]])
             consumption = capability.get(
-                "consumption", consumption_defaults[path_access[argument]])
+                "consumption", default_consumption)
             compatible = {
                 "read": {"snapshot"},
                 "write": {"append", "replace"},
