@@ -2,17 +2,11 @@
 
 ## What This Example Is
 
-This directory is a Cambium-owned, non-normative example of a filled Profile
-for a Chinese-first engineering knowledge corpus. It is not a template,
-default configuration, live mirror, or adoption certificate. Because it lives
-under `profiles/examples/`, its manifest is intentionally not selectable in
-place.
+This directory is a Cambium-owned, non-normative example of a filled Profile for a Chinese-first engineering knowledge corpus. It is not a template, default configuration, live mirror, or adoption certificate. Because it lives under `profiles/examples/`, its manifest is intentionally not selectable in place.
 
-The normative interface is [profiles/README.md](../../README.md), and cross-domain rules remain in the kernel. A real adopter copies [profiles/_template/](../../_template/profile.md) to `profiles/<profile-id>/`, fills and validates that copy, and selects it through governance.
+The common interface is owned by [K00/19](../../../kernel/K00%20Standards%20Control/19%20Profile%20Extension%20Interface.md), and cross-domain rules remain in the Kernel. A real adopter copies [profiles/_template/](../../_template/profile.md) to `profiles/<profile-id>/`, fills and validates that copy, and selects it through governance.
 
-The example does not contain the adopter corpus, runtime state, or gate
-evidence. It remains a reference profile rather than an adoption certificate
-or proof of corpus-wide acceptance.
+The example does not contain the adopter corpus, runtime state, or gate evidence. It remains a reference profile rather than an adoption certificate or proof of corpus-wide acceptance.
 
 ## Directory Structure
 
@@ -30,29 +24,15 @@ The scan configuration is not another slot or standard. This example has no sepa
 
 ## Snapshot Provenance
 
-The initial 16 machine-active files in this directory were seeded from the
-selected Profile in Agent Systems Atlas at commit
-`15df10eac89cafd381b145c48659c4a525f93f6d`. The source package was admitted as
-a public example under Cambium Standards 3.12.0. That commit is import
-provenance, not a continuing synchronization authority.
+The initial 16 machine-active files in this directory were seeded from the selected Profile in Agent Systems Atlas at commit `15df10eac89cafd381b145c48659c4a525f93f6d`. The source package was admitted as a public example under Cambium Standards 3.12.0. That commit is import provenance, not a continuing synchronization authority.
 
 The initial import made these location-preserving adaptations:
 
-- the Profile root changes from `profiles/agent-atlas/` to
-  `profiles/examples/agent-atlas/`;
-- relative links to the Profile interface and kernel execution-default
-  registry gain the additional `examples/` directory level;
-- the manifest title and introduction identify the package as a non-selectable
-  example.
+- the Profile root changes from `profiles/agent-atlas/` to `profiles/examples/agent-atlas/`;
+- relative links to the Profile interface and kernel execution-default registry gain the additional `examples/` directory level;
+- the manifest title and introduction identify the package as a non-selectable example.
 
-At import, no Atlas rule, enum, trigger, role, judgment requirement, corpus
-path, structure declaration, scan predicate, or escalation threshold was
-abridged. After import, Cambium owns and may evolve this public example to
-demonstrate the current public Profile contract. It does not assert that a live
-Atlas repository has adopted those changes or remains byte-equivalent. Atlas
-and every other adopter must explicitly adopt and materialize applicable
-Cambium changes through its own governance process; Cambium does not write or
-manage an adopter's runtime state.
+At import, no Atlas rule, enum, trigger, role, judgment requirement, corpus path, structure declaration, scan predicate, or escalation threshold was abridged. After import, Cambium owns and may evolve this public example to demonstrate the current public Profile contract. It does not assert that a live Atlas repository has adopted those changes or remains byte-equivalent. Atlas and every other adopter must explicitly adopt and materialize applicable Cambium changes through its own governance process; Cambium does not write or manage an adopter's runtime state.
 
 ## Atlas-specific Bindings
 
@@ -80,10 +60,7 @@ Interview work uses kernel route R05 directly. `Supplemental Routes` is `None`, 
 2. Read [scope-and-architecture.md](scope-and-architecture.md) and [corpus-planning.yaml](corpus-planning.yaml), then the remaining corpus-wide slot files, [expression-layer.md](expression-layer.md), and the registries for the Atlas-specific Interview contract.
 3. Inspect the scan configuration last; it contains machine parameters, not policy.
 
-The registry command and predicate-owner cells use this example package's own
-paths. A real Profile materializes those cells with its own path before
-validation. `profile-load` rejects a stale example or foreign-Profile target;
-it reports the value but never rewrites it on the adopter's behalf.
+The registry command and predicate-owner cells use this example package's own paths. A real Profile materializes those cells with its own path before validation. `profile-load` rejects a stale example or foreign-Profile target; it reports the value but never rewrites it on the adopter's behalf.
 
 Validate the filled profile structure from the Cambium repository root:
 
@@ -91,12 +68,7 @@ Validate the filled profile structure from the Cambium repository root:
 python3 Tools/check_profile.py profiles/examples/agent-atlas
 ```
 
-That command validates the self-contained Profile package, not the three bound
-planning artifacts or the private corpus. `check_corpus_plan.py` is run only
-after this profile has been materialized as a selectable direct-child profile
-inside the adopting repository and the three bound restricted-YAML artifacts
-under `Corpus Planning/` exist there. The public example intentionally
-does not fabricate those files or a passing corpus-planning receipt.
+That command validates the self-contained Profile package, not the three bound planning artifacts or the private corpus. `check_corpus_plan.py` is run only after this profile has been materialized as a selectable direct-child profile inside the adopting repository and the three bound restricted-YAML artifacts under `Corpus Planning/` exist there. The public example intentionally does not fabricate those files or a passing corpus-planning receipt.
 
 Run the registered residual scan against the live vault root, not this example directory:
 
@@ -115,7 +87,7 @@ The public Cambium distribution is intentionally uninstantiated: it carries no `
 
 | Validator | Tool version | Command | Expected result |
 |---|---|---|---|
-| `check_profile` | `2.0.0` | `python3 Tools/check_profile.py profiles/examples/agent-atlas` | exit 0 |
+| `check_profile` | `2.2.0` | `python3 Tools/check_profile.py profiles/examples/agent-atlas` | exit 0 |
 
 `check_corpus_plan.py` is deliberately absent from that table: this example's Corpus Planning slot is `configured` and binds three artifacts that a real adopter materializes, and the public example does not fabricate them. [Worked Planning](../worked-planning/README.md) is the example that carries filled planning artifacts.
 

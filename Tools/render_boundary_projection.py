@@ -24,7 +24,8 @@ owned block is stale; --apply = write the owned blocks atomically.
 Exit codes: 0 = current / applied, 1 = input error, 2 = --check stale.
 
 Usage: python3 render_boundary_projection.py <vault_root>
-       [--profile PROFILE_DIR] [--contract Tools/page_contract.yaml]
+       [--profile PROFILE_DIR]
+       [--contract .cambium/derived/page_contract.yaml]
        [--scope SUBPATH] [--check | --apply]
 """
 
@@ -35,11 +36,12 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import kblib
 import compose_page_contract
 import profile_admission
+import runtime_paths
 
 TOOL = "render_boundary_projection"
 TOOL_VERSION = "1.1.0"
 
-ACTIVE_STATE_PATH = ".cambium/governance/standards_state.yaml"
+ACTIVE_STATE_PATH = runtime_paths.ACTIVE_STANDARDS_PATH
 SCOPE_SLOT = "Profile Scope"
 BEGIN = kblib.BOUNDARY_PROJECTION_BEGIN
 END = kblib.BOUNDARY_PROJECTION_END
@@ -117,9 +119,10 @@ def main(argv=None):
                         help="profile directory override; default is the "
                              "selected_profile_manifest of the active "
                              "Standards state")
-    parser.add_argument("--contract", default="Tools/page_contract.yaml",
-                        help="compiled contract path (default "
-                             "Tools/page_contract.yaml)")
+    parser.add_argument("--contract",
+                        default=runtime_paths.PAGE_CONTRACT_ARTIFACT_PATH,
+                        help="compiled contract path (default %s)" %
+                        runtime_paths.PAGE_CONTRACT_ARTIFACT_PATH)
     parser.add_argument("--scope",
                         help="only scan .md files under this subpath")
     parser.add_argument("--check", action="store_true",

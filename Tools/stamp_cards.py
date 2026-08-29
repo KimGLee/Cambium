@@ -1,1616 +1,458 @@
 #!/usr/bin/env python3
-"""Stamp and verify the kernel-owned Runtime Card layer.
+"""Validate curated Cards and their top-level Read Set bindings.
 
-The canonical rule owner is kernel/K00 Standards Control/03 Standards
-Governance. Cards live under kernel/Cards and are compiled from kernel source
-files; they are never profile-selected and never canonical rule owners. The
-Read Set Index and Card Index share registry_id `kernel-runtime-routes`; their
-route registries, the Read Set files, and the Runtime Cards must agree exactly
-on the continuous route set R01-R13. A Read Set and its Card share route_id;
-indexes have no route identity of their own. Every Card's `compiled_from` must
-equal the canonical adopter `standards_version` in verification mode.  An
-explicit write-time `--set-version` may instead prepare the complete Card
-after-image for a not-yet-committed Standards adoption; that preparation does
-not advance canonical state, and ordinary `--check` continues to judge the
-active version until the adoption writer commits it.  In the uninstantiated
-public distribution, the explicit template/version supplied by the release
-workflow is authoritative. Uniform but obsolete version stamps are stale, not
-synchronized.
+Cards are reviewed action projections, not compiled rule artifacts.  This tool
+checks their closed frontmatter shape, independent size budget, source
+provenance, reviewed-source currentness, one-to-one Read Set binding, and the
+two generated navigation indexes.  It does not judge semantic quality, parse
+Markdown prose into loading obligations, validate Kernel leaf budgets, or own
+route selection.
 
-`source_hash` is the first 12 hexadecimal digits of SHA-256 over each source
-file's bytes, concatenated in source_files order. `compiled_source_hash` is a
-separate semantic-compilation acknowledgement: ordinary stamping advances only
-`source_hash`, while `--acknowledge-compiled` advances both after the Card body
-has been regenerated or consciously confirmed against those exact inputs. A
-Card whose two hashes differ remains stale.
-
-A code span whose first token is `python3` is the copy-and-run command form an
-agent types verbatim, so the Card and Read Set layer is also checked against
-the tools' own declared interfaces: the named script must exist, and every
-required positional and required option that script declares must be supplied.
-Each tool's argument contract is read statically from its own source bytes; no
-tool is imported or executed, and no argument list is duplicated here. Whether a
-flag consumes the token after it comes from that declared contract -- a
-`store_true` flag consumes nothing -- so a flag-before-positional spelling such
-as `stamp_cards.py --check .` is read exactly as the tool would read it. A span
-that only names a tool or a flag in prose is a reference, not a command, and is
-not scanned.
-
-Two further checks read their rule out of `Card And Read Set Skeleton` in
-kernel/K00 Standards Control/14 Card And Read Set Skeleton and out of
-kernel/K00 Standards Control/15 Read Set Loading Boundaries, which own them:
-every Card and Read Set must carry the H2 sequence registered for it there, and
-every kernel leaf module must be named by some Read Set loading boundary. Both
-fail closed when that section is missing or unparseable, and no section name or
-leaf path is restated here.
-
-The same loading-boundary owner states that a Card compiles its route's
-boundaries and owns none of them, so a route the Card names is one the paired
-Read Set's boundaries name too. A route reachable only from the Card is
-reported: the reader who follows the Card loads it and the reader who resolves
-the Read Set does not, and a leaf named only through that route is reachable
-for one of them. Each paired Read Set boundary leaf is also closed over an
-explicit disposition: it is either a direct semantic input in `source_files`
-or an intentional `readback_sources` entry, exactly once. Routes and leaf paths are
-read from the artifacts on disk rather than restated in this tool.
-
-A fourth check measures the size budget. kernel/K00 Standards Control/03
-Standards Governance states the target and the soft cap and kernel/K00
-Standards Control/16 Leaf Module Size Register carries the approved exceptions;
-both numbers and every registered cap are read from those pages, never restated
-here. A registered cap that is exceeded is an error, because its owner writes
-that the registered cap must not be exceeded without a new governance change. A
-page over the soft cap with no registered exception, and a registered measured
-value that no longer matches the file, are candidates: the owner calls the 6KB
-value a soft cap and asks for a re-measure, and neither sentence is a MUST. A
-register row naming a leaf module in any width other than the two the register
-defines -- 2 cells for an outside-the-cap declaration, 5 for an exception -- is
-an error rather than a skipped row, because a dropped exception row would leave
-its page measured against the soft cap alone.
-
-Usage:
-  python3 Tools/stamp_cards.py <standards_root> [--cards-dir DIR]
-      [--set-version VERSION] [--acknowledge-compiled] [--check]
-
-Exit codes:
-  0 = structurally complete and current
-  1 = malformed or incomplete Card layer
-  2 = structurally valid but stale hash/version in --check mode
+``source_hash`` observes the current bytes of ``source_files``.
+``reviewed_source_hash`` records which exact source bytes the curator reviewed.
+``reviewed_card_hash`` records the Card body that was reviewed against them.
+Currentness proves only that those review inputs have not changed; it does not
+prove that the summary is correct or that an Agent read or followed it.
 """
 
-import ast
 import hashlib
 import os
 from pathlib import Path
 import re
 import sys
-import tempfile
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import card_contract
 import kblib
-import check_queue
-import standards_state
+import read_set_contract
 
 
-DEFAULT_CARDS_DIR = "kernel/Cards"
-DEFAULT_READ_SETS_DIR = "kernel/Read Sets"
-CARD_INDEX_NAME = "Card Index.md"
-READ_SET_INDEX_NAME = "Read Sets Index.md"
-REGISTRY_ID = "kernel-runtime-routes"
-ROUTE_ID_RE = re.compile(r"^R([0-9]{2})$")
-EXPECTED_ROUTE_IDS = tuple("R%02d" % number for number in range(1, 14))
-ACTIVE_STATE_PATH = standards_state.STATE_PATH
-CODE_SPAN_RE = re.compile(r"`([^`\n]+)`")
-COMMAND_PREFIX = "python3"
-SKELETON_OWNER_PATH = (
-    "kernel/K00 Standards Control/14 Card And Read Set Skeleton.md"
-)
-SKELETON_SECTION = "Card And Read Set Skeleton"
-COVERAGE_OWNER_PATH = (
-    "kernel/K00 Standards Control/15 Read Set Loading Boundaries.md"
-)
-SKELETON_KEY_RE = re.compile(r"(?:(R[0-9]{2}) (Card|Read Set))|(?:(Card|Read Set) default)")
-KERNEL_LEAF_RE = re.compile(r"K[0-9]{2} [^/]+/[0-9]{2} .+\.md")
-# The loading-boundary parser lives in kblib because two tools apply the same
-# K00/15 rule to the same bytes: this one asks which kernel leaves no boundary
-# names, and check_queue asks which boundary-named modules an adoption plan's
-# declared load set omits.  These names stay bound to it so neither tool
-# carries a second spelling of what a boundary is.
-NON_BOUNDARY_SECTIONS = kblib.READ_SET_NON_BOUNDARY_SECTIONS
-WIKI_LINK_RE = kblib.WIKI_LINK_RE
-SIZE_BUDGET_OWNER_PATH = "kernel/K00 Standards Control/03 Standards Governance.md"
-SIZE_BUDGET_SECTION = "Leaf Module Size Budget"
-SIZE_REGISTER_OWNER_PATH = (
-    "kernel/K00 Standards Control/16 Leaf Module Size Register.md"
-)
-SIZE_REGISTER_SECTION = "Leaf Module Size Register"
-SIZE_BUDGET_RE = re.compile(
-    r"target\s*[≤<]=?\s*([0-9]+(?:\.[0-9]+)?)\s*KB.*?soft cap\s*"
-    r"([0-9]+(?:\.[0-9]+)?)\s*KB",
-    re.IGNORECASE,
-)
-KB_UNIT_RE = re.compile(r"KB means ([0-9]+) bytes", re.IGNORECASE)
-MEASURED_RE = re.compile(r"^([0-9]+)\s*bytes$", re.IGNORECASE)
-CAP_RE = re.compile(r"^([0-9]+(?:\.[0-9]+)?)\s*KB$", re.IGNORECASE)
-ACTIVE_COUNT_RE = re.compile(r"^([0-9]+) active\b")
-ESCAPED_PIPE_RE = re.compile(r"(?<!\\)\|")
+CARD_BUDGET_PATH = "Card/card-budget.yaml"
+PROHIBITED_BODY_RE = re.compile(
+    r"(?:python3\s+Tools/|`?Tools/[A-Za-z0-9_./-]+\.py|"
+    r"compiled\s+(?:kernel\s+)?guidance)", re.IGNORECASE)
 
 
-def replace_frontmatter_scalar(text, field, value):
-    """Replace one existing top-level scalar without touching the body."""
+CardContractError = card_contract.CardContractError
+load_card_schema = card_contract.load_schema
+
+
+def _string_list(value, label, *, nonempty=False):
+    if not isinstance(value, list) or not all(
+            isinstance(item, str) and item for item in value):
+        raise CardContractError("%s must be an explicit string list" % label)
+    if len(value) != len(set(value)):
+        raise CardContractError("%s must not repeat values" % label)
+    if nonempty and not value:
+        raise CardContractError("%s must not be empty" % label)
+    return list(value)
+
+
+def _safe_relative(value, label, *, suffix=None):
+    if not isinstance(value, str) or not value or value != value.strip():
+        raise CardContractError("%s must be a non-empty canonical path" % label)
+    path = Path(value)
+    if path.is_absolute() or ".." in path.parts or path.as_posix() != value:
+        raise CardContractError("%s must stay repository-relative" % label)
+    if suffix is not None and not value.endswith(suffix):
+        raise CardContractError("%s must end with %s" % (label, suffix))
+    return value
+
+
+def _frontmatter(text, label):
+    raw = kblib.extract_frontmatter(text or "")
+    if raw is None:
+        raise CardContractError("%s has no YAML frontmatter" % label)
+    try:
+        value = kblib.parse_yaml_subset(raw)
+    except (ValueError, kblib.YamlSubsetError) as exc:
+        raise CardContractError("%s frontmatter is invalid: %s" % (label, exc))
+    if not isinstance(value, dict):
+        raise CardContractError("%s frontmatter must be a mapping" % label)
+    return value
+
+
+def _body(text):
     end = text.find("\n---", 4)
     if not text.startswith("---\n") or end < 0:
-        raise ValueError("missing fenced frontmatter")
-    front = text[:end]
-    pattern = re.compile(r"(?m)^%s:\s*.*$" % re.escape(field))
-    if not pattern.search(front):
-        raise ValueError("missing frontmatter field %s" % field)
-    scalar = str(value)
-    if "\n" in scalar or "\r" in scalar:
-        raise ValueError("frontmatter scalar %s must stay on one line" % field)
-    if "'" not in scalar:
-        rendered_value = "'%s'" % scalar
-    elif '"' not in scalar:
-        rendered_value = '"%s"' % scalar
-    else:
-        raise ValueError(
-            "frontmatter scalar %s contains both quote styles and cannot be "
-            "represented by the restricted YAML subset" % field
-        )
-    front = pattern.sub(
-        lambda _match: "%s: %s" % (field, rendered_value), front, count=1
-    )
-    return front + text[end:]
+        raise CardContractError("Card has no fenced frontmatter")
+    return text[end + 4:].lstrip("\n")
 
 
-def atomic_write(path, text):
-    kblib.atomic_write_text(path, text)
+def _heading_sequence(text):
+    result = []
+    for _line_number, line in kblib.markdown_authority_lines(text):
+        heading = kblib.markdown_atx_heading(line)
+        if heading is not None and heading[0] == 2:
+            result.append(heading[1])
+    return tuple(result)
 
 
-def as_repo_path(root, value, label, failures):
-    raw = str(value)
-    candidate = Path(raw)
-    if candidate.is_absolute() or ".." in candidate.parts:
-        failures.append("%s must be a repository-relative path: %s" % (label, raw))
-        return None
+def _load_budget(root):
     try:
-        root = Path(root).resolve()
-        resolved = (root / candidate).resolve()
-    except (OSError, RuntimeError, ValueError) as exc:
-        failures.append("%s cannot be resolved: %s (%s)" % (label, raw, exc))
-        return None
-    try:
-        resolved.relative_to(root)
-    except ValueError:
-        failures.append("%s escapes the repository root: %s" % (label, raw))
-        return None
-    return resolved
+        path = kblib.repository_path(
+            root, CARD_BUDGET_PATH, must_exist=True, reject_symlink=True)
+        value = kblib.parse_yaml_subset(kblib.read_text(path))
+    except (OSError, UnicodeError, ValueError, kblib.YamlSubsetError) as exc:
+        raise CardContractError("%s is unsafe or invalid: %s" %
+                                (CARD_BUDGET_PATH, exc))
+    expected = {"schema_version", "max_body_bytes", "max_action_items"}
+    if not isinstance(value, dict) or set(value) != expected:
+        raise CardContractError("%s has an invalid closed shape" % CARD_BUDGET_PATH)
+    if value.get("schema_version") != 1:
+        raise CardContractError("unsupported Card budget schema_version")
+    for field in ("max_body_bytes", "max_action_items"):
+        number = value.get(field)
+        if isinstance(number, bool) or not isinstance(number, int) or number <= 0:
+            raise CardContractError("%s.%s must be a positive integer" %
+                                    (CARD_BUDGET_PATH, field))
+    return value
 
 
-def read_owner_text(root, rel, label, failures):
-    """Read one kernel rule owner, failing closed when it cannot be read."""
-    path = as_repo_path(root, rel, label, failures)
-    if path is None or not path.is_file():
-        failures.append("%s is missing: %s" % (label, rel))
-        return None
-    try:
-        return kblib.read_text(path)
-    except (OSError, UnicodeError) as exc:
-        failures.append("%s is unreadable: %s (%s)" % (label, rel, exc))
-        return None
-
-
-def source_digest(paths):
+def source_digest(root, relative_paths):
+    """Bind ordered source identities and bytes without boundary ambiguity."""
     digest = hashlib.sha256()
-    for path in paths:
-        digest.update(kblib.read_bytes(path))
+    for relative in relative_paths:
+        try:
+            path = kblib.repository_path(
+                root, relative, must_exist=True, reject_symlink=True)
+            identity = relative.encode("utf-8")
+            payload = kblib.read_bytes(path)
+            digest.update(("%d:" % len(identity)).encode("ascii"))
+            digest.update(identity)
+            digest.update(("%d:" % len(payload)).encode("ascii"))
+            digest.update(payload)
+        except (OSError, ValueError) as exc:
+            raise CardContractError("source %s is unsafe or unreadable: %s" %
+                                    (relative, exc))
     return digest.hexdigest()[:12]
 
 
-def is_kernel_leaf_path(rel):
-    """Return whether one repository path is a numbered Kernel leaf module."""
-    prefix = "kernel/"
-    return rel.startswith(prefix) and bool(KERNEL_LEAF_RE.fullmatch(rel[len(prefix):]))
+def card_body_digest(text):
+    """Return the stable identity of the curated Card projection body."""
+    return hashlib.sha256(_body(text).encode("utf-8")).hexdigest()[:12]
 
 
-def markdown_paths(directory):
-    """Return Markdown files and links, case-insensitively, for fail-closed scans."""
-    return sorted(
-        path
-        for path in directory.rglob("*")
-        if path.suffix.lower() == ".md" and (path.is_file() or path.is_symlink())
-    )
+def replace_frontmatter_scalar(text, field, value):
+    """Replace one existing top-level scalar while preserving all other bytes."""
+    end = text.find("\n---", 4)
+    if not text.startswith("---\n") or end < 0:
+        raise CardContractError("missing fenced frontmatter")
+    front = text[:end]
+    pattern = re.compile(r"(?m)^%s:\s*.*$" % re.escape(field))
+    if not pattern.search(front):
+        raise CardContractError("missing frontmatter field %s" % field)
+    scalar = str(value)
+    if "\n" in scalar or "\r" in scalar or "'" in scalar:
+        raise CardContractError("frontmatter scalar %s is not safely quotable" % field)
+    front = pattern.sub("%s: '%s'" % (field, scalar), front, count=1)
+    return front + text[end:]
 
 
-def parse_document(path, root, failures):
-    """Return (root-relative path, text, frontmatter mapping), or mapping=None."""
-    rel = path.relative_to(root).as_posix()
-    if path.is_symlink():
-        failures.append("%s must not be a symlink" % rel)
-        return rel, None, None
-    try:
-        text = kblib.read_text(path)
-    except (OSError, UnicodeError) as exc:
-        failures.append("%s is not readable UTF-8: %s" % (rel, exc))
-        return rel, None, None
-    front = kblib.extract_frontmatter(text)
-    if front is None:
-        failures.append("%s has no fenced frontmatter" % rel)
-        return rel, text, None
-    try:
-        data = kblib.parse_yaml_subset(front)
-    except kblib.YamlSubsetError as exc:
-        failures.append("%s has invalid frontmatter: %s" % (rel, exc))
-        return rel, text, None
-    if not isinstance(data, dict):
-        failures.append("%s frontmatter must be a mapping" % rel)
-        return rel, text, None
-    return rel, text, data
-
-
-# argparse actions that store a constant and therefore never read the token
-# after the flag. Every other action reads at least one value.
-VALUELESS_ACTIONS = frozenset((
-    "store_true", "store_false", "store_const", "count", "help", "version",
-))
-
-
-def tool_argument_contract(source_text):
-    """Read one tool's argparse contract from its own source bytes.
-
-    Returns (required positional dests, required option flags, option flag ->
-    whether it reads a value). The third element is what a command span needs
-    in order to tell an option's value from a positional: `--json` declared
-    `action='store_true'` reads nothing, so the token after it is a positional,
-    while `--plan <plan>` consumes one. Guessing from the shape of the next
-    token instead reports a legitimate `stamp_cards.py --check .` as missing
-    its `root`.
-
-    The scan is a static AST walk: no tool code is imported or executed, so the
-    same bytes always yield the same contract. Only `add_argument` calls are
-    read; the tool remains the sole owner of its own interface. Every option
-    string of a call carries the same answer, so a short alias resolves like its
-    long form.
-    """
-    tree = ast.parse(source_text)
-    positionals = []
-    required_options = []
-    option_reads_value = {}
-    for node in ast.walk(tree):
-        if not isinstance(node, ast.Call):
-            continue
-        func = node.func
-        if not isinstance(func, ast.Attribute) or func.attr != "add_argument":
-            continue
-        names = [
-            arg.value for arg in node.args
-            if isinstance(arg, ast.Constant) and isinstance(arg.value, str)
-        ]
-        if not names:
-            continue
-        keywords = {
-            keyword.arg: keyword.value for keyword in node.keywords
-            if keyword.arg
-        }
-        if not names[0].startswith("-"):
-            if "default" not in keywords and "nargs" not in keywords:
-                positionals.append(names[0])
-            continue
-        action = keywords.get("action")
-        nargs = keywords.get("nargs")
-        reads_value = True
-        if isinstance(action, ast.Constant) and action.value in VALUELESS_ACTIONS:
-            reads_value = False
-        elif isinstance(nargs, ast.Constant) and nargs.value == 0:
-            reads_value = False
-        for name in names:
-            if name.startswith("-"):
-                option_reads_value[name] = reads_value
-        required = keywords.get("required")
-        if isinstance(required, ast.Constant) and required.value is True:
-            required_options.append(names[0])
-    return positionals, required_options, option_reads_value
-
-
-def command_span_failures(rel, text, root, tool_contracts):
-    """Report Card/Read Set command spans that their own tool would reject.
-
-    A code span whose first token is `python3` is the copy-and-run form an
-    agent types verbatim, so it must name an existing tool and supply every
-    argument that tool declares as required. A span that only names a tool or
-    a flag in prose is a reference, not a command, and is not scanned.
-    """
-    failures = []
-    for number, line in enumerate(text.splitlines(), 1):
-        for match in CODE_SPAN_RE.finditer(line):
-            tokens = match.group(1).split()
-            if len(tokens) < 2 or tokens[0] != COMMAND_PREFIX:
-                continue
-            script = tokens[1]
-            location = "%s:%d" % (rel, number)
-            tool_path = as_repo_path(root, script, "%s command" % location, failures)
-            if tool_path is None:
-                continue
-            if not tool_path.is_file():
-                failures.append(
-                    "%s runs a tool that does not exist: %s" % (location, script)
-                )
-                continue
-            if script not in tool_contracts:
-                try:
-                    source_text = tool_path.read_text(encoding="utf-8")
-                    tool_contracts[script] = tool_argument_contract(source_text)
-                except (OSError, UnicodeError, SyntaxError, ValueError) as exc:
-                    failures.append(
-                        "%s names a tool whose argument contract is unreadable: "
-                        "%s (%s)" % (location, script, exc)
-                    )
-                    tool_contracts[script] = None
-            contract = tool_contracts[script]
-            if contract is None:
-                continue
-            positionals, required_options, option_reads_value = contract
-            arguments = tokens[2:]
-            supplied_options = {
-                argument.split("=", 1)[0] for argument in arguments
-                if argument.startswith("-")
-            }
-            supplied_positionals = [
-                argument for argument in arguments if not argument.startswith("-")
-            ]
-            # An option that reads a value consumes the token after it, which
-            # would otherwise be counted as a positional. Whether it reads one
-            # is taken from the tool's own argparse declaration, never from the
-            # shape of the following token: a `store_true` flag reads nothing,
-            # so the token after it is a positional the command did supply.
-            consumed = 0
-            for index, argument in enumerate(arguments[:-1]):
-                if not argument.startswith("-") or "=" in argument:
-                    continue
-                # An option this tool does not declare has no contract to read.
-                # Whether the span may name it at all is a separate question;
-                # for counting positionals, fall back to the token shape rather
-                # than asserting either answer.
-                reads_value = option_reads_value.get(argument, True)
-                following = arguments[index + 1]
-                if reads_value and not following.startswith("-"):
-                    consumed += 1
-            filled = max(0, len(supplied_positionals) - consumed)
-            missing_positionals = positionals[filled:]
-            missing_options = [
-                flag for flag in required_options if flag not in supplied_options
-            ]
-            if missing_positionals or missing_options:
-                failures.append(
-                    "%s command is missing required argument(s) of %s: %s"
-                    % (
-                        location,
-                        script,
-                        ", ".join(sorted(missing_positionals) + sorted(missing_options)),
-                    )
-                )
-    return failures
-
-
-def heading_sequence(text):
-    """Return one document's ordered H2 names."""
-    return tuple(
-        line[3:].strip() for line in text.splitlines() if line.startswith("## ")
-    )
-
-
-def parse_skeleton_contract(text):
-    """Read the registered Card and Read Set section skeletons from their owner.
-
-    The owner section carries one registry table whose first cell is a single
-    code span naming the artifact (`Card default`, `Read Set default`, or
-    `Rxx Card` / `Rxx Read Set`) and whose second cell lists that artifact's H2
-    sequence as ordered code spans. The sequences live in the kernel leaf; this
-    function only reads them, so no section name is restated in tool code.
-    """
-    contract = {}
-    errors = []
-    inside = False
-    for line in text.splitlines():
-        if line.startswith("## "):
-            inside = line[3:].strip() == SKELETON_SECTION
-            continue
-        if not inside or not line.startswith("|"):
-            continue
-        cells = [cell.strip() for cell in line.strip().strip("|").split("|")]
-        if len(cells) < 2:
-            continue
-        keys = CODE_SPAN_RE.findall(cells[0])
-        if len(keys) != 1 or not SKELETON_KEY_RE.fullmatch(keys[0]):
-            continue
-        key = keys[0]
-        route_id = key.split(" ", 1)[0]
-        if ROUTE_ID_RE.fullmatch(route_id) and route_id not in EXPECTED_ROUTE_IDS:
-            errors.append(
-                "%s registers a section skeleton for %s, which is outside the "
-                "closed route set" % (SKELETON_OWNER_PATH, route_id)
-            )
-            continue
-        sequence = tuple(CODE_SPAN_RE.findall(cells[1]))
-        if not sequence:
-            errors.append(
-                "%s registers %s with an empty section sequence"
-                % (SKELETON_OWNER_PATH, key)
-            )
-            continue
-        if key in contract:
-            errors.append("%s registers %s more than once" % (SKELETON_OWNER_PATH, key))
-            continue
-        contract[key] = sequence
-    for required in ("Card default", "Read Set default"):
-        if required not in contract:
-            errors.append(
-                "%s does not register the `%s` section skeleton"
-                % (SKELETON_OWNER_PATH, required)
-            )
-    return contract, errors
-
-
-def skeleton_failure(kind, route_id, rel, text, contract):
-    """Compare one artifact's H2 sequence with the skeleton registered for it."""
-    if not contract:
-        return None
-    key = "%s %s" % (route_id, kind) if route_id else ""
-    expected = contract.get(key) or contract.get("%s default" % kind)
-    if expected is None:
-        return None
-    actual = heading_sequence(text)
-    if actual == expected:
-        return None
-    return (
-        "%s does not follow the %s skeleton registered in %s; expected %s, found %s"
-        % (
-            rel,
-            key if key in contract else "%s default" % kind,
-            SKELETON_OWNER_PATH,
-            list(expected),
-            list(actual),
-        )
-    )
-
-
-def leaf_coverage_failures(root, read_set_records):
-    """Report kernel leaf modules that no Read Set loading boundary names.
-
-    A leaf no boundary names cannot be reached by any routed task. Which
-    sections are boundaries and what a boundary names are resolved by
-    `kblib.read_set_boundary_targets`, the single parser this rule has.
-    """
+def discover_cards(root, cards_dir=None):
+    """Return route -> validated Card record, excluding the generated Index."""
     root = Path(root).resolve()
-    kernel_dir = (root / "kernel").resolve()
-    if not kernel_dir.is_dir():
-        return ["kernel directory is missing; leaf coverage cannot be resolved"]
-    named = set()
-    for record in read_set_records:
-        named.update(
-            kblib.read_set_boundary_targets(record.get("text") or ""))
-    failures = []
-    for path in markdown_paths(kernel_dir):
-        family_rel = path.relative_to(kernel_dir).as_posix()
-        if not KERNEL_LEAF_RE.fullmatch(family_rel):
+    schema = load_card_schema(root)
+    canonical_directory = schema["directory"]
+    cards_dir = canonical_directory if cards_dir is None else cards_dir
+    if cards_dir != canonical_directory:
+        raise CardContractError(
+            "Card directory must be exactly %s" % canonical_directory)
+    directory = root / canonical_directory
+    if not directory.is_dir() or directory.is_symlink():
+        raise CardContractError("canonical Card directory is missing or unsafe")
+    budget = _load_budget(root)
+    read_set_schema = read_set_contract.load_schema(root)
+    read_sets = read_set_contract.discover(root, schema=read_set_schema)
+    records = {}
+    for path in sorted(directory.glob("*.md")):
+        if path.name == schema["index_name"]:
             continue
-        rel = path.relative_to(root).as_posix()
-        if rel not in named:
-            failures.append(
-                "%s is named by no Read Set loading boundary; every kernel leaf "
-                "module enters one, per %s" % (rel, COVERAGE_OWNER_PATH)
-            )
-    return failures
-
-
-def named_routes(text, artifact_routes, sections=None):
-    """Return the route IDs one document's Wiki Links name.
-
-    A route is named by linking an artifact that carries a route identity, so
-    the mapping comes from the artifacts actually on disk rather than from a
-    path spelling restated here; the two indexes carry no route identity and
-    therefore name no route. `sections` restricts the scan to the H2 sections
-    it contains, and scanning the whole document when it is None.
-    """
-    found = set()
-    section = ""
-    for line in text.splitlines():
-        if line.startswith("## "):
-            section = line[3:].strip()
-            continue
-        if sections is not None and section not in sections:
-            continue
-        for inner in WIKI_LINK_RE.findall(line):
-            target, _heading = kblib.parse_wiki_link(inner)
-            route_id = artifact_routes.get(target + ".md", "")
-            if route_id:
-                found.add(route_id)
-    return found
-
-
-def card_route_load_failures(read_set_records, runtime_records):
-    """Report routes a Card names that its own Read Set's boundaries do not.
-
-    A Card compiles the loading boundaries of its route and owns none of them,
-    so a route the Card tells its reader to load is one the paired Read Set
-    already names. A route reachable only from the Card is a load instruction
-    with no boundary behind it: the reader who follows the Card loads it and
-    the reader who resolves the Read Set does not.
-
-    `Purpose` and `Related` are excluded on the Read Set side for the same
-    reason they are excluded from leaf coverage, and no Card section is
-    excluded, because the Card's own applicability section is where it states
-    what loads with the route. Only the Card-adds-a-route direction is
-    reported: a boundary the Card does not repeat is a compression judgment
-    its owner makes, while a Card-only route is a disagreement about what the
-    task read. Which side moves is not decided here.
-    """
-    artifact_routes = {}
-    for record in list(read_set_records) + list(runtime_records):
-        if record.get("route_id"):
-            artifact_routes[record["rel"]] = record["route_id"]
-    boundaries = {}
-    for record in read_set_records:
-        route_id = record.get("route_id")
-        if not route_id:
-            continue
-        text = record.get("text") or ""
-        sections = set(heading_sequence(text)) - set(NON_BOUNDARY_SECTIONS)
-        boundaries[route_id] = named_routes(text, artifact_routes, sections)
-    failures = []
-    for record in runtime_records:
-        route_id = record.get("route_id")
-        if not route_id or route_id not in boundaries:
-            continue
-        named = named_routes(record.get("text") or "", artifact_routes)
-        for missing in sorted(named - boundaries[route_id] - {route_id}):
-            failures.append(
-                "%s tells its reader to load %s, which no loading boundary of "
-                "%s names; a Card compiles its route's boundaries and owns "
-                "none of them, per %s"
-                % (record["rel"], missing, record["read_set"] or route_id,
-                   COVERAGE_OWNER_PATH)
-            )
-    return failures
-
-
-def card_readback_source_failures(read_set_records, runtime_records):
-    """Close every paired Read Set boundary leaf over one Card disposition.
-
-    A direct `source_files` leaf is prose the Card semantically compiles. A
-    `readback_sources` leaf is intentionally kept out of the compressed prose
-    and loaded only through the paired Read Set boundary. The two sets need not
-    cover Card sources outside that paired boundary, but they MUST partition
-    every boundary-named Kernel leaf exactly once. This turns omission from an
-    implicit compression judgment into a reviewable, machine-closed decision.
-    """
-    read_sets = {
-        record.get("rel"): record.get("text") or ""
-        for record in read_set_records
-    }
-    failures = []
-    for record in runtime_records:
-        read_set = record.get("read_set") or ""
-        if read_set not in read_sets:
-            continue
-        boundary_leafs = {
-            target
-            for target in kblib.read_set_boundary_targets(read_sets[read_set])
-            if is_kernel_leaf_path(target)
-        }
-        direct = set(record.get("source_rels") or ()) & boundary_leafs
-        readback = set(record.get("readback_rels") or ())
-        overlap = direct & readback
-        missing = boundary_leafs - direct - readback
-        extra = readback - boundary_leafs
-        if overlap:
-            failures.append(
-                "%s classifies paired boundary leaf(s) as both compiled and "
-                "read-back: %s" % (record["rel"], sorted(overlap))
-            )
-        if missing:
-            failures.append(
-                "%s leaves paired Read Set boundary leaf(s) without a compiled "
-                "or read-back disposition: %s"
-                % (record["rel"], sorted(missing))
-            )
-        if extra:
-            failures.append(
-                "%s declares readback_sources that its paired Read Set names "
-                "in no loading boundary: %s"
-                % (record["rel"], sorted(extra))
-            )
-    return failures
-
-
-def table_cells(line):
-    """Split one Markdown table row, honouring the escaped Wiki-alias pipe."""
-    return [cell.strip() for cell in ESCAPED_PIPE_RE.split(line.strip().strip("|"))]
-
-
-def registered_target(cell):
-    """Return the repository path a register cell's Wiki Link names, or ''."""
-    match = WIKI_LINK_RE.search(cell)
-    if match is None:
-        return ""
-    target, _heading = kblib.parse_wiki_link(match.group(1))
-    return target + ".md" if target else ""
-
-
-def parse_size_budget(text):
-    """Read the leaf module target, soft cap, and KB unit from their owner.
-
-    The three numbers live in the owner's budget section. They are read, never
-    restated here, so a governance change to the budget takes effect without a
-    tool change and a budget this function cannot read fails closed.
-    """
-    inside = False
-    for line in text.splitlines():
-        if line.startswith("## "):
-            inside = line[3:].strip() == SIZE_BUDGET_SECTION
-            continue
-        if not inside:
-            continue
-        budget = SIZE_BUDGET_RE.search(line)
-        unit = KB_UNIT_RE.search(line)
-        if budget is None or unit is None:
-            continue
-        factor = int(unit.group(1))
-        target = int(float(budget.group(1)) * factor)
-        soft_cap = int(float(budget.group(2)) * factor)
-        if factor <= 0 or target <= 0 or soft_cap < target:
-            return None, [
-                "%s states an unusable leaf module budget: target %d, soft cap "
-                "%d, KB %d" % (SIZE_BUDGET_OWNER_PATH, target, soft_cap, factor)
-            ]
-        return (target, soft_cap, factor), []
-    return None, [
-        "%s does not state a leaf module target, soft cap, and KB unit in `%s`"
-        % (SIZE_BUDGET_OWNER_PATH, SIZE_BUDGET_SECTION)
-    ]
-
-
-def parse_size_register(text, factor):
-    """Read the registered size exceptions and the outside-the-cap list.
-
-    Both live in one section of the register page. A five-column row whose
-    first cell links a page is an exception carrying that page's measured value
-    and growth cap; a two-column row whose first cell links a page declares it
-    outside the cap; the row stating `N active` declares how many exceptions the
-    register believes it holds.
-
-    Cell count is the whole discriminator, so a row whose first cell links a
-    page and whose width is neither 2 nor 5 is an error, never a skip: the two
-    dispositions are exclusive and a page carrying neither would otherwise be
-    measured against the soft cap only, turning a "MUST NOT be exceeded" growth
-    cap into a candidate. A malformed row cannot be read as an outside-the-cap
-    declaration either, because that disposition is a claim the register makes,
-    not the residue of a truncated exception row.
-    """
-    entries = {}
-    outside = {}
-    declared = None
-    errors = []
-    inside = False
-    for line in text.splitlines():
-        if line.startswith("## "):
-            inside = line[3:].strip() == SIZE_REGISTER_SECTION
-            continue
-        if not inside or not line.startswith("|"):
-            continue
-        cells = table_cells(line)
-        rel = registered_target(cells[0]) if cells else ""
-        if not rel:
-            count = ACTIVE_COUNT_RE.search(cells[1]) if len(cells) > 1 else None
-            if count is not None:
-                declared = int(count.group(1))
-            continue
-        if len(cells) == 2:
-            if rel in outside:
-                errors.append(
-                    "%s declares %s outside the cap more than once"
-                    % (SIZE_REGISTER_OWNER_PATH, rel)
-                )
-            outside[rel] = cells[1]
-            continue
-        if len(cells) != 5:
-            errors.append(
-                "%s registers %s in a row of %d cell(s); a register row naming "
-                "a leaf module is either a 2-cell outside-the-cap declaration "
-                "or a 5-cell exception (object, measured, necessity, growth "
-                "cap, follow-up)"
-                % (SIZE_REGISTER_OWNER_PATH, rel, len(cells))
-            )
-            continue
-        measured = MEASURED_RE.match(cells[1])
-        cap = CAP_RE.match(cells[3])
-        if measured is None or cap is None:
-            errors.append(
-                "%s registers %s without a readable measured value and growth "
-                "cap" % (SIZE_REGISTER_OWNER_PATH, rel)
-            )
-            continue
-        if rel in entries:
-            errors.append(
-                "%s registers %s more than once" % (SIZE_REGISTER_OWNER_PATH, rel)
-            )
-            continue
-        entries[rel] = {
-            "measured": int(measured.group(1)),
-            "cap": int(float(cap.group(1)) * factor),
-        }
-    return entries, outside, declared, errors
-
-
-def size_budget_findings(root, budget, entries, outside, declared):
-    """Measure every kernel leaf module against the budget and the register.
-
-    Returns (errors, candidates). Exceeding a registered growth cap is an
-    error: its owner writes that the registered cap MUST NOT be exceeded
-    without a new governance change. Standing over the soft cap with no
-    declared disposition, and a registered measured value that no longer
-    matches the file, are candidates: the owner calls 6KB a soft cap and asks
-    for a re-measure, and neither sentence is a MUST.
-    """
-    _target, soft_cap, _factor = budget
-    root = Path(root).resolve()
-    kernel_dir = (root / "kernel").resolve()
-    if not kernel_dir.is_dir():
-        return ["kernel directory is missing; leaf sizes cannot be measured"], []
-    errors = []
-    candidates = []
-    seen = set()
-    for path in markdown_paths(kernel_dir):
-        family_rel = path.relative_to(kernel_dir).as_posix()
-        if not KERNEL_LEAF_RE.fullmatch(family_rel):
-            continue
-        rel = path.relative_to(root).as_posix()
-        seen.add(rel)
+        relative = path.relative_to(root).as_posix()
         try:
-            size = path.stat().st_size
-        except OSError as exc:
-            errors.append("%s cannot be measured: %s" % (rel, exc))
-            continue
-        entry = entries.get(rel)
-        if rel in outside:
-            if entry is not None:
-                errors.append(
-                    "%s both registers %s as an exception and declares it "
-                    "outside the cap; the two dispositions are exclusive, per %s"
-                    % (SIZE_REGISTER_OWNER_PATH, rel, SIZE_BUDGET_OWNER_PATH)
-                )
-            continue
-        if entry is None:
-            if size > soft_cap:
-                candidates.append(
-                    "%s is %d bytes, over the %d-byte soft cap, and %s neither "
-                    "registers an exception for it nor declares it outside the "
-                    "cap" % (rel, size, soft_cap, SIZE_REGISTER_OWNER_PATH)
-                )
-            continue
-        if size > entry["cap"]:
-            errors.append(
-                "%s is %d bytes, over the %d-byte growth cap registered for it "
-                "in %s; that cap MUST NOT be exceeded without a new governance "
-                "change, per %s"
-                % (
-                    rel,
-                    size,
-                    entry["cap"],
-                    SIZE_REGISTER_OWNER_PATH,
-                    SIZE_BUDGET_OWNER_PATH,
-                )
-            )
-        if size != entry["measured"]:
-            candidates.append(
-                "%s measures %d bytes; %s still registers %d and asks for a "
-                "re-measure"
-                % (rel, size, SIZE_REGISTER_OWNER_PATH, entry["measured"])
-            )
-    for rel in sorted(set(entries) | set(outside)):
-        if rel not in seen:
-            errors.append(
-                "%s registers %s, which is not a kernel leaf module in this "
-                "repository" % (SIZE_REGISTER_OWNER_PATH, rel)
-            )
-    if declared is None:
-        errors.append(
-            "%s does not state how many leaf module exceptions are active"
-            % SIZE_REGISTER_OWNER_PATH
-        )
-    elif declared != len(entries):
-        candidates.append(
-            "%s states %d active leaf module exception(s) and carries %d"
-            % (SIZE_REGISTER_OWNER_PATH, declared, len(entries))
-        )
-    return errors, candidates
+            text = kblib.read_text(path)
+        except (OSError, UnicodeError) as exc:
+            raise CardContractError("%s is unreadable: %s" % (relative, exc))
+        data = _frontmatter(text, relative)
+        card_fields = set(schema["document_fields"])
+        if set(data) != card_fields:
+            raise CardContractError(
+                "%s fields differ from the curated Card shape; missing=%s extra=%s"
+                % (relative, sorted(card_fields - set(data)),
+                   sorted(set(data) - card_fields)))
+        if (data.get("type") != schema["document_type"] or
+                data.get("generation_mode") != schema["generation_mode"]):
+            raise CardContractError("%s must be a curated Card" % relative)
+        route_id = data.get("route_id")
+        if (not isinstance(route_id, str) or
+                not schema["route_id_re"].fullmatch(route_id)):
+            raise CardContractError("%s has invalid route_id %r" %
+                                    (relative, route_id))
+        if route_id not in read_sets:
+            raise CardContractError("%s route_id %r has no Read Set declaration" %
+                                    (relative, route_id))
+        if route_id in records:
+            raise CardContractError("more than one Card declares %s" % route_id)
+        if not path.name.startswith(route_id + " "):
+            raise CardContractError("%s filename must start with %s" %
+                                    (relative, route_id))
+        if data.get("read_set_id") != route_id:
+            raise CardContractError("%s read_set_id must equal route_id" % relative)
+        expected_read_set = read_sets[route_id]["path"]
+        if data.get("read_set") != expected_read_set:
+            raise CardContractError("%s must bind %s" % (relative, expected_read_set))
+        sources = _string_list(data.get("source_files"),
+                               "%s source_files" % relative, nonempty=True)
+        for source in sources:
+            _safe_relative(source, "%s source" % relative)
+        if expected_read_set not in sources:
+            raise CardContractError("%s source_files must include its Read Set" % relative)
+        observed = data.get("source_hash")
+        reviewed = data.get("reviewed_source_hash")
+        reviewed_card = data.get("reviewed_card_hash")
+        hash_re = schema["hash_re"]
+        if not isinstance(observed, str) or not hash_re.fullmatch(observed):
+            raise CardContractError("%s source_hash must be 12 lowercase hex" % relative)
+        if not isinstance(reviewed, str) or not hash_re.fullmatch(reviewed):
+            raise CardContractError(
+                "%s reviewed_source_hash must be 12 lowercase hex" % relative)
+        if not isinstance(reviewed_card, str) or not hash_re.fullmatch(
+                reviewed_card):
+            raise CardContractError(
+                "%s reviewed_card_hash must be 12 lowercase hex" % relative)
+        body = _body(text)
+        body_hash = card_body_digest(text)
+        body_bytes = len(body.encode("utf-8"))
+        action_items = sum(1 for line in body.splitlines()
+                           if line.startswith("- "))
+        if body_bytes > budget["max_body_bytes"]:
+            raise CardContractError("%s body has %d bytes; budget is %d" %
+                                    (relative, body_bytes,
+                                     budget["max_body_bytes"]))
+        if action_items > budget["max_action_items"]:
+            raise CardContractError("%s has %d action items; budget is %d" %
+                                    (relative, action_items,
+                                     budget["max_action_items"]))
+        if list(_heading_sequence(text)) != schema["body_sections"]:
+            raise CardContractError("%s sections must be exactly %s" %
+                                    (relative, schema["body_sections"]))
+        match = PROHIBITED_BODY_RE.search(body)
+        if match:
+            raise CardContractError("%s contains implementation/compiled prose: %s" %
+                                    (relative, match.group(0)))
+        records[route_id] = {
+            "route_id": route_id,
+            "path": relative,
+            "text": text,
+            "data": data,
+            "source_files": sources,
+            "source_hash": observed,
+            "reviewed_source_hash": reviewed,
+            "reviewed_card_hash": reviewed_card,
+            "body_hash": body_hash,
+            "read_set": expected_read_set,
+            "body_bytes": body_bytes,
+            "action_items": action_items,
+        }
+    if not records:
+        raise CardContractError("canonical Card directory has no Cards")
+    if set(records) != set(read_sets):
+        raise CardContractError(
+            "Card/Read Set route mismatch; cards_only=%s read_sets_only=%s" %
+            (sorted(set(records) - set(read_sets)),
+             sorted(set(read_sets) - set(records))))
+    return records, read_sets
 
 
-def route_id_of(value, label, failures):
-    """Validate and return one Rxx route identity, or an empty string."""
-    route_id = str(value or "")
-    if not route_id:
-        failures.append("%s is missing route_id" % label)
-        return ""
-    if not ROUTE_ID_RE.fullmatch(route_id):
-        failures.append("%s has invalid route_id %r (expected Rxx)" % (label, route_id))
-        return ""
-    return route_id
+def _display_name(path, suffix):
+    name = Path(path).name
+    name = re.sub(r"^R[0-9]{2} ", "", name)
+    if name.endswith(suffix):
+        name = name[:-len(suffix)]
+    return name
 
 
-def main():
-    ap = kblib.ArgumentParser(description="Stamp kernel Runtime Cards")
-    ap.add_argument("root", help="repository root")
-    ap.add_argument(
-        "--cards-dir",
-        default=DEFAULT_CARDS_DIR,
-        help="Card directory relative to <root> (default: kernel/Cards)",
-    )
-    ap.add_argument(
-        "--set-version",
-        help="also set every card's compiled_from value",
-    )
-    ap.add_argument(
-        "--acknowledge-compiled",
+def render_card_index(cards, read_sets):
+    lines = [
+        "---",
+        "type: card-index",
+        "generation_mode: generated",
+        "source: %s, Card frontmatter, and Read Set declarations" %
+        card_contract.SCHEMA_PATH,
+        "---",
+        "# Card Index",
+        "",
+        ("This is a generated navigation view. It does not select a route, "
+         "define a load boundary, or authorize activation. Route selection "
+         "remains with its canonical owner; each Card and Read Set frontmatter "
+         "supplies the machine identity below."),
+        "",
+        "| Route ID | Card | Read Set |",
+        "|---|---|---|",
+    ]
+    for route_id in sorted(cards):
+        card = cards[route_id]["path"][:-3]
+        read_set = read_sets[route_id]["path"][:-3]
+        card_name = _display_name(cards[route_id]["path"], " Card.md")
+        lines.append(
+            "| `%s` | [[%s\\|%s]] | [[%s\\|Read Set]] |" %
+            (route_id, card, card_name, read_set))
+    return "\n".join(lines) + "\n"
+
+
+def render_read_set_index(read_sets):
+    lines = [
+        "---",
+        "type: route-index",
+        "generation_mode: generated",
+        "source: Read Set declarations",
+        "---",
+        "# Read Set Index",
+        "",
+        ("This is a generated navigation view. It is not a route registry and "
+         "is never an input to route selection, load resolution, activation, "
+         "or proof. The frontmatter of each linked Read Set is the sole machine "
+         "loading declaration."),
+        "",
+        "| Route ID | Read Set |",
+        "|---|---|",
+    ]
+    for route_id in sorted(read_sets):
+        path = read_sets[route_id]["path"][:-3]
+        name = _display_name(read_sets[route_id]["path"], " Read Set.md")
+        lines.append("| `%s` | [[%s\\|%s]] |" % (route_id, path, name))
+    return "\n".join(lines) + "\n"
+
+
+def _write_changes(changes):
+    originals = []
+    try:
+        for path, text in changes:
+            originals.append((path, kblib.read_text(path) if path.exists() else None))
+            kblib.atomic_write_text(path, text)
+    except (OSError, ValueError):
+        for path, original in reversed(originals):
+            if original is not None:
+                kblib.atomic_write_text(path, original)
+        raise
+
+
+def main(argv=None):
+    parser = kblib.ArgumentParser(description="Validate curated Cambium Cards")
+    parser.add_argument("root", help="repository root")
+    parser.add_argument(
+        "--cards-dir", default=None,
+        help="Card directory relative to <root> (default: schema path_prefix)")
+    parser.add_argument(
+        "--acknowledge-curated-review", dest="acknowledge_review",
         action="store_true",
-        help=(
-            "after semantic regeneration/review, advance compiled_source_hash "
-            "to the exact current source digest"
-        ),
-    )
-    ap.add_argument("--check", action="store_true", help="verify only; never write")
-    args = ap.parse_args()
-
-    if args.check and args.acknowledge_compiled:
-        print(
-            "stamp_cards: FAIL — --check and --acknowledge-compiled are "
-            "mutually exclusive"
-        )
+        help="after human review, bind the current sources and Card bodies")
+    parser.add_argument("--check", action="store_true",
+                        help="verify only; never write")
+    args = parser.parse_args(argv)
+    if args.check and args.acknowledge_review:
+        print("stamp_cards: FAIL — --check and review acknowledgement are mutually exclusive")
         return 1
-
     root = Path(args.root).resolve()
     if not root.is_dir():
         print("stamp_cards: FAIL — repository root does not exist: %s" % root)
         return 1
-
-    failures = []
-    tool_contracts = {}
-    active_version = ""
-    active_path = root / ACTIVE_STATE_PATH
-    if active_path.exists():
-        active_state, _view, state_errors = standards_state.snapshot(root)
-        failures.extend("%s: %s" % (ACTIVE_STATE_PATH, error)
-                        for error in state_errors)
-        if active_state is not None:
-            active_version = str(active_state["standards_version"]).strip()
-    else:
-        # The public distribution is deliberately uninstantiated.  Its Card
-        # stamps therefore retain the template token until an adopter's
-        # initial transaction supplies --set-version and creates state.
-        active_version = args.set_version or "{{ standards_version }}"
-    if (args.check and args.set_version and active_version and
-            args.set_version != active_version):
-        failures.append(
-            "--check cannot judge candidate --set-version %r while active "
-            "standards_version is %r in %s"
-            % (args.set_version, active_version, ACTIVE_STATE_PATH)
-        )
-    if args.set_version and not args.check:
-        # Candidate Card bytes are part of the Standards after-image that the
-        # adoption transaction must hash before it can advance active state.
-        # Preparing them is not itself an adoption, so verification without
-        # this explicit write option still uses the canonical active version.
-        active_version = args.set_version
-    if failures:
-        for failure in failures:
-            print("  [FAIL] %s" % failure)
-        print("stamp_cards: FAIL — %d active-state error(s)" % len(failures))
-        return 1
-
-    cards_arg = Path(args.cards_dir)
-    if cards_arg.is_absolute() or ".." in cards_arg.parts:
-        print("stamp_cards: FAIL — --cards-dir must stay inside the repository")
-        return 1
-    cards_capability = kblib.inherited_path_capability(
-        args.cards_dir, "transaction")
-    cards_dir = ((root / cards_arg) if cards_capability is not None else
-                 (root / cards_arg).resolve())
     try:
-        cards_dir.relative_to(root)
-    except ValueError:
-        print("stamp_cards: FAIL — Card directory escapes the repository root")
-        return 1
-    if not cards_dir.is_dir():
-        print("stamp_cards: FAIL — required Card directory is missing: %s" % args.cards_dir)
+        cards, read_sets = discover_cards(root, args.cards_dir)
+    except (CardContractError,
+            read_set_contract.ReadSetContractError) as exc:
+        print("stamp_cards: FAIL — %s" % exc)
         return 1
 
-    read_sets_dir = (root / DEFAULT_READ_SETS_DIR).resolve()
-    try:
-        read_sets_dir.relative_to(root)
-    except ValueError:
-        print("stamp_cards: FAIL — Read Set directory escapes the repository root")
-        return 1
-    if not read_sets_dir.is_dir():
-        print(
-            "stamp_cards: FAIL — required Read Set directory is missing: %s"
-            % DEFAULT_READ_SETS_DIR
-        )
-        return 1
-
-    try:
-        if cards_capability is not None:
-            cards_snapshot = kblib.repository_tree_snapshot(
-                str(root), args.cards_dir)
-            card_paths = [
-                root / Path(relative)
-                for relative in sorted(cards_snapshot.files)
-                if relative.lower().endswith(".md")
-            ]
-        else:
-            card_paths = markdown_paths(cards_dir)
-        read_set_paths = markdown_paths(read_sets_dir)
-    except (OSError, RuntimeError) as exc:
-        print("stamp_cards: FAIL — route directories cannot be scanned: %s" % exc)
-        return 1
-
-    if not card_paths:
-        print("stamp_cards: FAIL — Card directory contains zero Markdown files")
-        return 1
-
-    if not read_set_paths:
-        print("stamp_cards: FAIL — Read Set directory contains zero Markdown files")
-        return 1
-
-    card_index_path = cards_dir / CARD_INDEX_NAME
-    if not card_index_path.is_file():
-        print(
-            "stamp_cards: FAIL — required Card Index is missing: %s"
-            % CARD_INDEX_NAME
-        )
-        return 1
-
-    read_set_index_path = read_sets_dir / READ_SET_INDEX_NAME
-    if not read_set_index_path.is_file():
-        print(
-            "stamp_cards: FAIL — required Read Set Index is missing: %s"
-            % READ_SET_INDEX_NAME
-        )
-        return 1
-
-    # ---- Registered section skeletons, read from their kernel owner ----
-    skeleton_contract = {}
-    skeleton_path = as_repo_path(
-        root, SKELETON_OWNER_PATH, "section skeleton owner", failures
-    )
-    if skeleton_path is None or not skeleton_path.is_file():
-        failures.append(
-            "section skeleton owner is missing: %s" % SKELETON_OWNER_PATH
-        )
-    else:
-        try:
-            skeleton_text = kblib.read_text(skeleton_path)
-        except (OSError, UnicodeError) as exc:
-            failures.append(
-                "section skeleton owner is unreadable: %s (%s)"
-                % (SKELETON_OWNER_PATH, exc)
-            )
-        else:
-            skeleton_contract, skeleton_errors = parse_skeleton_contract(
-                skeleton_text
-            )
-            failures.extend(skeleton_errors)
-
-    # ---- Read Set Index and on-disk Read Sets ----
-    read_set_records = []
-    read_set_index_record = None
-    seen_read_set_routes = set()
-
-    for path in read_set_paths:
-        rel, text, data = parse_document(path, root, failures)
-        if text is not None:
-            failures.extend(
-                command_span_failures(rel, text, root, tool_contracts)
-            )
-        if data is None:
-            continue
-
-        is_index = path == read_set_index_path
-        expected_type = "route-index" if is_index else "read-set"
-        if data.get("type") != expected_type:
-            failures.append("%s must declare type: %s" % (rel, expected_type))
-        for legacy_key in ("card_id", "card_registry"):
-            if legacy_key in data:
-                failures.append(
-                    "%s carries legacy %s; route_id/route_registry are the only route identities"
-                    % (rel, legacy_key)
-                )
-
-        if is_index:
-            if "route_id" in data:
-                failures.append("%s must not declare route_id; an index is not a route" % rel)
-            if data.get("registry_id") != REGISTRY_ID:
-                failures.append(
-                    "%s must declare registry_id: %s" % (rel, REGISTRY_ID)
-                )
-            read_set_index_record = {
-                "path": path,
-                "rel": rel,
-                "text": text,
-                "data": data,
-            }
-            continue
-
-        route_id = route_id_of(data.get("route_id"), rel, failures)
-        if route_id:
-            if route_id in seen_read_set_routes:
-                failures.append("more than one Read Set declares route_id %s" % route_id)
-            else:
-                seen_read_set_routes.add(route_id)
-            if not path.name.startswith(route_id + " "):
-                failures.append(
-                    "%s filename must start with its route_id %s" % (rel, route_id)
-                )
-        skeleton_error = skeleton_failure(
-            "Read Set", route_id, rel, text, skeleton_contract
-        )
-        if skeleton_error:
-            failures.append(skeleton_error)
-        read_set_records.append(
-            {
-                "path": path,
-                "rel": rel,
-                "text": text,
-                "data": data,
-                "route_id": route_id,
-            }
-        )
-
-    if read_set_index_record is None:
-        failures.append("Read Set Index could not be parsed")
-        read_registry = []
-    else:
-        read_registry = read_set_index_record["data"].get("route_registry")
-        if not isinstance(read_registry, list) or not read_registry:
-            failures.append("Read Set Index must declare a non-empty route_registry")
-            read_registry = []
-
-    read_registry_pairs = set()
-    read_registry_routes = set()
-    read_registry_paths = set()
-    read_sets_real = read_sets_dir.resolve()
-    for entry in read_registry:
-        if not isinstance(entry, dict):
-            failures.append("Read Set Index route_registry entries must be mappings")
-            continue
-        for legacy_key in ("card_id", "card_registry"):
-            if legacy_key in entry:
-                failures.append(
-                    "Read Set Index route_registry entries must not carry legacy %s"
-                    % legacy_key
-                )
-        route_id = route_id_of(entry.get("route_id"), "Read Set Index entry", failures)
-        read_set_rel = str(entry.get("path") or "")
-        if not read_set_rel:
-            failures.append("Read Set Index has an incomplete route_registry entry")
-            continue
-        if route_id in read_registry_routes:
-            failures.append("Read Set Index repeats route_id %s" % route_id)
-        if read_set_rel in read_registry_paths:
-            failures.append("Read Set Index repeats path %s" % read_set_rel)
-        if route_id:
-            read_registry_routes.add(route_id)
-            read_registry_pairs.add((route_id, read_set_rel))
-        read_registry_paths.add(read_set_rel)
-
-        read_set_path = as_repo_path(
-            root, read_set_rel, "Read Set Index path", failures
-        )
-        if read_set_path is not None:
-            try:
-                read_set_path.relative_to(read_sets_real)
-            except ValueError:
-                failures.append(
-                    "Read Set Index path must be under kernel/Read Sets: %s"
-                    % read_set_rel
-                )
-
-    actual_read_pairs = {
-        (record["route_id"], record["rel"])
-        for record in read_set_records
-        if record["route_id"]
-    }
-    if read_registry_pairs != actual_read_pairs:
-        failures.append(
-            "Read Set Index/disk mismatch; missing=%s extra=%s"
-            % (
-                sorted(actual_read_pairs - read_registry_pairs),
-                sorted(read_registry_pairs - actual_read_pairs),
-            )
-        )
-
-    records = []
-    seen_card_routes = set()
-    seen_card_read_sets = set()
-    cards_real = cards_dir.resolve()
-    kernel_real = (root / "kernel").resolve()
-
-    for path in card_paths:
-        rel, text, data = parse_document(path, root, failures)
-        if text is not None:
-            failures.extend(
-                command_span_failures(rel, text, root, tool_contracts)
-            )
-        if data is None:
-            continue
-
-        is_index = path == card_index_path
-        expected_type = "card-index" if is_index else "runtime-card"
-        if data.get("type") != expected_type:
-            failures.append("%s must declare type: %s" % (rel, expected_type))
-
-        for legacy_key in ("card_id", "card_registry"):
-            if legacy_key in data:
-                failures.append(
-                    "%s carries legacy %s; route_id/route_registry are the only route identities"
-                    % (rel, legacy_key)
-                )
-        if is_index:
-            if "route_id" in data:
-                failures.append("%s must not declare route_id; an index is not a route" % rel)
-            if data.get("registry_id") != REGISTRY_ID:
-                failures.append(
-                    "%s must declare registry_id: %s" % (rel, REGISTRY_ID)
-                )
-            route_id = ""
-        else:
-            route_id = route_id_of(data.get("route_id"), rel, failures)
-            if route_id:
-                if route_id in seen_card_routes:
-                    failures.append("more than one Runtime Card declares route_id %s" % route_id)
-                else:
-                    seen_card_routes.add(route_id)
-                if not path.name.startswith(route_id + " "):
-                    failures.append(
-                        "%s filename must start with its route_id %s" % (rel, route_id)
-                    )
-            skeleton_error = skeleton_failure(
-                "Card", route_id, rel, text, skeleton_contract
-            )
-            if skeleton_error:
-                failures.append(skeleton_error)
-
-        compiled_from = str(data.get("compiled_from") or "")
-        if not compiled_from:
-            failures.append("%s is missing compiled_from" % rel)
-
-        current_hash = str(data.get("source_hash") or "")
-        if not current_hash:
-            failures.append("%s is missing source_hash" % rel)
-
-        compiled_source_hash = str(data.get("compiled_source_hash") or "")
-        if not compiled_source_hash:
-            failures.append("%s is missing compiled_source_hash" % rel)
-
-        source_values = data.get("source_files")
-        if not isinstance(source_values, list) or not source_values:
-            failures.append("%s must declare a non-empty source_files list" % rel)
-            source_values = []
-
-        source_rels = []
-        source_paths = []
-        for value in source_values:
-            source_rel = str(value)
-            if source_rel in source_rels:
-                failures.append("%s repeats source file %s" % (rel, source_rel))
-                continue
-            source_rels.append(source_rel)
-            source = as_repo_path(root, source_rel, "%s source_files" % rel, failures)
-            if source is None:
-                continue
-            if not source.is_file():
-                failures.append("%s source is not a regular file: %s" % (rel, source_rel))
-                continue
-            try:
-                source.relative_to(kernel_real)
-            except ValueError:
-                failures.append("%s source must be under kernel/: %s" % (rel, source_rel))
-                continue
-            try:
-                source.relative_to(cards_real)
-                failures.append("%s cannot use another compiled Card as a source: %s" % (rel, source_rel))
-                continue
-            except ValueError:
-                pass
-            source_paths.append(source)
-
-        readback_rels = []
-        if expected_type == "runtime-card":
-            readback_values = data.get("readback_sources")
-            if not isinstance(readback_values, list):
-                failures.append("%s must declare readback_sources as a list" % rel)
-                readback_values = []
-            for value in readback_values:
-                readback_rel = str(value)
-                if readback_rel in readback_rels:
-                    failures.append(
-                        "%s repeats read-back source %s" % (rel, readback_rel)
-                    )
-                    continue
-                readback_rels.append(readback_rel)
-                readback_path = as_repo_path(
-                    root, readback_rel, "%s readback_sources" % rel, failures
-                )
-                if readback_path is None:
-                    continue
-                if not readback_path.is_file():
-                    failures.append(
-                        "%s read-back source is not a regular file: %s"
-                        % (rel, readback_rel)
-                    )
-                    continue
-                if not is_kernel_leaf_path(readback_rel):
-                    failures.append(
-                        "%s readback_sources must contain only numbered Kernel "
-                        "leaf modules: %s" % (rel, readback_rel)
-                    )
-            readback_policy = data.get("readback_policy")
-            allowed_readback_policies = frozenset((
-                "none", "declared", "activation",
-            ))
-            if readback_policy not in allowed_readback_policies:
-                failures.append(
-                    "%s readback_policy must be one of %s" %
-                    (rel, ", ".join(sorted(allowed_readback_policies)))
-                )
-            elif (not readback_rels and readback_policy != "none") or (
-                    readback_rels and readback_policy == "none"):
-                failures.append(
-                    "%s readback_policy %s disagrees with its "
-                    "readback_sources" % (rel, readback_policy)
-                )
-        elif "readback_sources" in data:
-            failures.append("%s must not declare readback_sources" % rel)
-        elif "readback_policy" in data:
-            failures.append("%s must not declare readback_policy" % rel)
-
-        read_set = str(data.get("read_set") or "")
-        if expected_type == "runtime-card":
-            if not read_set:
-                failures.append("%s is missing read_set" % rel)
-            elif read_set not in source_rels:
-                failures.append("%s source_files must include its read_set %s" % (rel, read_set))
-            elif read_set in seen_card_read_sets:
-                failures.append("more than one Runtime Card maps read_set %s" % read_set)
-            else:
-                seen_card_read_sets.add(read_set)
-
-        records.append(
-            {
-                "path": path,
-                "rel": rel,
-                "text": text,
-                "data": data,
-                "type": expected_type,
-                "route_id": route_id,
-                "compiled_from": compiled_from,
-                "source_paths": source_paths,
-                "source_rels": source_rels,
-                "source_hash": current_hash,
-                "compiled_source_hash": compiled_source_hash,
-                "readback_rels": readback_rels,
-                "read_set": read_set,
-            }
-        )
-
-    index_record = next(
-        (record for record in records if record["path"] == card_index_path), None
-    )
-    runtime_records = [record for record in records if record["type"] == "runtime-card"]
-    if index_record is None:
-        failures.append("Card Index could not be parsed")
-    if not runtime_records:
-        failures.append("Card layer contains zero runtime cards")
-
-    registered = set()
-    registered_routes = set()
-    registered_paths = set()
-    registered_read_sets = set()
-    if index_record is not None:
-        registry = index_record["data"].get("route_registry")
-        if not isinstance(registry, list) or not registry:
-            failures.append("Card Index must declare a non-empty route_registry")
-        else:
-            for entry in registry:
-                if not isinstance(entry, dict):
-                    failures.append("Card Index route_registry entries must be mappings")
-                    continue
-                for legacy_key in ("card_id", "card_registry"):
-                    if legacy_key in entry:
-                        failures.append(
-                            "Card Index route_registry entries must not carry legacy %s"
-                            % legacy_key
-                        )
-                route_id = route_id_of(
-                    entry.get("route_id"), "Card Index entry", failures
-                )
-                triple = (
-                    route_id,
-                    str(entry.get("path") or ""),
-                    str(entry.get("read_set") or ""),
-                )
-                if not all(triple):
-                    failures.append("Card Index has an incomplete route_registry entry")
-                    continue
-                if route_id in registered_routes:
-                    failures.append("Card Index repeats route_id %s" % route_id)
-                if triple[1] in registered_paths:
-                    failures.append("Card Index repeats path %s" % triple[1])
-                if triple[2] in registered_read_sets:
-                    failures.append("Card Index repeats read_set %s" % triple[2])
-                registered_routes.add(route_id)
-                registered_paths.add(triple[1])
-                registered_read_sets.add(triple[2])
-                registered.add(triple)
-            actual = {
-                (record["route_id"], record["rel"], record["read_set"])
-                for record in runtime_records
-                if record["route_id"]
-            }
-            if registered != actual:
-                missing = sorted(actual - registered)
-                extra = sorted(registered - actual)
-                failures.append(
-                    "Card Index membership mismatch; missing=%s extra=%s" % (missing, extra)
-                )
-
-    expected_routes = set(EXPECTED_ROUTE_IDS)
-    route_sets = {
-        "Read Set Index": read_registry_routes,
-        "Read Set files": {
-            record["route_id"] for record in read_set_records if record["route_id"]
-        },
-        "Card Index": (
-            registered_routes if index_record is not None and isinstance(
-                index_record["data"].get("route_registry"), list
-            ) else set()
-        ),
-        "Runtime Card files": {
-            record["route_id"] for record in runtime_records if record["route_id"]
-        },
-    }
-    for label, route_ids in route_sets.items():
-        if route_ids != expected_routes:
-            failures.append(
-                "%s routes must be continuous R01-R13; missing=%s extra=%s"
-                % (
-                    label,
-                    sorted(expected_routes - route_ids),
-                    sorted(route_ids - expected_routes),
-                )
-            )
-
-    failures.extend(leaf_coverage_failures(root, read_set_records))
-    failures.extend(card_route_load_failures(read_set_records, runtime_records))
-    failures.extend(
-        card_readback_source_failures(read_set_records, runtime_records)
-    )
-
-    # ---- Leaf module size budget, read from its owner and its register ----
-    budget_candidates = []
-    budget_text = read_owner_text(
-        root, SIZE_BUDGET_OWNER_PATH, "leaf module size budget owner", failures
-    )
-    register_text = read_owner_text(
-        root, SIZE_REGISTER_OWNER_PATH, "leaf module size register", failures
-    )
-    if budget_text is not None and register_text is not None:
-        budget, budget_errors = parse_size_budget(budget_text)
-        failures.extend(budget_errors)
-        if budget is not None:
-            entries, outside, declared, register_errors = parse_size_register(
-                register_text, budget[2]
-            )
-            failures.extend(register_errors)
-            size_errors, budget_candidates = size_budget_findings(
-                root, budget, entries, outside, declared
-            )
-            failures.extend(size_errors)
-
-    # ---- Stable Gate ID Registry against the producers it names ----
-    # The registry rows are kernel text; the Tool/Tool-version/Check/Gate ID
-    # they select is a constant in an installed producer.  Nothing on the
-    # runtime path notices the two drifting apart: `check_queue` consumes the
-    # registry only at a Standards revalidation boundary and at
-    # `open -> merge-ready`, so a bumped TOOL_VERSION shows up as a receipt
-    # that "does not match registered Gate ID" after the batch is already
-    # built.  This run is the input K00/12 itself names for
-    # `runtime-card-synchronization`, and Governance close -- when a producer
-    # version or a registry row changes -- is exactly when the two sides move.
-    # The check reports that the two disagree; which side to change is the
-    # governance decision, not this tool's.
-    _registry, registry_errors = check_queue.standards_gate_registry(root)
-    failures.extend(registry_errors)
-
-    canonical_read_sets = dict(read_registry_pairs)
-    for record in runtime_records:
-        route_id = record["route_id"]
-        if route_id and canonical_read_sets.get(route_id) != record["read_set"]:
-            failures.append(
-                "%s route %s must bind Read Set %s, not %s"
-                % (
-                    record["rel"],
-                    route_id,
-                    canonical_read_sets.get(route_id, "<unregistered>"),
-                    record["read_set"] or "<missing>",
-                )
-            )
-
-    versions = {record["compiled_from"] for record in records if record["compiled_from"]}
-    if len(versions) > 1:
-        failures.append("compiled_from is not uniform across the Card layer: %s" % sorted(versions))
-
-    if failures:
-        for failure in failures:
-            print("  [FAIL] %s" % failure)
-        print("stamp_cards: FAIL — %d structural error(s)" % len(failures))
-        return 1
-
-    version_mismatches = [
-        record["rel"] for record in records
-        if record["compiled_from"] != active_version
-    ]
-    if version_mismatches and not args.check and not args.set_version:
-        print(
-            "stamp_cards: FAIL — %d Card version stamp(s) do not equal the "
-            "active standards_version %r" %
-            (len(version_mismatches), active_version)
-        )
-        print(
-            "  Re-run with --set-version %s to synchronize compiled_from."
-            % active_version
-        )
-        return 1
-
-    stale = list(budget_candidates)
-    semantic_stale = []
-    for candidate in budget_candidates:
-        print("  [CAND] %s" % candidate)
-
+    stale = []
     rendered = []
-    for record in records:
+    for route_id in sorted(cards):
+        record = cards[route_id]
         try:
-            expected_hash = source_digest(record["source_paths"])
-        except OSError as exc:
-            print(
-                "stamp_cards: FAIL — source changed or became unreadable while hashing %s: %s"
-                % (record["rel"], exc)
-            )
+            expected_hash = source_digest(root, record["source_files"])
+        except CardContractError as exc:
+            print("stamp_cards: FAIL — %s" % exc)
             return 1
-        hash_stale = record["source_hash"] != expected_hash
-        compiled_hash_stale = record["compiled_source_hash"] != expected_hash
-        version_stale = record["compiled_from"] != active_version
+        reasons = []
+        if record["source_hash"] != expected_hash:
+            reasons.append("source_hash %s -> %s" %
+                           (record["source_hash"], expected_hash))
+        if record["reviewed_source_hash"] != expected_hash:
+            reasons.append("reviewed_source_hash %s -> %s" %
+                           (record["reviewed_source_hash"], expected_hash))
+        if record["reviewed_card_hash"] != record["body_hash"]:
+            reasons.append("reviewed_card_hash %s -> %s" %
+                           (record["reviewed_card_hash"],
+                            record["body_hash"]))
         if args.check:
-            if hash_stale or compiled_hash_stale or version_stale:
-                stale.append(record["rel"])
-                details = []
-                if hash_stale:
-                    details.append("hash %s -> %s" % (record["source_hash"], expected_hash))
-                if compiled_hash_stale:
-                    details.append(
-                        "compiled_source_hash %s -> %s (semantic compilation "
-                        "must be acknowledged explicitly)"
-                        % (record["compiled_source_hash"], expected_hash)
-                    )
-                if version_stale:
-                    details.append(
-                        "compiled_from %s -> %s"
-                        % (record["compiled_from"], active_version)
-                    )
-                print("  [CAND] %s: %s" % (record["rel"], "; ".join(details)))
+            if reasons:
+                stale.append(record["path"])
+                print("  [CAND] %s: %s" % (record["path"], "; ".join(reasons)))
             continue
-
-        try:
+        text = replace_frontmatter_scalar(
+            record["text"], "source_hash", expected_hash)
+        if args.acknowledge_review:
             text = replace_frontmatter_scalar(
-                record["text"], "source_hash", expected_hash
-            )
-            compiled_hash_after = record["compiled_source_hash"]
-            if args.acknowledge_compiled:
-                text = replace_frontmatter_scalar(
-                    text, "compiled_source_hash", expected_hash
-                )
-                compiled_hash_after = expected_hash
-            if args.set_version:
-                text = replace_frontmatter_scalar(
-                    text, "compiled_from", args.set_version
-                )
-            parsed_front = kblib.parse_yaml_subset(
-                kblib.extract_frontmatter(text) or ""
-            )
-        except (ValueError, kblib.YamlSubsetError) as exc:
-            print(
-                "stamp_cards: FAIL — rendered frontmatter is invalid for %s: %s"
-                % (record["rel"], exc)
-            )
+                text, "reviewed_source_hash", expected_hash)
+            text = replace_frontmatter_scalar(
+                text, "reviewed_card_hash", record["body_hash"])
+        if ((record["reviewed_source_hash"] != expected_hash or
+             record["reviewed_card_hash"] != record["body_hash"]) and
+                not args.acknowledge_review):
+            stale.append(record["path"])
+        rendered.append((root / record["path"], text))
+
+    card_index = render_card_index(cards, read_sets)
+    read_index = render_read_set_index(read_sets)
+    try:
+        card_schema = load_card_schema(root)
+        read_set_schema = read_set_contract.load_schema(root)
+    except (CardContractError,
+            read_set_contract.ReadSetContractError) as exc:
+        print("stamp_cards: FAIL — %s" % exc)
+        return 1
+    index_pairs = (
+        (root / card_schema["index_path"], card_index),
+        (root / read_set_schema["index_path"], read_index),
+    )
+    for path, expected in index_pairs:
+        try:
+            current = kblib.read_text(path)
+        except (OSError, UnicodeError) as exc:
+            print("stamp_cards: FAIL — generated index %s is unreadable: %s" %
+                  (path.relative_to(root), exc))
             return 1
-        if (parsed_front.get("source_hash") != expected_hash or
-                parsed_front.get("compiled_source_hash") != compiled_hash_after or
-                parsed_front.get("compiled_from") != active_version):
-            print(
-                "stamp_cards: FAIL — rendered frontmatter does not round-trip "
-                "for %s (source_hash=%r compiled_source_hash=%r "
-                "compiled_from=%r)" %
-                (record["rel"], parsed_front.get("source_hash"),
-                 parsed_front.get("compiled_source_hash"),
-                 parsed_front.get("compiled_from"))
-            )
-            return 1
-        if compiled_hash_after != expected_hash:
-            semantic_stale.append(record["rel"])
-        rendered.append(
-            (record["path"], record["rel"], text, expected_hash,
-             compiled_hash_after)
-        )
+        if current != expected:
+            if args.check:
+                stale.append(path.relative_to(root).as_posix())
+                print("  [CAND] %s: generated navigation is stale" %
+                      path.relative_to(root))
+            else:
+                rendered.append((path, expected))
 
     if args.check:
-        print(
-            "stamp_cards --check: routes=%d read_sets=%d runtime_cards=%d "
-            "indexes=2 stale=%d"
-            % (
-                len(expected_routes),
-                len(read_set_records),
-                len(runtime_records),
-                len(stale),
-            )
-        )
+        print("stamp_cards --check: read_sets=%d curated_cards=%d indexes=2 stale=%d" %
+              (len(read_sets), len(cards), len(stale)))
         return 2 if stale else 0
 
     changes = []
-    for path, rel, text, expected_hash, _compiled_hash_after in rendered:
-        current = kblib.read_text(path)
-        if current == text:
-            continue
-        changes.append((path, rel, text, expected_hash, current))
-
-    written = []
+    for path, text in rendered:
+        try:
+            current = kblib.read_text(path)
+        except (OSError, UnicodeError) as exc:
+            print("stamp_cards: FAIL — %s is unreadable: %s" %
+                  (path.relative_to(root), exc))
+            return 1
+        if current != text:
+            changes.append((path, text))
     try:
-        for path, rel, text, expected_hash, original in changes:
-            atomic_write(path, text)
-            written.append((path, rel, original))
+        _write_changes(changes)
     except (OSError, ValueError) as exc:
-        rollback_errors = []
-        for path, rel, original in reversed(written):
-            try:
-                atomic_write(path, original)
-            except (OSError, ValueError) as rollback_exc:
-                rollback_errors.append("%s: %s" % (rel, rollback_exc))
         print("stamp_cards: FAIL — write transaction aborted: %s" % exc)
-        if rollback_errors:
-            print("  [FAIL] rollback was incomplete: %s" %
-                  "; ".join(rollback_errors))
-        else:
-            print("  No Card changes remain; earlier writes were rolled back.")
         return 1
-
-    for _path, rel, _text, expected_hash, _original in changes:
-        print("  [STAMP] %s -> %s" % (rel, expected_hash))
-    for rel in semantic_stale:
-        print(
-            "  [CAND] %s: source bytes are stamped but semantic compilation "
-            "is not acknowledged; regenerate/review the Card body, then rerun "
-            "with --acknowledge-compiled" % rel
-        )
-    print(
-        "stamp_cards: routes=%d read_sets=%d runtime_cards=%d indexes=2 "
-        "semantic_stale=%d updated=%d"
-        % (
-            len(expected_routes),
-            len(read_set_records),
-            len(runtime_records),
-            len(semantic_stale),
-            len(changes),
-        )
-    )
-    return 2 if semantic_stale or budget_candidates else 0
+    print("stamp_cards: read_sets=%d curated_cards=%d indexes=2 review_stale=%d updated=%d" %
+          (len(read_sets), len(cards), len(stale), len(changes)))
+    return 2 if stale else 0
 
 
 if __name__ == "__main__":

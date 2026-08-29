@@ -20,26 +20,26 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import check_queue
 import kblib
 import amendment_policy
+import coverage_contract
+import runtime_paths
+import work_spec_contract
+import runtime_state_contract
+import vocabulary_contract
 
-QUEUE_PATH = ".cambium/state/required_queue.yaml"
-COVERAGE_PATH = ".cambium/state/coverage_ledger.yaml"
-PROGRESS_PATH = ".cambium/state/progress_ledger.yaml"
-REPLAN_PROPOSAL_PREFIX = ".cambium/deltas/replans"
+QUEUE_PATH = runtime_paths.QUEUE_PATH
+COVERAGE_PATH = runtime_paths.COVERAGE_PATH
+PROGRESS_PATH = runtime_paths.PROGRESS_PATH
+REPLAN_PROPOSAL_PREFIX = runtime_paths.REPLAN_DELTA_ROOT
 TOOL_VERSION = "1.5.0"
-PRIORITY = {"P0": 0, "P1": 1, "P2": 2}
+PRIORITY = vocabulary_contract.PRIORITY_ORDER
 STRUCTURAL_FIELDS = (
     "family", "order", "record_count", "manifest", "source_route",
     "execution_mode", "depends_on", "confirmation_required", "successor_of",
-    "work_spec_path", "work_spec_sha256",
-)
-WORK_SPEC_FIELDS = check_queue.WORK_SPEC_FIELDS
-REPLAN_PAGE_FIELDS = frozenset(("batch", "next_batch"))
-COVERAGE_TOP_LEVEL_FIELDS = frozenset((
-    "schema_version", "task_id", "updated_at", "scope_version",
-    "standards_version", "selected_profile_manifest", "batch_specs",
-    "maintenance_candidates", "pages", "open_gaps",
-))
-BATCH_SPEC_FIELDS = check_queue.COVERAGE_BATCH_SPEC_FIELDS
+) + tuple(sorted(work_spec_contract.WORK_SPEC_BINDING_FIELDS))
+WORK_SPEC_FIELDS = work_spec_contract.WORK_SPEC_BINDING_FIELDS
+REPLAN_PAGE_FIELDS = coverage_contract.COVERAGE_REROUTE_FIELDS
+COVERAGE_TOP_LEVEL_FIELDS = coverage_contract.COVERAGE_TOP_LEVEL_FIELDS
+BATCH_SPEC_FIELDS = coverage_contract.COVERAGE_BATCH_SPEC_FIELDS
 
 
 # ---------------------------------------------------------------------------
@@ -98,7 +98,7 @@ def _run_reporting_json(runner):
 
 def _load(root, relative):
     path = kblib.managed_repository_path(
-        root, relative, ".cambium/state",
+        root, relative, runtime_paths.STATE_ROOT,
         suffixes=(".yaml",), must_exist=True,
     )
     return path, kblib.load_yaml_file(path)
@@ -229,7 +229,7 @@ def _batch_specs(coverage):
         work_spec_sha256 = spec.get("work_spec_sha256")
         if not isinstance(family, str) or not family:
             raise ValueError("%s family must be a non-empty string" % batch_id)
-        if mode not in ("concurrent-worker", "serial-integrator"):
+        if mode not in runtime_state_contract.EXECUTION_MODES:
             raise ValueError("%s execution_mode must be concurrent-worker or "
                              "serial-integrator" % batch_id)
         if source_route is not None and not isinstance(source_route, str):
@@ -281,7 +281,7 @@ def _build_groups(coverage, terminal_history_ids=(), allow_empty=False):
             continue
         batch_bindings = []
         seen_batch_ids = set()
-        for key in ("batch", "next_batch"):
+        for key in sorted(REPLAN_PAGE_FIELDS):
             value = page.get(key)
             if (isinstance(value, str) and value and
                     value not in seen_batch_ids):
@@ -487,7 +487,9 @@ def compile_document(queue, coverage):
         raise ValueError("existing required_queue must be a list")
     terminal_history_ids = {
         item.get("id") for item in existing
-        if isinstance(item, dict) and item.get("state") in ("closed", "cancelled")
+        if (isinstance(item, dict) and
+            item.get("state") in
+            runtime_state_contract.QUEUE_TERMINAL_STATES)
     }
     groups = _build_groups(
         coverage, terminal_history_ids, allow_empty=bool(existing))
@@ -635,7 +637,8 @@ def replan_diff(queue, proposal, base_sha):
             })
     for item_id in sorted(set(current_items) - set(proposed_items)):
         current = current_items[item_id]
-        if current.get("state") in ("closed", "cancelled"):
+        if (current.get("state") in
+                runtime_state_contract.QUEUE_TERMINAL_STATES):
             # batch_specs describes the current proposal, not immutable Queue
             # history.  Absence is therefore expected for terminal entries.
             continue
@@ -663,7 +666,7 @@ def replan_diff(queue, proposal, base_sha):
                            if current_items[item_id].get("state") == "cancelled"]
     preserved_inflight = [item_id for item_id in preserved
                           if current_items[item_id].get("state") in
-                          ("open", "merge-ready")]
+                          runtime_state_contract.QUEUE_ACTIVE_STATES]
     has_changes = bool(adds or updates or reorders or removes)
     return {
         "schema_version": 1,
@@ -1069,10 +1072,12 @@ def main(argv=None):
                             help="apply a controlled structural diff to a non-empty Queue")
     parser.add_argument(
         "--coverage-proposal",
-        help="repository-contained .cambium/deltas/replans/*.coverage.yaml input",
+        help="repository-contained %s/*.coverage.yaml input" %
+        runtime_paths.REPLAN_DELTA_ROOT,
     )
     parser.add_argument("--replan-diff",
-                        help="existing .cambium/tmp/*.yaml diff to consume")
+                        help="existing %s/*.yaml diff to consume" %
+                        runtime_paths.TRANSIENT_ROOT)
     parser.add_argument("--amendment-id",
                         help="registered Amendment id authorizing the replan; "
                              "required with --apply-replan")
@@ -1101,8 +1106,9 @@ def main(argv=None):
                         help="declared caller role; only integrator may apply "
                              "a Queue write or replan")
     parser.add_argument("--receipts",
-                        default=".cambium/receipts/queue-structure.jsonl",
-                        help="receipt JSONL path under .cambium/receipts")
+                        default=runtime_paths.QUEUE_STRUCTURE_RECEIPT_PATH,
+                        help="receipt JSONL path under %s" %
+                        runtime_paths.RECEIPT_ROOT)
     parser.add_argument("--json", action="store_true", help=JSON_HELP)
     args = parser.parse_args(argv)
     if not args.json:
@@ -1154,8 +1160,8 @@ def _run(args):
             if not args.coverage_proposal:
                 raise ValueError(
                     "a non-empty Queue requires --coverage-proposal inside "
-                    ".cambium/deltas/replans/; never pre-edit canonical Coverage"
-                )
+                    "%s/; never pre-edit canonical Coverage" %
+                    runtime_paths.REPLAN_DELTA_ROOT)
             proposal_coverage_path = args.coverage_proposal
             proposal_coverage_file, proposal_coverage_text, proposal_coverage = \
                 _load_replan_proposal(root, proposal_coverage_path)
@@ -1192,7 +1198,7 @@ def _run(args):
         if args.output:
             try:
                 output = kblib.managed_repository_path(
-                    root, args.output, ".cambium/tmp",
+                    root, args.output, runtime_paths.TRANSIENT_ROOT,
                     suffixes=(".yaml",), must_exist=False,
                 )
                 kblib.atomic_write_text(output, diff_text,
@@ -1231,7 +1237,7 @@ def _run(args):
         if args.replan_diff:
             try:
                 diff_path = kblib.managed_repository_path(
-                    root, args.replan_diff, ".cambium/tmp",
+                    root, args.replan_diff, runtime_paths.TRANSIENT_ROOT,
                     suffixes=(".yaml",), must_exist=True,
                 )
                 supplied_diff = kblib.load_yaml_file(diff_path)
@@ -1336,7 +1342,7 @@ def _run(args):
             return 1
         try:
             receipt_path = kblib.managed_repository_path(
-                root, args.receipts, ".cambium/receipts",
+                root, args.receipts, runtime_paths.RECEIPT_ROOT,
                 suffixes=(".jsonl",), must_exist=False,
             )
         except ValueError as exc:
@@ -1407,7 +1413,7 @@ def _run(args):
                     "queue": replanned_text,
                     "progress": progress_text,
                 },
-                ("coverage", "queue", "progress"),
+                runtime_state_contract.RUNTIME_LEDGER_IDS,
                 receipt_path, prepare_receipt, receipt, abort_receipt,
                 operation, authority,
                 lock_validator=revalidate_delegated_decision,
@@ -1426,7 +1432,7 @@ def _run(args):
     if args.output:
         try:
             output = kblib.managed_repository_path(
-                root, args.output, ".cambium/tmp",
+                root, args.output, runtime_paths.TRANSIENT_ROOT,
                 suffixes=(".yaml",), must_exist=False,
             )
             kblib.atomic_write_text(output, proposal_text,
@@ -1498,7 +1504,7 @@ def _run(args):
         return 1
     try:
         receipt_path = kblib.managed_repository_path(
-            root, args.receipts, ".cambium/receipts",
+            root, args.receipts, runtime_paths.RECEIPT_ROOT,
             suffixes=(".jsonl",), must_exist=False,
         )
     except ValueError as exc:

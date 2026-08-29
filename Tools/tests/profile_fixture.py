@@ -11,25 +11,22 @@ TOOLS = TESTS.parent
 REPOSITORY = TOOLS.parent
 SYNTHETIC_PROFILE = TESTS / "fixtures" / "synthetic_profile"
 
-if str(TOOLS) not in sys.path:
-    sys.path.insert(0, str(TOOLS))
-import profile_contract  # noqa: E402  (path set above)
+for path in (str(TESTS), str(TOOLS)):
+    if path not in sys.path:
+        sys.path.insert(0, path)
 import kblib  # noqa: E402
 import metadata_execution_contract  # noqa: E402
+import module_boundary_facts  # noqa: E402
 import standards_state  # noqa: E402
-
-# Derived, never re-listed: `check_profile` refuses a repository whose
-# interface slot list and this registry disagree, so deriving the synthetic
-# interface from the registry keeps the fixture in step with the real one by
-# construction instead of by whoever remembers to edit both.
-PROFILE_INTERFACE = "# Profiles\n\n" + "".join(
-    "## %s Slot\n\n" % name
-    for name in profile_contract.PROFILE_FILE_SLOTS
+import stamp_cards  # noqa: E402
+from canonical_registry_fixture import (  # noqa: E402
+    contract_exception_owner_paths,
+    install_isolated_tool_registry_bundle,
 )
-
 
 RUNTIME_ROUTES = ["R%02d" % number for number in range(1, 14)]
 RUNTIME_SELECTED_ROUTES = ("R01", "R03", "R07")
+FIXTURE_UPSTREAM_REVISION = "0123456789abcdef0123456789abcdef01234567"
 
 
 def _runtime_route_paths(route_id):
@@ -40,8 +37,8 @@ def _runtime_route_paths(route_id):
     }
     label = names.get(route_id, "Fixture")
     return (
-        "kernel/Cards/%s %s Card.md" % (route_id, label),
-        "kernel/Read Sets/%s %s Read Set.md" % (route_id, label),
+        "Card/%s %s Card.md" % (route_id, label),
+        "Read Set/%s %s Read Set.md" % (route_id, label),
     )
 
 
@@ -61,48 +58,95 @@ def _runtime_index_text(document_type, card_index):
 
 
 def _install_runtime_activation_fixture(root):
-    """Install a small but exact Card-first boundary into runtime fixtures."""
-    card_index = root / "kernel/Cards/Card Index.md"
-    card_index.parent.mkdir(parents=True, exist_ok=True)
-    card_index.write_text(
-        _runtime_index_text("card-index", True), encoding="utf-8")
-    read_index = root / "kernel/Read Sets/Read Sets Index.md"
-    read_index.parent.mkdir(parents=True, exist_ok=True)
-    read_index.write_text(
-        _runtime_index_text("route-index", False), encoding="utf-8")
+    """Install minimal current Card and Read Set declarations in fixtures."""
+    card_directory = root / "Card"
+    read_directory = root / "Read Set"
+    card_directory.mkdir(parents=True, exist_ok=True)
+    read_directory.mkdir(parents=True, exist_ok=True)
     conditional = "kernel/K03 Fixture/01 Conditional Review.md"
     conditional_path = root / conditional
     conditional_path.parent.mkdir(parents=True, exist_ok=True)
     conditional_path.write_text(
         "# Conditional Review\n\nRead this source after the Card declares the "
         "fixture trigger.\n", encoding="utf-8")
-    for route_id in RUNTIME_SELECTED_ROUTES:
+    phase_by_route = {
+        "R08": "task-completion",
+        "R09": "governance",
+        "R12": "batch-gate",
+    }
+    for route_id in RUNTIME_ROUTES:
         card_relative, read_relative = _runtime_route_paths(route_id)
         read_path = root / read_relative
         read_path.parent.mkdir(parents=True, exist_ok=True)
-        read_path.write_text(
-            "---\ntype: read-set\nroute_id: %s\n---\n"
-            "# %s Fixture Read Set\n\n## Purpose\n\n"
-            "Bound the fixture route without transitive leaves.\n" %
-            (route_id, route_id), encoding="utf-8")
-        sources = [conditional] if route_id == "R03" else []
-        card = {
-            "type": "runtime-card",
+        edges = [{
+            "edge_id": "%s:start" % route_id,
+            "kind": "required",
+            "phase_id": phase_by_route.get(
+                route_id, "batch-preflight"),
+            "trigger_id": "route-selected",
+            "targets": [conditional],
+            "read_sets": [],
+        }]
+        if route_id == "R03":
+            edges.append({
+                "edge_id": "R03:conditional",
+                "kind": "read-back",
+                "phase_id": "batch-running",
+                "trigger_id": "R03:semantic-condition",
+                "targets": [conditional],
+                "read_sets": [],
+            })
+        declaration = {
+            "type": "read-set",
+            "schema_version": 1,
             "route_id": route_id,
+            "activation_phase": phase_by_route.get(
+                route_id, "batch-preflight"),
+            "narrowable": route_id not in ("R01", "R08", "R09"),
+            "load_edges": edges,
+        }
+        read_text = (
+            "---\n%s---\n# %s Fixture Read Set\n\n## Purpose\n\n"
+            "Bound the already selected fixture route.\n\n"
+            "## Non-deterministic triggers\n\n"
+            "The fixture conditional is declared by identity.\n" %
+            (kblib.canonical_yaml(declaration), route_id))
+        read_path.write_text(read_text, encoding="utf-8")
+        source_hash = stamp_cards.source_digest(root, [read_relative])
+        card = {
+            "type": "card",
+            "generation_mode": "curated",
+            "route_id": route_id,
+            "read_set_id": route_id,
             "read_set": read_relative,
-            "compiled_from": "3.0.0",
             "source_files": [read_relative],
-            "readback_sources": sources,
-            "readback_policy": "declared" if sources else "none",
-            "source_hash": "0123456789ab",
-            "compiled_source_hash": "0123456789ab",
+            "source_hash": source_hash,
+            "reviewed_source_hash": source_hash,
+            "reviewed_card_hash": "000000000000",
         }
         card_path = root / card_relative
         card_path.parent.mkdir(parents=True, exist_ok=True)
         card_path.write_text(
             "---\n%s---\n# %s Fixture Card\n\n"
-            "This compact Card is the exact activation payload.\n" %
-            (kblib.canonical_yaml(card), route_id), encoding="utf-8")
+            "## Purpose\n\nAct on an already selected fixture route.\n\n"
+            "## Actions\n\n- Invoke the fixture capability.\n\n"
+            "## Stop or escalate\n\n- Stop when fixture input is absent.\n\n"
+            "## Read-back hook\n\nReturn to Read Set `%s`.\n" %
+            (kblib.canonical_yaml(card), route_id, route_id),
+            encoding="utf-8")
+        card_text = card_path.read_text(encoding="utf-8")
+        card_path.write_text(stamp_cards.replace_frontmatter_scalar(
+            card_text, "reviewed_card_hash",
+            stamp_cards.card_body_digest(card_text)), encoding="utf-8")
+
+    (card_directory / "Card Index.md").write_text(
+        "---\ntype: card-index\ngeneration_mode: generated\n"
+        "source: fixture declarations\n---\n# Fixture Card Index\n",
+        encoding="utf-8")
+    (read_directory / "Read Sets Index.md").write_text(
+        "---\ntype: route-index\ngeneration_mode: generated\n"
+        "source: fixture declarations\n---\n# Fixture Read Set Index\n",
+        encoding="utf-8")
 
     # The shared valid runtime predates Task Plan derivation.  Give only that
     # fixture the complete frozen envelope that a current task-plan writer
@@ -122,7 +166,11 @@ def _install_runtime_activation_fixture(root):
     contract["selected_read_sets"] = sorted(
         _runtime_route_paths(route_id)[1]
         for route_id in RUNTIME_SELECTED_ROUTES)
-    contract["loaded_module_paths"] = []
+    # Every selected runtime Read Set declares the same required fixture
+    # target.  Freeze that resolved direct-target union into the Task Contract
+    # just as the real task-plan/adoption writer does; leaving it empty makes
+    # the shared fixture itself under-declare its canonical load closure.
+    contract["loaded_module_paths"] = [conditional]
     progress_path.write_text(kblib.canonical_yaml(progress), encoding="utf-8")
     records = [json.loads(line) for line in receipt_path.read_text(
         encoding="utf-8").splitlines() if line.strip()]
@@ -137,9 +185,32 @@ def _install_runtime_activation_fixture(root):
 
 
 def install_loadable_profile(root, profile_id="test-profile",
-                             override_rows="", standards_version="3.0.0"):
-    """Overlay a real 14-slot Profile and its root-owned dependencies."""
+                             override_rows="",
+                             standards_version=FIXTURE_UPSTREAM_REVISION):
+    """Overlay a real Profile and the production dependencies it consumes.
+
+    Runtime tests consume one shared R01-R13 activation declaration set so
+    separate fixtures cannot claim the same route identity differently.
+    """
     root = Path(root)
+    # Copied production modules resolve their Kernel-owned registries against
+    # this scratch root at import time. Install the complete canonical bundle
+    # through one fixture owner rather than growing per-test path lists.
+    install_isolated_tool_registry_bundle(root)
+    # The contract-exception registry validates owner *existence*, while its
+    # YAML remains the sole machine authority.  Exact copies of those prose
+    # owners pull their full Wiki Link graph into this deliberately isolated
+    # repository and make an unrelated link Gate fail on absent modules.
+    # Replace only those explanatory pages with link-free fixture owners; do
+    # not recreate any registry values in prose.
+    for relative in contract_exception_owner_paths():
+        owner = root / relative
+        owner.write_text(
+            "# Fixture Kernel Owner\n\n"
+            "The canonical machine policy is installed from the Kernel "
+            "registry.\n",
+            encoding="utf-8",
+        )
     profile = root / "profiles" / profile_id
     shutil.copytree(SYNTHETIC_PROFILE, profile, dirs_exist_ok=True)
     for name in ("profile.md", "slots.md"):
@@ -156,17 +227,17 @@ def install_loadable_profile(root, profile_id="test-profile",
             encoding="utf-8",
         )
 
-    (root / "profiles/README.md").write_text(
-        PROFILE_INTERFACE, encoding="utf-8")
     (root / "Tools/schemas").mkdir(parents=True, exist_ok=True)
     shutil.copy2(
         TOOLS / "schemas/execution_defaults.template.yaml",
         root / "Tools/schemas/execution_defaults.template.yaml",
     )
-    shutil.copy2(
-        TOOLS / "check_residual_content.py",
-        root / "Tools/check_residual_content.py",
-    )
+    # A registered production consumer needs the verifier's whole shipped
+    # dependency closure, not one copied entry-point file that crashes when
+    # invoked in the adopting repository.  Derive that closure from the same
+    # module-boundary owner used by distribution.
+    module_boundary_facts.stage_shipped_modules(
+        str(REPOSITORY), str(root), ["check_residual_content"])
     # ``profile-load`` and every metadata writer share one compiled authority
     # bundle.  Runtime fixtures install its canonical sources and after-image
     # together so tests exercise currentness rather than an implicit fallback
@@ -175,6 +246,14 @@ def install_loadable_profile(root, profile_id="test-profile",
     shutil.copy2(
         TOOLS / "operation-capabilities.yaml",
         root / "Tools/operation-capabilities.yaml",
+    )
+    shutil.copy2(
+        TOOLS / "runtime_paths.py",
+        root / "Tools/runtime_paths.py",
+    )
+    shutil.copy2(
+        TOOLS / "scan-capabilities.yaml",
+        root / "Tools/scan-capabilities.yaml",
     )
     capability_document = kblib.parse_yaml_subset(
         (TOOLS / "operation-capabilities.yaml").read_text(encoding="utf-8"))
@@ -187,58 +266,14 @@ def install_loadable_profile(root, profile_id="test-profile",
         TOOLS / "compiled/metadata-execution-contract.json",
         root / "Tools/compiled/metadata-execution-contract.json",
     )
-    metadata_authority = (
-        root / "kernel/K08 Metadata and Status/metadata-authority-base.yaml")
-    metadata_authority.parent.mkdir(parents=True, exist_ok=True)
-    shutil.copy2(
-        REPOSITORY /
-        "kernel/K08 Metadata and Status/metadata-authority-base.yaml",
-        metadata_authority,
-    )
-    for relative in (
-            profile_contract.KERNEL_APPLICABILITY_PATH,
-            profile_contract.KERNEL_RELATIONSHIP_PATH):
-        target = root / relative
-        target.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copy2(REPOSITORY / relative, target)
-    control_registry = (
-        root / "kernel/K00 Standards Control/12 Control Registry.md")
-    control_registry.parent.mkdir(parents=True, exist_ok=True)
-    # Profile Gate compilation and Queue validation consume the two closed
-    # registry tables, not K00/12's navigation prose.  Project only those
-    # tables into the deliberately tiny fixture repository: copying the whole
-    # module would add links to every kernel owner page and turn an interface
-    # fixture into a partial, structurally broken kernel checkout.
-    registry_source = (REPOSITORY /
-        "kernel/K00 Standards Control/12 Control Registry.md").read_text(
-            encoding="utf-8")
-    wanted = {
-        "Stable Gate ID Registry",
-        "Standards Revalidation Capability Registry",
-    }
-    projected = ["# Fixture Control Registries", ""]
-    active = None
-    for line in registry_source.splitlines():
-        if line.startswith("## "):
-            heading = line[3:].strip().strip("#").strip()
-            active = heading if heading in wanted else None
-            if active is not None:
-                projected.extend(["## %s" % active, ""])
-            continue
-        if active is not None and line.lstrip().startswith("|"):
-            projected.append(line)
-        elif active is not None and projected[-1].startswith("|"):
-            projected.append("")
-            active = None
-    control_registry.write_text("\n".join(projected).rstrip() + "\n",
-                                encoding="utf-8")
-    defaults = root / "kernel/K00 Standards Control/execution-defaults-base.yaml"
-    defaults.parent.mkdir(parents=True, exist_ok=True)
-    shutil.copy2(
-        REPOSITORY /
-        "kernel/K00 Standards Control/execution-defaults-base.yaml",
-        defaults,
-    )
+    # Bind the fixture projection to the exact implementation bytes copied
+    # above. The source checkout may legitimately be testing an uncommitted
+    # implementation revision while its committed projection still names HEAD.
+    compiled = metadata_execution_contract.compile_metadata_execution_contract(
+        str(root))
+    kblib.atomic_write_text(
+        root / metadata_execution_contract.DEFAULT_COMPILED_PATH,
+        compiled.canonical_bytes.decode("utf-8"))
     active = root / standards_state.STATE_PATH
     active.parent.mkdir(parents=True, exist_ok=True)
     if not active.exists():
@@ -251,8 +286,8 @@ def install_loadable_profile(root, profile_id="test-profile",
             "selected_profile_manifest":
                 "profiles/%s/profile.md" % profile_id,
             "latest_adoption_receipt": "audit-fixture-standards-adoption",
-            "upstream_source_ref": None,
-            "upstream_revision_id": None,
+            "upstream_source_ref": "fixture://cambium",
+            "upstream_revision_id": standards_version,
         }), encoding="utf-8")
     _install_runtime_activation_fixture(root)
     return profile

@@ -22,8 +22,8 @@ standards_version: ""
 selected_profile_manifest: ""
 
 # Each item explicitly carries all fields below.  Its manifest is non-empty,
-# record_count is positive and equals len(manifest), and execution_mode is
-# concurrent-worker or serial-integrator.  Aggregate/zero-record items are
+# record_count is positive and equals len(manifest), and execution_mode is a
+# value registered by the K13 runtime state model. Aggregate/zero-record items are
 # forbidden. `work_spec_path` and `work_spec_sha256` are also required: both
 # null explicitly identify a simple batch; both non-null bind a complex batch
 # to its exact restricted-YAML contract under `.cambium/work_specs/`. A missing field

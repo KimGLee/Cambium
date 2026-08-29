@@ -7,6 +7,7 @@ would prove a different run complete.
 """
 
 import kblib
+import runtime_state_contract
 import maintenance_candidates
 
 from queue_runtime.canon import (
@@ -17,6 +18,7 @@ from queue_runtime.canon import (
     SUPPORTED_CHECK_QUEUE_TOOL_VERSIONS,
     TERMINAL_STATES,
     TOOL,
+    WATERMARK_PATH,
 )
 from queue_runtime.primitives import (
     closed_mapping_errors,
@@ -390,8 +392,11 @@ def maintenance_completion_gate_errors(root, result,
             "--require-maintenance-complete requires "
             "contract.completion_semantics=maintenance"
         )
-    allowed_states = (("planned", "active", "complete")
-                      if allow_complete else ("planned", "active"))
+    allowed_states = (
+        runtime_state_contract.MAINTENANCE_COMPLETION_REPLAY_TASK_STATES
+        if allow_complete else
+        runtime_state_contract.MAINTENANCE_COMPLETION_TASK_STATES
+    )
     if progress.get("task_state") not in allowed_states:
         errors.append(
             "maintenance completion gate requires task_state=planned or active"
@@ -447,7 +452,8 @@ def maintenance_completion_gate_errors(root, result,
     watermark = _maintenance_evidence_receipt(
         root, result, watermark_advance_receipt,
         "maintenance watermark advance",
-        dict(common, check="maintenance_watermark_advanced", advanced=True),
+        dict(common, check="maintenance_watermark_advanced", advanced=True,
+             watermark_path=WATERMARK_PATH),
         "watermark_path", "after_watermark_sha256", errors,
     )
 

@@ -25,22 +25,21 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import check_queue
 import batch_settlement
+import coverage_contract
 import coverage_delta
 import kblib
 import metadata_execution_contract
 import metadata_property_state
 import project_page_state
+import runtime_paths
+import runtime_state_contract
 
 TOOL, TOOL_VERSION = "apply_delta", "1.6.0"
 
 # These fields are owned by Coverage reconciliation / Queue compilation, not
 # by a worker-produced page delta.  Their presence is an operation-wide error
 # even when the supplied value is identical to the current value.
-CONTROL_FIELDS = frozenset((
-    "coverage_disposition", "canonical_owner", "batch", "next_batch",
-    "priority", "tier", "type", "prerequisites", "deferred_reason",
-    "reentry_condition",
-))
+CONTROL_FIELDS = coverage_contract.COVERAGE_DELTA_PAGE_CONTROL_FIELDS
 
 # Known non-control scalar fields in the generic Coverage contract.  Profile
 # extension fields remain legal and visible through warnings.
@@ -347,7 +346,8 @@ def _print_plan(delta, planned, rejected, unknown_keys):
 
 def _canonical_paths(args, batch):
     expected_ledger = check_queue.COVERAGE_PATH
-    expected_delta = ".cambium/deltas/%s.yaml" % batch
+    expected_delta = runtime_paths.child_path(
+        runtime_paths.DELTA_ROOT, "%s.yaml" % batch)
     errors = []
     if args.ledger != expected_ledger:
         errors.append("canonical ledger argument must be exactly %s" %
@@ -369,8 +369,9 @@ def pre_apply_coverage_archive_path(batch, queue_state_revision):
     of a reconstruction.  The revision key keeps successive applies of the
     same batch from colliding.
     """
-    return ".cambium/receipts/pre-apply-coverage/%s-r%d.yaml" % (
-        batch, int(queue_state_revision or 0))
+    return runtime_paths.child_path(
+        runtime_paths.PRE_APPLY_COVERAGE_RECEIPT_ROOT,
+        "%s-r%d.yaml" % (batch, int(queue_state_revision or 0)))
 
 
 def _prepare_receipt(result, batch, delta_path, delta_sha,
@@ -422,11 +423,11 @@ def _canonical_apply(args, delta, new_text, planned, rejected,
 
     try:
         ledger_path = kblib.managed_repository_path(
-            root, args.ledger, ".cambium/state",
+            root, args.ledger, runtime_paths.STATE_ROOT,
             suffixes=(".yaml",), must_exist=True,
         )
         delta_path = kblib.managed_repository_path(
-            root, args.delta, ".cambium/deltas",
+            root, args.delta, runtime_paths.DELTA_ROOT,
             suffixes=(".yaml",), must_exist=True,
         )
         if not os.path.isfile(ledger_path) or not os.path.isfile(delta_path):
@@ -469,8 +470,9 @@ def _canonical_apply(args, delta, new_text, planned, rejected,
     if item is None:
         print("[FAIL] delta batch %s is absent from Required Queue" % batch)
         return 1
-    allowed_states = (("open", "merge-ready") if args.preflight
-                      else ("merge-ready",))
+    allowed_states = (runtime_state_contract.QUEUE_ACTIVE_STATES
+                      if args.preflight
+                      else frozenset(("merge-ready",)))
     if item.get("state") not in allowed_states:
         print("[FAIL] batch %s is %s, expected merge-ready" %
               (batch, item.get("state")))
@@ -577,12 +579,12 @@ def _canonical_apply(args, delta, new_text, planned, rejected,
             metadata_execution_contract.MetadataExecutionContractError) as exc:
         print("[FAIL] cannot bind semantic content-change events: %s" % exc)
         return 1
-    receipt_relative = args.receipts or (
-        ".cambium/receipts/%s.jsonl" % receipt["receipt_id"]
-    )
+    receipt_relative = args.receipts or runtime_paths.child_path(
+        runtime_paths.RECEIPT_ROOT,
+        "%s.jsonl" % receipt["receipt_id"])
     try:
         receipt_path = kblib.managed_repository_path(
-            root, receipt_relative, ".cambium/receipts",
+            root, receipt_relative, runtime_paths.RECEIPT_ROOT,
             suffixes=(".jsonl",), must_exist=False,
         )
     except (OSError, ValueError) as exc:
@@ -593,8 +595,8 @@ def _canonical_apply(args, delta, new_text, planned, rejected,
               receipt_relative)
         print("       A canonical apply writes one fresh receipt file rather "
               "than appending to a shared JSONL. Omit --receipts to let this "
-              "run name .cambium/receipts/<receipt_id>.jsonl itself, or pass "
-              "a path that does not exist yet.")
+              "run name %s/<receipt_id>.jsonl itself, or pass a path that "
+              "does not exist yet." % runtime_paths.RECEIPT_ROOT)
         return 1
     if not os.path.isdir(os.path.dirname(receipt_path)):
         print("[FAIL] canonical receipt parent must already exist")
@@ -734,7 +736,7 @@ def _canonical_apply(args, delta, new_text, planned, rejected,
 
                 old_text = kblib.read_text(ledger_path)
                 archive_path = kblib.managed_repository_path(
-                    root, archive_relative, ".cambium/receipts",
+                    root, archive_relative, runtime_paths.RECEIPT_ROOT,
                     suffixes=(".yaml",), must_exist=False,
                 )
                 archive_exists = os.path.lexists(archive_path)
@@ -953,7 +955,8 @@ def main(argv=None):
                              "requires exactly %s" % check_queue.COVERAGE_PATH)
     parser.add_argument("delta",
                         help="batch Coverage delta to apply; canonical mode "
-                             "requires exactly .cambium/deltas/<batch>.yaml")
+                             "requires exactly %s/<batch>.yaml" %
+                        runtime_paths.DELTA_ROOT)
     parser.add_argument("--root", help="adopting repository root (canonical mode)")
     mode = parser.add_mutually_exclusive_group()
     mode.add_argument("--apply", action="store_true",
@@ -981,8 +984,9 @@ def main(argv=None):
                              "differ")
     parser.add_argument("--receipts",
                         help="receipt JSONL destination; canonical mode "
-                             "defaults to a new .cambium/receipts/"
-                             "<receipt_id>.jsonl and refuses an existing path")
+                             "defaults to a new %s/"
+                             "<receipt_id>.jsonl and refuses an existing path" %
+                        runtime_paths.RECEIPT_ROOT)
     parser.add_argument("--json", action="store_true", help=JSON_HELP)
     args = parser.parse_args(argv)
     if not args.json:
@@ -1003,9 +1007,11 @@ def _run(args):
         for label, raw_path in detached_paths:
             lexical = os.path.abspath(raw_path).split(os.sep)
             resolved = os.path.realpath(os.path.abspath(raw_path)).split(os.sep)
-            if ".cambium" in lexical or ".cambium" in resolved:
-                print("[FAIL] detached mode may not access a .cambium namespace; "
-                      "canonical %s access requires --root" % label)
+            runtime_name = os.path.basename(runtime_paths.RUNTIME_ROOT)
+            if runtime_name in lexical or runtime_name in resolved:
+                print("[FAIL] detached mode may not access a %s namespace; "
+                      "canonical %s access requires --root" %
+                      (runtime_paths.RUNTIME_ROOT, label))
                 return 1
 
     try:

@@ -1,13 +1,16 @@
 # Synthetic Slot Fixture
 
-This file is the resolved test-only binding for slots whose domain semantics
-are outside the runtime and Terminal Proof tests.
+This file is the resolved test-only binding for slots whose domain semantics are outside the runtime and Terminal Proof tests.
+
+## Logical Architecture
+
+| Stable Layer ID | Repository-relative directories | Single layer responsibility |
+|---|---|---|
+| L-TOPICS | Topics | Own the synthetic knowledge pages exercised by runtime tests. |
 
 ## Extension Dimensions
 
-The Terminal Proof gate reads this block to enumerate the receipt dimensions a
-Proof must account for, so it is stated explicitly even where the fixture
-registers nothing: an absent block is an unreadable registry, not an empty one.
+The Terminal Proof gate reads this block to enumerate the receipt dimensions a Proof must account for, so it is stated explicitly even where the fixture registers nothing: an absent block is an unreadable registry, not an empty one.
 
 - Registration: None
 
@@ -27,14 +30,13 @@ A synthetic page has a title and one non-empty body paragraph.
 
 ## Synthetic Residual Disposition
 
-The fixture accepts no production candidate; any candidate must be removed or
-recorded as an intentional fixture exception before the batch closes.
+The fixture accepts no production candidate; any candidate must be removed or recorded as an intentional fixture exception before the batch closes.
 
 ## Scan Registrations
 
-| Stable Scan ID | Activation role | Whole-corpus scope/root | Deterministic verifier command/path | Candidate predicate/boundary | Judgment Item ID reference |
-|---|---|---|---|---|---|
-| `test-profile-residuals` | `K12/09 item 6 — residual-content scan` | Run once from the repository root. | `python3 Tools/check_residual_content.py . --scan-id test-profile-residuals --config profiles/test-profile/scan-configs/residual-scan.yaml --time-limit 55` | A synthetic scratch heading outside the accepted root is a candidate. | `test-profile-residual-disposition` |
+| Stable Scan ID | Activation role | Whole-corpus scope/root | Verifier capability ID | Profile configuration reference or `None` | Candidate predicate/boundary | Judgment Item ID reference |
+|---|---|---|---|---|---|---|
+| `test-profile-residuals` | `K12/09 item 6 — residual-content scan` | Run once from the repository root. | `residual-content-scan-v1` | `profiles/test-profile/scan-configs/residual-scan.yaml` | A synthetic scratch heading outside the accepted root is a candidate. | `test-profile-residual-disposition` |
 
 ## Extension Gates
 

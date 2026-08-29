@@ -1,6 +1,5 @@
 import copy
 import json
-import os
 from pathlib import Path
 import shutil
 import subprocess
@@ -25,8 +24,9 @@ import kblib
 # lands on the caller's globals.
 import queue_runtime.property_state
 import queue_runtime.runtime
+import runtime_paths
 import standards_state
-from profile_fixture import install_loadable_profile
+from profile_fixture import FIXTURE_UPSTREAM_REVISION, install_loadable_profile
 
 
 class QueueFixture(unittest.TestCase):
@@ -216,17 +216,54 @@ class QueueFixture(unittest.TestCase):
 
     def write_under_declaring_read_set(self):
         """Lay down a Read Set whose boundary names an undeclared leaf."""
-        read_set = "kernel/Read Sets/R99 Live Fixture.md"
+        read_set = "Read Set/R99 Live Fixture Read Set.md"
         leaf = "kernel/K99 Fixture/01 Required Leaf.md"
         read_set_path = self.root / read_set
         read_set_path.parent.mkdir(parents=True, exist_ok=True)
         read_set_path.write_text(
-            "---\ntype: read-set\nroute_id: R99\n---\n\n"
-            "## Start\n\n- [[%s|Required Leaf]]\n" % leaf[:-3],
+            "---\n"
+            "type: read-set\n"
+            "schema_version: 1\n"
+            "route_id: R99\n"
+            "activation_phase: batch-preflight\n"
+            "narrowable: true\n"
+            "load_edges:\n"
+            "  - edge_id: R99:start\n"
+            "    kind: required\n"
+            "    phase_id: batch-preflight\n"
+            "    trigger_id: route-selected\n"
+            "    targets:\n"
+            "      - %s\n"
+            "    read_sets: []\n"
+            "---\n"
+            "# R99 Live Fixture Read Set\n\n"
+            "## Purpose\n\nFixture loading boundary.\n\n"
+            "## Non-deterministic triggers\n\nNone.\n" % leaf,
             encoding="utf-8")
         leaf_path = self.root / leaf
         leaf_path.parent.mkdir(parents=True, exist_ok=True)
         leaf_path.write_text("## Purpose\n\nFixture.\n", encoding="utf-8")
+        card_path = self.root / "Card/R99 Live Fixture Card.md"
+        card_path.write_text(
+            "---\n"
+            "type: card\n"
+            "generation_mode: curated\n"
+            "route_id: R99\n"
+            "read_set_id: R99\n"
+            "read_set: Read Set/R99 Live Fixture Read Set.md\n"
+            "standards_version: fixture\n"
+            "source_files:\n"
+            "  - Read Set/R99 Live Fixture Read Set.md\n"
+            "source_hash: '000000000000'\n"
+            "reviewed_source_hash: '000000000000'\n"
+            "reviewed_card_hash: '000000000000'\n"
+            "---\n"
+            "# R99 Live Fixture Card\n\n"
+            "## Purpose\n\nFixture.\n\n"
+            "## Actions\n\n- Observe the declared fixture boundary.\n\n"
+            "## Stop or escalate\n\n- Stop on a closure error.\n\n"
+            "## Read-back hook\n\n- Read back the fixture target.\n",
+            encoding="utf-8")
         return read_set, leaf
 
     def open_b1_with_activation_receipt(self, **receipt_overrides):
@@ -256,7 +293,7 @@ class QueueFixture(unittest.TestCase):
             "task_id": "fixture-task", "queue_revision": 1,
             "queue_state_revision": 0,
             "required_queue_sha256": before_sha,
-            "standards_version": "3.0.0",
+            "standards_version": FIXTURE_UPSTREAM_REVISION,
         }
         activation.update(receipt_overrides)
         receipts = [activation, {
@@ -349,7 +386,9 @@ class QueueRuntimeIdentityTests(QueueFixture):
         self.assertEqual([], baseline["errors"])
         active = self.root / standards_state.STATE_PATH
         state = kblib.load_yaml_file(active)
-        state["standards_version"] = "9.9.9"
+        replacement_revision = "f" * 40
+        state["standards_version"] = replacement_revision
+        state["upstream_revision_id"] = replacement_revision
         state["state_revision"] += 1
         active.write_text(
             standards_state.canonical_text(state), encoding="utf-8")
@@ -357,7 +396,8 @@ class QueueRuntimeIdentityTests(QueueFixture):
         result = check_queue.validate_runtime(self.root)
 
         self.assertTrue(any(
-            "runtime standards_version" in error and "9.9.9" in error
+            "runtime standards_version" in error and
+            replacement_revision in error
             for error in result["errors"]), result["errors"])
 
     def test_live_legacy_property_state_requires_migration_admission(self):
@@ -564,7 +604,7 @@ class CurrentPropertyStateTests(unittest.TestCase):
             producer_capability="manual-attestation-v1",
             producer_reference="stopper",
             receipt_schema="manual-gate-attestation-v1",
-            consumer_capability="metadata-transition-integrator-v1",
+            consumer_capability="typed-metadata-transition-v1",
         )
         self.metadata_contract = \
             check_queue.metadata_execution_contract.\
@@ -1886,7 +1926,7 @@ class HubPageAdmissionTests(QueueFixture):
             check_queue.profile_load_authorized_view(
                 self.root, "profiles/test-profile/profile.md")
         self.assertEqual([], view_errors)
-        interface = self.root / "profiles/README.md"
+        interface = self.root / check_queue.check_profile.DEFAULT_INTERFACE
         interface.write_text(
             interface.read_text(encoding="utf-8") +
             "\n<!-- canonical input revision B -->\n",
@@ -2006,9 +2046,9 @@ class HubPageAdmissionTests(QueueFixture):
         # slot read would accept B; the immutable producer snapshot must still
         # supply A.
         with mock.patch.object(
-                check_queue.kblib, "repository_tree_sha256",
-                return_value=authorized_view[
-                    "profile_snapshot_sha256"]):
+                check_queue.check_profile.ProfileLoadEvaluation,
+                "rebind_profile_snapshot",
+                return_value=authorized_view["_profile_snapshot"]):
             paths, errors = check_queue.profile_hub_paths(
                 self.root, "profiles/test-profile/profile.md",
                 authorized_view=authorized_view,
@@ -2328,7 +2368,8 @@ class CheckQueueTests(QueueFixture):
         adoption, whose plan bytes are then sealed into append-only receipts.
         Refusing the runtime that holds them would lock the instance out of the
         sole writer that can re-declare them, so the gap is reported on
-        `task_runtime` and admission of the next plan is where K00/15 judges it.
+        `task_runtime`; admission of the next plan is where the canonical Read
+        Set contract judges it.
         """
         read_set, leaf = self.write_under_declaring_read_set()
         self.write_live_load_set([read_set])
@@ -2342,7 +2383,7 @@ class CheckQueueTests(QueueFixture):
 
     def test_a_broken_live_read_set_path_remains_a_runtime_error(self):
         """Unresolvable bytes are not an under-declaration and stay errors."""
-        absent = "kernel/Read Sets/R99 Absent.md"
+        absent = "Read Set/R99 Absent Read Set.md"
         self.write_live_load_set([absent])
 
         result = check_queue.validate_runtime(self.root)
@@ -2361,7 +2402,8 @@ class CheckQueueTests(QueueFixture):
 
         result = check_queue.validate_runtime(self.root)
         self.assertTrue(any(
-            "does not prove frontmatter type" in error and ordinary in error
+            "does not prove a canonical machine Read Set declaration" in error
+            and ordinary in error
             for error in result["errors"]), result["errors"])
         self.assertEqual([], result["task_runtime"]["contract_load_set_gaps"])
 
@@ -3049,6 +3091,15 @@ class CheckQueueTests(QueueFixture):
         completed = self.run_cli()
         self.assertEqual(0, completed.returncode, completed.stdout)
         self.assertIn("required_queue_sha256=sha256:", completed.stdout)
+
+    def test_merge_ready_batch_remains_required_nonterminal_work(self):
+        queue = self.queue()
+        queue["required_queue"][0]["state"] = "merge-ready"
+        self.write_queue(queue)
+
+        result = check_queue.validate_runtime(self.root)
+
+        self.assertEqual(2, result["remaining"])
 
     def test_manifest_and_record_count_are_strict(self):
         for mutation, expected in (
@@ -4083,7 +4134,8 @@ class CheckQueueTests(QueueFixture):
                 "task_id=fixture-task", "task_state=planned",
                 'objective="Complete fixture Required Queue batches with durable evidence."',
                 'exclusions=["Do not modify profile policy."]',
-                "scope_version=s1", "standards_version=3.0.0",
+                "scope_version=s1",
+                "standards_version=%s" % FIXTURE_UPSTREAM_REVISION,
                 "selected_profile_manifest=profiles/test-profile/profile.md",
                 "queue_revision=1", "state_revision=0",
                 "checkpoint.recorded_at=None",
@@ -4385,12 +4437,93 @@ class CheckQueueTests(QueueFixture):
              "--task-id", "cap-task", "--objective", "Exercise the cap",
              "--exclude", "Do not infer Required work",
              "--scope-version", "s1", "--completion-semantics", "build",
-             "--standards-version", "3.0.0", "--profile-manifest",
+             "--standards-version", FIXTURE_UPSTREAM_REVISION,
+             "--profile-manifest",
              "profiles/sample/profile.md", "--at", "2026-08-04T00:00:00Z",
              "--apply", *extra],
             text=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
             check=False,
         )
+
+    def install_registered_pre_task_projections(self, root):
+        payloads = {
+            runtime_paths.UPSTREAM_COMPONENT_MANIFEST_PATH:
+                b"path\tsha256\n",
+            runtime_paths.CLI_CONTRACT_ARTIFACT_PATH:
+                b"artifact: cli-invocation-contract\n",
+            runtime_paths.MCP_TOOLS_ARTIFACT_PATH:
+                b'{"artifact":"agent-interface-projection"}\n',
+        }
+        for relative, payload in payloads.items():
+            path = root / relative
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_bytes(payload)
+        return payloads
+
+    def test_registered_nested_pre_task_projections_survive_initialization(self):
+        fresh = self.init_profile_repo()
+        payloads = self.install_registered_pre_task_projections(fresh)
+
+        completed = self.run_init(fresh)
+
+        self.assertEqual(0, completed.returncode, completed.stdout)
+        for relative, payload in payloads.items():
+            self.assertEqual(payload, (fresh / relative).read_bytes(), relative)
+        self.assertTrue((fresh / runtime_paths.QUEUE_PATH).is_file())
+
+    def test_unregistered_nested_pre_task_projection_is_refused(self):
+        fresh = self.init_profile_repo()
+        self.install_registered_pre_task_projections(fresh)
+        rogue = fresh / runtime_paths.DERIVED_INTERFACE_ROOT / "rogue.json"
+        rogue.write_text("{}\n", encoding="utf-8")
+
+        completed = self.run_init(fresh)
+
+        self.assertEqual(1, completed.returncode, completed.stdout)
+        self.assertIn("derived/interfaces/rogue.json", completed.stdout)
+        self.assertFalse((fresh / runtime_paths.STATE_ROOT).exists())
+
+    def test_host_installation_products_are_refused_as_pre_task_runtime(self):
+        fresh = self.init_profile_repo()
+        host_product = fresh / ".cambium/derived/host-configs/codex.toml"
+        host_product.parent.mkdir(parents=True)
+        host_product.write_text("[mcp_servers.cambium]\n", encoding="utf-8")
+
+        completed = self.run_init(fresh)
+
+        self.assertEqual(1, completed.returncode, completed.stdout)
+        self.assertIn("derived/host-configs", completed.stdout)
+        self.assertFalse((fresh / runtime_paths.STATE_ROOT).exists())
+
+    def test_registered_pre_task_projection_symlink_is_refused(self):
+        fresh = self.init_profile_repo()
+        outside = fresh.parent / "outside-interface.json"
+        outside.write_text("{}\n", encoding="utf-8")
+        target = fresh / runtime_paths.MCP_TOOLS_ARTIFACT_PATH
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.symlink_to(outside)
+
+        completed = self.run_init(fresh)
+
+        self.assertEqual(1, completed.returncode, completed.stdout)
+        self.assertIn("must be a regular file", completed.stdout)
+        self.assertFalse((fresh / runtime_paths.STATE_ROOT).exists())
+
+    def test_unreadable_registered_pre_task_directory_is_refused(self):
+        fresh = self.init_profile_repo()
+        derived = fresh / runtime_paths.DERIVED_ROOT
+        derived.mkdir(parents=True, exist_ok=True)
+        mode = derived.stat().st_mode
+        derived.chmod(0)
+        try:
+            completed = self.run_init(fresh)
+        finally:
+            derived.chmod(mode)
+
+        if completed.returncode == 0:
+            self.skipTest("current process can inspect mode-000 directories")
+        self.assertIn("cannot inspect derived", completed.stdout)
+        self.assertFalse((fresh / runtime_paths.STATE_ROOT).exists())
 
     def test_profile_manifest_concurrency_cap_override_reaches_progress(self):
         fresh = self.init_profile_repo("| `concurrency_cap` | `5` |\n")
@@ -4449,7 +4582,8 @@ class CheckQueueTests(QueueFixture):
             "Exercise an empty resumable task", "--exclude",
             "Do not infer Required work", "--scope-version", "s1",
             "--completion-semantics", "build",
-            "--standards-version", "3.0.0", "--profile-manifest",
+            "--standards-version", FIXTURE_UPSTREAM_REVISION,
+            "--profile-manifest",
             "profiles/sample/profile.md", "--at", "2026-08-04T00:00:00Z",
             "--apply",
         ]
@@ -4508,7 +4642,8 @@ class CheckQueueTests(QueueFixture):
             sys.executable, str(TOOLS / "init_state.py"), str(fresh),
             "--task-id", "maintenance-task", "--objective",
             "Run bounded maintenance", "--scope-version", "s1",
-            "--standards-version", "3.0.0", "--profile-manifest",
+            "--standards-version", FIXTURE_UPSTREAM_REVISION,
+            "--profile-manifest",
             "profiles/sample/profile.md", "--at", "2026-08-04T00:00:00Z",
             "--apply",
         ]

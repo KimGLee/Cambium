@@ -18,20 +18,29 @@ sys.path.insert(0, str(TOOLS / "tests"))
 sys.path.insert(0, str(TOOLS))
 
 import adopt_standards
-import check_batch_close
 import check_page_contract
 import check_profile
 import check_queue
 # The requirements derivation is spied on below, and its caller reads
 # that name in the module the caller lives in.
 import queue_runtime.runtime
-import check_vocab
+import queue_runtime.adoption
+import queue_runtime.task_contract
+import compose_vocab
 import kblib
+import profile_admission
+import record_rendering_verification
 import seal_receipts
 import standards_state
 import update_queue
-from profile_fixture import install_loadable_profile
-import test_update_queue
+from profile_fixture import FIXTURE_UPSTREAM_REVISION, install_loadable_profile
+import upstream_identity
+
+
+REPOSITORY = TOOLS.parent
+UPSTREAM_REF = "HEAD"
+ADOPTED_UPSTREAM_REVISION = upstream_identity.resolve_revision(
+    REPOSITORY, UPSTREAM_REF)
 
 
 # ---------------------------------------------------------------------------
@@ -64,6 +73,23 @@ class AdoptStandardsFixture:
         """Lay down the fixture tree the original setUp built per test."""
         shutil.copytree(FIXTURE, self.root)
         install_loadable_profile(self.root)
+        self.install_s_tier_audit_fixture()
+        canonical_root = str(self.root.resolve())
+        admission, admission_errors = profile_admission.admit_profile(
+            canonical_root, require_approved=True)
+        self.assertEqual([], admission_errors)
+        vocab_text, _vocab, vocab_errors = compose_vocab.compiled_artifact(
+            canonical_root, admission)
+        self.assertEqual([], vocab_errors)
+        vocab_path = self.root / compose_vocab.DEFAULT_OUTPUT
+        vocab_path.parent.mkdir(parents=True, exist_ok=True)
+        vocab_path.write_text(vocab_text, encoding="utf-8")
+        compiled = subprocess.run(
+            [sys.executable, str(TOOLS / "compose_page_contract.py"),
+             "--root", str(self.root)],
+            text=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+            check=False)
+        self.assertEqual(0, compiled.returncode, compiled.stdout)
         governance = self.root / self.GOVERNANCE
         governance.parent.mkdir(parents=True, exist_ok=True)
         governance.write_text(
@@ -71,31 +97,71 @@ class AdoptStandardsFixture:
             "Adopter state is external to the Kernel.\n",
             encoding="utf-8",
         )
-        registry = (self.root /
-                    "kernel/K00 Standards Control/12 Control Registry.md")
-        registry.write_text(
-            "## Stable Gate ID Registry\n\n"
-            "| Gate ID | Tool | Tool version | Check | Mode | Dimension "
-            "| Lifecycle |\n"
-            "|---|---|---|---|---|---|---|\n"
-            "| profile-load | check_profile | %s | profile-check-summary | * | guidance_and_contract | not-batch-scoped |\n"
-            "| wiki-link-integrity | check_links | 1.6.0 | link-check-summary | * | * | not-batch-scoped |\n"
-            "| required-queue-consistency | check_queue | %s | required_queue | consistency | * | not-batch-scoped |\n"
-            "| required-queue-admission | check_queue | %s | required_queue | require-ready:* | * | queued |\n"
-            "| batch-close | check_batch_close | %s | batch_close_gate | * | * | merge-ready |\n\n"
-            "## Standards Revalidation Capability Registry\n\n"
-            "| Gate ID | Role | Owner | Claim edge | Scope protocol | Binding protocol |\n"
-            "|---|---|---|---|---|---|\n"
-            "| profile-load | special-owner | profile-load | after-image-admission | profile-after-image | profile-fingerprints |\n"
-            "| wiki-link-integrity | semantic-leaf | batch-close | project-to-owner | inherit-owner-scope | owner-member-chain |\n"
-            "| required-queue-consistency | immediate-owner | required-queue-consistency | adoption-commit | runtime-after-image | runtime-state-fingerprints |\n"
-            "| required-queue-admission | native-owner | required-queue-admission | native-transition | native-owner-scope | native-owner-receipt |\n"
-            "| batch-close | native-owner | batch-close | native-transition | native-owner-scope | native-owner-receipt |\n" % (
-                check_profile.TOOL_VERSION,
-                check_queue.TOOL_VERSION,
-                check_queue.TOOL_VERSION,
-                check_batch_close.TOOL_VERSION,
-            ),
+        # ``install_loadable_profile`` installs the complete current
+        # K00-owned YAML Control registry and its K12 registry dependency.
+        # Tests must not recreate either machine contract as Markdown.
+
+    def install_s_tier_audit_fixture(self):
+        """Keep this Standards fixture outside unresolved M-review policy.
+
+        These tests exercise Standards adoption, revalidation, and historical
+        sealing; they do not make or inspect M-tier semantic judgments.  The
+        current Kernel deliberately holds several M atoms whose acceptance
+        selectors do not yet exist.  Treating the two synthetic ``# A``/``#
+        B`` pages as S-tier therefore keeps this independent fixture honest:
+        its one-page B1 still owes the registry-derived S sample and the full
+        deterministic changed-scope closure, but it never manufactures an M
+        verdict merely to reach the lifecycle edge under test.
+        """
+        for name in ("A", "B"):
+            (self.root / ("Topics/%s.md" % name)).write_text(
+                "---\n"
+                "type: concept\n"
+                "domain: general\n"
+                "scope: shared\n"
+                "level: basic\n"
+                "depth: atomic\n"
+                "priority: P2\n"
+                "---\n"
+                "# %s\n\n"
+                "## Synthetic Residual\n\n"
+                "Accepted-root liveness marker for the registered fixture "
+                "scan.\n" % name,
+                encoding="utf-8")
+
+        coverage_path = self.root / check_queue.COVERAGE_PATH
+        coverage = kblib.load_yaml_file(coverage_path)
+        for page in coverage["pages"]:
+            page["tier"] = "S"
+            page["priority"] = "P2"
+        coverage_path.write_text(
+            kblib.canonical_yaml(coverage), encoding="utf-8")
+        coverage_sha256 = kblib.sha256_file(coverage_path)
+
+        progress_path = self.root / check_queue.PROGRESS_PATH
+        progress = kblib.load_yaml_file(progress_path)
+        checkpoint = progress.get("checkpoint") or {}
+        if checkpoint.get("coverage_sha256") is not None:
+            checkpoint["coverage_sha256"] = coverage_sha256
+            progress_path.write_text(
+                kblib.canonical_yaml(progress), encoding="utf-8")
+
+        receipt_path = self.root / \
+            ".cambium/receipts/task-transitions.jsonl"
+        receipts = [
+            json.loads(line) for line in
+            receipt_path.read_text(encoding="utf-8").splitlines()
+            if line.strip()
+        ]
+        initial = next(
+            row for row in receipts
+            if row.get("receipt_id") == "audit-fixture-initial-queue")
+        initial["before_coverage_sha256"] = coverage_sha256
+        initial["after_coverage_sha256"] = coverage_sha256
+        initial["after_progress_sha256"] = kblib.sha256_file(progress_path)
+        receipt_path.write_text(
+            "".join(json.dumps(row, separators=(",", ":")) + "\n"
+                    for row in receipts),
             encoding="utf-8")
 
     def load(self, relative):
@@ -152,8 +218,9 @@ class AdoptStandardsFixture:
         return gate["receipt_id"]
 
     def plan(self, *, invalidated_receipt=None, overrides=None):
-        # The live adopter state starts aligned to approved 3.0.  The plan
-        # proposes 3.1 while K00/03 remains an unchanged rules owner.
+        # The live adopter state carries a full fixture commit identity. The
+        # plan adopts the current upstream Git commit while K00/03 remains an
+        # unchanged rules owner.
         queue = self.load(check_queue.QUEUE_PATH)
         progress = self.load(check_queue.PROGRESS_PATH)
         contract = progress["contract"]
@@ -170,7 +237,7 @@ class AdoptStandardsFixture:
             "contract_version_after": "c2" if semantic else
                 contract["contract_version"],
             "standards_version_before": queue["standards_version"],
-            "standards_version_after": "3.1.0",
+            "standards_version_after": ADOPTED_UPSTREAM_REVISION,
             "standards_effective_date_after": "2026-08-06",
             "standards_state_sha256_before": kblib.sha256_file(
                 self.root / standards_state.STATE_PATH),
@@ -184,7 +251,7 @@ class AdoptStandardsFixture:
             # The 1.5 upstream identity pair; the fixture corpus tracks a
             # nominal upstream so the recorded form is exercised.
             "upstream_source_ref": "https://example.test/cambium.git",
-            "upstream_revision_id": "0123456789abcdef0123456789abcdef01234567",
+            "upstream_revision_id": ADOPTED_UPSTREAM_REVISION,
             "standards_snapshot_sha256_after":
                 kblib.repository_tree_sha256(self.root, "kernel"),
             "profile_snapshot_sha256_after":
@@ -250,12 +317,29 @@ class AdoptStandardsFixture:
         path.write_text(kblib.canonical_yaml(plan), encoding="utf-8")
         return plan
 
-    def command(self, *, apply=False, actor="worker"):
-        args = [str(self.root), "--plan", self.PLAN]
+    def _component_report(self, errors=()):
+        return mock.Mock(
+            upstream_revision_id=ADOPTED_UPSTREAM_REVISION,
+            errors=tuple(errors),
+        )
+
+    def prepare_result(self):
+        with mock.patch.object(
+                adopt_standards.upstream_component_boundary, "evaluate",
+                return_value=self._component_report()):
+            return adopt_standards._prepare_result(
+                self.root, self.PLAN, REPOSITORY, UPSTREAM_REF)
+
+    def command(self, *, apply=False, actor="worker", component_errors=()):
+        args = [str(self.root), "--plan", self.PLAN,
+                "--upstream-root", str(REPOSITORY),
+                "--upstream-ref", UPSTREAM_REF]
         if apply:
             args.extend(["--apply", "--actor-role", actor])
         stdout = io.StringIO()
-        with redirect_stdout(stdout):
+        with redirect_stdout(stdout), mock.patch.object(
+                adopt_standards.upstream_component_boundary, "evaluate",
+                return_value=self._component_report(component_errors)):
             code = adopt_standards.main(args)
         return code, stdout.getvalue()
 
@@ -284,10 +368,10 @@ class AdoptStandardsFixture:
         slots.write_text(text.replace(owned, foreign, 1), encoding="utf-8")
 
     def revise_profile_load_inputs(self):
-        interface = self.root / "profiles/README.md"
+        interface = self.root / check_profile.DEFAULT_INTERFACE
         interface.write_text(
             interface.read_text(encoding="utf-8") +
-            "\nCanonical interface revision B.\n",
+            "\n# Fixture interface revision B.\n",
             encoding="utf-8",
         )
 
@@ -305,100 +389,32 @@ class AdoptStandardsFixture:
     LINK_RECEIPTS = ".cambium/receipts/links.jsonl"
 
     def register_link_gate(self):
-        """Register the leaf and its native batch-close owner mapping."""
-        registry = (self.root /
-                    "kernel/K00 Standards Control/12 Control Registry.md")
-        text = registry.read_text(encoding="utf-8")
-        if "| wiki-link-integrity | check_links |" not in text:
-            text = text.replace(
-                "\n## Standards Revalidation Capability Registry\n",
-                "\n| wiki-link-integrity | check_links | 1.6.0 "
-                "| link-check-summary | * | * | not-batch-scoped |\n\n"
-                "## Standards Revalidation Capability Registry\n")
-            text += (
-                "| wiki-link-integrity | semantic-leaf | batch-close "
-                "| project-to-owner | inherit-owner-scope "
-                "| owner-member-chain |\n")
-            registry.write_text(text, encoding="utf-8")
+        """Assert the shipped link Gate and its native owner are present."""
+        gates, gate_errors = check_queue.standards_gate_registry(self.root)
+        capabilities, capability_errors = \
+            check_queue.standards_gate_capability_registry(
+                self.root, gate_registry=gates)
+        self.assertEqual([], gate_errors)
+        self.assertEqual([], capability_errors)
+        self.assertIn("wiki-link-integrity", gates)
+        self.assertEqual(
+            "batch-close", capabilities["wiki-link-integrity"]["owner"])
 
     def install_revalidation_capability_fixture(self):
-        """Install the closed two-registry subset these tests exercise.
-
-        Most adoption tests predate the capability registry and intentionally
-        keep their tiny four-row Gate fixture.  These focused tests need a
-        closed capability table, so they replace that fixture locally rather
-        than making every older test accidentally depend on the new policy.
-        """
-        registry = (self.root /
-                    "kernel/K00 Standards Control/12 Control Registry.md")
-        registry.write_text(
-            "## Stable Gate ID Registry\n\n"
-            "| Gate ID | Tool | Tool version | Check | Mode | Dimension "
-            "| Lifecycle |\n"
-            "|---|---|---|---|---|---|---|\n"
-            "| profile-load | check_profile | %s | profile-check-summary "
-            "| * | guidance_and_contract | not-batch-scoped |\n"
-            "| frontmatter-vocabulary | check_vocab | %s "
-            "| vocab-check-summary | * | * | not-batch-scoped |\n"
-            "| required-queue-consistency | check_queue | %s "
-            "| required_queue | consistency | * | not-batch-scoped |\n"
-            "| required-queue-admission | check_queue | %s "
-            "| required_queue | require-ready:* | * | queued |\n"
-            "| batch-review | manual-attestation | %s | batch_gate "
-            "| * | none | open |\n"
-            "| batch-close | check_batch_close | %s | batch_close_gate "
-            "| * | * | merge-ready |\n"
-            "| page-contract | check_page_contract | %s "
-            "| page-contract-summary | * | * | not-batch-scoped |\n"
-            "| standards-adoption | adopt_standards | %s "
-            "| standards_adoption | * | * | not-batch-scoped |\n"
-            "| standards-revalidation | check_queue | %s "
-            "| required_queue | require-revalidation:* | * | queued, open |\n"
-            "| runtime-card-synchronization | manual-attestation | %s "
-            "| runtime-card-synchronization | * | guidance_and_contract "
-            "| not-batch-scoped |\n\n"
-            "## Standards Revalidation Capability Registry\n\n"
-            "| Gate ID | Role | Owner | Claim edge | Scope protocol "
-            "| Binding protocol |\n"
-            "|---|---|---|---|---|---|\n"
-            "| profile-load | special-owner | profile-load "
-            "| after-image-admission | profile-after-image "
-            "| profile-fingerprints |\n"
-            "| frontmatter-vocabulary | semantic-leaf | batch-close "
-            "| project-to-owner | inherit-owner-scope "
-            "| owner-member-chain |\n"
-            "| required-queue-consistency | immediate-owner "
-            "| required-queue-consistency | adoption-commit "
-            "| runtime-after-image | runtime-state-fingerprints |\n"
-            "| required-queue-admission | native-owner "
-            "| required-queue-admission | native-transition "
-            "| native-owner-scope | native-owner-receipt |\n"
-            "| batch-review | native-owner | batch-review "
-            "| native-transition | native-owner-scope "
-            "| native-owner-receipt |\n"
-            "| batch-close | native-owner | batch-close "
-            "| native-transition | native-owner-scope "
-            "| native-owner-receipt |\n"
-            "| page-contract | semantic-leaf | batch-close "
-            "| project-to-owner | inherit-owner-scope "
-            "| owner-member-chain |\n"
-            "| standards-adoption | mechanism-only | none "
-            "| mechanism-input-only | none | not-authorizing |\n"
-            "| standards-revalidation | mechanism-only | none "
-            "| mechanism-input-only | none | not-authorizing |\n"
-            "| runtime-card-synchronization | unsupported | none "
-            "| none | none | not-authorizing |\n" % (
-                check_profile.TOOL_VERSION,
-                check_vocab.TOOL_VERSION,
-                check_queue.TOOL_VERSION,
-                check_queue.TOOL_VERSION,
-                check_queue.MANUAL_ATTESTATION_TOOL_VERSION,
-                check_batch_close.TOOL_VERSION,
-                check_page_contract.TOOL_VERSION,
-                adopt_standards.TOOL_VERSION,
-                check_queue.TOOL_VERSION,
-                check_queue.MANUAL_ATTESTATION_TOOL_VERSION,
-            ), encoding="utf-8")
+        """Assert the complete shipped YAML contract covers this scenario."""
+        gates, gate_errors = check_queue.standards_gate_registry(self.root)
+        capabilities, capability_errors = \
+            check_queue.standards_gate_capability_registry(
+                self.root, gate_registry=gates)
+        self.assertEqual([], gate_errors)
+        self.assertEqual([], capability_errors)
+        for gate_id in (
+                "profile-load", "frontmatter-vocabulary",
+                "required-queue-consistency", "required-queue-admission",
+                "batch-review", "batch-close", "page-contract",
+                "standards-adoption", "standards-revalidation",
+                "runtime-startup-recovery"):
+            self.assertIn(gate_id, capabilities)
 
     def capability_boundary_plan(self, invalidated_receipt, affected,
                                  required):
@@ -439,7 +455,7 @@ class AdoptStandardsFixture:
         self.assertEqual(1, len(receipt_ids))
         return receipt_ids[0]
 
-    def lifecycle_boundary_plan(self, invalidated_gate):
+    def lifecycle_boundary_plan(self, invalidated_gate, batch_id="B1"):
         """Adopt one immediate owner and one future native owner."""
         self.register_link_gate()
         self.plan(invalidated_receipt=invalidated_gate, overrides={
@@ -455,13 +471,13 @@ class AdoptStandardsFixture:
                 "dimension_ids": ["coverage_and_integration"],
                 "boundary_ids": ["INV-B1-LIFECYCLE"],
                 "reason_code": "predicate-changed",
-                "revalidation_scope_ids": ["B1"],
+                    "revalidation_scope_ids": [batch_id],
             }],
             "invalidation_boundaries": [{
                 "boundary_id": "INV-B1-LIFECYCLE",
                 "predicate_ids": ["PRED-LIFECYCLE-001"],
                 "target_kind": "batch",
-                "target_ids": ["B1"],
+                "target_ids": [batch_id],
                 "required_gate_ids": list(self.LIFECYCLE_GATES),
             }],
             "boundary_gate_reruns": list(self.LIFECYCLE_GATES),
@@ -478,7 +494,7 @@ class AdoptStandardsFixture:
         return json.loads(receipts.read_text(
             encoding="utf-8").splitlines()[-1])["receipt_id"]
 
-    def revalidation_aggregate(self, link_receipt):
+    def revalidation_aggregate(self, link_receipt, batch_id="B1"):
         """Run the aggregate with the adoption's immediate owner receipt.
 
         ``link_receipt`` remains an input to the helper so the surrounding
@@ -487,9 +503,9 @@ class AdoptStandardsFixture:
         """
         del link_receipt
         consistency = self.adoption_consistency_receipt()
-        relative = ".cambium/receipts/revalidation.jsonl"
+        relative = ".cambium/receipts/revalidation-%s.jsonl" % batch_id
         completed = self.run_tool(
-            "check_queue.py", "--require-revalidation", "B1",
+            "check_queue.py", "--require-revalidation", batch_id,
             "--boundary-gate-receipt",
             "required-queue-consistency=%s" % consistency,
             "--receipts", relative)
@@ -522,50 +538,100 @@ class AdoptStandardsFixture:
         self.assertEqual(0, completed.returncode, completed.stdout)
         return transition_at
 
-    def append_fixture_receipt(self, receipt_id, **fields):
-        """Append one hand-written receipt to the fixture register."""
-        receipt = {"receipt_id": receipt_id, "result": "pass",
-                   "invalidated_by": None}
-        receipt.update(fields)
-        kblib.write_receipts(
-            self.root / ".cambium/receipts/fixture.jsonl", [receipt])
-        return receipt_id
+    def materialize_b1_premerge_audit(self, batch_id="B1"):
+        """Discharge one pre-merge AuditPlan through production producers."""
+        prepared = self.run_tool(
+            "prepare_audit_plan.py", "--batch", batch_id, "--apply")
+        self.assertEqual(0, prepared.returncode, prepared.stdout)
+        prepared_result = json.loads(prepared.stdout)
+        plan_path = prepared_result["plan_path"]
+        plan = self.load(plan_path)
+        page_receipts = []
 
-    def merge_and_apply_b1(self, at):
+        for obligation in plan["obligations"]:
+            if (obligation.get("status") != "required" or
+                    obligation.get("due_stage") != "pre-merge"):
+                continue
+            common = (
+                "--batch", batch_id, "--plan", plan_path,
+                "--obligation-id", obligation["obligation_id"],
+            )
+            if obligation["evidence_kind"] == "batch-page-review-record":
+                produced = self.run_tool(
+                    "record_batch_page_review.py", *common,
+                    "--page", obligation["target"],
+                    "--variant", "s-sampled-page",
+                    "--reviewer-context-id",
+                    "standards-fixture-reviewer-context",
+                    "--reviewer-role", "batch-reviewer",
+                    "--verdict", "passed", "--statement",
+                    "S-tier fixture sample satisfies the frozen review "
+                    "contract", "--apply")
+                self.assertEqual(0, produced.returncode, produced.stdout)
+                page_receipts.append(json.loads(produced.stdout)["receipt_id"])
+                continue
+
+            if obligation["producer_check"] == \
+                    record_rendering_verification.CHECK:
+                produced = self.run_tool(
+                    "record_rendering_verification.py", *common,
+                    "--rendering-mode", "source-only", "--apply")
+            else:
+                produced = self.run_tool(
+                    "record_changed_scope_evidence.py", *common, "--apply")
+            self.assertEqual(0, produced.returncode, produced.stdout)
+            evidence = json.loads(produced.stdout)
+            if obligation["evidence_kind"] == "audit-receipt":
+                completed = self.run_tool(
+                    "complete_audit_receipt.py", *common,
+                    "--evidence-receipt", evidence["receipt_id"], "--apply")
+                self.assertEqual(0, completed.returncode, completed.stdout)
+
+        self.assertEqual(1, len(page_receipts), plan)
+        return {
+            "plan_path": plan_path,
+            "page_receipt": page_receipts[0],
+        }
+
+    def merge_and_apply_b1(self, at, *, batch_id="B1",
+                           object_path="Topics/A.md"):
         """Carry the cleared batch to `merge-ready` and apply its Delta."""
-        queue = self.load(check_queue.QUEUE_PATH)
-        self.append_fixture_receipt(
-            "audit-page-1", check="fixture", target="Topics/A.md")
-        self.append_fixture_receipt(
-            "audit-batch-1", check=check_queue.BATCH_REVIEW_CHECK,
-            target="B1", tool=check_queue.MANUAL_ATTESTATION_TOOL,
-            tool_version=check_queue.MANUAL_ATTESTATION_TOOL_VERSION,
-            gate_id=check_queue.BATCH_REVIEW_GATE_ID,
-            task_id=queue["task_id"], batch_id="B1",
-            delta_page_receipt_ids=["audit-page-1"])
-        delta = self.root / ".cambium/deltas/B1.yaml"
+        audit = self.materialize_b1_premerge_audit(batch_id)
+        delta_relative = ".cambium/deltas/%s.yaml" % batch_id
+        delta = self.root / delta_relative
         delta.parent.mkdir(parents=True, exist_ok=True)
         delta.write_text(
-            "batch: B1\ngenerated_at: %s\n"
-            "pages:\n  - path: Topics/A.md\n"
-            "    gate_receipts:\n      - audit-page-1\n"
+            "batch: %s\ngenerated_at: %s\n"
+            "pages:\n  - path: %s\n"
+            "    gate_receipts:\n      - %s\n"
             "open_gaps_added: []\nopen_gaps_closed: []\n"
-            "next_batch_updates: []\nwatermark_advance: null\n" % at,
+            "next_batch_updates: []\nwatermark_advance: null\n" %
+            (batch_id, at, object_path, audit["page_receipt"]),
             encoding="utf-8")
+        reviewed = self.run_tool(
+            "record_batch_review.py", "--batch", batch_id,
+            "--actor-role", "integrator", "--statement",
+            "Standards fixture integrator confirms the frozen pre-merge "
+            "AuditPlan closure", "--apply", "--json")
+        self.assertEqual(0, reviewed.returncode, reviewed.stdout)
+        wrappers = json.loads(reviewed.stdout)
+        self.assertEqual(1, len(wrappers), wrappers)
+        batch_receipt = wrappers[0]["receipt_id"]
         result = check_queue.validate_runtime(self.root)
         merged = self.run_tool(
-            "update_queue.py", "--id", "B1", "--transition", "merge-ready",
-            "--delta-path", ".cambium/deltas/B1.yaml",
-            "--batch-receipt", "audit-batch-1",
+            "update_queue.py", "--id", batch_id,
+            "--transition", "merge-ready",
+            "--delta-path", delta_relative,
+            "--batch-receipt", batch_receipt,
             "--expected-state-revision",
             str(result["queue"]["state_revision"]),
             "--expected-sha256", result["queue_sha256"],
-            "--actor-role", "integrator", "--at", at, "--apply")
+            "--actor-role", "integrator", "--apply")
         self.assertEqual(0, merged.returncode, merged.stdout)
-        relative = ".cambium/receipts/delta-B1.jsonl"
+        relative = ".cambium/receipts/delta-%s.jsonl" % batch_id
         applied = subprocess.run(
             [sys.executable, str(TOOLS / "apply_delta.py"),
-             check_queue.COVERAGE_PATH, ".cambium/deltas/B1.yaml",
+             check_queue.COVERAGE_PATH, delta_relative,
              "--root", str(self.root),
              "--expected-coverage-sha256",
              kblib.sha256_file(self.root / check_queue.COVERAGE_PATH),
@@ -577,6 +643,79 @@ class AdoptStandardsFixture:
         self.assertEqual(0, applied.returncode, applied.stdout)
         return json.loads((self.root / relative).read_text(
             encoding="utf-8").splitlines()[-1])["receipt_id"]
+
+    def open_batch(self, batch_id, standards_revalidation_receipt=None):
+        """Open one queued batch through the current production activation."""
+        gate = self.queue_gate("--require-ready", batch_id)
+        result = check_queue.validate_runtime(self.root)
+        arguments = [
+            "update_queue.py", "--id", batch_id,
+            "--transition", "open", "--gate-receipt", gate,
+            "--expected-state-revision",
+            str(result["queue"]["state_revision"]),
+            "--expected-sha256", result["queue_sha256"],
+            "--actor-role", "integrator",
+        ]
+        if standards_revalidation_receipt is not None:
+            arguments.extend([
+                "--standards-revalidation-receipt",
+                standards_revalidation_receipt])
+        arguments.append("--apply")
+        opened = self.run_tool(*arguments)
+        self.assertEqual(0, opened.returncode, opened.stdout)
+        return gate
+
+    def close_applied_batch(self, batch_id, delta_apply_receipt):
+        """Close one applied batch through the production close bundle."""
+        consistency = self.queue_gate()
+        close_gate = self.close_gate(batch_id, consistency)
+        consistency = self.close_consistency(close_gate)
+        result = check_queue.validate_runtime(self.root)
+        closed = self.run_tool(
+            "update_queue.py", "--id", batch_id,
+            "--transition", "closed",
+            "--gate-receipt", consistency,
+            "--close-gate-receipt", close_gate,
+            "--delta-apply-receipt", delta_apply_receipt,
+            "--expected-state-revision",
+            str(result["queue"]["state_revision"]),
+            "--expected-sha256", result["queue_sha256"],
+            "--actor-role", "integrator", "--apply")
+        self.assertEqual(0, closed.returncode, closed.stdout)
+        return close_gate
+
+    def revalidated_b2_applied(self):
+        """Build a fresh post-adoption attempt without rebasing an open one.
+
+        B1 completes under the initial Standards so the task is active.  B2
+        remains queued while its old admission evidence is invalidated.  The
+        queued revalidation aggregate is consumed by B2's normal new-Standards
+        activation, after which every audit producer runs through its current
+        CLI.  No old open attempt or activation is carried across adoption.
+        """
+        self.open_batch("B1")
+        now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+        first_apply = self.merge_and_apply_b1(now)
+        self.close_applied_batch("B1", first_apply)
+
+        invalidated_gate = self.queue_gate("--require-ready", "B2")
+        self.lifecycle_boundary_plan(invalidated_gate, batch_id="B2")
+        link_receipt = self.link_gate_receipt()
+        historical = self.revalidation_aggregate(
+            link_receipt, batch_id="B2")
+        aggregate = self.revalidation_aggregate(
+            link_receipt, batch_id="B2")
+        self.assertNotEqual(historical["receipt_id"], aggregate["receipt_id"])
+        self.open_batch("B2", aggregate["receipt_id"])
+        second_apply = self.merge_and_apply_b1(
+            datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+            batch_id="B2", object_path="Topics/B.md")
+        return {
+            "aggregate": aggregate,
+            "historical_aggregate": historical,
+            "delta_apply_receipt": second_apply,
+            "batch_id": "B2",
+        }
 
     def passed_only_boundary_plan(self, invalidated_gate, target_ids):
         """A boundary naming only a gate its targets have already left."""
@@ -637,10 +776,13 @@ class AdoptStandardsFixture:
         plan["boundary_gate_reruns"] = runtime_gate_ids
         return plan
 
-    READ_SET = "kernel/Read Sets/R99 Fixture Read Set.md"
-    CROSS_READ_SET = "kernel/Read Sets/R98 Cross Referenced Read Set.md"
+    READ_SET = "Read Set/R99 Fixture Read Set.md"
+    CROSS_READ_SET = "Read Set/R98 Cross Referenced Read Set.md"
     PROFILE_READ_SET = "profiles/test-profile/P Supplemental Read Set.md"
-    READ_SET_INDEX = "kernel/Read Sets/Fixture Route Index.md"
+    # A non-Read-Set target must not sit inside the closed canonical Read Set
+    # declaration directory, where discovery intentionally treats every
+    # Markdown file except the generated index as a declaration.
+    READ_SET_INDEX = "kernel/K99 Fixture Family/Fixture Route Index.md"
     LEAF_DIRECT = "kernel/K99 Fixture Family/01 Direct Leaf.md"
     LEAF_NESTED = "kernel/K99 Fixture Family/02 Nested Leaf.md"
     LEAF_PROFILE = "kernel/K99 Fixture Family/03 Profile Leaf.md"
@@ -650,6 +792,30 @@ class AdoptStandardsFixture:
     BOUND_TOOL_FILE = "Tools/fixture_tool.py"
     MODULE_OMISSION = "loaded_module_paths_after omits"
     READ_SET_OMISSION = "selected_read_sets_after omits"
+
+    def read_set_text(self, route_id, *, targets, read_sets,
+                      document_type="read-set", trigger_note="None."):
+        """Render one canonical machine Read Set fixture."""
+        declaration = {
+            "type": document_type,
+            "schema_version": 1,
+            "route_id": route_id,
+            "activation_phase": "batch-preflight",
+            "narrowable": True,
+            "load_edges": [{
+                "edge_id": "%s:start" % route_id,
+                "kind": "required",
+                "phase_id": "batch-preflight",
+                "trigger_id": "route-selected",
+                "targets": list(targets),
+                "read_sets": list(read_sets),
+            }],
+        }
+        return (
+            "---\n%s---\n# %s Fixture Read Set\n\n"
+            "## Purpose\n\nExercise the declared loading boundary.\n\n"
+            "## Non-deterministic triggers\n\n%s\n" %
+            (kblib.canonical_yaml(declaration), route_id, trigger_note))
 
     def load_set_baseline_errors(self):
         """Errors a plan of this fixture carries before any load set is set.
@@ -680,45 +846,34 @@ class AdoptStandardsFixture:
         read_set = self.root / self.READ_SET
         read_set.parent.mkdir(parents=True, exist_ok=True)
         read_set.write_text(
-            "---\ntype: read-set\nroute_id: R99\n---\n\n"
-            "## Purpose\n\n"
-            "Applicability only, so [[%s|Related Only Leaf]] here is not a\n"
-            "loading boundary target.\n\n"
-            "## Start\n\n"
-            "- [[%s|Direct Leaf]]\n"
-            "- First read [[%s|Cross Referenced]].\n"
-            "- Consult [[%s|Route Index]].\n"
-            "- Run `python3 Tools/check_queue.py .` before closing.\n\n"
-            "## Related\n\n"
-            "- [[%s|Related Only Leaf]]\n"
-            % (self.LEAF_RELATED[:-3], self.LEAF_DIRECT[:-3],
-               self.CROSS_READ_SET[:-3], self.READ_SET_INDEX[:-3],
-               self.LEAF_RELATED[:-3]),
+            self.read_set_text(
+                "R99",
+                targets=[self.LEAF_DIRECT, self.READ_SET_INDEX],
+                # A top-level Read Set composes only top-level route IDs.
+                # The selected Profile route is an independent closure root
+                # resolved from selected_profile_route_ids_after.
+                read_sets=["R98"],
+                trigger_note=(
+                    "The explanatory link [[%s|Related Only Leaf]] is not a "
+                    "loading edge." % self.LEAF_RELATED[:-3])),
             encoding="utf-8")
 
         cross = self.root / self.CROSS_READ_SET
         cross.write_text(
-            "---\ntype: read-set\nroute_id: R98\n---\n\n"
-            "## Purpose\n\nKernel supplemental fixture.\n\n"
-            "## Start\n\n"
-            "- [[%s|Nested Leaf]]\n"
-            "- [[%s|Profile Supplemental Read Set]]\n"
-            % (self.LEAF_NESTED[:-3], self.PROFILE_READ_SET[:-3]),
+            self.read_set_text(
+                "R98", targets=[self.LEAF_NESTED], read_sets=["R99"]),
             encoding="utf-8")
 
         profile = self.root / self.PROFILE_READ_SET
         profile.parent.mkdir(parents=True, exist_ok=True)
         profile.write_text(
-            "---\ntype: profile-read-set\n"
-            "route_id: P:test-profile:supplemental\nsupplements: R98\n---\n\n"
-            "## Purpose\n\nProfile supplemental fixture.\n\n"
-            "## Start\n\n"
-            "- [[%s|Profile Leaf]]\n"
-            "- [[%s|Cycle Back To Root]]\n"
-            % (self.LEAF_PROFILE[:-3], self.READ_SET[:-3]),
+            self.read_set_text(
+                "P:test-profile:supplemental",
+                targets=[self.LEAF_PROFILE], read_sets=[],
+                document_type="profile-read-set"),
             encoding="utf-8")
 
-    UNDER_DECLARING_READ_SET = "kernel/Read Sets/R97 Live Contract Fixture.md"
+    UNDER_DECLARING_READ_SET = "Read Set/R97 Live Contract Fixture.md"
     UNDER_DECLARED_LEAF = "kernel/K97 Fixture Family/01 Boundary Leaf.md"
 
     def under_declare_live_contract(self):
@@ -732,9 +887,9 @@ class AdoptStandardsFixture:
         read_set = self.root / self.UNDER_DECLARING_READ_SET
         read_set.parent.mkdir(parents=True, exist_ok=True)
         read_set.write_text(
-            "---\ntype: read-set\nroute_id: R97\n---\n\n"
-            "## Start\n\n- [[%s|Boundary Leaf]]\n" %
-            self.UNDER_DECLARED_LEAF[:-3], encoding="utf-8")
+            self.read_set_text(
+                "R97", targets=[self.UNDER_DECLARED_LEAF], read_sets=[]),
+            encoding="utf-8")
         leaf = self.root / self.UNDER_DECLARED_LEAF
         leaf.parent.mkdir(parents=True, exist_ok=True)
         leaf.write_text("## Purpose\n\nFixture leaf.\n", encoding="utf-8")
@@ -816,12 +971,45 @@ class AdoptStandardsFixture:
     # Zero errors were reported the whole time.
     # ------------------------------------------------------------------
 
-    # Borrowed from the Queue suite, which drives the same fixture: this
-    # file can adopt and revalidate but has no hand-built close bundle, and
-    # `check_batch_close.py` itself needs scaffolding this fixture lacks.
-    append_receipt = test_update_queue.UpdateQueueTests.append_receipt
-    queue_gate = test_update_queue.UpdateQueueTests.queue_gate
-    close_gate = test_update_queue.UpdateQueueTests.close_gate
+    def queue_gate(self, *mode):
+        relative = ".cambium/receipts/gates.jsonl"
+        completed = self.run_tool(
+            "check_queue.py", *mode, "--receipts", relative)
+        self.assertEqual(0, completed.returncode, completed.stdout)
+        rows = [json.loads(line) for line in
+                (self.root / relative).read_text(
+                    encoding="utf-8").splitlines() if line.strip()]
+        return rows[-1]["receipt_id"]
+
+    def close_gate(self, batch_id, consistency_receipt):
+        """Run the complete production post-Delta close producer chain."""
+        catalog = check_queue.current_receipt_catalog(
+            check_queue.validate_runtime(self.root))
+        self.assertIn(consistency_receipt, catalog)
+        completed = self.run_tool(
+            "check_batch_close.py", "--batch", batch_id,
+            "--integrator", "fixture-integrator",
+            "--reviewer", "fixture-reviewer",
+            "--review-attestation",
+            "fixture reviewer independently confirms the merged batch",
+            "--receipts", ".cambium/receipts/close-gates.jsonl",
+            "--json")
+        self.assertEqual(0, completed.returncode, completed.stdout)
+        payloads = [line for line in completed.stdout.splitlines()
+                    if line.startswith("[{")]
+        self.assertEqual(1, len(payloads), completed.stdout)
+        gates = [record for record in json.loads(payloads[0])
+                 if record.get("check") == "batch_close_gate"]
+        self.assertEqual(1, len(gates), gates)
+        return gates[0]["receipt_id"]
+
+    def close_consistency(self, close_gate_id):
+        rows = [json.loads(line) for line in
+                (self.root / ".cambium/receipts/close-gates.jsonl").read_text(
+                    encoding="utf-8").splitlines() if line.strip()]
+        gate = next(row for row in rows
+                    if row.get("receipt_id") == close_gate_id)
+        return gate["queue_consistency_receipt"]
 
     # Named fields whose consumers may resolve a sealed receipt.  Each entry
     # is a promise that a declared sealed branch handles that field; the
@@ -885,42 +1073,25 @@ class AdoptStandardsFixture:
             text=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
             check=False)
 
-    def closed_b1_that_consumed_an_aggregate(self, invalidated_gate):
-        """Drive B1 through a real revalidation and out to `closed`."""
-        self.lifecycle_boundary_plan(invalidated_gate)
-        link_receipt = self.link_gate_receipt()
-        # Produce one complete, legitimate attempt that no transition
-        # consumes, then consume a fresh attempt.  Current metadata property
-        # owners can correctly keep the entire close replay bundle hot; this
-        # independent historical aggregate gives the sealing assertions a
-        # cold candidate without weakening that owner-evidence guarantee.
-        historical = self.revalidation_aggregate(link_receipt)
-        aggregate = self.revalidation_aggregate(link_receipt)
-        self.assertNotEqual(historical["receipt_id"], aggregate["receipt_id"])
-        cleared_at = self.clear_b1_hold(aggregate)
-        self.merge_and_apply_b1(self.seconds_after(cleared_at, 1))
-        gate = self.queue_gate()
-        close_gate = self.close_gate("B1", gate)
-        result = check_queue.validate_runtime(self.root)
-        applied = next(entry for entry in result["applied_delta_receipts"]
-                       if entry.get("batch") == "B1")
-        completed = self.run_tool(
-            "update_queue.py", "--id", "B1", "--transition", "closed",
-            "--gate-receipt", gate, "--close-gate-receipt", close_gate,
-            "--delta-apply-receipt", applied["selected_receipt"],
-            "--expected-state-revision",
-            str(result["queue"]["state_revision"]),
-            "--expected-sha256", result["queue_sha256"],
-            "--actor-role", "integrator",
-            "--at", self.seconds_after(cleared_at, 3), "--apply")
-        self.assertEqual(0, completed.returncode, completed.stdout)
+    def closed_batch_that_consumed_an_aggregate(self):
+        """Close a fresh post-adoption batch that consumed revalidation.
+
+        The pre-adoption B1 attempt is completed under its own Standards.
+        Queued B2 then consumes the aggregate during a normal new-Standards
+        activation and runs the current audit/Delta/close producer chain.
+        Nothing rebases an active attempt across the adoption boundary.
+        """
+        scenario = self.revalidated_b2_applied()
+        batch_id = scenario["batch_id"]
+        self.close_applied_batch(
+            batch_id, scenario["delta_apply_receipt"])
         final = check_queue.validate_runtime(self.root)
         self.assertEqual([], final["errors"])
-        self.assertEqual("closed", final["items_by_id"]["B1"]["state"])
+        self.assertEqual("closed", final["items_by_id"][batch_id]["state"])
         # The premise of every test below: this consumption really happened.
         self.assertEqual([], check_queue.outstanding_standards_revalidation(
-            final, "B1"))
-        return aggregate["receipt_id"], final
+            final, batch_id))
+        return scenario["aggregate"]["receipt_id"], final, batch_id
 
     def seal_ignoring_the_rule(self, result):
         """Reproduce an archive sealed by the protocol that had no rule.
@@ -950,6 +1121,10 @@ class AdoptStandardsFixture:
                   "hold_state": "none"}
         record.update(item)
         return {
+            # Producer eligibility consumes the canonical K00 Gate registry;
+            # the reduced context must therefore retain the repository root
+            # that a full validate_runtime result always carries.
+            "root": TOOLS.parent,
             "standards_revalidation_outstanding": {
                 "B1": [{"adoption_id": "SA-001", "boundary_id": "INV-B1",
                         "required_gate_id": "batch-close"}]},
@@ -1014,9 +1189,10 @@ def _build_adopted(walker, inherited):
 
 
 def _build_closed_b1(walker, inherited):
-    aggregate_id, _final = walker.closed_b1_that_consumed_an_aggregate(
-        inherited["invalidated_gate"])
-    return {"aggregate_id": aggregate_id}
+    del inherited
+    aggregate_id, _final, batch_id = \
+        walker.closed_batch_that_consumed_an_aggregate()
+    return {"aggregate_id": aggregate_id, "closed_batch_id": batch_id}
 
 
 _TEMPLATE_PARENTS = {
@@ -1024,7 +1200,7 @@ _TEMPLATE_PARENTS = {
     "paused": "base",
     "held": "base",
     "adopted": "paused",
-    "closed-b1": "held",
+    "closed-b1": "base",
 }
 _TEMPLATE_BUILDERS = {
     "base": _build_base,
@@ -1201,10 +1377,9 @@ class AdoptedScenarioTests(_TemplateBackedCase):
     def test_upstream_identity_is_recorded_and_half_a_pair_is_refused(self):
         """1.5: the adoption record is what makes up/downstream comparable.
 
-        The distribution publishes no version numbers, so the upstream pair
-        (or its explicit null form) is required, recorded, receipt-bound,
-        and surfaced by resume-status.  Half a pair identifies nothing and
-        is refused; a legacy record without the fields stays valid history.
+        The upstream source and resolved full commit are required, recorded,
+        receipt-bound, and surfaced by resume-status. A missing or invented
+        identity is refused; legacy records remain producer-era history.
         """
         self.assertEqual(0, self.scenario["apply_code"],
                          self.scenario["apply_output"])
@@ -1213,12 +1388,12 @@ class AdoptedScenarioTests(_TemplateBackedCase):
         record = result["progress"]["standards_adoptions"][0]
         self.assertEqual("https://example.test/cambium.git",
                          record["upstream_source_ref"])
-        self.assertEqual("0123456789abcdef0123456789abcdef01234567",
+        self.assertEqual(ADOPTED_UPSTREAM_REVISION,
                          record["upstream_revision_id"])
         resume = self.run_tool("check_queue.py", "--resume-status")
         self.assertIn(
-            "standards_upstream=https://example.test/cambium.git@0123456789"
-            "abcdef0123456789abcdef01234567", resume.stdout)
+            "standards_upstream=https://example.test/cambium.git@%s" %
+            ADOPTED_UPSTREAM_REVISION, resume.stdout)
 
     def test_legacy_present_fingerprint_stays_sealed_across_the_chain(self):
         self.assert_committed_scenario()
@@ -1246,13 +1421,13 @@ class AdoptedScenarioTests(_TemplateBackedCase):
         self.assert_committed_scenario()
         runtime = check_queue.validate_runtime(self.root)
         self.assertEqual(
-            {"3.0.0", "3.1.0"},
+            {FIXTURE_UPSTREAM_REVISION, ADOPTED_UPSTREAM_REVISION},
             check_queue.accounted_standards_versions(
                 runtime["progress"], runtime["queue"]))
         self.assertEqual(
-            {"3.0.0"},
+            {FIXTURE_UPSTREAM_REVISION},
             check_queue.accounted_standards_versions(
-                {"contract": {"standards_version": "3.0.0"},
+                {"contract": {"standards_version": FIXTURE_UPSTREAM_REVISION},
                  "standards_adoptions": []}))
 
 
@@ -1375,24 +1550,125 @@ class PausedPlanAdmissionTests(_TemplateBackedCase):
     # pre-seeded receipt register -- so each takes a private copy.
     TEMPLATE = "paused"
 
-    def test_a_declared_null_upstream_pair_is_an_answer(self):
-        plan = self.plan(overrides={
-            "upstream_source_ref": None, "upstream_revision_id": None})
+    def test_component_byte_drift_refuses_before_any_runtime_write(self):
+        self.plan()
+        paths = [self.root / path for path in (
+            check_queue.COVERAGE_PATH, check_queue.QUEUE_PATH,
+            check_queue.PROGRESS_PATH, standards_state.STATE_PATH)]
+        before = [path.read_bytes() for path in paths]
+
+        code, output = self.command(
+            apply=True, actor="integrator",
+            component_errors=(
+                "component bytes differ from upstream: Card/R01 Core "
+                "Bootstrap Card.md",))
+
+        self.assertEqual(1, code, output)
+        self.assertIn("immutable components do not match", output)
+        self.assertEqual(before, [path.read_bytes() for path in paths])
+        self.assertFalse((self.root / self.RECEIPTS).exists())
+
+    def test_producer_era_component_paths_migrate_only_through_adoption(self):
+        """The sole load-contract writer must cross a namespace move.
+
+        This fixture is deliberately adopter-neutral: it starts from the
+        shared runtime's three ordinary routes, rewrites only their persisted
+        producer-era Card/Read Set path identities, and leaves the current
+        distribution with only the canonical top-level paths.  Ordinary
+        runtime validation must continue to reject that before-image.  The
+        Standards adoption writer, however, must be able to read it long
+        enough to atomically publish the strictly valid current after-image.
+        """
+        progress_path = self.root / check_queue.PROGRESS_PATH
+        progress = self.load(check_queue.PROGRESS_PATH)
+        contract = progress["contract"]
+        current_cards = list(contract["selected_card_paths"])
+        current_read_sets = list(contract["selected_read_sets"])
+        contract["selected_card_paths"] = sorted(
+            path.replace("Card/", "kernel/Cards/", 1)
+            for path in current_cards)
+        contract["selected_read_sets"] = sorted(
+            path.replace("Read Set/", "kernel/Read Sets/", 1)
+            for path in current_read_sets)
+        progress_path.write_text(
+            kblib.canonical_yaml(progress), encoding="utf-8")
+
+        # Restamp only fixture evidence so it represents bytes a legitimate
+        # earlier producer would have written.  Production history remains
+        # append-only; the test is manufacturing the historical before-image,
+        # not exercising a repair by receipt rewrite.
+        planned = kblib.load_yaml_file(FIXTURE / check_queue.PROGRESS_PATH)
+        planned["contract"] = copy.deepcopy(contract)
+        planned_sha = kblib.sha256_bytes(kblib.canonical_yaml(planned))
+        current_sha = kblib.sha256_file(progress_path)
+        contract_sha = check_queue.contract_sha256(progress)
+        receipt_path = self.root / \
+            ".cambium/receipts/task-transitions.jsonl"
+        rows = [json.loads(line) for line in receipt_path.read_text(
+            encoding="utf-8").splitlines() if line.strip()]
+        for row in rows:
+            if row.get("receipt_id") == "audit-fixture-initial-queue":
+                row["contract_sha256"] = contract_sha
+                row["after_progress_sha256"] = planned_sha
+            elif row.get("tool") == "update_task":
+                row["contract_sha256"] = contract_sha
+                row["before_progress_sha256"] = planned_sha
+                row["after_progress_sha256"] = current_sha
+        receipt_path.write_text(
+            "".join(json.dumps(row, separators=(",", ":")) + "\n"
+                    for row in rows), encoding="utf-8")
+
+        strict_before = check_queue.validate_runtime(self.root)
+        self.assertTrue(any(
+            "kernel/Read Sets/" in error and
+            "selected Read Set" in error
+            for error in strict_before["errors"]), strict_before["errors"])
+
+        self.plan(overrides={
+            "contract_version_after": "c2",
+            "selected_card_paths_after": current_cards,
+            "selected_read_sets_after": current_read_sets,
+        })
         code, output = self.command(apply=True, actor="integrator")
         self.assertEqual(0, code, output)
-        result = check_queue.validate_runtime(self.root)
-        self.assertEqual([], result["errors"])
-        record = result["progress"]["standards_adoptions"][0]
-        self.assertIsNone(record["upstream_source_ref"])
-        self.assertIsNone(record["upstream_revision_id"])
-        resume = self.run_tool("check_queue.py", "--resume-status")
-        self.assertIn("standards_upstream=none-declared", resume.stdout)
+
+        final = check_queue.validate_runtime(self.root)
+        self.assertEqual([], final["errors"])
+        self.assertEqual(
+            current_cards,
+            final["progress"]["contract"]["selected_card_paths"])
+        self.assertEqual(
+            current_read_sets,
+            final["progress"]["contract"]["selected_read_sets"])
+        adoption_receipts = [json.loads(line) for line in (
+            self.root / self.RECEIPTS).read_text(
+                encoding="utf-8").splitlines() if line.strip()]
+        commit = next(row for row in adoption_receipts
+                      if row.get("transaction_phase") == "commit")
+        self.assertEqual(
+            sorted(path.replace("Card/", "kernel/Cards/", 1)
+                   for path in current_cards),
+            commit["selected_card_paths_before"])
+        self.assertEqual(current_cards, commit["selected_card_paths_after"])
+        self.assertEqual(
+            sorted(path.replace("Read Set/", "kernel/Read Sets/", 1)
+                   for path in current_read_sets),
+            commit["selected_read_sets_before"])
+        self.assertEqual(
+            current_read_sets, commit["selected_read_sets_after"])
+
+    def test_a_declared_null_upstream_pair_is_refused_for_new_adoption(self):
+        self.plan(overrides={
+            "upstream_source_ref": None, "upstream_revision_id": None})
+        code, output = self.command(apply=True, actor="integrator")
+        self.assertEqual(1, code, output)
+        self.assertIn("upstream Git ref resolves to", output)
 
     def test_half_an_upstream_pair_is_refused(self):
         self.plan(overrides={"upstream_revision_id": None})
         code, output = self.command(apply=True, actor="integrator")
         self.assertEqual(1, code, output)
-        self.assertIn("both name the upstream or both be null", output)
+        self.assertIn("upstream Git ref resolves to", output)
 
     def test_apply_appends_to_existing_receipt_register(self):
         existing = kblib.make_receipt(
@@ -1463,6 +1739,56 @@ class AdoptionTransactionFailureTests(_TemplateBackedCase):
     # rollback, so every test needs -- and gets -- a private tree.
     TEMPLATE = "paused"
 
+    def test_locked_prewrite_component_cas_rejects_post_admission_drift(self):
+        self.plan()
+        prepared = self.prepare_result()
+        state_paths = [self.root / path for path in (
+            check_queue.COVERAGE_PATH, check_queue.QUEUE_PATH,
+            check_queue.PROGRESS_PATH, standards_state.STATE_PATH)]
+        before = [path.read_bytes() for path in state_paths]
+        receipt_path = self.root / self.RECEIPTS
+
+        with mock.patch.object(
+                adopt_standards.upstream_component_boundary, "evaluate",
+                return_value=self._component_report((
+                    "component bytes differ from upstream: Card/R01.md",))):
+            with self.assertRaisesRegex(ValueError, "locked pre-write"):
+                adopt_standards._commit_transaction(prepared, receipt_path)
+
+        self.assertEqual(before, [path.read_bytes() for path in state_paths])
+        self.assertFalse(receipt_path.exists())
+        self.assertFalse(
+            (self.root / ".cambium/tmp/state-writer.lock").exists())
+
+    def test_pre_final_component_cas_rolls_back_and_records_abort(self):
+        self.plan()
+        prepared = self.prepare_result()
+        state_paths = [self.root / path for path in (
+            check_queue.COVERAGE_PATH, check_queue.QUEUE_PATH,
+            check_queue.PROGRESS_PATH, standards_state.STATE_PATH)]
+        before = [path.read_bytes() for path in state_paths]
+        receipt_path = self.root / self.RECEIPTS
+
+        with mock.patch.object(
+                adopt_standards.upstream_component_boundary, "evaluate",
+                side_effect=[
+                    self._component_report(),
+                    self._component_report((
+                        "component bytes differ from upstream: Tools/runtime.py",
+                    )),
+                ]):
+            with self.assertRaisesRegex(ValueError, "pre-final-receipt"):
+                adopt_standards._commit_transaction(prepared, receipt_path)
+
+        self.assertEqual(before, [path.read_bytes() for path in state_paths])
+        rows = [json.loads(line) for line in
+                receipt_path.read_text(encoding="utf-8").splitlines()]
+        self.assertEqual(
+            ["prepare", "abort"],
+            [row["transaction_phase"] for row in rows])
+        self.assertFalse(
+            (self.root / ".cambium/tmp/state-writer.lock").exists())
+
     def test_state_write_failure_restores_before_bytes_and_records_abort(self):
         self.plan()
         paths = [self.root / path for path in (
@@ -1504,7 +1830,7 @@ class AdoptionTransactionFailureTests(_TemplateBackedCase):
 
     def test_locked_prewrite_profile_cas_rejects_post_admission_drift(self):
         self.plan()
-        prepared = adopt_standards._prepare_result(self.root, self.PLAN)
+        prepared = self.prepare_result()
         state_paths = [self.root / path for path in (
             check_queue.COVERAGE_PATH, check_queue.QUEUE_PATH,
             check_queue.PROGRESS_PATH)]
@@ -1523,7 +1849,7 @@ class AdoptionTransactionFailureTests(_TemplateBackedCase):
 
     def test_locked_prewrite_cas_compares_the_typed_contract_fingerprint(self):
         self.plan()
-        prepared = adopt_standards._prepare_result(self.root, self.PLAN)
+        prepared = self.prepare_result()
         prepared["profile_evidence"]["profile_contract_fingerprint"] = \
             "sha256:" + "0" * 64
 
@@ -1538,7 +1864,7 @@ class AdoptionTransactionFailureTests(_TemplateBackedCase):
 
     def test_locked_prewrite_cas_compares_profile_load_inputs(self):
         self.plan()
-        prepared = adopt_standards._prepare_result(self.root, self.PLAN)
+        prepared = self.prepare_result()
         prepared["profile_evidence"]["profile_load_inputs_sha256"] = \
             "sha256:" + "0" * 64
 
@@ -1811,26 +2137,31 @@ class CapabilityBoundaryTests(_TemplateBackedCase):
         plan = self.capability_boundary_plan(
             "audit-fixture-initial-queue", ["frontmatter-vocabulary"],
             ["batch-close"])
-        registry = (self.root /
-                    "kernel/K00 Standards Control/12 Control Registry.md")
-        registry.write_text(
-            registry.read_text(encoding="utf-8").replace(
-                "| frontmatter-vocabulary | semantic-leaf | batch-close ",
-                "| frontmatter-vocabulary | semantic-leaf | batch-review "),
-            encoding="utf-8")
         runtime = check_queue.validate_runtime(self.root)
+        gates, gate_errors = check_queue.standards_gate_registry(self.root)
+        capabilities, capability_errors = \
+            check_queue.standards_gate_capability_registry(
+                self.root, gate_registry=gates)
+        self.assertEqual([], gate_errors)
+        self.assertEqual([], capability_errors)
+        future_capabilities = copy.deepcopy(capabilities)
+        future_capabilities["frontmatter-vocabulary"]["owner"] = \
+            "batch-review"
 
         legacy_plan = self.legacy_plan_shape(plan)
-        historical = check_queue.standards_adoption_plan_errors(
-            self.root, legacy_plan, catalog=runtime["receipt_catalog"],
-            queue=runtime["queue"], progress=runtime["progress"],
-            validate_current=False, producer_tool_version="1.6.0")
+        with mock.patch.object(
+                queue_runtime.adoption,
+                "standards_revalidation_capabilities",
+                return_value=(future_capabilities, [])):
+            historical = check_queue.standards_adoption_plan_errors(
+                self.root, legacy_plan, catalog=runtime["receipt_catalog"],
+                queue=runtime["queue"], progress=runtime["progress"],
+                validate_current=False, producer_tool_version="1.6.0")
+            current = check_queue.standards_adoption_plan_errors(
+                self.root, plan, catalog=runtime["receipt_catalog"],
+                queue=runtime["queue"], progress=runtime["progress"],
+                validate_current=True, producer_tool_version="1.6.0")
         self.assertEqual([], historical)
-
-        current = check_queue.standards_adoption_plan_errors(
-            self.root, plan, catalog=runtime["receipt_catalog"],
-            queue=runtime["queue"], progress=runtime["progress"],
-            validate_current=True, producer_tool_version="1.6.0")
         self.assertTrue(any(
             "required_gate_ids adds owner Gate(s) not projected" in error and
             "batch-close" in error for error in current), current)
@@ -1991,7 +2322,7 @@ class CapabilityBoundaryTests(_TemplateBackedCase):
         for gate_id, role in (
                 ("standards-adoption", "mechanism-only"),
                 ("standards-revalidation", "mechanism-only"),
-                ("runtime-card-synchronization", "unsupported")):
+                ("runtime-startup-recovery", "unsupported")):
             with self.subTest(gate_id=gate_id):
                 plan = self.capability_boundary_plan(
                     "audit-fixture-initial-queue", [gate_id], [gate_id])
@@ -2583,37 +2914,37 @@ class HeldRevalidationTests(_TemplateBackedCase):
         close transition -- which is where that Gate's producer can run --
         must still refuse without it.
         """
-        invalidated_gate = self.invalidated_gate
-        self.lifecycle_boundary_plan(invalidated_gate)
-        aggregate = self.revalidation_aggregate(self.link_gate_receipt())
-        self.assertEqual(["batch-close"],
-                         aggregate["deferred_to_later_transition_gate_ids"])
-        cleared_at = self.clear_b1_hold(aggregate)
-        delta_apply_receipt = self.merge_and_apply_b1(
-            self.seconds_after(cleared_at, 1))
+        with tempfile.TemporaryDirectory() as holder:
+            root = Path(holder) / "repo"
+            walker = _ScenarioWalker.at(root)
+            walker.build_repository_fixture()
+            scenario = walker.revalidated_b2_applied()
+            aggregate = scenario["aggregate"]
+            batch_id = scenario["batch_id"]
+            self.assertEqual(
+                ["batch-close"],
+                aggregate["deferred_to_later_transition_gate_ids"])
 
-        consistency = self.run_tool(
-            "check_queue.py", "--receipts", ".cambium/receipts/close.jsonl")
-        self.assertEqual(0, consistency.returncode, consistency.stdout)
-        consistency_receipt = json.loads(
-            (self.root / ".cambium/receipts/close.jsonl").read_text(
-                encoding="utf-8").splitlines()[-1])["receipt_id"]
-        result = check_queue.validate_runtime(self.root)
-        self.assertEqual("merge-ready", result["items_by_id"]["B1"]["state"])
-        attempted = self.run_tool(
-            "update_queue.py", "--id", "B1", "--transition", "closed",
-            "--gate-receipt", consistency_receipt,
-            "--delta-apply-receipt", delta_apply_receipt,
-            "--expected-state-revision",
-            str(result["queue"]["state_revision"]),
-            "--expected-sha256", result["queue_sha256"],
-            "--actor-role", "integrator", "--at",
-            self.seconds_after(cleared_at, 2), "--apply")
-        self.assertEqual(1, attempted.returncode, attempted.stdout)
-        self.assertIn("requires --close-gate-receipt", attempted.stdout)
-        self.assertEqual(
-            "merge-ready",
-            self.load(check_queue.QUEUE_PATH)["required_queue"][0]["state"])
+            consistency_receipt = walker.queue_gate()
+            result = check_queue.validate_runtime(root)
+            self.assertEqual(
+                "merge-ready", result["items_by_id"][batch_id]["state"])
+            attempted = walker.run_tool(
+                "update_queue.py", "--id", batch_id,
+                "--transition", "closed",
+                "--gate-receipt", consistency_receipt,
+                "--delta-apply-receipt", scenario["delta_apply_receipt"],
+                "--expected-state-revision",
+                str(result["queue"]["state_revision"]),
+                "--expected-sha256", result["queue_sha256"],
+                "--actor-role", "integrator", "--apply")
+            self.assertEqual(1, attempted.returncode, attempted.stdout)
+            self.assertIn(
+                "requires --close-gate-receipt", attempted.stdout)
+            self.assertEqual(
+                "merge-ready",
+                check_queue.validate_runtime(root)["items_by_id"]
+                [batch_id]["state"])
 
     def test_a_boundary_of_only_passed_gates_is_refused_at_admission(self):
         """A current plan cannot retroactively defer an owner edge."""
@@ -2858,12 +3189,9 @@ class HeldRevalidationTests(_TemplateBackedCase):
 
 
 class QueueExhaustionGateTests(_TemplateBackedCase):
-    # Private scenario: this test extends the Gate registry BEFORE B1 is
-    # opened and held, and the open transition's receipt binds the
-    # Profile-load inputs hash over those registry bytes.  The shared
-    # "held" template binds the unextended registry, so this walk cannot
-    # be shared; the test keeps its own three-transition walk on a copy
-    # of the base template.
+    # Private scenario: this test opens and holds B1 before constructing its
+    # queue-exhaustion boundary, so it keeps its own three-transition walk on
+    # a copy of the base template.
     TEMPLATE = "base"
 
     def test_a_queue_exhaustion_gate_is_deferred_not_demanded_now(self):
@@ -2874,19 +3202,8 @@ class QueueExhaustionGateTests(_TemplateBackedCase):
         batch remains, which every live batch is.  Treating it as producible
         now would deadlock the hold exactly as `batch-close` did.
         """
-        registry = (self.root /
-                    "kernel/K00 Standards Control/12 Control Registry.md")
-        text = registry.read_text(encoding="utf-8").replace(
-            "\n## Standards Revalidation Capability Registry\n",
-            "\n| required-queue-completion | check_queue | %s "
-            "| required_queue | require-complete | * | queue-exhausted |\n\n"
-            "## Standards Revalidation Capability Registry\n" %
-            check_queue.TOOL_VERSION)
-        text += (
-            "| required-queue-completion | native-owner "
-            "| required-queue-completion | native-transition "
-            "| native-owner-scope | native-owner-receipt |\n")
-        registry.write_text(text, encoding="utf-8")
+        # The K00-owned YAML Control registry already declares the
+        # queue-exhaustion producer position and native-owner projection.
         invalidated_gate = self.open_b1_and_hold_for_revalidation()
         affected = ["required-queue-completion",
                     "required-queue-consistency", "wiki-link-integrity"]
@@ -3037,7 +3354,8 @@ class ReadSetClosureTests(_TemplateBackedCase):
         })
         errors = self.plan_errors(plan)
         type_errors = [error for error in errors
-                       if "does not prove frontmatter type" in error]
+                       if "does not prove a canonical machine Read Set"
+                       in error]
 
         self.assertEqual(1, len(type_errors), errors)
         self.assertIn(self.ORDINARY_SELECTED, type_errors[0])
@@ -3049,7 +3367,7 @@ class ReadSetClosureTests(_TemplateBackedCase):
         """A Read Set path that does not resolve is already reported."""
         plan = self.plan(overrides={
             "contract_version_after": "c2",
-            "selected_read_sets_after": ["kernel/Read Sets/R99 Absent.md"],
+            "selected_read_sets_after": ["Read Set/R99 Absent.md"],
             "loaded_module_paths_after": [],
         })
         errors = self.plan_errors(plan)
@@ -3061,7 +3379,7 @@ class ReadSetClosureTests(_TemplateBackedCase):
 
     def test_invalid_utf8_read_set_fails_closed(self):
         """A present but undecodable Read Set cannot shrink the closure."""
-        relative = "kernel/Read Sets/R99 Invalid UTF8.md"
+        relative = "Read Set/R99 Invalid UTF8.md"
         path = self.root / relative
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_bytes(b"---\ntype: read-set\n---\n\xff")
@@ -3080,8 +3398,7 @@ class ReadSetClosureTests(_TemplateBackedCase):
         read_set.parent.mkdir(parents=True, exist_ok=True)
         target = "kernel/K99 Fixture Family/Invalid UTF8.md"
         read_set.write_text(
-            "---\ntype: read-set\nroute_id: R99\n---\n\n"
-            "## Start\n\n- [[%s|Broken Target]]\n" % target[:-3],
+            self.read_set_text("R99", targets=[target], read_sets=[]),
             encoding="utf-8")
         target_path = self.root / target
         target_path.parent.mkdir(parents=True, exist_ok=True)
@@ -3116,9 +3433,16 @@ class ReadSetClosureTests(_TemplateBackedCase):
         path = self.root / relative
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(
-            "---\ntype: profile-read-set\n"
-            "route_id: P:test-profile:supplemental\n---\n\n"
-            "## Start\n\n- [[%s|Leaf]]\n" % self.LEAF_DIRECT[:-3],
+            "---\ntype: profile-read-set\nschema_version: 1\n"
+            "route_id: P:test-profile:supplemental\n"
+            "activation_phase: batch-preflight\nnarrowable: true\n"
+            "load_edges:\n"
+            "  - edge_id: P:test-profile:supplemental:start\n"
+            "    kind: required\n    phase_id: batch-preflight\n"
+            "    trigger_id: route-selected\n    targets:\n"
+            "      - %s\n    read_sets: []\n---\n\n"
+            "## Purpose\n\nFixture.\n\n"
+            "## Non-deterministic triggers\n\nNone.\n" % self.LEAF_DIRECT,
             encoding="utf-8")
         plan = self.plan(overrides={
             "contract_version_after": "c2",
@@ -3129,8 +3453,10 @@ class ReadSetClosureTests(_TemplateBackedCase):
         })
         errors = self.plan_errors(plan)
         self.assertTrue(any(
-            relative in error and "outside the selected profile directory"
-            in error for error in errors), errors)
+            relative in error and
+            "absent from the canonical machine registry for "
+            "profiles/test-profile" in error
+            for error in errors), errors)
 
     def test_profile_read_set_route_must_be_selected(self):
         self.write_boundary_fixture()
@@ -3197,18 +3523,19 @@ class ReadSetClosureTests(_TemplateBackedCase):
 
 
 class SealedAggregateTests(_TemplateBackedCase):
-    # Shared scenario: B1 driven from the held position through a real
-    # revalidation, merge, Delta application, and close -- the walk
-    # `closed_b1_that_consumed_an_aggregate` makes, performed once into the
-    # "closed-b1" template with the consumed aggregate's receipt ID as an
-    # artifact.  Every test then seals (or mis-seals) its private copy of
-    # that archive, so each starts from its own tree and re-derives the
-    # pre-seal runtime view from it.
+    # Shared scenario: B1 completes under the initial Standards; queued B2
+    # consumes a real revalidation aggregate while opening under the adopted
+    # Standards, then completes the production audit/Delta/close chain.  The
+    # walk is performed once into the "closed-b1" template with the consumed
+    # aggregate's receipt ID as an artifact.  Every test then seals (or
+    # mis-seals) its private copy of that archive, so each starts from its own
+    # tree and re-derives the pre-seal runtime view from it.
     TEMPLATE = "closed-b1"
 
     def setUp(self):
         super().setUp()
         self.aggregate_id = self.scenario["aggregate_id"]
+        self.batch_id = self.scenario["closed_batch_id"]
 
     def test_a_consumed_revalidation_aggregate_is_never_sealed(self):
         aggregate_id = self.aggregate_id
@@ -3226,7 +3553,7 @@ class SealedAggregateTests(_TemplateBackedCase):
         self.assertIn(aggregate_id, after["receipt_catalog"])
         self.assertNotIn(aggregate_id, after["receipt_catalog"].cold)
         self.assertEqual([], check_queue.outstanding_standards_revalidation(
-            after, "B1"))
+            after, self.batch_id))
 
     def test_an_archive_sealed_before_the_rule_still_replays(self):
         aggregate_id = self.aggregate_id
@@ -3247,7 +3574,7 @@ class SealedAggregateTests(_TemplateBackedCase):
 
         self.assertEqual([], after["errors"])
         self.assertEqual([], check_queue.outstanding_standards_revalidation(
-            after, "B1"))
+            after, self.batch_id))
 
     def test_a_sealed_body_whose_bytes_drifted_does_not_resolve(self):
         aggregate_id = self.aggregate_id
@@ -3287,14 +3614,15 @@ class SealedAggregateTests(_TemplateBackedCase):
             aggregate_id in error and
             "resolves neither in the hot register" in error
             for error in after["errors"]), after["errors"])
-        # The replay cannot know what it cannot read, so B1's bindings do
-        # come back as outstanding here -- that is exactly the reading this
-        # rule refuses to let pass unremarked.  The guarantee is that the
-        # run is not clean while it says so, and that recovery is routed to
-        # the unreachable evidence rather than to a revalidation the closed
-        # batch could never run.
+        # The replay cannot know what it cannot read, so the closed batch's
+        # bindings do come back as outstanding here -- that is exactly the
+        # reading this rule refuses to let pass unremarked.  The guarantee is
+        # that the run is not clean while it says so, and that recovery is
+        # routed to the unreachable evidence rather than to a revalidation
+        # the closed batch could never run.
         self.assertIn(
-            "B1", after.get("standards_revalidation_outstanding") or {})
+            self.batch_id,
+            after.get("standards_revalidation_outstanding") or {})
         self.assertEqual("repair-runtime",
                          check_queue.resume_next_action(after,
                                                          after["errors"]))
@@ -3303,7 +3631,8 @@ class SealedAggregateTests(_TemplateBackedCase):
         """Sealing is a parse-cost move; it may not change an answer."""
         before = check_queue.validate_runtime(self.root)
         consumed_before = check_queue.consumed_standards_revalidation_keys(
-            before["items_by_id"]["B1"], before["receipt_catalog"])
+            before["items_by_id"][self.batch_id],
+            before["receipt_catalog"])
         self.assertTrue(consumed_before, "the premise: something was consumed")
 
         completed = self.seal("--apply")
@@ -3313,18 +3642,21 @@ class SealedAggregateTests(_TemplateBackedCase):
         self.assertEqual(
             consumed_before,
             check_queue.consumed_standards_revalidation_keys(
-                after["items_by_id"]["B1"], after["receipt_catalog"]))
+                after["items_by_id"][self.batch_id],
+                after["receipt_catalog"]))
 
     def test_consumption_survives_an_archive_sealed_before_the_rule(self):
         before = check_queue.validate_runtime(self.root)
         consumed_before = check_queue.consumed_standards_revalidation_keys(
-            before["items_by_id"]["B1"], before["receipt_catalog"])
+            before["items_by_id"][self.batch_id],
+            before["receipt_catalog"])
         self.seal_ignoring_the_rule(before)
         after = check_queue.validate_runtime(self.root)
         self.assertEqual(
             consumed_before,
             check_queue.consumed_standards_revalidation_keys(
-                after["items_by_id"]["B1"], after["receipt_catalog"]))
+                after["items_by_id"][self.batch_id],
+                after["receipt_catalog"]))
 
     def test_every_sealed_reference_a_named_field_makes_has_a_branch(self):
         """The closed-set assertion whose absence let this ship.
@@ -3361,24 +3693,55 @@ class PureFunctionTests(AdoptStandardsFixture, unittest.TestCase):
     # No scenario: these tests exercise pure parsers and in-memory
     # projections, so no repository tree is built and nothing is walked.
 
+    def test_component_path_projection_is_exact_and_plan_bound(self):
+        contract = {
+            "selected_card_paths": [
+                "kernel/Cards/R01 Core Bootstrap Card.md"],
+            "selected_read_sets": [
+                "kernel/Read Sets/R01 Core Bootstrap Read Set.md"],
+        }
+        after = {
+            "selected_card_paths": [
+                "Card/R01 Core Bootstrap Card.md"],
+            "selected_read_sets": [
+                "Read Set/R01 Core Bootstrap Read Set.md"],
+        }
+        projected, evidence, errors = \
+            queue_runtime.task_contract.producer_era_load_contract_view(
+                TOOLS.parent, contract, after)
+        self.assertEqual([], errors)
+        self.assertEqual(after, projected)
+        self.assertEqual(2, len(evidence))
+        self.assertEqual(
+            {"top-level-card-read-set-v1"},
+            {row["migration_id"] for row in evidence})
+
+        missing_after = copy.deepcopy(after)
+        missing_after["selected_read_sets"] = []
+        projected, _evidence, errors = \
+            queue_runtime.task_contract.producer_era_load_contract_view(
+                TOOLS.parent, contract, missing_after)
+        self.assertTrue(any(
+            "adoption after-image does not declare" in error
+            for error in errors), errors)
+        self.assertEqual(
+            contract["selected_read_sets"],
+            projected["selected_read_sets"])
+
+    def test_component_path_projection_is_not_a_runtime_alias(self):
+        with self.assertRaisesRegex(
+                ValueError, "restricted to the persisted Standards adoption"):
+            check_queue.validate_runtime(
+                TOOLS.parent,
+                producer_era_load_contract_after={
+                    "selected_card_paths": [],
+                    "selected_read_sets": [],
+                })
+
     def test_read_set_type_must_be_a_scalar_string(self):
         """Malformed YAML types are rejected without raising TypeError."""
         text = "---\ntype: [read-set]\n---\n\n## Start\n"
         self.assertIsNone(kblib.read_set_document_type(text))
-
-    def test_boundary_parser_ignores_fences_and_accepts_indented_h2(self):
-        text = (
-            "## Purpose\n\n[[Ignored/Purpose]]\n\n"
-            "  ## Start\n\n[[Included/Leaf]]\n\n"
-            "[[Included/WithSuffix.md|Explicit suffix]]\n\n"
-            "| Target |\n|---|\n| [[Included/Table\\|Alias]] |\n\n"
-            "```markdown\n## Triggered\n[[Ignored/Fenced]]\n```\n\n"
-            "   ## Gate\n\n[[Included/Gate]]\n\n"
-            "## Related\n\n[[Ignored/Related]]\n")
-        self.assertEqual(
-            ["Included/Gate.md", "Included/Leaf.md", "Included/Table.md",
-             "Included/WithSuffix.md"],
-            kblib.read_set_boundary_targets(text))
 
     def test_current_catalog_and_gate_identity_never_fall_back(self):
         historical = {

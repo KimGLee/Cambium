@@ -1,12 +1,12 @@
 ## Purpose
 
-This page is the stable entry point for the Content Depth standard. The detailed rules have been split by responsibility into the modules below; the original content has not been reduced.
+This page is the stable entry point for the Content Depth standard. Detailed rules are maintained by the responsibility-specific modules below.
 
 ## Reading Rule
 
-- First use this MOC to locate the rule owner, then read the modules required by the current task, event, or quality gate.
-- Entering this domain does not require reading all modules at once.
-- Each module returns to its parent via `Navigation` and connects to the adjacent modules before and after it.
+- Use this MOC only to locate the canonical semantic owner. Loading decisions
+  are owned outside Kernel; opening this index is not evidence that any leaf was
+  loaded.
 
 ## Module Index
 
@@ -18,12 +18,6 @@ This page is the stable entry point for the Content Depth standard. The detailed
 | [[kernel/K04 Content Depth/04 System and Production Reasoning\|System and Production Reasoning]] | `System Design Structure`, `Production System Reasoning` |
 | [[kernel/K04 Content Depth/05 Source and Evaluation Depth\|Source and Evaluation Depth]] | `Source Note And Research Synthesis Depth`, `Evaluation Provenance Depth` |
 | [[kernel/K04 Content Depth/06 Examples Deep Dives and Failure Analysis\|Examples Deep Dives and Failure Analysis]] | `Example Standard`, `Deep-Dive Standard`, `Failure And Debugging Standard`, `Anti-patterns`, `Related` |
-
-## Applicable Read Sets
-
-- [[kernel/Read Sets/R02 Single Note Authoring Read Set|Single Note Authoring]]
-- [[kernel/Read Sets/R03 Module Build Read Set|Module Build]]
-- [[kernel/Read Sets/R05 Expression Layer Read Set|R05 Expression Layer]]
 
 ## Related Standards
 

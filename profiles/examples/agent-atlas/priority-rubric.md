@@ -1,6 +1,6 @@
 # Priority Rubric
 
-Interface: [Priority Rubric slot](../../README.md#priority-rubric-slot)
+Interface: [Kernel-owned Profile interface](../../../kernel/K00%20Standards%20Control/19%20Profile%20Extension%20Interface.md) — Priority Rubric slot
 
 ## Profile-owned Grant Criteria
 
@@ -11,12 +11,7 @@ Interface: [Priority Rubric slot](../../README.md#priority-rubric-slot)
 
 ## Priority Quota
 
-The standing quota targets this corpus holds its P0/P1 shares to. K00/07 owns
-the quota model; this registration replaces the retired
-`priority_quota.*` execution-default override rows (same values, now the
-instrument K00/07 names for long-lived shares). A temporary excess is not
-registered here -- it is a bounded contract policy exception via
-`apply_contract_amendment.py`, and it dies with its task.
+The standing quota targets this corpus holds its P0/P1 shares to. K00/07 owns the quota model; this registration replaces the retired `priority_quota.*` execution-default override rows (same values, now the instrument K00/07 names for long-lived shares). A temporary excess is not registered here -- it is a bounded contract policy exception via `apply_contract_amendment.py`, and it dies with its task.
 
 - Registration: Configured
 

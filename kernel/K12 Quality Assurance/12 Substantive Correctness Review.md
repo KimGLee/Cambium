@@ -10,21 +10,23 @@ This module owns the review that an execution context other than the author perf
 
 ## Substantive Correctness Review
 
-Substantive correctness review is mandatory for L-tier pages; it is not mandatory for S / M tiers, which are covered by batch spot checks.
+Substantive correctness review is mandatory for L-tier pages. It is not a standalone obligation for M-tier pages: M is reviewed only through the M checklist inside Batch Review. S-tier review remains the bounded sample owned by Batch Review. Neither route invokes this substantive-review contract.
 
-Execution: performed by a procedurally separate execution context — a subagent started with a clean context and carrying no author context, or a new session, whose input is only the note body and its Sources. This is Cambium's procedural independence requirement; the recorded context identifier is a declared label, while actual isolation must be supplied by the operator or host. The main thread MUST NOT produce the review receipt itself. The review MAY be triggered as soon as the page is drafted (drafted and passing the `--scope` self-check), in parallel with subsequent page writing; batch integration requires only that the review receipts have all arrived — the K13/10 merge-ready writer refuses an L-tier manifest page without a current passing `substantive_review` receipt, so the obligation is counted, not attested in prose. Review content:
+Execution is performed by a procedurally separate review context carrying only the note body and its Sources, not the author's working context. The recorded context identifier is a declared label; actual isolation is supplied by the operator or Host. The authoring context MUST NOT produce its own review receipt. Review may begin once the page is drafted and its changed-scope self-check passes. Batch admission requires current `substantive_review` evidence for every L-tier manifest page. Review content:
 
 - Re-derive the key reasoning chains and confirm the conclusions actually follow from the premises.
 - Spot check 2–3 key claims against the source's original text.
 - Check for over-extension of the "the source does not say it that strongly" kind.
 
-The review produces a receipt (`check: substantive_review`, schema as in `Tools/schemas/receipt.template.jsonl`).
+The review produces `substantive_review` producer evidence under the sole machine authority of [`substantive-review-contract.yaml`](substantive-review-contract.yaml). The unique producer route is capability `substantive-review-attestation-v1`; the `batch-review` Gate is its consumer. At the `pre-merge` due stage, a passing record discharges only the exact AuditPlan obligation it binds, as `audit-receipt` evidence in dimension `content_and_depth` against acceptance predicate `content-correctness`. The AuditPlan layer completes the producer record into the full [`AuditReceipt`](audit-receipt-contract.yaml) rather than treating that record as a second receipt schema.
 
-Trigger points:
+Trigger-to-partition projection is fixed as follows:
 
-- When the page is newly created.
-- When the page is marked `needs_rereview`.
-- When `review_by` expires and re-verification is due.
+- A newly created L-tier page maps to `initial-semantic-review`.
+- An L-tier page marked `needs_rereview` maps to `invalidated-semantic-review`.
+- An L-tier page whose `review_by` has expired maps to `overdue-targeted-review`.
+
+`initial-semantic-review` records why the existing L-tier obligation was triggered. It does not create another review duty, change the acceptance predicate, or merge the L execution route with the M checklist.
 
 Review object and convergence rules:
 

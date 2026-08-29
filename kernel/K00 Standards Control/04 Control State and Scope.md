@@ -6,19 +6,16 @@
 
 ## Control State Separation
 
-| State | Owner | Meaning | Must Not Be Used As |
-|---|---|---|---|
-| `task_state` | Progress Ledger | planned, active, paused, blocked, completion-candidate, complete, cancelled | page content quality |
-| `state` (batch) | Required Queue | queued, open, merge-ready, closed, cancelled | whole-task state or page quality |
-| `hold_state` (batch) | Required Queue | none, confirmation-required, blocked, revalidation-required, paused | a replacement for batch lifecycle or task pause/block |
-| `authoring_status` | Coverage Ledger / page metadata | unassessed, outline, drafted, reviewed | user learning progress or evidence strength |
-| `Expression Status Axis` | Selected profile registry | expression-artifact coverage and readiness values registered by the selected profile | canonical note depth |
-| `evidence_maturity` | Canonical / Source / Synthesis note | signal, single-source, corroborated, validated, contested, superseded | whether writing is complete |
-| `learning_status` | User learning workflow | not-started, learning, self-tested, mastered | knowledge-base build progress |
+The state axes are independent and retain their own canonical owners:
 
-This table is a control-plane quick view; the complete vocabularies are authoritative at each owner: for `task_state` see [[kernel/K13 Task Runtime and Execution Control/03 Task State and Transition Rules|K13/03]], for batch lifecycle and holds see [[kernel/K13 Task Runtime and Execution Control/08 Required Queue Contract and Lifecycle|K13/08]], for the remaining kernel axes see [[kernel/K08 Metadata and Status/03 Status Axes|K08/03]], and expression status values are provided by the `Expression Status Axis` role.
+- whole-task state: [[kernel/K13 Task Runtime and Execution Control/03 Task State and Transition Rules|K13/03]];
+- batch lifecycle and holds: [[kernel/K13 Task Runtime and Execution Control/08 Required Queue Contract and Lifecycle|K13/08]];
+- page authoring, learning, coverage, and evidence axes: [[kernel/K08 Metadata and Status/03 Status Axes|K08/03]];
+- expression readiness values: the selected Profile's `Expression Status Axis` binding.
 
-`coverage_disposition` additionally states whether a page or not-yet-created knowledge object is required, optional, deferred, or excluded in the current scope. Coverage owns that object disposition; Queue cancellation cannot change it. An authorized cancellation therefore supplies one complete Coverage proposal and an approved Amendment registered by `Tools/register_amendment.py` to `Tools/apply_amendment.py`; that guarded transaction consumes the registration and changes Coverage, Queue, and the Progress write-back together. Direct Queue cancellation and a hand-edited inconsistent staging window are forbidden.
+No axis may be used as evidence for another. In particular, batch lifecycle is not whole-task state or page quality; authoring status is not learning progress or evidence strength; and expression readiness is not canonical-note depth.
+
+`coverage_disposition` states whether a page or not-yet-created knowledge object belongs to the current scope. Coverage owns that disposition; Queue cancellation cannot change it. Any authorized cancellation that changes scope must use one controlled Amendment transaction whose observable result keeps Coverage, Queue, and Progress consistent. Direct Queue-only cancellation and a hand-edited inconsistent staging window are forbidden.
 
 ## Scope
 

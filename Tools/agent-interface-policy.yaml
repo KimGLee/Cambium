@@ -5,9 +5,14 @@
 # CAMBIUM_WORKSPACE_ROOT.  Each argparse argument is closed as exactly that
 # workspace argument, one read/write path, or one ordinary value. Path defaults
 # and overrides narrow containment to a registered namespace or exact artifact.
+# Runtime paths bind the stable `runtime_path_id` owned by runtime_paths.py;
+# component paths bind a `component_path_id` owned by that component's machine
+# contract. compile_cli_contract resolves either identity to its current
+# physical value. Other paths retain a literal `value`. Every row carries
+# exactly one source form.
 # A CLI-only tool may retain an external-write workflow, but that effect is
 # never inherited by MCP merely because the CLI happens to declare it.
-schema_version: 2
+schema_version: 4
 artifact: agent-interface-policy
 consumption_defaults:
   read: snapshot
@@ -16,29 +21,39 @@ consumption_defaults:
 path_defaults:
   - argument: receipts
     constraint: namespace
-    value: .cambium/receipts
+    runtime_path_id: receipt-root
     suffixes: [.jsonl]
     consumption: append
 path_overrides:
+  - tool: complete_audit_receipt
+    argument: plan
+    constraint: namespace
+    runtime_path_id: audit-plan-root
+    suffixes: [.yaml]
+  - tool: complete_audit_receipt
+    argument: receipts
+    constraint: exact
+    runtime_path_id: audit-receipt-register
+    suffixes: []
   - tool: check_boundary_contract
     argument: contract
     constraint: exact
-    value: Tools/page_contract.yaml
+    runtime_path_id: effective-page-contract
     suffixes: []
   - tool: check_page_contract
     argument: contract
     constraint: exact
-    value: Tools/page_contract.yaml
+    runtime_path_id: effective-page-contract
     suffixes: []
   - tool: render_boundary_projection
     argument: contract
     constraint: exact
-    value: Tools/page_contract.yaml
+    runtime_path_id: effective-page-contract
     suffixes: []
   - tool: check_profile
     argument: interface
     constraint: exact
-    value: profiles/README.md
+    value: kernel/K00 Standards Control/profile-interface.yaml
     suffixes: []
   - tool: check_profile
     argument: defaults
@@ -53,12 +68,12 @@ path_overrides:
   - tool: check_proof
     argument: ledger
     constraint: exact
-    value: .cambium/state/coverage_ledger.yaml
+    runtime_path_id: coverage-ledger
     suffixes: []
   - tool: check_proof
     argument: progress_ledger
     constraint: exact
-    value: .cambium/state/progress_ledger.yaml
+    runtime_path_id: progress-ledger
     suffixes: []
   - tool: check_proof
     argument: template
@@ -68,27 +83,72 @@ path_overrides:
   - tool: check_vocab
     argument: vocab
     constraint: exact
-    value: Tools/vocab.yaml
+    runtime_path_id: effective-vocabulary
     suffixes: []
   - tool: compile_queue
     argument: output
     constraint: namespace
-    value: .cambium
+    runtime_path_id: runtime-root
     suffixes: [.yaml]
+  - tool: record_batch_review
+    argument: receipts
+    constraint: exact
+    runtime_path_id: gate-attestation-receipts
+    suffixes: []
+  - tool: record_batch_judgment
+    argument: receipts
+    constraint: exact
+    runtime_path_id: batch-judgment-receipts
+    suffixes: []
+  - tool: record_batch_page_review
+    argument: plan
+    constraint: namespace
+    runtime_path_id: audit-plan-root
+    suffixes: [.yaml]
+  - tool: record_changed_scope_evidence
+    argument: plan
+    constraint: namespace
+    runtime_path_id: audit-plan-root
+    suffixes: [.yaml]
+  - tool: record_changed_scope_evidence
+    argument: receipts
+    constraint: exact
+    runtime_path_id: changed-scope-evidence-receipts
+    suffixes: []
+  - tool: record_rendering_verification
+    argument: plan
+    constraint: namespace
+    runtime_path_id: audit-plan-root
+    suffixes: [.yaml]
+  - tool: record_rendering_verification
+    argument: receipts
+    constraint: exact
+    runtime_path_id: rendering-verification-receipts
+    suffixes: []
+  - tool: record_substantive_review
+    argument: plan
+    constraint: namespace
+    runtime_path_id: audit-plan-root
+    suffixes: [.yaml]
+  - tool: record_substantive_review
+    argument: receipts
+    constraint: exact
+    runtime_path_id: substantive-review-receipts
+    suffixes: []
   - tool: render_queue
     argument: output
     constraint: namespace
-    value: .cambium/reports
+    runtime_path_id: report-root
     suffixes: [.md]
   - tool: stamp_cards
     argument: cards_dir
     constraint: exact
-    value: kernel/Cards
+    component_path_id: card-directory
     suffixes: []
   - tool: update_queue
     argument: delta_path
     constraint: namespace
-    value: .cambium/deltas
+    runtime_path_id: delta-root
     suffixes: [.yaml]
 path_activation_overrides:
   - tool: adopt_standards
@@ -127,10 +187,26 @@ path_activation_overrides:
     argument: replan_diff
     active_when_any: [apply_replan]
     inactive_when_any: []
+  - tool: complete_audit_receipt
+    argument: receipts
+    active_when_any: [apply]
+    inactive_when_any: []
+  - tool: record_batch_review
+    argument: receipts
+    active_when_any: [apply]
+    inactive_when_any: []
   - tool: record_batch_judgment
     argument: receipts
     active_when_any: [apply]
     inactive_when_any: []
+  - tool: record_changed_scope_evidence
+    argument: plan
+    active_when_any: []
+    inactive_when_any: [list_producers]
+  - tool: record_changed_scope_evidence
+    argument: receipts
+    active_when_any: [apply]
+    inactive_when_any: [list_producers]
   - tool: record_corpus_acceptance
     argument: receipts
     active_when_any: [apply]
@@ -140,6 +216,14 @@ path_activation_overrides:
     active_when_any: [apply]
     inactive_when_any: []
   - tool: record_gate_result
+    argument: receipts
+    active_when_any: [apply]
+    inactive_when_any: []
+  - tool: record_rendering_verification
+    argument: receipts
+    active_when_any: [apply]
+    inactive_when_any: []
+  - tool: record_substantive_review
     argument: receipts
     active_when_any: [apply]
     inactive_when_any: []
@@ -165,10 +249,10 @@ path_activation_overrides:
     inactive_when_any: []
 tools:
   - tool: adopt_standards
-    exposure: mcp
+    exposure: cli-only
     workspace_argument: root
     workspace_access: write
-    value_arguments: [actor_role, apply, json]
+    value_arguments: [actor_role, apply, json, upstream_root, upstream_ref]
     read_paths: [plan]
     write_paths: [receipts]
     read_write_paths: []
@@ -210,10 +294,10 @@ tools:
     read_write_paths: [page]
     external_write: none
   - tool: apply_profile_adoption
-    exposure: mcp
+    exposure: cli-only
     workspace_argument: root
     workspace_access: write
-    value_arguments: [apply, json]
+    value_arguments: [apply, json, upstream_root, upstream_ref]
     read_paths: [plan]
     write_paths: [receipts]
     read_write_paths: []
@@ -261,6 +345,15 @@ tools:
     value_arguments: [as_of, exclude, json]
     read_paths: [scope, defaults]
     write_paths: [receipts]
+    read_write_paths: []
+    external_write: none
+  - tool: check_kernel_size
+    exposure: cli-only
+    workspace_argument: root
+    workspace_access: read
+    value_arguments: [json]
+    read_paths: []
+    write_paths: []
     read_write_paths: []
     external_write: none
   - tool: check_links
@@ -335,6 +428,15 @@ tools:
     write_paths: [receipts]
     read_write_paths: []
     external_write: none
+  - tool: check_upstream_components
+    exposure: cli-only
+    workspace_argument: root
+    workspace_access: write
+    value_arguments: [upstream_root, revision, write_manifest, check_manifest, json]
+    read_paths: []
+    write_paths: []
+    read_write_paths: []
+    external_write: none
   - tool: check_vocab
     exposure: mcp
     workspace_argument: vault_root
@@ -360,6 +462,15 @@ tools:
     value_arguments: [apply, apply_replan, amendment_id, expected_queue_revision, expected_state_revision, expected_sha256, expected_coverage_sha256, expected_progress_sha256, actor_role, json]
     read_paths: [coverage_proposal, replan_diff]
     write_paths: [output, receipts]
+    read_write_paths: []
+    external_write: none
+  - tool: complete_audit_receipt
+    exposure: mcp
+    workspace_argument: root
+    workspace_access: write
+    value_arguments: [batch, obligation_id, evidence_receipt, apply]
+    read_paths: [plan]
+    write_paths: [receipts]
     read_write_paths: []
     external_write: none
   - tool: compose_page_contract
@@ -416,6 +527,24 @@ tools:
     write_paths: []
     read_write_paths: []
     external_write: none
+  - tool: module_boundary_report
+    exposure: cli-only
+    workspace_argument: root
+    workspace_access: write
+    value_arguments: [format, base_ref, emit_manifest, acknowledge_drift]
+    read_paths: []
+    write_paths: []
+    read_write_paths: [output]
+    external_write: temporary-git-worktree
+  - tool: prepare_audit_plan
+    exposure: mcp
+    workspace_argument: root
+    workspace_access: write
+    value_arguments: [batch, at, apply]
+    read_paths: []
+    write_paths: []
+    read_write_paths: []
+    external_write: none
   - tool: profile_onboarding_status
     exposure: mcp
     workspace_argument: root
@@ -434,12 +563,39 @@ tools:
     write_paths: []
     read_write_paths: [page]
     external_write: none
+  - tool: record_batch_review
+    exposure: mcp
+    workspace_argument: root
+    workspace_access: write
+    value_arguments: [batch, actor_role, statement, apply, json]
+    read_paths: []
+    write_paths: [receipts]
+    read_write_paths: []
+    external_write: none
+  - tool: record_batch_page_review
+    exposure: mcp
+    workspace_argument: root
+    workspace_access: write
+    value_arguments: [batch, obligation_id, page, variant, reviewer_context_id, reviewer_role, verdict, statement, applicability_disposition, applicability_reason, consumed_evidence_ref, apply]
+    read_paths: [plan]
+    write_paths: []
+    read_write_paths: []
+    external_write: none
   - tool: record_batch_judgment
     exposure: mcp
     workspace_argument: root
     workspace_access: write
     value_arguments: [batch, judgment_item, target, reviewer_role, statement, apply, json]
     read_paths: []
+    write_paths: [receipts]
+    read_write_paths: []
+    external_write: none
+  - tool: record_changed_scope_evidence
+    exposure: mcp
+    workspace_argument: root
+    workspace_access: write
+    value_arguments: [list_producers, batch, obligation_id, apply]
+    read_paths: [plan]
     write_paths: [receipts]
     read_write_paths: []
     external_write: none
@@ -470,6 +626,24 @@ tools:
     write_paths: [receipts]
     read_write_paths: []
     external_write: none
+  - tool: record_rendering_verification
+    exposure: mcp
+    workspace_argument: root
+    workspace_access: write
+    value_arguments: [batch, obligation_id, rendering_mode, visual_trigger, unresolved_question, verification_target, verification_result, apply]
+    read_paths: [plan]
+    write_paths: [receipts]
+    read_write_paths: []
+    external_write: none
+  - tool: record_substantive_review
+    exposure: mcp
+    workspace_argument: root
+    workspace_access: write
+    value_arguments: [batch, obligation_id, page, authoring_context_id, reviewer_context_id, reviewer_role, round, verdict, finding, statement, round_1_receipt_id, apply]
+    read_paths: [plan]
+    write_paths: [receipts]
+    read_write_paths: []
+    external_write: none
   - tool: register_amendment
     exposure: mcp
     workspace_argument: root
@@ -492,16 +666,16 @@ tools:
     exposure: cli-only
     workspace_argument: root
     workspace_access: read
-    value_arguments: [host, distribution_root, workspace_root, check, sources]
+    value_arguments: [host, projection_target, distribution_root, workspace_root, check, sources]
     read_paths: [projection]
     write_paths: []
     read_write_paths: [output_dir]
-    external_write: host-config-installation
+    external_write: none
   - tool: render_interface_projection
     exposure: cli-only
     workspace_argument: root
     workspace_access: write
-    value_arguments: [form, check, sources]
+    value_arguments: [form, projection_target, check, sources]
     read_paths: [contract]
     write_paths: []
     read_write_paths: [output]
@@ -552,10 +726,10 @@ tools:
     read_write_paths: []
     external_write: none
   - tool: stamp_cards
-    exposure: mcp
+    exposure: cli-only
     workspace_argument: root
     workspace_access: write
-    value_arguments: [set_version, acknowledge_compiled, check]
+    value_arguments: [acknowledge_review, check]
     read_paths: []
     write_paths: []
     read_write_paths: [cards_dir]

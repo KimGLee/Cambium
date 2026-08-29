@@ -36,6 +36,11 @@ import metadata_execution_contract  # noqa: E402
 import scaffold_profile  # noqa: E402
 import standards_state  # noqa: E402
 import test_template_fill  # noqa: E402  (reused semantic fill + scan config)
+from profile_fixture import FIXTURE_UPSTREAM_REVISION  # noqa: E402
+from canonical_registry_fixture import (  # noqa: E402
+    KERNEL_MACHINE_REGISTRY_PATHS,
+    install_isolated_tool_registry_bundle,
+)
 
 # Extra root-owned inputs used by this onboarding fixture outside the
 # canonical profile-load set.  The canonical set itself is derived below from
@@ -66,7 +71,14 @@ def profile_load_fixture_files():
 
 def copy_profile_load_fixture(root):
     """Copy the producer's closed input set into one minimal adopting root."""
+    # The subprocess may import copied production modules whose import-time
+    # machine authorities extend beyond the profile-load snapshot itself.
+    # Install that closed Kernel bundle once, then add non-Kernel producer
+    # inputs below.
+    install_isolated_tool_registry_bundle(root)
     for relative in profile_load_fixture_files():
+        if relative in KERNEL_MACHINE_REGISTRY_PATHS:
+            continue
         target = Path(root) / relative
         target.parent.mkdir(parents=True, exist_ok=True)
         shutil.copyfile(REPOSITORY / relative, target)
@@ -126,13 +138,13 @@ def adopt(root, manifest_relative, fields=None):
     values = {
         "schema_version": 1,
         "state_revision": 1,
-        "standards_version": "adopt-v1",
+        "standards_version": FIXTURE_UPSTREAM_REVISION,
         "status": "approved",
         "effective_date": "2026-08-13",
         "selected_profile_manifest": manifest_relative,
         "latest_adoption_receipt": "audit-fixture-adoption",
-        "upstream_source_ref": None,
-        "upstream_revision_id": None,
+        "upstream_source_ref": "fixture://cambium",
+        "upstream_revision_id": FIXTURE_UPSTREAM_REVISION,
     }
     if fields is not None:
         values = {field: values[field] for field in fields}
@@ -260,7 +272,7 @@ class AdoptedTests(unittest.TestCase):
             self.assertEqual(0, code)
             self.assertEqual("adopted", view["standards_state"])
             self.assertEqual(
-                {"standards_version": "adopt-v1",
+                {"standards_version": FIXTURE_UPSTREAM_REVISION,
                  "status": "approved",
                  "effective_date": "2026-08-13",
                  "selected_profile_manifest":
@@ -316,6 +328,8 @@ class AdoptedTests(unittest.TestCase):
             (root / "README.zh-CN.md").write_text("# Dist\n",
                                                   encoding="utf-8")
             (root / "ROADMAP.md").write_text("# Roadmap\n", encoding="utf-8")
+            (root / "ROADMAP.zh-CN.md").write_text(
+                "# 路线图\n", encoding="utf-8")
             (root / "docs").mkdir()
             (root / "docs" / "guide.md").write_text("# G\n",
                                                     encoding="utf-8")

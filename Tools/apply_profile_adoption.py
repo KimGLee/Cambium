@@ -6,8 +6,10 @@ current canonical adopter Standards state, upstream identity, and one exact
 passing `profile-load` evaluation. Initial adoption creates
 `.cambium/governance/standards_state.yaml`; a pre-task revision advances it.
 Both append `.cambium/receipts/standards-adoptions.jsonl`, then regenerate
-vocabulary, page-contract, Card, and interface projections. K00/03 and Cards
-never store the chronological adoption register.
+adopter-owned vocabulary and page-contract projections. Cards remain immutable
+upstream components: the transaction checks their bytes through the common
+component boundary, but never stamps or rewrites them. K00/03 and Cards never
+store the chronological adoption register.
 
 Every touched byte is staged and recoverable. Any task runtime under
 `.cambium/state/` redirects the caller to `adopt_standards.py`; governance and
@@ -18,38 +20,77 @@ follow the writer convention: 0 = success (dry-run or applied), 1 = refusal
 or failure.
 
 Usage: python3 Tools/apply_profile_adoption.py <root> --plan <path>
+       --upstream-root <cambium-git-root> --upstream-ref <git-ref>
        [--apply] [--json] [--receipts PATH]
 """
 
+import os
+import sys
+import tempfile
+
+# Bootstrap the interpreter before importing any repository-local Tool.
+# Adoption validates every immutable component byte, so its own imports must
+# neither consume a pre-existing local ``__pycache__`` nor create one before
+# that validation runs.  Setting the live interpreter prefix prevents local
+# cache reads; exporting the same prefix makes every Python child inherit the
+# boundary.  A high-entropy path under an operating-system temp root stays
+# outside the adopter and is intentionally never created: cache reads miss,
+# while bytecode writes are disabled below.  An adopter-controlled TMPDIR is
+# not trusted merely because ``tempfile`` selected it.
+def _external_pycache_prefix():
+    repository_root = os.path.realpath(os.path.join(
+        os.path.dirname(os.path.abspath(__file__)), os.pardir))
+    for raw_root in (tempfile.gettempdir(), "/var/tmp", "/tmp"):
+        candidate_root = os.path.realpath(os.path.abspath(raw_root))
+        if not os.path.isdir(candidate_root):
+            continue
+        try:
+            if os.path.commonpath(
+                    (repository_root, candidate_root)) == repository_root:
+                continue
+        except ValueError:
+            pass
+        candidate = os.path.join(
+            candidate_root,
+            "cambium-adoption-pycache-%s" % os.urandom(16).hex())
+        if not os.path.lexists(candidate):
+            return candidate
+    raise RuntimeError("no repository-external Python cache root is available")
+
+
+_CAMBIUM_PYCACHE_PREFIX = _external_pycache_prefix()
+os.environ["PYTHONPYCACHEPREFIX"] = _CAMBIUM_PYCACHE_PREFIX
+os.environ["PYTHONDONTWRITEBYTECODE"] = "1"
+sys.pycache_prefix = _CAMBIUM_PYCACHE_PREFIX
+sys.dont_write_bytecode = True
+
 import errno
 import json
-import os
 import re
 import shutil
 import subprocess
-import sys
 import uuid
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import check_profile
 import kblib
+import profile_layout_contract
+import runtime_paths
 import standards_state
+import upstream_component_boundary
+import upstream_identity
 
 TOOL = "apply_profile_adoption"
-TOOL_VERSION = "2.0.0"
+TOOL_VERSION = "2.1.0"
 # Consumed gate identity (K00/12 Stable Gate ID Registry); this tool registers
 # no Gate ID of its own and `check_profile` remains the sole producer.
 PROFILE_LOAD_GATE_ID = check_profile.GATE_ID
 
 GOVERNANCE_PATH = "kernel/K00 Standards Control/03 Standards Governance.md"
-SIZE_REGISTER_PATH = (
-    "kernel/K00 Standards Control/16 Leaf Module Size Register.md"
-)
-CARDS_DIR = "kernel/Cards"
-VOCAB_ARTIFACT = "Tools/vocab.yaml"
-PAGE_CONTRACT_ARTIFACT = "Tools/page_contract.yaml"
-RUNTIME_NAMESPACE = ".cambium"
-RECEIPT_RELATIVE = ".cambium/receipts/standards-adoptions.jsonl"
+VOCAB_ARTIFACT = runtime_paths.VOCAB_ARTIFACT_PATH
+PAGE_CONTRACT_ARTIFACT = runtime_paths.PAGE_CONTRACT_ARTIFACT_PATH
+RUNTIME_NAMESPACE = runtime_paths.RUNTIME_ROOT
+RECEIPT_RELATIVE = runtime_paths.STANDARDS_ADOPTION_RECEIPT_PATH
 
 STAGING_PREFIX = ".r09-adoption-"
 JOURNAL_NAME = "journal.json"
@@ -74,19 +115,13 @@ PLAN_FIELDS = frozenset((
     "upstream_revision_id",
 ))
 
-# The four producer steps, in README "Adopt Cambium" step-4 order.  Each entry
+# The adopter-derived producer steps.  Each entry
 # is (step name, script under <root>/Tools, extra arguments builder).
 COMPOSER_STEPS = (
     ("compose-vocab", "compose_vocab.py",
      lambda root, plan: []),
     ("compose-page-contract", "compose_page_contract.py",
      lambda root, plan: ["--root", root]),
-    ("stamp-set-version", "stamp_cards.py",
-     lambda root, plan: [root, "--set-version",
-                         plan["standards_version_after"],
-                         "--acknowledge-compiled"]),
-    ("stamp-check", "stamp_cards.py",
-     lambda root, plan: [root, "--check"]),
 )
 
 
@@ -198,15 +233,17 @@ def validate_plan_values(plan, plan_relative):
             "standards_effective_date_after must be an ISO date YYYY-MM-DD; "
             "found %r" % plan["standards_effective_date_after"])
     manifest = plan["selected_profile_manifest_after"]
-    parts = manifest.split("/")
-    if (len(parts) != 3 or parts[0] != "profiles" or
-            parts[2] != "profile.md" or not parts[1] or
-            parts[1].startswith("_")):
+    try:
+        manifest_location = \
+            profile_layout_contract.validate_selectable_profile_manifest_path(
+                manifest)
+    except profile_layout_contract.ProfileLayoutError as exc:
         raise AdoptionRefusal(
             "selected_profile_manifest_after must be exactly "
-            "profiles/<profile-id>/profile.md naming a selectable profile; "
-            "found %r" % manifest)
-    if plan_relative.startswith("profiles/%s/" % parts[1]):
+            "%s/<profile-id>/%s naming a selectable profile; found %r: %s" %
+            (profile_layout_contract.PROFILES_DIRECTORY,
+             profile_layout_contract.PROFILE_MANIFEST_NAME, manifest, exc))
+    if plan_relative.startswith(manifest_location.directory + "/"):
         raise AdoptionRefusal(
             "--plan must stay outside the candidate Profile directory so "
             "the plan cannot mutate the package whose snapshot it binds")
@@ -229,15 +266,15 @@ def validate_plan_values(plan, plan_relative):
             raise AdoptionRefusal(
                 "plan field %s must be one canonical sha256:<hex> "
                 "fingerprint; found %r" % (field, value))
-    source = plan.get("upstream_source_ref")
-    revision = plan.get("upstream_revision_id")
-    if (source is None) != (revision is None):
+    _string_field(plan, "upstream_source_ref")
+    revision = _string_field(plan, "upstream_revision_id")
+    if not upstream_identity.is_full_commit_sha(revision):
         raise AdoptionRefusal(
-            "upstream_source_ref and upstream_revision_id must both be null "
-            "or both be non-empty")
-    if source is not None:
-        _string_field(plan, "upstream_source_ref")
-        _string_field(plan, "upstream_revision_id")
+            "upstream_revision_id must be one full Git commit SHA")
+    if version_after != revision:
+        raise AdoptionRefusal(
+            "standards_version_after is a compatibility alias and must equal "
+            "upstream_revision_id")
     before_version = plan.get("standards_version_before")
     before_manifest = plan.get("selected_profile_manifest_before")
     if branch == BRANCH_INITIAL:
@@ -254,12 +291,6 @@ def validate_plan_values(plan, plan_relative):
         for field in ("standards_version_before",
                       "selected_profile_manifest_before"):
             _string_field(plan, field)
-        if before_version == version_after:
-            raise AdoptionRefusal(
-                "profile-revision must bump standards_version: before and "
-                "after are both %r (changing the selected profile "
-                "manifest or its content always requires a bump)" %
-                version_after)
         state_sha = _string_field(plan, "standards_state_sha256_before")
         if not SHA_RE.fullmatch(state_sha):
             raise AdoptionRefusal(
@@ -296,6 +327,54 @@ def require_tools(root):
             raise AdoptionRefusal(
                 "root does not carry the Tools distribution the transaction "
                 "drives: missing Tools/%s" % script)
+
+
+def verify_upstream_identity(plan, upstream_root, upstream_ref):
+    """Resolve external Git authority and bind it to the declared plan SHA."""
+    try:
+        resolved = upstream_identity.resolve_revision(
+            upstream_root, upstream_ref)
+    except upstream_identity.UpstreamIdentityError as exc:
+        raise AdoptionRefusal(str(exc))
+    if plan["upstream_revision_id"] != resolved:
+        raise AdoptionRefusal(
+            "upstream Git ref resolves to %s but plan upstream_revision_id is "
+            "%s" % (resolved, plan["upstream_revision_id"]))
+    return resolved
+
+
+def verify_upstream_components(root, plan, upstream_root, upstream_ref):
+    """Require every immutable component byte to match the same Git commit."""
+    try:
+        report = upstream_component_boundary.evaluate(
+            root, upstream_root, upstream_ref)
+    except upstream_component_boundary.ComponentBoundaryError as exc:
+        raise AdoptionRefusal(
+            "cannot verify the upstream component byte boundary: %s" % exc)
+    if report.upstream_revision_id != plan["upstream_revision_id"]:
+        raise AdoptionRefusal(
+            "component boundary resolved upstream revision %s but plan "
+            "upstream_revision_id is %s" %
+            (report.upstream_revision_id, plan["upstream_revision_id"]))
+    if report.errors:
+        raise AdoptionRefusal(
+            "adopter immutable components do not match upstream revision %s: "
+            "%s" % (report.upstream_revision_id,
+                     "; ".join(report.errors)))
+    return report
+
+
+def reverify_prepared_upstream_components(prepared, phase):
+    """CAS immutable component bytes against the revision frozen at prepare."""
+    try:
+        return verify_upstream_components(
+            prepared["root"], prepared["plan"],
+            prepared["upstream_root"],
+            prepared["resolved_upstream_revision_id"])
+    except AdoptionRefusal as exc:
+        raise TransactionError(
+            "%s upstream component revalidation failed: %s" %
+            (phase, exc)) from exc
 
 
 def read_governance(root):
@@ -357,7 +436,10 @@ def evaluate_candidate(root, plan):
     the canonical producer does not authorize is refused verbatim.
     """
     manifest = plan["selected_profile_manifest_after"]
-    profile_dir = os.path.join(root, *os.path.dirname(manifest).split("/"))
+    manifest_location = \
+        profile_layout_contract.validate_selectable_profile_manifest_path(
+            manifest)
+    profile_dir = os.path.join(root, *manifest_location.directory.split("/"))
     evaluation = check_profile.evaluate_profile_load(
         profile_dir, root=root,
         receipt_identity={"selected_profile_manifest": manifest})
@@ -452,16 +534,8 @@ def write_journal(staging, journal):
 
 def touched_paths(root):
     """Every repo-relative path the transaction may write, sorted."""
-    paths = [standards_state.STATE_PATH, RECEIPT_RELATIVE,
-             VOCAB_ARTIFACT, PAGE_CONTRACT_ARTIFACT]
-    cards_dir = os.path.join(root, *CARDS_DIR.split("/"))
-    for current, directories, files in os.walk(cards_dir):
-        directories.sort()
-        for name in sorted(files):
-            relative = os.path.relpath(
-                os.path.join(current, name), root).replace(os.sep, "/")
-            paths.append(relative)
-    return sorted(set(paths))
+    return sorted({standards_state.STATE_PATH, RECEIPT_RELATIVE,
+                   VOCAB_ARTIFACT, PAGE_CONTRACT_ARTIFACT})
 
 
 def prepare_staging(root, plan_relative, plan_sha, plan):
@@ -523,9 +597,8 @@ def restore_from_staging(root, staging, journal):
     """Put back the pre-transaction bytes of every touched path.
 
     Returns a list of restoration failures; empty means the restoration was
-    byte-verified: every backed-up file matches its recorded fingerprint,
-    every file that did not exist is absent again, and no file the
-    transaction may have created under kernel/Cards survives.
+    byte-verified: every backed-up file matches its recorded fingerprint and
+    every file that did not exist is absent again.
     """
     failures = []
     backups = journal.get("backups") or {}
@@ -548,7 +621,9 @@ def restore_from_staging(root, staging, journal):
     # empty, so rollback restores the pre-adoption namespace shape without
     # touching any pre-existing history or state.
     for relative in (
-            ".cambium/governance", ".cambium/receipts", ".cambium"):
+            runtime_paths.DERIVED_ROOT,
+            runtime_paths.GOVERNANCE_ROOT, runtime_paths.RECEIPT_ROOT,
+            runtime_paths.RUNTIME_ROOT):
         absolute = os.path.join(root, *relative.split("/"))
         if os.path.isdir(absolute) and not os.path.islink(absolute):
             try:
@@ -556,21 +631,6 @@ def restore_from_staging(root, staging, journal):
             except OSError as exc:
                 if exc.errno not in (errno.ENOTEMPTY, errno.EEXIST):
                     failures.append("%s cleanup: %s" % (relative, exc))
-    cards_dir = os.path.join(root, *CARDS_DIR.split("/"))
-    if os.path.isdir(cards_dir):
-        for current, directories, files in os.walk(cards_dir):
-            directories.sort()
-            for name in sorted(files):
-                absolute = os.path.join(current, name)
-                relative = os.path.relpath(
-                    absolute, root).replace(os.sep, "/")
-                if relative not in backups:
-                    try:
-                        os.unlink(absolute)
-                    except OSError as exc:
-                        failures.append(
-                            "%s: cannot remove transaction-created file: %s"
-                            % (relative, exc))
     for relative in sorted(backups):
         record = backups[relative]
         absolute = os.path.join(root, *relative.split("/"))
@@ -585,7 +645,10 @@ def restore_from_staging(root, staging, journal):
             failures.append(
                 "%s still exists after restoration but was absent before"
                 % relative)
-    for relative in (".cambium/governance", ".cambium/receipts", ".cambium"):
+    for relative in (
+            runtime_paths.DERIVED_ROOT,
+            runtime_paths.GOVERNANCE_ROOT, runtime_paths.RECEIPT_ROOT,
+            runtime_paths.RUNTIME_ROOT):
         absolute = os.path.join(root, *relative.split("/"))
         try:
             os.rmdir(absolute)
@@ -698,12 +761,14 @@ def commit_transaction(prepared):
                 standards_state.STATE_PATH)
         journal["status"] = "writing"
         write_journal(staging, journal)
+        reverify_prepared_upstream_components(prepared, "locked pre-write")
         state_path = os.path.join(root, *standards_state.STATE_PATH.split("/"))
         os.makedirs(os.path.dirname(state_path), exist_ok=True)
         kblib.atomic_write_text(
             state_path, prepared["state_after_text"],
             validator=kblib.parse_yaml_subset)
         _journal_step(staging, journal, "write-standards-state", "done")
+        runtime_paths.ensure_directory(root, "derived-root")
         for step, script, argument_builder in COMPOSER_STEPS:
             # -B: a producer step must not drop bytecode caches into the
             # adopter repository; after an abort the tree is byte-identical.
@@ -732,6 +797,7 @@ def commit_transaction(prepared):
         journal["receipts"] = receipts
         write_journal(staging, journal)
         os.makedirs(os.path.dirname(prepared["receipts_path"]), exist_ok=True)
+        reverify_prepared_upstream_components(prepared, "pre-final-receipt")
         kblib.write_receipts(prepared["receipts_path"], receipts)
         journal["status"] = "committed"
         write_journal(staging, journal)
@@ -845,14 +911,20 @@ def resolve_receipts_path(root, plan_path, plan, receipts_argument):
             RECEIPT_RELATIVE)
     try:
         return kblib.managed_repository_path(
-            root, relative, ".cambium/receipts", suffixes=(".jsonl",),
+            root, relative, runtime_paths.RECEIPT_ROOT,
+            suffixes=(".jsonl",),
             must_exist=False)
     except ValueError as exc:
         raise AdoptionRefusal("invalid --receipts destination: %s" % exc)
 
 
-def prepare(root, plan_argument, receipts_argument):
+def prepare(root, plan_argument, receipts_argument, upstream_root,
+            upstream_ref):
     plan_path, plan_relative, plan_raw, plan = load_plan(root, plan_argument)
+    canonical_upstream_root = os.path.realpath(
+        os.path.abspath(os.fspath(upstream_root)))
+    resolved_upstream_revision_id = verify_upstream_identity(
+        plan, canonical_upstream_root, upstream_ref)
     plan_sha = kblib.sha256_bytes(plan_raw)
     receipts_path = resolve_receipts_path(root, plan_path, plan,
                                           receipts_argument)
@@ -861,9 +933,9 @@ def prepare(root, plan_argument, receipts_argument):
         raise AdoptionRefusal(
             "a Cambium runtime exists at %s/; this writer serves only the "
             "no-runtime R09 branches and never edits runtime state. Use the "
-            "active-task flow: prepare a K12/10 adoption plan under "
-            ".cambium/deltas/standards-adoptions/ and apply it with "
-            "Tools/adopt_standards.py" % runtime)
+            "active-task flow: prepare a K12/10 adoption plan under %s/ and "
+            "apply it with Tools/adopt_standards.py" %
+            (runtime, runtime_paths.STANDARDS_ADOPTION_DELTA_ROOT))
     require_tools(root)
     governance_path, governance_raw, _governance_text = read_governance(root)
     state, state_raw = read_current_state(root)
@@ -876,6 +948,9 @@ def prepare(root, plan_argument, receipts_argument):
             "plan was prepared -- re-prepare the plan against the current "
             "bytes" % (GOVERNANCE_PATH, live_sha,
                        plan["k00_03_sha256_before"]))
+    verify_upstream_components(
+        root, plan, canonical_upstream_root,
+        resolved_upstream_revision_id)
     observed_state_sha = (
         kblib.sha256_bytes(state_raw) if state_raw is not None else None)
     if observed_state_sha != plan["standards_state_sha256_before"]:
@@ -889,7 +964,6 @@ def prepare(root, plan_argument, receipts_argument):
     commit_stub = build_commit_stub(plan, transaction_id)
     state_after = standards_state.next_state(
         state,
-        standards_version=plan["standards_version_after"],
         effective_date=plan["standards_effective_date_after"],
         selected_profile_manifest=plan["selected_profile_manifest_after"],
         latest_adoption_receipt=commit_stub["receipt_id"],
@@ -911,6 +985,8 @@ def prepare(root, plan_argument, receipts_argument):
         "commit_stub": commit_stub,
         "evaluation": evaluation,
         "transaction_id": transaction_id,
+        "upstream_root": canonical_upstream_root,
+        "resolved_upstream_revision_id": resolved_upstream_revision_id,
     }
 
 
@@ -932,7 +1008,14 @@ def main(argv=None):
                         help="emit the plan/result as one JSON document")
     parser.add_argument("--receipts", default=None,
                         help="must be the canonical Standards history stream "
-                             ".cambium/receipts/standards-adoptions.jsonl")
+                             "%s" % RECEIPT_RELATIVE)
+    parser.add_argument(
+        "--upstream-root", required=True,
+        help="local Cambium Git repository used to resolve upstream identity")
+    parser.add_argument(
+        "--upstream-ref", required=True,
+        help="Git revision in --upstream-root that must resolve to the plan's "
+             "full upstream_revision_id")
     args = parser.parse_args(argv)
 
     report = {
@@ -976,8 +1059,20 @@ def main(argv=None):
     # re-diagnosed as a branch mismatch.
     try:
         plan_path, _rel, plan_raw, plan = load_plan(root, args.plan)
+        canonical_upstream_root = os.path.realpath(
+            os.path.abspath(os.fspath(args.upstream_root)))
+        resolved_upstream_revision_id = verify_upstream_identity(
+            plan, canonical_upstream_root, args.upstream_ref)
         plan_sha = kblib.sha256_bytes(plan_raw)
-        for staging_name in existing_stagings(root):
+        staging_names = existing_stagings(root)
+        if staging_names:
+            # Recovery itself can restore or remove repository bytes.  The
+            # immutable component boundary therefore closes before recovery,
+            # not merely before a fresh transaction's state write.
+            verify_upstream_components(
+                root, plan, canonical_upstream_root,
+                resolved_upstream_revision_id)
+        for staging_name in staging_names:
             outcome = recover_staging(
                 root, staging_name, plan_sha, args.apply, say)
             if outcome == "completed":
@@ -985,7 +1080,9 @@ def main(argv=None):
                 say("[PASS] adoption for this exact plan was already "
                     "committed; recovery completed the cleanup")
                 return emit(0)
-        prepared = prepare(root, args.plan, args.receipts)
+        prepared = prepare(
+            root, args.plan, args.receipts,
+            canonical_upstream_root, resolved_upstream_revision_id)
     except AdoptionRefusal as exc:
         return refuse(str(exc))
     except (OSError, UnicodeError, ValueError, TypeError,

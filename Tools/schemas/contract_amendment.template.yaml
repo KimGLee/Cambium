@@ -53,11 +53,12 @@ contract_version_after: TODO(amendment)
 # carries it. Field meanings are owned by K13/02.
 policy_exceptions_after:
   - decision_id: PE-001
-    # The policy this excepts, named as its owner registers it,
-    # e.g. priority_quota.P0 (owner: K00/07).
+    # The policy this excepts, selected from the Kernel-owned
+    # contract-exception-policy-base registry; each row names its semantic
+    # owner (for example, K00/07 for a priority-quota policy).
     policy_id: TODO(amendment)
     # The CURRENT effective-policy fingerprint from the resolver
-    # (kblib.effective_priority_policy): a canonical hash over the resolved
+    # (contract_exception_policy.effective_priority_policy): a canonical hash over the resolved
     # standing quotas, kernel defaults, and comparison protocol -- NOT the
     # SHA of any file, and not computable by hand. Run the writer once with
     # any placeholder here; its refusal prints the expected value, and the

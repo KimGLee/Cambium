@@ -1,4 +1,4 @@
-"""Enforce the tool module boundary contract owned by K00/18.
+"""Enforce the Tool-owned module boundary engineering contract.
 
 This suite is the machine consumer the contract names.  It runs in the
 distribution's own CI and registers no Gate ID, for the reason the
@@ -32,7 +32,7 @@ MANIFEST = os.path.join(TOOLS, "module-boundaries.yaml")
 # routine kernel work reaches these checks often enough -- a new governance
 # capability is usually a new leaf and new tool code together -- that the cost
 # of not saying so compounds.
-REGENERATE = ("python3 Tools/tests/module_boundary_report.py --emit-manifest"
+REGENERATE = ("python3 Tools/module_boundary_report.py --emit-manifest"
               " --output Tools/module-boundaries.yaml")
 
 
@@ -191,7 +191,7 @@ class PublicSurface(unittest.TestCase):
             "The exception was a judgment about the old code, so it does not "
             "carry over on its own. Re-read the consumption, and when it "
             "still holds say so explicitly:\n"
-            "  python3 Tools/tests/module_boundary_report.py "
+            "  python3 Tools/module_boundary_report.py "
             "--emit-manifest --acknowledge-drift "
             "--output Tools/module-boundaries.yaml"
             % ", ".join(sorted(drifted)))
@@ -572,7 +572,7 @@ class DependencyDirection(unittest.TestCase):
             "static import cycles (no exception is available): %s" % cycles)
 
     def test_gate_runtime_does_not_depend_on_the_cli_facade(self):
-        """The one direction K00/18 freezes by name.
+        """The one direction the Tool boundary freezes by name.
 
         Pinned separately from the generic cycle rule: this edge is the
         defect the contract was written for, and a generic check would let it

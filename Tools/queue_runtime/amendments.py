@@ -11,6 +11,8 @@ import os
 
 import kblib
 import metadata_property_state
+import runtime_paths
+import runtime_state_contract
 
 from queue_runtime.canon import (
     ANY_PRODUCER_ERA_VERSION,
@@ -58,10 +60,8 @@ SUPPORTED_REGISTER_AMENDMENT_TOOL_VERSIONS = frozenset((
 SUPPORTED_COMPILE_QUEUE_TOOL_VERSIONS = frozenset((
     "1.3.0", "1.4.0", "1.5.0",
 ))
-OPERATIONAL_AMENDMENT_OPERATIONS = frozenset((
-    "queue-replan", "scope-replan", "cancel-batch",
-    "gap-routing-reconciliation", "property-state-migration",
-))
+OPERATIONAL_AMENDMENT_OPERATIONS = \
+    runtime_state_contract.OPERATIONAL_AMENDMENT_OPERATIONS
 
 
 PROPERTY_STATE_MIGRATION_BINDING_FIELDS = (
@@ -381,7 +381,8 @@ CONTRACT_AMENDMENT_ROW_FIELDS = frozenset((
 CONTRACT_AMENDMENT_ROW_OPTIONAL_FIELDS = frozenset((
     "changed_contract_fields",
 ))
-CONTRACT_AMENDMENT_PLAN_PREFIX = ".cambium/deltas/contract-amendments"
+CONTRACT_AMENDMENT_PLAN_PREFIX = \
+    runtime_paths.CONTRACT_AMENDMENT_DELTA_ROOT
 CONTRACT_AMENDMENT_TOOL_VERSIONS = frozenset(("1.0.0", "1.1.0"))
 
 
@@ -530,7 +531,7 @@ def _contract_amendment_row_errors(root, amendment, label, historical_catalog,
         errors.append(
             "%s commit receipt has task_id=%r, expected %r" %
             (label, receipt.get("task_id"), task_id))
-    for field in ("standards_version", "selected_profile_manifest"):
+    for field in runtime_state_contract.RUNTIME_STANDARDS_IDENTITY_FIELDS:
         if not nonempty_string(receipt.get(field)):
             errors.append(
                 "%s commit receipt carries no %s identity; a receipt whose "
@@ -583,23 +584,21 @@ def cross_ledger_amendment_errors(
         if (isinstance(amendment, dict) and
                 amendment.get("operation") is not None and
                 amendment.get("operation") not in
-                ("scope-replan", "cancel-batch", "queue-replan",
-                 "gap-routing-reconciliation", "property-state-migration")):
+                OPERATIONAL_AMENDMENT_OPERATIONS):
             # Fail closed here, at the walk itself: a row claiming an
             # operation no validator owns would otherwise be skipped by
             # every specialized check below, making an unknown operation
             # name an exemption from evidence.
             errors.append(
                 "Progress amendments[%d] declares unknown operation %r; "
-                "known operations are scope-replan, cancel-batch, "
-                "queue-replan, gap-routing-reconciliation, "
-                "property-state-migration, contract-amendment" %
-                (index, amendment.get("operation")))
+                "known operations are %s, contract-amendment" %
+                (index, amendment.get("operation"),
+                 ", ".join(sorted(OPERATIONAL_AMENDMENT_OPERATIONS))))
             continue
         if (not isinstance(amendment, dict) or
                 amendment.get("operation") not in
-                ("scope-replan", "cancel-batch",
-                 "gap-routing-reconciliation", "property-state-migration")):
+                runtime_state_contract.AMENDMENT_OPERATIONS_BY_EXECUTION_CAPABILITY[
+                    runtime_state_contract.CROSS_LEDGER_AMENDMENT_CAPABILITY]):
             continue
         label = "Progress amendments[%d]" % index
         status = amendment.get("status")
@@ -621,14 +620,14 @@ def cross_ledger_amendment_errors(
                               (label, field))
         scope_before = amendment.get("scope_version_before")
         scope_after = amendment.get("scope_version_after")
-        if (operation in (
-                "gap-routing-reconciliation", "property-state-migration") and
+        if (operation in
+                runtime_state_contract.SCOPE_PRESERVING_AMENDMENT_OPERATIONS and
                 nonempty_string(scope_before) and
                 scope_after != scope_before):
             errors.append(
                 "%s %s must preserve scope_version" % (label, operation))
-        elif (operation not in (
-                "gap-routing-reconciliation", "property-state-migration") and
+        elif (operation not in
+                runtime_state_contract.SCOPE_PRESERVING_AMENDMENT_OPERATIONS and
               nonempty_string(scope_before) and
               nonempty_string(scope_after) and
               scope_before == scope_after):
@@ -653,9 +652,8 @@ def cross_ledger_amendment_errors(
                 isinstance(state_after, bool)):
             errors.append("%s state revision edge must use non-negative integers" %
                           label)
-        elif (operation in ("scope-replan",
-                            "gap-routing-reconciliation",
-                            "property-state-migration") and
+        elif (operation in
+              runtime_state_contract.STATE_REVISION_PRESERVING_AMENDMENT_OPERATIONS and
               state_after != state_before):
             errors.append("%s %s must preserve state_revision" %
                           (label, operation))
@@ -669,8 +667,8 @@ def cross_ledger_amendment_errors(
             errors.append("%s coverage_proposal_sha256 must be sha256:<64 "
                           "lowercase hex>" % label)
         cancel_id = amendment.get("cancel_batch_id")
-        if operation in ("scope-replan", "gap-routing-reconciliation",
-                         "property-state-migration"):
+        if (operation in
+                runtime_state_contract.CANCEL_ID_FORBIDDEN_AMENDMENT_OPERATIONS):
             if cancel_id is not None:
                 errors.append("%s %s cancel_batch_id must be null" %
                               (label, operation))
@@ -701,7 +699,7 @@ def cross_ledger_amendment_errors(
                 continue
             try:
                 artifact = kblib.managed_repository_path(
-                    root, artifact_path, ".cambium/deltas/amendments",
+                    root, artifact_path, runtime_paths.AMENDMENT_DELTA_ROOT,
                     suffixes=(".yaml", ".yml"), must_exist=True,
                 )
                 current_sha = kblib.sha256_file(artifact)
@@ -852,7 +850,7 @@ def cross_ledger_amendment_errors(
             errors.append("%s verification receipt has invalid plan_sha256" % label)
         if receipt is not None:
             for phase in ("before", "after"):
-                for state_name in ("coverage", "queue", "progress"):
+                for state_name in runtime_state_contract.RUNTIME_LEDGER_IDS:
                     field = "%s_%s_sha256" % (phase, state_name)
                     if not SHA256_RE.fullmatch(str(receipt.get(field, ""))):
                         errors.append("%s verification receipt has invalid %s" %
@@ -877,9 +875,7 @@ def pending_cross_ledger_amendments(progress):
         amendment.get("id", "<unnamed>")
         for amendment in amendments
         if (isinstance(amendment, dict) and
-            amendment.get("operation") in
-            ("scope-replan", "cancel-batch", "queue-replan",
-             "gap-routing-reconciliation", "property-state-migration") and
+            amendment.get("operation") in OPERATIONAL_AMENDMENT_OPERATIONS and
             amendment.get("status") == "approved" and
             amendment.get("writeback_done") is False)
     ]
@@ -959,7 +955,7 @@ def queue_replan_amendment_errors(
         else:
             try:
                 proposal_file = kblib.managed_repository_path(
-                    root, proposal_path, ".cambium/deltas/replans",
+                    root, proposal_path, runtime_paths.REPLAN_DELTA_ROOT,
                     suffixes=(".coverage.yaml",), must_exist=True,
                 )
                 actual_proposal_sha = kblib.sha256_file(proposal_file)

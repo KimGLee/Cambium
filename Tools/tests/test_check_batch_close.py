@@ -20,11 +20,13 @@ sys.path.insert(0, str(TOOLS))
 
 import check_batch_close
 import check_queue
+import compose_page_contract
 import compose_vocab
 import kblib
 import metadata_execution_contract
 import module_boundary_facts
 import profile_admission
+import runtime_paths
 from profile_fixture import install_loadable_profile
 
 
@@ -71,6 +73,7 @@ class CheckBatchCloseTests(unittest.TestCase):
         for name in ("deltas", "receipts", "reports"):
             (self.root / ".cambium" / name).mkdir(exist_ok=True)
         self.install_profile_and_tools()
+        self.install_plain_s_audit_fixture()
 
     def reset_applied_batch(self, prepare_profile):
         """Rebuild the fixture when a test changes Profile-owned inputs.
@@ -87,6 +90,36 @@ class CheckBatchCloseTests(unittest.TestCase):
         self.build_repository_fixture()
         prepare_profile()
         self.prepare_applied_batch()
+
+    def reset_applied_batch_with_verifier(self, transform):
+        """Install one registered-verifier variant before runtime evidence.
+
+        A registered scan implementation is part of the canonical
+        Profile-load input closure.  Tests that change its bytes must walk the
+        ready/open/apply lifecycle under those exact bytes; changing it on an
+        already-applied template correctly invalidates the opening transition
+        before the close-time verifier behavior can be exercised.
+        """
+        def install_variant():
+            script = self.root / "Tools/fixture_residual.py"
+            source = script.read_text(encoding="utf-8")
+            variant = transform(source)
+            self.assertNotEqual(
+                source, variant,
+                "registered-verifier fixture transform changed no bytes")
+            script.write_text(variant, encoding="utf-8")
+
+        self.reset_applied_batch(install_variant)
+        runtime = check_queue.validate_runtime(self.root)
+        self.assertEqual(
+            [], runtime["errors"],
+            "rebuilt verifier scenario did not bind current Profile evidence")
+
+    @staticmethod
+    def _without_lines(source, lines):
+        for line in lines:
+            source = source.replace(line, "")
+        return source
 
     def run_tool(self, name, *arguments):
         return subprocess.run(
@@ -139,12 +172,13 @@ class CheckBatchCloseTests(unittest.TestCase):
         registry.write_text(
             "# Registered Scan Registry\n\n## Scan Registrations\n\n"
             "| Stable Scan ID | Activation role | Whole-corpus scope/root | "
-            "Deterministic verifier command/path | Candidate predicate/boundary | "
+            "Verifier capability ID | Profile configuration reference or "
+            "`None` | Candidate predicate/boundary | "
             "Judgment Item ID reference |\n"
-            "|---|---|---|---|---|---|\n"
+            "|---|---|---|---|---|---|---|\n"
             "| `fixture-residuals` | `K12/09 item 6 — residual-content scan` | "
-            "Whole repository | `python3 Tools/fixture_residual.py . "
-            "--scan-id fixture-residuals` | candidate-only | `fixture-item` |\n",
+            "Whole repository | `fixture-residual-scan-v1` | `None` | "
+            "candidate-only | `fixture-item` |\n",
             encoding="utf-8",
         )
         tools = self.root / "Tools"
@@ -184,6 +218,14 @@ class CheckBatchCloseTests(unittest.TestCase):
             "kblib.write_receipts(a.receipts,[r])\n",
             encoding="utf-8",
         )
+        (tools / "scan-capabilities.yaml").write_text(
+            "schema_version: 1\n\n"
+            "capabilities:\n"
+            "  - capability_id: fixture-residual-scan-v1\n"
+            "    invocation_contract: profile-registered-scan-v1\n"
+            "    implementation_path: Tools/fixture_residual.py\n"
+            "    configuration: none\n",
+            encoding="utf-8")
         vocab_base = (
             "kernel/K08 Metadata and Status/vocabulary-base.yaml")
         (self.root / vocab_base).parent.mkdir(parents=True, exist_ok=True)
@@ -208,7 +250,87 @@ class CheckBatchCloseTests(unittest.TestCase):
         rendered, _vocab, compile_errors = compose_vocab.compiled_artifact(
             self.root, admission)
         self.assertEqual([], compile_errors)
-        (tools / "vocab.yaml").write_text(rendered, encoding="utf-8")
+        vocab_path = self.root / runtime_paths.VOCAB_ARTIFACT_PATH
+        vocab_path.parent.mkdir(parents=True, exist_ok=True)
+        vocab_path.write_text(rendered, encoding="utf-8")
+
+    def install_plain_s_audit_fixture(self):
+        """Install the bounded page and Profile contracts this suite needs.
+
+        Batch-close scenarios test the post-Delta Closed List rather than
+        M-tier semantic judgment.  Plain S pages keep the real pre-merge
+        lifecycle small while preserving every production obligation.
+        """
+        for name in ("A", "B"):
+            (self.root / ("Topics/%s.md" % name)).write_text(
+                "---\n"
+                "type: concept\n"
+                "domain: fixture\n"
+                "scope: shared\n"
+                "level: basic\n"
+                "depth: atomic\n"
+                "priority: P2\n"
+                "---\n"
+                "# %s\n\n"
+                "## Synthetic Residual\n\n"
+                "Accepted-root liveness marker for the registered fixture "
+                "scan.\n" % name,
+                encoding="utf-8",
+            )
+
+        coverage_path = self.root / check_queue.COVERAGE_PATH
+        coverage = kblib.load_yaml_file(coverage_path)
+        for page in coverage["pages"]:
+            page["tier"] = "S"
+            page["priority"] = "P2"
+        coverage_path.write_text(
+            kblib.canonical_yaml(coverage), encoding="utf-8")
+        self.refresh_initial_fixture_origin()
+        self.compile_profile_artifacts()
+        self.assertEqual(
+            [], check_queue.validate_runtime(self.root)["errors"])
+
+    def refresh_initial_fixture_origin(self):
+        """Rebind the immutable fixture origin after planned-state edits."""
+        coverage_path = self.root / check_queue.COVERAGE_PATH
+        progress_path = self.root / check_queue.PROGRESS_PATH
+        receipt_path = (
+            self.root / ".cambium/receipts/task-transitions.jsonl")
+        progress = kblib.load_yaml_file(progress_path)
+        progress["checkpoint"]["coverage_sha256"] = \
+            kblib.sha256_file(coverage_path)
+        progress_path.write_text(
+            kblib.canonical_yaml(progress), encoding="utf-8")
+
+        records = [json.loads(line) for line in receipt_path.read_text(
+            encoding="utf-8").splitlines() if line.strip()]
+        for record in records:
+            if record.get("receipt_id") == "audit-fixture-initial-queue":
+                coverage_sha256 = kblib.sha256_file(coverage_path)
+                record["before_coverage_sha256"] = coverage_sha256
+                record["after_coverage_sha256"] = coverage_sha256
+                record["after_progress_sha256"] = \
+                    kblib.sha256_file(progress_path)
+        receipt_path.write_text(
+            "".join(json.dumps(record, separators=(",", ":")) + "\n"
+                    for record in records), encoding="utf-8")
+
+    def compile_profile_artifacts(self):
+        """Compile both Profile-derived contracts from one admitted view."""
+        admission, errors = profile_admission.admit_profile(self.root)
+        self.assertEqual([], errors, errors)
+        self.assertIsNotNone(admission)
+        vocab_text, _vocab, errors = compose_vocab.compiled_artifact(
+            self.root, admission)
+        self.assertEqual([], errors, errors)
+        page_contract_text, _contract, errors = \
+            compose_page_contract.compiled_artifact(self.root, admission)
+        self.assertEqual([], errors, errors)
+        derived = self.root / runtime_paths.DERIVED_ROOT
+        derived.mkdir(parents=True, exist_ok=True)
+        (derived / "vocab.yaml").write_text(vocab_text, encoding="utf-8")
+        (derived / "page_contract.yaml").write_text(
+            page_contract_text, encoding="utf-8")
 
     def queue(self):
         return kblib.load_yaml_file(self.root / check_queue.QUEUE_PATH)
@@ -224,6 +346,86 @@ class CheckBatchCloseTests(unittest.TestCase):
         )
         self.assertEqual(0, completed.returncode, completed.stdout)
 
+    def prepare_premerge_audit_evidence(self, batch_id):
+        """Create the real AuditPlan and discharge its pre-merge closure."""
+        prepared = self.run_tool(
+            "prepare_audit_plan.py", "--batch", batch_id, "--apply")
+        self.assertEqual(0, prepared.returncode, prepared.stdout)
+        plan_result = json.loads(prepared.stdout)
+        plan_path = plan_result["plan_path"]
+        plan = kblib.load_yaml_file(self.root / plan_path)
+        sampled_page_receipts = []
+
+        for obligation in plan["obligations"]:
+            if (obligation.get("status") != "required" or
+                    obligation.get("due_stage") != "pre-merge"):
+                continue
+            common = (
+                "--batch", batch_id,
+                "--plan", plan_path,
+                "--obligation-id", obligation["obligation_id"],
+            )
+            if obligation["evidence_kind"] == "batch-page-review-record":
+                produced = self.run_tool(
+                    "record_batch_page_review.py", *common,
+                    "--page", obligation["target"],
+                    "--variant", "s-sampled-page",
+                    "--reviewer-context-id", "fixture-review-context",
+                    "--reviewer-role", "reviewer",
+                    "--verdict", "passed",
+                    "--statement",
+                    "fixture page satisfies the frozen sampled-review "
+                    "acceptance contract",
+                    "--apply",
+                )
+                self.assertEqual(0, produced.returncode, produced.stdout)
+                evidence = json.loads(produced.stdout)
+                sampled_page_receipts.append(evidence["receipt_id"])
+                continue
+
+            if obligation["producer_check"] == \
+                    "changed_scope_rendering_escalation_record":
+                produced = self.run_tool(
+                    "record_rendering_verification.py", *common,
+                    "--rendering-mode", "source-only", "--apply")
+            elif (obligation.get("producer_capability") ==
+                  "audit-receipt-producer-v1" or
+                  obligation.get("producer_gate_id") is not None):
+                produced = self.run_tool(
+                    "record_changed_scope_evidence.py", *common, "--apply")
+            else:
+                self.fail(
+                    "fixture has no producer dispatch for AuditPlan "
+                    "obligation %s" % obligation["obligation_id"])
+            self.assertEqual(0, produced.returncode, produced.stdout)
+            evidence = json.loads(produced.stdout)
+
+            if obligation["evidence_kind"] == "audit-receipt":
+                completed = self.run_tool(
+                    "complete_audit_receipt.py", *common,
+                    "--evidence-receipt", evidence["receipt_id"],
+                    "--apply",
+                )
+                self.assertEqual(0, completed.returncode, completed.stdout)
+
+        self.assertEqual(1, len(sampled_page_receipts), plan)
+        return plan_path, sampled_page_receipts[0]
+
+    def record_batch_review_wrapper(self, batch_id):
+        """Publish the production wrapper over the pre-merge plan closure."""
+        reviewed = self.run_tool(
+            "record_batch_review.py", "--batch", batch_id,
+            "--actor-role", "integrator",
+            "--statement",
+            "fixture integrator confirms the complete frozen pre-merge "
+            "AuditPlan evidence closure",
+            "--apply", "--json",
+        )
+        self.assertEqual(0, reviewed.returncode, reviewed.stdout)
+        receipts = json.loads(reviewed.stdout)
+        self.assertEqual(1, len(receipts), receipts)
+        return receipts[0]["receipt_id"]
+
     def prepare_applied_batch(self):
         ready_path = ".cambium/receipts/ready.jsonl"
         ready = self.run_tool(
@@ -233,23 +435,8 @@ class CheckBatchCloseTests(unittest.TestCase):
         ready_id = json.loads((self.root / ready_path).read_text(
             encoding="utf-8"))["receipt_id"]
         self.transition("open", "--gate-receipt", ready_id)
-
-        page = kblib.make_receipt(
-            "fixture_page", "0.9.0", "page_review", "Topics/A.md", "pass",
-            "fixture historical page evidence", 1)
-        batch = kblib.make_receipt(
-            check_queue.MANUAL_ATTESTATION_TOOL,
-            check_queue.MANUAL_ATTESTATION_TOOL_VERSION,
-            check_queue.BATCH_REVIEW_CHECK, "B1", "pass",
-            "fixture current in-batch review authorization", 1)
-        batch.update({
-            "gate_id": check_queue.BATCH_REVIEW_GATE_ID,
-            "task_id": "fixture-task",
-            "batch_id": "B1",
-            "delta_page_receipt_ids": [page["receipt_id"]],
-        })
-        kblib.write_receipts(
-            self.root / ".cambium/receipts/batch.jsonl", [page, batch])
+        self.audit_plan_path, page_receipt_id = \
+            self.prepare_premerge_audit_evidence("B1")
         delta_relative = ".cambium/deltas/B1.yaml"
         delta = {
             "batch": "B1",
@@ -257,7 +444,7 @@ class CheckBatchCloseTests(unittest.TestCase):
             "pages": [{
                 "path": "Topics/A.md",
                 "authoring_status": "reviewed",
-                "gate_receipts": [page["receipt_id"]],
+                "gate_receipts": [page_receipt_id],
             }],
             "open_gaps_added": [],
             "open_gaps_closed": [],
@@ -266,9 +453,10 @@ class CheckBatchCloseTests(unittest.TestCase):
         }
         (self.root / delta_relative).write_text(
             kblib.canonical_yaml(delta), encoding="utf-8")
+        batch_receipt_id = self.record_batch_review_wrapper("B1")
         self.transition(
             "merge-ready", "--delta-path", delta_relative,
-            "--batch-receipt", batch["receipt_id"])
+            "--batch-receipt", batch_receipt_id)
 
         applied_path = ".cambium/receipts/applied.jsonl"
         applied = subprocess.run(
@@ -337,6 +525,36 @@ class CheckBatchCloseTests(unittest.TestCase):
             "historical": historical,
         }
         return values
+
+    def project_close_bundle_to_ordinary_era(
+            self, catalog, close_gate, tool_version):
+        """Project a current close fixture to a real pre-1.13 protocol.
+
+        Before 1.13, each Closed List member was an ordinary
+        ``check_batch_close`` receipt.  Historical tests must change the
+        whole evidence subgraph, not only lie about the aggregate version.
+        """
+        for _path, receipt in catalog.values():
+            if receipt.get("tool") == check_batch_close.TOOL:
+                receipt["tool_version"] = tool_version
+        aggregate = catalog[close_gate][1]
+        for member_id, receipt_id in aggregate[
+                "closed_list_evidence"].items():
+            child = catalog[receipt_id][1]
+            child.update({
+                "tool": check_batch_close.TOOL,
+                "tool_version": tool_version,
+                "check": "closed_list_%s" % member_id,
+                "target": ".",
+                "result": "pass",
+                "batch_id": aggregate["batch_id"],
+                "task_id": aggregate["task_id"],
+                "integrator_id": aggregate["integrator_id"],
+                "reviewer_id": aggregate["reviewer_id"],
+                "merged_snapshot_sha256":
+                    aggregate["merged_snapshot_sha256"],
+            })
+        return aggregate
 
     def install_inactive_corpus_plan(self):
         manifest = self.root / "profiles/test-profile/profile.md"
@@ -456,19 +674,13 @@ class CheckBatchCloseTests(unittest.TestCase):
         return check_batch_close._priority_quotas(
             check_batch_close._profile_evaluation(self.root, runtime))
 
-    def _install_authoritative_state_mutating_verifier(self, exit_code):
-        script = self.root / "Tools/fixture_residual.py"
-        script.write_text(
-            script.read_text(encoding="utf-8") +
+    def _assert_state_mutating_verifier_is_uncertain(self, exit_code):
+        self.reset_applied_batch_with_verifier(
+            lambda source: source +
             "with open(os.path.join(a.root,'.cambium/state/"
             "coverage_ledger.yaml'),'a',encoding='utf-8') as fh:\n"
             "    fh.write('\\n')\n" +
-            ("raise SystemExit(%d)\n" % exit_code if exit_code else ""),
-            encoding="utf-8",
-        )
-
-    def _assert_state_mutating_verifier_is_uncertain(self, exit_code):
-        self._install_authoritative_state_mutating_verifier(exit_code)
+            ("raise SystemExit(%d)\n" % exit_code if exit_code else ""))
         completed = self.batch_close()
         self.assertEqual(1, completed.returncode, completed.stdout)
         self.assertIn(
@@ -714,26 +926,28 @@ class CorpusPlanConfiguredCloseTests(_TemplateBackedCase):
             for receipt_id, (path, receipt)
             in runtime["current_receipt_catalog"].items()
         }
+        self.project_close_bundle_to_ordinary_era(
+            historical_catalog, close_gate, "1.6.0")
         for _path, receipt in historical_catalog.values():
-            if receipt.get("tool") == check_batch_close.TOOL:
-                receipt["tool_version"] = "1.6.0"
-                if receipt.get("check") == "batch_global_review_attestation":
-                    # A 1.6.0-era attestation carried the full inline
-                    # disposition list; simulating that era from a compact
-                    # 1.9.0 body must restore the legacy shape from the
-                    # externalized evidence the compact writer produced.
-                    evidence_rows = []
-                    evidence_path = receipt.get("candidate_evidence_path")
-                    if evidence_path:
-                        evidence_rows = [
-                            json.loads(line)
-                            for line in (self.root / evidence_path)
-                            .read_text(encoding="utf-8").splitlines()
-                            if line.strip()
-                        ]
-                    receipt["candidate_dispositions"] = evidence_rows
-                    receipt["accepted_candidate_ids"] = [
-                        row["candidate_id"] for row in evidence_rows]
+            if (receipt.get("tool") == check_batch_close.TOOL and
+                    receipt.get("check") ==
+                    "batch_global_review_attestation"):
+                # A 1.6.0-era attestation carried the full inline
+                # disposition list; simulating that era from a compact
+                # 1.9.0 body must restore the legacy shape from the
+                # externalized evidence the compact writer produced.
+                evidence_rows = []
+                evidence_path = receipt.get("candidate_evidence_path")
+                if evidence_path:
+                    evidence_rows = [
+                        json.loads(line)
+                        for line in (self.root / evidence_path)
+                        .read_text(encoding="utf-8").splitlines()
+                        if line.strip()
+                    ]
+                receipt["candidate_dispositions"] = evidence_rows
+                receipt["accepted_candidate_ids"] = [
+                    row["candidate_id"] for row in evidence_rows]
         historical_kwargs = {
             "item_id": "B1",
             "task_id": runtime["queue"]["task_id"],
@@ -774,13 +988,21 @@ class VocabCompileOrderTests(_TemplateBackedCase):
 
     def test_batch_rejects_vocab_compiled_before_profile_change(self):
         """The closed list cannot reuse Profile A's vocabulary under B."""
+        vocab_path = self.root / runtime_paths.VOCAB_ARTIFACT_PATH
+        profile_a_vocab = vocab_path.read_text(encoding="utf-8")
         extension = self.root / \
             "profiles/test-profile/vocabulary-extensions.yaml"
         extension.write_text(
             extension.read_text(encoding="utf-8").replace(
                 "  fixture: stable", "  fixture: slow"),
             encoding="utf-8")
+        # Establish every opening and pre-merge prerequisite under Profile B.
+        # Only after the applied boundary do we reintroduce Profile A's old
+        # derived bytes, so this remains a close-currentness test rather than
+        # an invalid AuditPlan fixture.
+        self.compile_profile_artifacts()
         self.prepare_applied_batch()
+        vocab_path.write_text(profile_a_vocab, encoding="utf-8")
 
         completed = self.batch_close()
 
@@ -812,10 +1034,8 @@ class ClosedBundleReadTests(_TemplateBackedCase):
             for receipt_id, (path, receipt)
             in runtime["current_receipt_catalog"].items()
         }
-        for _path, receipt in catalog.values():
-            if receipt.get("tool") == check_batch_close.TOOL:
-                receipt["tool_version"] = "1.10.0"
-        aggregate = catalog[close_gate][1]
+        aggregate = self.project_close_bundle_to_ordinary_era(
+            catalog, close_gate, "1.10.0")
         aggregate.pop("page_review_receipts")
         aggregate.pop("page_review_receipt_count")
         aggregate.pop("page_review_receipt_set_sha256")
@@ -1354,7 +1574,7 @@ class CandidateGraphTests(_TemplateBackedCase):
     def test_profile_example_vocabulary_is_outside_the_vocab_member(self):
         """A shipped example instance's own vocabulary values must not fail
         the adopter's close: profiles/ is control plane, so the vocab member
-        excludes it like kernel/Cards (the defect only appeared on a real
+        excludes it like Card/ (the defect only appeared on a real
         adopter's first close)."""
         foreign = self.root / "profiles/examples/foreign/corpus/Case.md"
         foreign.parent.mkdir(parents=True, exist_ok=True)
@@ -1495,9 +1715,8 @@ class RegisteredScanTests(_TemplateBackedCase):
         )
         source = registry.read_text(encoding="utf-8")
         registry.write_text(source.replace(
-            "--scan-id fixture-residuals`",
-            "--scan-id fixture-residuals "
-            "--config profiles/foreign/scan-config.yaml`",
+            "| `None` | candidate-only |",
+            "| `profiles/foreign/scan-config.yaml` | candidate-only |",
             1,
         ), encoding="utf-8")
 
@@ -1544,13 +1763,10 @@ class RegisteredScanTests(_TemplateBackedCase):
         self.assertFalse(marker.exists(), completed.stdout)
 
     def test_registered_check_cannot_mutate_around_a_self_reported_pass(self):
-        script = self.root / "Tools/fixture_residual.py"
-        script.write_text(
-            script.read_text(encoding="utf-8") +
+        self.reset_applied_batch_with_verifier(
+            lambda source: source +
             "open(os.path.join(a.root,'MUTATED.txt'),'w',encoding='utf-8')"
-            ".write('changed during gate')\n",
-            encoding="utf-8",
-        )
+            ".write('changed during gate')\n")
         completed = self.batch_close()
         self.assertEqual(1, completed.returncode, completed.stdout)
         self.assertIn("repository content changed while the Closed List ran",
@@ -1563,15 +1779,14 @@ class RegisteredScanTests(_TemplateBackedCase):
         self.assertNotIn("closed_list_evidence", records[0])
 
     def test_registered_blind_pass_without_positive_control_evidence_fails(self):
-        script = self.root / "Tools/fixture_residual.py"
-        source = script.read_text(encoding="utf-8")
-        for line in (
-                "r['positive_control_result']='passed'\n",
-                "r['positive_control_mode']='production-classifier'\n",
-                "r['positive_control_count']=len(controls)\n",
-                "r['positive_control_fingerprint']=control_fp\n"):
-            source = source.replace(line, "")
-        script.write_text(source, encoding="utf-8")
+        removed = (
+            "r['positive_control_result']='passed'\n",
+            "r['positive_control_mode']='production-classifier'\n",
+            "r['positive_control_count']=len(controls)\n",
+            "r['positive_control_fingerprint']=control_fp\n",
+        )
+        self.reset_applied_batch_with_verifier(
+            lambda source: self._without_lines(source, removed))
         completed = self.batch_close()
         self.assertEqual(1, completed.returncode, completed.stdout)
         self.assertIn(
@@ -1584,25 +1799,23 @@ class RegisteredScanTests(_TemplateBackedCase):
         self.assertNotIn("closed_list_evidence", records[0])
 
     def test_registered_positive_control_invocation_failure_fails(self):
-        script = self.root / "Tools/fixture_residual.py"
-        source = script.read_text(encoding="utf-8").replace(
-            "a=p.parse_args()\n",
-            "a=p.parse_args()\n"
-            "if a.positive_controls_only:\n"
-            "    raise SystemExit(1)\n")
-        script.write_text(source, encoding="utf-8")
+        self.reset_applied_batch_with_verifier(
+            lambda source: source.replace(
+                "a=p.parse_args()\n",
+                "a=p.parse_args()\n"
+                "if a.positive_controls_only:\n"
+                "    raise SystemExit(1)\n"))
         completed = self.batch_close()
         self.assertEqual(1, completed.returncode, completed.stdout)
         self.assertIn("positive-control invocation", completed.stdout)
         self.assertIn("checker exited 1", completed.stdout)
 
     def test_registered_control_and_production_binding_mismatch_fails(self):
-        script = self.root / "Tools/fixture_residual.py"
-        source = script.read_text(encoding="utf-8").replace(
-            "r['config_fingerprint']=config_fp\n",
-            "r['config_fingerprint']=(('sha256:' + 'f'*64) "
-            "if a.positive_controls_only else config_fp)\n")
-        script.write_text(source, encoding="utf-8")
+        self.reset_applied_batch_with_verifier(
+            lambda source: source.replace(
+                "r['config_fingerprint']=config_fp\n",
+                "r['config_fingerprint']=(('sha256:' + 'f'*64) "
+                "if a.positive_controls_only else config_fp)\n"))
         completed = self.batch_close()
         self.assertEqual(1, completed.returncode, completed.stdout)
         self.assertIn(
@@ -1610,11 +1823,10 @@ class RegisteredScanTests(_TemplateBackedCase):
             "config_fingerprint", completed.stdout)
 
     def test_registered_verifier_cannot_self_report_a_foreign_scan_id(self):
-        script = self.root / "Tools/fixture_residual.py"
-        source = script.read_text(encoding="utf-8").replace(
-            "r['scan_id']=a.scan_id\n",
-            "r['scan_id']='foreign-scan'\n")
-        script.write_text(source, encoding="utf-8")
+        self.reset_applied_batch_with_verifier(
+            lambda source: source.replace(
+                "r['scan_id']=a.scan_id\n",
+                "r['scan_id']='foreign-scan'\n"))
 
         completed = self.batch_close()
 

@@ -4,10 +4,12 @@
 # History: .cambium/receipts/standards-adoptions.jsonl
 schema_version: 1
 state_revision: 1
+# Compatibility alias only; MUST equal the full upstream_revision_id below.
 standards_version: TODO(standards-adoption)
 status: approved
 effective_date: TODO(standards-adoption)
 selected_profile_manifest: "profiles/my-profile/profile.md"
 latest_adoption_receipt: TODO(standards-adoption)
 upstream_source_ref: TODO(standards-adoption)
+# Full commit SHA resolved from the adopted upstream Git repository and ref.
 upstream_revision_id: TODO(standards-adoption)

@@ -7,6 +7,9 @@ that its scope is readable rather than inferred.
 """
 
 import contract_exception_policy
+import coverage_contract
+import runtime_state_contract
+import vocabulary_contract
 
 from queue_runtime.canon import (
     BATCH_ID_RE,
@@ -18,16 +21,10 @@ from queue_runtime.repofs import _path_error
 from queue_runtime.work_spec import work_spec_binding_errors
 
 
-COVERAGE_DISPOSITIONS = frozenset((
-    "required", "optional", "deferred", "excluded",
-))
+COVERAGE_DISPOSITIONS = vocabulary_contract.COVERAGE_DISPOSITION_VALUES
 
 
-COVERAGE_BATCH_SPEC_FIELDS = frozenset((
-    "id", "family", "order_hint", "source_route", "execution_mode",
-    "depends_on", "confirmation_required", "work_spec_path",
-    "work_spec_sha256",
-))
+COVERAGE_BATCH_SPEC_FIELDS = coverage_contract.COVERAGE_BATCH_SPEC_FIELDS
 
 
 def coverage_reviewed_era_exception(progress, queue, count):
@@ -182,7 +179,7 @@ def coverage_provenance_errors(progress, queue, catalog, coverage_sha,
                          if isinstance(candidate, dict) and
                          candidate.get("id") == batch_id), None)
             if (item is None or item.get("state") not in
-                    ("merge-ready", "closed") or
+                    runtime_state_contract.QUEUE_DELTA_BOUND_STATES or
                     item.get("delta_path") != receipt.get("delta_path") or
                     item.get("delta_sha256") != receipt.get("delta_sha256")):
                 continue
@@ -268,7 +265,7 @@ def coverage_records(root, coverage, errors):
             errors.append("%s deferred disposition requires reentry_condition" %
                           label)
         batch_ids = []
-        for key in ("batch", "next_batch"):
+        for key in sorted(coverage_contract.COVERAGE_REROUTE_FIELDS):
             value = page.get(key)
             if value is None or value == "":
                 continue

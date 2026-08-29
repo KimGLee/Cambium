@@ -14,7 +14,7 @@ sys.path.insert(0, str(TOOLS))
 import kblib
 import migrate_standards_state
 import standards_state
-from profile_fixture import install_loadable_profile
+from profile_fixture import FIXTURE_UPSTREAM_REVISION, install_loadable_profile
 
 
 class MigrateStandardsStateTests(unittest.TestCase):
@@ -30,10 +30,10 @@ class MigrateStandardsStateTests(unittest.TestCase):
             "tool_version": "1.6.0",
             "transaction_phase": "commit",
             "result": "pass",
-            "standards_version_after": "3.0.0",
+            "standards_version_after": FIXTURE_UPSTREAM_REVISION,
             "checked_at": "2026-08-01T12:00:00Z",
             "upstream_source_ref": "https://example.test/cambium.git",
-            "upstream_revision_id": "abc123",
+            "upstream_revision_id": FIXTURE_UPSTREAM_REVISION,
         }
         path = self.root / migrate_standards_state.HISTORY_PATH
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -51,7 +51,8 @@ class MigrateStandardsStateTests(unittest.TestCase):
 
         state = kblib.load_yaml_file(
             self.root / standards_state.STATE_PATH)
-        self.assertEqual("3.0.0", state["standards_version"])
+        self.assertEqual(FIXTURE_UPSTREAM_REVISION,
+                         state["standards_version"])
         self.assertEqual("profiles/test-profile/profile.md",
                          state["selected_profile_manifest"])
         self.assertEqual("audit-adopt-3.0.0",

@@ -16,13 +16,15 @@ Method:
   maintenance candidates rather than skipped observations;
 - volatility: an explicit valid frontmatter declaration always wins; when a
   domain -> volatility mapping is supplied via --defaults (a flat file, or
-  Tools/vocab.yaml / a profile's vocabulary-extensions.yaml via their
+  .cambium/derived/vocab.yaml / a profile's vocabulary-extensions.yaml via
+  their
   volatility_defaults section), pages without an explicit declaration fall
   back to the mapping through their `domain`; otherwise (no --defaults, or
   domain missing / unmapped) the page is an unresolved-policy candidate;
-- re-verification interval: fast = 120 days, slow = 365 days, stable = no
-  recurring due date (stable still requires one completed verification or
-  review event and does not exempt invalid or future completed-event evidence);
+- re-verification intervals come from the strict K08 vocabulary-base
+  projection; a null interval means no recurring due date (and still requires
+  one completed verification or review event and does not exempt invalid or
+  future completed-event evidence);
 - baseline date is `last_verified`, falling back to `last_reviewed`; when
   both are missing, the file's UTC modification date is retained only as a
   diagnostic and the page is flagged "pending first verification" (stable
@@ -60,12 +62,14 @@ import compose_vocab
 import freshness_engine
 import maintenance_candidates
 import profile_admission
+import runtime_paths
+import vocabulary_contract
 
 TOOL = "check_freshness"
 TOOL_VERSION = "2.1.0"
 
 # Re-verification interval (days) per volatility tier.
-INTERVAL_DAYS = freshness_engine.INTERVAL_DAYS
+INTERVAL_DAYS = vocabulary_contract.REVIEW_INTERVALS_DAYS
 
 
 # ---------------------------------------------------------------------------
@@ -144,7 +148,8 @@ def load_defaults(path, text=None):
 
     Accepts either a flat `domain: volatility` file, or a composed vocabulary
     artifact / profile extensions file carrying a nested `volatility_defaults`
-    mapping (Tools/vocab.yaml, profiles/*/vocabulary-extensions.yaml) -- in
+    mapping (.cambium/derived/vocab.yaml,
+    profiles/*/vocabulary-extensions.yaml) -- in
     that case the nested mapping is used.
 
     Returns a dict; raises ValueError on a malformed file or on a volatility
@@ -654,7 +659,7 @@ def _candidate_details(outcome, as_of):
             "(as_of=%s, priority=%s)" % (as_of.isoformat(), priority)
         )
     if outcome.kind == freshness_engine.PENDING_FIRST_VERIFICATION:
-        interval = freshness_engine.INTERVAL_DAYS[outcome.volatility]
+        interval = INTERVAL_DAYS[outcome.volatility]
         if interval is None:
             state = "no recurring review deadline"
             arithmetic = (
@@ -684,7 +689,7 @@ def _candidate_details(outcome, as_of):
             % (state, arithmetic, outcome.volatility, priority)
         )
     if outcome.kind == freshness_engine.OVERDUE:
-        interval = freshness_engine.INTERVAL_DAYS[outcome.volatility]
+        interval = INTERVAL_DAYS[outcome.volatility]
         return (
             "overdue %d days: review_by=%s (%s=%s + %d days, "
             "volatility=%s, priority=%s)"
@@ -803,15 +808,19 @@ def _run(args):
                     profile_admission.admit_profile(root)
                 if defaults_admission is None:
                     raise ValueError(
-                        "canonical Tools/vocab.yaml requires selected Profile "
-                        "admission: %s" % "; ".join(admission_errors))
+                        "canonical %s requires "
+                        "selected Profile "
+                        "admission: %s" % (
+                            runtime_paths.VOCAB_ARTIFACT_PATH,
+                            "; ".join(admission_errors)))
                 defaults_snapshot, artifact_errors = \
                     compose_vocab.admitted_artifact(
                         root, args.defaults, defaults_admission)
                 if artifact_errors or defaults_snapshot is None:
                     raise ValueError(
-                        "canonical Tools/vocab.yaml is not current: %s" %
-                        "; ".join(artifact_errors))
+                        "canonical %s is not current: %s" % (
+                            runtime_paths.VOCAB_ARTIFACT_PATH,
+                            "; ".join(artifact_errors)))
                 defaults_map = load_defaults(
                     args.defaults, defaults_snapshot.read_text())
                 defaults_fingerprint = defaults_snapshot.sha256

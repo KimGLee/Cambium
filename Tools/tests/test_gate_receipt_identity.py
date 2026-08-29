@@ -1,3 +1,4 @@
+import copy
 import json
 import shutil
 import subprocess
@@ -21,6 +22,7 @@ import check_queue
 # The running-producer version is patched below, and the reader of
 # that name is the module that derives the requirements.
 import queue_runtime.revalidation
+import queue_runtime.gate_registry as gate_registry_contract
 import check_page_contract
 import check_profile
 import check_residual_content
@@ -29,6 +31,7 @@ import check_vocab
 import adopt_standards
 import kblib
 import record_corpus_acceptance
+from Tools.tests.profile_fixture import FIXTURE_UPSTREAM_REVISION
 
 # K12/18 files these two Gates' canonical judgment items under more than one
 # receipt dimension, so K00/12 registers every one of them.
@@ -185,10 +188,20 @@ class DeterministicGateReceiptIdentityTests(unittest.TestCase):
                 self.assertEqual("owner-member-chain",
                                  capabilities[leaf]["binding_protocol"])
 
+        self.assertEqual("semantic-leaf",
+                         capabilities["structure-registry"]["role"])
+        self.assertEqual("profile-load",
+                         capabilities["structure-registry"]["owner"])
+        self.assertEqual(
+            "profile-load",
+            gate_registry_contract.standards_revalidation_owner(
+                "structure-registry", capabilities))
+
         immediate, native, projection_errors = \
             check_queue.project_adoption_gate_ids(
                 ["frontmatter-vocabulary", "page-contract",
-                 "required-queue-consistency"], capabilities)
+                 "required-queue-consistency", "structure-registry"],
+                capabilities)
         self.assertEqual([], projection_errors)
         self.assertEqual(["required-queue-consistency"], immediate)
         self.assertEqual(["batch-close"], native)
@@ -205,8 +218,7 @@ class DeterministicGateReceiptIdentityTests(unittest.TestCase):
 
         for gate_id, role in (
                 ("standards-adoption", "mechanism-only"),
-                ("standards-revalidation", "mechanism-only"),
-                ("runtime-card-synchronization", "unsupported")):
+                ("standards-revalidation", "mechanism-only")):
             with self.subTest(gate_id=gate_id):
                 self.assertEqual(role, capabilities[gate_id]["role"])
                 _immediate, _native, errors = \
@@ -334,84 +346,70 @@ class DeterministicGateReceiptIdentityTests(unittest.TestCase):
             receipt, "required-queue-consistency", registry))
 
     def test_registry_rejects_wildcard_producer_identity(self):
-        with tempfile.TemporaryDirectory() as temporary:
-            root = Path(temporary)
-            registry_path = root / check_queue.STANDARDS_GATE_REGISTRY_PATH
-            registry_path.parent.mkdir(parents=True)
-            registry_path.write_text(
-                "## Stable Gate ID Registry\n\n"
-                "| Gate ID | Tool | Tool version | Check | Mode "
-                "| Dimension | Lifecycle |\n"
-                "|---|---|---|---|---|---|---|\n"
-                "| unsafe | * | * | * | * | * | not-batch-scoped |\n",
-                encoding="utf-8",
-            )
-            registry, errors = check_queue.standards_gate_registry(root)
-        self.assertEqual({}, registry)
+        document = self.control_document()
+        row = next(row for row in document["gates"]
+                   if row["gate_id"] == "wiki-link-integrity")
+        row.update(tool="*", tool_version="*", check="*")
+        registry, errors = self.parsed_registry_document(document)
+        self.assertIn("wiki-link-integrity", registry)
         self.assertTrue(any("must be exact" in error for error in errors),
                         errors)
 
-    def parsed_registry(self, header, row):
-        """Parse one synthetic Stable Gate ID Registry table."""
-        with tempfile.TemporaryDirectory() as temporary:
-            root = Path(temporary)
-            registry_path = root / check_queue.STANDARDS_GATE_REGISTRY_PATH
-            registry_path.parent.mkdir(parents=True)
-            separator = "|%s|" % "|".join(
-                ["---"] * (header.count("|") - 1))
-            registry_path.write_text(
-                "## Stable Gate ID Registry\n\n%s\n%s\n%s\n" % (
-                    header, separator, row),
-                encoding="utf-8")
-            return check_queue.standards_gate_registry(root)
+    @staticmethod
+    def control_document():
+        return copy.deepcopy(kblib.load_yaml_file(
+            TOOLS_DIR.parent / check_queue.STANDARDS_GATE_REGISTRY_PATH))
 
-    SIX_CELL_HEADER = ("| Gate ID | Tool | Tool version | Check | Mode "
-                       "| Dimension |")
-    SEVEN_CELL_HEADER = ("| Gate ID | Tool | Tool version | Check | Mode "
-                         "| Dimension | Lifecycle |")
+    @staticmethod
+    def parsed_registry_document(document):
+        registry, _capabilities, _metadata, errors = \
+            gate_registry_contract.parse_control_registry_document(document)
+        return registry, errors
+
+    def parsed_wiki_registry(self, **changes):
+        document = self.control_document()
+        row = next(row for row in document["gates"]
+                   if row["gate_id"] == "wiki-link-integrity")
+        for field, value in changes.items():
+            if value is None:
+                row.pop(field, None)
+            else:
+                row[field] = value
+        return self.parsed_registry_document(document)
 
     def test_registry_rejects_a_row_without_the_lifecycle_cell(self):
         """A pre-column table is a parse failure, not a defaulted column."""
-        registry, errors = self.parsed_registry(
-            self.SIX_CELL_HEADER,
-            "| wiki-link-integrity | check_links | 1.6.0 "
-            "| link-check-summary | * | * |")
-        self.assertEqual({}, registry)
-        self.assertTrue(any("must have seven cells" in error
+        registry, errors = self.parsed_wiki_registry(lifecycle=None)
+        self.assertNotIn("wiki-link-integrity", registry)
+        self.assertTrue(any("fields are not closed" in error
                             for error in errors), errors)
 
     def test_registry_rejects_an_unknown_lifecycle_value(self):
         """Only a batch lifecycle state or the not-batch-scoped marker."""
-        registry, errors = self.parsed_registry(
-            self.SEVEN_CELL_HEADER,
-            "| wiki-link-integrity | check_links | 1.6.0 "
-            "| link-check-summary | * | * | under-review |")
-        self.assertEqual({}, registry)
+        registry, errors = self.parsed_wiki_registry(
+            lifecycle=["under-review"])
+        self.assertIn("wiki-link-integrity", registry)
         self.assertTrue(any(
-            "registers Lifecycle under-review, which is neither a batch "
-            "lifecycle state nor one of not-batch-scoped, queue-exhausted"
+            "registers unknown producer position(s): under-review"
             in error for error in errors), errors)
 
     def test_registry_rejects_mixing_a_marker_with_another_position(self):
         """The three cell forms each answer the whole question alone."""
-        for cell in ("not-batch-scoped, open", "queue-exhausted, merge-ready",
-                     "not-batch-scoped, queue-exhausted"):
-            with self.subTest(cell=cell):
-                registry, errors = self.parsed_registry(
-                    self.SEVEN_CELL_HEADER,
-                    "| wiki-link-integrity | check_links | 1.6.0 "
-                    "| link-check-summary | * | * | %s |" % cell)
-                self.assertEqual({}, registry)
+        for positions in (("not-batch-scoped", "open"),
+                          ("queue-exhausted", "merge-ready"),
+                          ("not-batch-scoped", "queue-exhausted")):
+            with self.subTest(positions=positions):
+                registry, errors = self.parsed_wiki_registry(
+                    lifecycle=list(positions))
+                self.assertIn("wiki-link-integrity", registry)
                 self.assertTrue(any("mixes" in error and
                                     "with another position" in error
                                     for error in errors), errors)
 
     def test_registry_accepts_the_queue_exhausted_position(self):
         """A Queue-level position is a registrable cell, not an error."""
-        registry, errors = self.parsed_registry(
-            self.SEVEN_CELL_HEADER,
-            "| wiki-link-integrity | check_links | 1.6.0 "
-            "| link-check-summary | * | * | queue-exhausted |")
+        registry, errors = self.parsed_wiki_registry(
+            lifecycle=["queue-exhausted"])
         self.assertEqual([], errors)
         self.assertEqual(("queue-exhausted",),
                          registry["wiki-link-integrity"]["lifecycle_states"])
@@ -464,6 +462,7 @@ class DeterministicGateReceiptIdentityTests(unittest.TestCase):
                              completed.stdout + completed.stderr)
             rows = self.receipt_rows(receipts)
             self.assertEqual("link-check-summary", rows[-1]["check"])
+            self.assertEqual(".", rows[-1]["target"])
             self.assert_producer_identity(
                 rows, check_links.TOOL, check_links.TOOL_VERSION,
                 check_links.GATE_ID)
@@ -500,6 +499,7 @@ class DeterministicGateReceiptIdentityTests(unittest.TestCase):
             summary_rows = [row for row in rows
                             if row["check"] != "priority-quota-distribution"]
             self.assertEqual("vocab-check-summary", summary_rows[-1]["check"])
+            self.assertEqual(".", summary_rows[-1]["target"])
             self.assert_producer_identity(
                 summary_rows, check_vocab.TOOL, check_vocab.TOOL_VERSION,
                 check_vocab.GATE_ID)
@@ -758,20 +758,22 @@ class StableGateRegistryProducerTableTests(unittest.TestCase):
             [], check_queue.gate_registry_producer_errors(self.registry()))
 
     def test_the_assertion_runs_inside_the_registry_parse(self):
-        """Not a test-only helper: the parse path itself must report it."""
+        """Not a test-only helper: the current load path reports drift."""
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
             registry_path = root / check_queue.STANDARDS_GATE_REGISTRY_PATH
+            audit_path = root / check_profile.DEFAULT_AUDIT_DIMENSION_BASE
             registry_path.parent.mkdir(parents=True)
-            registry_path.write_text(
-                "## Stable Gate ID Registry\n\n"
-                "| Gate ID | Tool | Tool version | Check | Mode "
-                "| Dimension | Lifecycle |\n"
-                "|---|---|---|---|---|---|---|\n"
-                "| wiki-link-integrity | check_links | 9.9.9 "
-                "| link-check-summary | * | * | not-batch-scoped |\n",
-                encoding="utf-8",
-            )
+            audit_path.parent.mkdir(parents=True)
+            shutil.copy2(
+                TOOLS_DIR.parent / check_profile.DEFAULT_AUDIT_DIMENSION_BASE,
+                audit_path)
+            document = kblib.load_yaml_file(
+                TOOLS_DIR.parent / check_queue.STANDARDS_GATE_REGISTRY_PATH)
+            row = next(row for row in document["gates"]
+                       if row["gate_id"] == "wiki-link-integrity")
+            row["tool_version"] = "9.9.9"
+            kblib.atomic_write_yaml(registry_path, document)
             registry, errors = check_queue.standards_gate_registry(root)
         self.assertIn("wiki-link-integrity", registry)
         self.assertTrue(any("stamps %s" % check_links.TOOL_VERSION in error
@@ -930,16 +932,8 @@ class StableGateRegistryProducerTableTests(unittest.TestCase):
             dict(wrapper, dimension="content_and_depth"),
             check_queue.BATCH_REVIEW_GATE_ID, registry))
 
-    def test_the_registry_guard_runs_on_the_stamp_cards_gate_input(self):
-        """Placement, not existence: an adopter must reach this guard.
-
-        ``standards_gate_registry`` is otherwise reached only when a Standards
-        revalidation is outstanding or an adoption plan is validated, so a
-        producer version bumped without its K00/12 row surfaces first as a
-        rejected receipt at ``open -> merge-ready``.  ``stamp_cards.py --check``
-        is the run K00/12 names as the input of
-        ``runtime-card-synchronization``, so the disagreement is reported there.
-        """
+    def test_live_registry_loader_enforces_the_producer_boundary(self):
+        """The live YAML loader adds producer checks after contract parsing."""
         repository_root = TOOLS_DIR.parent
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary) / "repo"
@@ -949,25 +943,26 @@ class StableGateRegistryProducerTableTests(unittest.TestCase):
                 repository_root / "Tools", root / "Tools",
                 ignore=shutil.ignore_patterns("tests", "__pycache__"))
 
-            clean = self.run_tool("stamp_cards.py", root, "--check")
-            self.assertEqual(0, clean.returncode, clean.stdout + clean.stderr)
+            _registry, clean_errors = \
+                check_queue.standards_gate_registry(root)
+            self.assertEqual([], clean_errors)
 
             registry_path = root / check_queue.STANDARDS_GATE_REGISTRY_PATH
-            text = registry_path.read_text(encoding="utf-8")
-            row = "| `batch-close` | `check_batch_close` | `%s` |" % (
-                check_batch_close.TOOL_VERSION)
-            self.assertIn(row, text)
-            registry_path.write_text(
-                text.replace(row, row.replace(
-                    "`%s`" % check_batch_close.TOOL_VERSION, "`9.9.9`")),
-                encoding="utf-8")
+            document = kblib.load_yaml_file(registry_path)
+            row = next(row for row in document["gates"]
+                       if row["gate_id"] == "batch-close")
+            self.assertEqual(check_batch_close.TOOL_VERSION,
+                             row["tool_version"])
+            row["tool_version"] = "9.9.9"
+            kblib.atomic_write_yaml(registry_path, document)
 
-            drifted = self.run_tool("stamp_cards.py", root, "--check")
-        self.assertEqual(1, drifted.returncode, drifted.stdout + drifted.stderr)
+            _registry, drifted_errors = \
+                check_queue.standards_gate_registry(root)
+        message = "\n".join(drifted_errors)
         self.assertIn("Gate ID batch-close registers Tool version 9.9.9",
-                      drifted.stdout)
+                      message)
         self.assertIn("check_batch_close stamps %s"
-                      % check_batch_close.TOOL_VERSION, drifted.stdout)
+                      % check_batch_close.TOOL_VERSION, message)
 
     def test_consumer_side_identity_must_match_the_registered_row(self):
         errors = self.drifted("terminal-proof", tool=check_vocab.TOOL,
@@ -1136,7 +1131,8 @@ class RuntimeReceiptIdentityTests(unittest.TestCase):
     def test_identity_is_read_from_the_canonical_required_queue(self):
         root = self.runtime_root()
         self.assertEqual(
-            {"task_id": "fixture-task", "standards_version": "3.0.0",
+            {"task_id": "fixture-task",
+             "standards_version": FIXTURE_UPSTREAM_REVISION,
              "selected_profile_manifest": "profiles/test-profile/profile.md"},
             kblib.runtime_receipt_identity(root))
 
@@ -1262,7 +1258,7 @@ class RuntimeReceiptIdentityTests(unittest.TestCase):
             set(producers) - {check_queue.MANUAL_ATTESTATION_TOOL,
                               check_queue.TOOL, check_proof.TOOL})
         self.assertEqual(
-            15, len(producers[check_queue.MANUAL_ATTESTATION_TOOL]))
+            14, len(producers[check_queue.MANUAL_ATTESTATION_TOOL]))
 
 
 if __name__ == "__main__":

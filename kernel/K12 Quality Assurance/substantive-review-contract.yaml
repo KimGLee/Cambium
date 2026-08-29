@@ -1,0 +1,179 @@
+schema_version: 1
+contract_id: cambium-substantive-review
+semantic_owner: K12/12
+record_kind: substantive-review-evidence
+acceptance_predicate: content-correctness
+round_cap: 2
+obligation_projection:
+  owner_kind: kernel
+  owner_rule_id: k12-12-substantive-correctness-review
+  kernel_extension_point: null
+  tier: L
+  target_source: manifest-page
+  applicability: tier=L AND trigger in [new,needs_rereview,review_by_expired]
+  trigger_partition_mappings:
+    - trigger: new
+      partition: initial-semantic-review
+    - trigger: needs_rereview
+      partition: invalidated-semantic-review
+    - trigger: review_by_expired
+      partition: overdue-targeted-review
+  due_stage: pre-merge
+  producer_check: substantive_review
+  producer_capability: substantive-review-attestation-v1
+  producer_gate_id: null
+  consumer_gate_id: batch-review
+  evidence_kind: audit-receipt
+  evidence_role: emits
+  dimension: content_and_depth
+  acceptance_predicate: content-correctness
+  fingerprint_binding: evidence-time
+fields:
+  - field: schema_version
+    type: integer
+    nullable: false
+  - field: record_kind
+    type: string
+    nullable: false
+  - field: receipt_id
+    type: string
+    nullable: false
+  - field: tool
+    type: string
+    nullable: false
+  - field: tool_version
+    type: string
+    nullable: false
+  - field: check
+    type: string
+    nullable: false
+  - field: target
+    type: string
+    nullable: false
+  - field: result
+    type: string
+    nullable: false
+  - field: details
+    type: string
+    nullable: false
+  - field: checked_at
+    type: utc-timestamp
+    nullable: false
+  - field: invalidated_by
+    type: string
+    nullable: true
+  - field: plan_id
+    type: string
+    nullable: false
+  - field: audit_plan_sha256
+    type: sha256
+    nullable: false
+  - field: obligation_id
+    type: string
+    nullable: false
+  - field: task_id
+    type: string
+    nullable: false
+  - field: batch_id
+    type: string
+    nullable: false
+  - field: opening_transition_receipt
+    type: string
+    nullable: false
+  - field: standards_version
+    type: string
+    nullable: false
+  - field: active_standards_sha256
+    type: sha256
+    nullable: false
+  - field: selected_profile_manifest
+    type: string
+    nullable: false
+  - field: profile_snapshot_sha256
+    type: sha256
+    nullable: false
+  - field: profile_contract_fingerprint
+    type: sha256
+    nullable: false
+  - field: page_sha256
+    type: sha256
+    nullable: false
+  - field: sources_sha256
+    type: sha256
+    nullable: false
+  - field: semantic_content_fingerprint
+    type: sha256
+    nullable: false
+  - field: artifact_fingerprint
+    type: sha256
+    nullable: false
+  - field: dependency_fingerprint
+    type: sha256
+    nullable: false
+  - field: contract_fingerprint
+    type: sha256
+    nullable: false
+  - field: fingerprint_binding
+    type: string
+    nullable: false
+  - field: acceptance_predicate
+    type: string
+    nullable: false
+  - field: authoring_context_id
+    type: string
+    nullable: false
+  - field: reviewer_context_id
+    type: string
+    nullable: false
+  - field: reviewer_role
+    type: string
+    nullable: false
+  - field: round
+    type: integer
+    nullable: false
+  - field: round_1_receipt_id
+    type: string
+    nullable: true
+  - field: verdict
+    type: string
+    nullable: false
+  - field: findings
+    type: finding-list
+    nullable: false
+finding_fields:
+  - field: finding_id
+    type: string
+    nullable: false
+  - field: severity
+    type: string
+    nullable: false
+  - field: statement
+    type: string
+    nullable: false
+  - field: status
+    type: string
+    nullable: false
+  - field: round_1_finding_id
+    type: string
+    nullable: true
+result_values:
+  - pass
+  - fail
+verdict_result_mappings:
+  - verdict: passed
+    result: pass
+  - verdict: changes-required
+    result: fail
+  - verdict: escalated
+    result: fail
+finding_severities:
+  - critical
+  - major
+  - minor
+blocking_severities:
+  - critical
+  - major
+finding_status_values:
+  - open
+  - closed
+  - recorded

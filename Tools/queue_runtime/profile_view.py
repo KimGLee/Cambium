@@ -8,11 +8,12 @@ at admission and is stale now is the exact state a long transaction produces.
 
 from dataclasses import dataclass
 import os
-from pathlib import Path
 
 import check_profile
 import kblib
 import metadata_execution_contract
+import profile_contract
+import profile_layout_contract
 import standards_state
 
 from queue_runtime.canon import SHA256_RE
@@ -42,9 +43,11 @@ def _selected_profile_manifest_envelope_errors(profile):
     """
     if not nonempty_string(profile):
         return ["selected_profile_manifest must be instantiated"]
-    parts = Path(profile).parts
-    if len(parts) != 3 or parts[0] != "profiles" or parts[2] != "profile.md":
-        return ["selected_profile_manifest must be profiles/<id>/profile.md"]
+    try:
+        profile_layout_contract.validate_selectable_profile_manifest_path(
+            profile)
+    except profile_layout_contract.ProfileLayoutError as exc:
+        return ["selected_profile_manifest %s" % exc]
     return []
 
 
@@ -56,15 +59,21 @@ def selected_profile_manifest_errors(root, profile):
     forget: the selected package is an adopter-owned profile ID, not a shipped
     form/example, and its identity/sentinel state is instantiated.
     """
-    errors = _selected_profile_manifest_envelope_errors(profile)
-    if errors:
-        return errors
-    parts = Path(profile).parts
-    profile_id = parts[1]
-    reserved = {
-        "_template", "template", "example", "examples", "REPLACE-ME",
-        "your-profile-id", "TODO",
-    }
+    if not nonempty_string(profile):
+        return ["selected_profile_manifest must be instantiated"]
+    try:
+        location = profile_layout_contract.parse_profile_manifest_path(profile)
+    except profile_layout_contract.ProfileLayoutError:
+        return ["selected_profile_manifest must be %s/<id>/%s" %
+                (profile_layout_contract.PROFILES_DIRECTORY,
+                 profile_layout_contract.PROFILE_MANIFEST_NAME)]
+    if location.example:
+        return ["selected_profile_manifest must be %s/<id>/%s" %
+                (profile_layout_contract.PROFILES_DIRECTORY,
+                 profile_layout_contract.PROFILE_MANIFEST_NAME)]
+    errors = []
+    profile_id = location.profile_id
+    reserved = set(profile_layout_contract.RESERVED_PROFILE_IDS)
     sentinel = "TODO(profile)"
     defaults_path = os.path.join(
         os.path.realpath(os.path.abspath(root)),
@@ -79,7 +88,7 @@ def selected_profile_manifest_errors(root, profile):
         except (OSError, ValueError, kblib.YamlSubsetError) as exc:
             errors.append("selected profile default registry is unreadable: %s" %
                           exc)
-    if profile_id in reserved or profile_id.startswith("_"):
+    if not location.selectable or profile_id in reserved:
         errors.append("selected_profile_manifest uses reserved/non-runnable "
                       "profile id %r" % profile_id)
     try:
@@ -246,10 +255,7 @@ def public_profile_load_evidence(authorized_view):
     """Project an internal authorized view into durable evidence fields."""
     return {
         field: authorized_view[field]
-        for field in (
-            "selected_profile_manifest", "profile_snapshot_sha256",
-            "profile_contract_fingerprint", "profile_load_inputs_sha256",
-        )
+        for field in profile_contract.PROFILE_LOAD_EVIDENCE_FIELDS
     }
 
 
@@ -339,9 +345,12 @@ def profile_view_snapshot_error(root, authorized_view, phase):
     if (not nonempty_string(manifest) or not isinstance(expected, str) or
             not SHA256_RE.fullmatch(expected)):
         return "authorized Profile view has malformed snapshot identity"
-    profile_dir = os.path.dirname(manifest).replace("/", os.sep)
+    evaluation = authorized_view.get("_evaluation")
+    if (not isinstance(evaluation, check_profile.ProfileLoadEvaluation) or
+            not evaluation.authorized):
+        return "authorized Profile view has no reusable profile-load evaluation"
     try:
-        actual = kblib.repository_tree_sha256(root, profile_dir)
+        actual = evaluation.rebind_profile_snapshot(root).sha256
     except (OSError, ValueError) as exc:
         return ("selected Profile cannot be rebound %s Expression hub "
                 "derivation: %s" % (phase, exc))
@@ -433,10 +442,8 @@ def authorized_profile_view_errors(root, profile_manifest, authorized_view):
                 evaluation.profile_snapshot is not bound_snapshot):
             errors.append("authorized Profile evaluation objects differ from "
                           "its typed contract or immutable snapshot")
-        for field in (
-                "profile_snapshot_sha256",
-                "profile_contract_fingerprint",
-                "profile_load_inputs_sha256"):
+        for field in \
+                profile_contract.PROFILE_LOAD_EVIDENCE_FINGERPRINT_FIELDS:
             if getattr(evaluation, field) != authorized_view.get(field):
                 errors.append("authorized Profile evaluation %s differs "
                               "from its public binding" % field)

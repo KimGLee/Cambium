@@ -256,8 +256,10 @@ class CheckCorpusPlanPositiveTests(CorpusPlanFixture):
                 check_corpus_plan.check_queue,
                 "profile_load_authorized_view", return_value=(view, [])), \
                 mock.patch.object(
-                    check_corpus_plan.kblib, "repository_tree_sha256",
-                    return_value=view["profile_snapshot_sha256"]):
+                    check_corpus_plan.check_queue.check_profile.
+                        ProfileLoadEvaluation,
+                    "rebind_profile_snapshot",
+                    return_value=view["_profile_snapshot"]):
             result = self.validate()
         self.assertEqual([], result["errors"])
         self.assertEqual("configured", result["applicability"])
@@ -279,7 +281,9 @@ class CheckCorpusPlanPositiveTests(CorpusPlanFixture):
             check_corpus_plan.check_queue.profile_load_authorized_view(
                 self.root, "profiles/test-profile/profile.md")
         self.assertEqual([], view_errors)
-        interface = self.root / "profiles/README.md"
+        interface = (
+            self.root /
+            check_corpus_plan.check_queue.check_profile.DEFAULT_INTERFACE)
         interface.write_text(
             interface.read_text(encoding="utf-8") +
             "\n<!-- canonical input revision B -->\n",

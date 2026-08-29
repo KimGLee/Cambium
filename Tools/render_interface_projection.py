@@ -2,8 +2,8 @@
 """render_interface_projection.py -- agent-facing form projections of the
 compiled CLI invocation contract.
 
-`Tools/compiled/cli-contract.yaml` states, once, how every shipped CLI is
-called. An agent runtime does not read that statement in that shape: it
+The selected target's registered `cli-contract.yaml` states, once, how every
+shipped CLI is called. An agent runtime does not read that statement in that shape: it
 reads a tool list in the shape its own protocol defines. This tool
 projects the one contract into those shapes, so a protocol-shaped list is
 a *derived view* of the compiled contract rather than a second, hand-kept
@@ -13,8 +13,10 @@ It follows the projection pattern the distribution already uses for the
 K08/09 page boundary block (`Tools/render_boundary_projection.py`): one
 declaration source, one generator, and a `--check` mode that reports a
 hand edit rather than silently re-adopting it. What differs is the
-destination -- a compiled artifact under `Tools/compiled/`, like
-`cli-contract.yaml`, not an owned block inside a page.
+destination. Source-distribution projections remain tracked compiled artifacts
+under `Tools/compiled/`. Carried-runtime projections are adopter-owned derived
+state under `.cambium/derived/interfaces/`; they never overwrite a distributed
+component.
 
 Forms
 -----
@@ -24,7 +26,8 @@ output path and its own builder, and `--form` selects one; with no
 a second protocol shape joins `make check` by being registered here and
 nowhere else. One form ships today:
 
-  mcp   Model Context Protocol tool list -> Tools/compiled/mcp-tools.json
+  mcp   Model Context Protocol tool list -> the target's registered
+        mcp-tools.json artifact
 
 JSON, not YAML: the payload of the `mcp` form is JSON Schema. Carrying
 JSON Schema inside the restricted YAML subset would add one lossy shape
@@ -68,6 +71,7 @@ directly instead.
 
 import json
 import os
+import re
 import sys
 
 TOOLS_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -75,15 +79,19 @@ REPO_ROOT = os.path.dirname(TOOLS_DIR)
 sys.path.insert(0, TOOLS_DIR)
 
 import kblib  # noqa: E402
+import runtime_paths  # noqa: E402
+import tool_availability  # noqa: E402
 
 TOOL = "render_interface_projection"
-TOOL_VERSION = "1.1.0"
+TOOL_VERSION = "1.4.0"
 
-SCHEMA_VERSION = 3
+SCHEMA_VERSION = 4
 ARTIFACT_KIND = "agent-interface-projection"
 DEFAULT_CONTRACT = "Tools/compiled/cli-contract.yaml"
+CARRIED_RUNTIME_CONTRACT = runtime_paths.CLI_CONTRACT_ARTIFACT_PATH
 UPSTREAM_ARTIFACT = "cli-invocation-contract"
-UPSTREAM_SCHEMA_VERSION = 3
+UPSTREAM_SCHEMA_VERSION = 5
+SHA256_RE = re.compile(r"sha256:[0-9a-f]{64}\Z")
 
 # The transports the `mcp` form declares. Deliberately two, and
 # deliberately not four.
@@ -128,8 +136,8 @@ WORKSPACE_EXTENSION_KEY = "x-cambium-workspace"
 
 NOTICE = (
     "Generated artifact -- do not edit. Every value here is projected from "
-    "%s by Tools/%s.py; a hand edit is reported by --check as a HOLD."
-    % (DEFAULT_CONTRACT, TOOL)
+    "the selected target's compiled CLI contract by Tools/%s.py; a hand edit "
+    "is reported by --check as a HOLD." % TOOL
 )
 NOT_A_REVISION_BASIS = (
     "This file is downstream of each tool's own argparse declaration and is "
@@ -140,6 +148,15 @@ NOT_A_REVISION_BASIS = (
 )
 REGENERATE = "python3 Tools/%s.py ." % TOOL
 VERIFY = "python3 Tools/%s.py . --check" % TOOL
+
+
+def invocation_for_projection_target(projection_target, check=False):
+    parts = ["python3 Tools/%s.py ." % TOOL]
+    if projection_target != tool_availability.SOURCE_DISTRIBUTION:
+        parts.append("--projection-target %s" % projection_target)
+    if check:
+        parts.append("--check")
+    return " ".join(parts)
 
 
 # ---------------------------------------------------------------------------
@@ -173,11 +190,13 @@ FIELD_SOURCES = {
     "source_schema_version":
         "Tools/compiled/cli-contract.yaml: schema_version",
     "source_hash":
-        "sha256 of the Tools/compiled/cli-contract.yaml bytes this run "
+        "sha256 of the selected cli-contract.yaml bytes this run "
         "read (kblib.sha256_bytes)",
     "source_manifest_hash":
-        "Tools/compiled/cli-contract.yaml: source_hash (its own manifest "
+        "selected cli-contract.yaml: source_hash (its own manifest "
         "of the tool sources it was compiled from)",
+    "projection_target":
+        "selected cli-contract.yaml: projection_target",
     "tool_count":
         "count of Tools/compiled/cli-contract.yaml: tools[] whose "
         "agent_interface.exposure is mcp",
@@ -190,9 +209,11 @@ FIELD_SOURCES = {
         "Tools/render_interface_projection.py: NOT_A_REVISION_BASIS; same "
         "rule owner, direction half",
     "generated.regenerate":
-        "Tools/render_interface_projection.py: REGENERATE",
+        "Tools/render_interface_projection.py: "
+        "invocation_for_projection_target",
     "generated.verify":
-        "Tools/render_interface_projection.py: VERIFY",
+        "Tools/render_interface_projection.py: "
+        "invocation_for_projection_target(check=True)",
 
     # -- mcp form ---------------------------------------------------------
     "transports[]":
@@ -371,6 +392,24 @@ def read_contract(path):
                             UPSTREAM_SCHEMA_VERSION))
     if not isinstance(contract.get("source_hash"), str):
         raise ProjectionError("%s carries no source_hash" % path)
+    if contract.get("projection_target") not in \
+            tool_availability.PROJECTION_TARGETS:
+        raise ProjectionError(
+            "%s carries no valid projection_target" % path)
+    component_path_registries = contract.get("component_path_registries")
+    if not isinstance(component_path_registries, dict):
+        raise ProjectionError(
+            "%s carries no component_path_registries provenance" % path)
+    for component_path_id, provenance in component_path_registries.items():
+        if (not isinstance(component_path_id, str) or
+                not component_path_id or not isinstance(provenance, dict) or
+                set(provenance) != {"path", "sha256"} or
+                not isinstance(provenance.get("path"), str) or
+                not provenance.get("path") or
+                not SHA256_RE.fullmatch(str(provenance.get("sha256", "")))):
+            raise ProjectionError(
+                "%s carries malformed component path provenance for %r" %
+                (path, component_path_id))
     tools = contract.get("tools")
     if not isinstance(tools, list) or not tools:
         raise ProjectionError("%s carries no tools" % path)
@@ -401,10 +440,36 @@ def read_contract(path):
         for item in paths:
             if not isinstance(item, dict) or set(item) != {
                     "argument", "access", "consumption", "constraint", "value",
-                    "suffixes", "active_when_any", "inactive_when_any"}:
+                    "runtime_path_id", "component_path_id", "suffixes",
+                    "active_when_any",
+                    "inactive_when_any"}:
                 raise ProjectionError(
                     "%s: tool %r carries a malformed path capability" %
                     (path, record.get("tool")))
+            runtime_path_id = item.get("runtime_path_id")
+            component_path_id = item.get("component_path_id")
+            if runtime_path_id is not None and (
+                    not isinstance(runtime_path_id, str) or
+                    not runtime_path_id):
+                raise ProjectionError(
+                    "%s: tool %r carries a malformed runtime_path_id" %
+                    (path, record.get("tool")))
+            if component_path_id is not None and (
+                    not isinstance(component_path_id, str) or
+                    not component_path_id):
+                raise ProjectionError(
+                    "%s: tool %r carries a malformed component_path_id" %
+                    (path, record.get("tool")))
+            if runtime_path_id is not None and component_path_id is not None:
+                raise ProjectionError(
+                    "%s: tool %r path capability carries both runtime and "
+                    "component path identities" %
+                    (path, record.get("tool")))
+            if (component_path_id is not None and
+                    component_path_id not in component_path_registries):
+                raise ProjectionError(
+                    "%s: tool %r names unknown component_path_id %s" %
+                    (path, record.get("tool"), component_path_id))
             path_names.add(item.get("argument"))
         classified = set(values) | path_names
         workspace_argument = interface.get("workspace_argument")
@@ -591,12 +656,15 @@ def build_envelope(form_name, contract, contract_hash, source_spelling):
         "source_schema_version": contract["schema_version"],
         "source_hash": contract_hash,
         "source_manifest_hash": contract["source_hash"],
+        "projection_target": contract["projection_target"],
         "tool_count": len(contract["tools"]),
         "generated": {
             "notice": NOTICE,
             "not_a_revision_basis": NOT_A_REVISION_BASIS,
-            "regenerate": REGENERATE,
-            "verify": VERIFY,
+            "regenerate": invocation_for_projection_target(
+                contract["projection_target"]),
+            "verify": invocation_for_projection_target(
+                contract["projection_target"], check=True),
         },
     }
 
@@ -617,11 +685,29 @@ def build_mcp(form_name, contract, contract_hash, source_spelling):
 FORMS = {
     "mcp": {
         "output": "Tools/compiled/mcp-tools.json",
+        "runtime_output": runtime_paths.MCP_TOOLS_ARTIFACT_PATH,
         "build": build_mcp,
         "summary": "Model Context Protocol tool list (name, description, "
                    "inputSchema)",
     },
 }
+
+
+def contract_for_projection_target(projection_target):
+    if projection_target == tool_availability.SOURCE_DISTRIBUTION:
+        return DEFAULT_CONTRACT
+    if projection_target == tool_availability.CARRIED_RUNTIME:
+        return CARRIED_RUNTIME_CONTRACT
+    raise ValueError("unknown projection target: %r" % projection_target)
+
+
+def output_for_projection_target(form, projection_target):
+    entry = FORMS[form]
+    if projection_target == tool_availability.SOURCE_DISTRIBUTION:
+        return entry["output"]
+    if projection_target == tool_availability.CARRIED_RUNTIME:
+        return entry["runtime_output"]
+    raise ValueError("unknown projection target: %r" % projection_target)
 
 
 # ---------------------------------------------------------------------------
@@ -694,8 +780,14 @@ def main(argv=None):
         help="project only this form (default: every registered form)")
     parser.add_argument(
         "--contract", default=None,
-        help="compiled CLI contract to project (default: <root>/%s)"
-             % DEFAULT_CONTRACT)
+        help="compiled CLI contract to project; defaults to the one owned "
+             "by --projection-target")
+    parser.add_argument(
+        "--projection-target",
+        choices=list(tool_availability.PROJECTION_TARGETS),
+        default=tool_availability.SOURCE_DISTRIBUTION,
+        help="project the tracked source distribution or adopter-owned "
+             "carried runtime (default: source-distribution)")
     parser.add_argument(
         "--output", default=None,
         help="artifact path to write or verify; requires --form, because "
@@ -722,23 +814,39 @@ def main(argv=None):
     if args.output and args.form is None:
         parser.error("--output names one artifact; pass --form to say which "
                      "form it holds")
-    outputs = {}
-    for form_name in forms:
-        try:
-            outputs[form_name] = kblib.registered_repository_artifact_path(
-                root, args.output or FORMS[form_name]["output"],
-                FORMS[form_name]["output"])
-        except ValueError as exc:
-            return fail("unsafe %s artifact output: %s" % (form_name, exc))
-
-    contract_path = args.contract or os.path.join(root, DEFAULT_CONTRACT)
+    contract_relative = contract_for_projection_target(args.projection_target)
+    contract_path = args.contract or os.path.join(root, contract_relative)
     if not os.path.isabs(contract_path):
         contract_path = os.path.join(root, contract_path)
+    if args.projection_target == tool_availability.CARRIED_RUNTIME:
+        try:
+            contract_path = kblib.registered_repository_artifact_path(
+                root, contract_path, CARRIED_RUNTIME_CONTRACT)
+        except ValueError as exc:
+            return fail("unsafe carried-runtime contract input: %s" % exc)
 
     try:
         contract, contract_hash = read_contract(contract_path)
     except ProjectionError as exc:
         return fail("evidence is unreliable: %s" % exc)
+    if contract["projection_target"] != args.projection_target:
+        return fail(
+            "evidence is unreliable: %s was compiled for projection target "
+            "%r, not requested target %r"
+            % (relativize(root, contract_path),
+               contract["projection_target"], args.projection_target))
+
+    outputs = {}
+    for form_name in forms:
+        registered_output = output_for_projection_target(
+            form_name, args.projection_target)
+        try:
+            outputs[form_name] = kblib.registered_repository_artifact_path(
+                root, args.output or registered_output, registered_output)
+        except ValueError as exc:
+            return fail(
+                "unsafe %s artifact output for projection target %s: %s"
+                % (form_name, args.projection_target, exc))
 
     source_spelling = relativize(root, contract_path)
     rendered = []
@@ -787,7 +895,8 @@ def main(argv=None):
                 continue
             if existing != text:
                 print("%s --check: %s is stale or hand-edited; regenerate it "
-                      "with `%s`" % (TOOL, output, REGENERATE))
+                      "with `%s`" %
+                      (TOOL, output, artifact["generated"]["regenerate"]))
                 stale += 1
                 continue
             print("%s --check: %s is current (%s form, %d tool(s))"

@@ -1,27 +1,11 @@
 # Registered Scan Registry
 
-Interface: [Registered Scan Registry slot](../../README.md#registered-scan-registry-slot)
+Kernel owner: K12 Quality Assurance. Common slot identity and table contract are registered in the Kernel Profile interface.
 
-The interface requires one real residual-content verifier; a profile cannot
-opt out. The common archetype: one class of structured content belongs only
-under one root (dated scratch entries, derived cards, generated digests), and
-the scan reports that structure leaking anywhere else. Derive the matchers
-from content that really occurs in this corpus; on an empty corpus, declare
-them from the page structure this profile registers and have bounded founding
-create the witness page that carries them. Either way the configuration must end up
-repository-backed: the production scan requires at least one Markdown file the
-matchers recognise, so a generic static default is impossible by design. The
-positive control checks something narrower — that the matchers and
-`mandated_headings` agree — and passes on an empty repository. Fill
-[the profile-owned scan configuration](../scan-configs/residual-scan.yaml)
-and bind `Tools/check_residual_content.py` below with the same Stable Scan ID
-passed through `--scan-id`. Materialize the command's `--config` argument with
-this Profile's repository-relative path. The executable remains under
-`Tools/`; the configuration is a `profile-load` dependency and cannot point at
-the template, another Profile, or a repository-root fallback.
+Choose stable scan and Judgment Item IDs, a repository scope, a Tool capability registered in `Tools/scan-capabilities.yaml`, a Profile-owned configuration reference when that capability requires one, and this repository's candidate boundary. The Profile selects and parameterizes a capability; it does not carry the executable command.
 
 ## Scan Registrations
 
-| Stable Scan ID | Activation role | Whole-corpus scope/root | Deterministic verifier command/path | Candidate predicate/boundary | Judgment Item ID reference |
-|---|---|---|---|---|---|
-| TODO(profile) | `K12/09 item 6 — residual-content scan` | TODO(profile) | TODO(profile) | TODO(profile) | TODO(profile) |
+| Stable Scan ID | Activation role | Whole-corpus scope/root | Verifier capability ID | Profile configuration reference or `None` | Candidate predicate/boundary | Judgment Item ID reference |
+|---|---|---|---|---|---|---|
+| TODO(profile) | `K12/09 item 6 — residual-content scan` | TODO(profile) | `residual-content-scan-v1` | `scan-configs/residual-scan.yaml` | TODO(profile) | TODO(profile) |

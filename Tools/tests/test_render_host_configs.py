@@ -37,6 +37,7 @@ SCRIPT = TOOLS_DIR / "render_host_configs.py"
 sys.path.insert(0, str(TOOLS_DIR))
 import kblib  # noqa: E402
 import render_host_configs as renderer  # noqa: E402
+import tool_availability  # noqa: E402
 
 PROJECTION = REPO_ROOT / renderer.DEFAULT_PROJECTION
 OUTPUT_DIR = REPO_ROOT / renderer.DEFAULT_OUTPUT_DIR
@@ -58,6 +59,7 @@ def fixture_projection(**overrides):
         "schema_version": renderer.UPSTREAM_SCHEMA_VERSION,
         "artifact": renderer.UPSTREAM_ARTIFACT,
         "form": renderer.UPSTREAM_FORM,
+        "projection_target": "source-distribution",
         "source_hash": kblib.sha256_bytes(b"fixture contract"),
         "tool_count": 1,
         "tools": [{"name": "sample", "inputSchema": {"type": "object"}}],
@@ -337,7 +339,8 @@ class FieldSourceTests(unittest.TestCase):
         self.addCleanup(setattr, renderer, "SERVER_NAME", original)
         renderer.SERVER_NAME = "renamed"
         context = {"source": "x", "source_hash": "sha256:x",
-                   "bindings": (), "unsubstituted": ()}
+                   "bindings": (), "unsubstituted": (),
+                   "projection_target": "source-distribution"}
 
         products = [("claude-code",
                      renderer.build_claude_code("claude-code", context))]
@@ -360,7 +363,8 @@ class FieldSourceTests(unittest.TestCase):
         """The table is the admission rule, not a place entries accumulate."""
         context = {"source": renderer.DEFAULT_PROJECTION,
                    "source_hash": "sha256:x",
-                   "bindings": (), "unsubstituted": ()}
+                   "bindings": (), "unsubstituted": (),
+                   "projection_target": "source-distribution"}
         rendered = set()
         for host, entry in renderer.HOSTS.items():
             product = entry["build"](host, context)
@@ -372,10 +376,23 @@ class FieldSourceTests(unittest.TestCase):
 class DeterminismTests(unittest.TestCase):
     def test_two_runs_agree_across_hash_seeds(self):
         with tempfile.TemporaryDirectory() as workspace:
+            projection = Path(workspace, renderer.DEFAULT_PROJECTION)
+            projection.parent.mkdir(parents=True, exist_ok=True)
+            projection.write_text(json.dumps(fixture_projection()),
+                                  encoding="utf-8")
             first = os.path.join(workspace, "first")
             second = os.path.join(workspace, "second")
-            run(".", "--output-dir", first, env={"PYTHONHASHSEED": "0"})
-            run(".", "--output-dir", second, env={"PYTHONHASHSEED": "12345"})
+            first_run = run(
+                workspace, "--projection", str(projection),
+                "--output-dir", first, env={"PYTHONHASHSEED": "0"})
+            second_run = run(
+                workspace, "--projection", str(projection),
+                "--output-dir", second,
+                env={"PYTHONHASHSEED": "12345"})
+            self.assertEqual(first_run.returncode, 0,
+                             first_run.stdout + first_run.stderr)
+            self.assertEqual(second_run.returncode, 0,
+                             second_run.stdout + second_run.stderr)
 
             for host in renderer.HOSTS:
                 name = renderer.HOSTS[host]["output"]
@@ -412,6 +429,236 @@ class FixtureRunTests(unittest.TestCase):
         result = self.render("--check")
 
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+
+    def write_carried_projection(self):
+        path = Path(self.workspace, renderer.CARRIED_RUNTIME_PROJECTION)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps(fixture_projection(
+            projection_target=tool_availability.CARRIED_RUNTIME)),
+            encoding="utf-8")
+        entry_point = Path(self.workspace, renderer.SERVER_ENTRY_POINT)
+        entry_point.parent.mkdir(parents=True, exist_ok=True)
+        entry_point.write_text("#!/usr/bin/env python3\n", encoding="utf-8")
+        return path
+
+    def test_carried_runtime_writes_only_to_explicit_external_staging(self):
+        self.write_carried_projection()
+        output = Path(self.workspace, "host-config-staging")
+
+        result = run(
+            self.workspace, "--projection-target",
+            tool_availability.CARRIED_RUNTIME,
+            "--output-dir", str(output),
+            "--distribution-root", self.workspace,
+            "--workspace-root", self.workspace)
+
+        self.assertEqual(result.returncode, 0,
+                         result.stdout + result.stderr)
+        for entry in renderer.HOSTS.values():
+            self.assertTrue((output / entry["output"]).is_file())
+        claude = json.loads((output / renderer.HOSTS[
+            "claude-code"]["output"]).read_text(encoding="utf-8"))
+        projection_path = claude["mcpServers"][renderer.SERVER_NAME][
+            "env"][renderer.PROJECTION_PATH_ENV]
+        self.assertEqual(
+            projection_path,
+            "%s/%s" % (self.workspace,
+                       renderer.CARRIED_RUNTIME_PROJECTION))
+        self.assertNotIn("Tools/compiled", projection_path)
+        self.assertFalse(Path(
+            self.workspace, renderer.DEFAULT_OUTPUT_DIR).exists())
+
+    def test_carried_runtime_requires_explicit_bound_roots_and_output(self):
+        self.write_carried_projection()
+
+        result = run(
+            self.workspace, "--projection-target",
+            tool_availability.CARRIED_RUNTIME)
+
+        self.assertEqual(result.returncode, 1,
+                         result.stdout + result.stderr)
+        self.assertIn("require explicit --output-dir", result.stderr)
+
+    def test_carried_runtime_refuses_an_empty_output_directory(self):
+        self.write_carried_projection()
+
+        result = run(
+            self.workspace, "--projection-target",
+            tool_availability.CARRIED_RUNTIME,
+            "--output-dir", "",
+            "--distribution-root", self.workspace,
+            "--workspace-root", self.workspace)
+
+        self.assertEqual(result.returncode, 1,
+                         result.stdout + result.stderr)
+        self.assertIn("require explicit --output-dir", result.stderr)
+
+    def test_carried_runtime_refuses_output_inside_runtime_state(self):
+        self.write_carried_projection()
+        output = Path(self.workspace, ".cambium/host-configs")
+
+        result = run(
+            self.workspace, "--projection-target",
+            tool_availability.CARRIED_RUNTIME,
+            "--output-dir", str(output),
+            "--distribution-root", self.workspace,
+            "--workspace-root", self.workspace)
+
+        self.assertEqual(result.returncode, 1,
+                         result.stdout + result.stderr)
+        self.assertIn("must remain outside .cambium", result.stdout)
+        self.assertFalse(output.exists())
+
+    def test_source_distribution_refuses_output_inside_runtime_state(self):
+        output = Path(self.workspace, ".cambium/host-configs")
+
+        result = run(
+            self.workspace, "--projection", self.projection_path,
+            "--output-dir", str(output))
+
+        self.assertEqual(result.returncode, 1,
+                         result.stdout + result.stderr)
+        self.assertIn("must remain outside .cambium", result.stdout)
+        self.assertFalse(output.exists())
+
+    def test_carried_runtime_refuses_case_alias_of_runtime_state(self):
+        self.write_carried_projection()
+        runtime = Path(self.workspace, ".cambium")
+        alias = Path(self.workspace, ".CAMBIUM")
+        try:
+            same_directory = alias.exists() and os.path.samefile(alias, runtime)
+        except OSError:
+            same_directory = False
+        if not same_directory:
+            self.skipTest("filesystem is case-sensitive")
+        output = alias / "host-configs"
+
+        result = run(
+            self.workspace, "--projection-target",
+            tool_availability.CARRIED_RUNTIME,
+            "--output-dir", str(output),
+            "--distribution-root", self.workspace,
+            "--workspace-root", self.workspace)
+
+        self.assertEqual(result.returncode, 1,
+                         result.stdout + result.stderr)
+        self.assertIn("must remain outside .cambium", result.stdout)
+
+    def test_carried_runtime_refuses_a_different_workspace_binding(self):
+        self.write_carried_projection()
+        output = Path(self.workspace, "host-config-staging")
+        other = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, other, ignore_errors=True)
+
+        result = run(
+            self.workspace, "--projection-target",
+            tool_availability.CARRIED_RUNTIME,
+            "--output-dir", str(output),
+            "--distribution-root", self.workspace,
+            "--workspace-root", other)
+
+        self.assertEqual(result.returncode, 1,
+                         result.stdout + result.stderr)
+        self.assertIn("same adopter workspace", result.stderr)
+        self.assertFalse(output.exists())
+
+    def test_carried_runtime_refuses_a_missing_distribution_entry_point(self):
+        self.write_carried_projection()
+        output = Path(self.workspace, "host-config-staging")
+        Path(self.workspace, renderer.SERVER_ENTRY_POINT).unlink()
+
+        result = run(
+            self.workspace, "--projection-target",
+            tool_availability.CARRIED_RUNTIME,
+            "--output-dir", str(output),
+            "--distribution-root", self.workspace,
+            "--workspace-root", self.workspace)
+
+        self.assertEqual(result.returncode, 1,
+                         result.stdout + result.stderr)
+        self.assertIn("regular server entry point", result.stderr)
+        self.assertFalse(output.exists())
+
+    def test_carried_runtime_refuses_a_different_component_root(self):
+        self.write_carried_projection()
+        output = Path(self.workspace, "host-config-staging")
+        other = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, other, ignore_errors=True)
+        entry_point = Path(other, renderer.SERVER_ENTRY_POINT)
+        entry_point.parent.mkdir(parents=True)
+        entry_point.write_text("#!/usr/bin/env python3\n", encoding="utf-8")
+
+        result = run(
+            self.workspace, "--projection-target",
+            tool_availability.CARRIED_RUNTIME,
+            "--output-dir", str(output),
+            "--distribution-root", other,
+            "--workspace-root", self.workspace)
+
+        self.assertEqual(result.returncode, 1,
+                         result.stdout + result.stderr)
+        self.assertIn("same adopted component root", result.stderr)
+        self.assertFalse(output.exists())
+
+    def test_output_staging_must_remain_inside_the_repository(self):
+        outside = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, outside, ignore_errors=True)
+
+        result = run(
+            self.workspace, "--projection", self.projection_path,
+            "--output-dir", str(Path(outside, "host-configs")))
+
+        self.assertEqual(result.returncode, 1,
+                         result.stdout + result.stderr)
+        self.assertIn("inside the repository root", result.stdout)
+
+    def test_output_staging_cannot_escape_through_a_symlink(self):
+        outside = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, outside, ignore_errors=True)
+        output = Path(self.workspace, "host-config-staging")
+        output.symlink_to(outside, target_is_directory=True)
+
+        result = run(
+            self.workspace, "--projection", self.projection_path,
+            "--output-dir", str(output))
+
+        self.assertEqual(result.returncode, 1,
+                         result.stdout + result.stderr)
+        self.assertIn("staging must be a directory inside", result.stdout)
+        self.assertEqual([], list(Path(outside).iterdir()))
+
+    def test_output_staging_cannot_traverse_a_nested_symlink(self):
+        outside = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, outside, ignore_errors=True)
+        parent = Path(self.workspace, "staging")
+        parent.mkdir()
+        (parent / "redirect").symlink_to(outside, target_is_directory=True)
+        output = parent / "redirect/host-configs"
+
+        result = run(
+            self.workspace, "--projection", self.projection_path,
+            "--output-dir", str(output))
+
+        self.assertEqual(result.returncode, 1,
+                         result.stdout + result.stderr)
+        self.assertIn("staging must be a directory inside", result.stdout)
+        self.assertEqual([], list(Path(outside).iterdir()))
+
+    def test_carried_runtime_refuses_distribution_compiled_output(self):
+        self.write_carried_projection()
+        output = Path(self.workspace, renderer.DEFAULT_OUTPUT_DIR)
+
+        result = run(
+            self.workspace, "--projection-target",
+            tool_availability.CARRIED_RUNTIME,
+            "--output-dir", str(output),
+            "--distribution-root", self.workspace,
+            "--workspace-root", self.workspace)
+
+        self.assertEqual(result.returncode, 1,
+                         result.stdout + result.stderr)
+        self.assertIn("cannot be overwritten", result.stdout)
+        self.assertFalse(output.exists())
 
     def test_a_single_changed_byte_holds_with_2(self):
         for host in renderer.HOSTS:

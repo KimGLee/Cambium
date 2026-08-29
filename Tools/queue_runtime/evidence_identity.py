@@ -14,6 +14,7 @@ promise here is that module reading a private name.
 """
 
 import metadata_property_state
+import profile_contract
 
 from queue_runtime.canon import SHA256_RE
 from queue_runtime.primitives import nonempty_string
@@ -91,9 +92,8 @@ def evidence_identity_errors(
         if not nonempty_string(receipt.get("selected_profile_manifest")):
             errors.append(
                 "%s has no producer-era selected_profile_manifest" % label)
-        for field in (
-                "profile_snapshot_sha256", "profile_contract_fingerprint",
-                "profile_load_inputs_sha256"):
+        for field in \
+                profile_contract.PROFILE_LOAD_EVIDENCE_FINGERPRINT_FIELDS:
             value = receipt.get(field)
             if not isinstance(value, str) or not SHA256_RE.fullmatch(value):
                 errors.append(
@@ -109,10 +109,7 @@ def evidence_identity_errors(
             if not isinstance(profile_view, dict):
                 errors.append("%s has no authorized live Profile view" % label)
                 profile_view = {}
-            for field in (
-                    "selected_profile_manifest", "profile_snapshot_sha256",
-                    "profile_contract_fingerprint",
-                    "profile_load_inputs_sha256"):
+            for field in profile_contract.PROFILE_LOAD_EVIDENCE_FIELDS:
                 expected = profile_view.get(field)
                 if receipt.get(field) != expected:
                     errors.append(

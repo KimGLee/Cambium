@@ -10,8 +10,10 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import check_queue
 import kblib
+import runtime_paths
+import runtime_state_contract
 
-DEFAULT_OUTPUT = ".cambium/reports/required_queue.md"
+DEFAULT_OUTPUT = runtime_paths.REQUIRED_QUEUE_REPORT_PATH
 
 
 def _rows(items):
@@ -43,7 +45,7 @@ def render(result):
         "# Required Queue",
         "",
         "> Derived report only. Canonical state: ".rstrip() +
-        "`.cambium/state/required_queue.yaml`.",
+        "`%s`." % runtime_paths.QUEUE_PATH,
         "",
         "- Task: `%s`" % queue.get("task_id"),
         "- Task state: `%s`" % progress.get("task_state"),
@@ -84,7 +86,8 @@ def render(result):
         sections.append("No work units have been materialized.")
     sections.extend(["", "## Closed History", ""])
     closed = [item for item in items
-              if item.get("state") in ("closed", "cancelled")]
+              if item.get("state") in
+              runtime_state_contract.QUEUE_TERMINAL_STATES]
     if closed:
         for item in sorted(closed, key=lambda value: value.get("order", 10 ** 9)):
             sections.append("- `%s`: `%s` (%s object(s))" %
@@ -118,7 +121,7 @@ def main(argv=None):
     root = os.path.realpath(os.path.abspath(args.root))
     try:
         output = kblib.managed_repository_path(
-            root, args.output, ".cambium/reports",
+            root, args.output, runtime_paths.REPORT_ROOT,
             suffixes=(".md",), must_exist=False,
         )
         if args.check:

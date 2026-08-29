@@ -1,11 +1,8 @@
 # Source Policy
 
-Interface: [Source Policy slot](../README.md#source-policy-slot)
+Kernel owner: K07 Sources and Accuracy. Common slot identity is registered in the Kernel Profile interface.
 
-For a personal or operational corpus, the maintainer's own observation —
-recorded with a retrieval date — is a registrable source class, alongside the
-primary vendor or upstream documentation. "This corpus has no sources" is
-almost never true; name where its claims actually come from.
+For a personal or operational corpus, the maintainer's own observation — recorded with a retrieval date — is a registrable source class, alongside the primary vendor or upstream documentation. "This corpus has no sources" is almost never true; name where its claims actually come from.
 
 ## Source Authority
 
@@ -15,7 +12,7 @@ almost never true; name where its claims actually come from.
 
 ## Verification Entry Points
 
-| Bounded claim class | Registered Source ID | Verifier command, path, URL, or procedure | Version pin or freshness window |
+| Bounded claim class | Registered Source ID | Stable verifier capability, evidence source, or semantic review criterion | Version pin or freshness window |
 |---|---|---|---|
 | TODO(profile) | TODO(profile) | TODO(profile) | TODO(profile) |
 

@@ -11,7 +11,14 @@ Each batch SHOULD be a small module that can be accepted independently, not an a
 A batch completes at least:
 
 1. Canonical notes.
-2. This batch's delta written out: worker-owned page status and evidence may enter Coverage through the delta; `next_batch_updates` and watermark advancement remain explicit integrator work. Queue/compiler-owned disposition, ownership, routing, priority, tier, type, prerequisites, and deferral fields are forbidden in a worker delta. The [[kernel/K13 Task Runtime and Execution Control/07 Progress Ledger Contract#Progress Ledger]] Queue reference and `Tools/state/watermark.yaml` are reconciled by their respective integrator steps.
+2. This batch's delta written out: worker-owned page status and evidence may
+   enter Coverage through the delta; next-batch updates and maintenance
+   watermark advancement remain explicit integrator work. Queue-owned
+   disposition, ownership, routing, priority, tier, type, prerequisites, and
+   deferral fields are forbidden in a worker delta. The
+   [[kernel/K13 Task Runtime and Execution Control/07 Progress Ledger Contract#Progress Ledger]]
+   Queue reference and the canonical maintenance watermark are reconciled by
+   their registered integrator capabilities.
 
 The batch-close acceptance checklist is governed by [[kernel/K12 Quality Assurance/14 Batch Review#Batch Review|K12/14 Batch Review]]; in-batch items are completed before `merge-ready`, and global items are verified at serial merge.
 

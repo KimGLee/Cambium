@@ -4,22 +4,27 @@ import unittest
 from pathlib import Path
 
 TOOLS = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(TOOLS / "tests"))
 sys.path.insert(0, str(TOOLS))
 import standards_state
+from profile_fixture import FIXTURE_UPSTREAM_REVISION
 
 
 class StandardsStateTests(unittest.TestCase):
+    REVISION = FIXTURE_UPSTREAM_REVISION
+    OTHER_REVISION = "fedcba9876543210fedcba9876543210fedcba98"
+
     def value(self):
         return {
             "schema_version": 1,
             "state_revision": 3,
-            "standards_version": "3.12.0",
+            "standards_version": self.REVISION,
             "status": "approved",
             "effective_date": "2026-08-21",
             "selected_profile_manifest": "profiles/agent-atlas/profile.md",
             "latest_adoption_receipt": "audit-adopt_standards-example-0001",
             "upstream_source_ref": "https://github.com/KimGLee/Cambium",
-            "upstream_revision_id": "abc123",
+            "upstream_revision_id": self.REVISION,
         }
 
     def test_round_trip_and_snapshot(self):
@@ -37,7 +42,7 @@ class StandardsStateTests(unittest.TestCase):
         self.assertEqual(errors, [])
         self.assertEqual(state, value)
         self.assertEqual(view["active_standards_path"], standards_state.STATE_PATH)
-        self.assertEqual(view["standards_version"], "3.12.0")
+        self.assertEqual(view["standards_version"], self.REVISION)
 
     def test_closed_and_no_markdown_fallback(self):
         value = self.value()
@@ -50,17 +55,43 @@ class StandardsStateTests(unittest.TestCase):
         self.assertIsNone(view)
         self.assertIn("absent", "; ".join(errors))
 
+    def test_selected_profile_manifest_uses_the_shared_selectable_envelope(self):
+        for manifest in (
+                "profiles/a/b/profile.md",
+                "profiles/_template/profile.md",
+                "profiles/examples/demo/profile.md"):
+            with self.subTest(manifest=manifest):
+                value = self.value()
+                value["selected_profile_manifest"] = manifest
+                self.assertIn(
+                    "selected_profile_manifest is invalid",
+                    "; ".join(standards_state.state_errors(value)),
+                )
+
     def test_next_state_advances_only_current_identity(self):
         before = self.value()
+        revision = self.OTHER_REVISION
         after = standards_state.next_state(
-            before, standards_version="3.13.0",
+            before,
             effective_date="2026-08-22",
             selected_profile_manifest="profiles/agent-atlas/profile.md",
             latest_adoption_receipt="audit-next-0001",
-            upstream_source_ref="upstream", upstream_revision_id="def456")
+            upstream_source_ref="upstream", upstream_revision_id=revision)
         self.assertEqual(after["state_revision"], 4)
+        self.assertEqual(revision, after["standards_version"])
         self.assertNotIn("change_summary", after)
         self.assertNotIn("history", after)
+
+    def test_version_alias_and_upstream_commit_are_one_identity(self):
+        for mutation in (
+                {"standards_version": self.OTHER_REVISION},
+                {"upstream_revision_id": "abc123"},
+                {"upstream_source_ref": None},
+                {"upstream_revision_id": None}):
+            with self.subTest(mutation=mutation):
+                value = self.value()
+                value.update(mutation)
+                self.assertTrue(standards_state.state_errors(value))
 
 
 if __name__ == "__main__":

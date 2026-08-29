@@ -1,0 +1,3 @@
+schema_version: 1
+max_body_bytes: 2200
+max_action_items: 10

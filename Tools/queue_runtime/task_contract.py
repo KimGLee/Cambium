@@ -6,17 +6,223 @@ selects.  These are one subject: the fingerprint is only meaningful against
 the revision the chain places it at.
 """
 
+import copy
 import os
+from pathlib import PurePosixPath
 
 import kblib
+import read_set_contract
 
 from queue_runtime.canon import SHA256_RE
 from queue_runtime.primitives import nonempty_string
 
 
-READ_SET_BOUNDARY_OWNER_PATH = \
-    "kernel/K00 Standards Control/15 Read Set Loading Boundaries.md"
-READ_SET_PATH_PREFIX = "kernel/Read Sets/"
+READ_SET_BOUNDARY_OWNER_PATH = read_set_contract.SCHEMA_PATH
+_COMPONENT_PATH_MIGRATIONS_PATH = \
+    "Tools/schemas/component-path-migrations.yaml"
+_MIGRATABLE_LOAD_PATH_FIELDS = frozenset((
+    "selected_card_paths", "selected_read_sets",
+))
+
+
+def _migration_prefix(value, label):
+    """Return one canonical repository-relative directory prefix."""
+    if (not isinstance(value, str) or not value or
+            value != value.strip() or not value.endswith("/") or
+            value.endswith("//") or "\\" in value or "\x00" in value):
+        raise ValueError("%s must be a canonical path prefix ending in /" %
+                         label)
+    directory = value[:-1]
+    candidate = PurePosixPath(directory)
+    if (candidate.is_absolute() or not candidate.parts or
+            any(part in ("", ".", "..") for part in candidate.parts) or
+            candidate.as_posix() != directory):
+        raise ValueError("%s must stay repository-relative" % label)
+    return value
+
+
+def _component_path_migrations(root):
+    """Load the Tool-owned closed registry of persisted path migrations."""
+    path = kblib.managed_repository_path(
+        root, _COMPONENT_PATH_MIGRATIONS_PATH, "Tools/schemas",
+        suffixes=(".yaml",), must_exist=True)
+    document = kblib.load_yaml_file(path)
+    if not isinstance(document, dict):
+        raise ValueError("%s must be a mapping" %
+                         _COMPONENT_PATH_MIGRATIONS_PATH)
+    expected = {
+        "schema_version", "migration_fields", "path_field_fields",
+        "migrations",
+    }
+    if set(document) != expected:
+        raise ValueError(
+            "%s fields are not closed: missing=%s extra=%s" % (
+                _COMPONENT_PATH_MIGRATIONS_PATH,
+                sorted(expected - set(document)),
+                sorted(set(document) - expected)))
+    if document.get("schema_version") != 1:
+        raise ValueError("unsupported component path migration schema_version")
+    migration_fields = document.get("migration_fields")
+    path_field_fields = document.get("path_field_fields")
+    if migration_fields != ["migration_id", "path_fields"]:
+        raise ValueError(
+            "%s.migration_fields must define the canonical closed order" %
+            _COMPONENT_PATH_MIGRATIONS_PATH)
+    if path_field_fields != [
+            "contract_field", "producer_prefix", "current_prefix"]:
+        raise ValueError(
+            "%s.path_field_fields must define the canonical closed order" %
+            _COMPONENT_PATH_MIGRATIONS_PATH)
+    migrations = document.get("migrations")
+    if not isinstance(migrations, list) or not migrations:
+        raise ValueError("%s.migrations must be a non-empty list" %
+                         _COMPONENT_PATH_MIGRATIONS_PATH)
+
+    normalized = []
+    seen_ids = set()
+    prefixes_by_field = {}
+    for index, migration in enumerate(migrations):
+        label = "%s.migrations[%d]" % (
+            _COMPONENT_PATH_MIGRATIONS_PATH, index)
+        if not isinstance(migration, dict) or set(migration) != \
+                set(migration_fields):
+            raise ValueError("%s fields differ from migration_fields" % label)
+        migration_id = migration.get("migration_id")
+        if (not isinstance(migration_id, str) or not migration_id or
+                migration_id != migration_id.strip()):
+            raise ValueError("%s.migration_id must be non-empty" % label)
+        if migration_id in seen_ids:
+            raise ValueError("%s repeats migration_id %s" %
+                             (_COMPONENT_PATH_MIGRATIONS_PATH, migration_id))
+        seen_ids.add(migration_id)
+        rows = migration.get("path_fields")
+        if not isinstance(rows, list) or not rows:
+            raise ValueError("%s.path_fields must be a non-empty list" % label)
+        normalized_rows = []
+        seen_fields = set()
+        for row_index, row in enumerate(rows):
+            row_label = "%s.path_fields[%d]" % (label, row_index)
+            if not isinstance(row, dict) or set(row) != \
+                    set(path_field_fields):
+                raise ValueError(
+                    "%s fields differ from path_field_fields" % row_label)
+            field = row.get("contract_field")
+            if field not in _MIGRATABLE_LOAD_PATH_FIELDS:
+                raise ValueError("%s.contract_field is not migratable: %r" %
+                                 (row_label, field))
+            if field in seen_fields:
+                raise ValueError("%s repeats contract_field %s" %
+                                 (label, field))
+            seen_fields.add(field)
+            producer = _migration_prefix(
+                row.get("producer_prefix"),
+                "%s.producer_prefix" % row_label)
+            current = _migration_prefix(
+                row.get("current_prefix"),
+                "%s.current_prefix" % row_label)
+            if producer == current:
+                raise ValueError("%s does not change its path prefix" %
+                                 row_label)
+            known = prefixes_by_field.setdefault(field, [])
+            if any(producer.startswith(other) or other.startswith(producer)
+                   for other in known):
+                raise ValueError(
+                    "%s producer_prefix overlaps another migration" %
+                    row_label)
+            known.append(producer)
+            normalized_rows.append({
+                "contract_field": field,
+                "producer_prefix": producer,
+                "current_prefix": current,
+            })
+        normalized.append({
+            "migration_id": migration_id,
+            "path_fields": normalized_rows,
+        })
+    return normalized
+
+
+def producer_era_load_contract_view(root, contract, after_fields):
+    """Project registered producer paths only for one adoption before-image.
+
+    The returned contract is an in-memory traversal view.  It never replaces
+    the persisted contract used by fingerprints, history, or receipts.  A
+    producer path is projected only when the adoption's declared after-image
+    contains the exact registered current path and that target exists.  This
+    makes the bridge a one-way, plan-bound migration rather than a permanent
+    alias accepted by ordinary runtime validation.
+    """
+    errors = []
+    if not isinstance(contract, dict):
+        return None, [], ["producer-era load contract must be a mapping"]
+    if not isinstance(after_fields, dict) or set(after_fields) != \
+            _MIGRATABLE_LOAD_PATH_FIELDS:
+        return None, [], [
+            "producer-era load after-image must contain exactly %s" %
+            ", ".join(sorted(_MIGRATABLE_LOAD_PATH_FIELDS))]
+    for field in _MIGRATABLE_LOAD_PATH_FIELDS:
+        values = after_fields.get(field)
+        if (not isinstance(values, list) or
+                any(not isinstance(value, str) or not value
+                    for value in values) or len(values) != len(set(values))):
+            errors.append(
+                "producer-era load after-image %s must be an explicit unique "
+                "string list" % field)
+    if errors:
+        return None, [], errors
+    try:
+        migrations = _component_path_migrations(root)
+    except (OSError, UnicodeError, ValueError, kblib.YamlSubsetError) as exc:
+        return None, [], [
+            "component path migration registry is invalid: %s" % exc]
+
+    projected = copy.deepcopy(contract)
+    evidence = []
+    for migration in migrations:
+        for row in migration["path_fields"]:
+            field = row["contract_field"]
+            before_values = projected.get(field)
+            if not isinstance(before_values, list):
+                continue
+            after_values = set(after_fields[field])
+            replaced = []
+            for before in before_values:
+                if (not isinstance(before, str) or
+                        not before.startswith(row["producer_prefix"])):
+                    replaced.append(before)
+                    continue
+                suffix = before[len(row["producer_prefix"]):]
+                target = row["current_prefix"] + suffix
+                if not suffix or target not in after_values:
+                    errors.append(
+                        "producer-era %s path %s has registered target %s, "
+                        "but the adoption after-image does not declare it" %
+                        (field, before, target))
+                    replaced.append(before)
+                    continue
+                try:
+                    kblib.repository_path(
+                        root, target, must_exist=True, reject_symlink=True)
+                except (OSError, UnicodeError, ValueError) as exc:
+                    errors.append(
+                        "producer-era %s path %s maps to unsafe or missing "
+                        "current path %s: %s" %
+                        (field, before, target, exc))
+                    replaced.append(before)
+                    continue
+                replaced.append(target)
+                evidence.append({
+                    "migration_id": migration["migration_id"],
+                    "contract_field": field,
+                    "producer_path": before,
+                    "current_path": target,
+                })
+            if len(replaced) != len(set(replaced)):
+                errors.append(
+                    "producer-era projection creates duplicate %s paths" %
+                    field)
+            projected[field] = replaced
+    return projected, evidence, errors
 
 
 def contract_sha256(progress):
@@ -252,20 +458,17 @@ def read_set_load_closure(root, selected_paths,
                            selected_profile_route_ids=None):
     """Resolve Read Sets and non-Read-Set targets from selected boundaries.
 
-    Boundary references to another Read Set select that route too, so traversal
-    continues until no new Read Set remains. ``visited`` makes cycles benign.
-    A kernel Read Set proves both its canonical namespace and ``type:
-    read-set``; a profile supplemental Read Set proves ``type:
-    profile-read-set`` in its own frontmatter. Every other boundary target is
-    a loaded module, including ordinary indexes inside ``kernel/Read Sets``.
+    Top-level Read Sets resolve only from their machine frontmatter declaration;
+    Markdown sections and Wiki Links never change the closure.  Direct target
+    paths enter ``modules`` and Read Set IDs traverse through the canonical
+    declaration registry.  ``visited`` makes declared cycles benign.
 
-    Every selected or boundary-referenced Read Set is decoded as UTF-8 and
-    classified from its own frontmatter.  Kernel and profile namespaces are
-    not interchangeable: ``read-set`` belongs under ``kernel/Read Sets/``;
-    ``profile-read-set`` belongs under the selected profile directory and its
-    route ID must be in the selected profile-route list.  Read/decode failures
-    and namespace/route mismatches are explicit closure errors rather than a
-    reason to silently shrink the load obligation.
+    Profile supplemental Read Sets use the same machine ``load_edges`` shape.
+    They are discovered only inside the selected Profile directory and must
+    bind one selected ``P:<profile>:<route>`` identity.  Profile prose, Wiki
+    Links, and registry tables never change the closure.  Kernel and Profile
+    namespaces remain non-interchangeable.  Unsafe bytes, invalid declarations,
+    unknown dependencies, and namespace/route mismatches are explicit errors.
     """
     selected = {
         value for value in (selected_paths or []) if nonempty_string(value)
@@ -282,6 +485,27 @@ def read_set_load_closure(root, selected_paths,
         value for value in (selected_profile_route_ids or [])
         if nonempty_string(value)
     }
+    read_set_schema = None
+    try:
+        read_set_schema = read_set_contract.load_schema(root)
+        kernel_registry = read_set_contract.discover(
+            root, schema=read_set_schema)
+    except read_set_contract.ReadSetContractError as exc:
+        kernel_registry = {}
+        closure_errors.append(str(exc))
+    kernel_paths = {
+        record["path"]: record for record in kernel_registry.values()
+    }
+    profile_registry = {}
+    if nonempty_string(selected_profile_manifest):
+        try:
+            profile_registry = read_set_contract.discover_profile(
+                root, selected_profile_manifest)
+        except read_set_contract.ReadSetContractError as exc:
+            closure_errors.append(str(exc))
+    profile_paths = {
+        record["path"]: record for record in profile_registry.values()
+    }
 
     def read_text(relative):
         try:
@@ -292,36 +516,41 @@ def read_set_load_closure(root, selected_paths,
         except (OSError, UnicodeError, ValueError) as exc:
             return None, str(exc)
 
-    def frontmatter_fields(text):
-        frontmatter = kblib.extract_frontmatter(text or "")
-        if frontmatter is None:
-            return {}
-        try:
-            fields = kblib.parse_yaml_subset(frontmatter)
-        except (ValueError, kblib.YamlSubsetError):
-            return {}
-        return fields if isinstance(fields, dict) else {}
-
     def read_set_role_error(relative, text):
-        document_type = kblib.read_set_document_type(text)
-        if document_type is None:
-            return ("%s does not prove frontmatter type read-set or "
-                    "profile-read-set" % relative)
-        if document_type == "read-set":
-            if not relative.startswith(READ_SET_PATH_PREFIX):
-                return ("%s declares type read-set outside the canonical %s "
-                        "namespace" % (relative, READ_SET_PATH_PREFIX))
+        if relative in kernel_paths:
             return None
-        if not profile_dir or not (relative == profile_dir or
-                                   relative.startswith(profile_dir + "/")):
-            return ("%s declares type profile-read-set outside the selected "
-                    "profile directory %r" % (relative, profile_dir))
-        route_id = frontmatter_fields(text).get("route_id")
-        if not nonempty_string(route_id) or route_id not in profile_routes:
+        profile_record = profile_paths.get(relative)
+        if profile_record is not None:
+            route_id = profile_record["route_id"]
+            if route_id in profile_routes:
+                return None
             return ("%s declares profile Read Set route_id %r, which is not "
                     "present in selected_profile_route_ids" %
                     (relative, route_id))
-        return None
+        document_type = kblib.read_set_document_type(text)
+        if document_type is None:
+            return ("%s does not prove a canonical machine Read Set "
+                    "declaration" % relative)
+        return ("%s declares type %s but is absent from the canonical machine "
+                "registry for %s" %
+                (relative, document_type,
+                 read_set_schema["path_prefix"]
+                 if (read_set_schema is not None and
+                     document_type == read_set_schema["document_type"])
+                 else profile_dir))
+
+    # A selected supplemental route already exists as a route decision.  Its
+    # machine-declared Read Set path becomes a closure root; this resolves the
+    # route-to-path binding without consulting the Profile's prose registry.
+    for route_id in sorted(profile_routes):
+        record = profile_registry.get(route_id)
+        if record is None:
+            closure_errors.append(
+                "selected Profile route %s has no machine profile-read-set "
+                "declaration inside %r" % (route_id, profile_dir))
+            continue
+        read_sets.add(record["path"])
+        pending.append(record["path"])
 
     for relative in sorted(selected):
         text, read_error = read_text(relative)
@@ -350,24 +579,65 @@ def read_set_load_closure(root, selected_paths,
                 "transitively selected Read Set %s is unsafe or unreadable "
                 "UTF-8: %s" % (relative, read_error))
             continue
-        for target in kblib.read_set_boundary_targets(text):
+        record = kernel_paths.get(relative) or profile_paths.get(relative)
+        if record is None:
+            closure_errors.append(
+                "%s is absent from the canonical machine Read Set registry" %
+                relative)
+            continue
+        declaration = record["declaration"]
+        dependency_paths = []
+        for route_id in read_set_contract.dependencies(declaration):
+            dependency = (kernel_registry.get(route_id) or
+                          profile_registry.get(route_id))
+            if dependency is None:
+                closure_errors.append(
+                    "%s references unknown Read Set %s" %
+                    (relative, route_id))
+                continue
+            if (route_id in profile_registry and
+                    route_id not in profile_routes):
+                closure_errors.append(
+                    "%s references Profile Read Set %s, which is not present "
+                    "in selected_profile_route_ids" % (relative, route_id))
+                continue
+            dependency_paths.append(dependency["path"])
+        targets = read_set_contract.targets(declaration)
+
+        for target in sorted(set(dependency_paths)):
             target_text, target_error = read_text(target)
             if target_text is None:
                 closure_errors.append(
-                    "Read Set boundary target %s is unsafe or unreadable "
+                    "Read Set dependency %s is unsafe or unreadable UTF-8: %s" %
+                    (target, target_error))
+                continue
+            role_error = read_set_role_error(target, target_text)
+            if role_error:
+                closure_errors.append(role_error)
+                continue
+            if target not in read_sets:
+                read_sets.add(target)
+                pending.append(target)
+
+        for target in targets:
+            if target in kernel_paths or target in profile_paths:
+                closure_errors.append(
+                    "%s declares Read Set %s as a target path; machine Read "
+                    "Set dependencies must use load_edges[].read_sets" %
+                    (relative, target))
+                continue
+            target_text, target_error = read_text(target)
+            if target_text is None:
+                closure_errors.append(
+                    "Read Set declared target %s is unsafe or unreadable "
                     "UTF-8: %s" % (target, target_error))
                 continue
-            document_type = (
-                kblib.read_set_document_type(target_text)
-            )
+            document_type = kblib.read_set_document_type(target_text)
             if document_type is not None:
-                role_error = read_set_role_error(target, target_text)
-                if role_error:
-                    closure_errors.append(role_error)
-                    continue
-                if target not in read_sets:
-                    read_sets.add(target)
-                    pending.append(target)
+                closure_errors.append(
+                    "%s target %s declares type %s but is not a registered "
+                    "load_edges[].read_sets dependency" %
+                    (relative, target, document_type))
                 continue
             modules.add(target)
 
@@ -394,8 +664,9 @@ def live_read_set_load_findings(root, contract):
     for a running task -- refuses to start while ``validate_runtime`` reports
     an error.  Making the gap an error would therefore lock the instance out of
     the one transaction that repairs it, exactly as refusing a sealed
-    historical plan would.  K00/15 puts the judgment where a declaration is
-    still writable: a plan being admitted.
+    historical plan would. The canonical Read Set contract therefore puts the
+    completeness judgment where a declaration is still writable: a plan being
+    admitted.
     """
     if not isinstance(contract, dict):
         return [], []

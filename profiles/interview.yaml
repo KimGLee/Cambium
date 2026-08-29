@@ -23,7 +23,7 @@
 # Every entry below binds the exact interface slot name it fills:
 # a core_pack question through `maps_to[].file`, an expansion pack
 # through `binds_slot`. The two together must reach every slot in
-# `profiles/README.md`, so a slot added to the interface without a
+# the Kernel-owned Profile interface registry, so a slot added there without a
 # question fails the interview-coverage regression rather than
 # reaching an adopter as a file nobody was asked to fill.
 
@@ -213,7 +213,7 @@ core_pack:
     branches: [existing-corpus, empty-corpus]
     derives:
       - {what: "allowed_roots / frontmatter_match / heading_match / mandated_headings proposals (observed strings on an existing corpus; declared strings on an empty one)", owner: conducting-agent}
-      - {what: "the registry row's --config path (already materialized at copy time)", owner: scaffolder}
+      - {what: "the registry row's Profile configuration reference (already materialized at copy time)", owner: scaffolder}
     procedure:
       - "Identify the structure class and its accepted root (dated scratch entries, derived cards, generated digests; candidates from Q4 layers)"
       - "Branch on whether the corpus already has pages. Both branches are honest; only one of them is observation"
@@ -221,7 +221,7 @@ core_pack:
       - "Empty corpus: there is nothing to observe, so declare instead. Derive the strings from the page structure the operator just confirmed in Q4-Q10, and record that this class is designed rather than observed"
       - "Empty corpus, second obligation: bounded founding MUST materialize the declared class — at least one page under the accepted root carrying the declared structure, authored during founding alongside the per-layer canonical owners (one page may serve as both owner and witness when that is semantically natural, never merged only to save files). Founding is ordinary bounded authoring: no `.cambium/`, no Coverage, no Queue, no batch. When a large-scale task is later admitted, the founding pages enter Required Coverage there like any other page for unified re-review; nothing is recorded now"
       - "State the two checks correctly, because they prove different things. The positive control proves only that the matchers and mandated_headings are self-consistent -- it synthesizes its inputs and passes on an empty repository. The production scan is what proves a real matching page exists: a run that finds no candidate outside the accepted roots must still recognise at least one Markdown file inside them, or the configuration is inert and the run fails"
-      - "Operator confirms; write scan-configs/residual-scan.yaml and the registry row with this Profile's --config path; fill the second judgment item and the Residual Disposition prose"
+      - "Operator confirms; write scan-configs/residual-scan.yaml and the registry row with this Profile's configuration reference; fill the second judgment item and the Residual Disposition prose"
     change_cost: adoption
     maps_to:
       - {file: registries/registered-scans.md, anchor: "## Scan Registrations"}
@@ -268,7 +268,7 @@ core_pack:
 # fallback copy performs the same rewrites by hand). `profile-load` validates
 # the result and fails closed, but never guesses or edits a value.
 self_path_rewrites:
-  - {file: registries/registered-scans.md, cell: "verifier command --config path", owner: scaffolder, validation: "profile-load: canonical path inside this Profile"}
+  - {file: registries/registered-scans.md, cell: "Profile configuration reference", owner: scaffolder, validation: "profile-load: canonical path inside this Profile"}
   - {file: registries/audit-dimensions.md, cell: "foundation item predicate owner", owner: scaffolder, validation: "profile-load: canonical path inside this Profile and exactly one heading"}
   - {file: registries/audit-dimensions.md, cell: "residual item predicate owner", owner: scaffolder, validation: "profile-load: canonical path inside this Profile and exactly one heading"}
 

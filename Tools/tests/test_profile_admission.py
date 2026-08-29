@@ -15,7 +15,10 @@ sys.path.insert(0, str(TOOLS))
 import profile_admission
 import standards_state
 
-from Tools.tests.profile_fixture import install_loadable_profile
+from Tools.tests.profile_fixture import (
+    FIXTURE_UPSTREAM_REVISION,
+    install_loadable_profile,
+)
 
 
 class ProfileAdmissionTests(unittest.TestCase):
@@ -31,13 +34,13 @@ class ProfileAdmissionTests(unittest.TestCase):
         target.write_text(standards_state.canonical_text({
             "schema_version": 1,
             "state_revision": 1,
-            "standards_version": "1.0.0",
+            "standards_version": FIXTURE_UPSTREAM_REVISION,
             "status": "approved",
             "effective_date": "2026-08-11",
             "selected_profile_manifest": "profiles/test-profile/profile.md",
             "latest_adoption_receipt": "audit-profile-admission-fixture",
-            "upstream_source_ref": None,
-            "upstream_revision_id": None,
+            "upstream_source_ref": "fixture://cambium",
+            "upstream_revision_id": FIXTURE_UPSTREAM_REVISION,
         }), encoding="utf-8")
         return target
 
@@ -137,7 +140,8 @@ class ProfileAdmissionTests(unittest.TestCase):
         admission, errors = profile_admission.admit_profile(
             self.root, self.profile)
         self.assertEqual([], errors)
-        interface = self.root / "profiles/README.md"
+        interface = (
+            self.root / profile_admission.check_profile.DEFAULT_INTERFACE)
         interface.write_text(
             interface.read_text(encoding="utf-8") + "\n<!-- revision B -->\n",
             encoding="utf-8")

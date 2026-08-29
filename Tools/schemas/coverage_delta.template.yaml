@@ -44,4 +44,4 @@ pages:                             # status updates for pages on this batch's ma
 open_gaps_added: []                # open gaps added by this batch (including needs_rereview and cross-batch missing links, type: link; type vocabulary in the coverage_ledger template)
 open_gaps_closed: []               # existing gaps routed to this batch and closed here (gap id or page+type)
 next_batch_updates: []             # suggestion-only; apply_delta never writes these values into Coverage
-watermark_advance:                 # optional: watermark advance values from source/maintenance batches (K13/10; the integrator applies them to Tools/state/watermark.yaml at merge)
+watermark_advance:                 # optional: watermark advance values from source/maintenance batches (K13/10; the integrator applies them to .cambium/state/watermark.yaml at merge)

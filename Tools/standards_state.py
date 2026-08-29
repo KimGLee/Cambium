@@ -17,9 +17,13 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import kblib
+import profile_layout_contract
+import runtime_paths
+import runtime_state_contract
+import upstream_identity
 
 
-STATE_PATH = ".cambium/governance/standards_state.yaml"
+STATE_PATH = runtime_paths.ACTIVE_STANDARDS_PATH
 SCHEMA_VERSION = 1
 STATE_FIELDS = frozenset((
     "schema_version", "state_revision", "standards_version", "status",
@@ -54,7 +58,7 @@ def state_errors(state, *, allow_initial_receipt_null=False):
     revision = state.get("state_revision")
     if not isinstance(revision, int) or isinstance(revision, bool) or revision < 1:
         errors.append("Standards state state_revision must be an integer >= 1")
-    for field in ("standards_version", "selected_profile_manifest"):
+    for field in runtime_state_contract.RUNTIME_STANDARDS_IDENTITY_FIELDS:
         if not _nonempty(state.get(field)):
             errors.append("Standards state %s must be non-empty" % field)
     if state.get("status") != "approved":
@@ -70,13 +74,14 @@ def state_errors(state, *, allow_initial_receipt_null=False):
         if parsed is None or parsed.isoformat() != date:
             errors.append("Standards state effective_date must be YYYY-MM-DD")
     manifest = state.get("selected_profile_manifest")
-    if (_nonempty(manifest) and
-            (not manifest.startswith("profiles/") or
-             not manifest.endswith("/profile.md") or
-             "//" in manifest or "/../" in manifest or "/./" in manifest)):
-        errors.append(
-            "Standards state selected_profile_manifest must be a canonical "
-            "profiles/<id>/profile.md path")
+    if _nonempty(manifest):
+        try:
+            profile_layout_contract.\
+                validate_selectable_profile_manifest_path(manifest)
+        except profile_layout_contract.ProfileLayoutError as exc:
+            errors.append(
+                "Standards state selected_profile_manifest is invalid: %s" %
+                exc)
     receipt = state.get("latest_adoption_receipt")
     if receipt is None:
         if not allow_initial_receipt_null:
@@ -85,14 +90,17 @@ def state_errors(state, *, allow_initial_receipt_null=False):
         errors.append("Standards state latest_adoption_receipt is invalid")
     upstream_source = state.get("upstream_source_ref")
     upstream_revision = state.get("upstream_revision_id")
-    if (upstream_source is None) != (upstream_revision is None):
-        errors.append(
-            "Standards state upstream_source_ref and upstream_revision_id "
-            "must be both null or both non-null")
-    if upstream_source is not None and not _nonempty(upstream_source):
+    if not _nonempty(upstream_source):
         errors.append("Standards state upstream_source_ref must be non-empty")
-    if upstream_revision is not None and not _nonempty(upstream_revision):
-        errors.append("Standards state upstream_revision_id must be non-empty")
+    if not upstream_identity.is_full_commit_sha(upstream_revision):
+        errors.append(
+            "Standards state upstream_revision_id must be one full Git "
+            "commit SHA")
+    if (_nonempty(state.get("standards_version")) and
+            state.get("standards_version") != upstream_revision):
+        errors.append(
+            "Standards state standards_version is a compatibility alias and "
+            "must equal upstream_revision_id")
     return errors
 
 
@@ -155,15 +163,17 @@ def snapshot(root, *, override_text=None, allow_initial_receipt_null=False):
     return state, view, []
 
 
-def next_state(before, *, standards_version, effective_date,
-               selected_profile_manifest, latest_adoption_receipt,
+def next_state(before, *, effective_date, selected_profile_manifest,
+               latest_adoption_receipt,
                upstream_source_ref, upstream_revision_id):
-    """Construct the next canonical current-state record."""
+    """Construct the next state; upstream commit is its only version identity."""
     revision = 1 if before is None else before["state_revision"] + 1
     return {
         "schema_version": SCHEMA_VERSION,
         "state_revision": revision,
-        "standards_version": standards_version,
+        # Compatibility spelling consumed by existing Queue/runtime schemas.
+        # It is a projection, never a separately chosen release label.
+        "standards_version": upstream_revision_id,
         "status": "approved",
         "effective_date": effective_date,
         "selected_profile_manifest": selected_profile_manifest,

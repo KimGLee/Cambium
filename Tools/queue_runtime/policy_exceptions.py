@@ -83,17 +83,23 @@ def policy_exception_errors(value, label):
         domain = registered.get("limit_domain") if registered else None
         if (not isinstance(limit, (int, float)) or isinstance(limit, bool)):
             errors.append("%s limit must be a number" % entry_label)
-        elif domain == "percent-share-under-100" and not 0 <= limit < 100:
+        elif domain == "percent-share-under-100" and not (
+                registered["minimum_inclusive"] <= limit <
+                registered["maximum_exclusive"]):
             errors.append(
-                "%s limit must be a corpus share at least 0 and under 100; "
+                "%s limit must be a corpus share at least %s and under %s; "
                 "%r is not a bound, per %s" %
-                (entry_label, limit, registered["owner"]))
+                (entry_label, registered["minimum_inclusive"],
+                 registered["maximum_exclusive"], limit,
+                 registered["owner"]))
         elif domain == "record-count-ceiling" and (
-                isinstance(limit, float) or limit < 0):
+                isinstance(limit, float) or
+                limit < registered["minimum_inclusive"]):
             errors.append(
-                "%s limit must be a non-negative whole record count; %r "
+                "%s limit must be a whole record count at least %s; %r "
                 "cannot be compared to a number of records, per %s" %
-                (entry_label, limit, registered["owner"]))
+                (entry_label, registered["minimum_inclusive"], limit,
+                 registered["owner"]))
         if entry.get("scope_kind") not in POLICY_EXCEPTION_SCOPE_KINDS:
             errors.append(
                 "%s scope_kind must be one of %s" %
@@ -121,14 +127,22 @@ def policy_exception_errors(value, label):
                 and isinstance(policy_id, str) and
                 policy_id in contract_exception_policy.POLICY_REGISTRY):
             ceilings[policy_id] = max(ceilings.get(policy_id, 0), limit)
-    if (ceilings.get("priority_quota.P0", 0) +
-            ceilings.get("priority_quota.P1", 0)) >= 100:
+    quota_rows = {
+        policy_id: row
+        for policy_id, row in contract_exception_policy.POLICY_REGISTRY.items()
+        if row.get("limit_domain") == "percent-share-under-100"
+    }
+    quota_total = sum(ceilings.get(policy_id, 0) for policy_id in quota_rows)
+    joint_maximum = min(
+        (row["joint_maximum_exclusive"] for row in quota_rows.values()),
+        default=None)
+    if joint_maximum is not None and quota_total >= joint_maximum:
+        remainder = next(iter(quota_rows.values()))["remainder_class"]
         errors.append(
             "%s granted quota ceilings sum to %.1f%%; K00/07 requires the "
-            "pair to stay strictly below 100 so the P2 remainder class "
+            "pair to stay strictly below %s so the %s remainder class "
             "stays non-empty" %
-            (label, ceilings.get("priority_quota.P0", 0) +
-             ceilings.get("priority_quota.P1", 0)))
+            (label, quota_total, joint_maximum, remainder))
     return errors
 
 
@@ -192,10 +206,13 @@ def sealed_policy_exception_errors(sealed, decision_id, candidate_type,
         errors.append("%s sealed limit must be a number" % label)
     elif (registered is not None and
           registered.get("limit_domain") == "percent-share-under-100" and
-          not 0 <= limit < 100):
+          not (registered["minimum_inclusive"] <= limit <
+               registered["maximum_exclusive"])):
         errors.append(
-            "%s sealed limit %r is not a corpus share at least 0 and under "
-            "100" % (label, limit))
+            "%s sealed limit %r is not a corpus share at least %s and under "
+            "%s" %
+            (label, limit, registered["minimum_inclusive"],
+             registered["maximum_exclusive"]))
         limit_ok = False
     counts_ok = True
     for field in ("pages", "total"):

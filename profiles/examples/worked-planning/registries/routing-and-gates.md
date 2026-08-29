@@ -1,6 +1,6 @@
 # Routing And Gate Registry
 
-Interface: [Routing And Gate Registry slot](../../../README.md#routing-and-gate-registry-slot)
+Interface: [Kernel-owned Profile interface](../../../../kernel/K00%20Standards%20Control/19%20Profile%20Extension%20Interface.md) — Routing And Gate Registry slot
 
 Every subsection is `None`. Corpus planning is gated by the kernel gates `corpus-plan-structure` and `corpus-plan-semantic-acceptance`, which this profile parameterizes through its Corpus Planning slot rather than supplementing here. No configured feature of this profile depends on a registration in this file: there is no readiness axis, so no readiness gate is required.
 

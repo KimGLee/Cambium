@@ -4,9 +4,10 @@ import hashlib
 
 import coverage_delta
 import kblib
+import runtime_state_contract
 
 PROTOCOL = "routed-gap-settlement/1"
-ELIGIBLE_TARGET_STATES = frozenset(("queued", "open"))
+ELIGIBLE_TARGET_STATES = runtime_state_contract.QUEUE_ACTIONABLE_TARGET_STATES
 
 
 def _canonical_sha(value):

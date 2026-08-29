@@ -5,16 +5,9 @@
 
 ## Migration Policy
 
-When migrating expression content from an existing location, the order MUST be:
+An expression migration is valid only when the canonical knowledge owner, the target expression owner, and the old content are mapped; the target owner and its evidence bindings and links are usable before the old duplicate is removed; and content, evidence qualifications, ownership, and resolvable links are conserved. This semantic owner does not prescribe the action sequence; registered capabilities own deterministic scanning and link verification.
 
-1. Identify the mapping between the canonical knowledge owner, the target expression owner, and the old content.
-2. Create the complete content in the target owner first.
-3. Verify that the target content, evidence binding, and links are all usable.
-4. Create a resolvable wiki link at the original location pointing to the target owner.
-5. Only after confirming content conservation, delete the duplicate expression at the original location.
-6. Verify that there is no content loss, duplicate owner, or broken link.
-
-Deleting old content first and waiting to build the target later is prohibited. Split, duplication, and owner rules are also subject to [[kernel/K03 Note Types and Ownership/03 Split and Duplication Policy|Split and Duplication Policy]].
+Deleting old content before the verified replacement exists is prohibited. Split, duplication, and owner rules are also subject to [[kernel/K03 Note Types and Ownership/03 Split and Duplication Policy|Split and Duplication Policy]].
 
 ## Scoped Migration Audit
 

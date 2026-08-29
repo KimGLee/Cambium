@@ -8,14 +8,17 @@ Rule owners:
 - "kernel/K01 Scope and Architecture/06 Support Layer Structural
   Interfaces.md" (support layer shared base, layouts, role-specific
   bindings);
-- "profiles/README.md#Structure Registry Slot" (the closed slot shape,
-  carried by profiles/_template/structure-registry.yaml).
+- "kernel/K00 Standards Control/profile-interface.yaml" and K01/05-K01/06
+  (the common slot contract and structural semantics).
 
 The registry's byte-level shape contract lives in
 ``kblib.validate_structure_registry_shape`` and is shared with
 ``check_profile.py``; this tool adds the vault-resolution half:
 
 - every unit root, entry, and role path resolves inside the vault;
+- every derived role names a registered projection capability and either a
+  repository-relative corpus artifact or a runtime object ID that capability
+  declares; Profile bytes never bind Tool or `.cambium` implementation paths;
 - embedded headings exist in their pages; a declared ``expected_type``
   matches the entry page's frontmatter ``type``;
 - a module root sits strictly inside its parent's root; a domain root is one
@@ -50,10 +53,13 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import kblib
+import metadata_execution_contract
 import profile_admission
+import profile_contract
+import runtime_paths
 
 TOOL = "check_structure"
-TOOL_VERSION = "1.1.0"
+TOOL_VERSION = "1.2.0"
 GATE_ID = "structure-registry"
 # The `Check` cell K00/12 registers for this Gate; every receipt this tool
 # offers as gate evidence carries it verbatim.
@@ -126,11 +132,11 @@ JSON_FLAG_HELP = ("write the receipts this run produced to stdout as one "
                   "unchanged")
 
 
-ACTIVE_STATE_PATH = ".cambium/governance/standards_state.yaml"
+ACTIVE_STATE_PATH = runtime_paths.ACTIVE_STANDARDS_PATH
 STRUCTURE_SLOT = "Structure Registry"
 CORPUS_SLOT = "Corpus Planning"
 SCOPE_SLOT = "Profile Scope"
-COVERAGE_LEDGER_PATH = ".cambium/state/coverage_ledger.yaml"
+COVERAGE_LEDGER_PATH = runtime_paths.COVERAGE_PATH
 
 
 class Findings:
@@ -221,10 +227,11 @@ def check_role(root, findings, label, role):
         vault_path(root, role.get("path"), findings, "structure-role",
                    label + ":path")
     elif mode == "derived":
-        vault_path(root, role.get("generator"), findings, "structure-role",
-                   label + ":generator")
-        vault_path(root, role.get("inputs_owner"), findings,
-                   "structure-role", label + ":inputs_owner")
+        input_owner = role.get("inputs_owner")
+        owner_kind = kblib.structure_input_owner_reference_kind(input_owner)
+        if owner_kind == "corpus-artifact":
+            vault_path(root, input_owner, findings, "structure-role",
+                       label + ":inputs_owner")
         if role.get("path") is not None:
             path = vault_path(root, role.get("path"), findings,
                               "structure-role", label + ":path")
@@ -233,6 +240,29 @@ def check_role(root, findings, label, role):
                     findings.add("structure-role", label + ":heading", "fail",
                                  "heading %r not found in %r"
                                  % (role["heading"], role.get("path")))
+
+
+def projection_capability_entries(root, findings, input_snapshots):
+    """Bind the root-owned projection-capability namespace once."""
+    relative = metadata_execution_contract.DEFAULT_CAPABILITIES_PATH
+    try:
+        snapshot = kblib.repository_file_snapshot(
+            root, relative, singly_linked=True)
+        document = kblib.parse_yaml_subset(snapshot.read_text())
+        document = metadata_execution_contract.\
+            validate_operation_capabilities_document(document)
+    except (OSError, UnicodeError, ValueError, kblib.YamlSubsetError,
+            metadata_execution_contract.MetadataExecutionContractError) as exc:
+        findings.add(
+            "structure-capability-registry", relative, "fail",
+            "cannot bind the root-owned Tool capability registry: %s" % exc)
+        return None
+    input_snapshots.append(snapshot)
+    return {
+        entry["capability_id"]: entry
+        for entry in document["capabilities"]
+        if entry["kind"] == "projection"
+    }
 
 
 def check_reference(root, findings, label, value):
@@ -405,6 +435,13 @@ def run(root, profile_override, receipts_path):
 
         unit_roots = {u.get("id"): u.get("root") for u in units
                       if isinstance(u, dict)}
+        projection_capabilities = projection_capability_entries(
+            root, findings, input_snapshots)
+        if projection_capabilities is not None:
+            for check, label, details in \
+                    kblib.validate_structure_registry_references(
+                        registry, projection_capabilities, registry_rel):
+                findings.add(check, label, "fail", details)
 
         def check_global_map_binding(label, value):
             if value is None:
@@ -682,15 +719,15 @@ def run(root, profile_override, receipts_path):
             seq, root=root)
         summary_receipt["gate_id"] = GATE_ID
         if admission is not None:
-            summary_receipt.update({
-                "selected_profile_manifest": admission.manifest_repo_path,
-                "profile_snapshot_sha256":
+            summary_receipt.update(dict(zip(
+                profile_contract.PROFILE_LOAD_EVIDENCE_FIELDS,
+                (
+                    admission.manifest_repo_path,
                     admission.evaluation.profile_snapshot_sha256,
-                "profile_contract_fingerprint":
                     admission.evaluation.profile_contract_fingerprint,
-                "profile_load_inputs_sha256":
                     admission.evaluation.profile_load_inputs_sha256,
-            })
+                ),
+            )))
         if global_map_snapshot is not None:
             summary_receipt["global_map_path"] = \
                 global_map_snapshot.repository_path

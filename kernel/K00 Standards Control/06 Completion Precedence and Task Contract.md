@@ -22,7 +22,8 @@ A module counts as complete only when all of the following conditions hold:
 A long-running build task counts as complete only when all of the following conditions hold:
 
 - The Coverage Ledger has been reconciled against the file system, scope, exclusions, and, when Corpus Planning uses `applicability.state: configured`, the bound [[kernel/K02 Knowledge Work Construction/06 Capability Matrix Contract#Capability Matrix Contract|Capability Matrix]].
-- The current Required Queue passes `check_queue.py --require-complete`, its receipt matches the frozen path, structural/state revisions, and fingerprint, and `remaining_required_work_units = 0`.
+- The `required-queue-completion` Gate passes against the frozen Queue identity,
+  revisions, and fingerprint, and `remaining_required_work_units = 0`.
 - The Amendment Log covers all guidance within the cutoff, with no unclassified, accepted-but-unmapped, or implemented-but-unverified items.
 - All Required authoring gaps are closed, or the user has explicitly changed the disposition.
 - There are no unverified batches or leftover modifications.
@@ -43,16 +44,12 @@ The frozen Task Contract MUST select exactly one completion semantics:
 - Build: this page's Definition Of Complete, `completion-candidate`, and Terminal Proof.
 - Maintenance: bounded, never `completion-candidate`, and complete only when:
   - The run's [[kernel/K00 Standards Control/08 Maintenance Run Envelope|budget-envelope]] candidate manifest is closed.
-  - The Ledger and `Tools/state/watermark.yaml` have been advanced.
+  - The Coverage Ledger and canonical maintenance watermark have been advanced.
   - Each batch has passed the applicable QA gates.
 
-When maintenance work is persistent, resumable, or multi-batch, K13/12's gate
-MUST prove those predicates from current budget-manifest, Coverage-advance,
-watermark-advance, and applicable batch/close receipts. Bounded single-note
-maintenance does not initialize empty `.cambium/` state for that gate.
+When maintenance work is persistent, resumable, or multi-batch, K13/12's gate MUST prove those predicates from current budget-manifest, Coverage-advance, watermark-advance, and applicable batch/close receipts. Bounded single-note maintenance does not initialize empty adopter runtime state for that gate.
 
-Maintenance has no corpus-wide Terminal Proof. Budget-truncated items hand off
-to the next run and are not a current gap.
+Maintenance has no corpus-wide Terminal Proof. Budget-truncated items hand off to the next run and are not a current gap.
 
 ## Standard Precedence
 
@@ -72,15 +69,15 @@ User's latest explicit instruction
 
 Each ultra-long task only needs to confirm the items that change the defaults:
 
-- Objective, contract version, scope version, in-scope domains, exclusions, and exactly one frozen `completion_semantics` value (`build` or `maintenance`); when Required Queue state applies, its path, `queue_revision`, `queue_state_revision`, SHA-256 fingerprint, and current check receipt.
-- Standards version and `selected_profile_manifest`, copied exactly from the active Standards state; the selected Rxx route IDs and Runtime Card paths; the actual loaded set (including any namespaced profile route and every Read Set or leaf path actually read back); and gate items not yet triggered. What is frozen by default for content tasks is the route candidate set together with the batch-phase reading plan -- the phase set, the route-to-phase mapping, the transition predicates, the per-phase computation rules, and the content identity of every potential phase alongside its environment fingerprint -- and not the byte union loaded at each batch startup; that plan is owned by [[kernel/K13 Task Runtime and Execution Control/21 Phased Reading Plan|Phased Reading Plan]]. A task-level amendment cannot select another profile.
+- Objective, contract version, scope version, in-scope domains, exclusions, and exactly one frozen `completion_semantics` value (`build` or `maintenance`); when Queue state applies, its stable identity, revisions, fingerprint, and current Gate receipt.
+- Standards and selected Profile identity, copied exactly from the active adopter state; the loading selection and evidence required by the applicable Read Set contract; and Gates not yet triggered. Kernel does not own route selection, phase mapping, or the actual loaded set. A task-level amendment cannot select another Profile.
 - The target authoring status for P0 / P1 and the selected `Expression Status Axis` values.
 - `minimum_run_until`, `checkpoint_at`, `hard_stop_at`.
 - The boundaries of Required, optional, deferred, and excluded.
 - Whether the current task includes Frontmatter migration, directory migration, or global UI / graph configuration.
 - The review window for time-sensitive sources and the external evidence backlog allowed to remain.
 - The default acknowledgement, safe switching, and amendment policy for mid-task guidance; the `K13` defaults apply unless otherwise specified.
-- The storage location of the Audit Receipt Register, invalidated-evidence adoption, and any decision changing the default invalidation/review policy.
+- Invalidated-evidence adoption and any authorized decision changing the default invalidation or review policy.
 
 Directory, source-to-knowledge, `Language Contract`, `Expression Layer Entry`, and `Profile Scope` defaults already declared by the selected profile manifest and not overridden by the current task are not re-discussed; only items that change the defaults enter this section's decision list.
 

@@ -1,12 +1,12 @@
 ## Purpose
 
-This page is the stable entry point of the Scope and Architecture standard. The detailed rules have been split into the modules below by responsibility; the original content has not been reduced.
+This page is the stable entry point of the Scope and Architecture standard. Detailed rules are maintained by the responsibility-specific modules below.
 
 ## Reading Rule
 
-- First use this MOC to locate the rule owner, then read the modules required by the current task, event, or quality gate.
-- Entering this domain does not require reading all modules at once.
-- Each module returns to its parent via `Navigation` and links to the adjacent modules before and after it.
+- Use this MOC only to locate the canonical semantic owner. Loading decisions
+  are owned outside Kernel; opening this index is not evidence that any leaf was
+  loaded.
 
 ## Module Index
 
@@ -20,11 +20,6 @@ This page is the stable entry point of the Scope and Architecture standard. The 
 | [[kernel/K01 Scope and Architecture/06 Support Layer Structural Interfaces\|Support Layer Structural Interfaces]] + `Structure Registry` | `Support Layer Structural Interfaces`, `Shared Base`, `Role-specific Interfaces`, `Verification` |
 
 For full effect, the `Profile Scope` registered by the selected profile MUST also be loaded; it provides the concrete objectives, logical layers, knowledge spine, foundation layer directories, shared layer names, and exclusion list.
-
-## Applicable Read Sets
-
-- [[kernel/Read Sets/R03 Module Build Read Set|Module Build]]
-- [[kernel/Read Sets/R06 Migration and Refactor Read Set|Migration and Refactor]]
 
 ## Related Standards
 

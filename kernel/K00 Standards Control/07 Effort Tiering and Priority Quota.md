@@ -10,30 +10,31 @@ This module owns how much acceptance ceremony a page receives, and the priority 
 
 ## Effort Tiering
 
-Page-level acceptance intensity is executed by S/M/L tiering. This section is the canonical owner of the tiering rules; the shared Tiering table in the kernel Core Bootstrap Card is compiled from this section and task cards do not redefine it.
+Page-level acceptance intensity is executed by S/M/L tiering. This section is the canonical owner of the tiering rules. Non-authoritative action projections may reference or summarize these rules but do not redefine them.
 
 | Tier | Determination | Ceremony |
 |---|---|---|
 | S | priority=P2, or terminology stub / placeholder / link-aggregation pages | script checks only; no note gate; spot check at batch close per [[kernel/K12 Quality Assurance/14 Batch Review\|K12/14]] |
-| M | regular priority=P1 pages | script checks + the [[kernel/K12 Quality Assurance/01 Quality Dimensions and Single Note Review#M-tier Gate Checklist\|M-tier Gate Checklist]] compiled into the Single Note Authoring Card; the note gate is folded into the batch gate |
+| M | regular priority=P1 pages | deterministic checks + the [[kernel/K12 Quality Assurance/01 Quality Dimensions and Single Note Review#M-tier Gate Checklist\|M-tier Gate Checklist]]; the note gate is folded into the batch gate |
 | L | priority=P0, or core concept / process-flow / system / risk-control mainline pages, plus the additional L-tier triggers registered in the selected profile's `Routing And Gate Registry` | full procedure: complete [[kernel/K12 Quality Assurance/01 Quality Dimensions and Single Note Review\|K12/01]] review + a standalone note gate + applicable expression migration checks |
 
 - The specific grant conditions for P0 / P1 are registered by the selected profile's `Priority Rubric`.
 - Escalate one tier when tiering is disputed.
-- Each page's tier is recorded in the Coverage Ledger's `tier` field (schema: `Tools/schemas/coverage_ledger.template.yaml`).
+- Each page's tier is recorded in the Coverage Ledger under the
+  `coverage-ledger` schema contract.
 - Tiering only adjusts the intensity of the acceptance ceremony; it does not change any content quality standard itself.
 
 ### Priority Quota
 
-tier is derived from priority; priority inflation defeats tiering. Kernel default corpus-wide quotas:
+Tier is derived from priority; priority inflation defeats tiering. The [`contract-exception-policy-base.yaml`](contract-exception-policy-base.yaml) machine registry is the unique authority for the P0/P1 policy IDs, their Kernel-default ceilings, limit domain, and effective-policy fingerprint protocol. This page owns why those constraints exist and how they govern priority assignment; it does not restate the machine values.
 
-- `P0` share target ≤15%; the specific grant targets are registered by the selected profile's `Priority Rubric`.
-- `P1` share target ≤35%; the specific grant targets are registered by the selected profile's `Priority Rubric`.
+- `P0` and `P1` each resolve to the registry default unless the selected
+  Profile's `Priority Rubric` supplies a valid standing registration.
 - All remaining pages are `P2` (including all terminology stubs, placeholder pages, and the vast majority of Source Notes).
 
-P0/P1 pages exceeding quota MUST be resolved through exactly one of three instruments, chosen by the lifetime of the decision. Demote the pages, and the excess ends now. Register standing targets in the selected profile's `Priority Rubric` `Priority Quota` block when this corpus's own structure justifies different long-lived shares -- the registration carries both classes, a required rationale per class, and the joint bound below, and `profile-load` validates it. Register a bounded policy exception in the Task Contract (`Tools/apply_contract_amendment.py`, K13/06) when the excess is accepted temporarily -- the exception names its class, its maximum share, and the fingerprint of the quota registration it was judged against, and it dies with its task or its named snapshot. Batch close consumes the excess only through a currently valid exception; the generic candidate-acceptance flags cannot disposition a quota candidate, so the same excess is never re-accepted ad hoc close after close. Coverage reconciliation for REBASE and Maintenance Runs MUST check the priority and tier distributions through the `priority-quota-distribution` receipt (`Tools/check_vocab.py`; registered in the Control Registry), which carries per-class structured shares, the exceeded classes, and the effective-policy fingerprint they were measured under -- never a share re-derived from display text. The Coverage Ledger records page priorities and dispositions; it carries no quota policy and no exemptions.
+P0/P1 pages exceeding quota MUST be resolved through exactly one of three instruments, chosen by the lifetime of the decision. Demote the pages, and the excess ends now. Register standing targets in the selected profile's `Priority Rubric` `Priority Quota` block when this corpus's own structure justifies different long-lived shares -- the registration carries both classes, a required rationale per class, and the joint bound defined by the machine registry, and `profile-load` validates it. Register a bounded policy exception in the Task Contract when the excess is accepted temporarily -- the exception names its class, its maximum share, and the fingerprint of the quota registration it was judged against, and it dies with its task or its named snapshot. Batch close consumes the excess only through a currently valid exception; the generic candidate-acceptance flags cannot disposition a quota candidate, so the same excess is never re-accepted ad hoc close after close. Coverage reconciliation for REBASE and Maintenance Runs MUST consume the `priority-quota-distribution` Gate receipt, which carries per-class structured shares, the exceeded classes, and the effective-policy fingerprint they were measured under -- never a share re-derived from display text. The Coverage Ledger records page priorities and dispositions; it carries no quota policy and no exemptions.
 
-An overriding share is a share of the same corpus the three classes partition, so it is admissible only where it leaves that partition intact. Each of the two overriding values is therefore at least 0% and strictly below 100%, and the two together stay strictly below 100%: the remainder class above is `P2` and it carries all terminology stubs and placeholder pages, so a quota that consumes the whole corpus states that a page class the section requires to be non-empty is empty. A quota at or above the whole corpus also silences this section's own demotion rule, because no page can then exceed it — the override registers a quota, and a value that no page can exceed is not one.
+An overriding share is a share of the same corpus the three classes partition, so it is admissible only where it leaves that partition intact. Each value is non-negative and below the whole corpus, and the combined ceilings must leave a non-empty remainder for `P2`. A ceiling that consumes the whole corpus would both contradict that required remainder and silence this section's demotion rule; it is therefore not a quota override at all.
 
 ## Related
 

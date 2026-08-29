@@ -1,7 +1,8 @@
 """The composed vocabulary artifact is a gate input, so it fails closed.
 
 `check_vocab` decides whether a frontmatter value is legal by looking it up in
-`Tools/vocab.yaml`. An artifact with no fields makes *every* value legal, so a
+`.cambium/derived/vocab.yaml`. An artifact with no fields makes *every* value
+legal, so a
 truncated or half-written file does not make the gate noisy -- it makes the
 gate silently pass. Two halves are covered here:
 
@@ -33,6 +34,7 @@ REPOSITORY = TOOLS.parent
 sys.path.insert(0, str(TOOLS))
 import module_boundary_facts  # noqa: E402
 import kblib  # noqa: E402
+import runtime_paths  # noqa: E402
 import standards_state  # noqa: E402
 from Tools.tests.profile_fixture import install_loadable_profile
 
@@ -60,16 +62,7 @@ def build_composable_tree(destination):
 
     source_profile = install_loadable_profile(
         destination, profile_id=PROFILE_ID)
-    selected_profile = (
-        destination / "profiles" / "examples" / PROFILE_ID)
-    selected_profile.parent.mkdir(parents=True, exist_ok=True)
-    shutil.move(str(source_profile), selected_profile)
-    slots = selected_profile / "slots.md"
-    slots.write_text(
-        slots.read_text(encoding="utf-8").replace(
-            "profiles/%s/" % PROFILE_ID,
-            "profiles/examples/%s/" % PROFILE_ID),
-        encoding="utf-8")
+    selected_profile = source_profile
     shutil.copy2(
         REPOSITORY / "profiles" / "examples" / PROFILE_ID /
         "vocabulary-extensions.yaml",
@@ -89,7 +82,7 @@ def build_composable_tree(destination):
     assert not errors, errors
     current = dict(current)
     current["selected_profile_manifest"] = (
-        "profiles/examples/%s/profile.md" % PROFILE_ID)
+        "profiles/%s/profile.md" % PROFILE_ID)
     state.write_text(
         standards_state.canonical_text(current), encoding="utf-8")
     return destination
@@ -204,7 +197,7 @@ class ProducerPublishesAtomically(unittest.TestCase):
         self.temporary = tempfile.TemporaryDirectory()
         self.addCleanup(self.temporary.cleanup)
         self.tree = build_composable_tree(Path(self.temporary.name).resolve())
-        self.artifact = self.tree / "Tools" / "vocab.yaml"
+        self.artifact = self.tree / runtime_paths.VOCAB_ARTIFACT_PATH
 
     def test_compose_writes_a_usable_artifact(self):
         completed = compose(self.tree)
@@ -233,7 +226,7 @@ class ProducerPublishesAtomically(unittest.TestCase):
         self.assertIn("MISMATCH", completed.stdout)
 
     def test_unrelated_unloadable_slot_blocks_vocabulary_publication(self):
-        manifest = self.tree / "profiles" / "examples" / PROFILE_ID / \
+        manifest = self.tree / "profiles" / PROFILE_ID / \
             "profile.md"
         manifest_text = manifest.read_text(encoding="utf-8")
         bindings = kblib.profile_slot_bindings(manifest_text)
@@ -256,7 +249,7 @@ class ProducerPublishesAtomically(unittest.TestCase):
         (corpus / "page.md").write_text(
             "---\ntype: interview-card\n---\n\n# Interview card\n",
             encoding="utf-8")
-        extension = self.tree / "profiles/examples" / PROFILE_ID / \
+        extension = self.tree / "profiles" / PROFILE_ID / \
             "vocabulary-extensions.yaml"
         extension.write_text(
             extension.read_text(encoding="utf-8").replace(
@@ -279,7 +272,7 @@ class ProducerPublishesAtomically(unittest.TestCase):
         (corpus / "page.md").write_text(
             "---\ndomain: interview\nlast_verified: 2026-01-01\n---\n# Page\n",
             encoding="utf-8")
-        extension = self.tree / "profiles/examples" / PROFILE_ID / \
+        extension = self.tree / "profiles" / PROFILE_ID / \
             "vocabulary-extensions.yaml"
         extension.write_text(
             extension.read_text(encoding="utf-8").replace(
@@ -293,7 +286,7 @@ class ProducerPublishesAtomically(unittest.TestCase):
             cwd=str(self.tree), capture_output=True, text=True, check=False)
 
         self.assertEqual(1, completed.returncode, completed.stdout)
-        self.assertIn("canonical Tools/vocab.yaml is not current",
+        self.assertIn("canonical .cambium/derived/vocab.yaml is not current",
                       completed.stdout)
 
     def test_freshness_consumes_current_canonical_defaults(self):
@@ -327,7 +320,7 @@ class ProducerPublishesAtomically(unittest.TestCase):
 
     def test_no_scratch_file_survives_a_successful_compose(self):
         self.assertEqual(0, compose(self.tree).returncode)
-        leftovers = [entry.name for entry in (self.tree / "Tools").iterdir()
+        leftovers = [entry.name for entry in self.artifact.parent.iterdir()
                      if entry.name.startswith(".cambium-write-")]
         self.assertEqual([], leftovers)
 
@@ -380,7 +373,7 @@ class UnselectedProfileStaysLegal(unittest.TestCase):
             completed = compose(tree)
             self.assertEqual(1, completed.returncode, completed.stdout)
             self.assertFalse(
-                (tree / "Tools" / "vocab.yaml").exists(),
+                (tree / runtime_paths.VOCAB_ARTIFACT_PATH).exists(),
                 "the generic distribution carries no composed vocabulary; "
                 "refusing to select one must not create an empty artifact")
 

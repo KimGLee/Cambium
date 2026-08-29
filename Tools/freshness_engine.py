@@ -13,9 +13,14 @@ import datetime
 import re
 from typing import Any, Mapping, Optional, Tuple
 
+import vocabulary_contract
 
-INTERVAL_DAYS = {"fast": 120, "slow": 365, "stable": None}
-PRIORITY_ORDER = {"P0": 0, "P1": 1, "P2": 2}
+
+# Compatibility names are immutable aliases of the K08-owned projections.
+# Keeping identity here preserves the pure classifier API without creating a
+# second semantic copy inside the engine.
+INTERVAL_DAYS = vocabulary_contract.REVIEW_INTERVALS_DAYS
+PRIORITY_ORDER = vocabulary_contract.PRIORITY_ORDER
 
 EXCLUDED = "excluded"
 INACTIVE = "inactive"

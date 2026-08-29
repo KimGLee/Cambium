@@ -1,7 +1,7 @@
 """The Required Queue runtime, as modules instead of one file.
 
 `check_queue.py` was seventeen thousand lines holding one runtime, one CLI and
-one Gate producer, and the boundary contract in K00/18 could say nothing about
+one Gate producer, and the Tool module boundary contract could say nothing about
 its inside: a module is the unit the contract speaks about, so a single module
 is a single answer to every question the contract asks.  The runtime is split
 here into named responsibilities with a declared direction between them; the
@@ -55,6 +55,7 @@ from queue_runtime.canon import (  # noqa: F401
     TOOL,
     TOOL_VERSION,
     UPDATE_QUEUE_TOOL_VERSION,
+    WATERMARK_PATH,
 )
 from queue_runtime.primitives import (  # noqa: F401
     nonempty_string,

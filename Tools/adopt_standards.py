@@ -12,27 +12,81 @@ import contextlib
 import copy
 import os
 import sys
+import tempfile
+
+# Bootstrap the interpreter before importing any repository-local Tool.
+# Adoption validates every immutable component byte, so its own imports must
+# neither consume a pre-existing local ``__pycache__`` nor create one before
+# that validation runs.  Setting the live interpreter prefix prevents local
+# cache reads; exporting the same prefix makes every Python child inherit the
+# boundary.  A high-entropy path under an operating-system temp root stays
+# outside the adopter and is intentionally never created: cache reads miss,
+# while bytecode writes are disabled below.  An adopter-controlled TMPDIR is
+# not trusted merely because ``tempfile`` selected it.
+def _external_pycache_prefix():
+    repository_root = os.path.realpath(os.path.join(
+        os.path.dirname(os.path.abspath(__file__)), os.pardir))
+    for raw_root in (tempfile.gettempdir(), "/var/tmp", "/tmp"):
+        candidate_root = os.path.realpath(os.path.abspath(raw_root))
+        if not os.path.isdir(candidate_root):
+            continue
+        try:
+            if os.path.commonpath(
+                    (repository_root, candidate_root)) == repository_root:
+                continue
+        except ValueError:
+            pass
+        candidate = os.path.join(
+            candidate_root,
+            "cambium-adoption-pycache-%s" % os.urandom(16).hex())
+        if not os.path.lexists(candidate):
+            return candidate
+    raise RuntimeError("no repository-external Python cache root is available")
+
+
+_CAMBIUM_PYCACHE_PREFIX = _external_pycache_prefix()
+os.environ["PYTHONPYCACHEPREFIX"] = _CAMBIUM_PYCACHE_PREFIX
+os.environ["PYTHONDONTWRITEBYTECODE"] = "1"
+sys.pycache_prefix = _CAMBIUM_PYCACHE_PREFIX
+sys.dont_write_bytecode = True
+
 import uuid
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import check_queue
 import kblib
+import profile_contract
+import runtime_paths
+import runtime_state_contract
 import standards_state
+import upstream_component_boundary
+import upstream_identity
 
 TOOL = "adopt_standards"
-TOOL_VERSION = "1.7.0"
+TOOL_VERSION = "1.9.0"
 GATE_ID = "standards-adoption"
 # The `Check` cell K00/12 registers for this Gate; every receipt this
 # tool offers as gate evidence carries it verbatim.
 GATE_CHECK = "standards_adoption"
 PLAN_PREFIX = check_queue.STANDARDS_ADOPTION_PLAN_PREFIX
-RECEIPT_PATH = ".cambium/receipts/standards-adoptions.jsonl"
-ALLOWED_TASK_STATES = frozenset(("active", "paused"))
+RECEIPT_PATH = runtime_paths.STANDARDS_ADOPTION_RECEIPT_PATH
+ALLOWED_TASK_STATES = runtime_state_contract.STANDARDS_ADOPTION_TASK_STATES
 LOAD_FIELDS = (
     "selected_route_ids", "selected_card_paths",
     "selected_profile_route_ids", "selected_read_sets",
     "loaded_module_paths",
 )
+PRODUCER_ERA_LOAD_PATH_FIELDS = (
+    "selected_card_paths", "selected_read_sets",
+)
+
+
+def _producer_era_load_contract_after(plan):
+    """Return the exact current component paths proposed by this plan."""
+    return {
+        field: copy.deepcopy(plan.get(field + "_after"))
+        for field in PRODUCER_ERA_LOAD_PATH_FIELDS
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -149,10 +203,7 @@ def _after_profile_evidence(root, plan, *, expected=None, phase):
             "%s candidate Profile load inputs differ from the admitted "
             "plan" % phase)
     if expected is not None:
-        for field in (
-                "selected_profile_manifest", "profile_snapshot_sha256",
-                "profile_contract_fingerprint",
-                "profile_load_inputs_sha256"):
+        for field in profile_contract.PROFILE_LOAD_EVIDENCE_FIELDS:
             if evidence.get(field) != expected.get(field):
                 raise ValueError(
                     "%s candidate Profile %s changed after plan admission" %
@@ -173,17 +224,34 @@ def _load_plan(root, relative):
     return path, raw, plan
 
 
+def _require_upstream_components(root, upstream_root, revision_id, phase):
+    """CAS adopter component bytes against one already-resolved commit."""
+    component_report = upstream_component_boundary.evaluate(
+        root, upstream_root, revision_id)
+    if component_report.upstream_revision_id != revision_id:
+        raise ValueError(
+            "%s component boundary resolved upstream revision %s but frozen "
+            "identity is %s" %
+            (phase, component_report.upstream_revision_id, revision_id))
+    if component_report.errors:
+        raise ValueError(
+            "%s adopter immutable components do not match upstream revision "
+            "%s: %s" %
+            (phase, revision_id, "; ".join(component_report.errors)))
+    return component_report
+
+
 def _state_paths(root, current):
     return {
         "coverage": kblib.managed_repository_path(
-            root, check_queue.COVERAGE_PATH, ".cambium/state",
+            root, check_queue.COVERAGE_PATH, runtime_paths.STATE_ROOT,
             suffixes=(".yaml",), must_exist=True),
         "queue": current["queue_path"],
         "progress": kblib.managed_repository_path(
-            root, check_queue.PROGRESS_PATH, ".cambium/state",
+            root, check_queue.PROGRESS_PATH, runtime_paths.STATE_ROOT,
             suffixes=(".yaml",), must_exist=True),
         "standards": kblib.managed_repository_path(
-            root, standards_state.STATE_PATH, ".cambium/governance",
+            root, standards_state.STATE_PATH, runtime_paths.GOVERNANCE_ROOT,
             suffixes=(".yaml",), must_exist=True),
     }
 
@@ -347,18 +415,33 @@ def _new_receipt(phase, result, plan, transaction_id, plan_path, plan_sha,
     return receipt
 
 
-def _prepare_result(root, plan_relative):
+def _prepare_result(root, plan_relative, upstream_root, upstream_ref):
     root = os.path.realpath(os.path.abspath(root))
     plan_file, plan_raw, plan = _load_plan(root, plan_relative)
+    canonical_upstream_root = os.path.realpath(
+        os.path.abspath(os.fspath(upstream_root)))
+    resolved_revision = upstream_identity.resolve_revision(
+        canonical_upstream_root, upstream_ref)
+    if plan.get("upstream_revision_id") != resolved_revision:
+        raise ValueError(
+            "upstream Git ref resolves to %s but plan upstream_revision_id "
+            "is %s" % (resolved_revision, plan.get("upstream_revision_id")))
+    _require_upstream_components(
+        root, canonical_upstream_root, resolved_revision, "plan admission")
     current = check_queue.validate_runtime(
         root,
         allow_invalid_current_profile_for_corrective_adoption=True,
-        allow_active_standards_mismatch_for_adoption=True)
+        allow_active_standards_mismatch_for_adoption=True,
+        producer_era_load_contract_after=
+            _producer_era_load_contract_after(plan))
     if current["errors"]:
         raise ValueError("current runtime is inconsistent: %s" %
                          "; ".join(current["errors"]))
     if current.get("_writer_locks"):
         raise ValueError("runtime has an active or interrupted writer lock")
+    producer_era_path_migrations = list(
+        (current.get("task_runtime") or {}).get(
+            "producer_era_path_migrations") or [])
     barrier = check_queue.delta_apply_write_barrier(
         current, TOOL, "apply")
     if barrier:
@@ -481,7 +564,6 @@ def _prepare_result(root, plan_relative):
         identity=_plan_identity(plan))
     standards_after = standards_state.next_state(
         standards_before,
-        standards_version=plan["standards_version_after"],
         effective_date=plan["standards_effective_date_after"],
         selected_profile_manifest=plan["selected_profile_manifest_after"],
         latest_adoption_receipt=commit_stub["receipt_id"],
@@ -624,6 +706,9 @@ def _prepare_result(root, plan_relative):
         "transaction_id": transaction_id,
         "projection_shas": projection_shas,
         "profile_evidence": profile_evidence,
+        "producer_era_path_migrations": producer_era_path_migrations,
+        "upstream_root": canonical_upstream_root,
+        "resolved_upstream_revision_id": resolved_revision,
     }
 
 
@@ -704,16 +789,28 @@ def _commit_transaction(prepared, receipt_path):
             locked = check_queue.validate_runtime(
                 prepared["root"],
                 allow_invalid_current_profile_for_corrective_adoption=True,
-                allow_active_standards_mismatch_for_adoption=True)
+                allow_active_standards_mismatch_for_adoption=True,
+                producer_era_load_contract_after=
+                    _producer_era_load_contract_after(prepared["plan"]))
             if locked["errors"]:
                 raise ValueError("runtime changed before write: %s" %
                                  "; ".join(locked["errors"]))
             if locked.get("_writer_locks") and len(locked["_writer_locks"]) > 1:
                 raise ValueError("another runtime writer lock appeared")
+            if list((locked.get("task_runtime") or {}).get(
+                    "producer_era_path_migrations") or []) != \
+                    prepared["producer_era_path_migrations"]:
+                raise ValueError(
+                    "producer-era component path migration changed after "
+                    "adoption planning")
             _after_profile_evidence(
                 prepared["root"], prepared["plan"],
                 expected=prepared["profile_evidence"],
                 phase="locked pre-write")
+            _require_upstream_components(
+                prepared["root"], prepared["upstream_root"],
+                prepared["resolved_upstream_revision_id"],
+                "locked pre-write")
 
         prepare_before = kblib.receipt_append_observation(
             receipt_path, [prepared["prepare"]])
@@ -755,6 +852,10 @@ def _commit_transaction(prepared, receipt_path):
                 prepared["root"], prepared["plan"],
                 expected=prepared["profile_evidence"],
                 phase="pre-final-receipt")
+            _require_upstream_components(
+                prepared["root"], prepared["upstream_root"],
+                prepared["resolved_upstream_revision_id"],
+                "pre-final-receipt")
             # The gate was computed from these exact after bytes during
             # preparation and is consumed only after the locked revalidation.
             final_outcome, error, _ = kblib.write_receipts_observed(
@@ -810,16 +911,25 @@ def main(argv=None):
         description="Adopt one approved Standards/Profile revision")
     parser.add_argument("root", help="adopting repository root")
     parser.add_argument("--plan", required=True,
-                        help=".cambium/deltas/standards-adoptions/*.yaml")
+                        help="%s/*.yaml" %
+                        runtime_paths.STANDARDS_ADOPTION_DELTA_ROOT)
     parser.add_argument("--actor-role", choices=("worker", "integrator"),
                         default="worker",
                         help="declared caller role; only integrator may "
                              "apply a Standards adoption")
     parser.add_argument("--receipts", default=RECEIPT_PATH,
-                        help="receipt JSONL path under .cambium/receipts")
+                        help="receipt JSONL path under %s" %
+                        runtime_paths.RECEIPT_ROOT)
     parser.add_argument("--apply", action="store_true",
                         help="write the transaction; omit for a dry run")
     parser.add_argument("--json", action="store_true", help=JSON_HELP)
+    parser.add_argument(
+        "--upstream-root", required=True,
+        help="local Cambium Git repository used to resolve upstream identity")
+    parser.add_argument(
+        "--upstream-ref", required=True,
+        help="Git revision in --upstream-root that must resolve to the plan's "
+             "full upstream_revision_id")
     args = parser.parse_args(argv)
     if not args.json:
         return _run(args)
@@ -831,9 +941,10 @@ def _run(args):
     root = os.path.realpath(os.path.abspath(args.root))
     try:
         receipt_path = kblib.managed_repository_path(
-            root, args.receipts, ".cambium/receipts",
+            root, args.receipts, runtime_paths.RECEIPT_ROOT,
             suffixes=(".jsonl",), must_exist=False)
-        prepared = _prepare_result(root, args.plan)
+        prepared = _prepare_result(
+            root, args.plan, args.upstream_root, args.upstream_ref)
     except (OSError, UnicodeError, ValueError, TypeError,
             kblib.YamlSubsetError) as exc:
         print("[FAIL] %s" % exc)

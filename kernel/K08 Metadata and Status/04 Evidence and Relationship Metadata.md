@@ -8,9 +8,7 @@
 
 `authoring_status` represents page authoring and review progress; `evidence_maturity` represents the evidence strength of time-sensitive or empirical conclusions. The two MUST NOT substitute for each other.
 
-During migration, the `status` field on old pages is treated as a compatibility alias of `authoring_status`; it is no longer used to express profile readiness or learning status.
-
-Allowed values:
+The registered vocabulary base is the sole normative source for closed value membership. This page owns the values' meanings:
 
 - `signal`: worth investigating, but without sufficient evidence yet.
 - `single-source`: supported by one traceable source.

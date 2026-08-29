@@ -24,14 +24,21 @@ from pathlib import Path
 
 TOOLS_DIR = Path(__file__).resolve().parents[1]
 REPO_ROOT = TOOLS_DIR.parent
-sys.path.insert(0, str(TOOLS_DIR))
+for path in (str(TOOLS_DIR / "tests"), str(TOOLS_DIR)):
+    if path not in sys.path:
+        sys.path.insert(0, path)
 
 import kblib  # noqa: E402
+import runtime_paths  # noqa: E402
 import tool_availability  # noqa: E402
+from canonical_registry_fixture import (  # noqa: E402
+    install_isolated_tool_registry_bundle,
+)
 
 COMPILER = TOOLS_DIR / "compile_cli_contract.py"
 SERVER = TOOLS_DIR / "mcp_server.py"
 CONTRACT = "Tools/compiled/cli-contract.yaml"
+CARRIED_CONTRACT = runtime_paths.CLI_CONTRACT_ARTIFACT_PATH
 
 
 def boundary_excluded_tools():
@@ -93,6 +100,11 @@ class CarriedRuntimeFixture(unittest.TestCase):
                         ignore=shutil.ignore_patterns("tests", "__pycache__"))
         shutil.copy2(REPO_ROOT / tool_availability.DEFAULT_BOUNDARY_PATH,
                      root / tool_availability.DEFAULT_BOUNDARY_PATH)
+        # Copied production modules load Kernel/Component machine authorities
+        # from the carried root.  Install the distribution's canonical
+        # registry manifest rather than adding fixture-local fallbacks or
+        # growing a second, hand-maintained dependency list here.
+        install_isolated_tool_registry_bundle(root)
         # Apply the declaration rather than a list written here, so the
         # fixture keeps matching the rule when the declaration changes.
         for name in boundary_excluded_tools():
@@ -119,7 +131,7 @@ class CarriedRuntimeFixture(unittest.TestCase):
 
     def compiled(self, root):
         return kblib.parse_yaml_subset(
-            (root / CONTRACT).read_text(encoding="utf-8"))
+            (root / CARRIED_CONTRACT).read_text(encoding="utf-8"))
 
     # -- the boundary is honoured -------------------------------------------
 
@@ -205,7 +217,7 @@ class CarriedRuntimeFixture(unittest.TestCase):
             capture_output=True, text=True)
         self.assertEqual(2, mismatched.returncode,
                          mismatched.stdout + mismatched.stderr)
-        self.assertIn("projection target",
+        self.assertIn(CARRIED_CONTRACT,
                       mismatched.stdout + mismatched.stderr)
 
     def test_a_source_projection_cannot_be_compiled_where_a_tool_is_absent(
@@ -215,8 +227,14 @@ class CarriedRuntimeFixture(unittest.TestCase):
         refused = self.compile_in(
             root, target=tool_availability.SOURCE_DISTRIBUTION)
         self.assertNotEqual(0, refused.returncode)
+        combined = refused.stdout + refused.stderr
+        self.assertTrue(
+            any(name in combined for name in boundary_excluded_tools()),
+            "the fail-closed compiler did not identify any source-only tool "
+            "that the carried fixture omits:\n%s" % combined)
         for name in boundary_excluded_tools():
-            self.assertIn(name, refused.stdout + refused.stderr)
+            self.assertFalse(
+                (root / "Tools" / ("%s.py" % name)).exists(), name)
 
     def test_a_foreign_artifact_cannot_pass_as_the_local_projection(self):
         """A compiled artifact copied in from elsewhere must be refused."""
@@ -227,7 +245,7 @@ class CarriedRuntimeFixture(unittest.TestCase):
         foreign = dict(local)
         foreign["included_tools"] = [
             name for name in local["included_tools"]][:-1]
-        (root / CONTRACT).write_text(
+        (root / CARRIED_CONTRACT).write_text(
             kblib.canonical_yaml(foreign), encoding="utf-8")
 
         result = self.compile_in(root, check=True)
@@ -243,12 +261,18 @@ class CarriedRuntimeFixture(unittest.TestCase):
         render = subprocess.run(
             [sys.executable,
              str(root / "Tools" / "render_interface_projection.py"),
-             str(root)], capture_output=True, text=True)
+             str(root), "--projection-target",
+             tool_availability.CARRIED_RUNTIME],
+            capture_output=True, text=True)
         self.assertEqual(0, render.returncode,
                          render.stdout + render.stderr)
 
         environment = dict(os.environ)
         environment["CAMBIUM_WORKSPACE_ROOT"] = str(root)
+        environment["CAMBIUM_INTERFACE_PROJECTION"] = str(
+            root / runtime_paths.MCP_TOOLS_ARTIFACT_PATH)
+        environment["CAMBIUM_INTERFACE_SOURCE_HASH"] = kblib.sha256_bytes(
+            (root / runtime_paths.MCP_TOOLS_ARTIFACT_PATH).read_bytes())
         requests = [
             {"jsonrpc": "2.0", "id": 1, "method": "initialize",
              "params": {"protocolVersion": "2024-11-05", "capabilities": {},

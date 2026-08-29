@@ -1,9 +1,9 @@
 # Cambium kernel frontmatter applicability base.
 # Semantic owner: "kernel/K08 Metadata and Status/06 Frontmatter Applicability Contract.md"
 # Writer/projection authority: "kernel/K08 Metadata and Status/07 Frontmatter Writer and Projection Authority.md"
-# Composed with the selected profile's Metadata Contract differences by
-# Tools/compose_page_contract.py into Tools/page_contract.yaml (generated,
-# never a rule owner). Modes: required | conditional | optional | derived |
+# Composed with the selected Profile's Metadata Contract differences by the
+# registered page-contract composition capability into an effective generated
+# contract, which is never a rule owner. Modes: required | conditional | optional | derived |
 # projection | user-owned | forbidden. Conditions test only same-page
 # frontmatter: {all: [...]} / {any: [...]} of {field, in: [...]} or
 # {field, absent: true}. Shapes: nonempty-string | date | url | path |

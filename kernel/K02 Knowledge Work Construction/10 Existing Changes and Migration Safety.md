@@ -13,14 +13,15 @@
 
 ## Migration Safety
 
-When moving or splitting files:
+A migration is valid only when all of the following observable outcomes hold:
 
-1. First identify the canonical target.
-2. Inventory incoming and outgoing links.
-3. Create and verify the new pages.
-4. Update references.
-5. Confirm the content is fully migrated.
-6. Only then delete duplicate content or old files.
-7. The knowledge-base-wide check is covered by the [[kernel/K12 Quality Assurance/09 Batch-close Closed List#Batch-close Closed List|Batch-close Closed List]] of the batch in which the migration closes.
+- every moved semantic unit has an identified canonical target;
+- unique content, authority, and applicable evidence are conserved;
+- all affected incoming and outgoing references resolve to the intended owner;
+- the replacement owner is present and verified before any duplicate or old
+  owner is removed;
+- the knowledge-base-wide checks required by the
+  [[kernel/K12 Quality Assurance/09 Batch-close Closed List#Batch-close Closed List|Batch-close Closed List]]
+  pass for the batch in which the migration closes.
 
-Deleting first and rewriting afterwards MUST NOT be done.
+This semantic owner does not prescribe the implementation or action sequence for producing these outcomes. Deleting the old owner before the replacement is verified violates the conservation invariant.

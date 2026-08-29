@@ -7,7 +7,10 @@ position is what decides whether another writer may proceed.
 """
 
 import batch_settlement
+import coverage_contract
 import coverage_delta
+import runtime_paths
+import runtime_state_contract
 
 from queue_runtime.canon import (
     ANY_PRODUCER_ERA_VERSION,
@@ -33,15 +36,8 @@ SUPPORTED_APPLY_DELTA_TOOL_VERSIONS = frozenset((
     "1.4.0", "1.5.0", "1.6.0"))
 
 
-DELTA_FIELDS = frozenset((
-    "batch", "generated_at", "pages", "open_gaps_added",
-    "open_gaps_closed", "next_batch_updates", "watermark_advance",
-))
-DELTA_CONTROL_FIELDS = frozenset((
-    "coverage_disposition", "canonical_owner", "batch", "next_batch",
-    "priority", "tier", "type", "prerequisites", "deferred_reason",
-    "reentry_condition",
-))
+DELTA_FIELDS = coverage_contract.COVERAGE_DELTA_FIELDS
+DELTA_CONTROL_FIELDS = coverage_contract.COVERAGE_DELTA_PAGE_CONTROL_FIELDS
 
 
 def batch_reference_settlement_errors(result, item):
@@ -313,7 +309,8 @@ def delta_handoff_errors(relative, delta, item, coverage_records,
     """
     item_id = item.get("id")
     errors = []
-    expected_path = ".cambium/deltas/%s.yaml" % item_id
+    expected_path = runtime_paths.child_path(
+        runtime_paths.DELTA_ROOT, "%s.yaml" % item_id)
     if relative != expected_path:
         errors.append("path must be exactly %s" % expected_path)
     missing = sorted(DELTA_FIELDS - set(delta))
@@ -509,7 +506,7 @@ def delta_apply_write_barrier(result, tool, action, target=None):
     carries the batch content while the Queue still says ``merge-ready``.  Two
     writes close that window, and no others.  ``merge-ready -> closed`` is the
     passing outcome.  ``merge-ready -> open`` is the failing one, required by
-    K00/10, K12/14 and K13/10 whenever the Batch-close Closed List rejects the
+    K12/14 and K13/10 whenever the Batch-close Closed List rejects the
     merge -- which can only happen after the apply, because the Closed List
     runs against the merged snapshot.  The rollback carries its own evidence
     (the invalidated delta archive and a byte-exact Coverage restore), so it
@@ -527,7 +524,9 @@ def delta_apply_write_barrier(result, tool, action, target=None):
         return ("pending delta_apply state is ambiguous; repair the runtime "
                 "before any Queue/Coverage write")
     applied = current[0]
-    if (tool == "update_queue" and action in ("closed", "open") and
+    if (tool == "update_queue" and
+            action in runtime_state_contract.BATCH_LIFECYCLE_TRANSITIONS[
+                "merge-ready"] and
             target == applied.get("batch")):
         return None
     return ("batch %s already has current-compatible unconsumed delta_apply "

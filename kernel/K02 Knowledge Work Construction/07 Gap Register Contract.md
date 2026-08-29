@@ -6,30 +6,13 @@
 
 ## Purpose And Ownership
 
-This module is the sole kernel owner of the exact record contract for the
-`Gap Register`. K02/03 owns its applicability, lifecycle, and reconciliation.
-K02/04 owns its runtime, audit, deterministic-check, receipt, and affected-path
-boundaries. The selected profile supplies its path; it does not redefine the
-record format below.
+This module owns the cross-instance meaning and lifecycle of the `Gap Register`. Its closed record shape is owned by the registered `gap-register` machine contract. K02/03 owns applicability and reconciliation; K02/04 owns audit and evidence-currentness boundaries. The selected Profile binds the instance path.
 
 ## Gap Register Contract
 
-The `Gap Register` owns the planning history of semantic gaps. A gap is a
-missing question, mechanism, relationship, or capability dependency, not a
-missing batch, stale receipt, or unchecked task box. Its restricted-YAML
-document has exactly `schema_version: 1` and `gaps`. Each gap record has
-exactly `gap_id`, `gap_statement`, `capability_ids`,
-`candidate_owner_entry_id`, `status`, `close_condition`, `evidence_paths`,
-`promoted_coverage_path`, and `rationale`.
+The `Gap Register` owns the planning history of semantic gaps. A gap is a missing question, mechanism, relationship, or capability dependency, not a missing batch, stale receipt, or unchecked task box. The `gap-register` machine contract is the sole normative source for record fields, closed values, cardinality, and serialization. This module does not repeat that contract in prose.
 
-`capability_ids` and `evidence_paths` are explicit YAML lists in every
-record, written as a list even when that list is empty. `capability_ids`
-carries at least one Capability ID and is never empty; `evidence_paths` is
-the one that may be empty, and the status vocabulary below states when a
-status requires evidence. `candidate_owner_entry_id` is either `null` or an
-existing Global Map Entry ID. `promoted_coverage_path` is `null` before promotion and equals the
-canonical Coverage object path after promotion. Evidence and promoted paths
-remain outside `.cambium/`.
+Every gap has a stable identity, a statement, at least one affected capability, an optional candidate Map owner, lifecycle status, close condition, evidence, promotion reference, and rationale. Evidence and promoted owners are corpus artifacts, not adopter runtime state.
 
 The status vocabulary and ownership boundary are:
 
@@ -47,20 +30,11 @@ candidate -> confirmed -> promoted -> resolved
 - `deferred`: an unpromoted candidate or confirmed gap is not admitted now; the rationale states why and what would re-open the decision.
 - `rejected`: an unpromoted candidate or confirmed item is judged not to be a corpus gap; the rationale preserves the decision.
 
-When a gap becomes `promoted`, Coverage owns its disposition and object state.
-Only a Required, unfinished promoted object enters the Required Queue; optional,
-deferred, or excluded Coverage does not acquire a fictitious Queue item. The
-register retains the stable ID, target, rationale, and status as planning
-history. A promoted row remains `promoted` until semantic resolution even when
-Coverage later defers or excludes its object; the register MUST NOT copy the Coverage disposition, batch assignment,
-Queue lifecycle, or receipts. Rejection, deferral, promotion, and resolution
-retain their reason; candidates MUST NOT disappear silently.
-No free-form sections or additional fields are permitted.
+When a gap becomes `promoted`, Coverage owns its disposition and object state. Only a Required, unfinished promoted object enters the Required Queue; optional, deferred, or excluded Coverage does not acquire a fictitious Queue item. The register retains the stable ID, target, rationale, and status as planning history. A promoted row remains `promoted` until semantic resolution even when Coverage later defers or excludes its object; the register MUST NOT copy the Coverage disposition, batch assignment, Queue lifecycle, or receipts. Rejection, deferral, promotion, and resolution retain their reason; candidates MUST NOT disappear silently. Additional fields or free-form sections are invalid unless the machine contract is revised through Standards governance.
 
 ## Related
 
 - [[kernel/K02 Knowledge Work Construction/03 Corpus Planning Applicability and Lifecycle|Corpus Planning Applicability and Lifecycle]]
 - [[kernel/K02 Knowledge Work Construction/04 Corpus Planning Runtime Audit and Gate Boundaries|Corpus Planning Runtime Audit and Gate Boundaries]]
-- [[kernel/Read Sets/R13 Corpus Planning Read Set|R13 Corpus Planning]]
 - [[kernel/K02 Knowledge Work Construction/01 Inventory and Coverage Ledger|Inventory and Coverage Ledger]]
 - [[kernel/K13 Task Runtime and Execution Control/08 Required Queue Contract and Lifecycle|Required Queue Contract and Lifecycle]]

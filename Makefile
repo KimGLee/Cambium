@@ -29,11 +29,10 @@ help:
 	@echo ""
 	@echo "PYTHON=$(PYTHON)  PROFILE=$(PROFILE)  TEST_PATTERN=$(TEST_PATTERN)"
 
-# Every gate that decides whether the distribution is internally consistent.
-# stamp_cards --check covers Card synchronisation, the Card/Read Set skeleton
-# contract, Card gate commands against each tool's argparse contract, Read Set
-# boundary coverage of every leaf, the leaf size budget, and the Stable Gate ID
-# Registry producer table.
+# Distribution verification runs repository-engineering preflights alongside
+# adopter Gate producers. stamp_cards --check covers curated Card currentness
+# and the Card/Read Set machine contracts; check_kernel_size independently
+# covers the Tool-owned Kernel leaf-size policy. Neither is a Kernel Gate.
 #
 # compile_cli_contract --check covers Tools/compiled/cli-contract.yaml, the
 # compiled statement of every tool's argparse calling contract plus the closed
@@ -61,6 +60,7 @@ help:
 check:
 	PYTHONDONTWRITEBYTECODE=1 $(PYTHON) .github/scripts/ci_impact.py validate --root .
 	PYTHONDONTWRITEBYTECODE=1 $(PYTHON) Tools/check_links.py .
+	PYTHONDONTWRITEBYTECODE=1 $(PYTHON) Tools/check_kernel_size.py .
 	PYTHONDONTWRITEBYTECODE=1 $(PYTHON) Tools/stamp_cards.py . --check
 	PYTHONDONTWRITEBYTECODE=1 $(PYTHON) Tools/metadata_execution_contract.py --root . --check
 	PYTHONDONTWRITEBYTECODE=1 $(PYTHON) Tools/compile_cli_contract.py . --check --projection-target source-distribution

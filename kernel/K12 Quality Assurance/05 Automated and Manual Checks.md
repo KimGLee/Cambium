@@ -25,25 +25,43 @@ An admitted check enters through the [[kernel/K00 Standards Control/12 Control R
 
 ## Domain-specific Checks
 
-The following domain-specific check items run only on the changed / invalidated scope:
+The sole machine list for an ordinary batch's changed-scope obligations is [`changed-scope-check-registry.yaml`](changed-scope-check-registry.yaml). Its rows freeze applicability, producer, evidence, dimension, consumer, and due stage. These bullets explain boundaries only: omitted prose does not remove a row, and prose absent from the registry is not an AuditPlan obligation.
 
-- `unclassified_guidance`, `accepted_unmapped_guidance`, and `implemented_unverified_guidance` checks.
-- Checks for `unassessed`, Required gaps with no next batch, and deferred/excluded without a reason.
-- Checks for empty files and extremely short core/process/system files; results serve only as review candidates and do not fail automatically.
-- Missing Sources, Related, and metadata checks run as the advisory `page-contract` gate owned by [[kernel/K08 Metadata and Status/06 Frontmatter Applicability Contract|K08/06]]; a missing `Related` is never reported ([[kernel/K09 Wiki Link and Navigation/04 MOC Related and Link Creation|K09/04]]), and claim support stays with [[kernel/K07 Sources and Accuracy Standard|K07]] review below — never a second sources tool. Checks of profile-owned expression links, extension metadata, or other profile predicates are registered by the `Registered Scan Registry`; the kernel does not name concrete implementations.
-- Frontmatter controlled vocabulary validation is performed by `check_vocab`; its input MUST be composed from the kernel base vocabulary and the selected profile's `Vocabulary Extensions`. The vault-wide run at batch close is item 7 of the [[kernel/K12 Quality Assurance/09 Batch-close Closed List#Batch-close Closed List|Batch-close Closed List]]; here only the changed-scope self-check is done.
+Candidate rows can open review scope but cannot fail it directly. Maintenance, Standards-governance, and Terminal checks stay outside this base. Profile checks enter only through `k12-05-registered-scan` and remain Profile-owned.
+
+- Empty- and short-file scans produce candidates only; a Tool cannot invent a threshold, unit, or applicable page set.
+- Missing Sources, Related, and metadata belong to the advisory `page-contract` Gate under [[kernel/K08 Metadata and Status/06 Frontmatter Applicability Contract|K08/06]]. Missing `Related` is not reported ([[kernel/K09 Wiki Link and Navigation/04 MOC Related and Link Creation|K09/04]]), while claim support remains [[kernel/K07 Sources and Accuracy Standard|K07]] review.
+- Frontmatter controlled vocabulary validation is performed by the
+  `frontmatter-vocabulary` Gate over the Kernel base vocabulary and selected
+  Profile extensions. The vault-wide run at batch close is item 7 of the
+  [[kernel/K12 Quality Assurance/09 Batch-close Closed List#Batch-close Closed List|Batch-close Closed List]];
+  here only the changed-scope self-check is done.
 - Candidate scans for the `Language Contract` or other profile contracts are activated by the admitted selected Profile's `Registered Scan Registry`; the kernel only requires that a scan declare its scope, candidate boundary, and acceptance owner. Registry and Profile-owned dependency resolution belongs to `profile-load`; the candidate scan consumes that contract and does not recreate it.
-- Checks for Source Notes missing source URL, date, evidence role, or affected notes.
-- Checks for Research Synthesis missing source set, disagreement, or graph decision.
-- Consistency checks between `evidence_maturity` and source-driven page types.
-- Consistency checks across Standard Module MOCs, leaf modules, and Read Set targets — the consistency of the MOC Module Index with the actual H2 headings is implemented as `Tools/check_moc.py` (candidates only); run in maintenance runs and governance tasks, not in batch checks.
-- Checks in Standards migration for owner uniqueness, omission, and duplication of the original content blocks.
-- Resolvability checks for selected Rxx route IDs and Runtime Card paths, Read Sets actually read back, any combined namespaced profile route, the loaded set, Standards version, and selected profile manifest in the Task Contract. The manifest and its typed Profile dependency closure are the separate `profile-load` Gate; closure members do not enter `loaded_module_paths` merely because the Profile linker resolved them.
-- Mermaid compile, asset path, deterministic rendering evidence, and `rendering_mode` enumeration checks.
-- Level 2–4 records MUST include visual trigger, unresolved question, target, and result; a batch without a trigger requires no visual evidence.
-- Cross-file duplicate block detection — run a paragraph-level similarity scan with `Tools/duplicate_check.py`; similar paragraph pairs are reported as candidates, with manual judgment on whether they violate the [[kernel/K00 Standards Control/11 Standards Map and Rule Registry#Cross-domain Rule Registry|Cross-domain Rule Registry]]. Run only in maintenance runs and governance tasks; at the batch level only the basename-level detection in the Closed List is kept.
-- Terminal Proof completeness and zero-value condition validation (canonical definition in [[kernel/K12 Quality Assurance/16 Terminal Proof Contract#Terminal Proof Contract|Terminal Proof Contract]]) — implemented as `Tools/check_proof.py`; terminal mode reconciles the frozen Standards version and selected Profile against the canonical adopter Standards state and Progress Ledger, and MUST reconcile Required gaps with the current Coverage Ledger.
-- Knowledge freshness check — `Tools/check_freshness.py` computes `review_by` only from a temporally valid baseline and resolved volatility, and outputs the complete freshness candidate set for maintenance runs. That set is not limited to overdue pages: it preserves content-modified-since-review, awaiting-first-verification, invalid or future explicit event, invalid or unresolved volatility, and unparseable-frontmatter candidates. Maintenance-run only; not run in batch checks. Freshness semantics and the closed-world pass rule are owned by [[kernel/K08 Metadata and Status/05 Review Source and Migration Metadata|Review Source and Migration Metadata]]; fusion and budget order are owned by [[kernel/K00 Standards Control/08 Maintenance Run Envelope|Maintenance Run Envelope]].
+- Template fields become required only through the K08 applicability contract; evidence/claim/page-type consistency remains semantic review unless an exact predicate is registered.
+- Consistency checks across Standard Module MOCs, leaf modules, and registered
+  navigation targets. The `standards-moc-consistency` candidate scan runs only
+  in maintenance and Standards-governance tasks, not batch checks.
+- Standards-migration conservation is not inferred for ordinary batches.
+- Machine-checkable references frozen by the Task Contract are validated by
+  the capability registered for their canonical component contract. Profile
+  manifest identity and its typed dependency closure are validated separately
+  by the `profile-load` Gate; resolving that closure does not prove that an
+  unrelated loading or delivery obligation was fulfilled.
+- Rendering follows [[kernel/K12 Quality Assurance/02 Rendering Verification|K12/02]]: only its admitted predicates enter the base, its dimensions stay distinct, and its mode record does not prove those predicates passed.
+- Cross-file duplicate-block detection is a registered candidate capability;
+  semantic review decides whether similar paragraphs violate the
+  [[kernel/K00 Standards Control/11 Standards Map and Rule Registry#Cross-domain Rule Registry|Cross-domain Rule Registry]].
+  It runs only in maintenance and governance tasks; batch close retains only
+  the basename candidate member.
+- `terminal-proof` validates Terminal Proof completeness and zero-value
+  conditions under the contract in K12/16, reconciling the frozen Standards,
+  selected Profile, runtime state, and remaining Required gaps.
+- `knowledge-freshness` computes `review_by` only from a temporally valid
+  baseline and resolved volatility, and emits the complete maintenance
+  candidate set. Freshness semantics and closed-world pass are owned by
+  [[kernel/K08 Metadata and Status/05 Review Source and Migration Metadata|K08/05]];
+  fusion and budget order are owned by
+  [[kernel/K00 Standards Control/08 Maintenance Run Envelope|K00/08]].
 
 Profile-registered automated checks may produce results only within their registered candidate boundary and acceptance predicate; candidate scans MUST NOT fail items directly. No automated check can replace content review.
 

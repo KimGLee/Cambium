@@ -120,10 +120,8 @@ FILL = [
      "| `emits` | `profiles/fill-e2e/registries/audit-dimensions.md#Residual "
      "Disposition` |\n\n## Residual Disposition"),
     ("registries/audit-dimensions.md",
-     "TODO(profile) — state, in two or three sentences, what the registered "
-     "scan's\ncandidates mean for this corpus and the two or three legal ways "
-     "a candidate is\nresolved (moved into its accepted root, or the page "
-     "states why this structure\nis canonical here).",
+     "TODO(profile) — define what a reported candidate means for this "
+     "repository and which stable dispositions are acceptable.",
      "The registered scan reports canonical notes that still carry "
      "dated-scratch structure outside `Notes/Daily Log`. Each candidate is "
      "resolved one of two ways, recorded on the candidate page: the scratch "
@@ -131,18 +129,31 @@ FILL = [
      "why that structure is the canonical form for this note."),
     ("registries/registered-scans.md",
      "| TODO(profile) | `K12/09 item 6 — residual-content scan` "
-     "| TODO(profile) | TODO(profile) | TODO(profile) | TODO(profile) |",
+     "| TODO(profile) | `residual-content-scan-v1` "
+     "| `scan-configs/residual-scan.yaml` "
+     "| TODO(profile) | TODO(profile) |",
      "| `fill-e2e-scratch-residuals` | `K12/09 item 6 — residual-content "
-     "scan` | Run from the vault root, passed as `.`; the profile-owned "
+     "scan` | Run from the vault root; the profile-owned "
      "configuration accepts `Notes/Daily Log` as the only root where "
-     "dated-scratch structure belongs. | `python3 "
-     "Tools/check_residual_content.py . --scan-id fill-e2e-scratch-residuals "
-     "--config profiles/fill-e2e/scan-configs/residual-scan.yaml "
-     "--time-limit 55` | A Markdown file outside `Notes/Daily Log` is a "
+     "dated-scratch structure belongs. | `residual-content-scan-v1` "
+     "| `profiles/fill-e2e/scan-configs/residual-scan.yaml` "
+     "| A Markdown file outside `Notes/Daily Log` is a "
      "candidate when it declares `type: daily-log`, carries a `Daily Log "
      "Entry` heading, or carries at least two distinct dated-scratch sorting "
      "headings. Candidate-only; adjudication belongs to "
      "`fill-e2e-residual-disposition`. | `fill-e2e-residual-disposition` |"),
+    ("registries/roles.md", "| `proposer` | TODO(profile) |",
+     "| `proposer` | `fill-e2e-agent` |"),
+    ("registries/roles.md", "| `gatekeeper` | TODO(profile) |",
+     "| `gatekeeper` | `fill-e2e-maintainer` |"),
+    ("registries/roles.md", "| `executor` | TODO(profile) |",
+     "| `executor` | `fill-e2e-agent` |"),
+    ("registries/roles.md", "| `stopper` | TODO(profile) |",
+     "| `stopper` | `fill-e2e-maintainer` |"),
+    ("registries/roles.md", "| `knowledge-host` | TODO(profile) |",
+     "| `knowledge-host` | Markdown repository tree |"),
+    ("registries/roles.md", "| `knowledge-host UI` | TODO(profile) |",
+     "| `knowledge-host UI` | None — headless |"),
 ]
 
 SCAN_CONFIG = """# Machine matching parameters for the fill-e2e scratch-residual scan.

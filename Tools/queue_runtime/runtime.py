@@ -5,7 +5,7 @@ state and returns the authorized runtime result without writing anything,
 plus the build-completion predicate asked of that result.
 
 This module has seventeen in-package dependencies and is where a new section
-validator naturally lands.  That accretion is the thing K00/18 was written
+validator naturally lands. That accretion is what the Tool module boundary was written
 against, so a change that adds an out-edge here without adding a submodule is
 a change that should have to be argued.
 """
@@ -13,8 +13,12 @@ a change that should have to be argued.
 import os
 import sys
 
+import coverage_contract
 import kblib
 import maintenance_candidates
+import runtime_paths
+import runtime_state_contract
+import work_spec_contract
 
 from queue_runtime.adoption import standards_adoption_errors
 from queue_runtime.amendments import (
@@ -103,8 +107,8 @@ from queue_runtime.work_spec import work_spec_errors
 REQUIRED_ITEM_FIELDS = (
     "id", "family", "order", "record_count", "manifest", "source_route",
     "execution_mode", "depends_on", "confirmation_required", "state",
-    "hold_state", "work_spec_path", "work_spec_sha256",
-)
+    "hold_state",
+) + tuple(sorted(work_spec_contract.WORK_SPEC_BINDING_FIELDS))
 QUEUE_ITEM_FIELDS = frozenset(REQUIRED_ITEM_FIELDS + (
     "transition_receipts", "opened_at", "activation_receipt",
     "confirmation_receipt", "merge_ready_at", "delta_path",
@@ -123,11 +127,7 @@ QUEUE_TOP_LEVEL_FIELDS = frozenset((
     "state_revision", "standards_version", "selected_profile_manifest",
     "required_queue",
 ))
-COVERAGE_TOP_LEVEL_FIELDS = frozenset((
-    "schema_version", "task_id", "updated_at", "scope_version",
-    "standards_version", "selected_profile_manifest", "batch_specs",
-    "maintenance_candidates", "pages", "open_gaps",
-))
+COVERAGE_TOP_LEVEL_FIELDS = coverage_contract.COVERAGE_TOP_LEVEL_FIELDS
 PROGRESS_TOP_LEVEL_FIELDS = frozenset((
     "schema_version", "task_id", "task_state", "required_queue_path",
     "queue_revision", "queue_state_revision", "required_queue_sha256",
@@ -153,7 +153,8 @@ def validate_runtime(root, allowed_open_delta=None,
                      active_standards_state_override=None,
                      authorized_profile_view=None,
                      authorized_active_standards_view=None,
-                     *, gate_evidence_errors):
+                     *, gate_evidence_errors,
+                     producer_era_load_contract_after=None):
     """Return a validation result dict without writing any state.
 
     Full ``profile-load`` is part of the default runtime invariant, so every
@@ -176,6 +177,10 @@ def validate_runtime(root, allowed_open_delta=None,
     if type(allow_active_standards_mismatch_for_adoption) is not bool:
         raise TypeError(
             "allow_active_standards_mismatch_for_adoption must be boolean")
+    if (producer_era_load_contract_after is not None and
+            not isinstance(producer_era_load_contract_after, dict)):
+        raise TypeError(
+            "producer_era_load_contract_after must be a mapping")
     if (active_standards_state_override is not None and
             (not isinstance(active_standards_state_override, str) or
              state_overrides is None)):
@@ -235,6 +240,12 @@ def validate_runtime(root, allowed_open_delta=None,
         raise ValueError(
             "active Standards mismatch escape cannot validate proposed state, "
             "pending receipts, or an injected after-image Profile view")
+    if (producer_era_load_contract_after is not None and
+            (not allow_invalid_current_profile_for_corrective_adoption or
+             not allow_active_standards_mismatch_for_adoption)):
+        raise ValueError(
+            "producer-era load path projection is restricted to the "
+            "persisted Standards adoption before-image")
     root = os.path.realpath(os.path.abspath(root))
     errors = []
     writer_lock_records = _writer_locks(root, errors)
@@ -333,8 +344,7 @@ def validate_runtime(root, allowed_open_delta=None,
                     ", ".join(missing_candidates)
                 )
 
-    for key in ("task_id", "scope_version", "standards_version",
-                "selected_profile_manifest"):
+    for key in runtime_state_contract.RUNTIME_CONTROL_IDENTITY_FIELDS:
         qvalue = queue.get(key)
         cvalue = coverage.get(key)
         pvalue = identity(progress, key, nested=(key not in ("task_id",)))
@@ -670,7 +680,8 @@ def validate_runtime(root, allowed_open_delta=None,
                 disposition = records[object_path].get("coverage_disposition")
                 cancellation_staging = (
                     item_id == allowed_cancellation_id and
-                    item.get("state") in ("queued", "open")
+                    item.get("state") in
+                    runtime_state_contract.BATCH_CANCELLATION_SOURCE_STATES
                 )
                 if (item.get("state") != "cancelled" and
                         not cancellation_staging and
@@ -788,7 +799,7 @@ def validate_runtime(root, allowed_open_delta=None,
     # hand-edited state must prove that every batch which ever crossed into
     # execution had all of its declared dependencies closed.
     for item_id, item in items_by_id.items():
-        if item.get("state") not in ("open", "merge-ready", "closed"):
+        if item.get("state") not in runtime_state_contract.QUEUE_STARTED_STATES:
             continue
         for dep in item.get("depends_on", []):
             dependency = items_by_id.get(dep)
@@ -813,9 +824,12 @@ def validate_runtime(root, allowed_open_delta=None,
             continue
         assigned = [items_by_id[batch_id] for batch_id in assignments.get(object_path, [])
                     if batch_id in items_by_id]
-        unfinished = [item for item in assigned
-                      if item.get("state") in ("queued", "open") and
-                      item.get("id") != allowed_cancellation_id]
+        unfinished = [
+            item for item in assigned
+            if (item.get("state") in
+                runtime_state_contract.QUEUE_NONTERMINAL_STATES and
+                item.get("id") != allowed_cancellation_id)
+        ]
         next_batch = record.get("next_batch")
         if unfinished:
             if not nonempty_string(next_batch):
@@ -832,21 +846,24 @@ def validate_runtime(root, allowed_open_delta=None,
     # mismatched handoffs fail closed.  update_queue may name the same open
     # Delta so its admission path can return the more specific policy error.
     # Once merge-ready, the Queue's frozen path and SHA remain authoritative.
-    delta_dir = os.path.join(root, ".cambium", "deltas")
+    delta_dir = os.path.join(root, runtime_paths.DELTA_ROOT)
     delta_by_batch = {}
     managed_deltas = []
     if os.path.lexists(delta_dir):
         try:
             delta_real = os.path.realpath(delta_dir)
             if os.path.commonpath((root, delta_real)) != root:
-                errors.append(".cambium/deltas resolves outside repository root")
+                errors.append("%s resolves outside repository root" %
+                              runtime_paths.DELTA_ROOT)
             elif not os.path.isdir(delta_dir):
-                errors.append(".cambium/deltas must be a directory")
+                errors.append("%s must be a directory" %
+                              runtime_paths.DELTA_ROOT)
             else:
                 for name in sorted(os.listdir(delta_dir)):
                     if not name.endswith((".yaml", ".yml")):
                         continue
-                    relative = ".cambium/deltas/%s" % name
+                    relative = runtime_paths.child_path(
+                        runtime_paths.DELTA_ROOT, name)
                     full = os.path.join(delta_dir, name)
                     if not os.path.isfile(full) or os.path.islink(full):
                         errors.append("managed delta is not a regular in-repository file: %s" %
@@ -910,15 +927,17 @@ def validate_runtime(root, allowed_open_delta=None,
                     elif state in ("queued", "cancelled"):
                         errors.append("unapplied delta %s exists for %s batch %s" %
                                       (relative, state, batch_id))
-                    if state in ("merge-ready", "closed") and \
-                            item.get("delta_path") != relative:
+                    if (state in
+                            runtime_state_contract.QUEUE_DELTA_BOUND_STATES and
+                            item.get("delta_path") != relative):
                         errors.append("%s batch %s delta_path does not identify %s" %
                                       (state, batch_id, relative))
         except (OSError, ValueError) as exc:
-            errors.append("cannot inventory .cambium/deltas: %s" % exc)
+            errors.append("cannot inventory %s: %s" %
+                          (runtime_paths.DELTA_ROOT, exc))
 
     for item_id, item in items_by_id.items():
-        if item.get("state") in ("merge-ready", "closed"):
+        if item.get("state") in runtime_state_contract.QUEUE_DELTA_BOUND_STATES:
             delta_path = item.get("delta_path")
             if delta_by_batch.get(item_id) != delta_path:
                 errors.append("%s batch %s has no matching managed delta" %
@@ -1033,7 +1052,8 @@ def validate_runtime(root, allowed_open_delta=None,
                     "%s: manifest page(s) cannot be classified against K13/10 "
                     "hub roles: %s" %
                     (item_id, ", ".join(hub["unresolved"])))
-        if task_state not in ("planned", "active"):
+        if (task_state not in
+                runtime_state_contract.BATCH_ACTIVATION_TASK_STATES):
             reasons.append("task_state=%s forbids activation" % task_state)
         pending_amendments = pending_cross_ledger_amendments(progress)
         if pending_amendments:
@@ -1066,7 +1086,7 @@ def validate_runtime(root, allowed_open_delta=None,
                     if item.get("state") not in TERMINAL_STATES)
     started = sorted(item_id for item_id, item in items_by_id.items()
                      if item.get("state") in
-                     ("open", "merge-ready", "closed"))
+                     runtime_state_contract.QUEUE_STARTED_STATES)
     if task_state == "planned" and started:
         errors.append("Progress task_state=planned but lifecycle has started "
                       "for batch(es) %s" % ", ".join(started))
@@ -1077,6 +1097,8 @@ def validate_runtime(root, allowed_open_delta=None,
         root, progress, catalog, queue, queue_sha, coverage_sha, progress_sha,
         remaining, items_by_id,
         coverage,
+        producer_era_load_contract_after=
+            producer_era_load_contract_after,
     )
     errors.extend(task_errors)
     # Derive the requirements map once from this validation's Progress view
@@ -1113,7 +1135,7 @@ def validate_runtime(root, allowed_open_delta=None,
             rollback_exception = (
                 item.get("state") == "merge-ready" and
                 batch_id == allow_standards_rollback_batch)
-            if (item.get("state") in ("open", "merge-ready") and
+            if (item.get("state") in ACTIVE_STATES and
                     not rollback_exception):
                 errors.append(barrier)
     applied_delta_receipts = []

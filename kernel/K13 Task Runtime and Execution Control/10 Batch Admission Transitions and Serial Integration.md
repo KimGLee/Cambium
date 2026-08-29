@@ -6,53 +6,56 @@
 
 ## Concurrent Batches
 
-Batches may execute concurrently by default; the cap is controlled by the contract's `concurrency_cap` field. `3` is the kernel default; the selected profile manifest or task contract MAY explicitly override it, and the resolved cap MUST be recorded at runtime. It bounds concurrently open batches, not the number of agents a runtime uses. Before Batch B changes from `queued` to `open`, the integrator runs `Tools/check_queue.py . --require-ready <batch-id>`. B MAY be activated while other batches are open if and only if all of the following hold:
+Batches may execute concurrently under the resolved Contract concurrency cap. The Kernel default is three open batches; a selected Profile or Task Contract may explicitly override it. The cap limits concurrently open batches, not the number of execution contexts a Host uses.
 
-1. B's frozen Queue manifest is disjoint from the manifests of all open batches, and each manifest exactly matches the Coverage `batch` / `next_batch` projection.
-2. B does not edit control or hub pages, including kernel Runtime Cards, MOCs, the Overview, shared terminology pages, and pages bound by the `Expression Layer Entry` or other profile-registered hub roles. Hub page synchronization is performed by the integrator as a separate small step after that batch's serial merge completes and before the next batch's merge begins; this content-editing action is not part of the serial zone's deterministic action list.
-3. Every Queue dependency of B is `closed`; B does not depend on pages of in-flight batches.
+A queued batch may open concurrently only when:
 
-The machine-decidable members of condition 2's page set come from metadata that already exists: a page whose frontmatter carries `type: overview`, `runtime-card`, or `card-index`; a page carrying `type: term` with `scope: shared`; and any page the selected profile's `Expression Layer Entry` registers as a canonical dependency map. "Other profile-registered hub roles" remains in force, but no profile slot registers one today, so that clause currently contributes no page and is a future extension point. Editing and creating differ: an existing hub page in the frozen manifest blocks concurrent activation and takes the exclusive or `serial-integrator` route below, while a hub page this batch creates does not block it and is reported as a candidate for that batch's hub synchronization step.
+- its frozen manifest is disjoint from every open manifest and agrees exactly
+  with Coverage projection;
+- it does not modify a registered control, navigation hub, shared terminology
+  owner, or other exclusive integration owner;
+- every Queue dependency is closed and it does not depend on in-flight pages;
+- a complex batch has a current Work Spec matching its exact batch and ordered
+  manifest;
+- confirmation and any other admission preconditions are satisfied.
 
-Condition 2 is time-invariant, and its reporting reflects that. Whether a queued batch's manifest edits an existing hub page does not depend on which batch is being admitted, how many batches are active, or what has closed since — the answer is the same at every moment until a structural Amendment changes the batch's `execution_mode`. Reported only through readiness, such a batch looks merely "not yet turn" and the defect stays invisible until it reaches the head of the Queue, so a whole mis-specified family is rediscovered one batch at a time. The consistency mode therefore reports every queued batch that fails condition 2 as a candidate over the whole Queue, naming the batch, the hub pages, and the current mode. It stays a candidate rather than an error because the repair is an Amendment and the Amendment tools refuse to run against a runtime carrying errors: a hard failure would wedge the instance out of its own repair path. The other admission conditions stay readiness-only, because each of them is a statement about *now* — a dependency not yet closed, a cap currently reached, a manifest currently overlapping active work — and becomes true or false as the run proceeds.
+The hub/control set is supplied by canonical machine metadata and selected Profile extension bindings; this module does not hardcode current repository types or infer future roles. Editing an existing exclusive owner requires exclusive or `serial-integrator` execution. Creating a new future hub does not retroactively make its pre-creation path shared, but it must be surfaced for post-merge synchronization.
 
-For a complex batch, readiness additionally requires a current Work Spec
-whose batch ID and ordered manifest equal B. It narrows instructions after
-activation but cannot enlarge the manifest or override governing state.
+Migration and refactor batches that necessarily cross owner partitions are exclusive. While one is open, no other batch opens.
 
-Card delivery and read-back follow [[kernel/K13 Task Runtime and Execution Control/19 Card Context Activation and Read-back Delivery|K13/19]]; `open` remains admission.
+A concurrent worker may write only its frozen manifest objects, its own execution evidence, and its exact batch Delta. Canonical Coverage, Queue, Progress, Amendment, and maintenance state remain integrator-owned. The registered Coverage-delta machine contract owns Delta shape and serialization.
 
-Migration or refactor batches necessarily edit hub pages and cross-batch pages, do not meet concurrency admission, and MUST use an exclusive or `serial-integrator` execution mode; while such a batch is open, no other batch is activated.
+Card delivery and read-back follow K13/19; Queue `open` remains admission rather than proof that a worker received, read, or understood context.
 
-Write partition: a concurrent batch writes only three places — the pages in its own manifest, its own directory under `.cambium/receipts/`, and its own delta file `.cambium/deltas/<batch>.yaml`, whose schema is at `Tools/schemas/coverage_delta.template.yaml`. That file is the batch's **Delta**: the record of the changes the batch produced, written by the worker and applied by the integrator at close. Every file under `.cambium/state/`, plus the Amendment Log and watermark, is writable only by the integrator.
+## Serial Integration
 
-Batch close has two phases: after in-batch work completes in parallel, the integrator verifies the `merge-ready` preconditions, records the current K12/14 `batch-review` gate that binds the exact Delta page receipt-ID set, projects that exact Delta over Coverage to prove the K13/08 routed-gap obligations settle, and records `open -> merge-ready` with the review and settlement bindings as transition evidence; in-batch work includes writing, the `--scope` self-check, all review receipts present, completion of the K12/14 in-batch items, and the exact-manifest delta written out. Historical page evidence remains reusable while valid, but it cannot authorize the transition without this current wrapper. The integrator then merges batches serially one by one: apply the delta through canonical `Tools/apply_delta.py --root`, which repeats the prospective settlement proof; make the close producer verify zero landed routed gaps before running the [[kernel/K12 Quality Assurance/09 Batch-close Closed List#Batch-close Closed List]] against the merged full snapshot; verify the K12/14 global items; obtain a current Queue consistency receipt and any conditionally required Corpus Planning child receipt; and record `merge-ready -> closed` through `Tools/update_queue.py`. The close transition derives the Coverage `next_batch` projection and synchronizes the Progress Queue reference under the shared write lock. Each serial merge handles exactly one batch; the sequence is guarded and recoverable but is not misrepresented as one filesystem-atomic operation.
+Batch close has two distinct evidenced boundaries:
 
-Known exceptions to the serial zone keep an explicit registration mechanism; the current register is empty.
+1. The merge-readiness boundary consumes the current K12/14 `batch-review`
+   wrapper, exact Delta and page evidence, and prospective zero-unsettled
+   K13/08 reference settlement.
+2. The integrator applies that exact Delta, proves landed zero-unsettled
+   references, runs the K12/09 Closed List and K12/14 global items, consumes
+   current Queue consistency and any applicable Corpus Planning evidence, and
+   records the registered close transition.
 
-The control plane is always executed single-threaded by the integrator, including guidance disposition, Queue structural revision, Queue state transition, contract changes, Standards adoption, batch activation, and merging. Workers submit deltas; they never change Queue state. Stall alarms are timed per batch.
+Each serial integration handles exactly one batch. Delta application and Queue close are ordered, independently evidenced writes; they are not represented as one atomic object. Interruption must be recoverable without inferring which boundary completed.
+
+The control plane is single-threaded under the integrator role, including Guidance disposition, structural revision, lifecycle transitions, Contract changes, Standards adoption, batch activation, and merge. Workers submit Deltas and never change Queue state.
 
 ## Transition Gates
 
-Only the integrator changes Queue lifecycle/holds via `Tools/update_queue.py`,
-with expected revisions/SHA under the shared lock. Such writes and canonical
-delta application require task state `active`; the first activation atomically
-uses the task-state owner to change `planned -> active`. Workers write only
-manifest objects, their receipts, and `.cambium/deltas/<batch-id>.yaml`.
+Only the registered Queue transaction changes lifecycle or holds, and only the registered Coverage-delta transaction changes canonical Coverage. Except for the first atomic activation from `planned`, these writes require task state `active`.
 
-| Transition | Required evidence |
+Exact edge membership and its division between the ordinary Queue writer, Amendment cancellation writer, and historical replay protocol are owned only by [`runtime-state-model.json`](runtime-state-model.json). The operation categories below specify the evidence attached when the registry authorizes a corresponding edge; they do not create an edge or form a second edge catalog.
+
+| Operation boundary | Required observable evidence |
 |---|---|
-| `queued -> open` | current `--require-ready` receipt; closed dependencies; bound confirmation when required; valid current Work Spec pair when non-null; disjoint active manifest; concurrency/exclusivity satisfied |
-| `open -> merge-ready` | exact-manifest delta; valid page receipts and scoped checks; one current K12/14 `batch-review` wrapper binding their exact IDs; prospective K13/08 routed-gap settlement is zero and bound to the exact Delta/Coverage bytes |
-| `merge-ready -> closed` | delta applied with the same settlement binding; landed Coverage has zero gaps routed to the batch; global gates and Coverage/Queue reconciliation passed; current consistency and batch-close receipts bind the recomputed repository snapshot; when R13 is selected or the manifest intersects the validator-parsed Corpus Planning affected set, the close bundle contains a distinct current Corpus Planning child receipt |
-| `merge-ready -> open` | failed merge; append-only `invalidation_history` freezes the archived delta SHA/path and invalidated receipts. Before the apply that is the whole record. After the apply the record also names the delta-apply receipt being undone and the byte-exact Coverage restore that undid it, read from the pre-apply Coverage archive the apply wrote; an absent or non-matching archive fails closed for manual recovery |
+| Initial batch admission | current `required-queue-admission`; closed dependencies; required confirmation; current Work Spec when bound; disjoint manifest and concurrency/exclusivity compliance |
+| Merge readiness | exact-manifest Delta; current page and scoped-check evidence; one current `batch-review` wrapper; zero prospective unsettled K13/08 references bound to exact Delta and Coverage bytes |
+| Serial close | exact Delta applied; zero landed unsettled references; Closed List and global review passed; current Queue consistency and batch-close evidence over one repository snapshot; any applicable Corpus Planning child evidence |
+| Invalidation rollback | recorded merge failure and immutable invalidation history binding the archived Delta, invalidated evidence, and any byte-exact Coverage restoration required by a prior apply |
 
-`Tools/update_queue.py` recomputes the Corpus Planning requirement from the
-current Progress route selection, Queue manifest, and validator-parsed explicit
-path projection before close and again under the writer lock. The close
-aggregator cannot turn the gate off by declaring `corpus_plan_required: false`,
-and a child whose Profile, Scope, slot, artifact, state, revision, or repository
-fingerprint is stale cannot authorize the transition.
+Corpus Planning applicability is resolved from the frozen Task Contract and validator-defined affected-path set, not trusted from a caller-provided boolean. Stale Profile, planning, state, Queue, or repository bindings cannot authorize close.
 
-`check_queue.py` solely gates Queue structure, cross-state agreement, readiness,
-Work Spec binding, evidence, revisions/SHA, concurrency, recovery, and terminal count.
+`required-queue-consistency` is the sole Gate for Queue structure, cross-state agreement, readiness, Work Spec binding, evidence, revisions and fingerprints, concurrency, recovery, and terminal work count.

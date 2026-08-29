@@ -5,7 +5,7 @@ task_transition_receipts: []
 required_queue_path: .cambium/state/required_queue.yaml
 queue_revision: 1
 queue_state_revision: 0
-required_queue_sha256: sha256:120a50599e26d9e7b58e0e251fc54a28fd11167abae4e0d732a57009445a2cf5
+required_queue_sha256: sha256:a856bedcb11fa28dcdae366910557228e1982b9a141e88af02927ec3f24f86fb
 initial_queue_receipt: audit-fixture-initial-queue
 contract:
   contract_version: c1
@@ -15,7 +15,7 @@ contract:
     - Do not modify profile policy.
   scope_version: s1
   concurrency_cap: 2
-  standards_version: 3.0.0
+  standards_version: 0123456789abcdef0123456789abcdef01234567
   selected_profile_manifest: profiles/test-profile/profile.md
   selected_route_ids: []
   selected_card_paths: []

@@ -5,6 +5,7 @@ run ``check_profile`` or batch close, so a consumer cannot accidentally make a
 weak parser look correct.
 """
 
+import copy
 import os
 from pathlib import Path
 import shutil
@@ -17,7 +18,9 @@ REPOSITORY = Path(__file__).resolve().parents[2]
 TOOLS = REPOSITORY / "Tools"
 sys.path.insert(0, str(TOOLS))
 
+import kblib
 import profile_contract
+import control_registry_contract
 
 
 EXTENSION_HEADER = (
@@ -34,9 +37,10 @@ JUDGMENT_HEADER = (
 )
 SCAN_HEADER = (
     "| Stable Scan ID | Activation role | Whole-corpus scope/root | "
-    "Deterministic verifier command/path | Candidate predicate/boundary | "
+    "Verifier capability ID | Profile configuration reference or `None` | "
+    "Candidate predicate/boundary | "
     "Judgment Item ID reference |\n"
-    "|---|---|---|---|---|---|\n"
+    "|---|---|---|---|---|---|---|\n"
 )
 GATE_HEADER = (
     "| " + " | ".join(profile_contract.EXTENSION_GATE_HEADER) + " |\n" +
@@ -83,10 +87,13 @@ class ProfileContractFixture:
         self.custom_tool = self.root / "Tools/custom_scan.py"
         self.bundled_tool = self.root / "Tools/check_residual_content.py"
         self.capabilities = self.root / "Tools/operation-capabilities.yaml"
+        self.scan_capabilities = self.root / profile_contract.SCAN_CAPABILITY_PATH
         self.write_defaults()
 
     def write_defaults(self):
         for relative in (
+                profile_contract.PROFILE_INTERFACE_PATH,
+                profile_contract.AUDIT_DIMENSION_BASE_PATH,
                 profile_contract.KERNEL_APPLICABILITY_PATH,
                 profile_contract.KERNEL_RELATIONSHIP_PATH):
             target = self.root / relative
@@ -114,6 +121,7 @@ class ProfileContractFixture:
         self.write_metadata()
         self.write_gates()
         self.write_capabilities()
+        self.write_scan_capabilities()
 
     def write_audit(self, *, registration="None", extension_rows="",
                     judgment_rows=None, extension_header=EXTENSION_HEADER,
@@ -134,15 +142,13 @@ class ProfileContractFixture:
             encoding="utf-8",
         )
 
-    def write_scans(self, command=None, rows=None, prefix="", suffix=""):
-        if command is None:
-            command = (
-                "python3 Tools/custom_scan.py . --scan-id sample-scan")
+    def write_scans(self, capability="custom-scan-v1", config="None",
+                    rows=None, prefix="", suffix=""):
         if rows is None:
             rows = (
                 "| `sample-scan` | `K12/09 item 6 — residual-content scan` | "
-                "Whole repository | `%s` | candidate-only | `sample-item` |\n"
-                % command
+                "Whole repository | `%s` | `%s` | candidate-only | "
+                "`sample-item` |\n" % (capability, config)
             )
         self.scans.write_text(
             "# Registered Scan Registry\n\n%s"
@@ -215,7 +221,7 @@ class ProfileContractFixture:
             "      - Tools/custom_scan.py\n"
             "    operations:\n"
             "      - operation: profile-extension-enum-owner-projection-v1\n"
-            "  - capability_id: metadata-transition-integrator-v1\n"
+            "  - capability_id: typed-metadata-transition-v1\n"
             "    kind: consumer\n"
             "    capability_version: 1.0.0\n"
             "    implementation_paths:\n"
@@ -248,6 +254,21 @@ class ProfileContractFixture:
             "    operations: []\n",
             encoding="utf-8")
 
+    def write_scan_capabilities(self):
+        self.scan_capabilities.parent.mkdir(parents=True, exist_ok=True)
+        self.scan_capabilities.write_text(
+            "schema_version: 1\n\n"
+            "capabilities:\n"
+            "  - capability_id: custom-scan-v1\n"
+            "    invocation_contract: profile-registered-scan-v1\n"
+            "    implementation_path: Tools/custom_scan.py\n"
+            "    configuration: none\n"
+            "  - capability_id: residual-content-scan-v1\n"
+            "    invocation_contract: profile-registered-scan-v1\n"
+            "    implementation_path: Tools/check_residual_content.py\n"
+            "    configuration: required\n",
+            encoding="utf-8")
+
     def gate_row(self, *, gate_id="P:sample:readiness",
                  owner="profiles/sample/predicate.md#Acceptance",
                  transition="readiness-promotion", role="stopper",
@@ -256,7 +277,7 @@ class ProfileContractFixture:
                  judgment="sample-item", producer_kind="manual-attestation",
                  producer_capability="manual-attestation-v1",
                  receipt_schema="manual-gate-attestation-v1",
-                 consumer_capability="metadata-transition-integrator-v1"):
+                 consumer_capability="typed-metadata-transition-v1"):
         return (
             "| `%s` | `%s` | `%s` | `%s` | %s | `%s` | `%s` | `%s` | "
             "`%s` | `%s` | `%s` | `%s` |\n" %
@@ -286,25 +307,34 @@ class AuthorizedContractTests(unittest.TestCase):
         self.assertEqual(str(self.fixture.root.resolve()), command[2])
         self.assertEqual(("--scan-id", "sample-scan"), command[3:])
 
-    def test_bundled_verifier_accepts_both_config_spellings(self):
-        for syntax in (
-                "--config profiles/sample/scan-configs/residual.yaml",
-                "--config=profiles/sample/scan-configs/residual.yaml"):
-            with self.subTest(syntax=syntax):
-                self.fixture.write_scans(
-                    "python3 Tools/check_residual_content.py . "
-                    "--scan-id sample-scan %s --time-limit 55" % syntax)
-                contract = self.fixture.load()
-                self.assertTrue(contract.authorized, contract.diagnostics)
-                self.assertEqual(
-                    "profiles/sample/scan-configs/residual.yaml",
-                    contract.required_scan.config_dependency.path)
+    def test_profile_interface_must_close_over_the_k12_registry_reference(self):
+        interface = (self.fixture.root /
+                     profile_contract.PROFILE_INTERFACE_PATH)
+        document = kblib.load_yaml_file(interface)
+        document["registry_references"]["audit_dimension_base"] = \
+            "kernel/K12 Quality Assurance/unknown.yaml"
+        kblib.atomic_write_yaml(interface, document)
+        contract = self.fixture.load()
+        checks = {item.check for item in contract.diagnostics}
+        self.assertIn("profile-contract-interface-invalid", checks)
+        self.assertTrue(any(
+            profile_contract.AUDIT_DIMENSION_BASE_PATH in item.details
+            for item in contract.diagnostics), contract.diagnostics)
+
+    def test_required_profile_configuration_is_resolved(self):
+        self.fixture.write_scans(
+            "residual-content-scan-v1",
+            "profiles/sample/scan-configs/residual.yaml")
+        contract = self.fixture.load()
+        self.assertTrue(contract.authorized, contract.diagnostics)
+        self.assertEqual(
+            "profiles/sample/scan-configs/residual.yaml",
+            contract.required_scan.config_dependency.path)
 
     def test_source_coordinates_and_typed_edges_are_preserved(self):
         self.fixture.write_scans(
-            "python3 Tools/check_residual_content.py . "
-            "--scan-id=sample-scan "
-            "--config=profiles/sample/scan-configs/residual.yaml")
+            "residual-content-scan-v1",
+            "profiles/sample/scan-configs/residual.yaml")
         contract = self.fixture.load()
         self.assertTrue(contract.authorized, contract.diagnostics)
         edges = {
@@ -318,6 +348,9 @@ class AuthorizedContractTests(unittest.TestCase):
         self.assertIn((
             "scan-config", "sample-scan", None,
             "profiles/sample/scan-configs/residual.yaml", None), edges)
+        self.assertIn((
+            "verifier-capability", "sample-scan", "residual-content-scan-v1",
+            "Tools/check_residual_content.py", None), edges)
         self.assertIn((
             "scan-judgment", "sample-scan", "sample-item", None, None),
             edges)
@@ -333,8 +366,7 @@ class AuthorizedContractTests(unittest.TestCase):
         second = self.fixture.load()
         self.assertRegex(first.fingerprint, r"^sha256:[0-9a-f]{64}$")
         self.assertEqual(first.fingerprint, second.fingerprint)
-        self.fixture.write_scans(
-            "python3 Tools/custom_scan.py . --scan-id wrong-id")
+        self.fixture.write_scans("unregistered-scan-v1")
         invalid = self.fixture.load()
         self.assertFalse(invalid.authorized)
         self.assertIsNone(invalid.fingerprint)
@@ -344,7 +376,6 @@ class AuthorizedContractTests(unittest.TestCase):
 
     def test_shipped_examples_link(self):
         for relative in (
-                "profiles/examples/minimal-notes/profile.md",
                 "profiles/examples/worked-planning/profile.md",
                 "profiles/examples/agent-atlas/profile.md"):
             with self.subTest(profile=relative):
@@ -603,20 +634,38 @@ class ExtensionGateContractTests(unittest.TestCase):
         self.assertIn("extension-gate-owner-heading-count",
                       self.checks(contract))
 
-        registry = (
-            self.fixture.root /
-            "kernel/K00 Standards Control/12 Control Registry.md")
-        registry.parent.mkdir(parents=True)
-        registry.write_text(
-            "# Control Registry\n\n## Stable Gate ID Registry\n\n"
-            "| Gate ID | Tool |\n|---|---|\n"
-            "| `known-gate` | `manual-attestation` |\n",
-            encoding="utf-8")
+        registry = (self.fixture.root /
+                    control_registry_contract.STANDARDS_GATE_REGISTRY_PATH)
+        registry.parent.mkdir(parents=True, exist_ok=True)
+        document = copy.deepcopy(kblib.load_yaml_file(
+            REPOSITORY /
+            control_registry_contract.STANDARDS_GATE_REGISTRY_PATH))
+        document["gates"].append({
+            "gate_id": "known-gate",
+            "tool": "uninstalled-producer",
+            "tool_version": "9.0.0",
+            "check": "known-check",
+            "mode": "*",
+            "dimensions": ["*"],
+            "lifecycle": ["not-batch-scoped"],
+            "revalidation_role": "unsupported",
+            "revalidation_owner": "none",
+            "claim_edge": "none",
+            "scope_protocol": "none",
+            "binding_protocol": "not-authorizing",
+        })
+        kblib.atomic_write_yaml(registry, document)
         known = self.configure_manual_gate(owner="known-gate")
         self.assertTrue(known.authorized, known.diagnostics)
         self.assertEqual("known-gate", known.extension_gates[0].owner_gate_id)
         unknown = self.configure_manual_gate(owner="missing-gate")
         self.assertIn("extension-gate-owner-reference", self.checks(unknown))
+
+        document["gates"][-1].pop("lifecycle")
+        kblib.atomic_write_yaml(registry, document)
+        malformed = self.configure_manual_gate(owner="known-gate")
+        self.assertIn(
+            "extension-gate-owner-registry", self.checks(malformed))
 
     def test_producer_receipt_and_consumer_capabilities_are_closed(self):
         cases = (
@@ -682,30 +731,24 @@ class PathClosureTests(unittest.TestCase):
     def setUp(self):
         self.fixture = ProfileContractFixture(self)
         self.fixture.write_scans(
-            "python3 Tools/check_residual_content.py . "
-            "--scan-id sample-scan "
-            "--config profiles/sample/scan-configs/residual.yaml")
+            "residual-content-scan-v1",
+            "profiles/sample/scan-configs/residual.yaml")
 
     def checks(self, contract):
         return {diagnostic.check for diagnostic in contract.diagnostics}
 
-    def test_foreign_config_is_rejected_for_both_option_spellings(self):
+    def test_foreign_config_is_rejected(self):
         foreign = self.fixture.root / "profiles/foreign/config.yaml"
         foreign.parent.mkdir()
         foreign.write_text("schema_version: 1\n", encoding="utf-8")
-        for argument in (
-                "--config profiles/foreign/config.yaml",
-                "--config=profiles/foreign/config.yaml"):
-            with self.subTest(argument=argument):
-                self.fixture.write_scans(
-                    "python3 Tools/check_residual_content.py . "
-                    "--scan-id sample-scan %s" % argument)
-                contract = self.fixture.load()
-                self.assertIn("scan-config-path-outside-profile",
-                              self.checks(contract))
-                self.assertIn("profiles/foreign/config.yaml",
-                              profile_contract.format_diagnostics(
-                                  contract.diagnostics))
+        self.fixture.write_scans(
+            "residual-content-scan-v1", "profiles/foreign/config.yaml")
+        contract = self.fixture.load()
+        self.assertIn("scan-config-path-outside-profile",
+                      self.checks(contract))
+        self.assertIn("profiles/foreign/config.yaml",
+                      profile_contract.format_diagnostics(
+                          contract.diagnostics))
 
     def test_noncanonical_config_spellings_are_rejected(self):
         values = (
@@ -717,8 +760,7 @@ class PathClosureTests(unittest.TestCase):
         for value in values:
             with self.subTest(value=value):
                 self.fixture.write_scans(
-                    "python3 Tools/check_residual_content.py . "
-                    "--scan-id sample-scan --config %s" % value)
+                    "residual-content-scan-v1", value)
                 contract = self.fixture.load()
                 self.assertIn("scan-config-path-invalid",
                               self.checks(contract), contract.diagnostics)
@@ -732,17 +774,15 @@ class PathClosureTests(unittest.TestCase):
         ):
             with self.subTest(value=value):
                 self.fixture.write_scans(
-                    "python3 Tools/check_residual_content.py . "
-                    "--scan-id sample-scan --config %s" % value)
+                    "residual-content-scan-v1", value)
                 self.assertIn(
                     "scan-config-path-invalid",
                     self.checks(self.fixture.load()))
         symlink = self.fixture.profile / "scan-configs/link.yaml"
         symlink.symlink_to(self.fixture.config)
         self.fixture.write_scans(
-            "python3 Tools/check_residual_content.py . "
-            "--scan-id sample-scan "
-            "--config profiles/sample/scan-configs/link.yaml")
+            "residual-content-scan-v1",
+            "profiles/sample/scan-configs/link.yaml")
         self.assertIn(
             "profile-contract-snapshot-invalid",
             self.checks(self.fixture.load()))
@@ -751,9 +791,8 @@ class PathClosureTests(unittest.TestCase):
         hardlink = self.fixture.profile / "scan-configs/hardlink.yaml"
         os.link(self.fixture.config, hardlink)
         self.fixture.write_scans(
-            "python3 Tools/check_residual_content.py . "
-            "--scan-id sample-scan "
-            "--config profiles/sample/scan-configs/hardlink.yaml")
+            "residual-content-scan-v1",
+            "profiles/sample/scan-configs/hardlink.yaml")
         self.assertIn("profile-contract-snapshot-invalid",
                       self.checks(self.fixture.load()))
 
@@ -780,9 +819,8 @@ class PathClosureTests(unittest.TestCase):
         (self.fixture.profile / "linked-configs").symlink_to(target,
                                                              target_is_directory=True)
         self.fixture.write_scans(
-            "python3 Tools/check_residual_content.py . "
-            "--scan-id sample-scan "
-            "--config profiles/sample/linked-configs/config.yaml")
+            "residual-content-scan-v1",
+            "profiles/sample/linked-configs/config.yaml")
         self.assertIn("profile-contract-snapshot-invalid",
                       self.checks(self.fixture.load()))
 
@@ -791,8 +829,7 @@ class PathClosureTests(unittest.TestCase):
         if not (self.fixture.root / alias).exists():
             self.skipTest("filesystem is case-sensitive")
         self.fixture.write_scans(
-            "python3 Tools/check_residual_content.py . "
-            "--scan-id sample-scan --config %s" % alias)
+            "residual-content-scan-v1", alias)
 
         contract = self.fixture.load()
 
@@ -912,9 +949,8 @@ class PathClosureTests(unittest.TestCase):
         hidden = self.fixture.profile / "scan-configs/residual.bin"
         hidden.write_text("TODO(profile)\n", encoding="utf-8")
         self.fixture.write_scans(
-            "python3 Tools/check_residual_content.py . "
-            "--scan-id sample-scan "
-            "--config profiles/sample/scan-configs/residual.bin")
+            "residual-content-scan-v1",
+            "profiles/sample/scan-configs/residual.bin")
 
         contract = self.fixture.load()
 
@@ -1096,55 +1132,35 @@ class RegistryShapeAndCommandTests(unittest.TestCase):
     def test_scan_judgment_reference_must_resolve_exactly_once(self):
         self.fixture.write_scans(rows=(
             "| `sample-scan` | `K12/09 item 6 — residual-content scan` | "
-            "Whole repository | `python3 Tools/custom_scan.py . "
-            "--scan-id sample-scan` | candidate-only | `missing-item` |\n"
+            "Whole repository | `custom-scan-v1` | `None` | candidate-only "
+            "| `missing-item` |\n"
         ))
         self.assertIn("registered-scan-judgment-reference", self.checks())
 
     def test_required_scan_row_must_be_unique(self):
         second = (
             "| `other-scan` | `K12/09 item 6 — residual-content scan` | "
-            "Whole repository | `python3 Tools/custom_scan.py . "
-            "--scan-id other-scan` | candidate-only | `sample-item` |\n"
+            "Whole repository | `custom-scan-v1` | `None` | candidate-only "
+            "| `sample-item` |\n"
         )
         default = (
             "| `sample-scan` | `K12/09 item 6 — residual-content scan` | "
-            "Whole repository | `python3 Tools/custom_scan.py . "
-            "--scan-id sample-scan` | candidate-only | `sample-item` |\n"
+            "Whole repository | `custom-scan-v1` | `None` | candidate-only "
+            "| `sample-item` |\n"
         )
         self.fixture.write_scans(rows=default + second)
         self.assertIn("registered-scans-required-count", self.checks())
 
-    def test_bundled_verifier_requires_exactly_one_config(self):
-        for arguments in (
-                "",
-                "--config profiles/sample/scan-configs/residual.yaml "
-                "--config=profiles/sample/scan-configs/residual.yaml"):
-            with self.subTest(arguments=arguments):
-                self.fixture.write_scans(
-                    "python3 Tools/check_residual_content.py . "
-                    "--scan-id sample-scan %s" % arguments)
-                self.assertIn("registered-scan-command-config", self.checks())
+    def test_capability_configuration_contract_is_fail_closed(self):
+        self.fixture.write_scans("residual-content-scan-v1", "None")
+        self.assertIn("registered-scan-config-required", self.checks())
+        self.fixture.write_scans(
+            "custom-scan-v1", "profiles/sample/scan-configs/residual.yaml")
+        self.assertIn("registered-scan-config-forbidden", self.checks())
 
-    def test_command_envelope_is_fail_closed(self):
-        commands_and_checks = (
-            ("bash Tools/custom_scan.py . --scan-id sample-scan",
-             "registered-scan-command-interpreter"),
-            ("python3 outside.py . --scan-id sample-scan",
-             "registered-scan-command-script"),
-            ("python3 Tools/custom_scan.py subdir --scan-id sample-scan",
-             "registered-scan-command-root"),
-            ("python3 Tools/custom_scan.py . --scan-id wrong",
-             "registered-scan-command-scan-id"),
-            ("python3 Tools/custom_scan.py . --scan-id sample-scan --receipts x",
-             "registered-scan-command-gate-option"),
-            ("python3 Tools/custom_scan.py . --scan-id sample-scan ; bad",
-             "registered-scan-command-shell-operator"),
-        )
-        for command, expected in commands_and_checks:
-            with self.subTest(command=command):
-                self.fixture.write_scans(command)
-                self.assertIn(expected, self.checks())
+    def test_unknown_capability_is_fail_closed(self):
+        self.fixture.write_scans("not-registered-v1")
+        self.assertIn("registered-scan-capability-unknown", self.checks())
 
     def test_sentinel_rows_suppress_dependent_diagnostics(self):
         self.fixture.write_audit(judgment_rows=(
@@ -1152,7 +1168,8 @@ class RegistryShapeAndCommandTests(unittest.TestCase):
             "TODO(profile) | TODO(profile) |\n"))
         self.fixture.write_scans(rows=(
             "| TODO(profile) | `K12/09 item 6 — residual-content scan` | "
-            "TODO(profile) | TODO(profile) | TODO(profile) | TODO(profile) |\n"))
+            "TODO(profile) | TODO(profile) | TODO(profile) | TODO(profile) "
+            "| TODO(profile) |\n"))
         contract = self.fixture.load()
         checks = self.checks(contract)
         self.assertEqual({"profile-contract-sentinel"}, checks)

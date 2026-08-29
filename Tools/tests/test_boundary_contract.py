@@ -17,6 +17,10 @@ from pathlib import Path
 from Tools.tests.profile_fixture import install_loadable_profile
 
 TOOLS = Path(__file__).resolve().parents[1]
+if str(TOOLS) not in sys.path:
+    sys.path.insert(0, str(TOOLS))
+import runtime_paths
+
 COMPOSER = TOOLS / "compose_page_contract.py"
 CHECKER = TOOLS / "check_boundary_contract.py"
 RENDERER = TOOLS / "render_boundary_projection.py"
@@ -190,7 +194,7 @@ class BoundaryContractTests(unittest.TestCase):
              "--relationships", str(root / "kernel/relationship-base.yaml"),
              "--sources-role", str(root / "kernel/sources-role-base.yaml"),
              "--profile", "profiles/test-profile",
-             "--output", str(root / "Tools/page_contract.yaml")],
+             "--output", str(root / runtime_paths.PAGE_CONTRACT_ARTIFACT_PATH)],
             text=True, capture_output=True, check=False)
         self.assertEqual(expect, result.returncode,
                          result.stdout + result.stderr)
@@ -200,14 +204,16 @@ class BoundaryContractTests(unittest.TestCase):
         return subprocess.run(
             [sys.executable, str(CHECKER), str(root),
              "--profile", "profiles/test-profile",
-             "--contract", str(root / "Tools/page_contract.yaml"), *args],
+             "--contract",
+             str(root / runtime_paths.PAGE_CONTRACT_ARTIFACT_PATH), *args],
             text=True, capture_output=True, check=False)
 
     def render(self, root, *args):
         return subprocess.run(
             [sys.executable, str(RENDERER), str(root),
              "--profile", "profiles/test-profile",
-             "--contract", str(root / "Tools/page_contract.yaml"), *args],
+             "--contract",
+             str(root / runtime_paths.PAGE_CONTRACT_ARTIFACT_PATH), *args],
             text=True, capture_output=True, check=False)
 
     def ready(self, files=None, contract=CONTRACT_DEFAULTS):

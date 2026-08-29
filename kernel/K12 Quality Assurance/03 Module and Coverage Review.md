@@ -18,7 +18,9 @@ Before a module is complete, check:
 - Whether the Case Study can use the module's knowledge.
 - Whether new external sources went through gap analysis rather than producing isolated pages by article title.
 - Whether file depth is balanced; core topics MUST NOT be visibly thinner than peripheral topics.
-- Standards modules MUST additionally confirm that the Standard Module MOC matches the actual leaf files, that each original section has exactly one owner, and that Applicable Read Sets are navigable in both directions.
+- Standards modules MUST additionally confirm that each Standard Module MOC
+  matches its actual semantic leaves and that each original section has exactly
+  one canonical owner.
 
 Module Review first consumes the valid AuditReceipts of batches already closed under [[kernel/K12 Quality Assurance/14 Batch Review#Batch Review|Batch Review]], then reviews the owner, dependency, coverage, and navigation invariants that can only be judged across batches. Local mechanisms with no relevant change SHOULD NOT be re-reviewed page by page; when receipts are missing or invalidated, or sampling exposes a systemic problem, expand the scope per [[kernel/K12 Quality Assurance/07 Audit Evidence Reuse and Invalidation|Audit Evidence Reuse and Invalidation]].
 
@@ -37,16 +39,8 @@ Before a module or long task completes, the Coverage Ledger MUST be reconciled a
 - Coverage Ledger summary counts match the automated scan counts.
 - For each non-terminal Queue item, its explicit manifest equals the set projected to that batch by Coverage and its `record_count` equals the manifest size; a `closed` item's manifest stays byte-identical while its pages' live assignment may sit with a closed successor. No Coverage object names an unknown batch, no Queue manifest names an unknown object, and no `closed` item remains a Coverage `next_batch`.
 
-Within the local receipt trust boundary, the current `Tools/check_queue.py` receipt records that these cross-ledger conditions matched the checked bytes and state. Module Review consumes that receipt and reviews the semantic coverage around it; it does not implement a second Queue validator.
+Within the local receipt trust boundary, a current `required-queue-consistency` receipt records that these cross-ledger conditions matched the checked bytes and state. Module Review consumes that receipt and reviews the semantic coverage around it; it does not implement a second Queue validator.
 
-When `Corpus Planning` has `applicability.state: configured`, Module Review consumes both a current
-Gate ID `corpus-plan-structure` receipt and a current Gate ID
-`corpus-plan-semantic-acceptance` receipt. The first proves structural and
-cross-owner reconciliation only. The second records the selected Profile's
-declared authority decision for every current Capability ID and binds the exact
-decision plan, Profile/slot/Scope, planning artifacts, runtime state, Queue
-revisions, and repository snapshot. A stale or rejected semantic receipt cannot
-authorize module acceptance. Ordinary affected batch close remains structural
-only and does not require every Matrix capability to have reached its target.
+When `Corpus Planning` has `applicability.state: configured`, Module Review consumes both a current Gate ID `corpus-plan-structure` receipt and a current Gate ID `corpus-plan-semantic-acceptance` receipt. The first proves structural and cross-owner reconciliation only. The second records the selected Profile's declared authority decision for every current Capability ID and binds the exact decision plan, Profile/slot/Scope, planning artifacts, runtime state, Queue revisions, and repository snapshot. A stale or rejected semantic receipt cannot authorize module acceptance. Ordinary affected batch close remains structural only and does not require every Matrix capability to have reached its target.
 
 Line counts and section counts can only trigger review candidates. An Atomic Term Note MAY deliberately stay concise; Core, Process, System, and Risk/Control pages MUST have their question coverage checked by note type.

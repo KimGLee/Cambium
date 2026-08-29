@@ -1,30 +1,28 @@
 ## Navigation
 
 - Parent: [[kernel/K00 Standards Overview|K00 Standards Overview]].
-- Previous: [[kernel/K00 Standards Control/01 Operating Role and Reading Protocol|Operating Role and Reading Protocol]].
 - Next: [[kernel/K00 Standards Control/03 Standards Governance|Standards Governance]].
 
-## Task Routing Table
+## Purpose And Boundary
 
-All tasks first select R01 Core Bootstrap, then combine the Rxx route for the actual work and any event modules shown below. The Card is loaded first; its paired Read Set is read back when the Card-first protocol requires source text.
+This module classifies common task intents into stable Route IDs. It owns only the shared meaning of those classifications and the choice of Route ID. It does not define Card selection, Read Set membership, loading order, phase mapping, delivery, or execution behavior. Those relationships remain with their respective component owners.
 
-Selecting a route is not the same as loading it at every batch startup: a selected route's Card enters the execution context when that route's phase predicate holds, and the phase set, the route-to-phase mapping, and their freezing are owned by [[kernel/K13 Task Runtime and Execution Control/21 Phased Reading Plan|Phased Reading Plan]].
+## Task Classification Table
 
-| Task | Required Read Set Or Module | Main Decision |
+| Task intent | Route ID | Classification boundary |
 |---|---|---|
-| Create a concept page or extend one in a targeted way | [[kernel/Read Sets/R02 Single Note Authoring Read Set\|Single Note Authoring]] | note type, owner, depth, sources, links, and the note gate |
-| Create a process page, system page, or complete module | [[kernel/Read Sets/R03 Module Build Read Set\|Module Build]] | logical placement, foundation, dependency order, MOC, and the module gate |
-| Extend knowledge from official vendor material, papers, code, cases, or community signals | [[kernel/Read Sets/R04 Source-driven Expansion Read Set\|Source-driven Expansion]], combined with the authoring Read Set | claim, evidence role, gap, promotion, update / new / defer / supersede |
-| Build an industry Case Study | [[kernel/Read Sets/R04 Source-driven Expansion Read Set\|Source-driven Expansion]] + [[kernel/Read Sets/R02 Single Note Authoring Read Set\|Single Note Authoring]] | reported fact, inference, recommendation, and metric provenance |
-| Create, migrate, or review expression-layer content | [[kernel/Read Sets/R05 Expression Layer Read Set\|R05 Expression Layer]], plus the selected profile's `Expression Layer Entry` and supplemental gates | knowledge vs. expression separation, evidence, readiness, bidirectional binding, and migration coverage |
-| Bulk rename, move, split, merge, or directory restructuring | [[kernel/Read Sets/R06 Migration and Refactor Read Set\|Migration and Refactor]] | source / target map, incoming links, ownership, rollback, and content conservation |
-| Admit large-scale creation, moves, or deletion to execution | [[kernel/Read Sets/R11 Large-scale Work Admission Read Set\|Large-scale Work Admission]], combined with the route for the actual work | contract, scope, queue, ledger, dependencies, batch acceptance, and evidence readiness |
-| Start, resume, pause, or complete a long-running task | [[kernel/Read Sets/R07 Long-running Execution Read Set\|Long-running Execution]], combined with the actual content Read Set | task state, time semantics, Coverage Ledger, Required Queue, and the selected build or maintenance completion path |
-| Run a targeted or specialized audit | [[kernel/Read Sets/R12 Targeted and Specialized Audit Read Set\|Targeted and Specialized Audit]], plus the Read Sets related to the finding under review | changed / invalidated / overdue / sampled scope, specialized invariants, and bounded systemic expansion |
-| Create or reconcile the corpus map, capability coverage, or semantic-gap register | [[kernel/Read Sets/R13 Corpus Planning Read Set\|Corpus Planning]] | Global Map, Capability Matrix, Gap Register, and accepted-gap handoff into Coverage; no content execution or audit authority |
-| Enter build completion acceptance or Terminal Audit | [[kernel/Read Sets/R08 Audit and Completion Read Set\|Audit and Completion]], plus [[kernel/Read Sets/R12 Targeted and Specialized Audit Read Set\|Targeted and Specialized Audit]] for the bounded review inside Terminal Audit, plus every route relevant to the completion predicates | frozen snapshot, prerequisite gates, receipt reconciliation, Terminal Proof, and terminal state; maintenance completion never selects R08 |
-| Modify Standards, Read Sets, or control-plane structure | [[kernel/Read Sets/R09 Standards Governance Read Set\|Standards Governance]] | authority, version, migration map, active task impact, and corpus-wide validation |
-| Handle mid-task user guidance, scope, or priority changes | [[kernel/K13 Task Runtime and Execution Control/04 Guidance Classification and Impact Analysis\|Guidance Classification and Impact Analysis]] + [[kernel/K13 Task Runtime and Execution Control/05 Guidance Disposition and Safe Switching\|Guidance Disposition and Safe Switching]] + [[kernel/K13 Task Runtime and Execution Control/06 Amendment Log and Controlled Replanning\|Amendment Log and Controlled Replanning]]; when a hypothesis is involved, additionally load [[kernel/K06 Knowledge Intake and Evolution/02 User Guidance Hypotheses and Source Leads\|User Guidance Hypotheses and Source Leads]] | guidance type, authority, evidence role, disposition, safe switching, and version impact |
-| Split out a proper-noun term | [[kernel/K05 Terminology/01 Terminology Extraction\|Terminology Extraction]] + [[kernel/K05 Terminology/02 Ownership and Term Structure\|Ownership and Term Structure]] | whether it is reusable, whether a canonical owner already exists, and whether it merits a standalone page |
-| Math, formula, table, image, or rendering fixes | Triggered modules of [[kernel/Read Sets/R02 Single Note Authoring Read Set\|Single Note Authoring]] + [[kernel/K12 Quality Assurance/02 Rendering Verification\|Rendering Verification]] | Level 0 / Level 1 deterministic verification; only unresolved display issues escalate to visual recognition |
-| Periodic knowledge-corpus update / freshness (Maintenance Run) | [[kernel/Read Sets/R10 Maintenance Run Read Set\|Maintenance Run]], combined with the content Read Set for every selected object | budget envelope, candidate list, watermark advancement, and bounded completion semantics |
+| Create or make a targeted extension to one knowledge page, including a terminology or rendering correction confined to that page | `R02` | one canonical page is the primary governed unit |
+| Create a process page, system page, or complete knowledge module | `R03` | placement, dependencies, navigation, and module completeness must be decided together |
+| Extend knowledge from external source material | `R04` | claims must be admitted, reconciled, and promoted from identified sources |
+| Build a source-grounded industry Case Study | `R04 + R02` | source intake and single-page authorship are both primary dimensions |
+| Create, migrate, or review expression-layer content | `R05` | the primary object is an expression artifact rather than canonical knowledge alone |
+| Bulk rename, move, split, merge, or restructure governed content | `R06` | the operation changes existing ownership, paths, or graph structure |
+| Start, resume, pause, or complete a long-running task | `R07 + <work route>` | persistent task execution is combined with the route describing the governed work |
+| Enter build-completion acceptance or Terminal Audit | `R08 + <work route>` | completion must be proved for the route that produced the governed result; maintenance completion does not use `R08` |
+| Modify Standards or another Cambium control-plane component | `R09` | the task changes governance authority, contracts, or component structure |
+| Perform a bounded periodic freshness or maintenance run | `R10 + <work route>` | the run is budget-bounded maintenance applied to objects selected by a governed work route |
+| Admit large-scale creation, movement, or deletion to execution | `R11 + <work route>` | large-scale work requires a separate admission classification before its work route executes |
+| Run a targeted or specialized audit | `R12 + <subject route>` | the audit is bounded by a specific finding, risk, sample, or subject area |
+| Create or reconcile the corpus map, capability coverage, or semantic-gap register | `R13` | the output is corpus-planning state rather than knowledge-content execution |
+
+Route combination records multiple independent task dimensions; it does not merge their meanings or transfer responsibility between their owners. If no row describes the task without stretching its classification boundary, the task requires an explicit routing decision rather than an inferred nearest match.

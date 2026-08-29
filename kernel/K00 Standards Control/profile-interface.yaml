@@ -1,0 +1,159 @@
+schema_version: 1
+interface_id: cambium-profile-interface
+semantic_owner: K00/19
+
+registry_references:
+  audit_dimension_base: kernel/K12 Quality Assurance/audit-dimension-base.yaml
+  corpus_planning_contract: kernel/K02 Knowledge Work Construction/corpus-planning-contract.yaml
+
+# This registry owns the common Profile interface. A selected Profile owns
+# only the confirmed value bound to each slot. Profile documentation and
+# profiles/_template are orientation and candidate material, not interface
+# authorities.
+slots:
+  - slot_id: profile-scope
+    name: Profile Scope
+    binding: file
+    kernel_owner: K01/01-K01/04
+  - slot_id: corpus-planning
+    name: Corpus Planning
+    binding: file
+    kernel_owner: K02/03
+  - slot_id: structure-registry
+    name: Structure Registry
+    binding: file
+    kernel_owner: K01/05-K01/06
+  - slot_id: metadata-contract
+    name: Metadata Contract
+    binding: file
+    kernel_owner: K08/06-K08/09
+  - slot_id: priority-rubric
+    name: Priority Rubric
+    binding: file
+    kernel_owner: K00/07
+  - slot_id: vocabulary-extensions
+    name: Vocabulary Extensions
+    binding: file
+    kernel_owner: K08/01-K08/05
+  - slot_id: language-contract
+    name: Language Contract
+    binding: file
+    kernel_owner: K10/01-K10/04
+  - slot_id: expression-layer-entry
+    name: Expression Layer Entry
+    binding: file
+    kernel_owner: K11/01
+  - slot_id: source-policy
+    name: Source Policy
+    binding: file
+    kernel_owner: K07/01-K07/06
+  - slot_id: role-registry
+    name: Role Registry
+    binding: file
+    kernel_owner: K00/19
+  - slot_id: audit-dimension-registry
+    name: Audit Dimension Registry
+    binding: file
+    kernel_owner: K12/01-K12/08
+  - slot_id: registered-scan-registry
+    name: Registered Scan Registry
+    binding: file
+    kernel_owner: K12/05-K12/09
+  - slot_id: escalation-policy
+    name: Escalation Policy
+    binding: file
+    kernel_owner: K13/17
+  - slot_id: routing-and-gate-registry
+    name: Routing And Gate Registry
+    binding: file
+    kernel_owner: K00/02+K00/12
+
+tables:
+  extension_dimensions:
+    section: Extension Dimensions
+    header:
+      - Dimension ID
+      - "Target list(s): `review`, `receipt`, or `review + receipt`"
+      - Meaning
+  judgment_items:
+    section: Judgment Items
+    header:
+      - Stable Judgment Item ID
+      - Base or registered receipt Dimension ID
+      - Exact kernel audit-layer name
+      - Bounded audit object one run proves
+      - "Evidence role: `emits`, `consumes`, or `triggers`"
+      - "Predicate owner (repo-relative path; optional `#heading`)"
+  registered_scans:
+    section: Scan Registrations
+    header:
+      - Stable Scan ID
+      - Activation role
+      - Whole-corpus scope/root
+      - Verifier capability ID
+      - Profile configuration reference or `None`
+      - Candidate predicate/boundary
+      - Judgment Item ID reference
+  extension_gates:
+    section: Extension Gates
+    header:
+      - Gate ID
+      - "Kernel Gate ID or repo-relative owner path, optionally `#heading`"
+      - Blocked transition/action ID
+      - Pass-authority Role ID reference
+      - Applicability predicate
+      - "Vocabulary field ID or `None`"
+      - "Registered completion value(s) or `None`"
+      - Judgment Item ID reference
+      - "Producer kind: `deterministic` or `manual-attestation`"
+      - Producer capability
+      - Receipt schema
+      - Consumer capability
+  extension_roles:
+    section: Extension Roles
+    header:
+      - Role ID
+      - Bound actor or system ID/name
+      - Responsibility
+  batch_review_requirements:
+    section: Batch Review Requirements
+    header:
+      - Judgment Item ID reference
+      - "Target selector: `each-manifest-page` or `batch`"
+      - "Trigger: `before-merge-ready`"
+      - "Producer kind: `manual-attestation`"
+      - Receipt schema
+      - Pass-authority Role ID reference
+
+closed_sets:
+  batch_review_target_selectors:
+    - each-manifest-page
+    - batch
+  batch_review_triggers:
+    - before-merge-ready
+  batch_review_producer_kinds:
+    - manual-attestation
+  batch_review_receipt_schemas:
+    - page-batch-judgment-v1
+  kernel_role_ids:
+    - proposer
+    - gatekeeper
+    - executor
+    - stopper
+    - knowledge-host
+    - knowledge-host UI
+  producer_kinds:
+    - deterministic
+    - manual-attestation
+
+capability_bindings:
+  producer_capability_by_kind:
+    deterministic: registered-scan-v1
+    manual-attestation: manual-attestation-v1
+  receipt_schema_by_kind:
+    deterministic: deterministic-gate-result-v1
+    manual-attestation: manual-gate-attestation-v1
+  field_gate_consumer_operation: typed-field-metadata-transition
+  non_field_gate_consumer_operation: non-field-transition
+  profile_extension_enum_projection_operation: profile-extension-enum-owner-projection-v1
+  profile_extension_enum_writer_capability: project-page-state-v2

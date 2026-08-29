@@ -1,0 +1,27 @@
+# Tool-owned machine registry for persisted Task Contract path namespaces.
+#
+# These entries do not make producer-era paths valid current paths. They give
+# the Standards adoption transaction one deterministic way to interpret a
+# frozen before-image while it writes the canonical after-image. Ordinary
+# runtime validation never consults this registry.
+
+schema_version: 1
+
+migration_fields:
+  - migration_id
+  - path_fields
+
+path_field_fields:
+  - contract_field
+  - producer_prefix
+  - current_prefix
+
+migrations:
+  - migration_id: top-level-card-read-set-v1
+    path_fields:
+      - contract_field: selected_card_paths
+        producer_prefix: "kernel/Cards/"
+        current_prefix: "Card/"
+      - contract_field: selected_read_sets
+        producer_prefix: "kernel/Read Sets/"
+        current_prefix: "Read Set/"

@@ -29,6 +29,7 @@ STANDARDS_ADOPTION_PROFILE_CONTRACT_MIN_VERSION = (1, 3, 0)
 STANDARDS_ADOPTION_UPSTREAM_MIN_VERSION = (1, 5, 0)
 STANDARDS_ADOPTION_PROFILE_INPUT_MIN_VERSION = (1, 4, 0)
 STANDARDS_ADOPTION_OWNER_PROJECTION_MIN_VERSION = (1, 6, 0)
+STANDARDS_ADOPTION_RESOLVED_IDENTITY_MIN_VERSION = (1, 9, 0)
 
 
 def standards_adoption_profile_contract_required(producer_tool_version):
@@ -102,6 +103,18 @@ def standards_adoption_state_file_required(producer_tool_version):
     if match is None:
         return True
     return tuple(int(part) for part in match.groups()) >= (1, 7, 0)
+
+
+def standards_adoption_resolved_identity_required(producer_tool_version):
+    """Return whether this era binds its version alias to a full Git commit."""
+    match = re.fullmatch(
+        r"(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)",
+        str(producer_tool_version),
+    )
+    if match is None:
+        return True
+    return tuple(int(part) for part in match.groups()) >= \
+        STANDARDS_ADOPTION_RESOLVED_IDENTITY_MIN_VERSION
 
 
 def accounted_standards_versions(progress, queue=None):

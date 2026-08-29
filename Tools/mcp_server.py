@@ -1,9 +1,12 @@
 #!/usr/bin/env python3
 """mcp_server.py -- the stdio entry point the host configurations name.
 
-`Tools/compiled/mcp-tools.json` states what the server offers and
-`Tools/compiled/host-configs/` states where the server is and which corpus
-it governs.  Neither of them is a server: a host holding those files still
+The interface projection named by `CAMBIUM_INTERFACE_PROJECTION` states what
+the server offers. A source distribution normally binds
+`Tools/compiled/mcp-tools.json`; a carried runtime binds the adopter-owned
+`.cambium/derived/interfaces/mcp-tools.json`. Host configurations state where
+the server is and which corpus it governs. None of them is a server: a host
+holding those files still
 has nothing to connect to.  This module is the missing half -- layer 3, and
 only layer 3: how an operation is called, how its arguments get in, and how
 its result gets back out.
@@ -18,14 +21,14 @@ layer smear this file exists to avoid.  It is started by a host, reads
 JSON-RPC on stdin and writes JSON-RPC on stdout, and takes no command-line
 arguments at all.
 
-It also imports nothing from this distribution -- not a check, not an
-applier, not even `kblib`.  Every import below is from the standard
-library.  This is the executable form of "layer 3 only carries": a module
-that cannot reach a judgment module cannot make a judgment, and
-`Tools/tests/test_mcp_server.py` asserts the import set statically so the
-property survives future edits.  The cost is a hand-rolled sha256 and a
-hand-rolled canonical `json.dumps`; both are three lines, and both are
-cheaper than a seam that can be crossed by accident.
+It imports no check, applier, or judgment module. Its sole Cambium import is
+`runtime_paths`, the machine owner of adopter-runtime path spellings. This is
+the executable form of "layer 3 only carries": the transport can enforce the
+registered projection location without gaining access to a governance
+judgment. `Tools/tests/test_mcp_server.py` asserts that narrow import boundary
+statically so it survives future edits. The remaining imports are from the
+standard library; sha256 and canonical `json.dumps` stay local so no judgment
+seam can be crossed by accident.
 
 Protocol
 --------
@@ -36,8 +39,8 @@ has no `initialize` at all: it is stateless, carries version and
 capabilities as per-request `_meta`, and requires `server/discover`.  The
 `initialize` handshake belongs to what that revision calls the *legacy*
 era, whose latest revision is `2025-11-25`.  This server implements the
-legacy era at `2025-11-25`, which is what every host configuration under
-`Tools/compiled/host-configs/` is written for today.
+legacy era at `2025-11-25`, which is what every generated host configuration
+is written for today.
 
 That choice is compatible in the direction that matters.  The `2026-07-28`
 backward-compatibility rule for stdio says a modern client probes with
@@ -66,7 +69,7 @@ is a rule of the base protocol rather than a decision taken here.
 The tool list is a projection, never a recomputation
 ----------------------------------------------------
 `tools/list` returns `name`, `description` and `inputSchema` straight out of
-`Tools/compiled/mcp-tools.json`.  This module does not read
+the projection pinned for this session. This module does not read
 `cli-contract.yaml`, does not introspect any parser, and does not adjust a
 schema on the way past.
 
@@ -171,14 +174,49 @@ are preserved.  Tools still own state authorization, evidence sufficiency,
 and verdicts.
 """
 
+import os
+import sys
+import tempfile
+
+# Bootstrap before the sole repository-local import below.  A carried MCP
+# server is itself part of the immutable component set; starting it must not
+# create or consume adopter-local bytecode that would make the next trusted
+# component check fail.  Children inherit the exported boundary.
+def _external_pycache_prefix():
+    repository_root = os.path.realpath(os.path.join(
+        os.path.dirname(os.path.abspath(__file__)), os.pardir))
+    for raw_root in (tempfile.gettempdir(), "/var/tmp", "/tmp"):
+        candidate_root = os.path.realpath(os.path.abspath(raw_root))
+        if not os.path.isdir(candidate_root):
+            continue
+        try:
+            if os.path.commonpath(
+                    (repository_root, candidate_root)) == repository_root:
+                continue
+        except ValueError:
+            pass
+        candidate = os.path.join(
+            candidate_root,
+            "cambium-adoption-pycache-%s" % os.urandom(16).hex())
+        if not os.path.lexists(candidate):
+            return candidate
+    raise RuntimeError("no repository-external Python cache root is available")
+
+
+_CAMBIUM_PYCACHE_PREFIX = _external_pycache_prefix()
+os.environ["PYTHONPYCACHEPREFIX"] = _CAMBIUM_PYCACHE_PREFIX
+os.environ["PYTHONDONTWRITEBYTECODE"] = "1"
+sys.pycache_prefix = _CAMBIUM_PYCACHE_PREFIX
+sys.dont_write_bytecode = True
+
 import hashlib
 import json
-import os
 import stat
 import subprocess
-import sys
 import uuid
 import traceback
+
+import runtime_paths
 
 # ---------------------------------------------------------------------------
 # Identity
@@ -188,7 +226,7 @@ import traceback
 # same way. `render_host_configs.SERVER_NAME` is the declaration; this is
 # the server answering to it.
 SERVER_NAME = "cambium"
-SERVER_VERSION = "1.1.0"
+SERVER_VERSION = "1.2.0"
 SERVER_TITLE = "Cambium"
 
 # Every protocol revision whose wire shape was read before being claimed.
@@ -204,6 +242,7 @@ LATEST_PROTOCOL_VERSION = SUPPORTED_PROTOCOL_VERSIONS[0]
 TOOLS_DIR = os.path.dirname(os.path.abspath(__file__))
 DISTRIBUTION_ROOT = os.path.dirname(TOOLS_DIR)
 PROJECTION_RELATIVE = "Tools/compiled/mcp-tools.json"
+CARRIED_PROJECTION_RELATIVE = runtime_paths.MCP_TOOLS_ARTIFACT_PATH
 
 WORKSPACE_ENV = "CAMBIUM_WORKSPACE_ROOT"
 EXECUTION_CONTEXT_ENV = "CAMBIUM_EXECUTION_CONTEXT_ID"
@@ -216,13 +255,16 @@ EXECUTION_CONTEXT_ENV = "CAMBIUM_EXECUTION_CONTEXT_ID"
 HOST_CLIENT_NAME_ENV = "CAMBIUM_HOST_CLIENT_NAME"
 HOST_CLIENT_VERSION_ENV = "CAMBIUM_HOST_CLIENT_VERSION"
 SOURCE_HASH_ENV = "CAMBIUM_INTERFACE_SOURCE_HASH"
+PROJECTION_PATH_ENV = "CAMBIUM_INTERFACE_PROJECTION"
 PATH_CAPABILITIES_ENV = "CAMBIUM_PATH_CAPABILITIES"
 PATH_CAPABILITIES_ACK_ENV = "CAMBIUM_PATH_CAPABILITIES_ACK_FD"
 
 # What the projection must claim about itself before it is served.
 PROJECTION_ARTIFACT = "agent-interface-projection"
 PROJECTION_FORM = "mcp"
-PROJECTION_SCHEMA_VERSION = 3
+PROJECTION_SCHEMA_VERSION = 4
+SOURCE_DISTRIBUTION_TARGET = "source-distribution"
+CARRIED_RUNTIME_TARGET = "carried-runtime"
 PATH_EXTENSION_KEY = "x-cambium-path"
 WORKSPACE_EXTENSION_KEY = "x-cambium-workspace"
 
@@ -404,14 +446,50 @@ def open_workspace_directory(workspace_root):
 # ---------------------------------------------------------------------------
 
 
-def load_projection(distribution_root, environ):
-    """Read, check and pin `compiled/mcp-tools.json`.
+def resolve_projection_path(distribution_root, environ):
+    """Return the only projection path this session is allowed to pin.
+
+    An absent variable retains the source-distribution default for existing
+    registrations. An explicit absolute path is accepted only together with
+    the exact source hash the renderer bound. Source-distribution fixtures may
+    select another such path; after parsing, a carried-runtime projection is
+    additionally constrained to the runtime registry's exact path under the
+    bound workspace.
+    """
+    distribution_path = os.path.join(
+        os.path.abspath(distribution_root),
+        *PROJECTION_RELATIVE.split("/"))
+    raw = (environ.get(PROJECTION_PATH_ENV) or "").strip()
+    if not raw:
+        return distribution_path, SOURCE_DISTRIBUTION_TARGET
+    if not os.path.isabs(raw):
+        raise RpcError(
+            UNRELIABLE_EVIDENCE,
+            "%s must be an absolute path, not %r" %
+            (PROJECTION_PATH_ENV, raw),
+            {"variable": PROJECTION_PATH_ENV, "path": raw})
+    registered_hash = (environ.get(SOURCE_HASH_ENV) or "").strip()
+    if not registered_hash:
+        raise RpcError(
+            UNRELIABLE_EVIDENCE,
+            "%s is explicit but %s is absent; an unbound path is not an "
+            "interface authority" %
+            (PROJECTION_PATH_ENV, SOURCE_HASH_ENV),
+            {"variable": PROJECTION_PATH_ENV, "path": raw,
+             "required_binding": SOURCE_HASH_ENV})
+    return os.path.abspath(raw), None
+
+
+def load_projection(distribution_root, environ, workspace_root=None):
+    """Read, check and pin the registered interface projection.
 
     Only existence and agreement are checked. Nothing here recomputes a
     schema, and nothing here repairs one: an artifact that does not agree
     with itself is unreliable evidence and this server does not start on it.
     """
-    path = os.path.join(distribution_root, *PROJECTION_RELATIVE.split("/"))
+    workspace_root = workspace_root or resolve_workspace_root(environ)
+    path, location_target = resolve_projection_path(
+        distribution_root, environ)
     try:
         with open(path, "rb") as handle:
             raw = handle.read()
@@ -446,6 +524,43 @@ def load_projection(distribution_root, environ):
                 "the compiled tool projection at %s declares %s=%r, not %r"
                 % (path, key, document.get(key), expected),
                 {"path": path})
+    declared_target = document.get("projection_target")
+    if declared_target not in (
+            SOURCE_DISTRIBUTION_TARGET, CARRIED_RUNTIME_TARGET):
+        raise RpcError(
+            UNRELIABLE_EVIDENCE,
+            "the tool projection at %s carries no valid projection_target"
+            % path,
+            {"path": path, "declared": declared_target})
+    if declared_target == CARRIED_RUNTIME_TARGET:
+        expected = os.path.join(
+            workspace_root, *CARRIED_PROJECTION_RELATIVE.split("/"))
+        if os.path.realpath(os.path.abspath(path)) != \
+                os.path.realpath(os.path.abspath(expected)):
+            raise RpcError(
+                UNRELIABLE_EVIDENCE,
+                "the carried-runtime tool projection must be the registered "
+                "workspace artifact %s, not %s" % (expected, path),
+                {"path": path, "expected": expected,
+                 "projection_target": declared_target})
+        if os.path.realpath(os.path.abspath(distribution_root)) != \
+                os.path.realpath(os.path.abspath(workspace_root)):
+            raise RpcError(
+                UNRELIABLE_EVIDENCE,
+                "a carried-runtime projection may execute only the Tools "
+                "carried by its bound workspace; distribution root %s is not "
+                "workspace root %s" % (distribution_root, workspace_root),
+                {"distribution_root": distribution_root,
+                 "workspace_root": workspace_root,
+                 "projection_target": declared_target})
+    if location_target is not None and declared_target != location_target:
+        raise RpcError(
+            UNRELIABLE_EVIDENCE,
+            "the tool projection at %s declares projection_target=%r, but "
+            "that registered location belongs to %r"
+            % (path, document.get("projection_target"), location_target),
+            {"path": path, "declared": declared_target,
+             "location_target": location_target})
 
     tools = document.get("tools")
     if not isinstance(tools, list) or not tools:
@@ -1145,6 +1260,8 @@ def run_tool(tool, arguments, workspace_root, workspace_fd, environ):
     argv = [interpreter(), tool["script"]] + tail
 
     child_env = dict(environ)
+    child_env["PYTHONPYCACHEPREFIX"] = _CAMBIUM_PYCACHE_PREFIX
+    child_env["PYTHONDONTWRITEBYTECODE"] = "1"
     child_env[WORKSPACE_ENV] = workspace_root
     ack_read_fd, ack_write_fd = os.pipe()
     child_env[PATH_CAPABILITIES_ACK_ENV] = str(ack_write_fd)
@@ -1342,7 +1459,7 @@ class Server(object):
             open_workspace_directory(candidate_root)
         try:
             candidate_projection = load_projection(
-                self.distribution_root, self.environ)
+                self.distribution_root, self.environ, candidate_root)
         except Exception:
             os.close(candidate_fd)
             raise

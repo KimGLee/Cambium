@@ -1,13 +1,10 @@
 # Priority Rubric
 
-Interface: [Priority Rubric slot](../README.md#priority-rubric-slot)
+Kernel owner: K00/07. Common slot identity is registered in the Kernel Profile interface.
 
 ## Profile-owned Grant Criteria
 
-Every in-scope page stays at the kernel P2 fallback until this profile
-registers a grant predicate. Open grants later, through ordinary Standards
-adoption, when a page protects a reader capability or deadline that the
-uniform fallback does not.
+This candidate registers no P0 or P1 grant. Confirm that choice or replace the rows with this repository's stable grant predicates.
 
 | Priority | Testable grant predicate (`No grants` if always false) | Protected reader capability or time horizon (`Not applicable` for no grants) |
 |---|---|---|
@@ -16,15 +13,7 @@ uniform fallback does not.
 
 ## Priority Quota
 
-The standing quota targets this corpus holds its P0/P1 shares to. K00/07 owns
-the quota model; `None` selects its kernel defaults (P0 <=15%, P1 <=35%).
-Register `Configured` with both classes when this corpus's own structure
-justifies different standing targets -- the rationale column is required,
-because a quota without a recorded reason is indistinguishable from a quota
-nobody chose. The two shares together stay strictly below 100: P2 is the
-remainder class and carries every terminology stub and placeholder page. A
-temporary excess is not registered here -- it is a bounded contract policy
-exception via `apply_contract_amendment.py`, and it dies with the task.
+This candidate selects the Kernel quota policy. Configure the table only when the repository needs stable, stricter or otherwise permitted instance values. Task-time exceptions do not belong here.
 
 - Registration: None
 

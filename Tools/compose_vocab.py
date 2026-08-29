@@ -2,7 +2,8 @@
 """compose_vocab.py -- persistent vocabulary compiler (kernel tooling).
 
 Deterministically composes the selected-profile vocabulary artifact
-(Tools/vocab.yaml by default) from two restricted-YAML-subset inputs:
+(.cambium/derived/vocab.yaml by default) from two restricted-YAML-subset
+inputs:
 
   --base        kernel vocabulary base
                 (default: "kernel/K08 Metadata and Status/vocabulary-base.yaml")
@@ -25,7 +26,8 @@ Merge policy:
     script exits 1.
 
 Modes:
-  default  recompute and write --output (Tools/vocab.yaml by default),
+  default  recompute and write --output (.cambium/derived/vocab.yaml by
+           default),
            with an English provenance header (input paths + sha256).
   --check  recompute and compare against the existing --output at the
            value and provenance level. Exit 0 only when the deterministic
@@ -52,12 +54,15 @@ sys.path.insert(0, TOOLS_DIR)
 
 import kblib  # noqa: E402
 import profile_admission  # noqa: E402
+import profile_layout_contract  # noqa: E402
+import runtime_paths  # noqa: E402
+import vocabulary_contract  # noqa: E402
 
 TOOL_VERSION = "1.7.0"
 
 DEFAULT_BASE = "kernel/K08 Metadata and Status/vocabulary-base.yaml"
-DEFAULT_OUTPUT = "Tools/vocab.yaml"
-ACTIVE_STATE_PATH = ".cambium/governance/standards_state.yaml"
+DEFAULT_OUTPUT = runtime_paths.VOCAB_ARTIFACT_PATH
+ACTIVE_STATE_PATH = runtime_paths.ACTIVE_STANDARDS_PATH
 UNINSTANTIATED_RE = re.compile(r"\{\{.*?\}\}")
 
 # There is deliberately no DEFAULT_EXTENSIONS. Naming one profile here would
@@ -68,11 +73,11 @@ UNINSTANTIATED_RE = re.compile(r"\{\{.*?\}\}")
 # resolves to a missing file, and in a clone that carries a different
 # profile, it composes the wrong one without saying so.
 EXTENSIONS_BASENAME = "vocabulary-extensions.yaml"
-PROFILES_DIR = "profiles"
+PROFILES_DIR = profile_layout_contract.PROFILES_DIRECTORY
 # Directory names under profiles/ that are not selectable profiles:
 # `_template` is an unfilled skeleton whose value lists are empty by design,
 # so composing against it would yield a base-only artifact that looks valid.
-NON_PROFILE_DIRS = {"_template"}
+NON_PROFILE_DIRS = profile_layout_contract.RESERVED_PROFILE_IDS
 PROFILE_ID_VALUE_RE = re.compile(r"^[a-z0-9][a-z0-9_-]*$")
 
 # Fixed root key order of the composed artifact (base-driven; profile-derived
@@ -87,7 +92,6 @@ ROOT_KEY_ORDER = [
     "fields",
     "review_intervals_days",
     "volatility_defaults",
-    "task_state",
 ]
 
 # The current Vocabulary Extensions input is deliberately closed. Profile
@@ -122,9 +126,11 @@ def discover_profiles():
         directories[:] = sorted(
             name for name in directories
             if name not in NON_PROFILE_DIRS and not name.startswith("."))
-        if "profile.md" in files:
+        if profile_layout_contract.PROFILE_MANIFEST_NAME in files:
             relative = os.path.relpath(
-                os.path.join(current, "profile.md"), REPO_ROOT)
+                os.path.join(
+                    current, profile_layout_contract.PROFILE_MANIFEST_NAME),
+                REPO_ROOT)
             found.append(Path(relative).as_posix())
     return found
 
@@ -318,6 +324,11 @@ def compose(base, profile, base_arg, ext_arg, profile_id):
     """Compose the merged vocabulary. Returns (output_dict, conflicts)."""
     conflicts = []
 
+    try:
+        base_projection = vocabulary_contract.validate_vocabulary_base(base)
+    except vocabulary_contract.VocabularyContractError as exc:
+        return None, ["base: %s" % exc]
+
     extra_root_keys = sorted(
         key for key in profile if key not in PROFILE_ROOT_KEYS
     )
@@ -348,11 +359,12 @@ def compose(base, profile, base_arg, ext_arg, profile_id):
         conflicts.append(
             "extensions: volatility_defaults must register at least one domain"
         )
+    allowed_volatilities = base_projection["volatility_values"]
     for domain, volatility in volatility_defaults.items():
-        if volatility not in ("fast", "slow", "stable"):
+        if volatility not in allowed_volatilities:
             conflicts.append(
-                "volatility_defaults.%s: expected fast, slow, or stable; found %r"
-                % (domain, volatility)
+                "volatility_defaults.%s: expected one of %s; found %r"
+                % (domain, ", ".join(allowed_volatilities), volatility)
             )
     if "domain" in profile_fields:
         conflicts.append(
@@ -450,7 +462,6 @@ def compose(base, profile, base_arg, ext_arg, profile_id):
         "fields": fields,
         "review_intervals_days": base.get("review_intervals_days"),
         "volatility_defaults": volatility_defaults,
-        "task_state": base.get("task_state"),
     }
     output = {}
     for key in ROOT_KEY_ORDER:
@@ -691,6 +702,7 @@ def main(argv=None):
     # process dies between truncate and flush, so the bytes are staged and
     # renamed into place, and never published unless they satisfy the same
     # predicate the consumer applies.
+    runtime_paths.ensure_directory(REPO_ROOT, "derived-root")
     kblib.atomic_write_text(output_path, rendered,
                             validator=kblib.parse_vocabulary_artifact)
     currency = compilation_currency_errors(

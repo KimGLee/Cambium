@@ -11,6 +11,7 @@ import os
 from typing import Optional
 
 import metadata_execution_contract
+import profile_contract
 from queue_runtime.primitives import nonempty_string
 from queue_runtime.profile_view import (
     active_standards_view_currency_errors,
@@ -103,12 +104,8 @@ _LOCK_FIELD_PROJECTORS = {
         "active_standards_sha256": view.get("active_standards_sha256"),
     },
     "profile-load": lambda view: {
-        "selected_profile_manifest": view.get("selected_profile_manifest"),
-        "profile_snapshot_sha256": view.get("profile_snapshot_sha256"),
-        "profile_contract_fingerprint": view.get(
-            "profile_contract_fingerprint"),
-        "profile_load_inputs_sha256": view.get(
-            "profile_load_inputs_sha256"),
+        field: view.get(field)
+        for field in profile_contract.PROFILE_LOAD_EVIDENCE_FIELDS
     },
     "metadata-execution-contract": lambda contract: {
         "metadata_execution_contract_fingerprint":

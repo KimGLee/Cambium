@@ -1,0 +1,28 @@
+# Repository-engineering contract for the serialized curated Card form.
+# This schema defines a machine-checkable representation only; it does not own
+# Card governance semantics or the meaning of any projected checklist item.
+
+schema_version: 1
+document_type: card
+generation_mode: curated
+path_prefix: "Card/"
+index_name: "Card Index.md"
+route_id_pattern: "R[0-9]{2}"
+hash_pattern: "[0-9a-f]{12}"
+
+document_fields:
+  - type
+  - generation_mode
+  - route_id
+  - read_set_id
+  - read_set
+  - source_files
+  - source_hash
+  - reviewed_source_hash
+  - reviewed_card_hash
+
+body_sections:
+  - Purpose
+  - Actions
+  - Stop or escalate
+  - Read-back hook

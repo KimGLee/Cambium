@@ -107,6 +107,8 @@ coverage_after:
       batch: null
       next_batch: TODO(plan)
       gate_receipts: []
+      # Explicit even when empty: apply_task_plan fails closed on omission.
+      property_state: {}
       deferred_reason: null
       reentry_condition: null
   batch_specs:

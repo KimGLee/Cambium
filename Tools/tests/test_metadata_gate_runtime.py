@@ -68,7 +68,7 @@ class MetadataGateRuntimeTests(unittest.TestCase):
             producer_capability="manual-attestation-v1",
             producer_reference="release-reviewer",
             receipt_schema="manual-gate-attestation-v1",
-            consumer_capability="metadata-transition-integrator-v1",
+            consumer_capability="typed-metadata-transition-v1",
         )
         self.rules = metadata_execution_contract.AuthorizedProjectionRules(
             (metadata_gate_runtime.synthetic_projection_rule(self.gate),),
@@ -219,7 +219,7 @@ class MetadataGateRuntimeTests(unittest.TestCase):
         }
         context = metadata_gate_runtime.load_gate_context(
             REPOSITORY, "P:agent-atlas:interview-readiness",
-            "kernel/Read Sets/R07 Long-running Execution Read Set.md",
+            "Read Set/R07 Long-running Execution Read Set.md",
             runtime=runtime, authority=authority)
         self.assertEqual("interview_status", context.gate.field_id)
         self.assertEqual(("interview-ready",),
@@ -306,7 +306,7 @@ class MetadataGateRuntimeTests(unittest.TestCase):
             producer_capability="registered-scan-v1",
             producer_reference=scan.scan_id,
             receipt_schema="deterministic-gate-result-v1",
-            consumer_capability="metadata-transition-integrator-v1",
+            consumer_capability="typed-metadata-transition-v1",
         )
         authority = copy.deepcopy(self.context.authority)
         authority["profile_view"]["_contract"] = SimpleNamespace(

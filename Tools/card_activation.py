@@ -7,17 +7,21 @@ receipt/tool result; ``update_queue`` independently recompiles it before the
 ``queued -> open`` edge.  A host transport may bind the delivery to one
 execution context through ``CAMBIUM_EXECUTION_CONTEXT_ID``.
 
-Runtime Cards are the startup payload.  Sources deliberately left in a Card's
-``readback_sources`` become either startup payloads (the Card declares
-``readback_policy: activation``) or individually addressable declared
-addenda.  Kernel source remains authoritative; this module merely makes the
-delivery boundary exact and observable.
+Curated Cards are the startup payload.  Conditional read-back rules and their
+targets come only from the paired Read Set machine declaration; Card
+frontmatter never owns a second load boundary.  Canonical source remains
+authoritative; this module merely resolves and makes delivery observable.
 """
 
 import os
 import re
 
+import card_contract
 import kblib
+import profile_layout_contract
+import profile_batch_judgment_contract
+import read_set_contract
+import stamp_cards
 
 
 # v1 delivered the Card Bundle alone.  v2 additionally freezes the Profile's
@@ -61,50 +65,29 @@ PHASE_ACK_PROTOCOL = "activation-phase-ack-v1"
 # which rule set produced the plan it is replaying.
 PHASE_RESOLVER_VERSION = "phase-resolver-1.0.0"
 
-# Phase closed set.  Two layers: three batch phases every batch walks, and
-# two task-level conditional phases only a real transition enters.
-PHASE_BATCH_PREFLIGHT = "batch-preflight"
-PHASE_BATCH_RUNNING = "batch-running"
-PHASE_BATCH_GATE = "batch-gate"
-PHASE_GOVERNANCE = "governance"
-PHASE_TASK_COMPLETION = "task-completion"
-PHASE_ORDER = (
-    PHASE_BATCH_PREFLIGHT, PHASE_BATCH_RUNNING, PHASE_BATCH_GATE,
-    PHASE_GOVERNANCE, PHASE_TASK_COMPLETION,
-)
+# Read Set owns the phase closed set and its delivery classifications. This
+# executor projects the shipped machine contract; it does not maintain a
+# second tuple, conditional set, standard set, or trigger description.
+_DEPLOYED_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+_PHASE_CONTRACT = tuple(
+    read_set_contract.load_schema(_DEPLOYED_ROOT)["phases"])
+_PHASE_BY_ID = {row["phase_id"]: row for row in _PHASE_CONTRACT}
+PHASE_ORDER = tuple(row["phase_id"] for row in _PHASE_CONTRACT)
 PHASES = frozenset(PHASE_ORDER)
-# A conditional phase is materialized only when its predicate holds; its
-# pieces are frozen at admission either way, so entering one later proves
-# what it always would have been rather than resolving it afresh.
-CONDITIONAL_PHASES = frozenset((PHASE_GOVERNANCE, PHASE_TASK_COMPLETION))
-# A standard phase must fit one part.  Needing two is not a transport
-# accident to route around; it means the phase set was cut too wide.
-STANDARD_PHASES = frozenset((PHASE_BATCH_PREFLIGHT, PHASE_BATCH_GATE))
+CONDITIONAL_PHASES = frozenset(
+    row["phase_id"] for row in _PHASE_CONTRACT if row["conditional"])
+STANDARD_PHASES = frozenset(
+    row["phase_id"] for row in _PHASE_CONTRACT if row["standard"])
 PHASE_TRIGGERS = {
-    PHASE_BATCH_PREFLIGHT: "batch admitted (queued -> open)",
-    PHASE_BATCH_RUNNING: "route or read-back condition declared during work",
-    PHASE_BATCH_GATE: "first judgment or merge-ready request",
-    PHASE_GOVERNANCE: "in-batch Standards governance transition",
-    PHASE_TASK_COMPLETION: "completion-candidate task transition",
-}
-# Routes whose phase is fixed by what the route is for, not by the batch.
-# R01 is every task's common boundary; the other three are the routes their
-# own Cards say ordinary work must not enter implicitly.
-ROUTE_PHASE_OVERRIDES = {
-    "R01": PHASE_BATCH_PREFLIGHT,
-    "R08": PHASE_TASK_COMPLETION,
-    "R09": PHASE_GOVERNANCE,
-    "R12": PHASE_BATCH_GATE,
-}
-# Of those, the one a batch may narrow away.  R08 and R09 are reached by a
-# task-level transition, which a batch's Work Spec does not decide, and R01
-# is presumed by every phase -- narrowing either would let a batch opt out
-# of an obligation that is not its to waive.  R12 is different in kind: its
-# Card states scenarios, and the Work Spec is where a batch says which
-# scenario it is.  Without that, selecting R12 once at task level charges
-# every batch for a targeted audit almost none of them run, which is the
-# waste this protocol exists to remove.
-NARROWABLE_PHASE_OVERRIDES = frozenset(("R12",))
+    row["phase_id"]: row["trigger"] for row in _PHASE_CONTRACT}
+
+# Stable phase references used by the execution algorithm. Their membership
+# and attributes still come from the machine contract above.
+PHASE_BATCH_PREFLIGHT = _PHASE_BY_ID["batch-preflight"]["phase_id"]
+PHASE_BATCH_RUNNING = _PHASE_BY_ID["batch-running"]["phase_id"]
+PHASE_BATCH_GATE = _PHASE_BY_ID["batch-gate"]["phase_id"]
+PHASE_GOVERNANCE = _PHASE_BY_ID["governance"]["phase_id"]
+PHASE_TASK_COMPLETION = _PHASE_BY_ID["task-completion"]["phase_id"]
 # One delivered piece must fit one tool result.  The measured object is the
 # canonical serialization of the whole delivery, not the source file: the
 # 2026-08-22 host measurement saw 50,495 bytes of Card source arrive as a
@@ -114,10 +97,8 @@ PIECE_KINDS = frozenset(("card", "activation-readback"))
 BATCH_REVIEW_PLAN_PROTOCOL = "batch-review-plan-v1"
 READBACK_PROTOCOL = "card-readback-addendum-v1"
 EXECUTION_CONTEXT_ENV = "CAMBIUM_EXECUTION_CONTEXT_ID"
-CARD_INDEX_PATH = "kernel/Cards/Card Index.md"
 SHA12_RE = re.compile(r"[0-9a-f]{12}")
 SHA256_RE = re.compile(r"sha256:[0-9a-f]{64}")
-READBACK_POLICIES = frozenset(("none", "declared", "activation"))
 LEGACY_ACTIVATION_CONTEXT_FIELDS = (
     "activation_protocol", "task_contract_sha256", "reading_plan_sha256",
     "readback_plan_sha256", "card_bundle_sha256",
@@ -216,33 +197,58 @@ def _frontmatter(text, label):
 
 
 def _route_registry(root):
-    snapshot, text = _snapshot_text(root, CARD_INDEX_PATH)
-    document = _frontmatter(text, CARD_INDEX_PATH)
-    if document.get("type") != "card-index":
-        raise ActivationError("%s must declare type card-index" %
-                              CARD_INDEX_PATH)
-    rows = document.get("route_registry")
-    if not isinstance(rows, list) or not rows:
-        raise ActivationError("%s has no route_registry" % CARD_INDEX_PATH)
+    """Discover Card/Read Set bindings without consulting navigation indexes."""
+    try:
+        card_schema = card_contract.load_schema(root)
+        read_set_schema = read_set_contract.load_schema(root)
+        read_sets = read_set_contract.discover(root, schema=read_set_schema)
+    except (card_contract.CardContractError,
+            read_set_contract.ReadSetContractError) as exc:
+        raise ActivationError(str(exc))
+    card_directory = card_schema["directory"]
+    directory = os.path.join(root, *card_directory.split("/"))
+    if not os.path.isdir(directory) or os.path.islink(directory):
+        raise ActivationError("canonical Card directory is missing or unsafe")
     result = {}
-    for index, row in enumerate(rows):
-        if not isinstance(row, dict) or set(row) != {
-                "route_id", "path", "read_set"}:
+    for name in sorted(os.listdir(directory)):
+        if not name.endswith(".md") or name == card_schema["index_name"]:
+            continue
+        path = "%s/%s" % (card_directory, name)
+        _snapshot, text = _snapshot_text(root, path)
+        document = _frontmatter(text, path)
+        route_id = document.get("route_id")
+        read_set = document.get("read_set")
+        if (document.get("type") != card_schema["document_type"] or
+                document.get("generation_mode") !=
+                card_schema["generation_mode"]):
             raise ActivationError(
-                "%s route_registry[%d] must contain only route_id, path, "
-                "and read_set" % (CARD_INDEX_PATH, index))
-        route_id = row.get("route_id")
-        path = row.get("path")
-        read_set = row.get("read_set")
-        if not all(isinstance(value, str) and value
-                   for value in (route_id, path, read_set)):
-            raise ActivationError("%s route_registry[%d] is incomplete" %
-                                  (CARD_INDEX_PATH, index))
+                "%s must declare Card schema type %r and generation_mode %r"
+                % (path, card_schema["document_type"],
+                   card_schema["generation_mode"]))
+        if not isinstance(route_id, str) or route_id not in read_sets:
+            raise ActivationError("%s has no canonical Read Set identity" % path)
         if route_id in result:
-            raise ActivationError("%s repeats route %s" %
-                                  (CARD_INDEX_PATH, route_id))
-        result[route_id] = {"path": path, "read_set": read_set}
-    return result, snapshot.sha256
+            raise ActivationError("more than one Card declares %s" % route_id)
+        expected = read_sets[route_id]["path"]
+        if document.get("read_set_id") != route_id or read_set != expected:
+            raise ActivationError("%s must bind %s" % (path, expected))
+        result[route_id] = {
+            "path": path,
+            "read_set": expected,
+            "read_set_declaration": read_sets[route_id]["declaration"],
+        }
+    if set(result) != set(read_sets):
+        raise ActivationError(
+            "Card/Read Set route mismatch; cards_only=%s read_sets_only=%s" %
+            (sorted(set(result) - set(read_sets)),
+             sorted(set(read_sets) - set(result))))
+    identity = [{
+        "route_id": route_id,
+        "card_path": result[route_id]["path"],
+        "read_set_path": result[route_id]["read_set"],
+        "read_set_declaration": result[route_id]["read_set_declaration"],
+    } for route_id in sorted(result)]
+    return result, kblib.sha256_bytes(kblib.canonical_json_bytes(identity))
 
 
 def _contract_fingerprint(progress):
@@ -339,55 +345,66 @@ def _card_record(root, route_id, registered, declared_path):
             (route_id, declared_path, registered["path"]))
     snapshot, text = _snapshot_text(root, declared_path)
     document = _frontmatter(text, declared_path)
-    expected_keys = ("type", "route_id", "read_set", "source_hash",
-                     "compiled_source_hash", "readback_sources",
-                     "readback_policy")
-    missing = [key for key in expected_keys if key not in document]
-    if missing:
-        raise ActivationError("%s lacks %s" %
-                              (declared_path, ", ".join(missing)))
-    if document.get("type") != "runtime-card":
-        raise ActivationError("%s must declare type runtime-card" %
-                              declared_path)
+    try:
+        schema = card_contract.load_schema(root)
+    except card_contract.CardContractError as exc:
+        raise ActivationError(str(exc))
+    if set(document) != set(schema["document_fields"]):
+        raise ActivationError(
+            "%s does not satisfy the canonical curated Card shape" %
+            declared_path)
+    if (document.get("type") != schema["document_type"] or document.get(
+            "generation_mode") != schema["generation_mode"]):
+        raise ActivationError(
+            "%s must declare Card schema type %r and generation_mode %r" %
+            (declared_path, schema["document_type"],
+             schema["generation_mode"]))
     if document.get("route_id") != route_id:
         raise ActivationError("%s route_id does not match %s" %
                               (declared_path, route_id))
-    if document.get("read_set") != registered["read_set"]:
-        raise ActivationError("%s read_set does not match the Card Index" %
+    if (document.get("read_set_id") != route_id or
+            document.get("read_set") != registered["read_set"]):
+        raise ActivationError("%s does not bind its canonical Read Set" %
                               declared_path)
     observed = document.get("source_hash")
-    compiled = document.get("compiled_source_hash")
-    if not (isinstance(observed, str) and SHA12_RE.fullmatch(observed) and
-            isinstance(compiled, str) and SHA12_RE.fullmatch(compiled)):
-        raise ActivationError("%s has invalid semantic source hashes" %
+    reviewed = document.get("reviewed_source_hash")
+    reviewed_card = document.get("reviewed_card_hash")
+    hash_re = schema["hash_re"]
+    if not (isinstance(observed, str) and hash_re.fullmatch(observed) and
+            isinstance(reviewed, str) and hash_re.fullmatch(reviewed) and
+            isinstance(reviewed_card, str) and
+            hash_re.fullmatch(reviewed_card)):
+        raise ActivationError("%s has invalid curated source hashes" %
                               declared_path)
-    if observed != compiled:
+    if observed != reviewed:
         raise ActivationError(
-            "%s has unacknowledged semantic source drift (%s != %s)" %
-            (declared_path, observed, compiled))
-    readbacks = _strings(document.get("readback_sources"),
-                         "%s readback_sources" % declared_path)
-    policy = document.get("readback_policy")
-    if policy not in READBACK_POLICIES:
-        raise ActivationError("%s readback_policy must be one of %s" %
-                              (declared_path,
-                               ", ".join(sorted(READBACK_POLICIES))))
-    if (not readbacks and policy != "none") or (
-            readbacks and policy == "none"):
+            "%s has unreviewed source drift (%s != %s)" %
+            (declared_path, observed, reviewed))
+    try:
+        current = stamp_cards.source_digest(root, document["source_files"])
+    except stamp_cards.CardContractError as exc:
+        raise ActivationError(str(exc))
+    if observed != current:
         raise ActivationError(
-            "%s readback_policy %s disagrees with readback_sources" %
-            (declared_path, policy))
+            "%s source bytes drifted (%s != %s)" %
+            (declared_path, observed, current))
+    current_card = stamp_cards.card_body_digest(text)
+    if reviewed_card != current_card:
+        raise ActivationError(
+            "%s has unreviewed Card body drift (%s != %s)" %
+            (declared_path, reviewed_card, current_card))
     read_set_snapshot, _ = _snapshot_text(root, registered["read_set"])
     return {
         "route_id": route_id,
         "path": declared_path,
         "sha256": snapshot.sha256,
         "source_hash": observed,
-        "compiled_source_hash": compiled,
+        "reviewed_source_hash": reviewed,
+        "reviewed_card_hash": reviewed_card,
         "read_set": registered["read_set"],
         "read_set_sha256": read_set_snapshot.sha256,
-        "readback_policy": policy,
-        "readback_sources": readbacks,
+        "readback_edges": read_set_contract.readback_edges(
+            registered["read_set_declaration"]),
         "content": text,
     }
 
@@ -407,6 +424,19 @@ def _activation_bundle_manifest(bundle):
         for row in bundle.get("startup_readbacks", [])
     ]
     return manifest
+
+
+def _card_review_hash_matches(record):
+    """Accept current curated review proof and sealed pre-migration records."""
+    if not isinstance(record, dict):
+        return False
+    reviewed = record.get("reviewed_source_hash")
+    if reviewed is not None:
+        reviewed_card = record.get("reviewed_card_hash")
+        return (record.get("source_hash") == reviewed and
+                isinstance(reviewed_card, str) and
+                SHA12_RE.fullmatch(reviewed_card) is not None)
+    return record.get("source_hash") == record.get("compiled_source_hash")
 
 
 def _piece_envelope_bytes(piece):
@@ -455,36 +485,27 @@ def work_spec_route_narrowing(root, item):
     return sorted(set(routes))
 
 
-def resolve_route_phases(routes, *, narrowing=None):
-    """Assign every selected route to exactly one phase.
-
-    Three routes carry their own phase because their Cards already say so:
-    R09 and R08 are entered by a governance or completion transition, R12 by
-    a targeted-audit predicate.  R01 is the common boundary every phase
-    presumes.  Everything else is work: it starts in preflight unless the
-    batch narrowed itself, and a narrowed-away route stays available on
-    demand during `batch-running` rather than disappearing.
-
-    A Work Spec narrowing reaches R12 and no other override, because R12's
-    predicate is about what this batch is doing while the rest are about
-    what the task is doing.  Absent a narrowing every override holds as
-    written, so an unrevised Work Spec behaves exactly as it did before.
-    """
+def resolve_route_phases(routes, registry, *, narrowing=None):
+    """Assign selected routes from their canonical Read Set declarations."""
     narrowed = narrowing is not None
     keep = set(narrowing or ())
     assignment = {}
     for route_id in routes:
+        registered = registry.get(route_id)
+        declaration = (registered or {}).get("read_set_declaration")
+        if not isinstance(declaration, dict):
+            raise ActivationError(
+                "route %s has no canonical Read Set declaration" % route_id)
         narrowed_away = narrowed and route_id not in keep
-        override = ROUTE_PHASE_OVERRIDES.get(route_id)
-        if override is not None:
-            assignment[route_id] = (
-                PHASE_BATCH_RUNNING
-                if narrowed_away and route_id in NARROWABLE_PHASE_OVERRIDES
-                else override)
-        elif narrowed_away:
+        if narrowed_away and declaration.get("narrowable"):
             assignment[route_id] = PHASE_BATCH_RUNNING
         else:
-            assignment[route_id] = PHASE_BATCH_PREFLIGHT
+            phase = declaration.get("activation_phase")
+            if phase not in PHASES:
+                raise ActivationError(
+                    "route %s has invalid activation_phase %r" %
+                    (route_id, phase))
+            assignment[route_id] = phase
     return assignment
 
 
@@ -517,9 +538,11 @@ def _piece_records(cards, startup, phase_of=None):
             "read_set": card["read_set"],
             "read_set_sha256": card["read_set_sha256"],
             "source_hash": card["source_hash"],
-            "compiled_source_hash": card["compiled_source_hash"],
-            "readback_policy": card["readback_policy"],
-            "readback_sources": list(card["readback_sources"]),
+            "reviewed_source_hash": card["reviewed_source_hash"],
+            "reviewed_card_hash": card["reviewed_card_hash"],
+            "readback_rule_ids": [
+                edge["edge_id"] for edge in card["readback_edges"]
+            ],
         }
         phase = _phase(card["route_id"])
         if phase is not None:
@@ -535,8 +558,8 @@ def _piece_records(cards, startup, phase_of=None):
             "route_id": row["route_id"],
             "rule_id": row["rule_id"],
         }
-        # A read-back travels with the Card that declared it; the Card Index
-        # belongs to no route, so it waits for the dispute that needs it.
+        # Supplemental Profile Read Sets can still travel as startup material
+        # until their own contract is migrated in a later batch.
         phase = _phase(row["route_id"], PHASE_BATCH_RUNNING)
         if phase is not None:
             record["phase"] = phase
@@ -557,57 +580,16 @@ def expand_batch_review_requirements(profile_contract, item):
     batch-selector row expands to the batch itself.  No natural-language
     applicability exists by construction.
     """
-    batch_id = item.get("id") if isinstance(item, dict) else None
-    if not isinstance(batch_id, str) or not batch_id:
-        raise ActivationError("review expansion batch has no id")
-    requirements = ()
-    if profile_contract is not None:
-        if not getattr(profile_contract, "authorized", False):
-            raise ActivationError(
-                "review expansion requires one authorized typed Profile "
-                "contract")
-        requirements = getattr(
-            profile_contract, "batch_review_requirements", ())
-    manifest = item.get("manifest")
-    if not isinstance(manifest, list) or not all(
-            isinstance(page, str) and page for page in manifest):
-        raise ActivationError("review expansion manifest must be a string list")
-    records = []
-    for requirement in requirements:
-        if requirement.target_selector == "each-manifest-page":
-            targets = sorted(set(manifest))
-        elif requirement.target_selector == "batch":
-            targets = [batch_id]
-        else:
-            raise ActivationError(
-                "review expansion target selector %r is unsupported" %
-                requirement.target_selector)
-        for target in targets:
-            records.append({
-                "batch_id": batch_id,
-                "target": target,
-                "judgment_item_id": requirement.judgment_item_id,
-                "target_selector": requirement.target_selector,
-                "trigger": requirement.trigger,
-                "producer_kind": requirement.producer_kind,
-                "receipt_schema": requirement.receipt_schema,
-                "pass_authority_role_id": requirement.pass_authority_role_id,
-            })
-    records.sort(key=lambda row: (row["judgment_item_id"], row["target"]))
-    return records
+    try:
+        return profile_batch_judgment_contract.expand_requirements(
+            profile_contract, item)
+    except (TypeError, ValueError) as exc:
+        raise ActivationError(str(exc)) from exc
 
 
 def review_requirement_set_sha256(records):
     """Hash only the closed obligation identity of one expansion."""
-    identity = [
-        {
-            "batch_id": row["batch_id"],
-            "target": row["target"],
-            "judgment_item_id": row["judgment_item_id"],
-        }
-        for row in records
-    ]
-    return kblib.sha256_bytes(kblib.canonical_json_bytes(identity))
+    return profile_batch_judgment_contract.requirement_set_sha256(records)
 
 
 def build_activation_context(root, progress, item, *, runtime_state,
@@ -649,13 +631,8 @@ def build_activation_context(root, progress, item, *, runtime_state,
         raise ActivationError("selected route(s) are unregistered: %s" %
                               ", ".join(unknown))
     expected_paths = [registry[route]["path"] for route in routes]
-    # Older adopting contracts may explicitly freeze the Card Index itself in
-    # selected_card_paths.  It is the navigation registry, not an Rxx Card, so
-    # it must not be interpreted as a route or silently discarded.  Permit
-    # only that one canonical extra path and deliver its exact bytes below.
-    allowed_paths = set(expected_paths) | {CARD_INDEX_PATH}
     missing = sorted(set(expected_paths) - set(declared_cards))
-    extra = sorted(set(declared_cards) - allowed_paths)
+    extra = sorted(set(declared_cards) - set(expected_paths))
     if missing or extra:
         raise ActivationError(
             "selected_card_paths does not exactly match selected routes; "
@@ -665,58 +642,75 @@ def build_activation_context(root, progress, item, *, runtime_state,
     cards = []
     startup = []
     readback_plan = []
-    if CARD_INDEX_PATH in declared_cards:
-        index_snapshot, index_text = _snapshot_text(root, CARD_INDEX_PATH)
-        startup.append({
-            "rule_id": "kernel:activation:card-index",
-            "route_id": "kernel-card-index",
-            "path": CARD_INDEX_PATH,
-            "sha256": index_snapshot.sha256,
-            "content": index_text,
-        })
     for route_id in routes:
         card = _card_record(root, route_id, registry[route_id],
                             registry[route_id]["path"])
         cards.append(card)
-        if card["readback_policy"] == "activation":
-            for source in card["readback_sources"]:
-                source_snapshot, source_text = _snapshot_text(root, source)
-                startup.append({
-                    "rule_id": "%s:activation:%s" % (route_id, source),
-                    "route_id": route_id,
+        for edge in card["readback_edges"]:
+            source_paths = list(edge["targets"])
+            source_paths.extend(
+                registry[dependency]["read_set"]
+                for dependency in edge["read_sets"])
+            frozen_sources = []
+            for source in sorted(set(source_paths)):
+                source_snapshot, _ = _snapshot_text(root, source)
+                frozen_sources.append({
                     "path": source,
                     "sha256": source_snapshot.sha256,
-                    "content": source_text,
                 })
-        elif card["readback_policy"] == "declared":
-            for source in card["readback_sources"]:
-                source_snapshot, _ = _snapshot_text(root, source)
-                readback_plan.append({
-                    "rule_id": "%s:declared:%s" % (route_id, source),
-                    "route_id": route_id,
-                    "phase": "triggered",
-                    "evaluator": "declared",
-                    "source_paths": [{
-                        "path": source,
-                        "sha256": source_snapshot.sha256,
-                    }],
-                })
+            readback_plan.append({
+                "rule_id": edge["edge_id"],
+                "route_id": route_id,
+                "phase": edge["phase_id"],
+                "trigger_id": edge["trigger_id"],
+                "evaluator": "declared-semantic-trigger",
+                "read_set_ids": list(edge["read_sets"]),
+                "source_paths": frozen_sources,
+            })
 
-    # A Profile supplemental Read Set has no kernel Card.  Its own compact
-    # route document is therefore part of startup context, while transitive
-    # kernel Read Sets remain governed by the selected Cards above.
+    # A Profile supplemental Read Set has no top-level Card.  Its validated
+    # machine declaration is therefore part of startup context; Profile prose
+    # and registry tables never become a second load authority.
     profile_routes = set(_strings(contract.get("selected_profile_route_ids"),
                                   "selected_profile_route_ids"))
-    for relative in sorted(_strings(contract.get("selected_read_sets"),
-                                    "selected_read_sets")):
+    try:
+        profile_registry = read_set_contract.discover_profile(
+            root, contract.get("selected_profile_manifest"))
+    except read_set_contract.ReadSetContractError as exc:
+        raise ActivationError("Profile Read Set declarations are invalid: %s" %
+                              exc)
+    unknown_profile_routes = sorted(profile_routes - set(profile_registry))
+    if unknown_profile_routes:
+        raise ActivationError(
+            "selected Profile route(s) have no machine Read Set declaration: %s"
+            % ", ".join(unknown_profile_routes))
+    selected_read_sets = set(_strings(
+        contract.get("selected_read_sets"), "selected_read_sets"))
+    expected_profile_paths = {
+        profile_registry[route_id]["path"] for route_id in profile_routes
+    }
+    missing_profile_paths = sorted(expected_profile_paths - selected_read_sets)
+    if missing_profile_paths:
+        raise ActivationError(
+            "selected_read_sets omits Profile Read Set declaration(s): %s" %
+            ", ".join(missing_profile_paths))
+    profile_path_map = {
+        record["path"]: record for record in profile_registry.values()
+    }
+    unexpected_profile_paths = sorted(
+        relative for relative in selected_read_sets
+        if relative.startswith(
+            profile_layout_contract.PROFILES_DIRECTORY + "/") and
+        (relative not in profile_path_map or
+         profile_path_map[relative]["route_id"] not in profile_routes)
+    )
+    if unexpected_profile_paths:
+        raise ActivationError(
+            "selected_read_sets contains an unselected or non-machine Profile "
+            "Read Set: %s" % ", ".join(unexpected_profile_paths))
+    for route_id in sorted(profile_routes):
+        relative = profile_registry[route_id]["path"]
         snapshot, text = _snapshot_text(root, relative)
-        document = _frontmatter(text, relative)
-        if document.get("type") != "profile-read-set":
-            continue
-        route_id = document.get("route_id")
-        if route_id not in profile_routes:
-            raise ActivationError(
-                "%s profile route %r is not selected" % (relative, route_id))
         startup.append({
             "rule_id": "%s:activation:%s" % (route_id, relative),
             "route_id": route_id,
@@ -750,7 +744,7 @@ def build_activation_context(root, progress, item, *, runtime_state,
             raise ActivationError(
                 "work spec narrows to route(s) the contract did not select: "
                 "%s" % ", ".join(unknown_narrowed))
-    phase_of = resolve_route_phases(routes, narrowing=narrowing)
+    phase_of = resolve_route_phases(routes, registry, narrowing=narrowing)
     for route_id in sorted(profile_routes):
         phase_of.setdefault(
             route_id,
@@ -1153,8 +1147,7 @@ def activation_context_errors(context):
                                                        str):
                     errors.append(
                         "activation Card %d manifest is malformed" % index)
-                if card.get("source_hash") != card.get(
-                        "compiled_source_hash"):
+                if not _card_review_hash_matches(card):
                     errors.append(
                         "activation Card %d semantic hashes disagree" % index)
             if "R01" not in routes:
@@ -1342,7 +1335,7 @@ def _piece_manifest_errors(manifest):
                           "pre-phase era" % piece_id)
         if row.get("kind") == "card":
             routes.append(row.get("route_id"))
-            if row.get("source_hash") != row.get("compiled_source_hash"):
+            if not _card_review_hash_matches(row):
                 errors.append("activation piece %s semantic hashes disagree" %
                               piece_id)
     if sorted(seen) != [row.get("piece_id") for row in pieces

@@ -20,26 +20,21 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import card_activation
 import check_queue
 import kblib
+import profile_contract
+import runtime_paths
+import runtime_state_contract
 
 
 TOOL = "update_task"
 TOOL_VERSION = "1.1.0"
 TERMINAL_PROOF_TOOL = "check_proof"
-TERMINAL_PROOF_TOOL_VERSION = "1.17.0"
+TERMINAL_PROOF_TOOL_VERSION = "1.18.0"
 TERMINAL_PROOF_GATE_ID = "terminal-proof"
-RECEIPT_PATH = ".cambium/receipts/task-transitions.jsonl"
-PROFILE_BINDING_FIELDS = (
-    "selected_profile_manifest", "profile_snapshot_sha256",
-    "profile_contract_fingerprint", "profile_load_inputs_sha256",
-)
+RECEIPT_PATH = runtime_paths.TASK_TRANSITION_RECEIPT_PATH
+PROFILE_BINDING_FIELDS = profile_contract.PROFILE_LOAD_EVIDENCE_FIELDS
 TERMINAL_BINDING_FIELDS = PROFILE_BINDING_FIELDS + (
     "repository_snapshot_sha256",
 )
-FINAL_CONTROL_STATUSES = frozenset((
-    "verified", "deferred", "superseded", "not-applicable",
-))
-
-
 def _emit_json_receipts(receipts):
     """Write the exact receipt objects this run produced to real stdout.
 
@@ -57,26 +52,6 @@ def _emit_json_receipts(receipts):
         return
     sys.stdout.write(
         kblib.canonical_json_bytes(list(receipts)).decode("utf-8") + "\n")
-
-
-# ``planned -> paused/blocked`` is intentional: an admitted task may be
-# interrupted or encounter a blocker before its first batch is activated.
-TRANSITIONS = {
-    "planned": frozenset((
-        "active", "paused", "blocked", "completion-candidate", "complete",
-        "cancelled",
-    )),
-    "active": frozenset((
-        "paused", "blocked", "completion-candidate", "complete", "cancelled",
-    )),
-    "paused": frozenset(("active", "blocked", "cancelled")),
-    "blocked": frozenset(("active", "paused", "cancelled")),
-    "completion-candidate": frozenset((
-        "active", "paused", "blocked", "complete", "cancelled",
-    )),
-    "complete": frozenset(),
-    "cancelled": frozenset(),
-}
 
 
 def _nonempty(value):
@@ -132,7 +107,8 @@ def _pending_controls(progress):
         if not isinstance(entry, dict):
             raise ValueError("Progress guidance_queue[%d] must be a mapping" %
                              index)
-        if entry.get("status") not in FINAL_CONTROL_STATUSES:
+        if (entry.get("status") not in
+                runtime_state_contract.FINAL_GUIDANCE_STATUSES):
             pending_guidance.append(
                 str(entry.get("guidance_id") or "#%d" % index))
 
@@ -145,16 +121,8 @@ def _pending_controls(progress):
             raise ValueError("Progress amendments[%d] must be a mapping" %
                              index)
         status = entry.get("status")
-        if status == "withdrawn" and entry.get("writeback_done") is False:
-            # K13/06 withdrawal: the row is final and authorizes nothing.
-            # check_queue already treats it as terminal; counting it as
-            # pending here would let one withdrawn registration wedge every
-            # future task transition -- the exact failure the withdrawal
-            # action exists to prevent.
-            continue
-        if (status not in FINAL_CONTROL_STATUSES or
-                (status == "verified" and
-                 entry.get("writeback_done") is not True)):
+        if not runtime_state_contract.amendment_is_final(
+                status, entry.get("writeback_done")):
             pending_amendments.append(str(entry.get("id") or "#%d" % index))
     return pending_guidance, pending_amendments
 
@@ -239,7 +207,7 @@ def _terminal_proof_receipt(result, receipt_id):
         raise ValueError("Terminal Proof receipt target must equal proof path")
     try:
         absolute = kblib.managed_repository_path(
-            result["root"], proof_path, ".cambium/receipts",
+            result["root"], proof_path, runtime_paths.RECEIPT_ROOT,
             suffixes=(".yaml", ".yml"), must_exist=True,
         )
     except (OSError, ValueError) as exc:
@@ -258,9 +226,7 @@ def _terminal_proof_receipt(result, receipt_id):
     # Contract. A completed task is replayed historically by ``check_queue``;
     # this is therefore the last boundary at which today's Profile may be used
     # to authorize the state transition.
-    for field in ("profile_snapshot_sha256",
-                  "profile_contract_fingerprint",
-                  "profile_load_inputs_sha256"):
+    for field in profile_contract.PROFILE_LOAD_EVIDENCE_FINGERPRINT_FIELDS:
         if not check_queue.SHA256_RE.fullmatch(str(receipt.get(field))):
             raise ValueError(
                 "Terminal Proof receipt lacks canonical %s" % field
@@ -285,9 +251,7 @@ def _terminal_proof_receipt(result, receipt_id):
             (profile_evidence.get("selected_profile_manifest"),
              selected_manifest)
         )
-    for field in ("profile_snapshot_sha256",
-                  "profile_contract_fingerprint",
-                  "profile_load_inputs_sha256"):
+    for field in profile_contract.PROFILE_LOAD_EVIDENCE_FINGERPRINT_FIELDS:
         if receipt.get(field) != profile_evidence.get(field):
             raise ValueError(
                 "Terminal Proof receipt %s does not match the current "
@@ -470,7 +434,8 @@ def build_task_transition(result, after_state, at, summary, evidence_receipt,
             "maintenance"
         )
     before_state = progress.get("task_state")
-    if after_state not in TRANSITIONS.get(before_state, frozenset()):
+    if not runtime_state_contract.task_transition_is_authorized(
+            completion_semantics, before_state, after_state):
         raise ValueError("illegal task transition %s -> %s" %
                          (before_state, after_state))
     at_value = check_queue.timestamp_value(at)
@@ -603,7 +568,8 @@ def build_task_transition(result, after_state, at, summary, evidence_receipt,
                 )
             evidence_receipt = terminal_proof_receipt
         else:
-            if before_state not in ("planned", "active"):
+            if (before_state not in
+                    runtime_state_contract.MAINTENANCE_COMPLETION_TASK_STATES):
                 raise ValueError(
                     "maintenance completion requires planned/active -> complete"
                 )
@@ -759,8 +725,11 @@ def main(argv=None):
     parser.add_argument("root", help="adopting repository root")
     parser.add_argument(
         "--transition", required=True,
-        choices=tuple(sorted({target for targets in TRANSITIONS.values()
-                              for target in targets})),
+        choices=tuple(sorted({
+            target
+            for edges in runtime_state_contract.TASK_TRANSITIONS_BY_SEMANTICS.values()
+            for _source, target in edges
+        })),
         help="target task state in the Progress Ledger",
     )
     parser.add_argument("--checkpoint-summary",
@@ -792,7 +761,8 @@ def main(argv=None):
     parser.add_argument("--at",
                         help="transition timestamp; defaults to now in UTC")
     parser.add_argument("--receipts", default=RECEIPT_PATH,
-                        help="receipt JSONL path under .cambium/receipts")
+                        help="receipt JSONL path under %s" %
+                        runtime_paths.RECEIPT_ROOT)
     parser.add_argument("--apply", action="store_true",
                         help="write the transition; omit for a dry run")
     parser.add_argument(
@@ -839,11 +809,11 @@ def _run(args, produced):
                 args.maintenance_completion_receipt,
         )
         progress_path = kblib.managed_repository_path(
-            root, check_queue.PROGRESS_PATH, ".cambium/state",
+            root, check_queue.PROGRESS_PATH, runtime_paths.STATE_ROOT,
             suffixes=(".yaml",), must_exist=True,
         )
         receipt_path = kblib.managed_repository_path(
-            root, args.receipts, ".cambium/receipts",
+            root, args.receipts, runtime_paths.RECEIPT_ROOT,
             suffixes=(".jsonl",), must_exist=False,
         )
     except (OSError, TypeError, ValueError, kblib.YamlSubsetError) as exc:

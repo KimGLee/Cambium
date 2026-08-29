@@ -25,6 +25,8 @@ File existence, a resolvable wiki link, the existence of an external checklist i
 
 `authoring_status` represents only the authoring and quality-review progress of a knowledge file:
 
+The registered vocabulary base is the sole normative source for closed value membership; this page owns the values' meanings and legal transitions.
+
 - `unassessed`: an old page, or a page newly brought into scope, not yet reviewed against the current Standards. Existing pages without metadata default to this status in the Coverage Ledger.
 - `outline`: only headings, structure, or scattered points; does not count as completed content.
 - `drafted`: the main content has been written, but facts, formulas, links, sources, profile expression artifact migration, or rendering have not been fully checked.
@@ -49,6 +51,8 @@ The field, allowed values, and upgrade rules of the fourth status axis are regis
 
 `learning_status` belongs to the user's personal learning progress and is not written automatically by bulk knowledge-base building:
 
+The registered vocabulary base is the sole normative source for closed value membership; this page owns the learning-state meanings and completion boundary.
+
 - `not-started`
 - `learning`
 - `self-tested`
@@ -59,6 +63,8 @@ The field, allowed values, and upgrade rules of the fourth status axis are regis
 ### Coverage Disposition
 
 `coverage_disposition` represents how a page is handled within the current build scope:
+
+The registered vocabulary base is the sole normative source for closed value membership; this page owns the disposition meanings.
 
 - `required`: MUST be completed within the current scope; blocks task completion until the target status is reached.
 - `optional`: valuable but does not block the current task.

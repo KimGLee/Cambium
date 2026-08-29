@@ -1,42 +1,12 @@
-# Vocabulary Extensions slot: ships with no extension registered.
-# Interface: profiles/README.md#Vocabulary-Extensions-Slot
-# After check_profile and R09/K00 adoption, compose with:
-#   python3 Tools/compose_vocab.py
-#
-# No kernel-field extension and no profile-owned field is registered here.
-# `volatility_defaults` is the only required registration; the composer
-# derives the domain vocabulary from its keys. Rename `general`, or split it
-# into real domains, during the interview — the keys become this corpus's
-# `domain` values.
-#
-# Shapes for the two optional registrations, so opening either needs no
-# second document. Both are commented reference, not unfilled answers:
-#
-#   Kernel-field extension — add values to a kernel-extensible field:
-#     fields:
-#       type:
-#         values: []
-#       scope:
-#         values: []
-#
-#   Expression-readiness field — a profile-owned controlled field. Register
-#   it only when a registered expression artifact uses a readiness axis (see
-#   expression-layer.md); the mapping key is the field name:
-#     fields:
-#       <controlled-field-name>:
-#         owner: "<repo-relative owner path, optionally #heading>"
-#         role: Expression Status Axis
-#         values:
-#           - <one allowed value; repeat as needed>
+# Candidate instance values for the Vocabulary Extensions slot. The
+# Kernel-owned Profile interface and K08 define the common extension shape.
 
 schema_version: 1
 
-# Freeform profile fields without controlled values:
 frontmatter_extensions:
   fields: []
 
 fields:
 
-# key = domain ID; value = fast | slow | stable
 volatility_defaults:
   general: slow

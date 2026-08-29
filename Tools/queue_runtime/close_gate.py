@@ -11,11 +11,16 @@ import datetime
 import os
 import stat
 
+import audit_receipt_contract
+import batch_close_audit
+import batch_close_contract
 import candidate_lifecycle
+import corpus_planning_contract
 import kblib
 import metadata_execution_contract
 import metadata_property_state
 import project_page_state
+import profile_contract
 
 from queue_runtime.canon import (
     ANY_PRODUCER_ERA_VERSION,
@@ -45,26 +50,21 @@ from queue_runtime.receipts import (
 )
 
 
-# K12/09 owns this closed set.  A close-gate receipt names one independently
-# persisted pass receipt for every member; no omitted or ad-hoc eighth member
-# can be hidden behind a generic "batch passed" assertion.
-CLOSED_LIST_EVIDENCE_FIELDS = (
-    "wiki_link_resolution",
-    "structural_validity",
-    "graph_and_duplicate_basenames",
-    "coverage_file_count",
-    "guidance_and_contract_continuity",
-    "registered_residual_content",
-    "controlled_vocabulary",
-    "manifest_page_contract",
-)
+# Compatibility projection of the K12/09-owned machine registry. A close-gate
+# receipt names one independently persisted pass receipt for every member; no
+# omission or ad-hoc member can be hidden behind a generic "batch passed"
+# assertion.
+CLOSED_LIST_EVIDENCE_FIELDS = \
+    batch_close_contract.CLOSED_LIST_EVIDENCE_FIELDS
 # Sealed close bundles are validated against the Closed List their producer
 # era actually ran (K12/10 producer-era identity): a bundle produced before
 # ``manifest_page_contract`` joined the list carries seven members forever,
 # and re-judging it against the current list would retroactively invalidate
 # every prior close on a checker upgrade.
-LEGACY_CLOSED_LIST_VERSIONS = frozenset(("1.4.0",))
-LEGACY_CLOSED_LIST_EVIDENCE_FIELDS = CLOSED_LIST_EVIDENCE_FIELDS[:-1]
+LEGACY_CLOSED_LIST_VERSIONS = \
+    batch_close_contract.LEGACY_CLOSED_LIST_VERSIONS
+LEGACY_CLOSED_LIST_EVIDENCE_FIELDS = \
+    batch_close_contract.LEGACY_CLOSED_LIST_EVIDENCE_FIELDS
 
 # Batch-close has a finite historical protocol catalog because its 1.4 era
 # sealed a different Closed List shape.  A current action still accepts only
@@ -72,14 +72,16 @@ LEGACY_CLOSED_LIST_EVIDENCE_FIELDS = CLOSED_LIST_EVIDENCE_FIELDS[:-1]
 # recorded closed edge.  Other historical receipts are judged through
 # :func:`accounted_standards_versions` instead of an unbounded version list.
 SUPPORTED_BATCH_CLOSE_TOOL_VERSIONS = frozenset((
-    BATCH_CLOSE_TOOL_VERSION, "1.11.0", "1.10.0", "1.9.0", "1.8.0", "1.7.0",
-    "1.6.0", "1.5.0",
+    BATCH_CLOSE_TOOL_VERSION, "1.13.0", "1.12.0", "1.11.0", "1.10.0",
+    "1.9.0", "1.8.0", "1.7.0", "1.6.0", "1.5.0",
     *LEGACY_CLOSED_LIST_VERSIONS,
 ))
 # A sealed close bundle keeps the child producer its batch-close era ran.
 # Batch-close 1.7 is the first protocol that consumes corpus-plan 1.7; older
 # supported bundles retain their 1.6 child identity during historical replay.
 HISTORICAL_CORPUS_PLAN_TOOL_VERSIONS = {
+    "1.13.0": "1.7.0",
+    "1.12.0": "1.7.0",
     "1.11.0": "1.7.0",
     "1.10.0": "1.7.0",
     "1.9.0": "1.7.0",
@@ -89,31 +91,26 @@ HISTORICAL_CORPUS_PLAN_TOOL_VERSIONS = {
     "1.5.0": "1.6.0",
     "1.4.0": "1.6.0",
 }
-CORPUS_PLAN_TRIGGERS = frozenset(("R13", "manifest"))
-CORPUS_PLAN_PATH_SHA_FIELDS = (
-    ("selected_profile_manifest", "selected_profile_manifest_sha256"),
-    ("corpus_planning_slot_path", "corpus_planning_slot_sha256"),
-    ("profile_scope_path", "profile_scope_sha256"),
-    ("global_map_path", "global_map_sha256"),
-    ("capability_matrix_path", "capability_matrix_sha256"),
-    ("gap_register_path", "gap_register_sha256"),
-)
-
-
 # Producer eras whose batch-close protocol carries the policy-exception
 # disposition.  K12/10 producer-era identity cuts both ways: an older bundle
 # is never re-judged against members its era lacked, and it is never allowed
 # to carry evidence its era could not have produced.  A 1.7 bundle claiming a
 # policy-exception disposition is a forgery, not history.
 POLICY_EXCEPTION_DISPOSITION_VERSIONS = frozenset((
-    "1.8.0", "1.9.0", "1.10.0", "1.11.0", "1.12.0",
+    "1.8.0", "1.9.0", "1.10.0", "1.11.0", "1.12.0", "1.13.0",
 ))
 
 COMPACT_CLOSE_EVIDENCE_VERSIONS = frozenset((
-    "1.9.0", "1.10.0", "1.11.0", "1.12.0",
+    "1.9.0", "1.10.0", "1.11.0", "1.12.0", "1.13.0",
 ))
 CANDIDATE_CONTINUATION_VERSIONS = frozenset((
-    "1.10.0", "1.11.0", "1.12.0"))
+    "1.10.0", "1.11.0", "1.12.0", "1.13.0"))
+
+# Batch-close 1.13 is the first producer era whose K12/09 close evidence is a
+# heterogeneous AuditPlan closure: seven full AuditReceipts and the original
+# dimensionless page-contract Gate record.  Historical eras retain their own
+# closed-list receipt shapes and continue through the legacy branch below.
+AUDIT_PLAN_CLOSE_EVIDENCE_VERSIONS = frozenset(("1.13.0",))
 
 
 def candidate_evidence_binding_errors(root, label, relative, expected_sha,
@@ -410,16 +407,17 @@ def _page_review_acceptance_errors(
 
     profile_bindings = {
         field: aggregate.get(field)
-        for field in (
-            "selected_profile_manifest", "profile_snapshot_sha256",
-            "profile_contract_fingerprint", "profile_load_inputs_sha256")
+        for field in profile_contract.PROFILE_LOAD_EVIDENCE_FIELDS
     }
-    expected_profile = {
-        "selected_profile_manifest": selected_profile_manifest,
-        "profile_snapshot_sha256": profile_snapshot_sha256,
-        "profile_contract_fingerprint": profile_contract_fingerprint,
-        "profile_load_inputs_sha256": profile_load_inputs_sha256,
-    }
+    expected_profile = dict(zip(
+        profile_contract.PROFILE_LOAD_EVIDENCE_FIELDS,
+        (
+            selected_profile_manifest,
+            profile_snapshot_sha256,
+            profile_contract_fingerprint,
+            profile_load_inputs_sha256,
+        ),
+    ))
     live_profile_view = dict(profile_bindings)
     live_profile_view.update({
         field: value for field, value in expected_profile.items()
@@ -565,6 +563,286 @@ def _page_review_acceptance_errors(
     return errors, ids
 
 
+_POST_DELTA_PLAN_BINDING_FIELDS = (
+    "audit_plan_id", "audit_plan_path", "audit_plan_sha256",
+    "post_delta_evidence_bindings", "post_delta_evidence_count",
+    "post_delta_evidence_set_sha256", "post_delta_audit_receipt_ids",
+    "post_delta_audit_receipt_set_sha256",
+)
+
+
+def _profile_registered_close_dimension(contract):
+    """Resolve the one selected-Profile dimension used by K12/09 item 6."""
+    scan = getattr(contract, "required_scan", None)
+    judgment_id = getattr(scan, "judgment_item_id", None)
+    matches = [
+        row for row in getattr(contract, "judgment_items", ())
+        if getattr(row, "judgment_item_id", None) == judgment_id
+    ]
+    if scan is None or not nonempty_string(judgment_id) or len(matches) != 1:
+        raise ValueError(
+            "selected Profile must resolve exactly one K12/09 item 6 "
+            "Judgment Item")
+    dimension = getattr(matches[0], "dimension_id", None)
+    if (not nonempty_string(dimension) or
+            getattr(matches[0], "evidence_role", None) != "emits"):
+        raise ValueError(
+            "selected Profile K12/09 item 6 must emit one registered dimension")
+    return dimension
+
+
+def _catalog_record(catalog, receipt_id, label, errors):
+    """Return one hot record without imposing Gate-style result vocabulary."""
+    if not nonempty_string(receipt_id):
+        errors.append("%s must identify a receipt" % label)
+        return None
+    entry = catalog.get(receipt_id)
+    if (not isinstance(entry, tuple) or len(entry) != 2 or
+            not isinstance(entry[1], dict)):
+        errors.append("%s references missing receipt %s" % (label, receipt_id))
+        return None
+    record = entry[1]
+    if record.get("receipt_id") != receipt_id:
+        errors.append("%s catalog key differs from its receipt_id" % label)
+        return None
+    return record
+
+
+def _post_delta_close_evidence_errors(
+        catalog, aggregate, global_review, attestation, *, item_id, task_id,
+        merged_snapshot_sha256, receipt_version,
+        authorized_profile_contract=None, historical=False):
+    """Consume the exact heterogeneous K12/09 closure emitted by 1.13.
+
+    This validates bytes already named by the aggregate.  It deliberately does
+    not scan for or decide which AuditPlan is current; the state-transition
+    consumer owns that system-level currentness check.  The producer-era
+    record must nevertheless bind one immutable plan identity consistently in
+    its aggregate, global review, attestation, eight ordered member bindings,
+    and seven full AuditReceipts.
+    """
+    errors = []
+    label = "%s batch-close gate receipt %s" % (
+        item_id, aggregate.get("receipt_id"))
+    rows = batch_close_contract.closed_list_member_rows()
+    if len(rows) != 8:
+        return (["%s current K12/09 registry must contain exactly eight "
+                 "members, found %d" % (label, len(rows))], [])
+
+    plan_id = aggregate.get("audit_plan_id")
+    plan_path = aggregate.get("audit_plan_path")
+    plan_sha256 = aggregate.get("audit_plan_sha256")
+    for field, value in (
+            ("audit_plan_id", plan_id), ("audit_plan_path", plan_path)):
+        if not nonempty_string(value):
+            errors.append("%s %s must be a non-empty string" % (label, field))
+    if not isinstance(plan_sha256, str) or not SHA256_RE.fullmatch(plan_sha256):
+        errors.append("%s audit_plan_sha256 must be a sha256 fingerprint" %
+                      label)
+
+    for child_name, child in (
+            ("global review", global_review),
+            ("reviewer attestation", attestation)):
+        if not isinstance(child, dict):
+            continue
+        for field in _POST_DELTA_PLAN_BINDING_FIELDS:
+            if child.get(field) != aggregate.get(field):
+                errors.append(
+                    "%s %s %s does not equal the aggregate binding" %
+                    (item_id, child_name, field))
+
+    evidence = aggregate.get("closed_list_evidence")
+    producer_evidence = aggregate.get("closed_list_producer_evidence")
+    expected_fields = [row["member_id"] for row in rows]
+    if not isinstance(evidence, dict):
+        errors.append("%s closed_list_evidence must be a mapping" % label)
+        return errors, []
+    if set(evidence) != set(expected_fields):
+        errors.append(
+            "%s closed_list_evidence keys must equal the current K12/09 "
+            "registry" % label)
+    if not isinstance(producer_evidence, dict) or \
+            set(producer_evidence) != set(expected_fields):
+        errors.append(
+            "%s closed_list_producer_evidence keys must equal the current "
+            "K12/09 registry" % label)
+        producer_evidence = {}
+
+    bindings = aggregate.get("post_delta_evidence_bindings")
+    if not isinstance(bindings, list):
+        errors.append(
+            "%s post_delta_evidence_bindings must be an ordered list" % label)
+        return errors, [value for value in evidence.values()
+                        if nonempty_string(value)]
+
+    evidence_by_id = {}
+    evidence_ids = []
+    for row in rows:
+        member_id = row["member_id"]
+        evidence_id = evidence.get(member_id)
+        record = _catalog_record(
+            catalog, evidence_id,
+            "%s Closed List member %s" % (item_id, member_id), errors)
+        if record is not None:
+            evidence_by_id[evidence_id] = record
+            evidence_ids.append(evidence_id)
+
+    stage = {
+        "audit_plan_id": plan_id,
+        "audit_plan_path": plan_path,
+        "audit_plan_sha256": plan_sha256,
+    }
+    projection = []
+    for index, row in enumerate(rows):
+        binding = bindings[index] if index < len(bindings) else {}
+        projection.append({
+            "member": dict(row),
+            "obligation": {
+                "obligation_id": binding.get("obligation_id"),
+                "dimension": binding.get("dimension"),
+            },
+        })
+    closure = None
+    try:
+        closure = batch_close_audit.validate_post_delta_evidence_set(
+            stage, projection, bindings, evidence_by_id,
+            merged_snapshot_sha256)
+    except (TypeError, ValueError) as exc:
+        errors.append("%s post-Delta evidence closure is invalid: %s" %
+                      (label, exc))
+
+    expected_profile_dimension = None
+    if not historical:
+        try:
+            expected_profile_dimension = _profile_registered_close_dimension(
+                authorized_profile_contract)
+        except ValueError as exc:
+            errors.append("%s cannot bind K12/09 item 6: %s" % (label, exc))
+
+    for index, row in enumerate(rows):
+        member_id = row["member_id"]
+        binding = bindings[index] if index < len(bindings) and isinstance(
+            bindings[index], dict) else {}
+        evidence_id = evidence.get(member_id)
+        record = evidence_by_id.get(evidence_id)
+        if not isinstance(record, dict):
+            continue
+        if row["evidence_kind"] == "gate-receipt":
+            if record.get("record_kind") == "audit-receipt":
+                errors.append(
+                    "%s %s must consume the original dimensionless Gate "
+                    "record, not an AuditReceipt wrapper" % (label, member_id))
+            if producer_evidence.get(member_id) != evidence_id:
+                errors.append(
+                    "%s %s producer evidence must be that same original Gate "
+                    "record" % (label, member_id))
+            continue
+
+        try:
+            audit_receipt_contract.validate_audit_receipt(record)
+        except (TypeError, ValueError) as exc:
+            errors.append("%s %s is not a full AuditReceipt: %s" %
+                          (label, member_id, exc))
+            continue
+        expected_dimension = row.get("dimension")
+        if row.get("dimension_binding") == "profile-registration":
+            expected_dimension = (expected_profile_dimension
+                                  if expected_profile_dimension is not None
+                                  else binding.get("dimension"))
+            if not nonempty_string(expected_dimension):
+                errors.append(
+                    "%s %s has no registered Profile dimension" %
+                    (label, member_id))
+        expected = {
+            "plan_id": plan_id,
+            "audit_plan_sha256": plan_sha256,
+            "obligation_id": binding.get("obligation_id"),
+            "owner_kind": "kernel",
+            "owner_rule_id": row["rule_id"],
+            "kernel_extension_point": None,
+            "task_id": task_id,
+            "batch_id": item_id,
+            "due_stage": row["due_stage"],
+            "evidence_role": row["evidence_role"],
+            "evidence_kind": row["evidence_kind"],
+            "dimension": expected_dimension,
+            "producer_check": row["producer_check"],
+            "producer_capability": row.get("producer_capability"),
+            "producer_gate_id": row.get("producer_gate_id"),
+            "consumer_gate_id": row["consumer_gate_id"],
+            "fingerprint_binding": "evidence-time",
+            "artifact_fingerprint": merged_snapshot_sha256,
+            "result": "passed",
+            "invalidated_by": None,
+        }
+        mismatches = [field for field, value in expected.items()
+                      if record.get(field) != value]
+        if mismatches:
+            errors.append(
+                "%s %s AuditReceipt differs from its registry/plan binding "
+                "in: %s" %
+                (label, member_id, ", ".join(sorted(mismatches))))
+
+        raw_id = producer_evidence.get(member_id)
+        if record.get("evidence_ref") != raw_id:
+            errors.append(
+                "%s %s AuditReceipt evidence_ref does not equal its declared "
+                "producer evidence" % (label, member_id))
+        raw = _catalog_record(
+            catalog, raw_id, "%s producer evidence %s" %
+            (item_id, member_id), errors)
+        if not isinstance(raw, dict):
+            continue
+        raw_expected = {
+            "tool": BATCH_CLOSE_TOOL,
+            "tool_version": receipt_version,
+            "check": row["producer_check"],
+            "plan_id": plan_id,
+            "audit_plan_path": plan_path,
+            "audit_plan_sha256": plan_sha256,
+            "obligation_id": binding.get("obligation_id"),
+            "task_id": task_id,
+            "batch_id": item_id,
+            "merged_snapshot_sha256": merged_snapshot_sha256,
+            "artifact_fingerprint": record.get("artifact_fingerprint"),
+            "dependency_fingerprint": record.get("dependency_fingerprint"),
+            "contract_fingerprint": record.get("contract_fingerprint"),
+            "result": "pass",
+            "invalidated_by": None,
+        }
+        raw_mismatches = [field for field, value in raw_expected.items()
+                          if raw.get(field) != value]
+        if record.get("scope") != [raw.get("target")]:
+            raw_mismatches.append("target/scope")
+        if record.get("verifier") != raw.get("tool"):
+            raw_mismatches.append("verifier")
+        if record.get("method") != "%s@%s/%s" % (
+                raw.get("tool"), raw.get("tool_version"), raw.get("check")):
+            raw_mismatches.append("method")
+        if record.get("checked_at") != raw.get("checked_at"):
+            raw_mismatches.append("checked_at")
+        if raw_mismatches:
+            errors.append(
+                "%s %s producer evidence differs from the full AuditReceipt "
+                "in: %s" %
+                (label, member_id, ", ".join(sorted(set(raw_mismatches)))))
+
+    if closure is not None:
+        expected_aggregate = {
+            "post_delta_evidence_count": len(rows),
+            "post_delta_evidence_set_sha256":
+                closure["evidence_set_sha256"],
+            "post_delta_audit_receipt_ids": closure["audit_receipt_ids"],
+            "post_delta_audit_receipt_set_sha256":
+                closure["audit_receipt_set_sha256"],
+        }
+        for field, value in expected_aggregate.items():
+            if aggregate.get(field) != value:
+                errors.append("%s %s=%r, expected %r" %
+                              (label, field, aggregate.get(field), value))
+    return errors, evidence_ids
+
+
 def close_gate_receipt_errors(catalog, receipt_id, *, item_id, task_id,
                               root=None,
                               queue_revision, queue_state_revision,
@@ -692,38 +970,37 @@ def close_gate_receipt_errors(catalog, receipt_id, *, item_id, task_id,
         errors.append(
             "%s receipt %s corpus_plan_required must be an explicit boolean" %
             (label, receipt_id))
-    if (not isinstance(actual_corpus_triggers, list) or
-            any(not nonempty_string(value)
-                for value in actual_corpus_triggers)):
-        errors.append(
-            "%s receipt %s corpus_plan_triggers must be an explicit string "
-            "list" % (label, receipt_id))
+    trigger_issues = corpus_planning_contract.close_trigger_issues(
+        actual_corpus_required, actual_corpus_triggers)
+    if any(issue["code"] == "trigger_list" for issue in trigger_issues):
         actual_corpus_triggers = []
-    else:
-        if actual_corpus_triggers != sorted(set(actual_corpus_triggers)):
+    for issue in trigger_issues:
+        if issue["code"] == "trigger_list":
             errors.append(
-                "%s receipt %s corpus_plan_triggers must be unique and sorted" %
-                (label, receipt_id))
-        unsupported = sorted(
-            set(actual_corpus_triggers) - CORPUS_PLAN_TRIGGERS)
-        if unsupported:
+                "%s receipt %s corpus_plan_triggers must be an explicit "
+                "string list" % (label, receipt_id))
+        elif issue["code"] == "trigger_order":
+            errors.append(
+                "%s receipt %s corpus_plan_triggers must be unique and "
+                "sorted" % (label, receipt_id))
+        elif issue["code"] == "trigger_unsupported":
             errors.append(
                 "%s receipt %s has unsupported corpus-plan trigger(s): %s" %
-                (label, receipt_id, ", ".join(unsupported)))
-    if actual_corpus_required is False:
-        if actual_corpus_triggers:
+                (label, receipt_id, ", ".join(issue["values"])))
+        elif issue["code"] == "inactive_triggers":
             errors.append(
                 "%s receipt %s non-applicable corpus plan must use no "
                 "triggers" % (label, receipt_id))
+        elif issue["code"] == "required_trigger_missing":
+            errors.append(
+                "%s receipt %s required corpus plan has no trigger" %
+                (label, receipt_id))
+    if actual_corpus_required is False:
         if corpus_receipt_id is not None:
             errors.append(
                 "%s receipt %s non-applicable corpus plan must use "
                 "corpus_plan_receipt=null" % (label, receipt_id))
     elif actual_corpus_required is True:
-        if not actual_corpus_triggers:
-            errors.append(
-                "%s receipt %s required corpus plan has no trigger" %
-                (label, receipt_id))
         corpus_tool_version = CORPUS_PLAN_TOOL_VERSION
         if historical and receipt_version != BATCH_CLOSE_TOOL_VERSION:
             corpus_tool_version = \
@@ -763,55 +1040,52 @@ def close_gate_receipt_errors(catalog, receipt_id, *, item_id, task_id,
                         "%s Corpus Planning expected binding must be a "
                         "mapping" % item_id)
                 else:
-                    for field, value in sorted(
-                            corpus_plan_expected_binding.items()):
-                        if (field not in corpus_receipt or
-                                corpus_receipt.get(field) != value):
-                            errors.append(
-                                "%s Corpus Planning child %s has %s=%r, "
-                                "expected current %r" % (
-                                    item_id, corpus_receipt_id, field,
-                                    corpus_receipt.get(field), value))
+                    differences = corpus_planning_contract.\
+                        receipt_binding_differences(
+                            corpus_receipt, corpus_plan_expected_binding,
+                            fields=sorted(corpus_plan_expected_binding))
+                    for difference in differences:
+                        errors.append(
+                            "%s Corpus Planning child %s has %s=%r, "
+                            "expected current %r" % (
+                                item_id, corpus_receipt_id,
+                                difference["field"], difference["actual"],
+                                difference["expected"]))
             applicability = corpus_receipt.get("corpus_plan_applicability")
-            if applicability not in ("configured", "not-applicable"):
+            if applicability not in \
+                    corpus_planning_contract.APPLICABILITY_STATES:
                 errors.append(
                     "%s Corpus Planning child %s has invalid applicability %r" %
                     (item_id, corpus_receipt_id, applicability))
-            if ("R13" in actual_corpus_triggers and
-                    applicability != "configured"):
+            if (corpus_planning_contract.CLOSE_ROUTE_TRIGGER in
+                    actual_corpus_triggers and applicability !=
+                    corpus_planning_contract.CONFIGURED_STATE):
                 errors.append(
                     "%s R13 close requires a configured Corpus Planning child" %
                     item_id)
-            for path_field, sha_field in CORPUS_PLAN_PATH_SHA_FIELDS:
-                path_value = corpus_receipt.get(path_field)
-                sha_value = corpus_receipt.get(sha_field)
-                always_required = path_field in (
-                    "selected_profile_manifest", "corpus_planning_slot_path")
-                configured_required = applicability == "configured"
-                if always_required or configured_required:
-                    if not nonempty_string(path_value):
-                        errors.append(
-                            "%s Corpus Planning child %s lacks %s" %
-                            (item_id, corpus_receipt_id, path_field))
-                    if (not isinstance(sha_value, str) or
-                            not SHA256_RE.fullmatch(sha_value)):
-                        errors.append(
-                            "%s Corpus Planning child %s has invalid %s" %
-                            (item_id, corpus_receipt_id, sha_field))
+            for issue in corpus_planning_contract.\
+                    receipt_path_currentness_issues(
+                        corpus_receipt, applicability):
+                path_field = issue["path_field"]
+                sha_field = issue["sha256_field"]
+                if issue["code"] == "required_path":
+                    errors.append(
+                        "%s Corpus Planning child %s lacks %s" %
+                        (item_id, corpus_receipt_id, path_field))
+                elif issue["code"] == "required_sha256":
+                    errors.append(
+                        "%s Corpus Planning child %s has invalid %s" %
+                        (item_id, corpus_receipt_id, sha_field))
+                elif issue["code"] == "inactive_pair_missing":
+                    errors.append(
+                        "%s inactive Corpus Planning child %s must "
+                        "explicitly bind null %s/%s" % (
+                            item_id, corpus_receipt_id, path_field, sha_field))
                 else:
-                    if (path_field not in corpus_receipt or
-                            sha_field not in corpus_receipt):
-                        errors.append(
-                            "%s inactive Corpus Planning child %s must "
-                            "explicitly bind null %s/%s" % (
-                                item_id, corpus_receipt_id, path_field,
-                                sha_field))
-                    elif path_value is not None or sha_value is not None:
-                        errors.append(
-                            "%s inactive Corpus Planning child %s must use "
-                            "null %s/%s" % (
-                                item_id, corpus_receipt_id, path_field,
-                                sha_field))
+                    errors.append(
+                        "%s inactive Corpus Planning child %s must use null "
+                        "%s/%s" % (
+                            item_id, corpus_receipt_id, path_field, sha_field))
 
     require_receipt(
         catalog, queue_consistency_receipt,
@@ -1011,9 +1285,9 @@ def close_gate_receipt_errors(catalog, receipt_id, *, item_id, task_id,
     # The Closed List a bundle answers to is the one its producer era ran:
     # a pre-1.5.0 bundle carries seven members forever (K12/10 producer-era
     # identity), a current bundle carries the full list.
-    era_fields = (LEGACY_CLOSED_LIST_EVIDENCE_FIELDS
-                  if receipt_version in LEGACY_CLOSED_LIST_VERSIONS
-                  else CLOSED_LIST_EVIDENCE_FIELDS)
+    era_fields = \
+        batch_close_contract.closed_list_evidence_fields_for_producer_version(
+            receipt_version)
     expected_fields = set(era_fields)
     if not isinstance(evidence, dict):
         errors.append("%s receipt %s closed_list_evidence must be a mapping" %
@@ -1029,28 +1303,43 @@ def close_gate_receipt_errors(catalog, receipt_id, *, item_id, task_id,
                       "member(s): %s" %
                       (label, receipt_id, ", ".join(extra)))
     evidence_ids = []
-    for field in era_fields:
-        evidence_id = evidence.get(field)
-        if not nonempty_string(evidence_id):
-            errors.append("%s receipt %s closed_list_evidence.%s must identify "
-                          "a receipt" % (label, receipt_id, field))
-            continue
-        evidence_ids.append(evidence_id)
-        require_receipt(
-            catalog, evidence_id,
-            "%s Closed List member %s" % (item_id, field), errors,
-            expected={
-                "tool": BATCH_CLOSE_TOOL,
-                "tool_version": receipt_version,
-                "check": "closed_list_%s" % field,
-                "target": ".",
-                "batch_id": item_id,
-                "task_id": task_id,
-                "integrator_id": integrator_id,
-                "reviewer_id": reviewer_id,
-                "merged_snapshot_sha256": merged_snapshot_sha256,
-            },
-        )
+    if receipt_version in AUDIT_PLAN_CLOSE_EVIDENCE_VERSIONS:
+        post_delta_errors, evidence_ids = \
+            _post_delta_close_evidence_errors(
+                catalog, receipt, global_review, attestation,
+                item_id=item_id, task_id=task_id,
+                merged_snapshot_sha256=merged_snapshot_sha256,
+                receipt_version=receipt_version,
+                authorized_profile_contract=authorized_profile_contract,
+                historical=historical)
+        errors.extend(post_delta_errors)
+    else:
+        # Producer-era replay: versions before 1.13 emitted one ordinary
+        # check_batch_close receipt per member.  Preserve that historical
+        # protocol exactly; do not reinterpret those bytes as AuditReceipts.
+        for field in era_fields:
+            evidence_id = evidence.get(field)
+            if not nonempty_string(evidence_id):
+                errors.append(
+                    "%s receipt %s closed_list_evidence.%s must identify a "
+                    "receipt" % (label, receipt_id, field))
+                continue
+            evidence_ids.append(evidence_id)
+            require_receipt(
+                catalog, evidence_id,
+                "%s Closed List member %s" % (item_id, field), errors,
+                expected={
+                    "tool": BATCH_CLOSE_TOOL,
+                    "tool_version": receipt_version,
+                    "check": "closed_list_%s" % field,
+                    "target": ".",
+                    "batch_id": item_id,
+                    "task_id": task_id,
+                    "integrator_id": integrator_id,
+                    "reviewer_id": reviewer_id,
+                    "merged_snapshot_sha256": merged_snapshot_sha256,
+                },
+            )
     if len(evidence_ids) != len(set(evidence_ids)):
         errors.append("%s receipt %s closed_list_evidence must use one "
                       "distinct receipt ID per Closed List member" %

@@ -3,14 +3,16 @@
 
 The Profile's ``Batch Review Requirements`` registry, not command-line
 options, supplies which Judgment Item applies, over which targets, under
-which pass-authority role, and in which receipt schema.  One invocation
-answers exactly one frozen obligation record: the judgment is bound to the
+which pass-authority role, and in which receipt schema. The current AuditPlan
+must contain exactly one matching Profile-extension obligation. One invocation
+answers that frozen obligation: the judgment is bound to the
 batch's current activation (so a reopened batch cannot reuse it), to the
-target's exact semantic content (so a drifted page cannot keep it), and to
-the authorized Profile contract fingerprint (so a revised Profile cannot
-keep it).  The machine does not certify that the human judgment is right;
-it certifies that the judgment happened, against these bytes, by the
-declared role, for this attempt.
+target's K12/07 artifact fingerprint and, for a page target, its separate
+Profile projection-neutral semantic fingerprint (so either relevant drift
+invalidates it), and to the authorized Profile contract fingerprint (so a
+revised Profile cannot keep it). The machine does not certify that the human
+judgment is right; it certifies that the judgment happened, against these
+bytes, by the declared role, for this attempt.
 
 `open -> merge-ready` consumes these receipts through the batch-review
 wrapper: expected records and actual records must match exactly.  This tool
@@ -21,32 +23,34 @@ import os
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import audit_evidence_runtime
 import card_activation
 import check_queue
 import kblib
-import metadata_property_state
+import profile_batch_judgment_contract as judgment_contract
+import runtime_paths
 
 
-TOOL = "record_batch_judgment"
-TOOL_VERSION = "1.0.0"
-JUDGMENT_CHECK = "profile_batch_judgment"
-DEFAULT_RECEIPTS = ".cambium/receipts/batch-judgments.jsonl"
+TOOL = judgment_contract.PRODUCER_TOOL
+TOOL_VERSION = judgment_contract.PRODUCER_TOOL_VERSION
+JUDGMENT_CHECK = judgment_contract.PRODUCER_CHECK
+DEFAULT_RECEIPTS = runtime_paths.BATCH_JUDGMENT_RECEIPT_PATH
 
 
-def _requirement(contract, judgment_item_id):
-    rows = [row for row in getattr(contract, "batch_review_requirements", ())
-            if row.judgment_item_id == judgment_item_id]
-    if not rows:
-        raise ValueError(
-            "Judgment Item %r is not a registered Batch Review Requirement "
-            "of the selected Profile" % judgment_item_id)
-    return rows[0]
+def _current_plan(runtime, item):
+    binding = audit_evidence_runtime.resolve_stage_plan(
+        runtime, item, judgment_contract.DUE_STAGE,
+        required_state="open")
+    return binding["plan"], binding["audit_plan_sha256"]
 
 
-def build_judgment_receipt(runtime, contract, item, judgment_item_id,
-                           target, reviewer_role, statement, seq=1):
+def build_judgment_receipt(runtime, contract, item, plan, plan_sha256,
+                           judgment_item_id, target, reviewer_role,
+                           statement, seq=1):
     """Build one judgment receipt for one frozen obligation record."""
-    requirement = _requirement(contract, judgment_item_id)
+    (obligation, requirement, _judgment, _expected_record,
+     expected) = judgment_contract.resolve_obligation(
+         plan, contract, item, target, judgment_item_id)
     if reviewer_role != requirement.pass_authority_role_id:
         raise ValueError(
             "reviewer role %r cannot answer %s; the Profile registers %r" %
@@ -59,16 +63,7 @@ def build_judgment_receipt(runtime, contract, item, judgment_item_id,
             "batch %s is %s; judgments are recorded only while it is open" %
             (item.get("id"), item.get("state")))
 
-    expected = card_activation.expand_batch_review_requirements(
-        contract, item)
-    record = [row for row in expected
-              if row["target"] == target and
-              row["judgment_item_id"] == judgment_item_id]
-    if not record:
-        raise ValueError(
-            "(%s, %s) is not an expected obligation of batch %s" %
-            (target, judgment_item_id, item.get("id")))
-    expected_sha = card_activation.review_requirement_set_sha256(expected)
+    expected_sha = judgment_contract.requirement_set_sha256(expected)
 
     activation_id = item.get("activation_receipt")
     catalog = runtime.get("current_receipt_catalog",
@@ -105,35 +100,75 @@ def build_judgment_receipt(runtime, contract, item, judgment_item_id,
     if phase_errors:
         raise ValueError("; ".join(phase_errors))
 
-    semantic_sha = None
-    if requirement.target_selector == "each-manifest-page":
-        _snapshot, semantic_sha = metadata_property_state.\
-            semantic_page_snapshot(runtime["root"], target)
-
-    view = runtime.get("_profile_authorized_view") or {}
+    fingerprints = judgment_contract.evidence_fingerprints(
+        runtime["root"], plan, obligation, contract, item, target,
+        judgment_item_id)
+    profile_view = runtime.get("_profile_authorized_view")
     receipt = kblib.make_receipt(
         TOOL, TOOL_VERSION, JUDGMENT_CHECK, target, "pass",
         statement.strip(), seq, root=runtime["root"])
     receipt.update({
+        "schema_version": 1,
+        "record_kind": judgment_contract.RECORD_KIND,
+        "plan_id": plan["plan_id"],
+        "audit_plan_sha256": plan_sha256,
+        "obligation_id": obligation["obligation_id"],
+        "task_id": plan["task_id"],
         "batch_id": item.get("id"),
+        "owner_kind": obligation["owner_kind"],
+        "owner_rule_id": obligation["owner_rule_id"],
+        "kernel_extension_point": obligation["kernel_extension_point"],
+        "partition": obligation["partition"],
+        "due_stage": obligation["due_stage"],
+        "evidence_role": obligation["evidence_role"],
+        "evidence_kind": obligation["evidence_kind"],
+        "dimension": obligation["dimension"],
+        "acceptance_predicate": obligation["acceptance_predicate"],
+        "producer_check": obligation["producer_check"],
+        "producer_capability": obligation["producer_capability"],
+        "producer_gate_id": obligation["producer_gate_id"],
+        "consumer_gate_id": obligation["consumer_gate_id"],
+        "fingerprint_binding": obligation["fingerprint_binding"],
         "judgment_item_id": judgment_item_id,
         "target_selector": requirement.target_selector,
+        "trigger": requirement.trigger,
+        "producer_kind": requirement.producer_kind,
         "receipt_schema": requirement.receipt_schema,
         "pass_authority_role_id": requirement.pass_authority_role_id,
         "reviewer_role": reviewer_role,
-        "opening_transition_receipt": activation_id,
+        "opening_transition_receipt":
+            plan["opening_transition_receipt"],
+        "activation_receipt_id": activation_id,
         "review_requirement_set_sha256": frozen_sha,
-        "semantic_content_sha256": semantic_sha,
-        "profile_contract_fingerprint": view.get(
-            "profile_contract_fingerprint"),
-        "profile_snapshot_sha256": view.get("profile_snapshot_sha256"),
+        "semantic_content_sha256": (
+            judgment_contract.semantic_content_fingerprint(
+                runtime["root"], target, profile_view)
+            if requirement.target_selector == "each-manifest-page"
+            else None),
+        "standards_version": plan["standards_version"],
+        "active_standards_sha256":
+            plan["active_standards_sha256"],
+        "selected_profile_manifest":
+            plan["selected_profile_manifest"],
+        "profile_contract_fingerprint":
+            plan["profile_contract_fingerprint"],
+        "profile_snapshot_sha256":
+            plan["profile_snapshot_sha256"],
     })
+    receipt.update(fingerprints)
+    errors = judgment_contract.receipt_binding_errors(
+        runtime["root"], plan, plan_sha256, contract, item, receipt,
+        profile_view)
+    if errors:
+        raise ValueError(
+            "constructed Profile judgment is invalid in: %s" %
+            ", ".join(errors))
     return receipt
 
 
 def main(argv=None):
     parser = kblib.ArgumentParser(
-        description="Record one snapshot-bound Batch Review judgment")
+        description="Record one AuditPlan-bound Batch Review judgment")
     parser.add_argument("root", help="adopting repository root")
     parser.add_argument("--batch", required=True,
                         help="exact open Queue batch ID")
@@ -149,7 +184,8 @@ def main(argv=None):
                         help="bounded judgment statement (the concrete "
                              "verdict, not \"reviewed\")")
     parser.add_argument("--receipts", default=DEFAULT_RECEIPTS,
-                        help="receipt JSONL path under .cambium/receipts")
+                        help="receipt JSONL path under %s" %
+                        runtime_paths.RECEIPT_ROOT)
     parser.add_argument("--apply", action="store_true",
                         help="append the evidence; omit for a dry run")
     parser.add_argument("--json", action="store_true",
@@ -172,11 +208,13 @@ def main(argv=None):
         if not isinstance(item, dict):
             raise ValueError("batch %s is not in the Required Queue" %
                              args.batch)
+        plan, plan_sha256 = _current_plan(runtime, item)
         receipt = build_judgment_receipt(
-            runtime, contract, item, args.judgment_item, args.target,
-            args.reviewer_role, args.statement)
+            runtime, contract, item, plan, plan_sha256,
+            args.judgment_item, args.target, args.reviewer_role,
+            args.statement)
         receipt_path = kblib.managed_repository_path(
-            root, args.receipts, ".cambium/receipts",
+            root, args.receipts, runtime_paths.RECEIPT_ROOT,
             suffixes=(".jsonl",), must_exist=False)
     except (OSError, TypeError, UnicodeError, ValueError) as exc:
         print("[FAIL] %s" % exc, file=sys.stderr)
@@ -224,10 +262,13 @@ def main(argv=None):
                     args.batch)
                 locked_contract = (locked.get(
                     "_profile_authorized_view") or {}).get("_contract")
+                locked_plan, locked_plan_sha256 = _current_plan(
+                    locked, locked_item)
                 # Rebuild under the lock so a drifted page, Profile, or
                 # reopened batch cannot slip between plan and publication.
                 locked_receipt = build_judgment_receipt(
                     locked, locked_contract, locked_item,
+                    locked_plan, locked_plan_sha256,
                     args.judgment_item, args.target, args.reviewer_role,
                     args.statement)
                 for field in ("receipt_id", "checked_at"):

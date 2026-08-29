@@ -195,12 +195,18 @@ class TemplateScaffold(unittest.TestCase):
             "the scaffold must retain the unfilled sentinel so check_profile.py "
             "fails until the adopter fills it",
         )
+        registry = (self.TEMPLATE / "registries" / "registered-scans.md"
+                    ).read_text(encoding="utf-8")
         self.assertIn(
-            "scan-configs/residual-scan.yaml",
-            (self.TEMPLATE / "registries" / "registered-scans.md")
-            .read_text(encoding="utf-8"),
+            "`scan-configs/residual-scan.yaml`",
+            registry,
             "the Registered Scan Registry template must name the exact scaffold "
             "path, not just 'copy it into the filled profile'",
+        )
+        self.assertNotIn(
+            "python3", registry,
+            "the Profile binds a stable Tool capability and configuration; it "
+            "must not regain ownership of an executable command",
         )
 
     def test_filled_scaffold_shape_survives_the_matcher_contract(self):

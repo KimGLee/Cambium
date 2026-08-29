@@ -20,8 +20,11 @@ import kblib
 import metadata_execution_contract
 import metadata_property_state
 import project_page_state
+import runtime_paths
+import runtime_state_contract
 
 from queue_runtime.canon import (
+    ACTIVE_STATES,
     APPLY_DELTA_TOOL_VERSION,
     BATCH_CLOSE_TOOL,
     BATCH_CLOSE_TOOL_VERSION,
@@ -41,9 +44,12 @@ from queue_runtime.primitives import nonempty_string
 from queue_runtime.receipts import current_receipt_catalog
 
 
-LEGACY_PROPERTY_STATE_FIELD = "legacy_property_state"
-LEGACY_PROPERTY_RECORD_FIELDS = frozenset(("status", "value"))
-LEGACY_PROPERTY_STATUS = "legacy-unverified"
+# Permanent façade spellings for callers of check_queue/queue_runtime.  The
+# exact legacy marker and record shape are owned by metadata_property_state.
+LEGACY_PROPERTY_STATE_FIELD = metadata_property_state.LEGACY_PROPERTY_STATE
+LEGACY_PROPERTY_RECORD_FIELDS = \
+    metadata_property_state.LEGACY_PROPERTY_RECORD_KEYS
+LEGACY_PROPERTY_STATUS = metadata_property_state.LEGACY_PROPERTY_STATUS
 
 
 def _current_inflight_semantic_baselines(
@@ -59,8 +65,8 @@ def _current_inflight_semantic_baselines(
     """
     candidates = {}
     for item in queue.get("required_queue") or []:
-        if not isinstance(item, dict) or item.get("state") not in (
-                "open", "merge-ready"):
+        if (not isinstance(item, dict) or
+                item.get("state") not in ACTIVE_STATES):
             continue
         if item.get("state") == "merge-ready":
             live_coverage_sha = kblib.sha256_bytes(
@@ -85,7 +91,7 @@ def _current_inflight_semantic_baselines(
             receipt = entry[1] if isinstance(entry, tuple) else None
             if (isinstance(receipt, dict) and
                     receipt.get("before_state") in
-                    ("queued", "merge-ready") and
+                    runtime_state_contract.BATCH_OPENING_SOURCE_STATES and
                     receipt.get("after_state") == "open"):
                 opening = receipt
                 break
@@ -144,7 +150,8 @@ def delta_opening_semantic_binding(
             errors.append(
                 "%s opening receipt %s does not share %s with the delta "
                 "receipt" % (label, opening_id, name))
-    if opening.get("before_state") not in ("queued", "merge-ready"):
+    if (opening.get("before_state") not in
+            runtime_state_contract.BATCH_OPENING_SOURCE_STATES):
         errors.append(
             "%s opening receipt %s has invalid before_state" %
             (label, opening_id))
@@ -925,7 +932,7 @@ def delta_property_invalidation_errors(
     archive_relative = receipt.get("before_coverage_archive_path")
     try:
         archive_path = kblib.managed_repository_path(
-            root, archive_relative, ".cambium/receipts",
+            root, archive_relative, runtime_paths.RECEIPT_ROOT,
             suffixes=(".yaml",), must_exist=True)
         if kblib.sha256_file(archive_path) != receipt.get(
                 "before_coverage_sha256"):
@@ -1057,7 +1064,8 @@ def current_open_semantic_baseline_errors(
     if not isinstance(transition, dict) or not (
             transition.get("tool") == "update_queue" and
             transition.get("tool_version") == UPDATE_QUEUE_TOOL_VERSION and
-            transition.get("before_state") in ("queued", "merge-ready") and
+            transition.get("before_state") in
+            runtime_state_contract.BATCH_OPENING_SOURCE_STATES and
             transition.get("after_state") == "open"):
         return []
     label = "%s current open transition %s" % (
@@ -1154,7 +1162,8 @@ def current_opening_semantic_context(result, item_id):
         entry = catalog.get(receipt_id)
         receipt = entry[1] if isinstance(entry, tuple) else None
         if (isinstance(receipt, dict) and
-                receipt.get("before_state") in ("queued", "merge-ready") and
+                receipt.get("before_state") in
+                runtime_state_contract.BATCH_OPENING_SOURCE_STATES and
                 receipt.get("after_state") == "open"):
             opening = receipt
             break

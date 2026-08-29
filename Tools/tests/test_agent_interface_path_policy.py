@@ -32,7 +32,8 @@ class RegisteredProducerOutputTests(unittest.TestCase):
 
     def test_all_five_reported_producers_reject_an_external_output(self):
         cases = {
-            "compile_cli_contract": ["."],
+            "compile_cli_contract": [
+                ".", "--projection-target", "source-distribution"],
             "metadata_execution_contract": ["--root", "."],
             "compose_vocab": [],
             "compose_page_contract": ["--root", "."],
@@ -56,7 +57,8 @@ class RegisteredProducerOutputTests(unittest.TestCase):
 
     def test_all_five_reject_an_alternate_in_repository_output(self):
         cases = {
-            "compile_cli_contract": ["."],
+            "compile_cli_contract": [
+                ".", "--projection-target", "source-distribution"],
             "metadata_execution_contract": ["--root", "."],
             "compose_vocab": [],
             "compose_page_contract": ["--root", "."],

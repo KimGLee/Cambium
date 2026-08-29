@@ -22,11 +22,12 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import check_queue
 import kblib
 import metadata_gate_runtime
+import runtime_paths
 
 
 TOOL = "record_gate_result"
 TOOL_VERSION = "1.0.0"
-DEFAULT_RECEIPTS = ".cambium/receipts/gate-results.jsonl"
+DEFAULT_RECEIPTS = runtime_paths.GATE_RESULT_RECEIPT_PATH
 SHA256_RE = re.compile(r"sha256:[0-9a-f]{64}\Z")
 
 
@@ -342,7 +343,8 @@ def main(argv=None):
     parser.add_argument("--page", required=True,
                         help="repository-relative Markdown target")
     parser.add_argument("--receipts", default=DEFAULT_RECEIPTS,
-                        help="receipt JSONL path under .cambium/receipts")
+                        help="receipt JSONL path under %s" %
+                        runtime_paths.RECEIPT_ROOT)
     parser.add_argument("--apply", action="store_true",
                         help="run and append the bound Gate result")
     parser.add_argument("--json", action="store_true",
@@ -357,7 +359,7 @@ def main(argv=None):
             root, args.gate_id, args.page, runtime=runtime,
             authority=authority)
         receipt_path = kblib.managed_repository_path(
-            root, args.receipts, ".cambium/receipts",
+            root, args.receipts, runtime_paths.RECEIPT_ROOT,
             suffixes=(".jsonl",), must_exist=False)
     except (OSError, TypeError, UnicodeError, ValueError) as exc:
         print("[FAIL] %s" % exc, file=sys.stderr)

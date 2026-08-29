@@ -13,14 +13,15 @@ import datetime
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import kblib
+import runtime_paths
 import standards_state
 
 TOOL = "migrate_standards_state"
 TOOL_VERSION = "1.0.0"
-QUEUE_PATH = ".cambium/state/required_queue.yaml"
-COVERAGE_PATH = ".cambium/state/coverage_ledger.yaml"
-PROGRESS_PATH = ".cambium/state/progress_ledger.yaml"
-HISTORY_PATH = ".cambium/receipts/standards-adoptions.jsonl"
+QUEUE_PATH = runtime_paths.QUEUE_PATH
+COVERAGE_PATH = runtime_paths.COVERAGE_PATH
+PROGRESS_PATH = runtime_paths.PROGRESS_PATH
+HISTORY_PATH = runtime_paths.STANDARDS_ADOPTION_RECEIPT_PATH
 
 
 def _read_yaml(root, relative):
@@ -34,7 +35,7 @@ def _read_yaml(root, relative):
 
 def _history(root):
     path = kblib.managed_repository_path(
-        root, HISTORY_PATH, ".cambium/receipts",
+        root, HISTORY_PATH, runtime_paths.RECEIPT_ROOT,
         suffixes=(".jsonl",), must_exist=True)
     with open(path, "rb") as stream:
         raw = stream.read()

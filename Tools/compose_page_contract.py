@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """compose_page_contract.py -- persistent page-contract compiler.
 
-Deterministically composes the selected profile's effective frontmatter
-page contract (Tools/page_contract.yaml by default) from:
+Deterministically composes the selected profile's effective frontmatter page
+contract (.cambium/derived/page_contract.yaml by default) from:
 
   --base           kernel applicability base
                    (default "kernel/K08 Metadata and Status/applicability-base.yaml";
@@ -49,6 +49,7 @@ sys.path.insert(0, TOOLS_DIR)
 
 import kblib  # noqa: E402
 import profile_admission  # noqa: E402
+import runtime_paths  # noqa: E402
 
 TOOL = "compose_page_contract"
 TOOL_VERSION = "1.2.0"
@@ -60,8 +61,8 @@ DEFAULT_RELATIONSHIPS = (
 DEFAULT_SOURCES_ROLE = (
     "kernel/K07 Sources and Accuracy/sources-role-base.yaml"
 )
-DEFAULT_OUTPUT = "Tools/page_contract.yaml"
-ACTIVE_STATE_PATH = ".cambium/governance/standards_state.yaml"
+DEFAULT_OUTPUT = runtime_paths.PAGE_CONTRACT_ARTIFACT_PATH
+ACTIVE_STATE_PATH = runtime_paths.ACTIVE_STANDARDS_PATH
 METADATA_SLOT = "Metadata Contract"
 VOCAB_SLOT = "Vocabulary Extensions"
 PROVENANCE_RE = re.compile(
@@ -524,6 +525,7 @@ def main(argv=None):
         print("compose_page_contract: %s is current (%d field(s))"
               % (output, len(contract["fields"])))
         return 0
+    runtime_paths.ensure_directory(root, "derived-root")
     kblib.atomic_write_text(output, text)
     currency = compilation_currency_errors(
         root, admission, text, base_path=base_path, rel_path=rel_path,

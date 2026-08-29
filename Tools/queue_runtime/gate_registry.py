@@ -19,7 +19,21 @@ import os
 import re
 
 import check_profile
-import kblib
+import runtime_state_contract
+from control_registry_contract import (
+    BASE_RECEIPT_DIMENSIONS,
+    LEGACY_STANDARDS_GATE_REGISTRY_PATH,
+    NOT_BATCH_SCOPED_GATE,
+    QUEUE_EXHAUSTED_GATE,
+    STANDARDS_GATE_REGISTRY_PATH,
+    UNDIMENSIONED_GATE,
+    UNNARROWED_GATE_DIMENSION,
+    UNSCOPED_GATE_POSITIONS,
+    load_current_control_contract,
+    parse_control_registry_document,
+    parse_legacy_standards_gate_registry_markdown,
+    parse_standards_gate_registry,
+)
 
 from queue_runtime.canon import (
     BATCH_CLOSE_TOOL,
@@ -39,72 +53,6 @@ from queue_runtime.canon import (
 from queue_runtime.primitives import nonempty_string
 
 
-# K12/07 fixes these seven base receipt dimensions and K12/08 / K12/18 file
-# every judgment item and Gate under one of them.  Like the Kxx numbers this
-# only projects a closed kernel set into the checker; `check_proof` carries the
-# same projection for the Terminal Proof, and a test asserts the two agree.
-BASE_RECEIPT_DIMENSIONS = frozenset((
-    "structure_and_links", "content_and_depth", "formula_and_numeric",
-    "source_and_currentness", "coverage_and_integration", "rendering",
-    "guidance_and_contract",
-))
-# The two Dimension cells that are not a dimension: `none` says the Gate's
-# receipt carries no `dimension` because its members hold the verdicts, and
-# `*` says a named producer's identity already fixes what its receipt means.
-UNDIMENSIONED_GATE = "none"
-UNNARROWED_GATE_DIMENSION = "*"
-# The two Lifecycle cells that are not a batch lifecycle state.  Both name a
-# position the same way a batch state does, so the partition stays one rule:
-# `not-batch-scoped` is the position every batch is always at, because the
-# Gate's producer takes no batch and nothing about the Queue constrains it;
-# `queue-exhausted` is the position reached only once the Queue holds no
-# non-terminal batch, which is ahead of every live batch and behind none.
-NOT_BATCH_SCOPED_GATE = "not-batch-scoped"
-QUEUE_EXHAUSTED_GATE = "queue-exhausted"
-UNSCOPED_GATE_POSITIONS = frozenset((NOT_BATCH_SCOPED_GATE,
-                                     QUEUE_EXHAUSTED_GATE))
-
-
-STANDARDS_GATE_REGISTRY_PATH = \
-    "kernel/K00 Standards Control/12 Control Registry.md"
-
-
-STANDARDS_REVALIDATION_CAPABILITY_HEADING = \
-    "Standards Revalidation Capability Registry"
-STANDARDS_REVALIDATION_CAPABILITY_ROLES = frozenset((
-    "special-owner", "immediate-owner", "native-owner", "semantic-leaf",
-    "mechanism-only", "unsupported", "advisory",
-))
-STANDARDS_REVALIDATION_CAPABILITY_EDGES = frozenset((
-    "after-image-admission", "adoption-commit", "native-transition",
-    "project-to-owner", "mechanism-input-only", "advisory-only", "none",
-))
-STANDARDS_REVALIDATION_SCOPE_PROTOCOLS = frozenset((
-    "profile-after-image", "runtime-after-image", "native-owner-scope",
-    "inherit-owner-scope", "diagnostic-scope", "none",
-))
-STANDARDS_REVALIDATION_BINDING_PROTOCOLS = frozenset((
-    "profile-fingerprints", "runtime-state-fingerprints",
-    "native-owner-receipt", "owner-member-chain", "not-authorizing",
-))
-STANDARDS_REVALIDATION_ROLE_CONTRACTS = {
-    "special-owner": (
-        "after-image-admission", "profile-after-image",
-        "profile-fingerprints"),
-    "immediate-owner": (
-        "adoption-commit", "runtime-after-image",
-        "runtime-state-fingerprints"),
-    "native-owner": (
-        "native-transition", "native-owner-scope",
-        "native-owner-receipt"),
-    "semantic-leaf": (
-        "project-to-owner", "inherit-owner-scope", "owner-member-chain"),
-    "mechanism-only": (
-        "mechanism-input-only", "none", "not-authorizing"),
-    "unsupported": ("none", "none", "not-authorizing"),
-    "advisory": (
-        "advisory-only", "diagnostic-scope", "not-authorizing"),
-}
 
 
 # --- Registered producer identity -------------------------------------------
@@ -113,17 +61,9 @@ STANDARDS_REVALIDATION_ROLE_CONTRACTS = {
 # used to compare the registered tuple against the producer that actually
 # writes it, so a `Check` or `Mode` cell could disagree with its tool and the
 # only symptom would be a receipt that silently misses every boundary it was
-# recorded for.  The two tables below give the comparison its second source.
+# recorded for.  Producer exports and the consumer-owned identity table below
+# give the comparison its source outside the registry.
 #
-# `Check` for a Gate whose producer module does not export the name itself.
-# The value is the one this module's own consumers compare a receipt against,
-# so a drift is caught exactly where it would reject the receipt.  A module
-# that later exports `GATE_CHECK` wins, and the two are required to agree.
-CONSUMED_GATE_CHECKS = {
-    "profile-load": "profile-check-summary",
-    "terminal-proof": "proof-check-summary",
-    "registered-residual-content": "residual-content-summary",
-}
 # Gates whose receipts this module consumes against its own producer-identity
 # constants.  A registry row that disagrees with one of these would register a
 # producer whose receipts this consumer rejects.
@@ -149,257 +89,54 @@ _TOOLS_ROOT = os.path.dirname(
 _PRODUCER_MODULE_CACHE = {}
 
 
-def standards_gate_registry(root):
-    """Parse the canonical Gate ID -> receipt predicate registry.
 
-    K00/12 owns the table.  Plans cannot invent an opaque gate name: every
-    affected/required gate must resolve to one stable producer identity that
-    the revalidation aggregator can check without interpreting prose.
-    """
-    errors = []
-    registry = {}
-    try:
-        path = kblib.repository_path(
-            root, STANDARDS_GATE_REGISTRY_PATH, must_exist=True,
-            reject_symlink=True)
-        with open(path, encoding="utf-8") as handle:
-            text = handle.read()
-    except (OSError, UnicodeError, ValueError) as exc:
-        return {}, ["Gate ID registry is unsafe or unreadable: %s" % exc]
-    inside = False
-    seen_section = 0
-    for line in text.splitlines():
-        heading = re.match(r"^(#{2,3})\s+(.*?)\s*#*\s*$", line)
-        if heading:
-            is_registry = heading.group(2).strip() == "Stable Gate ID Registry"
-            if is_registry:
-                seen_section += 1
-            inside = is_registry and seen_section == 1
-            continue
-        if not inside or not line.lstrip().startswith("|"):
-            continue
-        cells = [cell.strip().strip("`") for cell in line.strip().strip("|").split("|")]
-        if cells == ["Gate ID", "Tool", "Tool version", "Check", "Mode",
-                     "Dimension", "Lifecycle"]:
-            continue
-        if cells and all(re.fullmatch(r":?-+:?", cell) for cell in cells):
-            continue
-        if len(cells) != 7:
-            errors.append("Stable Gate ID Registry row must have seven cells")
-            continue
-        gate_id, tool, tool_version, check, mode, dimension, lifecycle = cells
-        if not all(nonempty_string(value) for value in cells):
-            errors.append("Stable Gate ID Registry row has an empty cell")
-            continue
-        if "*" in (tool, tool_version, check):
-            errors.append(
-                "Stable Gate ID Registry Tool, Tool version, and Check must "
-                "be exact for %s; only Mode may use *" % gate_id)
-            continue
-        if gate_id in registry:
-            errors.append("Stable Gate ID Registry repeats %s" % gate_id)
-            continue
-        # The Dimension cell is a list, so it is tokenized rather than taken
-        # whole: a Gate whose canonical gate files verdicts under several
-        # dimensions registers all of them, and the consumer narrows to the
-        # one its obligation names.
-        dimensions = tuple(sorted({
-            token.strip().strip("`")
-            for token in re.split(r"[,\s]+", dimension) if token.strip()
-        }))
-        # The Lifecycle cell is tokenized the same way: a producer that
-        # genuinely accepts several batch positions registers all of them.
-        # It is not part of the receipt selector -- it says when the Gate can
-        # be produced, not which receipt satisfies it -- so it is validated
-        # here rather than in the producer-tuple agreement check.
-        lifecycle_states = tuple(sorted({
-            token.strip().strip("`")
-            for token in re.split(r"[,\s]+", lifecycle) if token.strip()
-        }))
-        unknown_states = sorted(
-            set(lifecycle_states) - set(kblib.BATCH_LIFECYCLE_TRANSITIONS) -
-            UNSCOPED_GATE_POSITIONS)
-        if unknown_states:
-            errors.append(
-                "Gate ID %s registers Lifecycle %s, which is neither a batch "
-                "lifecycle state nor one of %s" % (
-                    gate_id, ", ".join(unknown_states),
-                    ", ".join(sorted(UNSCOPED_GATE_POSITIONS))))
-            continue
-        marker = sorted(set(lifecycle_states) & UNSCOPED_GATE_POSITIONS)
-        if marker and len(lifecycle_states) != 1:
-            errors.append(
-                "Gate ID %s registers Lifecycle %s, which mixes %s with "
-                "another position" % (
-                    gate_id, ", ".join(lifecycle_states), marker[0]))
-            continue
-        registry[gate_id] = {
-            "tool": tool,
-            "tool_version": tool_version,
-            "check": check,
-            "mode": mode,
-            "dimensions": dimensions,
-            "lifecycle_states": lifecycle_states,
-        }
-    if seen_section != 1:
-        errors.append("K00/12 must contain exactly one Stable Gate ID Registry")
-    if not registry:
-        errors.append("Stable Gate ID Registry has no gate rows")
-    errors.extend(gate_registry_producer_errors(registry))
+
+def standards_gate_registry(root):
+    """Load current Gate selectors and validate each installed producer."""
+    registry, _capabilities, _metadata, errors = \
+        load_current_control_contract(root)
+    if registry:
+        errors.extend(gate_registry_producer_errors(registry))
     return registry, errors
 
 
 def standards_revalidation_capabilities(root, gate_registry=None):
-    """Parse the closed Gate leaf-to-owner capability registry in K00/12.
-
-    The Stable Gate ID Registry answers which receipt identifies a Gate and
-    where its producer can run.  It does *not* answer whether a raw receipt is
-    allowed to authorize a Standards-adoption boundary.  Keeping that second
-    question in its own closed table prevents a semantic leaf from becoming a
-    boundary authority merely because both happen to use the word ``Gate``.
-
-    Every stable Gate occurs exactly once.  The role fixes the remaining four
-    cells, and every semantic leaf points to a real native owner.  This makes
-    the planner -> owner -> transition path machine-checkable before an
-    adoption writes state.
-    """
-    errors = []
-    capabilities = {}
-    if gate_registry is None:
-        gate_registry, gate_errors = standards_gate_registry(root)
-        errors.extend(gate_errors)
-    try:
-        path = kblib.repository_path(
-            root, STANDARDS_GATE_REGISTRY_PATH, must_exist=True,
-            reject_symlink=True)
-        with open(path, encoding="utf-8") as handle:
-            text = handle.read()
-    except (OSError, UnicodeError, ValueError) as exc:
-        return {}, errors + [
-            "Standards revalidation capability registry is unsafe or "
-            "unreadable: %s" % exc]
-
-    inside = False
-    seen_section = 0
-    expected_header = [
-        "Gate ID", "Role", "Owner", "Claim edge", "Scope protocol",
-        "Binding protocol",
-    ]
-    for line in text.splitlines():
-        heading = re.match(r"^(#{2,3})\s+(.*?)\s*#*\s*$", line)
-        if heading:
-            is_registry = heading.group(2).strip() == \
-                STANDARDS_REVALIDATION_CAPABILITY_HEADING
-            if is_registry:
-                seen_section += 1
-            inside = is_registry and seen_section == 1
-            continue
-        if not inside or not line.lstrip().startswith("|"):
-            continue
-        cells = [cell.strip().strip("`")
-                 for cell in line.strip().strip("|").split("|")]
-        if cells == expected_header:
-            continue
-        if cells and all(re.fullmatch(r":?-+:?", cell) for cell in cells):
-            continue
-        if len(cells) != 6:
-            errors.append(
-                "Standards Revalidation Capability Registry row must have "
-                "six cells")
-            continue
-        gate_id, role, owner, edge, scope, binding = cells
-        if not all(nonempty_string(value) for value in cells):
-            errors.append(
-                "Standards Revalidation Capability Registry row has an "
-                "empty cell")
-            continue
-        if gate_id in capabilities:
-            errors.append(
-                "Standards Revalidation Capability Registry repeats %s" %
-                gate_id)
-            continue
-        if role not in STANDARDS_REVALIDATION_CAPABILITY_ROLES:
-            errors.append(
-                "Gate ID %s has unknown Standards revalidation Role %s" %
-                (gate_id, role))
-            continue
-        if edge not in STANDARDS_REVALIDATION_CAPABILITY_EDGES:
-            errors.append(
-                "Gate ID %s has unknown Standards revalidation Claim edge "
-                "%s" % (gate_id, edge))
-            continue
-        if scope not in STANDARDS_REVALIDATION_SCOPE_PROTOCOLS:
-            errors.append(
-                "Gate ID %s has unknown Standards revalidation Scope "
-                "protocol %s" % (gate_id, scope))
-            continue
-        if binding not in STANDARDS_REVALIDATION_BINDING_PROTOCOLS:
-            errors.append(
-                "Gate ID %s has unknown Standards revalidation Binding "
-                "protocol %s" % (gate_id, binding))
-            continue
-        expected_contract = STANDARDS_REVALIDATION_ROLE_CONTRACTS[role]
-        if (edge, scope, binding) != expected_contract:
-            errors.append(
-                "Gate ID %s Role %s requires Claim edge / Scope protocol / "
-                "Binding protocol %s / %s / %s, found %s / %s / %s" % (
-                    gate_id, role, *expected_contract, edge, scope, binding))
-            continue
-        capabilities[gate_id] = {
-            "role": role,
-            "owner": owner,
-            "claim_edge": edge,
-            "scope_protocol": scope,
-            "binding_protocol": binding,
-        }
-
-    if seen_section != 1:
+    """Load current revalidation projections from the same Gate rows."""
+    registry, capabilities, _metadata, errors = \
+        load_current_control_contract(root)
+    if gate_registry is not None and registry != gate_registry:
         errors.append(
-            "K00/12 must contain exactly one Standards Revalidation "
-            "Capability Registry")
-    stable_ids = set(gate_registry or {})
-    capability_ids = set(capabilities)
-    missing = sorted(stable_ids - capability_ids)
-    extra = sorted(capability_ids - stable_ids)
-    if missing:
-        errors.append(
-            "Standards Revalidation Capability Registry omits stable Gate "
-            "ID(s): %s" % ", ".join(missing))
-    if extra:
-        errors.append(
-            "Standards Revalidation Capability Registry names unknown Gate "
-            "ID(s): %s" % ", ".join(extra))
-    for gate_id, capability in sorted(capabilities.items()):
-        role = capability["role"]
-        owner = capability["owner"]
-        if role in ("special-owner", "immediate-owner", "native-owner"):
-            if owner != gate_id:
-                errors.append(
-                    "Standards revalidation owner Gate %s must own itself, "
-                    "not %s" % (gate_id, owner))
-        elif role == "semantic-leaf":
-            owner_capability = capabilities.get(owner)
-            if owner == gate_id or not isinstance(owner_capability, dict) or \
-                    owner_capability.get("role") != "native-owner":
-                errors.append(
-                    "Standards revalidation semantic leaf %s must project "
-                    "to a distinct native owner; found %s" %
-                    (gate_id, owner))
-        elif owner != "none":
-            errors.append(
-                "Standards revalidation Gate %s Role %s must use Owner none, "
-                "not %s" % (gate_id, role, owner))
+            "supplied Gate registry differs from the current Control registry")
     return capabilities, errors
 
 
 def standards_gate_capability_registry(root, gate_registry=None):
-    """Public spelling for the Gate capability registry.
-
-    The longer internal name predates the registry's canonical heading.  Keep
-    one implementation and expose the name used by callers that reason about
-    Gate identity and Gate authority as two different registries.
-    """
+    """Public spelling for the current Gate capability projection."""
     return standards_revalidation_capabilities(root, gate_registry)
+
+
+def is_revalidation_boundary_owner(capability):
+    """Return whether one parsed capability may own a blocking boundary."""
+    return isinstance(capability, dict) and capability.get("role") in (
+        "special-owner", "immediate-owner", "native-owner")
+
+
+def is_special_revalidation_owner(capability):
+    """Return whether after-image Profile admission owns this boundary."""
+    return isinstance(capability, dict) and \
+        capability.get("role") == "special-owner"
+
+
+def is_immediate_revalidation_owner(capability):
+    """Return whether adoption commit immediately consumes this owner."""
+    return isinstance(capability, dict) and \
+        capability.get("role") == "immediate-owner"
+
+
+def is_native_revalidation_owner(capability):
+    """Return whether the ordinary transition consumes this owner."""
+    return isinstance(capability, dict) and \
+        capability.get("role") == "native-owner"
 
 
 def standards_revalidation_owner(gate_id, capabilities):
@@ -414,7 +151,7 @@ def standards_revalidation_owner(gate_id, capabilities):
         raise ValueError("Gate ID %s has no Standards revalidation capability"
                          % gate_id)
     role = capability.get("role")
-    if role in ("special-owner", "immediate-owner", "native-owner"):
+    if is_revalidation_boundary_owner(capability):
         return gate_id
     if role == "semantic-leaf":
         return capability.get("owner")
@@ -458,9 +195,9 @@ def project_adoption_gate_ids(gate_ids, capabilities):
     native = []
     for gate_id in owners:
         role = (capabilities.get(gate_id) or {}).get("role")
-        if role == "immediate-owner":
+        if is_immediate_revalidation_owner(capabilities.get(gate_id)):
             immediate.append(gate_id)
-        elif role == "native-owner":
+        elif is_native_revalidation_owner(capabilities.get(gate_id)):
             native.append(gate_id)
     return immediate, native, errors
 
@@ -501,10 +238,7 @@ def registered_gate_check(gate_id, module):
         declared = mapping.get(gate_id)
     if declared is None:
         declared = getattr(module, "GATE_CHECK", None) if module else None
-    consumed = CONSUMED_GATE_CHECKS.get(gate_id)
-    if declared is not None and consumed is not None and declared != consumed:
-        return None
-    return declared if declared is not None else consumed
+    return declared
 
 
 def gate_registry_producer_errors(registry):
@@ -714,17 +448,17 @@ def partition_boundary_gates_by_lifecycle(gate_ids, state, registry):
 
     The comparison is the same question for all three kinds of position; only
     how "ahead" is read differs.  For a batch-state position it is the forward
-    closure of the one lifecycle map in ``kblib``, so this cannot disagree with
-    the writer that applies the transitions.  Queue exhaustion is ahead of
-    every non-terminal batch -- that batch must reach a terminal state before
-    the Queue can hold none -- and behind none, because a terminal batch never
-    returns to non-terminal.  A batch whose ``state`` is not a known lifecycle
-    state has no reachable successor, so every Gate is due and nothing is
-    waived.
+    closure of the Kernel-owned runtime state model, so this cannot disagree
+    with the writer that applies the transitions. Queue exhaustion is ahead
+    of every non-terminal batch -- that batch must reach a terminal state
+    before the Queue can hold none -- and behind none, because a terminal
+    batch never returns to non-terminal. A batch whose ``state`` is not a
+    known lifecycle state has no reachable successor, so every Gate is due
+    and nothing is waived.
     """
     due, deferred, passed = [], [], []
-    known_state = state in kblib.BATCH_LIFECYCLE_TRANSITIONS
-    reachable = kblib.reachable_batch_states(state)
+    known_state = state in runtime_state_contract.QUEUE_STATES
+    reachable = runtime_state_contract.reachable_batch_states(state)
     for gate_id in sorted({value for value in gate_ids
                            if nonempty_string(value)}):
         position = registered_gate_position(gate_id, registry)
@@ -759,16 +493,16 @@ def partition_revalidation_owner_claims(owner_gate_ids, state, registry,
     current plan is refused before it can create such a claim.
     """
     due, deferred, passed = [], [], []
-    known_state = state in kblib.BATCH_LIFECYCLE_TRANSITIONS
-    reachable = kblib.reachable_batch_states(state)
+    known_state = state in runtime_state_contract.QUEUE_STATES
+    reachable = runtime_state_contract.reachable_batch_states(state)
     for gate_id in sorted({value for value in owner_gate_ids
                            if nonempty_string(value)}):
         capability = capabilities.get(gate_id) or {}
         role = capability.get("role")
-        if role == "immediate-owner":
+        if is_immediate_revalidation_owner(capability):
             due.append(gate_id)
             continue
-        if role != "native-owner":
+        if not is_native_revalidation_owner(capability):
             # A malformed projection is due so the exact receipt set cannot
             # silently shrink.  The capability error reported alongside it
             # explains why no receipt can satisfy the claim.

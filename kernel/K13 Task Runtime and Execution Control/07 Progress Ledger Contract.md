@@ -8,39 +8,26 @@
 
 The Progress Ledger owns only whole-task control state:
 
-- Task state and Task Contract: objective/contract/scope/Standards/profile identity, exclusions, loaded routes/readbacks, time bounds, and the explicit `completion_semantics: build|maintenance` predicate.
-- The canonical Required Queue path, both accepted revisions, Queue SHA-256, immutable initial Queue receipt, and the receipts consumed by task-state transitions.
-- Pending/reconciled Guidance, verified Amendments, the last restart checkpoint, and the applicable completion binding.
+- task state and the frozen Task Contract: objective, scope, Standards,
+  selected Profile, actual loading selection, exclusions, time bounds, and
+  completion semantics;
+- the canonical Required Queue identity, revisions, fingerprint, initial
+  materialization evidence, and receipts consumed by task-state transitions;
+- pending and reconciled Guidance, verified Amendments, restart checkpoint, and
+  the completion binding selected by the Contract.
 
-Progress contains both completion blocks so the chosen path is machine
-explicit, but they are mutually exclusive. A build contract activates
-`terminal_audit` and holds `maintenance_completion` at `not-applicable` with
-null receipt fields. A maintenance contract holds `terminal_audit` at
-`not-applicable` and advances `maintenance_completion` through `pending`,
-`passed`, or `invalidated`; that block binds `completion_gate_receipt`,
-`budget_manifest_receipt`, `ledger_advance_receipt`, and
-`watermark_advance_receipt`.
-Neither block may act as evidence for the other completion semantics.
+Progress contains explicit build and maintenance completion blocks, but only the block selected by `completion_semantics` may advance. Build uses Terminal Audit and Terminal Proof; maintenance uses its bounded completion Gate. Neither block may act as evidence for the other.
 
-Current phase, completed objects, Coverage counts, ready/open/merge status, batch review, evidence maturity, audit/reuse/invalidation summaries, checks, gaps, questions, and next dependency are read-through or derived views of Coverage, Queue, receipts, and reports. A checkpoint MAY summarize them, but Progress MUST NOT become a second authority for them.
+Current phase, completed objects, Coverage counts, ready/open/merge views, batch review, evidence maturity, audit summaries, checks, gaps, questions, and next dependencies are read-through or derived views of Coverage, Queue, receipts, and reports. A checkpoint may summarize them but cannot become a second authority.
 
-Batch membership, order, dependencies, lifecycle, holds, and transition receipts exist only in the [[kernel/K13 Task Runtime and Execution Control/08 Required Queue Contract and Lifecycle|Required Queue]]. Any display cache is explicitly derived, regenerated from the Queue, and checked by `Tools/check_queue.py`; it is never independently edited.
+Batch membership, order, dependencies, lifecycle, holds, and transition evidence exist only in the [[kernel/K13 Task Runtime and Execution Control/08 Required Queue Contract and Lifecycle|Required Queue]]. Any display cache is generated from that owner and verified by `required-queue-consistency`; it is never edited independently.
 
-The recorded Guidance statuses are the sole authority for how far reconciliation has reached. `last_reconciled_guidance_id` is therefore derived from them, not stored beside them: `Tools/check_queue.py --resume-status` reports it as the last entry of the longest recorded prefix that has left `received`. The checkpoint holds no separate reconciliation cursor. `guidance_cutoff_id` is different and is recorded, because it freezes the moment the Terminal Audit started rather than restating a status.
+Recorded Guidance statuses are the sole authority for reconciliation progress. The last reconciled Guidance identity is derived from the longest recorded prefix that has left `received`, rather than stored as a second cursor. `guidance_cutoff_id` is different: it is recorded because it freezes Terminal Audit entry rather than restating status.
 
-Progress is measured by quality state, not by the cumulative count of created files.
-
-The Progress Ledger cannot use profile-registered hub checkboxes or the user's `learning_status` to compute build progress. Page writing completion, Expression Layer coverage and readiness, evidence maturity, and personal learning progress MUST be summarized separately.
+Progress is measured by governance and quality state, not cumulative file count. Profile hub checkboxes and user learning state cannot compute build progress; page authoring, expression readiness, evidence maturity, and personal learning remain separate axes.
 
 ## Machine-readable Ledger
 
-The canonical form of the Progress Ledger is YAML; the schema is at `Tools/schemas/progress_ledger.template.yaml`, and the runtime path is `.cambium/state/progress_ledger.yaml`. Only the restricted subset syntax declared in the template header comment is allowed. A markdown prose view is optional, derived from the YAML, and not a basis for reconciliation. When resuming a task, load the YAML Ledger directly together with the Required Queue and Coverage Ledger instead of re-reading a prose checkpoint.
+The registered progress-ledger machine contract is the normative source for Ledger fields, shapes, and serialization. Task states, completion semantics, Guidance and Amendment status membership, completion-control states, and the canonical Ledger identity/fingerprint relationship are owned by [`runtime-state-model.json`](runtime-state-model.json). The current adopter value belongs to `.cambium`; an optional human-readable report is derived and never a basis for reconciliation.
 
-Task-state changes enter Progress only through `Tools/update_task.py` or a
-writer transaction that explicitly owns the coupled edge. Executable
-`queue-replan`, `scope-replan`, and `cancel-batch` Amendment rows enter only
-through `Tools/register_amendment.py`; their later write-back is owned by
-`compile_queue.py --apply-replan` or `apply_amendment.py`. Generic Guidance
-records do not substitute for this operational authorization path. A manually
-inserted operational row has no authority even when its prose says
-`approved`.
+Only registered task-state, Amendment, Queue-replan, Standards-adoption, and other explicitly coupled transaction capabilities may change Progress. Generic Guidance prose does not substitute for operational authorization, and a manually inserted `approved` row has no authority. Every accepted write must produce an externally verifiable result and preserve evidence needed for resume and recovery.

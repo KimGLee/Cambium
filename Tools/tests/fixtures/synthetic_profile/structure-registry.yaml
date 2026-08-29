@@ -1,7 +1,7 @@
 # Synthetic fixture Structure Registry: the inactive branch.
-# Interface: profiles/README.md#Structure-Registry-Slot
+# Interface: kernel/K00 Standards Control/profile-interface.yaml
 
-schema_version: 1
+schema_version: 2
 
 applicability:
   state: not-applicable

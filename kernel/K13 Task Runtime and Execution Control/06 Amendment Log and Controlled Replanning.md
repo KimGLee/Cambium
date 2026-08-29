@@ -8,161 +8,54 @@
 
 ### Amendment Record
 
-Important Guidance Events MUST enter the Amendment Log of the Progress Ledger. The record includes at least:
+Important Guidance Events enter the Amendment Log in Progress. The registered Amendment-record machine contract is the sole normative source for fields, shapes, and serialization. Closed Guidance/Amendment status membership, finality, registered operational Amendment identities, and their execution capability class are owned by [`runtime-state-model.json`](runtime-state-model.json). This page owns their semantic boundary.
 
-```text
-guidance_id
-received_at
-message_reference
-raw_guidance_summary
-normalized_intent
-guidance_types
-authority_scope
-evidence_role
-affected_scope
-affected_pages
-affected_batches
-dependency_impact
-conflict_analysis
-disposition
-contract_version_before / after
-scope_version_before / after
-queue_revision_before / after
-queue_state_revision_before / after
-standards_version_before / after
-completion_gate_impact
-status
-verification_evidence
-```
+Each record binds the original Guidance identity and time, a bounded summary and normalized intent, classification and authority/evidence role, affected scope and dependencies, conflict analysis, disposition, before/after version effects, completion impact, status, and verification evidence. Summaries retain the user's meaning without copying irrelevant or sensitive conversation.
 
-`raw_guidance_summary` SHOULD preserve the original meaning but not copy irrelevant conversation or sensitive information. `normalized_intent` states how the executor understood the requirement. `evidence_role` distinguishes user authority, research signal, source lead, first-party context, and externally verified claim.
-
-`guidance_id` uses a task-local, monotonically increasing, never-reused identifier, e.g. `G-001`, `G-002`. Only then can checkpoints and the Terminal Audit use `last_reconciled_guidance_id` and `guidance_cutoff_id` to establish explicit boundaries.
-
-Recommended guidance status values:
-
-```text
-received
- -> classified
- -> mapped
- -> in-progress
- -> verified
-
-classified -> clarification-required
-classified / mapped -> deferred
-received / classified / mapped -> superseded
-classified -> not-applicable
-```
+Guidance IDs are task-local, monotonic, and never reused. Status records the progress from receipt through classification, mapping, execution, and verification, with explicit branches for clarification, deferral, supersession, and non-applicability. A status is not execution authority. Finality also preserves write-back meaning: `verified` is final only after write-back, while `withdrawn` is final only before any write. The machine model owns this predicate; prose consumers do not reconstruct it from the status label alone.
 
 ### Versioning Rules
 
-- `contract_version`: bump when the objective, constraints, acceptance, time, exclusions, or pause policy changes.
-- `scope_version`: bump when in-scope domains, Required objects, or coverage disposition change.
-- `queue_revision`: bump for a structural Queue change per [[kernel/K13 Task Runtime and Execution Control/08 Required Queue Contract and Lifecycle|K13/08]].
-- `queue_state_revision`: bump only for a Queue lifecycle/hold change per K13/08.
-- `standards_version`: bump only for a reusable governance rule with explicit user authorization to modify the Standards.
+- `contract_version` advances when objective, constraints, acceptance, time,
+  exclusions, or pause policy changes.
+- `scope_version` advances when in-scope domains, Required objects, or coverage
+  disposition changes.
+- `queue_revision` advances for Queue structural or verification-contract
+  change under K13/08.
+- `queue_state_revision` advances only for Queue lifecycle or hold change.
+- `standards_version` changes only when Standards adoption selects a different
+  upstream Git commit. A Profile-only revision retains it and binds the new
+  Profile snapshot and typed contract fingerprint in adoption evidence.
 
-One guidance MAY bump multiple versions. When only a research lead is added and it has not yet been accepted into scope, do not bump the scope version early.
+One Guidance item may advance several versions. A research lead not yet accepted into scope does not advance scope early.
 
 ### Operational Amendment Registration
 
-An approved decision is not executable merely because an Agent can append an
-`approved` row to Progress. The four operational forms supported by the
-current runtime -- `queue-replan`, `scope-replan`, `cancel-batch`, and
-`gap-routing-reconciliation` -- MUST
-first be registered by `Tools/register_amendment.py`. That writer consumes the
-exact staged plan or Coverage proposal, derives rather than guesses the
-affected structure, compare-and-swaps all three canonical state fingerprints,
-and appends only the pending Progress row plus its
-`registration_receipt`. Registration changes no task state, Queue revision,
-Queue lifecycle, Coverage bytes, or scope version.
+An approved decision is not executable merely because Progress contains an `approved` row. Operational amendment classes and their plan schemas are owned by the registered Amendment machine contract. Before any supported replan, cancellation, routing reconciliation, or other operational change, the registered amendment-registration capability must:
 
-Registration derives a closed change-class set, affected objects/batches, and
-writer operation from the exact current and proposed state. If every class is
-allowed by the live Task Contract `amendment_authority`, the row records
-`decision_mode: contract-delegated`, the authority ID and fingerprint, and a
-contract-derived approval reference. Otherwise registration requires a fresh
-explicit user `approval_reference` and records `decision_mode: explicit-user`
-with null authority identity. A forbidden or unsupported effect is refused;
-an approval string never bypasses a writer or lifecycle boundary.
+- bind the exact staged proposal and current Coverage, Queue, and Progress
+  identities;
+- derive the complete change-class set, affected objects and batches, and
+  writer operation rather than accept a prose assertion;
+- prove either that the live Task Contract delegates every derived class or
+  that fresh explicit user approval covers the complete impact;
+- publish one pending, evidence-bound Amendment record without changing task
+  state, Queue structure or lifecycle, Coverage, or scope;
+- reject unsupported effects and any attempt to use approval text to bypass a
+  lifecycle or writer boundary.
 
-Both modes bind the sorted change classes and a fingerprint of the complete
-derived impact. Registration rechecks staged bytes and derives that binding
-under its lock; `apply_amendment.py` and `compile_queue.py --apply-replan`
-derive it again from locked state before writing. A changed proposal, revoked
-or changed delegation, different operation, or different impact therefore
-requires a new registration. These local references are audit assertions, not
-cryptographic signatures. Only the integrator may apply registration, and
-only one operational Amendment may be pending at a time. Directly inserting
-or editing an executable pending row is forbidden.
+Registration and execution must derive the same impact. A changed proposal, revoked delegation, mismatched approval, drifted state, or different effect set invalidates registration. At most one unverified operational Amendment is pending. A valid pending registration may be explicitly withdrawn before any write; withdrawal preserves its identity and bound evidence and authorizes nothing.
 
-A pending registration whose execution can no longer validate — its planned
-final state fails the deterministic checks, or the approval is rescinded — is
-retired through the same writer's withdrawal action, never by editing the row:
-the integrator supplies a nonempty reason, the writer publishes an append-only
-withdrawal receipt naming the registration receipt, and the row's status
-becomes `withdrawn` with write-back still false. A withdrawn registration
-authorizes nothing; its bound plan and proposal bytes remain verified
-immutable evidence, and its amendment ID is never reused. Without this action
-the one-pending rule would let a single mis-registered Amendment wedge every
-future operational Amendment forever.
+Registration is a controlled transaction, not a second Gate. The `required-queue-consistency` Gate owns cross-state validation, and the eventual writer consumes the exact registration evidence rather than recreating an approval check. An uncertain registration or execution remains fail-closed and recoverable and cannot leave authoritative state pointing at absent evidence.
 
-Registration is a controlled writer transaction, not a second Gate ID. The
-existing `required-queue-consistency` control owns deterministic validation of
-the pending authorization and its cross-state bindings; each downstream writer
-then consumes the exact registration receipt instead of recreating that check.
-
-The writer publishes the append-only receipt before replacing Progress, so an
-interruption cannot leave canonical Progress pointing at absent evidence. An
-unreferenced registration receipt has no authority. If publication is
-interrupted, the shared writer lock retains the before/planned-after
-fingerprints and receipt identity for reconciliation. A verified execution
-commit MUST name that receipt, start from the registration's exact three-state
-after-image, and have a timestamp no earlier than registration.
-
-Receipt lifetime has two distinct meanings. While the row is
-`approved / writeback_done=false`, its registration receipt is current
-authorization and MUST resolve through the Standards-adoption-filtered current
-receipt catalog against the live Contract, Coverage, Queue, revisions, and
-staged artifact bytes. After the registered operation is committed and the row
-becomes `verified / writeback_done=true`, that registration receipt proves the
-past authorization only; validators resolve it from immutable history, while
-the transaction commit receipt names the registration it consumed. Historical
-registration evidence never authorizes a new replan or cancellation.
-
-The baseline transaction writer covers scope/disposition replans,
-cancellation, and gap-route reconciliation. It MUST NOT be bypassed by
-directly editing a materialized Task Contract.
+While a row is approved but unwritten, its registration evidence is current authorization only for the exact live Contract, state, and staged bytes. After verified write-back, it proves past authorization only; the commit evidence names what it consumed. Historical registration never authorizes a new change. Direct edits to a materialized Task Contract, Queue, or Coverage cannot bypass this path.
 
 ### Contract Amendment
 
-`Tools/apply_contract_amendment.py` is the guarded writer for the two
-non-scope Contract authorization fields the runtime supports: the contract's
-`policy_exceptions` register and `amendment_authority` delegation (field
-shapes owned by
-[[kernel/K13 Task Runtime and Execution Control/02 Task Contract Binding and Time Semantics|K13/02]]).
-It consumes one confirmed restricted-YAML plan under
-`.cambium/deltas/contract-amendments/`, has no pending phase -- it validates
-the complete after-image and commits under the shared writer lock, or writes
-nothing -- and lands one `verified` `contract-amendment` row whose commit
-receipt is an anchor event: the contract fingerprint chain follows the change
-instead of failing closed on it. It advances `contract_version` and the Queue
-revision exactly once, changes no scope, no batch structure, and no lifecycle.
-An exception or delegation is current authorization *because it is contract
-state*; the amendment row is history, and historical evidence never
-authorizes. For a policy-exception change the writer resolves the effective
-policy at prepare and again in the commit lock: each exception must carry the
-current effective-policy fingerprint, and the effective ceilings -- exception
-where granted, standing quota where not -- must jointly stay under 100 per
-K00/07. For a delegation change it validates the closed class vocabulary and
-records the exact changed Contract-field set in the row and receipt. It
-refuses while a batch is `merge-ready` (the revision bump would
-strand its sealed delta bindings): grant before merge, or roll back first.
-Extending the amendable field allowlist is a governance change under this
-module.
+The registered Contract-amendment transaction is limited to the Task Contract authorization fields explicitly opened by the Task Contract machine contract, including bounded policy exceptions and amendment delegation. It consumes one confirmed plan, validates the complete after image, and either commits one verified Amendment with an evidence-bound Contract anchor or changes nothing.
 
-A Contract change outside that allowlist keeps the prior disposition: the
-operator MUST pause or cancel the current task, preserve its runtime history,
-and carry the approved change into a successor task.
+A successful Contract Amendment advances `contract_version` and `queue_revision` exactly once while preserving scope, batch structure, lifecycle, and task state. Policy exceptions bind the current effective policy and must remain within the policy owner's ceilings. Delegation changes use only the closed change-class vocabulary. A `merge-ready` batch blocks such a revision because it would strand frozen integration evidence.
 
-Queue edits follow K13/08. A same-scope replan stages a full Coverage proposal under `.cambium/deltas/replans/`; after registration, `compile_queue.py --apply-replan` binds it, its diff, the registered Amendment, the consumed registration receipt, and all three state fingerprints before writing state. Scope/disposition changes, cancellation, and standalone gap-route reconciliation register the exact `amendment_plan` before using `apply_amendment.py`; gap-route reconciliation preserves Queue structure and remains explicit-user in the current delegation vocabulary. Both paths write back Progress and preserve terminal history; editing Queue alone never amends scope.
+A Contract change outside the opened allowlist requires pausing or cancelling the current task, preserving its runtime history, and carrying the approved change into a successor task. Extending the allowlist is a governance change, not an implementation convenience.
+
+Queue replans follow K13/08 and K13/09. Scope or disposition changes, cancellation, and gap-routing reconciliation consume the exact registered plan through their registered transaction capabilities. Every path writes back Progress, preserves terminal history, and proves the declared state result; editing Queue alone never amends scope.

@@ -1,0 +1,64 @@
+# Canonical machine shape for top-level Cambium Read Set declarations.
+# The prose body may explain Purpose and non-deterministic trigger meaning;
+# only frontmatter that satisfies this schema changes the load boundary.
+
+schema_version: 1
+document_type: read-set
+profile_document_type: profile-read-set
+path_prefix: "Read Set/"
+index_name: "Read Sets Index.md"
+route_id_pattern: "R[0-9]{2}"
+profile_route_id_pattern: "P:[A-Za-z0-9][A-Za-z0-9._-]*:[A-Za-z0-9][A-Za-z0-9._-]*"
+trigger_id_pattern: "[A-Za-z0-9][A-Za-z0-9:._-]*"
+
+phase_fields:
+  - phase_id
+  - conditional
+  - standard
+  - trigger
+
+phases:
+  - phase_id: batch-preflight
+    conditional: false
+    standard: true
+    trigger: "batch admitted (queued -> open)"
+  - phase_id: batch-running
+    conditional: false
+    standard: false
+    trigger: "route or read-back condition declared during work"
+  - phase_id: batch-gate
+    conditional: false
+    standard: true
+    trigger: "first judgment or merge-ready request"
+  - phase_id: governance
+    conditional: true
+    standard: false
+    trigger: "in-batch Standards governance transition"
+  - phase_id: task-completion
+    conditional: true
+    standard: false
+    trigger: "completion-candidate task transition"
+
+edge_kinds:
+  - required
+  - read-back
+
+body_sections:
+  - Purpose
+  - Non-deterministic triggers
+
+document_fields:
+  - type
+  - schema_version
+  - route_id
+  - activation_phase
+  - narrowable
+  - load_edges
+
+edge_fields:
+  - edge_id
+  - kind
+  - phase_id
+  - trigger_id
+  - targets
+  - read_sets

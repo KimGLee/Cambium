@@ -13,7 +13,7 @@ Interface: [Profile interface](../README.md)
 - `Structure Registry`: `structure-registry.yaml`
 - `Metadata Contract`: `metadata-contract.yaml`
 - `Priority Rubric`: `slots.md`
-- `Vocabulary Extensions`: `slots.md`
+- `Vocabulary Extensions`: `vocabulary-extensions.yaml`
 - `Language Contract`: `slots.md`
 - `Expression Layer Entry`: `slots.md`
 - `Source Policy`: `slots.md`

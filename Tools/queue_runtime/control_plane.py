@@ -6,10 +6,10 @@ therefore decided here rather than per page at the point of edit.
 """
 
 import os
-from pathlib import Path
 
 import check_profile
 import kblib
+import profile_layout_contract
 
 from queue_runtime.primitives import nonempty_string
 from queue_runtime.profile_view import (
@@ -39,7 +39,11 @@ HUB_TERM_SCOPE = "shared"
 HUB_DEPENDENCY_MAP_LABEL = "existing canonical dependency-map"
 
 
-CONTROL_PLANE_PREFIXES = ("kernel/", "profiles/", "Tools/")
+CONTROL_PLANE_PREFIXES = (
+    "kernel/",
+    profile_layout_contract.PROFILES_DIRECTORY + "/",
+    "Tools/",
+)
 
 
 def batch_touches_control_plane(item):
@@ -71,8 +75,9 @@ def unadmitted_profile_hub_paths(root, profile_manifest):
     paths = set()
     if not nonempty_string(profile_manifest):
         return paths, []
-    parts = Path(profile_manifest).parts
-    if len(parts) < 3 or parts[0] != "profiles" or parts[-1] != "profile.md":
+    try:
+        profile_layout_contract.parse_profile_manifest_path(profile_manifest)
+    except profile_layout_contract.ProfileLayoutError:
         # The exact runtime shape is owned by
         # selected_profile_manifest_errors; this only refuses to read a
         # package that is not a profile manifest at all.

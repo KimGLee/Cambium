@@ -12,6 +12,7 @@ either from the repository's own tools or from a fixture built inside the
 test, so this file cannot drift into a second declaration of the contract.
 """
 
+import copy
 import os
 import shutil
 import subprocess
@@ -28,9 +29,11 @@ SCRIPT = TOOLS_DIR / "compile_cli_contract.py"
 ARTIFACT = TOOLS_DIR / "compiled" / "cli-contract.yaml"
 
 sys.path.insert(0, str(TOOLS_DIR))
+import card_contract  # noqa: E402
 import compile_cli_contract as compiler  # noqa: E402
 import tool_availability  # noqa: E402
 import kblib  # noqa: E402
+import runtime_paths  # noqa: E402
 
 
 def write_distribution_boundary(root, entries=()):
@@ -90,7 +93,7 @@ def write_interface_policy(root, tool_names):
     path = Path(root) / compiler.DEFAULT_INTERFACE_POLICY
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(kblib.canonical_yaml({
-        "schema_version": 2,
+        "schema_version": compiler.INTERFACE_POLICY_SCHEMA_VERSION,
         "artifact": "agent-interface-policy",
         "consumption_defaults": {
             "read": "snapshot",
@@ -137,7 +140,11 @@ class ShippedArtifactTests(unittest.TestCase):
         self.assertEqual(modules, expected)
         self.assertEqual(
             set(contract["source_files"]),
-            expected | {compiler.DEFAULT_INTERFACE_POLICY})
+            expected | {
+                compiler.DEFAULT_INTERFACE_POLICY,
+                compiler.DEFAULT_RUNTIME_PATH_REGISTRY,
+                card_contract.SCHEMA_PATH,
+            })
         self.assertEqual(contract["tool_count"], len(expected))
 
     def test_each_section_records_the_source_it_was_read_from(self):
@@ -157,11 +164,49 @@ class ShippedArtifactTests(unittest.TestCase):
         self.assertEqual(parsed["artifact"], "cli-invocation-contract")
         self.assertTrue(parsed["tools"])
 
+    def test_adoption_writers_classify_the_resolved_upstream_identity(self):
+        contract = compiler.compile_contract(str(REPO_ROOT),
+            tool_availability.SOURCE_DISTRIBUTION)
+        by_tool = {record["tool"]: record for record in contract["tools"]}
+
+        for tool in ("adopt_standards", "apply_profile_adoption"):
+            with self.subTest(tool=tool):
+                interface = by_tool[tool]["agent_interface"]
+                self.assertIn("upstream_root", interface["value_arguments"])
+                self.assertIn("upstream_ref", interface["value_arguments"])
+
+    def test_plan_frozen_page_selectors_do_not_grant_path_access(self):
+        contract = compiler.compile_contract(
+            str(REPO_ROOT), tool_availability.SOURCE_DISTRIBUTION)
+        by_tool = {record["tool"]: record for record in contract["tools"]}
+
+        for tool in ("record_batch_page_review",
+                     "record_substantive_review"):
+            with self.subTest(tool=tool):
+                interface = by_tool[tool]["agent_interface"]
+                self.assertIn("page", interface["value_arguments"])
+                self.assertNotIn(
+                    "page",
+                    {row["argument"] for row in interface["path_arguments"]})
+                plan = next(
+                    row for row in interface["path_arguments"]
+                    if row["argument"] == "plan")
+                self.assertEqual("read", plan["access"])
+                self.assertEqual("namespace", plan["constraint"])
+                self.assertEqual("audit-plan-root", plan["runtime_path_id"])
+
 
 class DeterminismTests(unittest.TestCase):
     def test_two_runs_agree_across_hash_seeds(self):
         with tempfile.TemporaryDirectory() as workspace:
             shutil.copytree(TOOLS_DIR, Path(workspace) / "Tools")
+            # CLI imports now validate several Kernel-owned machine contracts
+            # at module load. The isolated determinism fixture must stage the
+            # real owner tree, not replace those validations with test stubs.
+            shutil.copytree(REPO_ROOT / "kernel", Path(workspace) / "kernel")
+            shutil.copytree(REPO_ROOT / "Card", Path(workspace) / "Card")
+            shutil.copytree(
+                REPO_ROOT / "Read Set", Path(workspace) / "Read Set")
             write_distribution_boundary(workspace)
             artifact = Path(workspace) / compiler.DEFAULT_OUTPUT
             first_run = run(workspace, "--projection-target", tool_availability.SOURCE_DISTRIBUTION,
@@ -194,6 +239,7 @@ class FixtureTests(unittest.TestCase):
         self.tools = os.path.join(self.workspace, "Tools")
         os.makedirs(self.tools)
         shutil.copy(str(TOOLS_DIR / "kblib.py"), self.tools)
+        shutil.copy(str(TOOLS_DIR / "runtime_paths.py"), self.tools)
         shutil.copy(str(TOOLS_DIR / "tool_availability.py"), self.tools)
         write_distribution_boundary(self.workspace)
 
@@ -423,6 +469,232 @@ class FixtureTests(unittest.TestCase):
             compiler.compile_contract(self.workspace,
             tool_availability.SOURCE_DISTRIBUTION)
 
+    def test_runtime_path_id_resolves_value_and_retains_source_identity(self):
+        self.write_tool("sample.py", """
+            import argparse
+
+            def main(argv=None):
+                parser = argparse.ArgumentParser(description="Sample tool")
+                parser.add_argument("root")
+                parser.add_argument("--output")
+                return parser.parse_args(argv)
+        """)
+        write_interface_policy(self.workspace, ["sample"])
+        policy_path = Path(self.workspace) / compiler.DEFAULT_INTERFACE_POLICY
+        policy = kblib.parse_yaml_subset(
+            policy_path.read_text(encoding="utf-8"))
+        policy["tools"][0].update({
+            "exposure": "mcp",
+            "workspace_argument": "root",
+            "workspace_access": "write",
+            "value_arguments": [],
+            "write_paths": ["output"],
+        })
+        policy["path_overrides"] = [{
+            "tool": "sample",
+            "argument": "output",
+            "constraint": "namespace",
+            "runtime_path_id": "report-root",
+            "suffixes": [".md"],
+        }]
+        policy_path.write_text(
+            kblib.canonical_yaml(policy), encoding="utf-8")
+
+        compiled = compiler.compile_contract(
+            self.workspace, tool_availability.SOURCE_DISTRIBUTION)
+        capability = compiled["tools"][0]["agent_interface"][
+            "path_arguments"][0]
+
+        self.assertEqual("report-root", capability["runtime_path_id"])
+        self.assertEqual(runtime_paths.REPORT_ROOT, capability["value"])
+        self.assertEqual(
+            compiler.DEFAULT_RUNTIME_PATH_REGISTRY,
+            compiled["runtime_path_registry"]["path"],
+        )
+
+    def test_path_override_keeps_the_argument_consumption_default(self):
+        self.write_tool("sample.py", """
+            import argparse
+
+            def main(argv=None):
+                parser = argparse.ArgumentParser(description="Sample tool")
+                parser.add_argument("root")
+                parser.add_argument("--receipts")
+                return parser.parse_args(argv)
+        """)
+        write_interface_policy(self.workspace, ["sample"])
+        policy_path = Path(self.workspace) / compiler.DEFAULT_INTERFACE_POLICY
+        policy = kblib.parse_yaml_subset(
+            policy_path.read_text(encoding="utf-8"))
+        policy["tools"][0].update({
+            "exposure": "mcp",
+            "workspace_argument": "root",
+            "workspace_access": "write",
+            "value_arguments": [],
+            "write_paths": ["receipts"],
+        })
+        policy["path_defaults"] = [{
+            "argument": "receipts",
+            "constraint": "namespace",
+            "runtime_path_id": "receipt-root",
+            "suffixes": [".jsonl"],
+            "consumption": "append",
+        }]
+        policy["path_overrides"] = [{
+            "tool": "sample",
+            "argument": "receipts",
+            "constraint": "exact",
+            "runtime_path_id": "gate-attestation-receipts",
+            "suffixes": [],
+        }]
+        policy_path.write_text(
+            kblib.canonical_yaml(policy), encoding="utf-8")
+
+        compiled = compiler.compile_contract(
+            self.workspace, tool_availability.SOURCE_DISTRIBUTION)
+        capability = compiled["tools"][0]["agent_interface"][
+            "path_arguments"][0]
+
+        self.assertEqual("append", capability["consumption"])
+        self.assertEqual("exact", capability["constraint"])
+        self.assertEqual(
+            "gate-attestation-receipts", capability["runtime_path_id"])
+
+    def test_component_path_id_tracks_card_schema_path_prefix(self):
+        self.write_tool("sample.py", """
+            import argparse
+
+            def main(argv=None):
+                parser = argparse.ArgumentParser(description="Sample tool")
+                parser.add_argument("root")
+                parser.add_argument("--cards-dir")
+                return parser.parse_args(argv)
+        """)
+        card_directory = Path(self.workspace) / "Card"
+        card_directory.mkdir()
+        schema_path = Path(self.workspace) / "Tools/schemas/card.schema.yaml"
+        schema_path.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy(REPO_ROOT / "Tools/schemas/card.schema.yaml", schema_path)
+        write_interface_policy(self.workspace, ["sample"])
+        policy_path = Path(self.workspace) / compiler.DEFAULT_INTERFACE_POLICY
+        policy = kblib.parse_yaml_subset(
+            policy_path.read_text(encoding="utf-8"))
+        policy["tools"][0].update({
+            "exposure": "mcp",
+            "workspace_argument": "root",
+            "workspace_access": "write",
+            "value_arguments": [],
+            "read_write_paths": ["cards_dir"],
+        })
+        policy["path_overrides"] = [{
+            "tool": "sample",
+            "argument": "cards_dir",
+            "constraint": "exact",
+            "component_path_id": compiler.CARD_DIRECTORY_COMPONENT_PATH_ID,
+            "suffixes": [],
+        }]
+        policy_path.write_text(
+            kblib.canonical_yaml(policy), encoding="utf-8")
+
+        before = compiler.compile_contract(
+            self.workspace, tool_availability.SOURCE_DISTRIBUTION)
+        before_path = before["tools"][0]["agent_interface"][
+            "path_arguments"][0]
+        before_hash = before["component_path_registries"][
+            compiler.CARD_DIRECTORY_COMPONENT_PATH_ID]["sha256"]
+        self.assertEqual("Card", before_path["value"])
+        self.assertEqual(
+            compiler.CARD_DIRECTORY_COMPONENT_PATH_ID,
+            before_path["component_path_id"],
+        )
+
+        schema = kblib.parse_yaml_subset(
+            schema_path.read_text(encoding="utf-8"))
+        schema["path_prefix"] = "Flight-Cards/"
+        schema_path.write_text(
+            kblib.canonical_yaml(schema), encoding="utf-8")
+        after = compiler.compile_contract(
+            self.workspace, tool_availability.SOURCE_DISTRIBUTION)
+        after_path = after["tools"][0]["agent_interface"][
+            "path_arguments"][0]
+        after_hash = after["component_path_registries"][
+            compiler.CARD_DIRECTORY_COMPONENT_PATH_ID]["sha256"]
+
+        self.assertEqual("Flight-Cards", after_path["value"])
+        self.assertNotEqual(before_hash, after_hash)
+        self.assertNotEqual(before["source_hash"], after["source_hash"])
+
+    def test_runtime_path_binding_shape_and_identity_fail_closed(self):
+        self.write_tool("sample.py", """
+            import argparse
+
+            def main(argv=None):
+                parser = argparse.ArgumentParser(description="Sample tool")
+                parser.add_argument("root")
+                parser.add_argument("--output")
+                return parser.parse_args(argv)
+        """)
+        write_interface_policy(self.workspace, ["sample"])
+        policy_path = Path(self.workspace) / compiler.DEFAULT_INTERFACE_POLICY
+        base = kblib.parse_yaml_subset(
+            policy_path.read_text(encoding="utf-8"))
+        base["tools"][0].update({
+            "exposure": "mcp",
+            "workspace_argument": "root",
+            "workspace_access": "write",
+            "value_arguments": [],
+            "write_paths": ["output"],
+        })
+        valid_row = {
+            "tool": "sample",
+            "argument": "output",
+            "constraint": "namespace",
+            "runtime_path_id": "report-root",
+            "suffixes": [".md"],
+        }
+        cases = []
+        both = dict(valid_row, value="reports")
+        cases.append((both, "exactly one of value/runtime_path_id"))
+        both_registries = dict(
+            valid_row,
+            component_path_id=compiler.CARD_DIRECTORY_COMPONENT_PATH_ID,
+        )
+        cases.append((both_registries,
+                      "exactly one of value/runtime_path_id"))
+        neither = dict(valid_row)
+        del neither["runtime_path_id"]
+        cases.append((neither, "exactly one of value/runtime_path_id"))
+        cases.append((
+            dict(valid_row, runtime_path_id="not-registered"),
+            "unknown runtime_path_id not-registered",
+        ))
+        cases.append((
+            dict(valid_row, runtime_path_id=None),
+            "runtime_path_id must be a non-empty string",
+        ))
+        cases.append((
+            dict(valid_row, runtime_path_id="effective-vocabulary"),
+            "constraint mismatch",
+        ))
+        literal_runtime = dict(valid_row)
+        del literal_runtime["runtime_path_id"]
+        literal_runtime["value"] = ".cambium/reports"
+        cases.append((literal_runtime, "must use runtime_path_id"))
+
+        for row, message in cases:
+            with self.subTest(message=message):
+                policy = copy.deepcopy(base)
+                policy["path_overrides"] = [row]
+                policy_path.write_text(
+                    kblib.canonical_yaml(policy), encoding="utf-8")
+
+                with self.assertRaisesRegex(
+                        compiler.ContractError, message):
+                    compiler.compile_contract(
+                        self.workspace,
+                        tool_availability.SOURCE_DISTRIBUTION,
+                    )
+
 
 class ExitCodeTests(unittest.TestCase):
     def setUp(self):
@@ -431,6 +703,7 @@ class ExitCodeTests(unittest.TestCase):
         self.tools = os.path.join(self.workspace, "Tools")
         os.makedirs(self.tools)
         shutil.copy(str(TOOLS_DIR / "kblib.py"), self.tools)
+        shutil.copy(str(TOOLS_DIR / "runtime_paths.py"), self.tools)
         shutil.copy(str(TOOLS_DIR / "tool_availability.py"), self.tools)
         write_distribution_boundary(self.workspace)
         with open(os.path.join(self.tools, "sample.py"), "w",
@@ -457,6 +730,39 @@ class ExitCodeTests(unittest.TestCase):
         result = run(self.workspace, "--check", "--projection-target", tool_availability.SOURCE_DISTRIBUTION)
 
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+
+    def test_carried_runtime_writes_only_the_registered_derived_contract(self):
+        result = run(
+            self.workspace, "--projection-target",
+            tool_availability.CARRIED_RUNTIME)
+
+        self.assertEqual(result.returncode, 0,
+                         result.stdout + result.stderr)
+        runtime_output = Path(
+            self.workspace, runtime_paths.CLI_CONTRACT_ARTIFACT_PATH)
+        self.assertTrue(runtime_output.is_file())
+        self.assertFalse(Path(self.output).exists())
+        contract = kblib.parse_yaml_subset(
+            runtime_output.read_text(encoding="utf-8"))
+        self.assertEqual(contract["projection_target"],
+                         tool_availability.CARRIED_RUNTIME)
+        header = runtime_output.read_text(encoding="utf-8").splitlines()[:12]
+        self.assertTrue(any(
+            "--projection-target carried-runtime" in line
+            for line in header))
+        self.assertFalse(any(
+            "compile_cli_contract.py . --check" in line
+            for line in header))
+
+    def test_carried_runtime_refuses_the_distribution_output(self):
+        result = run(
+            self.workspace, "--projection-target",
+            tool_availability.CARRIED_RUNTIME,
+            "--output", self.output)
+
+        self.assertEqual(result.returncode, 1,
+                         result.stdout + result.stderr)
+        self.assertFalse(Path(self.output).exists())
 
     def test_a_hand_edited_artifact_holds_with_2(self):
         self.compile_once()

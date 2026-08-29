@@ -135,7 +135,7 @@ type: research-synthesis
 
 def registry_yaml(units="", support_layers=""):
     return (
-        "schema_version: 1\n"
+        "schema_version: 2\n"
         "applicability:\n"
         "  state: configured\n"
         "  reason: null\n"
@@ -159,7 +159,7 @@ UNIT_DOMAIN = """  - id: U-DOMAIN
         heading: "Reading Order"
       coverage:
         mode: derived
-        generator: "Tools/gen.py"
+        generator_capability: structure-coverage-projection-v1
         inputs_owner: "planning/global_map.yaml"
         path: "Domain/Domain Overview.md"
         heading: "Coverage Reader View"
@@ -242,7 +242,6 @@ def base_files():
         "planning/global_map.yaml": GLOBAL_MAP,
         "planning/capability_matrix.yaml": "schema_version: 1\n",
         "planning/gap_register.yaml": "schema_version: 1\n",
-        "Tools/gen.py": "print('derived')\n",
         "Domain/Domain Overview.md": DOMAIN_OVERVIEW,
         "Domain/Sub/Sub Entry.md": MODULE_ENTRY,
         "Cases/Cases Overview.md": CASES_OVERVIEW,
@@ -325,7 +324,7 @@ class CheckStructureTests(unittest.TestCase):
     def test_not_applicable_registry_passes_with_empty_sets(self):
         files = base_files()
         files["profile/structure-registry.yaml"] = (
-            "schema_version: 1\n"
+            "schema_version: 2\n"
             "applicability:\n"
             "  state: not-applicable\n"
             "  reason: \"Flat corpus; nothing passes the module admission "
@@ -359,7 +358,7 @@ class CheckStructureTests(unittest.TestCase):
     def test_configured_with_no_units_fails_closed(self):
         files = base_files()
         files["profile/structure-registry.yaml"] = (
-            "schema_version: 1\n"
+            "schema_version: 2\n"
             "applicability:\n"
             "  state: configured\n"
             "  reason: null\n"
@@ -369,6 +368,13 @@ class CheckStructureTests(unittest.TestCase):
         self.assert_fail(result, "configured requires at least one unit")
 
     # ---- shape defects (shared contract) ----
+
+    def test_structure_registry_v1_is_rejected(self):
+        files = base_files()
+        files["profile/structure-registry.yaml"] = registry_yaml(
+            UNIT_DOMAIN).replace("schema_version: 2", "schema_version: 1")
+        result = self.run_check(files)
+        self.assert_fail(result, "schema_version must be integer 2")
 
     def test_unknown_top_level_field_fails(self):
         files = base_files()
@@ -420,6 +426,33 @@ class CheckStructureTests(unittest.TestCase):
         result = self.run_check(files)
         self.assert_fail(result, "absence of a declaration must not")
 
+    def test_derived_role_rejects_legacy_generator_path_field(self):
+        files = base_files()
+        files["profile/structure-registry.yaml"] = registry_yaml(
+            UNIT_DOMAIN.replace(
+                "generator_capability: structure-coverage-projection-v1",
+                'generator: "Tools/render_structure_projection.py"'))
+        result = self.run_check(files)
+        self.assert_fail(result, "unsupported field(s): generator")
+
+    def test_derived_role_rejects_tool_path_as_capability_identity(self):
+        files = base_files()
+        files["profile/structure-registry.yaml"] = registry_yaml(
+            UNIT_DOMAIN.replace(
+                "generator_capability: structure-coverage-projection-v1",
+                'generator_capability: "Tools/render_structure_projection.py"'))
+        result = self.run_check(files)
+        self.assert_fail(result, "stable Tool capability ID")
+
+    def test_derived_role_rejects_runtime_state_physical_path(self):
+        files = base_files()
+        files["profile/structure-registry.yaml"] = registry_yaml(
+            UNIT_DOMAIN.replace(
+                'inputs_owner: "planning/global_map.yaml"',
+                'inputs_owner: ".cambium/state/coverage_ledger.yaml"'))
+        result = self.run_check(files)
+        self.assert_fail(result, "stable object ID")
+
     def test_invalid_index_mode_fails(self):
         files = base_files()
         sources_layer = LAYER_SYNTHESIS.replace(
@@ -438,6 +471,34 @@ class CheckStructureTests(unittest.TestCase):
         self.assert_fail(result, "must be derived or none")
 
     # ---- vault resolution defects ----
+
+    def test_unknown_projection_capability_fails(self):
+        files = base_files()
+        files["profile/structure-registry.yaml"] = registry_yaml(
+            UNIT_DOMAIN.replace(
+                "structure-coverage-projection-v1",
+                "unknown-structure-projection-v1"))
+        result = self.run_check(files)
+        self.assert_fail(result, "is not registered")
+
+    def test_registered_runtime_input_owner_does_not_require_profile_path(self):
+        files = base_files()
+        files["profile/structure-registry.yaml"] = registry_yaml(
+            UNIT_DOMAIN.replace(
+                'inputs_owner: "planning/global_map.yaml"',
+                "inputs_owner: coverage-ledger"))
+        result = self.run_check(files)
+        self.assertEqual(result.returncode, 0,
+                         result.stdout + result.stderr)
+
+    def test_unknown_runtime_input_owner_id_fails(self):
+        files = base_files()
+        files["profile/structure-registry.yaml"] = registry_yaml(
+            UNIT_DOMAIN.replace(
+                'inputs_owner: "planning/global_map.yaml"',
+                "inputs_owner: unknown-runtime-ledger"))
+        result = self.run_check(files)
+        self.assert_fail(result, "not a registered stable object ID")
 
     def test_embedded_heading_missing_fails(self):
         files = base_files()

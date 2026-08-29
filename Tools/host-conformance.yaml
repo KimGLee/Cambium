@@ -1,13 +1,14 @@
 # =============================================================================
 # Host Adapter conformance registry
-# Owner standard: "kernel/K13 Task Runtime and Execution Control/19 Card
-#   Context Activation and Read-back Delivery.md" (Budgeted Piece Delivery)
+# Engineering owner: Tools/card_activation.py and this registry.
+# Semantic delivery result: kernel/K13 Task Runtime and Execution Control/19
+#   Card Context Activation and Read-back Delivery.md
 #
 # A server can prove what it sent.  It cannot prove what the host put in the
 # model context.  This file records which adapter builds have demonstrated,
 # by test, that a within-budget tool result is delivered inline rather than
-# truncated or externalized -- the middle part of the three-part guarantee
-# K13/19 defines.  An adapter absent from this registry is `degraded`; that
+# truncated or externalized -- the transport-assurance part of the current
+# Tool delivery contract.  An adapter absent from this registry is `degraded`; that
 # is a statement about measurement, not about quality.
 #
 # Registration is earned by the probe in

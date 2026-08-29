@@ -1,6 +1,7 @@
 # Cambium kernel sources-role base.
 # Semantic owner: "kernel/K07 Sources and Accuracy/02 Claims Sources and Classification.md#Source Placement"
-# Merged into Tools/page_contract.yaml by Tools/compose_page_contract.py.
+# Composed into the canonical page contract by the registered page-contract
+# composition capability.
 # The deterministic half of the sources role: which pages owe the section
 # (same-page frontmatter condition only — the conditional atomic-claim rule
 # stays a manual disposition), the kernel default display title, and which

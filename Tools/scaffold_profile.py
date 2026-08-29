@@ -6,8 +6,8 @@ version-controlled whitelist in `profiles/template-files.yaml`, and perform
 only the mechanical derivations that are pure functions of the profile id:
 
 * `profile.md` — `profile_id` becomes the requested slug;
-* `registries/registered-scans.md` — the verifier command cell is
-  materialized with this candidate's own `--config` path
+* `registries/registered-scans.md` — the Profile configuration reference is
+  materialized with this candidate's own path
   (`profiles/<profile-id>/scan-configs/residual-scan.yaml`), leaving the
   Stable Scan ID and every other semantic answer as the unfilled sentinel;
 * `registries/audit-dimensions.md` — both predicate-owner cells become this
@@ -51,15 +51,17 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import kblib
+import profile_layout_contract
 
 TOOL = "scaffold_profile"
 TOOL_VERSION = "1.0.0"
 
-MANIFEST_RELATIVE = "profiles/template-files.yaml"
-TEMPLATE_RELATIVE = "profiles/_template"
+MANIFEST_RELATIVE = "%s/template-files.yaml" % (
+    profile_layout_contract.PROFILES_DIRECTORY)
+TEMPLATE_RELATIVE = profile_layout_contract.profile_relative(
+    profile_layout_contract.TEMPLATE_PROFILE_ID)
 SENTINEL = "TODO(profile)"
 SLUG_RE = re.compile(r"[a-z0-9][a-z0-9_-]*\Z")
-RESERVED_PROFILE_IDS = ("_template", "examples")
 MANIFEST_FIELDS = frozenset((
     "template_manifest_version", "source", "copy", "orientation_not_copied",
 ))
@@ -84,22 +86,23 @@ def derived_rewrites(profile_id):
     that are pure functions of the profile id are derived; every semantic
     ``TODO(profile)`` cell is preserved byte-for-byte.
     """
-    profile_dir = "profiles/%s" % profile_id
+    profile_dir = profile_layout_contract.profile_relative(profile_id)
     return (
         # Identity: the one TODO(profile) cell under `## Profile Identity`.
-        ("profile.md",
+        (profile_layout_contract.PROFILE_MANIFEST_NAME,
          "- `profile_id`: `TODO(profile)`",
          "- `profile_id`: `%s`" % profile_id),
-        # Registered scan row: materialize the verifier command's --config
-        # path (interview self_path_rewrites: "verifier command --config
-        # path"). The Stable Scan ID inside the command, and every other
-        # cell, remain semantic sentinels for the interview to answer.
+        # Registered scan row: materialize the template's stable package-local
+        # configuration reference as this candidate's repository-relative
+        # path. The verifier is selected by stable Tool capability ID; the
+        # Profile carries no executable command.
         ("registries/registered-scans.md",
          "| TODO(profile) | `K12/09 item 6 — residual-content scan` "
-         "| TODO(profile) | TODO(profile) | TODO(profile) | TODO(profile) |",
+         "| TODO(profile) | `residual-content-scan-v1` "
+         "| `scan-configs/residual-scan.yaml` "
+         "| TODO(profile) | TODO(profile) |",
          "| TODO(profile) | `K12/09 item 6 — residual-content scan` "
-         "| TODO(profile) | `python3 Tools/check_residual_content.py . "
-         "--scan-id TODO(profile) --config %s/%s --time-limit 55` "
+         "| TODO(profile) | `residual-content-scan-v1` | `%s/%s` "
          "| TODO(profile) | TODO(profile) |"
          % (profile_dir, SCAN_CONFIG_RELATIVE)),
         # Foundation judgment item: predicate-owner cell (interview
@@ -202,7 +205,7 @@ def validate_profile_id(profile_id):
         raise ScaffoldRefusal(
             "--profile-id %r must fully match [a-z0-9][a-z0-9_-]*"
             % (profile_id,))
-    if profile_id in RESERVED_PROFILE_IDS:
+    if profile_id in profile_layout_contract.RESERVED_PROFILE_IDS:
         raise ScaffoldRefusal(
             "--profile-id %r is reserved and cannot name a candidate profile"
             % profile_id)
@@ -324,7 +327,8 @@ def publish_candidate(staging, destination):
 
 def apply_plan(root, profile_id, plan):
     """Stage inside profiles/ and publish; remove staging on any failure."""
-    profiles_dir = os.path.join(root, "profiles")
+    profiles_dir = os.path.join(
+        root, profile_layout_contract.PROFILES_DIRECTORY)
     destination = os.path.join(profiles_dir, profile_id)
     staging = os.path.join(
         profiles_dir, ".scaffold-%s-%d" % (profile_id, os.getpid()))
@@ -358,7 +362,8 @@ def main(argv=None):
         "tool": TOOL,
         "tool_version": TOOL_VERSION,
         "profile_id": args.profile_id,
-        "destination": "profiles/%s" % args.profile_id,
+        "destination": profile_layout_contract.profile_relative(
+            args.profile_id),
         "apply": bool(args.apply),
         "created": False,
         "result": None,
@@ -391,8 +396,10 @@ def main(argv=None):
     except ScaffoldRefusal as exc:
         return refuse(str(exc))
 
-    destination = os.path.join(root, "profiles", args.profile_id)
-    report["files"] = ["profiles/%s/%s" % (args.profile_id, relative)
+    destination = os.path.join(
+        root, profile_layout_contract.PROFILES_DIRECTORY, args.profile_id)
+    report["files"] = ["%s/%s" % (
+        profile_layout_contract.profile_relative(args.profile_id), relative)
                        for relative in plan["copy"]]
     report["orientation_not_copied"] = plan["orientation_not_copied"]
     report["rewrites"] = plan["rewrites"]

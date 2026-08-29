@@ -19,6 +19,7 @@ import kblib
 import metadata_gate_runtime
 import metadata_property_state
 import project_page_state
+import runtime_paths
 
 
 TOOL = "apply_metadata_transition"
@@ -263,8 +264,9 @@ def main(argv=None):
     parser.add_argument("--expected-page-sha256",
                         help="target page fingerprint observed by the caller")
     parser.add_argument("--receipts",
-                        help="fresh JSONL path under .cambium/receipts; "
-                             "default is <receipt_id>.jsonl")
+                        help=("fresh JSONL path under %s; default is "
+                              "<receipt_id>.jsonl") %
+                        runtime_paths.RECEIPT_ROOT)
     parser.add_argument("--apply", action="store_true",
                         help="commit owner state and page projection")
     parser.add_argument("--json", action="store_true",
@@ -282,10 +284,11 @@ def main(argv=None):
         proposed, coverage_text, plan, receipt = prepare_transition(
             context, args.gate_receipt, args.value,
             actor_role=args.actor_role)
-        receipt_relative = args.receipts or (
-            ".cambium/receipts/%s.jsonl" % receipt["receipt_id"])
+        receipt_relative = args.receipts or runtime_paths.child_path(
+            runtime_paths.RECEIPT_ROOT,
+            "%s.jsonl" % receipt["receipt_id"])
         receipt_path = kblib.managed_repository_path(
-            root, receipt_relative, ".cambium/receipts",
+            root, receipt_relative, runtime_paths.RECEIPT_ROOT,
             suffixes=(".jsonl",), must_exist=False)
         if os.path.lexists(receipt_path):
             raise ValueError("transition receipt target already exists")
@@ -319,7 +322,7 @@ def main(argv=None):
         return 1
 
     coverage_path = kblib.managed_repository_path(
-        root, check_queue.COVERAGE_PATH, ".cambium/state",
+        root, check_queue.COVERAGE_PATH, runtime_paths.STATE_ROOT,
         suffixes=(".yaml",), must_exist=True)
     coverage_snapshot = kblib.repository_target_snapshot(
         root, check_queue.COVERAGE_PATH, suffixes=".yaml",

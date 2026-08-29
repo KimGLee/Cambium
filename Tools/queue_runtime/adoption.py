@@ -9,7 +9,9 @@ leaves behind, and it is refused rather than repaired.
 import datetime
 
 import kblib
+import runtime_state_contract
 import standards_state
+import upstream_identity
 
 from queue_runtime.canon import (
     ANY_PRODUCER_ERA_VERSION,
@@ -22,6 +24,7 @@ from queue_runtime.canon import (
     TOOL,
 )
 from queue_runtime.gate_registry import (
+    is_revalidation_boundary_owner,
     partition_revalidation_owner_claims,
     projected_revalidation_owners,
     standards_gate_registry,
@@ -38,6 +41,7 @@ from queue_runtime.producer_era import (
     standards_adoption_owner_projection_required,
     standards_adoption_profile_contract_required,
     standards_adoption_profile_inputs_required,
+    standards_adoption_resolved_identity_required,
     standards_adoption_state_file_required,
     standards_adoption_upstream_required,
     accounted_standards_versions,
@@ -112,6 +116,8 @@ def standards_adoption_plan_errors(
         standards_adoption_owner_projection_required(producer_tool_version)
     state_file_required = validate_current or \
         standards_adoption_state_file_required(producer_tool_version)
+    resolved_identity_required = validate_current or \
+        standards_adoption_resolved_identity_required(producer_tool_version)
     optional_fields = []
     if not profile_contract_required:
         optional_fields.append("profile_contract_fingerprint_after")
@@ -142,7 +148,8 @@ def standards_adoption_plan_errors(
             "selected_profile_manifest_after", "governance_revision_ref"):
         if not nonempty_string(plan.get(field)):
             errors.append("Standards adoption plan %s must be non-empty" % field)
-    if plan.get("task_state_before") not in ("active", "paused"):
+    if (plan.get("task_state_before") not in
+            runtime_state_contract.STANDARDS_ADOPTION_TASK_STATES):
         errors.append("Standards adoption plan supports only active or paused "
                       "tasks; completion-candidate must first transition back")
     if upstream_required and isinstance(plan, dict) and \
@@ -150,7 +157,21 @@ def standards_adoption_plan_errors(
                  set(plan)):
         source = plan.get("upstream_source_ref")
         revision = plan.get("upstream_revision_id")
-        if (source is None) != (revision is None):
+        if resolved_identity_required:
+            if not nonempty_string(source):
+                errors.append(
+                    "Standards adoption plan upstream_source_ref must name "
+                    "the adopted Cambium source")
+            if not upstream_identity.is_full_commit_sha(revision):
+                errors.append(
+                    "Standards adoption plan upstream_revision_id must be one "
+                    "full Git commit SHA")
+            if (nonempty_string(plan.get("standards_version_after")) and
+                    plan.get("standards_version_after") != revision):
+                errors.append(
+                    "Standards adoption plan standards_version_after is a "
+                    "compatibility alias and must equal upstream_revision_id")
+        elif (source is None) != (revision is None):
             errors.append(
                 "Standards adoption plan upstream_source_ref and "
                 "upstream_revision_id must both name the upstream or both "
@@ -172,7 +193,8 @@ def standards_adoption_plan_errors(
             errors.append(
                 "Standards adoption plan standards_effective_date_after "
                 "must be YYYY-MM-DD")
-    if (plan.get("standards_version_before") ==
+    if (not resolved_identity_required and
+            plan.get("standards_version_before") ==
             plan.get("standards_version_after")):
         errors.append("Standards adoption must change standards_version")
     for field in ("queue_revision_before", "queue_revision_after",
@@ -424,8 +446,7 @@ def standards_adoption_plan_errors(
                         label, ", ".join(extra_required_gate_ids)))
             for gate_id in required_gate_ids:
                 capability = revalidation_capabilities.get(gate_id) or {}
-                if capability.get("role") not in (
-                        "special-owner", "immediate-owner", "native-owner"):
+                if not is_revalidation_boundary_owner(capability):
                     errors.append(
                         "%s required_gate_ids names %s, which is not a "
                         "Standards revalidation boundary owner" %
@@ -738,10 +759,11 @@ def standards_adoption_plan_errors(
                 "no gate rerun would ever be required for it" %
                 (index, boundary_id, boundary.get("target_kind")))
 
-    # K00/15: selected Read Sets are transitively closed over Read Sets named by
-    # their loading boundaries, and every non-Read-Set target in that closure
-    # belongs in the declared module load set. The obligations are containment,
-    # not equality: additional tool and profile paths remain legitimate.
+    # Canonical Read Set machine declarations are transitively closed over
+    # their declared Read Set edges, and every non-Read-Set target in that
+    # closure belongs in the declared module load set. The obligations are
+    # containment, not equality: additional tool and profile paths remain
+    # legitimate.
     #
     # Only a plan being admitted is judged, for the reason the boundary rule
     # above is so scoped: a historical adoption's plan bytes are sealed into

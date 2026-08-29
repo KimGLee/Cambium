@@ -10,6 +10,7 @@ import shlex
 import sys
 
 import kblib
+import runtime_state_contract
 
 from queue_runtime.canon import (
     ACTIVE_STATES,
@@ -347,7 +348,7 @@ def resume_next_action(result, errors):
                 bundle["delta_apply_receipt"],
             )
         return "run-batch-close-gate:%s" % selected["batch"]
-    if task_state in ("complete", "cancelled"):
+    if task_state in runtime_state_contract.TASK_TERMINAL_STATES:
         return "archive-terminal-runtime"
     runtime = result.get("task_runtime") or {}
     if runtime.get("pending_guidance") or runtime.get("pending_amendments"):

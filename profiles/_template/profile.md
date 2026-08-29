@@ -1,7 +1,6 @@
 # Profile Manifest
 
-Interface and usage: [Profile interface](../README.md). Fill orientation:
-[this template's README](README.md).
+Common interface: [Kernel Profile registry](../../kernel/K00%20Standards%20Control/profile-interface.yaml). Fill orientation: [this template's README](README.md).
 
 ## Profile Identity
 

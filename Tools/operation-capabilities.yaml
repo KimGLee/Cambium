@@ -1,12 +1,32 @@
-schema_version: 1
+# Tool capability implementation registry.
+#
+# `implementation_owner` is the one module that defines the capability.
+# `writers` lists outer transactions that use it to change canonical adopter
+# state or governed pages; `checkers` lists read-only verdict/evidence
+# producers; `consumers` lists other callers. These roles do not grant
+# authority -- they make implementation ownership and dependency direction
+# machine-checkable. A `projection` capability additionally closes the stable
+# adopter-runtime object IDs it can consume; Profile declarations reference
+# the capability and those object IDs, never these implementation paths or a
+# current `.cambium` spelling.
+
+schema_version: 2
 
 capabilities:
   - capability_id: project-page-state-v2
     kind: writer
     capability_version: 2.0.0
-    implementation_paths:
+    implementation_owner: Tools/project_page_state.py
+    writers:
+      - Tools/apply_amendment.py
+      - Tools/apply_delta.py
+      - Tools/apply_metadata_transition.py
+      - Tools/apply_task_plan.py
+      - Tools/update_queue.py
+    checkers:
+      - Tools/check_batch_close.py
+    consumers:
       - Tools/metadata_property_state.py
-      - Tools/project_page_state.py
     operations:
       - field: authoring_status
         transition: owner-to-page-projection
@@ -28,12 +48,14 @@ capabilities:
   - capability_id: metadata-transition-integrator-v1
     kind: writer
     capability_version: 1.0.0
-    implementation_paths:
+    implementation_owner: Tools/metadata_property_state.py
+    writers:
       - Tools/apply_delta.py
       - Tools/apply_metadata_transition.py
-      - Tools/check_batch_close.py
-      - Tools/metadata_property_state.py
       - Tools/update_queue.py
+    checkers:
+      - Tools/check_batch_close.py
+    consumers: []
     operations:
       - field: last_content_modified
         transition: semantic-content-change
@@ -45,131 +67,261 @@ capabilities:
         transition: semantic-content-change
         source_adapter: content-change-event-v1
 
-  - capability_id: metadata-transition-integrator-v1
+  - capability_id: typed-metadata-transition-v1
     kind: consumer
     capability_version: 1.0.0
-    implementation_paths:
-      - Tools/apply_metadata_transition.py
-      - Tools/metadata_property_state.py
+    implementation_owner: Tools/apply_metadata_transition.py
+    writers: []
+    checkers: []
+    consumers: []
     operations:
       - operation: typed-field-metadata-transition
 
   - capability_id: legacy-property-adoption-v1
     kind: writer
     capability_version: 1.0.0
-    implementation_paths:
+    implementation_owner: Tools/metadata_property_state.py
+    writers:
       - Tools/apply_amendment.py
       - Tools/apply_task_plan.py
-      - Tools/metadata_property_state.py
-      - Tools/project_page_state.py
-      - Tools/register_amendment.py
+    checkers: []
+    consumers: []
     operations:
       - operation: legacy-property-adoption-v1
 
   - capability_id: manual-attestation-v1
     kind: producer
     capability_version: 1.0.0
-    implementation_paths:
+    implementation_owner: Tools/manual_attestation.py
+    writers: []
+    checkers:
+      - Tools/check_queue.py
+    consumers:
+      - Tools/apply_metadata_transition.py
+      - Tools/record_batch_judgment.py
+      - Tools/record_batch_review.py
       - Tools/record_gate_attestation.py
+    operations: []
+
+  - capability_id: audit-plan-producer-v1
+    kind: producer
+    capability_version: 1.0.0
+    implementation_owner: Tools/prepare_audit_plan.py
+    writers: []
+    checkers:
+      - Tools/check_batch_close.py
+      - Tools/check_proof.py
+    consumers:
+      - Tools/audit_evidence_runtime.py
+      - Tools/complete_audit_receipt.py
+      - Tools/record_batch_judgment.py
+      - Tools/record_batch_page_review.py
+      - Tools/record_batch_review.py
+      - Tools/record_changed_scope_evidence.py
+      - Tools/record_rendering_verification.py
+      - Tools/record_substantive_review.py
+    operations: []
+
+  - capability_id: batch-page-review-attestation-v1
+    kind: producer
+    capability_version: 1.0.0
+    implementation_owner: Tools/record_batch_page_review.py
+    writers: []
+    checkers: []
+    consumers:
+      - Tools/audit_evidence_runtime.py
+      - Tools/record_batch_review.py
+    operations: []
+
+  - capability_id: substantive-review-attestation-v1
+    kind: producer
+    capability_version: 1.0.0
+    implementation_owner: Tools/record_substantive_review.py
+    writers: []
+    checkers: []
+    consumers:
+      - Tools/audit_evidence_runtime.py
+      - Tools/complete_audit_receipt.py
+    operations: []
+
+  - capability_id: changed-scope-evidence-adapter-v1
+    kind: producer
+    capability_version: 1.0.0
+    implementation_owner: Tools/record_changed_scope_evidence.py
+    writers: []
+    checkers: []
+    consumers:
+      - Tools/audit_evidence_runtime.py
+      - Tools/complete_audit_receipt.py
+    operations: []
+
+  - capability_id: dedicated-rendering-verification-v1
+    kind: producer
+    capability_version: 1.0.0
+    implementation_owner: Tools/record_rendering_verification.py
+    writers: []
+    checkers: []
+    consumers:
+      - Tools/audit_evidence_runtime.py
+      - Tools/complete_audit_receipt.py
+    operations: []
+
+  - capability_id: audit-receipt-producer-v1
+    kind: producer
+    capability_version: 1.0.0
+    implementation_owner: Tools/complete_audit_receipt.py
+    writers: []
+    checkers:
+      - Tools/check_proof.py
+    consumers:
+      - Tools/audit_evidence_runtime.py
+      - Tools/record_batch_review.py
+      - Tools/update_queue.py
+    operations: []
+
+  - capability_id: batch-review-producer-v1
+    kind: producer
+    capability_version: 1.0.0
+    implementation_owner: Tools/record_batch_review.py
+    writers: []
+    checkers:
+      - Tools/check_queue.py
+    consumers:
+      - Tools/update_queue.py
     operations: []
 
   - capability_id: registered-scan-v1
     kind: producer
     capability_version: 1.0.0
-    implementation_paths:
-      - Tools/record_gate_result.py
+    implementation_owner: Tools/record_gate_result.py
+    writers: []
+    checkers:
+      - Tools/check_queue.py
+    consumers:
+      - Tools/apply_metadata_transition.py
     operations: []
 
   - capability_id: manual-gate-attestation-v1
     kind: receipt-schema
     capability_version: 1.0.0
-    implementation_paths:
-      - Tools/metadata_gate_runtime.py
+    implementation_owner: Tools/metadata_gate_runtime.py
+    writers: []
+    checkers:
+      - Tools/check_queue.py
+    consumers:
+      - Tools/apply_metadata_transition.py
+      - Tools/record_gate_attestation.py
     operations: []
 
   - capability_id: deterministic-gate-result-v1
     kind: receipt-schema
     capability_version: 1.0.0
-    implementation_paths:
-      - Tools/metadata_gate_runtime.py
+    implementation_owner: Tools/metadata_gate_runtime.py
+    writers: []
+    checkers:
+      - Tools/check_queue.py
+    consumers:
+      - Tools/apply_metadata_transition.py
+      - Tools/record_gate_result.py
     operations: []
 
   - capability_id: card-context-delivery-v1
     kind: producer
     capability_version: 1.0.3
-    implementation_paths:
-      - Tools/card_activation.py
+    implementation_owner: Tools/card_activation.py
+    writers: []
+    checkers: []
+    consumers:
       - Tools/check_queue.py
       - Tools/mcp_server.py
       - Tools/update_queue.py
-      - Tools/queue_runtime/__init__.py
-      - Tools/queue_runtime/adoption.py
-      - Tools/queue_runtime/amendments.py
-      - Tools/queue_runtime/authority.py
-      - Tools/queue_runtime/canon.py
-      - Tools/queue_runtime/close_gate.py
-      - Tools/queue_runtime/control_plane.py
-      - Tools/queue_runtime/coverage.py
-      - Tools/queue_runtime/delta.py
-      - Tools/queue_runtime/evidence_identity.py
-      - Tools/queue_runtime/gate_registry.py
-      - Tools/queue_runtime/item_evidence.py
-      - Tools/queue_runtime/item_history.py
-      - Tools/queue_runtime/locks.py
-      - Tools/queue_runtime/maintenance.py
-      - Tools/queue_runtime/policy_exceptions.py
-      - Tools/queue_runtime/primitives.py
-      - Tools/queue_runtime/producer_era.py
-      - Tools/queue_runtime/profile_view.py
-      - Tools/queue_runtime/property_state.py
-      - Tools/queue_runtime/receipts.py
-      - Tools/queue_runtime/repofs.py
-      - Tools/queue_runtime/resume.py
-      - Tools/queue_runtime/revalidation.py
-      - Tools/queue_runtime/review.py
-      - Tools/queue_runtime/runtime.py
-      - Tools/queue_runtime/task_contract.py
-      - Tools/queue_runtime/task_progress.py
-      - Tools/queue_runtime/task_record.py
-      - Tools/queue_runtime/work_spec.py
+    operations: []
+
+  - capability_id: card-currentness-v1
+    kind: producer
+    capability_version: 1.0.0
+    implementation_owner: Tools/stamp_cards.py
+    writers: []
+    checkers:
+      - Tools/run_gates.py
+    consumers:
+      - Tools/card_activation.py
     operations: []
 
   - capability_id: phase-delivery-consumer-v1
     kind: consumer
     capability_version: 1.0.0
-    implementation_paths:
+    implementation_owner: Tools/card_activation.py
+    writers: []
+    checkers: []
+    consumers:
       - Tools/check_queue.py
       - Tools/record_batch_judgment.py
       - Tools/update_queue.py
       - Tools/update_task.py
-      - Tools/queue_runtime/__init__.py
-      - Tools/queue_runtime/adoption.py
-      - Tools/queue_runtime/amendments.py
-      - Tools/queue_runtime/authority.py
-      - Tools/queue_runtime/canon.py
-      - Tools/queue_runtime/close_gate.py
-      - Tools/queue_runtime/control_plane.py
-      - Tools/queue_runtime/coverage.py
-      - Tools/queue_runtime/delta.py
-      - Tools/queue_runtime/evidence_identity.py
-      - Tools/queue_runtime/gate_registry.py
-      - Tools/queue_runtime/item_evidence.py
-      - Tools/queue_runtime/item_history.py
-      - Tools/queue_runtime/locks.py
-      - Tools/queue_runtime/maintenance.py
-      - Tools/queue_runtime/policy_exceptions.py
-      - Tools/queue_runtime/primitives.py
-      - Tools/queue_runtime/producer_era.py
-      - Tools/queue_runtime/profile_view.py
-      - Tools/queue_runtime/property_state.py
-      - Tools/queue_runtime/receipts.py
-      - Tools/queue_runtime/repofs.py
-      - Tools/queue_runtime/resume.py
-      - Tools/queue_runtime/revalidation.py
-      - Tools/queue_runtime/review.py
-      - Tools/queue_runtime/runtime.py
-      - Tools/queue_runtime/task_contract.py
-      - Tools/queue_runtime/task_progress.py
-      - Tools/queue_runtime/task_record.py
-      - Tools/queue_runtime/work_spec.py
+    operations: []
+
+  - capability_id: ordinary-queue-transition-v1
+    kind: writer
+    capability_version: 1.0.0
+    implementation_owner: Tools/update_queue.py
+    writers: []
+    checkers:
+      - Tools/check_queue.py
+    consumers: []
+    operations: []
+
+  - capability_id: amendment-batch-cancellation-v1
+    kind: writer
+    capability_version: 1.0.0
+    implementation_owner: Tools/apply_amendment.py
+    writers: []
+    checkers:
+      - Tools/check_queue.py
+    consumers: []
+    operations: []
+
+  - capability_id: task-state-transition-v1
+    kind: writer
+    capability_version: 1.0.0
+    implementation_owner: Tools/update_task.py
+    writers:
+      - Tools/update_queue.py
+    checkers:
+      - Tools/check_queue.py
+    consumers: []
+    operations: []
+
+  - capability_id: cross-ledger-amendment-v1
+    kind: writer
+    capability_version: 1.0.0
+    implementation_owner: Tools/apply_amendment.py
+    writers: []
+    checkers:
+      - Tools/check_queue.py
+    consumers:
+      - Tools/register_amendment.py
+    operations: []
+
+  - capability_id: same-scope-queue-replan-v1
+    kind: writer
+    capability_version: 1.0.0
+    implementation_owner: Tools/compile_queue.py
+    writers: []
+    checkers:
+      - Tools/check_queue.py
+    consumers:
+      - Tools/register_amendment.py
+    operations: []
+
+  - capability_id: structure-coverage-projection-v1
+    kind: projection
+    capability_version: 1.0.0
+    implementation_owner: Tools/render_structure_projection.py
+    writers: []
+    checkers:
+      - Tools/check_structure.py
+    consumers: []
+    input_owners:
+      - coverage-ledger
     operations: []

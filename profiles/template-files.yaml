@@ -7,8 +7,7 @@
 # the two lists below; `Tools/tests/test_scaffold_profile.py` enforces that
 # parity in both directions, so adding a template file without classifying it
 # here fails tests. Orientation files are template documentation, never
-# profile policy (profiles/README.md: "the README is deleted from the copied
-# profile"), so they are deliberately not copied.
+# Profile policy, so they are deliberately not copied.
 
 template_manifest_version: 1
 

@@ -46,9 +46,9 @@
 # mtimes actually classified. A zero-file scan is a scan-level candidate with
 # `scan_finding_codes: ["nothing_checked"]`; it has no synthetic page record.
 # Only a completed scan with an empty candidate set has `result: pass`.
-# A passing `check_profile.py` 2.0.0 `profile-load` summary carries:
+# A passing `check_profile.py` 2.2.0 `profile-load` summary carries:
 #   selected_profile_manifest      : canonical `profiles/<id>/profile.md` identity
-#   profile_snapshot_sha256        : path-sensitive SHA-256 over the complete selected Profile directory
+#   profile_snapshot_sha256        : path-sensitive SHA-256 over the selected manifest plus its typed Profile-owned dependency closure
 #   profile_contract_fingerprint   : SHA-256 over the canonical typed dependency graph rooted at that manifest
 #   profile_load_inputs_sha256      : SHA-256 over the canonical root-owned Profile-load inputs
 # The four fields occur together only on `profile-check-summary` pass
@@ -126,13 +126,13 @@
 # report is a receipt input or output.
 # Examples of current stable-Gate producer protocols -- not the complete set;
 # the Stable Gate ID Registry in K00/12 is the only complete enumeration of
-# registered Gate IDs and their producers: check_profile 2.0.0 / profile-load;
+# registered Gate IDs and their producers: check_profile 2.2.0 / profile-load;
 # check_links 1.6.0 / wiki-link-integrity; check_vocab 1.8.0 /
 # frontmatter-vocabulary and priority-quota-distribution;
 # check_residual_content 1.2.0 /
 # registered-residual-content; check_queue 1.25.0 / its registered
-# Required-Queue modes; check_batch_close 1.12.0 / batch-close; check_proof
-# 1.17.0 / terminal-proof; and adopt_standards 1.7.0 /
+# Required-Queue modes; check_batch_close 1.13.0 / batch-close; check_proof
+# 1.18.0 / terminal-proof; and adopt_standards 1.9.0 /
 # standards-adoption. Deterministic producers not shown above -- among them
 # check_corpus_plan and record_corpus_acceptance -- follow the same rule. Every receipt
 # created by one of these producer versions carries that exact Gate ID. The
@@ -158,27 +158,24 @@
 # `activation_protocol`, the Task Contract, reading plan, read-back plan and
 # Card Bundle SHA-256 values, plus the closed `activation_bundle_manifest`. It
 # stores paths and content hashes, never Card text.
-#   card-first-readback-v3 (current): the manifest carries a `pieces` list --
-#     one `{piece_id, kind, path, sha256, bytes}` record per deliverable file,
-#     plus `piece_count` and `max_piece_envelope_bytes` -- and NO `cards` or
-#     `startup_readbacks` arrays. No `activation_delivery_payload` accompanies
-#     it in the receipt or the tool result: admission delivers nothing. It
-#     records `delivery_assurance: host-bound` with
-#     `delivery_mode: host-context-injection` and a nonempty
-#     `execution_context_id`, or `prepared` with `cli-tool-result` and null.
-#     Neither value claims delivery; completion is `machine-delivery-complete`
-#     and is earned by the K13/20 Assignment delivery gate.
+#   card-first-phased-readback-v4 (current): the manifest carries the exact
+#     deliverable records and their frozen phase plan. Admission delivers no
+#     content. Phase parts travel through `deliver-phase:*` and are acknowledged
+#     through `ack-activation-phase:*`; K13/20 consumes exact-set evidence.
+#   card-first-readback-v3 (sealed history): the manifest carries one piece per
+#     deliverable and uses the legacy piece delivery/ack operations. Admission
+#     also claims no delivery.
 #   card-first-readback-v1 / v2 (sealed history): the manifest carries `cards`
 #     and `startup_readbacks`, the tool result carries transient
 #     `activation_delivery_payload` bytes, and admission itself recorded
 #     `machine-delivered`/`degraded`. Those eras replay under their own shape
-#     and never acquire the v3 fields.
+#     and never acquire the later fields.
 # `deliver-activation-piece:<batch>:<piece>` carries an `activation-piece-v1`
 # delivery: `piece_id`, `piece_sha256`, `piece_envelope_bytes`,
 # `delivery_attempt_id` and a single-use `delivery_nonce`, with the exact file
 # bytes only in the transient `activation_piece_payload`. The server re-reads
 # current bytes and refuses a source that drifted since admission, and refuses
-# any delivery serializing above the K13/19 budget.
+# any delivery serializing above the Tool-owned activation envelope budget.
 # `ack-activation-piece:<batch>:<piece>` carries an `activation-piece-ack-v1`
 # record binding the delivery receipt, its nonce, `delivery_attempt_id` and the
 # answering `execution_context_id`. An ack proves this context consumed that
@@ -205,12 +202,15 @@
 #   review_requirement_set_sha256 : the expansion hash the activation froze
 #   judgment_receipt_ids          : sorted unique profile_batch_judgment IDs
 #   judgment_record_set_sha256    : hash over the exact actual records
-# Each member receipt is produced by `record_batch_judgment` (check:
-# profile_batch_judgment) and binds batch_id, judgment_item_id,
-# target_selector, receipt_schema, reviewer_role, the batch's current
-# activation as opening_transition_receipt, the target's
-# semantic_content_sha256 (page targets), and the Profile contract
-# fingerprint; `open -> merge-ready` refuses one missing, extra, duplicated,
+# Each member is a `page-batch-judgment-v1` record produced by
+# `record_batch_judgment` (check: profile_batch_judgment). It binds the exact
+# plan_id / audit_plan_sha256 / obligation_id, the Profile extension owner and
+# acceptance contract, target and due stage, current Queue opening transition,
+# current Card activation, reviewer authority, and the artifact / dependency /
+# contract fingerprints resolved when the evidence is produced. The sole
+# obligation must be the AuditPlan projection of the selected typed Profile's
+# `k12-14-batch-review-requirement`; a free-standing Profile judgment is not
+# evidence. `open -> merge-ready` refuses one missing, extra, duplicated,
 # drifted, mis-roled, or reused record. A requirement-free Profile and any
 # pre-review-era activation carry none of these fields.
 # Receipt cold chain (K12/07): `.cambium/receipts/cold/` is never scanned
@@ -397,7 +397,7 @@
 # Queue transition history similarly accepts update_queue/1.2.0 while current
 # transitions are produced as update_queue/1.5.0 receipts. This receipt-protocol
 # version is deliberately independent from the update_queue CLI release.
-# `adopt_standards.py` 1.7.0 validates the candidate Profile after-image with
+# `adopt_standards.py` 1.9.0 validates the candidate Profile after-image with
 # full `profile-load` before writing state and binds its Profile tree, typed
 # dependency graph, root-owned profile-load inputs, upstream identity pair,
 # exact canonical adopter Standards-state before/after SHA-256 values, and next
@@ -412,7 +412,7 @@
 # sealed pre-1.4 history may omit the root-input fingerprint, and sealed
 # pre-1.3 history may omit the typed contract. Replay selects the producer-era
 # contract and never projects today's fields backward onto immutable history.
-# `apply_profile_adoption.py` 2.0.0 uses the same state/history separation
+# `apply_profile_adoption.py` 2.1.0 uses the same state/history separation
 # before task-runtime creation. `migrate_standards_state.py` 1.0.0 is a
 # one-time compatibility bridge: it materializes state only after three task
 # Ledgers agree and a committed adoption receipt accounts for that live
@@ -420,4 +420,4 @@
 # Existing receipt IDs remain valid append-only protocol references after generator-format changes; never rewrite historical IDs.
 # =============================================================================
 {"receipt_id": "audit-check_links-20260721T000000Z-4f9c2a7d6e8b4a10b3c5d7e9f1023456-0001", "check": "link-missing", "target": "Topics/Example Topic.md:42", "result": "fail", "details": "[[Example Dependency]] has no matching target (missing)", "checked_at": "2026-07-21T00:00:00Z", "tool": "check_links", "tool_version": "1.6.0", "gate_id": "wiki-link-integrity", "invalidated_by": null}
-{"receipt_id": "audit-check_profile-20260811T000000Z-7a6b5c4d3e2f109876543210abcdef12-0001", "check": "profile-check-summary", "target": "profiles/example/profile.md", "result": "pass", "details": "profile_id=example; all interface slots and typed Profile dependencies are authorized", "checked_at": "2026-08-11T00:00:00Z", "tool": "check_profile", "tool_version": "2.0.0", "gate_id": "profile-load", "dimension": "guidance_and_contract", "selected_profile_manifest": "profiles/example/profile.md", "profile_snapshot_sha256": "sha256:1111111111111111111111111111111111111111111111111111111111111111", "profile_contract_fingerprint": "sha256:2222222222222222222222222222222222222222222222222222222222222222", "profile_load_inputs_sha256": "sha256:3333333333333333333333333333333333333333333333333333333333333333", "invalidated_by": null}
+{"receipt_id": "audit-check_profile-20260811T000000Z-7a6b5c4d3e2f109876543210abcdef12-0001", "check": "profile-check-summary", "target": "profiles/example/profile.md", "result": "pass", "details": "profile_id=example; all interface slots and typed Profile dependencies are authorized", "checked_at": "2026-08-11T00:00:00Z", "tool": "check_profile", "tool_version": "2.2.0", "gate_id": "profile-load", "dimension": "guidance_and_contract", "selected_profile_manifest": "profiles/example/profile.md", "profile_snapshot_sha256": "sha256:1111111111111111111111111111111111111111111111111111111111111111", "profile_contract_fingerprint": "sha256:2222222222222222222222222222222222222222222222222222222222222222", "profile_load_inputs_sha256": "sha256:3333333333333333333333333333333333333333333333333333333333333333", "invalidated_by": null}

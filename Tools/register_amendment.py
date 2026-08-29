@@ -28,15 +28,15 @@ import amendment_policy
 import check_queue
 import compile_queue
 import kblib
+import runtime_paths
+import runtime_state_contract
 
 
 TOOL = "register_amendment"
 TOOL_VERSION = "1.4.0"
-RECEIPT_PATH = ".cambium/receipts/amendments.jsonl"
-OPERATIONS = (
-    "scope-replan", "cancel-batch", "queue-replan",
-    "gap-routing-reconciliation", "property-state-migration",
-)
+RECEIPT_PATH = runtime_paths.AMENDMENT_RECEIPT_PATH
+OPERATIONS = tuple(sorted(
+    runtime_state_contract.OPERATIONAL_AMENDMENT_OPERATIONS))
 DATE_RE = re.compile(r"\d{4}-\d{2}-\d{2}\Z")
 
 
@@ -84,15 +84,15 @@ def _load_yaml(root, relative, prefix, suffixes):
 def _state_paths(root, runtime):
     return {
         "coverage": kblib.managed_repository_path(
-            root, check_queue.COVERAGE_PATH, ".cambium/state",
+            root, check_queue.COVERAGE_PATH, runtime_paths.STATE_ROOT,
             suffixes=(".yaml",), must_exist=True,
         ),
         "queue": kblib.managed_repository_path(
-            root, check_queue.QUEUE_PATH, ".cambium/state",
+            root, check_queue.QUEUE_PATH, runtime_paths.STATE_ROOT,
             suffixes=(".yaml",), must_exist=True,
         ),
         "progress": kblib.managed_repository_path(
-            root, check_queue.PROGRESS_PATH, ".cambium/state",
+            root, check_queue.PROGRESS_PATH, runtime_paths.STATE_ROOT,
             suffixes=(".yaml",), must_exist=True,
         ),
     }
@@ -108,7 +108,7 @@ def _read_state(paths):
 
 
 def _require_current_schema(runtime):
-    for label in ("coverage", "queue", "progress"):
+    for label in runtime_state_contract.RUNTIME_LEDGER_IDS:
         value = runtime.get(label)
         if not isinstance(value, dict) or value.get("schema_version") != 1:
             raise ValueError(
@@ -123,8 +123,7 @@ def _check_control_identity(runtime):
     contract = progress.get("contract")
     if not isinstance(contract, dict):
         raise ValueError("Progress contract must be a mapping")
-    for field in ("task_id", "scope_version", "standards_version",
-                  "selected_profile_manifest"):
+    for field in runtime_state_contract.RUNTIME_CONTROL_IDENTITY_FIELDS:
         values = [coverage.get(field), queue.get(field)]
         values.append(contract.get(field) if field != "task_id"
                       else progress.get(field))
@@ -319,7 +318,7 @@ def _validate_queue_replan(root, runtime, amendment_id, proposal_relative):
     if not _nonempty(amendment_id):
         raise ValueError("queue-replan requires --amendment-id")
     proposal_file, proposal_path, proposal_raw, proposal = _load_yaml(
-        root, proposal_relative, ".cambium/deltas/replans",
+        root, proposal_relative, runtime_paths.REPLAN_DELTA_ROOT,
         (".coverage.yaml",),
     )
     coverage = runtime["coverage"]
@@ -377,7 +376,7 @@ def _validate_queue_replan(root, runtime, amendment_id, proposal_relative):
     bindings.pop("operation")
     artifacts = [{
         "relative": proposal_path,
-        "prefix": ".cambium/deltas/replans",
+        "prefix": runtime_paths.REPLAN_DELTA_ROOT,
         "suffixes": (".coverage.yaml",),
         "sha256": proposal_sha,
         "resolved_path": proposal_file,
@@ -444,13 +443,13 @@ def _prepare(root, args, expected):
     _check_control_identity(runtime)
     paths = _state_paths(root, runtime)
     before_raw, before_sha = _read_state(paths)
-    for name in ("coverage", "progress", "queue"):
+    for name in tuple(sorted(runtime_state_contract.RUNTIME_LEDGER_IDS)):
         if expected[name] != before_sha[name]:
             raise ValueError("expected %s SHA does not match current bytes" % name)
 
     if args.operation in (
-            "scope-replan", "cancel-batch",
-            "gap-routing-reconciliation", "property-state-migration"):
+            runtime_state_contract.AMENDMENT_OPERATIONS_BY_EXECUTION_CAPABILITY[
+                runtime_state_contract.CROSS_LEDGER_AMENDMENT_CAPABILITY]):
         if not args.plan:
             raise ValueError("%s requires --plan" % args.operation)
         if args.amendment_id or args.coverage_proposal:
@@ -595,7 +594,7 @@ def _prepare_withdrawal(root, args, expected):
     _check_control_identity(runtime)
     paths = _state_paths(root, runtime)
     before_raw, before_sha = _read_state(paths)
-    for name in ("coverage", "progress", "queue"):
+    for name in tuple(sorted(runtime_state_contract.RUNTIME_LEDGER_IDS)):
         if expected[name] != before_sha[name]:
             raise ValueError("expected %s SHA does not match current bytes" % name)
 
@@ -824,12 +823,14 @@ def main(argv=None):
     parser.add_argument("--operation", choices=OPERATIONS,
                         help="Amendment operation being registered")
     parser.add_argument("--plan",
-                        help=".cambium/deltas/amendments/*.yaml plan")
+                        help="%s/*.yaml plan" %
+                        runtime_paths.AMENDMENT_DELTA_ROOT)
     parser.add_argument("--amendment-id",
                         help="id for a queue-replan registration; cross-Ledger "
                              "operations derive it from --plan instead")
     parser.add_argument("--coverage-proposal",
-                        help=".cambium/deltas/replans/*.coverage.yaml proposal")
+                        help="%s/*.coverage.yaml proposal" %
+                        runtime_paths.REPLAN_DELTA_ROOT)
     parser.add_argument("--withdraw", metavar="AMENDMENT_ID",
                         help="retire the named pending registration instead "
                              "of registering one (K13/06 withdrawal); "
@@ -868,7 +869,8 @@ def main(argv=None):
                         help="declared caller role; only integrator may "
                              "register or withdraw an Amendment")
     parser.add_argument("--receipts", default=RECEIPT_PATH,
-                        help="receipt JSONL path under .cambium/receipts")
+                        help="receipt JSONL path under %s" %
+                        runtime_paths.RECEIPT_ROOT)
     parser.add_argument("--apply", action="store_true",
                         help="write the registration; omit for a dry run")
     parser.add_argument(
@@ -946,7 +948,7 @@ def _run(args, produced):
     root = os.path.realpath(os.path.abspath(args.root))
     try:
         receipt_path = kblib.managed_repository_path(
-            root, args.receipts, ".cambium/receipts",
+            root, args.receipts, runtime_paths.RECEIPT_ROOT,
             suffixes=(".jsonl",), must_exist=False,
         )
         prepared = (_prepare_withdrawal(root, args, expected)
@@ -964,7 +966,7 @@ def _run(args, produced):
         print("decision_mode=%s change_classes=%s" %
               (prepared["record"]["decision_mode"],
                ",".join(prepared["record"]["change_classes"])))
-    for name in ("coverage", "queue", "progress"):
+    for name in runtime_state_contract.RUNTIME_LEDGER_IDS:
         print("%s_sha256=%s -> %s" %
               (name, prepared["before_sha"][name],
                prepared["after_sha"][name]))

@@ -1,15 +1,4 @@
-"""A registered verifier must execute controls for its claimed structures.
-
-K12/09 owns the generic positive-control/liveness contract, while each verifier
-owns the representation of its controls. ``mandated_headings`` is specific to
-the bundled heading verifier: it constructs a synthetic Markdown control page
-and sends that page through the same ``classify`` path used for corpus files.
-The failure is easy to ship because this matcher strips Markdown heading syntax
-only: a registered bare ``Open Questions`` never fires on a required
-``Open Questions（待解问题）``.
-
-Only set/existence/equality/count judgments are made here.
-"""
+"""Behavior and ownership checks for the bundled residual-scan controls."""
 
 import importlib.util
 import re
@@ -17,27 +6,51 @@ import subprocess
 import sys
 import tempfile
 import unittest
+from unittest import mock
 from pathlib import Path
 
 TOOLS = Path(__file__).resolve().parents[1]
 REPOSITORY = TOOLS.parent
 KERNEL = REPOSITORY / "kernel"
 OWNER = KERNEL / "K12 Quality Assurance" / "09 Batch-close Closed List.md"
-OWNER_DECLARATION = re.compile(r'Rule owner:\s*"([^"]+)"')
-
-# The implementation-independent obligation, quoted from the owner. Both the
-# owner and the tool that implements it must carry these words; nothing else in
-# `kernel/` may.
-OBLIGATION = (
-    "Any registered verifier whose clean result depends on finding no "
-    "candidate MUST provide executable positive controls that exercise the "
-    "same production classification path and collectively represent every "
-    "required structure the verifier claims to recognise.")
+OWNER_RELATIVE = "kernel/K12 Quality Assurance/09 Batch-close Closed List.md"
+OWNER_ANCHOR = "batch-close-closed-list"
+RULE_ID = "registered-verifier-positive-controls"
+RULE_MARKER = "Rule ID: `%s`" % RULE_ID
 
 
 def squeezed(text):
     """Line wrapping differs between Markdown and a Python docstring."""
     return " ".join(text.split())
+
+
+def canonical_rule_body():
+    """Read the complete rule body from its one owner without copying it."""
+    text = OWNER.read_text(encoding="utf-8")
+    if text.count(RULE_MARKER) != 1:
+        raise AssertionError("the Kernel owner must carry exactly one rule ID")
+    tail = text.split(RULE_MARKER, 1)[1].lstrip()
+    body = tail.split("\n\n", 1)[0].strip()
+    if not body or "MUST" not in body:
+        raise AssertionError("the rule ID must be followed by its rule body")
+    return squeezed(body)
+
+
+def active_distribution_text_paths():
+    """Return text candidates in Git, with an export-safe fallback."""
+    try:
+        output = subprocess.check_output(
+            ["git", "ls-files", "-z"], cwd=REPOSITORY)
+    except (OSError, subprocess.CalledProcessError):
+        excluded = {".cambium", ".git", "__pycache__", "docs"}
+        return sorted(
+            path for path in REPOSITORY.rglob("*")
+            if path.is_file() and not excluded.intersection(
+                path.relative_to(REPOSITORY).parts))
+    return [
+        REPOSITORY / raw.decode("utf-8")
+        for raw in output.split(b"\0") if raw
+    ]
 
 def load_module():
     specification = importlib.util.spec_from_file_location(
@@ -90,25 +103,19 @@ class ThePositiveControlContractHasOneKernelOwner(unittest.TestCase):
     dropped, duplicated, or coupled to ``mandated_headings``.
     """
 
-    def test_the_owner_states_the_obligation(self):
-        self.assertIn(
-            OBLIGATION, squeezed(OWNER.read_text(encoding="utf-8")),
-            "K12/09 item 6 must state the generic positive-control contract")
-
-    def test_exactly_one_kernel_page_owns_it(self):
-        owners = sorted(
-            path for path in KERNEL.rglob("*.md")
-            if OBLIGATION in squeezed(path.read_text(encoding="utf-8")))
+    def test_the_complete_rule_body_has_one_active_distribution_owner(self):
+        rule_body = canonical_rule_body()
+        owners = []
+        for path in active_distribution_text_paths():
+            try:
+                text = path.read_text(encoding="utf-8")
+            except (OSError, UnicodeError):
+                continue
+            count = squeezed(text).count(rule_body)
+            owners.extend([path] * count)
         self.assertEqual(
             [OWNER], owners,
-            "the obligation must be stated in exactly one kernel page; a "
-            "second copy creates a second place the rule can be changed")
-
-    def test_the_bundled_tool_quotes_the_generic_owner_contract(self):
-        self.assertIn(
-            OBLIGATION, squeezed(MODULE.__doc__),
-            "the bundled verifier must identify the generic contract it "
-            "implements")
+            "the complete rule body must occur only in its Kernel owner")
 
     def test_kernel_does_not_require_the_bundled_tools_field(self):
         self.assertNotIn(
@@ -116,11 +123,15 @@ class ThePositiveControlContractHasOneKernelOwner(unittest.TestCase):
             "mandated_headings is this bundled verifier's configuration, not "
             "a field every registered verifier must implement")
 
-    def test_the_tool_names_a_rule_owner_that_exists(self):
-        declared = OWNER_DECLARATION.search(MODULE.__doc__)
-        self.assertIsNotNone(declared, "the tool must declare a rule owner")
-        self.assertEqual(OWNER, REPOSITORY / declared.group(1))
-        self.assertTrue((REPOSITORY / declared.group(1)).is_file())
+    def test_the_tool_binds_the_stable_rule_id_and_owner(self):
+        self.assertEqual(RULE_ID, MODULE.POSITIVE_CONTROL_RULE_ID)
+        self.assertEqual(
+            OWNER_RELATIVE + "#" + OWNER_ANCHOR,
+            MODULE.POSITIVE_CONTROL_RULE_OWNER)
+        self.assertTrue((REPOSITORY / OWNER_RELATIVE).is_file())
+        self.assertIn(
+            "## Batch-close Closed List",
+            OWNER.read_text(encoding="utf-8"))
 
 
 class MandatedHeadingCoverage(unittest.TestCase):
@@ -137,6 +148,16 @@ class MandatedHeadingCoverage(unittest.TestCase):
             mandated=["Glossary Entry（术语条目）", "Definition（定义）",
                       "Source（来源）"]))
         self.assertEqual(3, len(config["mandated_headings"]))
+
+    def test_positive_controls_execute_the_production_classifier(self):
+        with mock.patch.object(
+                MODULE, "classify", wraps=MODULE.classify) as classifier:
+            self.load(render_config(
+                any_headings=["Glossary Entry（术语条目）"],
+                combination=["Definition（定义）", "Source（来源）"],
+                mandated=["Glossary Entry（术语条目）", "Definition（定义）",
+                          "Source（来源）"]))
+        self.assertEqual(1, classifier.call_count)
 
     def test_bare_matchers_that_miss_every_mandated_form_are_refused(self):
         """The pre-change failure shape, in one case.

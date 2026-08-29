@@ -13,6 +13,7 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import kblib
+import vocabulary_contract
 
 
 CANDIDATE_FIELDS = frozenset((
@@ -24,7 +25,7 @@ CANDIDATE_FIELDS = frozenset((
 SOURCE_KINDS = frozenset((
     "freshness", "watermark", "needs-rereview", "candidate-pool",
 ))
-PRIORITIES = ("P0", "P1", "P2")
+PRIORITIES = vocabulary_contract.PRIORITY_VALUES
 SELECTIONS = frozenset(("selected", "deferred"))
 TERMINAL_DISPOSITIONS = frozenset(("log-only", "retired"))
 AGED_DISPOSITIONS = frozenset(("log-only", "retired", "retained"))

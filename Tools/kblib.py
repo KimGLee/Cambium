@@ -42,6 +42,7 @@ from types import MappingProxyType
 import uuid
 
 import path_capability as _pathcaps
+import runtime_paths
 
 LIB_VERSION = "1.12.0"
 
@@ -709,49 +710,20 @@ def headings_of(text):
     return result
 
 
-# ---------------------------------------------------------------------------
-# Batch lifecycle transition map
-# ---------------------------------------------------------------------------
-# The single map of which batch lifecycle state may follow which.  It lives
-# here, beside the other rules two tools share, because both sides of the
-# lifecycle need it and neither may import the other: the writer that applies
-# a transition (`update_queue`) already imports the checker (`check_queue`),
-# so the checker cannot import the writer back to ask what is reachable.  A
-# second copy would let the two disagree about which position a batch can
-# still get to, and a boundary gate would then be waived or demanded wrongly.
-
-BATCH_LIFECYCLE_TRANSITIONS = {
-    "queued": frozenset(("open",)),
-    "open": frozenset(("merge-ready",)),
-    "merge-ready": frozenset(("closed", "open")),
-    "closed": frozenset(),
-    "cancelled": frozenset(),
-}
+def __getattr__(name):
+    """Lazily preserve the former lifecycle-map compatibility attribute."""
+    if name == "BATCH_LIFECYCLE_TRANSITIONS":
+        import runtime_state_contract
+        return runtime_state_contract.BATCH_LIFECYCLE_TRANSITIONS
+    raise AttributeError(name)
 
 
 def reachable_batch_states(state):
-    """Return every state reachable from ``state`` by one or more transitions.
-
-    Reachability is transitive and follows cycles: ``merge-ready -> open``
-    means an ``open`` batch can return to ``open``, so ``open`` is in its own
-    forward set.  An unknown state has no sanctioned successor and returns the
-    empty set, which makes every position judged against it fail closed.
-    """
-    if state not in BATCH_LIFECYCLE_TRANSITIONS:
-        return frozenset()
-    seen = set()
-    pending = list(BATCH_LIFECYCLE_TRANSITIONS[state])
-    while pending:
-        candidate = pending.pop()
-        if candidate in seen:
-            continue
-        seen.add(candidate)
-        pending.extend(BATCH_LIFECYCLE_TRANSITIONS.get(candidate, ()))
-    return frozenset(seen)
+    """Compatibility wrapper for K13 ordinary-writer reachability."""
+    import runtime_state_contract
+    return runtime_state_contract.reachable_batch_states(state)
 
 
-WIKI_LINK_RE = re.compile(r"\[\[([^\[\]]+?)\]\]")
-READ_SET_NON_BOUNDARY_SECTIONS = ("Purpose", "Related")
 READ_SET_DOCUMENT_TYPES = frozenset(("read-set", "profile-read-set"))
 
 
@@ -791,37 +763,6 @@ def read_set_document_type(text):
     document_type = fields.get("type")
     return (document_type if isinstance(document_type, str) and
             document_type in READ_SET_DOCUMENT_TYPES else None)
-
-
-def read_set_boundary_targets(text):
-    """Return the repository paths one Read Set's loading boundaries name.
-
-    A Read Set's `Purpose` states applicability and `Related` is navigation, so
-    neither is a loading boundary; every other H2 is one, and every Wiki Link
-    inside a boundary names a module the route loads.  A Wiki Link is the only
-    boundary syntax: a code span such as a `python3 Tools/...` command line is
-    an instruction the route runs, not a module its reader loads.  Targets come
-    back as repository-relative `.md` paths, deduplicated and sorted.
-
-    Both consumers of this rule share this one parser -- the leaf-coverage
-    check that asks which kernel leaves no boundary names, and the adoption
-    check that asks which boundary-named modules a declared load set omits --
-    so the two can never disagree about what a boundary names.
-    """
-    targets = set()
-    section = ""
-    for _line_number, line in markdown_authority_lines(text):
-        heading = markdown_atx_heading(line)
-        if heading is not None and heading[0] == 2:
-            section = heading[1]
-            continue
-        if not section or section in READ_SET_NON_BOUNDARY_SECTIONS:
-            continue
-        for inner in WIKI_LINK_RE.findall(line):
-            target, _heading = parse_wiki_link(inner)
-            if target:
-                targets.add(target + ".md")
-    return sorted(targets)
 
 
 PROFILE_ID_LINE_RE = re.compile(
@@ -1086,8 +1027,9 @@ def profile_identity(manifest_text, directory_name, reserved_ids=()):
 
 
 # ---------------------------------------------------------------------------
-# Structure Registry shape contract (owner: K01/05 + K01/06; slot shape:
-# profiles/_template/structure-registry.yaml).  Shared by check_profile.py
+# Structure Registry shape contract (semantic owner: K01/05 + K01/06; common
+# Profile interface: kernel/K00 Standards Control/profile-interface.yaml).
+# Shared by check_profile.py
 # (profile shape gate) and check_structure.py (vault resolution gate) so the
 # two cannot drift into parallel validators.
 # ---------------------------------------------------------------------------
@@ -1102,10 +1044,12 @@ STRUCTURE_UNIT_FIELDS = frozenset((
 STRUCTURE_ENTRY_FIELDS = frozenset(("path", "expected_type"))
 STRUCTURE_UNIT_ROLES = ("sequence", "coverage", "quick_reference",
                         "expression")
+STRUCTURE_STABLE_ID_RE = re.compile(
+    r"[a-z][a-z0-9]*(?:-[a-z0-9]+)*\Z")
 STRUCTURE_ROLE_MODE_FIELDS = {
     "embedded": (frozenset(("mode", "path", "heading")), frozenset()),
     "standalone": (frozenset(("mode", "path")), frozenset()),
-    "derived": (frozenset(("mode", "generator", "inputs_owner")),
+    "derived": (frozenset(("mode", "generator_capability", "inputs_owner")),
                 frozenset(("path", "heading"))),
     "not-applicable": (frozenset(("mode", "reason")), frozenset()),
 }
@@ -1131,6 +1075,133 @@ STRUCTURE_SOURCE_INDEX_MODES = frozenset(("derived", "none"))
 
 def _structure_nonempty(value):
     return isinstance(value, str) and bool(value.strip())
+
+
+def structure_input_owner_reference_kind(value):
+    """Classify one derived-role input owner without resolving its value.
+
+    A stable runtime object is named by its object ID.  Every other accepted
+    value is a repository-relative corpus-artifact reference.  The caller
+    resolves either identity against the appropriate root-owned registry;
+    this pure classifier only prevents a Profile from carrying a Tool path or
+    the current physical spelling of adopter runtime state.
+    """
+    if not _structure_nonempty(value):
+        return None
+    value = value.strip()
+    if STRUCTURE_STABLE_ID_RE.fullmatch(value) is not None:
+        return "object-id"
+    return "corpus-artifact"
+
+
+def _structure_derived_roles(document, target):
+    """Yield the derived-role declarations from one Structure Registry."""
+    if not isinstance(document, dict):
+        return
+    units = document.get("units")
+    if isinstance(units, list):
+        for index, unit in enumerate(units):
+            if not isinstance(unit, dict):
+                continue
+            roles = unit.get("roles")
+            if not isinstance(roles, dict):
+                continue
+            for role_name, role in sorted(roles.items()):
+                if isinstance(role, dict) and role.get("mode") == "derived":
+                    yield ("%s:units[%d]:roles:%s" %
+                           (target, index, role_name), role)
+    layers = document.get("support_layers")
+    if not isinstance(layers, list):
+        return
+    for index, layer in enumerate(layers):
+        if not isinstance(layer, dict):
+            continue
+        coverage = layer.get("coverage")
+        if isinstance(coverage, dict) and coverage.get("mode") == "derived":
+            yield ("%s:support_layers[%d]:coverage" % (target, index),
+                   coverage)
+        bindings = layer.get("bindings")
+        readiness = bindings.get("readiness_projection") \
+            if isinstance(bindings, dict) else None
+        if isinstance(readiness, dict) and \
+                readiness.get("mode") == "derived":
+            yield ("%s:support_layers[%d]:bindings:readiness_projection" %
+                   (target, index), readiness)
+
+
+def validate_structure_registry_references(
+        document, projection_capabilities, target="structure-registry"):
+    """Validate stable capability and runtime-owner identities.
+
+    ``validate_structure_registry_shape`` owns the Profile representation.
+    This companion contract resolves every derived role against an already
+    validated, root-owned projection-capability mapping and the installed
+    runtime-object namespace.  It performs no corpus reads: a repository-
+    relative corpus artifact remains a stable Profile reference, while the
+    ``structure-registry`` Gate separately verifies its current path.
+    """
+    errors = []
+    if not isinstance(projection_capabilities, dict):
+        return [(
+            "structure-registry-capability", target,
+            "root-owned projection capability registry is unavailable")]
+    for label, role in _structure_derived_roles(document, target):
+        capability_id = role.get("generator_capability")
+        capability = projection_capabilities.get(capability_id)
+        if not isinstance(capability, dict) or \
+                capability.get("kind") != "projection":
+            errors.append((
+                "structure-registry-capability",
+                label + ":generator_capability",
+                "projection capability %r is not registered by the "
+                "root-owned Tool capability registry" % capability_id))
+            capability = None
+        input_owner = role.get("inputs_owner")
+        if structure_input_owner_reference_kind(input_owner) != "object-id":
+            continue
+        try:
+            runtime_paths.path_for(input_owner)
+        except KeyError:
+            errors.append((
+                "structure-registry-input-owner", label + ":inputs_owner",
+                "runtime input owner %r is not a registered stable object "
+                "ID" % input_owner))
+            continue
+        if capability is not None and input_owner not in \
+                capability.get("input_owners", ()):
+            errors.append((
+                "structure-registry-input-owner", label + ":inputs_owner",
+                "projection capability %r does not declare runtime input "
+                "owner %r" % (capability_id, input_owner)))
+    return errors
+
+
+def _structure_input_owner(errors, value, label):
+    """Validate the representation boundary of ``inputs_owner``."""
+    kind = structure_input_owner_reference_kind(value)
+    if kind is None:
+        return
+    value = value.strip()
+    if kind == "object-id":
+        return
+    if (value.startswith("/") or "\\" in value or
+            any(part in ("", ".", "..") for part in value.split("/"))):
+        errors.append((
+            "structure-registry-role", label,
+            "must be a canonical repository-relative corpus artifact path "
+            "or a stable runtime object ID"))
+        return
+    if value == "Tools" or value.startswith("Tools/"):
+        errors.append((
+            "structure-registry-role", label,
+            "must reference a stable generator capability, not a Tool "
+            "implementation path"))
+    if value == runtime_paths.RUNTIME_ROOT or value.startswith(
+            runtime_paths.RUNTIME_ROOT + "/"):
+        errors.append((
+            "structure-registry-role", label,
+            "must name adopter runtime state by stable object ID, not by its "
+            "current physical path"))
 
 
 def _structure_closed(errors, value, required, label, optional=frozenset()):
@@ -1172,6 +1243,17 @@ def _structure_role_mapping(errors, value, label):
         if not _structure_nonempty(value.get(field)):
             errors.append(("structure-registry-role", "%s:%s" % (label, field),
                            "must be a nonempty string"))
+    if mode == "derived":
+        generator = value.get("generator_capability")
+        if _structure_nonempty(generator) and \
+                STRUCTURE_STABLE_ID_RE.fullmatch(generator.strip()) is None:
+            errors.append((
+                "structure-registry-role",
+                label + ":generator_capability",
+                "must be a stable Tool capability ID, not an implementation "
+                "path"))
+        _structure_input_owner(
+            errors, value.get("inputs_owner"), label + ":inputs_owner")
     if value.get("heading") is not None and mode == "derived" and \
             value.get("path") is None:
         errors.append(("structure-registry-role", label,
@@ -1191,9 +1273,9 @@ def validate_structure_registry_shape(document, target="structure-registry"):
     document = _structure_closed(
         errors, document, STRUCTURE_REGISTRY_TOP_FIELDS, target)
     if type(document.get("schema_version")) is not int or \
-            document.get("schema_version") != 1:
+            document.get("schema_version") != 2:
         errors.append(("structure-registry-schema", target,
-                       "schema_version must be integer 1"))
+                       "schema_version must be integer 2"))
     applicability = _structure_closed(
         errors, document.get("applicability"),
         STRUCTURE_APPLICABILITY_FIELDS, target + ":applicability")
@@ -1454,8 +1536,9 @@ def profile_scope_layers(scope_text):
 
 
 # ---------------------------------------------------------------------------
-# Metadata Contract shape contract (owner: K08/06 + K08/08; slot shape:
-# profiles/_template/metadata-contract.yaml).  Shared by check_profile.py
+# Metadata Contract shape contract (semantic owner: K08/06 + K08/08; common
+# Profile interface: kernel/K00 Standards Control/profile-interface.yaml).
+# Shared by check_profile.py
 # (profile shape gate) and compose_page_contract.py (composition) so the two
 # cannot drift into parallel validators.
 # ---------------------------------------------------------------------------
@@ -1934,8 +2017,8 @@ _RECEIPT_RUN_TOKEN = uuid.uuid4().hex
 # its own descriptive fields.
 RECEIPT_IDENTITY_FIELDS = ("task_id", "standards_version",
                            "selected_profile_manifest")
-RUNTIME_STATE_PREFIX = ".cambium/state"
-RUNTIME_QUEUE_PATH = ".cambium/state/required_queue.yaml"
+RUNTIME_STATE_PREFIX = runtime_paths.STATE_ROOT
+RUNTIME_QUEUE_PATH = runtime_paths.QUEUE_PATH
 
 # ---------------------------------------------------------------------------
 # Receipt cold chain (K12/07 Receipt Sealing).
@@ -1963,12 +2046,12 @@ RUNTIME_QUEUE_PATH = ".cambium/state/required_queue.yaml"
 # closed instead of silently passing, because sealing records that exactly
 # that revalidation already ran clean at seal time.
 # ---------------------------------------------------------------------------
-RECEIPT_COLD_PREFIX = ".cambium/receipts/cold"
-RECEIPT_COLD_SEGMENT_PREFIX = ".cambium/receipts/cold/segments"
-RECEIPT_COLD_EVIDENCE_PREFIX = ".cambium/receipts/cold/close-evidence"
-RECEIPT_COLD_MANIFEST_PATH = ".cambium/receipts/cold/manifest.jsonl"
-RECEIPT_COLD_INDEX_PATH = ".cambium/receipts/cold/index.jsonl"
-RECEIPT_COLD_JOURNAL_PATH = ".cambium/receipts/cold/journal.jsonl"
+RECEIPT_COLD_PREFIX = runtime_paths.RECEIPT_COLD_ROOT
+RECEIPT_COLD_SEGMENT_PREFIX = runtime_paths.RECEIPT_COLD_SEGMENT_ROOT
+RECEIPT_COLD_EVIDENCE_PREFIX = runtime_paths.RECEIPT_COLD_EVIDENCE_ROOT
+RECEIPT_COLD_MANIFEST_PATH = runtime_paths.RECEIPT_COLD_MANIFEST_PATH
+RECEIPT_COLD_INDEX_PATH = runtime_paths.RECEIPT_COLD_INDEX_PATH
+RECEIPT_COLD_JOURNAL_PATH = runtime_paths.RECEIPT_SEAL_JOURNAL_PATH
 
 # The thin projection a sealed receipt keeps resolvable without its body.
 # Identity and era fields only: enough for existence checks, identity
@@ -2089,17 +2172,19 @@ def validate_receipt_output_path(path):
     absolute = os.path.abspath(os.fspath(path))
     resolved = os.path.realpath(absolute)
     entered_runtime = False
+    runtime_name = os.path.basename(runtime_paths.RUNTIME_ROOT)
+    receipts_name = os.path.basename(runtime_paths.RECEIPT_ROOT)
     for spelling in (absolute, resolved):
         parts = os.path.normpath(spelling).split(os.sep)
         for index, component in enumerate(parts):
-            if component != ".cambium":
+            if component != runtime_name:
                 continue
             entered_runtime = True
-            if index + 1 >= len(parts) or parts[index + 1] != "receipts":
+            if index + 1 >= len(parts) or parts[index + 1] != receipts_name:
                 raise ValueError(
-                    "receipt target inside .cambium must be under "
-                    ".cambium/receipts/"
-                )
+                    "receipt target inside %s must be under %s/" %
+                    (runtime_paths.RUNTIME_ROOT,
+                     runtime_paths.RECEIPT_ROOT))
     if entered_runtime and not absolute.endswith(".jsonl"):
         raise ValueError("managed Cambium receipts must use a .jsonl file")
     return absolute
@@ -2146,8 +2231,8 @@ def validate_receipt_output_path(path):
 # process is a no-op so a writer holding the mutex may still append its own
 # receipts through the ordinary primitive.
 # ---------------------------------------------------------------------------
-RECEIPT_APPEND_FREE_PATH = ".cambium/tmp/receipt-append.free"
-RECEIPT_APPEND_HELD_PATH = ".cambium/tmp/receipt-append.held"
+RECEIPT_APPEND_FREE_PATH = runtime_paths.RECEIPT_APPEND_FREE_PATH
+RECEIPT_APPEND_HELD_PATH = runtime_paths.RECEIPT_APPEND_HELD_PATH
 
 _RECEIPT_APPEND_DEPTH = 0
 
@@ -2161,7 +2246,7 @@ def receipt_runtime_root(path):
     absolute = os.path.abspath(os.fspath(path))
     parts = absolute.split(os.sep)
     for index in range(len(parts) - 1, -1, -1):
-        if parts[index] == ".cambium":
+        if parts[index] == os.path.basename(runtime_paths.RUNTIME_ROOT):
             return os.sep.join(parts[:index]) or os.sep
     return None
 
@@ -2969,13 +3054,17 @@ def runtime_write_lock(root, lock_name="state-writer", timeout=0.0,
 
     root_real = os.path.realpath(os.path.abspath(root))
     tmp_path = managed_repository_path(
-        root_real, ".cambium/tmp", ".cambium", must_exist=True
+        root_real, runtime_paths.TRANSIENT_ROOT, runtime_paths.RUNTIME_ROOT,
+        must_exist=True
     )
     if not os.path.isdir(tmp_path):
-        raise ValueError(".cambium/tmp must be a directory")
-    relative_lock = ".cambium/tmp/%s.lock" % lock_name
+        raise ValueError("%s must be a directory" %
+                         runtime_paths.TRANSIENT_ROOT)
+    relative_lock = "%s/%s.lock" % (
+        runtime_paths.TRANSIENT_ROOT, lock_name)
     lock_path = managed_repository_path(
-        root_real, relative_lock, ".cambium/tmp", must_exist=False
+        root_real, relative_lock, runtime_paths.TRANSIENT_ROOT,
+        must_exist=False
     )
     deadline = None if timeout is None else time.monotonic() + timeout
     while True:
@@ -3569,6 +3658,51 @@ class RepositoryTreeSnapshot:
     def read_text(self, repository_relative_path):
         return self.read_bytes(repository_relative_path).decode("utf-8")
 
+    def project(self, repository_relative_paths):
+        """Return the exact path-selected projection of this bound tree.
+
+        Projection never reopens the filesystem.  It therefore preserves the
+        immutable byte observation used by the caller while allowing a typed
+        contract to exclude unrelated package files from its public identity.
+        Every selected path must already be present in this snapshot; missing
+        or non-canonical spellings fail closed instead of being ignored.
+        """
+        selected = {}
+        for repository_path in sorted(set(repository_relative_paths)):
+            if (not isinstance(repository_path, str) or
+                    not repository_path or repository_path.startswith("/") or
+                    "\\" in repository_path or
+                    any(part in ("", ".", "..")
+                        for part in repository_path.split("/"))):
+                raise ValueError(
+                    "tree projection path must be canonical and repository-"
+                    "relative: %r" % repository_path)
+            try:
+                selected[repository_path] = self.files[repository_path]
+            except KeyError as exc:
+                raise FileNotFoundError(
+                    errno.ENOENT,
+                    "tree projection path is absent from bound snapshot",
+                    repository_path) from exc
+        if not selected:
+            raise ValueError("tree projection must select at least one file")
+        return RepositoryTreeSnapshot(
+            self.root, self.relative_directory,
+            _repository_tree_snapshot_sha256(selected), selected)
+
+
+def _repository_tree_snapshot_sha256(files):
+    """Hash one already-bound path-to-bytes tree with the v1 framing."""
+    digest = hashlib.sha256()
+    digest.update(b"cambium-repository-tree-snapshot-v1\0")
+    for relative, data in sorted(files.items()):
+        encoded = relative.encode("utf-8")
+        digest.update(len(encoded).to_bytes(8, "big"))
+        digest.update(encoded)
+        digest.update(len(data).to_bytes(8, "big"))
+        digest.update(hashlib.sha256(data).digest())
+    return "sha256:" + digest.hexdigest()
+
 
 _pathcaps.register_tree_snapshot_factory(RepositoryTreeSnapshot)
 
@@ -3734,7 +3868,8 @@ def repository_snapshot_sha256(root, byte_overrides=None,
                 relative.startswith("/") or "\\" in relative or
                 any(part in ("", ".", "..")
                     for part in relative.split("/")) or
-                relative.split("/", 1)[0] in (".git", ".cambium") or
+                relative.split("/", 1)[0] in (
+                    ".git", runtime_paths.RUNTIME_ROOT) or
                 not isinstance(data, bytes)):
             raise ValueError(
                 "repository snapshot override must bind canonical non-control "
@@ -3751,7 +3886,8 @@ def repository_snapshot_sha256(root, byte_overrides=None,
         if (not relative or relative.startswith("/") or "\\" in relative or
                 any(part in ("", ".", "..")
                     for part in relative.split("/")) or
-                relative.split("/", 1)[0] in (".git", ".cambium") or
+                relative.split("/", 1)[0] in (
+                    ".git", runtime_paths.RUNTIME_ROOT) or
                 relative in overrides):
             raise ValueError(
                 "repository snapshot exclusion must be a canonical, "
@@ -3767,7 +3903,8 @@ def repository_snapshot_sha256(root, byte_overrides=None,
         if relative_dir == ".":
             directories[:] = sorted(
                 name for name in directories
-                if name not in (".git", ".cambium", "__pycache__")
+                if name not in (
+                    ".git", runtime_paths.RUNTIME_ROOT, "__pycache__")
             )
         else:
             directories[:] = sorted(
@@ -3785,7 +3922,7 @@ def repository_snapshot_sha256(root, byte_overrides=None,
         if relative_dir == ".":
             visible_files = [
                 name for name in files
-                if name not in (".git", ".cambium")
+                if name not in (".git", runtime_paths.RUNTIME_ROOT)
             ]
         for name in sorted(visible_files):
             absolute = os.path.join(current, name)
@@ -3923,10 +4060,11 @@ def atomic_write_text(path, text, validator=None):
     if capability is None:
         os.makedirs(parent, exist_ok=True)
         fd, temporary = tempfile.mkstemp(
-            prefix=".cambium-write-", dir=parent)
+            prefix=runtime_paths.RUNTIME_ROOT + "-write-", dir=parent)
         temporary_name = None
     else:
-        temporary_name = ".cambium-write-%s" % uuid.uuid4().hex
+        temporary_name = "%s-write-%s" % (
+            runtime_paths.RUNTIME_ROOT, uuid.uuid4().hex)
         flags = (os.O_WRONLY | os.O_CREAT | os.O_EXCL |
                  getattr(os, "O_NOFOLLOW", 0) |
                  getattr(os, "O_CLOEXEC", 0))

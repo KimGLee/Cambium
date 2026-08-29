@@ -14,32 +14,33 @@ In this standard, "visual recognition" includes:
 - Judging layout, occlusion, overflow, color, or readability from screenshots.
 - Using OCR, vision models, or screen recognition instead of directly parsing source files.
 
-Adding or modifying a diagram, table, formula, image, callout, or embed is not by itself a reason for visual escalation. By default these trigger the corresponding Level 0 / Level 1 verification.
+Adding a visual construct does not itself justify escalation. Profile-specific checks enter only through a canonical construct selector and acceptance contract.
 
 ### Level 0: Source And Structural Validation
 
-All changed pages MUST run:
+Every changed Markdown page runs fence closure and the canonical wiki-link Gate; a page with a Mermaid fence also runs Mermaid fence closure. [`deterministic-rendering-contract.yaml`](deterministic-rendering-contract.yaml) owns this exact base, and K12/05 routes it.
 
-- Markdown heading, fence, link, and table pipe checks.
-- Formula delimiter, image path, embed path, and Mermaid fence checks.
-- Direct body extraction, checking structure, duplication, missing sections, and term links.
+Required sections belong to the Page Contract or Profile; terminology links to the Profile and semantic review. Other prose items without one acceptance predicate remain semantic review. A Tool cannot invent a grammar, threshold, normalization, or page set and promote them into this base.
 
-Plain-text pages usually stop at this level when they contain no renderable constructs. Level 0 is the main path for content and structure checks; it MUST cover everything and MUST NOT be replaced by UI browsing.
+Plain pages normally stop here. UI browsing cannot replace Level 0, and fence closure proves neither compilation nor readability.
 
 ### Level 1: Static Render Or Compile
 
-Run the corresponding static verification when the following content appears:
+The only Level 1 Kernel base predicate is conditional outer-pipe-table structure: delimiter row, column counts, and escaped wiki alias pipes. Cell length has no universal threshold.
 
-- Mermaid diagram: use the Mermaid compiler.
-- Mathematical formulas: use a renderer supporting the current Markdown / Math syntax or a repeatable preview.
-- Markdown table: check the actual column count, escaped wiki aliases, and long cells.
-- SVG, images, and assets: check file existence, dimensions, reference paths, and resolvability.
+Mermaid compilation, formula rendering, paths, assets, dimensions, and long-cell policy belong to a typed Profile Rendering Contract. A Tool supplies its registered compiler, renderer, parser, or probe; the Host binds that capability. Mermaid fence closure and compilation are separate evidence.
 
 Level 1 MUST prefer compilers, parsers, structured extraction, file probing, and repeatable non-interactive previews. Producing a static artifact does not authorize visual judgment; as long as compile results, structured data, and geometry information can already answer the acceptance question, do not proceed to opening the UI or taking screenshots.
 
 Passing Level 1 does not guarantee correctness under every theme, plugin, or CSS of the selected knowledge host role, but that theoretical possibility alone MUST NOT trigger a UI check.
 
+After applicability has one canonical selector, the state is: no construct → `not-applicable`; construct plus valid typed contract → run its registered deterministic capability; construct without that contract → `contract-gap` / HOLD, never pass. Files, free prose, installed software, or Host claims cannot substitute for the binding.
+
+An unresolved-contract inventory may identify missing selectors or acceptance contracts only to prevent Tool-created obligations and false passes. An inventory entry is not completion evidence, an acceptance predicate, or a second specification, and cannot substitute for a typed contract.
+
 ## Escalation Record
+
+[`rendering-verification-contract.yaml`](rendering-verification-contract.yaml) owns this record's shape and AuditPlan projection; it does not prove the underlying checks passed.
 
 Each batch or audit records the highest level actually used with the following enumeration:
 

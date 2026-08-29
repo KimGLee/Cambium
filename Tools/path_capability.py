@@ -21,6 +21,8 @@ import os
 import stat
 from types import MappingProxyType
 
+import runtime_paths
+
 
 PATH_CAPABILITIES_ENV = "CAMBIUM_PATH_CAPABILITIES"
 PATH_CAPABILITIES_ACK_ENV = "CAMBIUM_PATH_CAPABILITIES_ACK_FD"
@@ -450,7 +452,8 @@ def materialize_tree(root, relative_directory, capability):
                              follow_symlinks=False)
             child_nested = "/".join(filter(None, (nested, name)))
             if relative_directory == "." and not nested and \
-                    name in (".git", ".cambium", "__pycache__"):
+                    name in (
+                        ".git", runtime_paths.RUNTIME_ROOT, "__pycache__"):
                 continue
             if stat.S_ISLNK(listed.st_mode):
                 raise ValueError("snapshot cannot traverse symlink: %s" %

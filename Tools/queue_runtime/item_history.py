@@ -7,8 +7,9 @@ different order is a different history.
 """
 
 import kblib
+import runtime_paths
 
-from queue_runtime.canon import TERMINAL_STATES
+from queue_runtime.canon import ACTIVE_STATES, TERMINAL_STATES
 from queue_runtime.primitives import nonempty_string
 from queue_runtime.receipts import delta_gate_receipt_ids
 
@@ -159,13 +160,15 @@ def invalidated_receipt_consumers(root, queue, catalog):
             for field in ("delta_apply_receipt", "queue_consistency_receipt",
                           "close_gate_receipt"):
                 add(batch_id, item.get(field), "Queue.%s" % field)
-        if item.get("state") in ("open", "merge-ready"):
+        if item.get("state") in ACTIVE_STATES:
             relative = item.get("delta_path")
             if not nonempty_string(relative):
-                relative = ".cambium/deltas/%s.yaml" % batch_id
+                relative = runtime_paths.child_path(
+                    runtime_paths.DELTA_ROOT, "%s.yaml" % batch_id)
             try:
                 path = kblib.managed_repository_path(
-                    root, relative, ".cambium/deltas", suffixes=(".yaml",),
+                    root, relative, runtime_paths.DELTA_ROOT,
+                    suffixes=(".yaml",),
                     must_exist=True)
                 delta = kblib.load_yaml_file(path)
                 for receipt_id in delta_gate_receipt_ids(delta):

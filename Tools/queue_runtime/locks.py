@@ -11,6 +11,8 @@ import json
 import os
 
 import kblib
+import runtime_paths
+import runtime_state_contract
 
 from queue_runtime.canon import (
     APPLY_AMENDMENT_TOOL_VERSION,
@@ -66,7 +68,7 @@ def _writer_locks(root, errors):
     checker deliberately does not guess which: callers fail closed and expose
     the owner metadata so a later task can reconcile the state first.
     """
-    relative_tmp = ".cambium/tmp"
+    relative_tmp = runtime_paths.TRANSIENT_ROOT
     tmp_dir = os.path.join(root, relative_tmp)
     locks = []
     if not os.path.lexists(tmp_dir):
@@ -166,7 +168,8 @@ def bind_lock_receipts(_writer_locks, catalog):
                         ("registration_receipt", "registration_receipt")):
                     if operation.get(operation_field) != receipt.get(receipt_field):
                         semantic_errors.append(operation_field)
-                for state_name in ("coverage", "progress", "queue"):
+                for state_name in tuple(sorted(
+                        runtime_state_contract.RUNTIME_LEDGER_IDS)):
                     before = "before_%s_sha256" % state_name
                     planned = "planned_after_%s_sha256" % state_name
                     after = "after_%s_sha256" % state_name
@@ -340,12 +343,12 @@ def bind_lock_delta_archives(root, _writer_locks):
             continue
         try:
             source = kblib.managed_repository_path(
-                root, source_relative, ".cambium/deltas",
+                root, source_relative, runtime_paths.DELTA_ROOT,
                 suffixes=(".yaml",), must_exist=False,
             )
             archive = kblib.managed_repository_path(
                 root, archive_relative,
-                ".cambium/receipts/invalidated-deltas",
+                runtime_paths.INVALIDATED_DELTA_RECEIPT_ROOT,
                 suffixes=(".yaml",), must_exist=False,
             )
         except (OSError, ValueError) as exc:
@@ -377,7 +380,7 @@ def bind_lock_delta_archives(root, _writer_locks):
         phases = lock.get("state_phases") or {}
         all_state_before = all(
             (phases.get(name) or {}).get("phase") == "before"
-            for name in ("coverage", "queue", "progress")
+            for name in runtime_state_contract.RUNTIME_LEDGER_IDS
         )
         if all_state_before and evidence["status"] == "archived":
             evidence["recovery_fact"] = "archive-moved-state-before"
@@ -454,7 +457,7 @@ def bind_generic_lock_receipts(root, _writer_locks, catalog):
             continue
         try:
             declared = kblib.managed_repository_path(
-                root, receipt_path, ".cambium/receipts",
+                root, receipt_path, runtime_paths.RECEIPT_ROOT,
                 suffixes=(".jsonl",), must_exist=False,
             )
             declared_relative = os.path.relpath(declared, root)

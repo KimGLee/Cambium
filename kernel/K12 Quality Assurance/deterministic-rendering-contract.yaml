@@ -1,0 +1,100 @@
+schema_version: 1
+contract_id: k12-02-deterministic-rendering-contract
+semantic_owner: K12/02
+
+# These predicates are already exact in the cited Kernel rules. Routing,
+# dimensions, stages and producers remain owned by the changed-scope registry.
+admitted_predicates:
+  - predicate_id: k12-02-level0-fence-closure
+    level: level-0
+    dimension: structure_and_links
+    acceptance: every opened Markdown fence has a matching closing fence
+  - predicate_id: k12-02-level0-wiki-link-resolution
+    level: level-0
+    dimension: structure_and_links
+    acceptance: the canonical wiki-link Gate reports zero missing ambiguous or bad-heading links
+  - predicate_id: k12-02-level0-mermaid-fence-closure
+    level: level-0
+    dimension: rendering
+    acceptance: every Mermaid fence has a matching closing fence
+  - predicate_id: k12-02-level1-markdown-table-static
+    level: level-1
+    dimension: rendering
+    acceptance: every detected outer-pipe table has one valid delimiter row equal column counts and escaped wiki alias pipes
+
+# These rows inventory phrases that earlier prose grouped into rendering
+# verification but that are not Kernel base obligations with exact predicates.
+# They exist only to prevent a Tool from relabelling an unresolved phrase as a
+# passing base check. They are not a completion list, an acceptance contract,
+# or a second specification of Profile or semantic-review responsibilities.
+contract_gaps:
+  - gap_id: k12-02-gap-level0-heading-validity
+    level: level-0
+    dimension: structure_and_links
+    source_item: Markdown heading checks
+    missing_contract: accepted heading forms beyond parseable CommonMark ATX syntax are not uniquely defined
+    resolution_owner: semantic-review
+    runtime_disposition: not-kernel-base-obligation
+  - gap_id: k12-02-gap-level0-duplicate-headings
+    level: level-0
+    dimension: structure_and_links
+    source_item: body extraction duplication checks
+    missing_contract: duplicate identity normalization and case treatment are not uniquely defined
+    resolution_owner: semantic-review
+    runtime_disposition: not-kernel-base-obligation
+  - gap_id: k12-02-gap-level0-missing-sections
+    level: level-0
+    dimension: structure_and_links
+    source_item: body extraction missing-section checks
+    missing_contract: required section roles depend on a typed applicability contract and are not a universal closed set
+    resolution_owner: page-contract-or-profile
+    runtime_disposition: not-kernel-base-obligation
+  - gap_id: k12-02-gap-level0-term-links
+    level: level-0
+    dimension: structure_and_links
+    source_item: body extraction term-link checks
+    missing_contract: applicable term identities and first-occurrence boundaries are not uniquely defined
+    resolution_owner: profile-or-semantic-review
+    runtime_disposition: not-kernel-base-obligation
+  - gap_id: k12-02-gap-level0-formula-delimiters
+    level: level-0
+    dimension: rendering
+    source_item: formula delimiter checks
+    missing_contract: no formula construct selector exists and escaping nesting and literal-dollar grammar are not uniquely defined
+    resolution_owner: profile-rendering-contract
+    runtime_disposition: unresolved-selector-no-runtime-verdict
+  - gap_id: k12-02-gap-level0-image-and-embed-paths
+    level: level-0
+    dimension: rendering
+    source_item: image path and embed path checks
+    missing_contract: no image or embed construct selector exists and accepted reference syntaxes external targets and Profile asset-root binding are not one closed predicate
+    resolution_owner: profile-rendering-contract
+    runtime_disposition: unresolved-selector-no-runtime-verdict
+  - gap_id: k12-02-gap-level1-mermaid-compiler
+    level: level-1
+    dimension: rendering
+    source_item: Mermaid compiler verification
+    missing_contract: construct selection reuses the admitted Mermaid-fence selector but compiler capability input grammar and accepted output are not registered
+    resolution_owner: profile-rendering-contract
+    runtime_disposition: conditional-contract-gap
+  - gap_id: k12-02-gap-level1-formula-renderer
+    level: level-1
+    dimension: rendering
+    source_item: mathematical formula renderer verification
+    missing_contract: no formula construct selector exists and renderer capability syntax and accepted output are not registered
+    resolution_owner: profile-rendering-contract
+    runtime_disposition: unresolved-selector-no-runtime-verdict
+  - gap_id: k12-02-gap-level1-table-long-cells
+    level: level-1
+    dimension: rendering
+    source_item: Markdown table long-cell checks
+    missing_contract: construct selection reuses the admitted outer-pipe-table selector but no length unit threshold or applicable-cell predicate is registered
+    resolution_owner: profile-rendering-contract
+    runtime_disposition: conditional-contract-gap
+  - gap_id: k12-02-gap-level1-assets
+    level: level-1
+    dimension: rendering
+    source_item: SVG image and asset verification
+    missing_contract: no asset construct selector exists and supported formats dimension acceptance and reference grammar are not registered
+    resolution_owner: profile-rendering-contract
+    runtime_disposition: unresolved-selector-no-runtime-verdict

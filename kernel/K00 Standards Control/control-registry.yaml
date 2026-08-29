@@ -1,0 +1,551 @@
+schema_version: 1
+registry_id: cambium-control-registry
+semantic_owner: K00/12
+
+# This file is the sole machine authority for current Gate receipt selectors,
+# producer availability, and Standards-revalidation projection. K00/12 prose
+# explains the risk and authority meaning without repeating these rows.
+registry_references:
+  audit_dimension_base: kernel/K12 Quality Assurance/audit-dimension-base.yaml
+
+closed_sets:
+  dimension_markers:
+    unnarrowed: "*"
+    undimensioned: none
+  producer_availability_markers:
+    unscoped: not-batch-scoped
+    queue_exhausted: queue-exhausted
+  revalidation_roles:
+    - special-owner
+    - immediate-owner
+    - native-owner
+    - semantic-leaf
+    - mechanism-only
+    - unsupported
+    - advisory
+  claim_edges:
+    - after-image-admission
+    - adoption-commit
+    - native-transition
+    - project-to-owner
+    - mechanism-input-only
+    - advisory-only
+    - none
+  scope_protocols:
+    - profile-after-image
+    - runtime-after-image
+    - native-owner-scope
+    - inherit-owner-scope
+    - diagnostic-scope
+    - none
+  binding_protocols:
+    - profile-fingerprints
+    - runtime-state-fingerprints
+    - native-owner-receipt
+    - owner-member-chain
+    - not-authorizing
+
+role_contracts:
+  - role: special-owner
+    claim_edge: after-image-admission
+    scope_protocol: profile-after-image
+    binding_protocol: profile-fingerprints
+  - role: immediate-owner
+    claim_edge: adoption-commit
+    scope_protocol: runtime-after-image
+    binding_protocol: runtime-state-fingerprints
+  - role: native-owner
+    claim_edge: native-transition
+    scope_protocol: native-owner-scope
+    binding_protocol: native-owner-receipt
+  - role: semantic-leaf
+    claim_edge: project-to-owner
+    scope_protocol: inherit-owner-scope
+    binding_protocol: owner-member-chain
+  - role: mechanism-only
+    claim_edge: mechanism-input-only
+    scope_protocol: none
+    binding_protocol: not-authorizing
+  - role: unsupported
+    claim_edge: none
+    scope_protocol: none
+    binding_protocol: not-authorizing
+  - role: advisory
+    claim_edge: advisory-only
+    scope_protocol: diagnostic-scope
+    binding_protocol: not-authorizing
+
+gates:
+  - gate_id: profile-load
+    tool: check_profile
+    tool_version: 2.2.0
+    check: profile-check-summary
+    mode: "*"
+    dimensions:
+      - guidance_and_contract
+    lifecycle:
+      - not-batch-scoped
+    revalidation_role: special-owner
+    revalidation_owner: profile-load
+    claim_edge: after-image-admission
+    scope_protocol: profile-after-image
+    binding_protocol: profile-fingerprints
+  - gate_id: runtime-startup-recovery
+    tool: check_queue
+    tool_version: 1.25.0
+    check: required_queue
+    mode: resume-status
+    dimensions:
+      - "*"
+    lifecycle:
+      - not-batch-scoped
+    revalidation_role: unsupported
+    revalidation_owner: none
+    claim_edge: none
+    scope_protocol: none
+    binding_protocol: not-authorizing
+  - gate_id: large-scale-execution-admission
+    tool: manual-attestation
+    tool_version: 1.0.0
+    check: large-scale-execution-admission
+    mode: "*"
+    dimensions:
+      - guidance_and_contract
+    lifecycle:
+      - not-batch-scoped
+    revalidation_role: unsupported
+    revalidation_owner: none
+    claim_edge: none
+    scope_protocol: none
+    binding_protocol: not-authorizing
+  - gate_id: wiki-link-integrity
+    tool: check_links
+    tool_version: 1.6.0
+    check: link-check-summary
+    mode: "*"
+    dimensions:
+      - "*"
+    lifecycle:
+      - not-batch-scoped
+    revalidation_role: semantic-leaf
+    revalidation_owner: batch-close
+    claim_edge: project-to-owner
+    scope_protocol: inherit-owner-scope
+    binding_protocol: owner-member-chain
+  - gate_id: frontmatter-vocabulary
+    tool: check_vocab
+    tool_version: 1.8.0
+    check: vocab-check-summary
+    mode: "*"
+    dimensions:
+      - "*"
+    lifecycle:
+      - not-batch-scoped
+    revalidation_role: semantic-leaf
+    revalidation_owner: batch-close
+    claim_edge: project-to-owner
+    scope_protocol: inherit-owner-scope
+    binding_protocol: owner-member-chain
+  - gate_id: priority-quota-distribution
+    tool: check_vocab
+    tool_version: 1.8.0
+    check: priority-quota-distribution
+    mode: "*"
+    dimensions:
+      - "*"
+    lifecycle:
+      - not-batch-scoped
+    revalidation_role: semantic-leaf
+    revalidation_owner: batch-close
+    claim_edge: project-to-owner
+    scope_protocol: inherit-owner-scope
+    binding_protocol: owner-member-chain
+  - gate_id: required-queue-consistency
+    tool: check_queue
+    tool_version: 1.25.0
+    check: required_queue
+    mode: consistency
+    dimensions:
+      - "*"
+    lifecycle:
+      - not-batch-scoped
+    revalidation_role: immediate-owner
+    revalidation_owner: required-queue-consistency
+    claim_edge: adoption-commit
+    scope_protocol: runtime-after-image
+    binding_protocol: runtime-state-fingerprints
+  - gate_id: required-queue-admission
+    tool: check_queue
+    tool_version: 1.25.0
+    check: required_queue
+    mode: require-ready:*
+    dimensions:
+      - "*"
+    lifecycle:
+      - queued
+    revalidation_role: native-owner
+    revalidation_owner: required-queue-admission
+    claim_edge: native-transition
+    scope_protocol: native-owner-scope
+    binding_protocol: native-owner-receipt
+  - gate_id: required-queue-completion
+    tool: check_queue
+    tool_version: 1.25.0
+    check: required_queue
+    mode: require-complete
+    dimensions:
+      - "*"
+    lifecycle:
+      - queue-exhausted
+    revalidation_role: native-owner
+    revalidation_owner: required-queue-completion
+    claim_edge: native-transition
+    scope_protocol: native-owner-scope
+    binding_protocol: native-owner-receipt
+  - gate_id: maintenance-completion
+    tool: check_queue
+    tool_version: 1.25.0
+    check: required_queue
+    mode: require-maintenance-complete
+    dimensions:
+      - "*"
+    lifecycle:
+      - queue-exhausted
+    revalidation_role: native-owner
+    revalidation_owner: maintenance-completion
+    claim_edge: native-transition
+    scope_protocol: native-owner-scope
+    binding_protocol: native-owner-receipt
+  - gate_id: batch-review
+    tool: manual-attestation
+    tool_version: 1.0.0
+    check: batch_gate
+    mode: "*"
+    dimensions:
+      - none
+    lifecycle:
+      - open
+    revalidation_role: native-owner
+    revalidation_owner: batch-review
+    claim_edge: native-transition
+    scope_protocol: native-owner-scope
+    binding_protocol: native-owner-receipt
+  - gate_id: batch-close
+    tool: check_batch_close
+    tool_version: 1.13.0
+    check: batch_close_gate
+    mode: "*"
+    dimensions:
+      - "*"
+    lifecycle:
+      - merge-ready
+    revalidation_role: native-owner
+    revalidation_owner: batch-close
+    claim_edge: native-transition
+    scope_protocol: native-owner-scope
+    binding_protocol: native-owner-receipt
+  - gate_id: structure-registry
+    tool: check_structure
+    tool_version: 1.2.0
+    check: structure-registry-summary
+    mode: "*"
+    dimensions:
+      - "*"
+    lifecycle:
+      - not-batch-scoped
+    revalidation_role: semantic-leaf
+    revalidation_owner: profile-load
+    claim_edge: project-to-owner
+    scope_protocol: inherit-owner-scope
+    binding_protocol: owner-member-chain
+  - gate_id: page-contract
+    tool: check_page_contract
+    tool_version: 1.5.0
+    check: page-contract-summary
+    mode: "*"
+    dimensions:
+      - "*"
+    lifecycle:
+      - not-batch-scoped
+    revalidation_role: semantic-leaf
+    revalidation_owner: batch-close
+    claim_edge: project-to-owner
+    scope_protocol: inherit-owner-scope
+    binding_protocol: owner-member-chain
+  - gate_id: boundary-contract
+    tool: check_boundary_contract
+    tool_version: 1.1.0
+    check: boundary-contract-summary
+    mode: "*"
+    dimensions:
+      - "*"
+    lifecycle:
+      - not-batch-scoped
+    revalidation_role: advisory
+    revalidation_owner: none
+    claim_edge: advisory-only
+    scope_protocol: diagnostic-scope
+    binding_protocol: not-authorizing
+  - gate_id: corpus-plan-structure
+    tool: check_corpus_plan
+    tool_version: 1.7.0
+    check: corpus_plan
+    mode: "*"
+    dimensions:
+      - "*"
+    lifecycle:
+      - not-batch-scoped
+    revalidation_role: unsupported
+    revalidation_owner: none
+    claim_edge: none
+    scope_protocol: none
+    binding_protocol: not-authorizing
+  - gate_id: corpus-plan-semantic-acceptance
+    tool: record_corpus_acceptance
+    tool_version: 1.0.0
+    check: corpus_plan_semantic_acceptance
+    mode: "*"
+    dimensions:
+      - "*"
+    lifecycle:
+      - not-batch-scoped
+    revalidation_role: unsupported
+    revalidation_owner: none
+    claim_edge: none
+    scope_protocol: none
+    binding_protocol: not-authorizing
+  - gate_id: content-correctness
+    tool: manual-attestation
+    tool_version: 1.0.0
+    check: content-correctness
+    mode: "*"
+    dimensions:
+      - content_and_depth
+      - formula_and_numeric
+      - rendering
+      - source_and_currentness
+      - structure_and_links
+    lifecycle:
+      - not-batch-scoped
+    revalidation_role: semantic-leaf
+    revalidation_owner: batch-review
+    claim_edge: project-to-owner
+    scope_protocol: inherit-owner-scope
+    binding_protocol: owner-member-chain
+  - gate_id: source-promotion
+    tool: manual-attestation
+    tool_version: 1.0.0
+    check: source-promotion
+    mode: "*"
+    dimensions:
+      - coverage_and_integration
+      - source_and_currentness
+    lifecycle:
+      - not-batch-scoped
+    revalidation_role: semantic-leaf
+    revalidation_owner: batch-review
+    claim_edge: project-to-owner
+    scope_protocol: inherit-owner-scope
+    binding_protocol: owner-member-chain
+  - gate_id: expression-layer-acceptance
+    tool: manual-attestation
+    tool_version: 1.0.0
+    check: expression-layer-acceptance
+    mode: "*"
+    dimensions:
+      - content_and_depth
+      - coverage_and_integration
+      - guidance_and_contract
+      - source_and_currentness
+      - structure_and_links
+    lifecycle:
+      - not-batch-scoped
+    revalidation_role: semantic-leaf
+    revalidation_owner: batch-review
+    claim_edge: project-to-owner
+    scope_protocol: inherit-owner-scope
+    binding_protocol: owner-member-chain
+  - gate_id: coverage-reconciliation
+    tool: manual-attestation
+    tool_version: 1.0.0
+    check: coverage-reconciliation
+    mode: "*"
+    dimensions:
+      - coverage_and_integration
+    lifecycle:
+      - not-batch-scoped
+    revalidation_role: unsupported
+    revalidation_owner: none
+    claim_edge: none
+    scope_protocol: none
+    binding_protocol: not-authorizing
+  - gate_id: standards-adoption
+    tool: adopt_standards
+    tool_version: 1.9.0
+    check: standards_adoption
+    mode: "*"
+    dimensions:
+      - "*"
+    lifecycle:
+      - not-batch-scoped
+    revalidation_role: mechanism-only
+    revalidation_owner: none
+    claim_edge: mechanism-input-only
+    scope_protocol: none
+    binding_protocol: not-authorizing
+  - gate_id: standards-revalidation
+    tool: check_queue
+    tool_version: 1.25.0
+    check: required_queue
+    mode: require-revalidation:*
+    dimensions:
+      - "*"
+    lifecycle:
+      - open
+      - queued
+    revalidation_role: mechanism-only
+    revalidation_owner: none
+    claim_edge: mechanism-input-only
+    scope_protocol: none
+    binding_protocol: not-authorizing
+  - gate_id: guidance-disposition
+    tool: manual-attestation
+    tool_version: 1.0.0
+    check: guidance-disposition
+    mode: "*"
+    dimensions:
+      - guidance_and_contract
+    lifecycle:
+      - not-batch-scoped
+    revalidation_role: unsupported
+    revalidation_owner: none
+    claim_edge: none
+    scope_protocol: none
+    binding_protocol: not-authorizing
+  - gate_id: receipt-validity
+    tool: manual-attestation
+    tool_version: 1.0.0
+    check: receipt-validity
+    mode: "*"
+    dimensions:
+      - guidance_and_contract
+    lifecycle:
+      - not-batch-scoped
+    revalidation_role: unsupported
+    revalidation_owner: none
+    claim_edge: none
+    scope_protocol: none
+    binding_protocol: not-authorizing
+  - gate_id: rendering
+    tool: manual-attestation
+    tool_version: 1.0.0
+    check: rendering
+    mode: "*"
+    dimensions:
+      - rendering
+      - structure_and_links
+    lifecycle:
+      - not-batch-scoped
+    revalidation_role: semantic-leaf
+    revalidation_owner: batch-review
+    claim_edge: project-to-owner
+    scope_protocol: inherit-owner-scope
+    binding_protocol: owner-member-chain
+  - gate_id: registered-residual-content
+    tool: check_residual_content
+    tool_version: 1.2.0
+    check: residual-content-summary
+    mode: "*"
+    dimensions:
+      - "*"
+    lifecycle:
+      - not-batch-scoped
+    revalidation_role: semantic-leaf
+    revalidation_owner: batch-close
+    claim_edge: project-to-owner
+    scope_protocol: inherit-owner-scope
+    binding_protocol: owner-member-chain
+  - gate_id: duplicate-detection
+    tool: manual-attestation
+    tool_version: 1.0.0
+    check: duplicate-detection
+    mode: "*"
+    dimensions:
+      - structure_and_links
+    lifecycle:
+      - not-batch-scoped
+    revalidation_role: unsupported
+    revalidation_owner: none
+    claim_edge: none
+    scope_protocol: none
+    binding_protocol: not-authorizing
+  - gate_id: knowledge-freshness
+    tool: manual-attestation
+    tool_version: 1.0.0
+    check: knowledge-freshness
+    mode: "*"
+    dimensions:
+      - source_and_currentness
+    lifecycle:
+      - not-batch-scoped
+    revalidation_role: unsupported
+    revalidation_owner: none
+    claim_edge: none
+    scope_protocol: none
+    binding_protocol: not-authorizing
+  - gate_id: depth-balance
+    tool: manual-attestation
+    tool_version: 1.0.0
+    check: depth-balance
+    mode: "*"
+    dimensions:
+      - content_and_depth
+    lifecycle:
+      - not-batch-scoped
+    revalidation_role: unsupported
+    revalidation_owner: none
+    claim_edge: none
+    scope_protocol: none
+    binding_protocol: not-authorizing
+  - gate_id: prerequisite-completeness
+    tool: manual-attestation
+    tool_version: 1.0.0
+    check: prerequisite-completeness
+    mode: "*"
+    dimensions:
+      - coverage_and_integration
+    lifecycle:
+      - not-batch-scoped
+    revalidation_role: unsupported
+    revalidation_owner: none
+    claim_edge: none
+    scope_protocol: none
+    binding_protocol: not-authorizing
+  - gate_id: canonical-ownership-uniqueness
+    tool: manual-attestation
+    tool_version: 1.0.0
+    check: canonical-ownership-uniqueness
+    mode: "*"
+    dimensions:
+      - structure_and_links
+    lifecycle:
+      - not-batch-scoped
+    revalidation_role: unsupported
+    revalidation_owner: none
+    claim_edge: none
+    scope_protocol: none
+    binding_protocol: not-authorizing
+  - gate_id: terminal-proof
+    tool: check_proof
+    tool_version: 1.18.0
+    check: proof-check-summary
+    mode: "*"
+    dimensions:
+      - "*"
+    lifecycle:
+      - queue-exhausted
+    revalidation_role: native-owner
+    revalidation_owner: terminal-proof
+    claim_edge: native-transition
+    scope_protocol: native-owner-scope
+    binding_protocol: native-owner-receipt

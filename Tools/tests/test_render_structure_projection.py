@@ -24,7 +24,7 @@ MANIFEST = """# Test Profile
 - `Structure Registry`: `structure-registry.yaml`
 """
 
-REGISTRY = """schema_version: 1
+REGISTRY = """schema_version: 2
 applicability:
   state: configured
   reason: null
@@ -43,7 +43,7 @@ units:
         reason: "n/a"
       coverage:
         mode: derived
-        generator: "Tools/render_structure_projection.py"
+        generator_capability: structure-coverage-projection-v1
         inputs_owner: "Corpus Planning/capability_matrix.yaml"
         path: "Domain/Overview.md"
         heading: "Coverage Reader View"
@@ -119,6 +119,10 @@ class RenderProjectionTests(unittest.TestCase):
         self.assertIn("CAP-001", text)
         self.assertIn("Curated reader guidance that must survive.", text)
         self.assertIn("## Next Section", text)
+        self.assertIn("structure-coverage-projection-v1", text)
+        self.assertIn("runtime object `coverage-ledger`", text)
+        self.assertNotIn("Tools/render_structure_projection.py", text)
+        self.assertNotIn(".cambium/state/coverage_ledger.yaml", text)
         begin = text.index("structure-projection:begin")
         prose = text.index("Curated reader guidance")
         self.assertLess(begin, prose)
@@ -161,6 +165,30 @@ class RenderProjectionTests(unittest.TestCase):
         rendered = (root / "Domain/Overview.md").read_text(encoding="utf-8")
         self.assertIn("CAP-ALT", rendered)
         self.assertNotIn("CAP-001", rendered)
+
+    def test_stable_coverage_owner_id_resolves_without_becoming_matrix_path(self):
+        root = self.build()
+        registry = root / "profiles/test-profile/structure-registry.yaml"
+        registry.write_text(
+            registry.read_text(encoding="utf-8").replace(
+                'inputs_owner: "Corpus Planning/capability_matrix.yaml"',
+                "inputs_owner: coverage-ledger"),
+            encoding="utf-8")
+        ledger = root / ".cambium/state/coverage_ledger.yaml"
+        ledger.parent.mkdir(parents=True, exist_ok=True)
+        ledger.write_text(
+            "schema_version: 1\n"
+            "pages:\n"
+            "  - path: Domain/Page.md\n"
+            "    coverage_disposition: required\n",
+            encoding="utf-8")
+
+        result = self.run_tool(root, "--apply")
+
+        self.assertEqual(0, result.returncode, result.stdout)
+        rendered = (root / "Domain/Overview.md").read_text(encoding="utf-8")
+        self.assertIn("Coverage Ledger records 1 page(s)", rendered)
+        self.assertIn("No Capability Matrix row", rendered)
 
     def test_missing_heading_is_reported_not_invented(self):
         root = self.build()

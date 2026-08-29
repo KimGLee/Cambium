@@ -3,32 +3,11 @@
 - Parent: [[kernel/K02 Knowledge Work Construction Standard|K02 Knowledge Work Construction Standard]].
 - Next: [[kernel/K02 Knowledge Work Construction/02 Coverage Reconciliation|Coverage Reconciliation]].
 
-## Phase 1: Inventory
+## Coverage Inventory Boundary
 
-Build an inventory of the existing knowledge base:
+Inventory materializes the knowledge objects governed by the current Profile Scope into the `coverage-ledger` machine contract. The selected Profile owns the concrete scope, exclusions, directory bindings, and domain values; Kernel does not enumerate instance paths or current records.
 
-- File path.
-- Note type.
-- Domain.
-- Depth class.
-- Priority.
-- Canonical owner.
-- Authoring status.
-- Profile extension status.
-- Coverage disposition.
-- Missing sections.
-- Existing aliases and incoming links.
-- Expression Layer migration target.
-- Source type and evidence maturity, for source-driven pages.
-- Existing Source Notes, Research Synthesis, and unsupported claims.
-- Rendering mode: `source-only`, `deterministic-static`, `targeted-visual-exception`, `expanded-ui`, or `temporal-recording`; the latter three MUST be associated with an objective trigger and an unresolved question.
-- Deferred reason, re-entry condition, and next batch.
-- Assigned batch and the current Queue manifest projection.
-- Originating guidance IDs and amendment version.
-- Last audited, last reviewed, and last verified.
-- The latest valid `receipt_id` for each quality dimension, artifact/dependency fingerprint, review due, and invalidation state; mark `invalidated-evidence` when an old task cannot reconstruct them.
-
-The inventory MUST read the exclusion list from the `Excluded Scope` role of the selected `Profile Scope`; concrete instance paths MUST NOT be hard-coded in the kernel.
+The inventory accounts for every in-scope page and every Required object that does not yet exist, together with the stable identity, ownership, disposition, evidence, and planning relationships required by the machine contract. This module owns the resulting Coverage invariants, not an execution sequence.
 
 The inventory MUST form a persistent, queryable Coverage Ledger; it cannot exist only in transient analysis or in the executor's memory. The Coverage Ledger MAY be split by domain, but it MUST have one summary entry point and satisfy:
 
@@ -36,14 +15,23 @@ The inventory MUST form a persistent, queryable Coverage Ledger; it cannot exist
 - Knowledge objects not yet created but belonging to Required coverage also have records.
 - File system counts, the excluded scope, and Ledger summary counts can be reconciled.
 - Legacy pages without metadata default to `authoring_status: unassessed` and cannot be treated as drafted merely because the file exists.
-- `authoring_status: reviewed` carries the era of the evidence that earned it. The record MUST name, in `gate_receipts`, at least one receipt whose review established that status; a record claiming `reviewed` with no such receipt is reporting an era it cannot produce, and the reconciliation reports it as a candidate for re-review rather than accepting the claim. This is the same producer-era discipline K12/10 already applies to receipts, extended to the status the receipts earn: without it a page reviewed under a superseded Standards version and a page reviewed under the current one are the same six characters, completion counts include work no current gate would pass, and `check_freshness` and the re-review mechanism have no way to tell the two apart. Adoption of this rule in a corpus with legacy `reviewed` records is a migration, not an edit: the revision that adopts it declares whether the unsupported records are re-reviewed, retired, or carried under an explicit exception with a stated end. That third disposition is carried by the Task Contract's `policy_exceptions` register under policy `coverage.reviewed_era` ([[kernel/K13 Task Runtime and Execution Control/02 Task Contract Binding and Time Semantics|K13/02]] owns the field; the [[kernel/K13 Task Runtime and Execution Control/06 Amendment Log and Controlled Replanning|K13/06]] Contract Amendment transaction is its sole writer), never by prose alone: batch activation consumes a passing readiness gate, so a disposition no consumer can read leaves the candidate standing and the queue unable to run the very re-reviews that resolve it. The exception's `limit` is a ceiling on how many records may still claim an era they cannot produce, which is what keeps it from covering new ones — the count only legitimately falls as batches re-review, and any record beyond the ceiling reports as a candidate exactly as before.
+- `authoring_status: reviewed` is evidence-bound. The record names current
+  evidence that earned the status; an unsupported value is a re-review
+  candidate rather than a pass. Existing unsupported records require an
+  explicit migration disposition or a bounded policy exception with a stated
+  end; prose alone cannot authorize them. The stable exception identity,
+  record-count limit domain, and effective-policy currentness payload are
+  registered once in
+  [`contract-exception-policy-base.yaml`](../K00%20Standards%20Control/contract-exception-policy-base.yaml);
+  this page remains the semantic owner of why `reviewed` must name its
+  evidence era.
 - Every unfinished Required item has an explicit `next_batch`.
 - Every `deferred` and `excluded` item has a reason and a re-entry condition or scope basis.
 
 The Coverage Ledger is the authoritative record of page/object-level coverage. Its object-side `batch` / `next_batch` projection MUST equal the frozen manifests in the canonical [[kernel/K13 Task Runtime and Execution Control/08 Required Queue Contract and Lifecycle|Required Queue]]; the Queue owns batch lifecycle, while the Progress Ledger owns only whole-task state and accepted Queue references.
 
-The Ledger also carries top-level `batch_specs` as explicit Queue-compiler proposal inputs: one entry per proposed batch, with family, order hint, source route, execution mode, dependencies, confirmation requirement, and the explicit null/null or path/hash Work Spec pair defined by K13/08. These inputs do not own accepted order or lifecycle. They remain separate from page records so a historical `batch` and a different `next_batch` successor can have different configurations without rewriting closed history.
+The Ledger also carries the Queue proposal inputs defined by the `coverage-ledger` machine contract. These inputs do not own accepted Queue order or lifecycle and remain separate from page records, so a successor can have a different configuration without rewriting closed history.
 
 ## Machine-readable Ledger
 
-The canonical form of the Coverage Ledger is YAML; the schema is at `Tools/schemas/coverage_ledger.template.yaml`, and the runtime path is `.cambium/state/coverage_ledger.yaml`. Only the restricted subset syntax declared in the template header comment is allowed. A markdown prose view is optional, derived from the YAML, and not a basis for reconciliation; reconciliation and the Terminal Audit recognize only the YAML form. When resuming a task, load the YAML Ledger directly instead of re-reading the prose view.
+The `coverage-ledger` machine contract is the unique normative carrier of the Ledger's closed fields and syntax. The adopter runtime owns its current values. A Markdown view is optional, derived, and never a basis for reconciliation or completion.

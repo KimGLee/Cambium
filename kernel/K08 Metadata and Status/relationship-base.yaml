@@ -1,6 +1,7 @@
 # Cambium kernel relationship metadata base.
 # Semantic owner: "kernel/K08 Metadata and Status/08 Relationship Metadata Contract.md"
-# Merged with applicability-base.yaml by Tools/compose_page_contract.py.
+# Composed with the applicability base by the registered page-contract
+# composition capability.
 # Each relationship has one name, one direction, one target contract, and one
 # value shape. An unregistered relationship-like field falls to the K08/06
 # unknown-field closure; profiles register extensions (with an explicit

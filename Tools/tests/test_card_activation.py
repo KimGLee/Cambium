@@ -17,6 +17,8 @@ sys.path.insert(0, str(TOOLS))
 import card_activation
 import check_queue
 import kblib
+import read_set_contract
+import stamp_cards
 from profile_fixture import install_loadable_profile
 
 
@@ -61,6 +63,60 @@ class CardActivationTests(unittest.TestCase):
 
     def pieces(self, context):
         return context["activation_bundle_manifest"]["pieces"]
+
+    def acknowledge_fixture_card_body(self, relative):
+        """Bind a deliberate fixture edit as reviewed for non-review tests.
+
+        Production currentness must continue to fail closed on an unreviewed
+        body.  These callers exercise a later activation invariant, so the
+        fixture explicitly records the synthetic review before continuing.
+        """
+        path = self.root / relative
+        text = path.read_text(encoding="utf-8")
+        path.write_text(
+            stamp_cards.replace_frontmatter_scalar(
+                text, "reviewed_card_hash",
+                stamp_cards.card_body_digest(text)),
+            encoding="utf-8")
+
+    def test_registry_comes_from_entity_declarations_not_indexes(self):
+        (self.root / "Card/Card Index.md").write_text(
+            "not authoritative\n", encoding="utf-8")
+        (self.root / "Read Set/Read Sets Index.md").write_text(
+            "not authoritative\n", encoding="utf-8")
+
+        registry, fingerprint = card_activation._route_registry(self.root)
+
+        self.assertEqual(13, len(registry))
+        self.assertTrue(fingerprint.startswith("sha256:"))
+
+    def test_phase_projection_comes_from_read_set_machine_contract(self):
+        schema = read_set_contract.load_schema(TOOLS.parent)
+        phases = schema["phases"]
+
+        self.assertEqual(
+            tuple(row["phase_id"] for row in phases),
+            card_activation.PHASE_ORDER)
+        self.assertEqual(
+            {row["phase_id"] for row in phases if row["conditional"]},
+            set(card_activation.CONDITIONAL_PHASES))
+        self.assertEqual(
+            {row["phase_id"] for row in phases if row["standard"]},
+            set(card_activation.STANDARD_PHASES))
+        self.assertEqual(
+            {row["phase_id"]: row["trigger"] for row in phases},
+            card_activation.PHASE_TRIGGERS)
+
+    def test_card_readback_hooks_come_from_the_paired_read_set(self):
+        registry, _fingerprint = card_activation._route_registry(self.root)
+
+        card = card_activation._card_record(
+            self.root, "R03", registry["R03"], registry["R03"]["path"])
+
+        self.assertEqual(["R03:conditional"],
+                         [edge["edge_id"] for edge in card["readback_edges"]])
+        self.assertNotIn("readback_sources", card)
+        self.assertNotIn("readback_policy", card)
 
     def test_admission_freezes_pieces_and_embeds_no_content(self):
         context = self.context()
@@ -129,21 +185,19 @@ class CardActivationTests(unittest.TestCase):
                 card_activation.MAX_ACTIVATION_PIECE_ENVELOPE_BYTES)
 
     def test_oversized_leaf_fails_closed_at_admission(self):
-        card = self.root / "kernel/Cards/R03 Module Build Card.md"
+        card = self.root / "Card/R03 Module Build Card.md"
         text = card.read_text(encoding="utf-8")
         card.write_text(
             text + ("\nfiller " * 12000), encoding="utf-8")
-        stamp = text.split("source_hash: ")[1].split("\n")[0]
-        rewritten = card.read_text(encoding="utf-8")
-        card.write_text(rewritten, encoding="utf-8")
-        self.assertTrue(stamp)
+        self.acknowledge_fixture_card_body(
+            "Card/R03 Module Build Card.md")
 
         with self.assertRaisesRegex(ValueError, "delivery budget"):
             self.context()
 
     def test_piece_delivery_refuses_a_source_that_drifted(self):
         context = self.context()
-        card = self.root / "kernel/Cards/R01 Core Bootstrap Card.md"
+        card = self.root / "Card/R01 Core Bootstrap Card.md"
         card.write_text(card.read_text(encoding="utf-8") + "\nDrift.\n",
                         encoding="utf-8")
 
@@ -174,37 +228,25 @@ class CardActivationTests(unittest.TestCase):
                 delivery, delivery["delivery_nonce"],
                 execution_context_id="mcp:other")
 
-    def test_frozen_card_index_is_delivered_as_startup_navigation(self):
+    def test_navigation_index_cannot_enter_the_activation_contract(self):
         progress = self.progress()
         progress["contract"]["selected_card_paths"].append(
-            card_activation.CARD_INDEX_PATH)
+            "Card/Card Index.md")
         progress["contract"]["selected_card_paths"].sort()
         runtime = self.runtime()
         runtime["progress"] = progress
         runtime["progress_sha256"] = kblib.sha256_bytes(
             kblib.canonical_yaml(progress))
 
-        context = card_activation.build_activation_context(
-            self.root, progress, runtime["items_by_id"]["B1"],
-            runtime_state=runtime)
-
-        self.assertEqual([], card_activation.activation_context_errors(context))
-        index_rows = [row for row in self.pieces(context)
-                      if row["path"] == card_activation.CARD_INDEX_PATH]
-        self.assertEqual(1, len(index_rows))
-        self.assertEqual("kernel-card-index", index_rows[0]["route_id"])
-        self.assertEqual("activation-readback", index_rows[0]["kind"])
-        delivered = card_activation.build_activation_piece(
-            self.root, context, index_rows[0]["piece_id"])
-        self.assertEqual(
-            (self.root / card_activation.CARD_INDEX_PATH).read_text(
-                encoding="utf-8"),
-            delivered["activation_piece_payload"]["content"])
+        with self.assertRaisesRegex(ValueError, "Card Index.md"):
+            card_activation.build_activation_context(
+                self.root, progress, runtime["items_by_id"]["B1"],
+                runtime_state=runtime)
 
     def test_unregistered_extra_selected_card_path_is_rejected(self):
         progress = self.progress()
         progress["contract"]["selected_card_paths"].append(
-            "kernel/Cards/Unregistered.md")
+            "Card/Unregistered.md")
         runtime = self.runtime()
         runtime["progress"] = progress
         runtime["progress_sha256"] = kblib.sha256_bytes(
@@ -276,11 +318,13 @@ class CardActivationTests(unittest.TestCase):
                 self.root, progress, runtime["items_by_id"]["B1"],
                 runtime_state=runtime)
 
-        card_path = self.root / "kernel/Cards/R03 Module Build Card.md"
-        card_path.write_text(card_path.read_text(encoding="utf-8").replace(
-            "compiled_source_hash: 0123456789ab",
-            "compiled_source_hash: abcdefabcdef"), encoding="utf-8")
-        with self.assertRaisesRegex(ValueError, "semantic source drift"):
+        card_path = self.root / "Card/R03 Module Build Card.md"
+        text = card_path.read_text(encoding="utf-8")
+        data = kblib.parse_yaml_subset(kblib.extract_frontmatter(text))
+        card_path.write_text(text.replace(
+            "reviewed_source_hash: %s" % data["reviewed_source_hash"],
+            "reviewed_source_hash: abcdefabcdef"), encoding="utf-8")
+        with self.assertRaisesRegex(ValueError, "unreviewed source drift"):
             self.context()
 
     def test_an_admission_that_embeds_a_payload_is_rejected(self):
@@ -354,9 +398,11 @@ class CardActivationTests(unittest.TestCase):
 
     def test_open_still_refuses_a_bundle_whose_bytes_drifted(self):
         _relative, receipt = self._persist_machine_gate()
-        card = self.root / "kernel/Cards/R01 Core Bootstrap Card.md"
+        card = self.root / "Card/R01 Core Bootstrap Card.md"
         card.write_text(card.read_text(encoding="utf-8") + "\nDrift.\n",
                         encoding="utf-8")
+        self.acknowledge_fixture_card_body(
+            "Card/R01 Core Bootstrap Card.md")
 
         refused = self._open_command(receipt, "mcp:activation-a")
 
@@ -377,7 +423,7 @@ class CardActivationTests(unittest.TestCase):
         delivery = json.loads(delivered.stdout)[0]
         payload = delivery["activation_piece_payload"]
         self.assertEqual(
-            (self.root / "kernel/Cards/R01 Core Bootstrap Card.md").read_text(
+            (self.root / "Card/R01 Core Bootstrap Card.md").read_text(
                 encoding="utf-8"),
             payload["content"])
         self.assertEqual(payload["delivery_nonce"],
@@ -459,10 +505,12 @@ class CardActivationTests(unittest.TestCase):
         _relative, receipt = self._persist_machine_gate("mcp:original")
         opened = self._open_command(receipt, "mcp:original")
         self.assertEqual(0, opened.returncode, opened.stdout + opened.stderr)
-        card = self.root / "kernel/Cards/R01 Core Bootstrap Card.md"
+        card = self.root / "Card/R01 Core Bootstrap Card.md"
         card.write_text(
             card.read_text(encoding="utf-8") + "\nDrift.\n",
             encoding="utf-8")
+        self.acknowledge_fixture_card_body(
+            "Card/R01 Core Bootstrap Card.md")
 
         resumed = self.run_tool(
             "check_queue.py", "--resume-status", "--json",

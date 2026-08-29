@@ -50,7 +50,10 @@ for path in (str(TOOLS), str(TESTS)):
 import check_queue  # noqa: E402
 import compile_queue  # noqa: E402
 import kblib  # noqa: E402
-from profile_fixture import install_loadable_profile  # noqa: E402
+from profile_fixture import (  # noqa: E402
+    FIXTURE_UPSTREAM_REVISION,
+    install_loadable_profile,
+)
 
 
 def _load_tool():
@@ -67,72 +70,12 @@ TASK_ID = "new-task"
 PROFILE = "profiles/sample/profile.md"
 PLAN_RELATIVE = ".cambium/deltas/task-plans/TP-001.yaml"
 
-MODULE = "kernel/K00 Standards Control/03 Standards Governance.md"
-READ_SET = "kernel/Read Sets/R02 Sample Read Set.md"
-CARD = "kernel/Cards/R02 Sample Card.md"
-OTHER_CARD = "kernel/Cards/R03 Unselected Card.md"
-R01_CARD = "kernel/Cards/R01 Fixture Card.md"
-R01_READ_SET = "kernel/Read Sets/R01 Fixture Read Set.md"
-CARD_INDEX = "kernel/Cards/Card Index.md"
-READ_SET_INDEX = "kernel/Read Sets/Read Sets Index.md"
-
-# A real Read Set, not a placeholder string: the contract's load closure is
-# resolved by reading these bytes, so a fictional path would make the test
-# assert on a declaration the machine never checked.
-READ_SET_TEXT = """---
-type: read-set
-route_id: R02
----
-
-# R02 Sample Read Set
-
-## Purpose
-
-Exercise the load closure with one boundary.
-
-## Load
-
-- [[kernel/K00 Standards Control/03 Standards Governance]]
-"""
-
-CARD_TEXT = """# R02 Sample Card
-
-## Purpose
-
-Stand in for a route Card the plan selects.
-"""
-
-# The two canonical indexes the derivation reads through check_proof's own
-# loader, which requires the registry to cover exactly R01-R13. Only the
-# selected route's Read Set is written to disk: the derivation traverses what
-# the plan selects and never opens the rest.
-ROUTES = ["R%02d" % number for number in range(1, 14)]
-
-
-def _route_paths(route_id):
-    if route_id == "R02":
-        return CARD, READ_SET
-    if route_id == "R03":
-        return OTHER_CARD, "kernel/Read Sets/R03 Unselected Read Set.md"
-    return ("kernel/Cards/%s Fixture Card.md" % route_id,
-            "kernel/Read Sets/%s Fixture Read Set.md" % route_id)
-
-
-def _index_text(document_type, with_read_set):
-    rows = []
-    for route_id in ROUTES:
-        card, read_set = _route_paths(route_id)
-        rows.append('  - route_id: %s\n    path: "%s"'
-                    % (route_id, card if with_read_set else read_set))
-        if with_read_set:
-            rows.append('    read_set: "%s"' % read_set)
-    return ("---\ntype: %s\nregistry_id: kernel-runtime-routes\n"
-            "route_registry:\n%s\n---\n\n# Index\n"
-            % (document_type, "\n".join(rows)))
-
-
-CARD_INDEX_TEXT = _index_text("card-index", True)
-READ_SET_INDEX_TEXT = _index_text("route-index", False)
+MODULE = "kernel/K03 Fixture/01 Conditional Review.md"
+READ_SET = "Read Set/R02 Fixture Read Set.md"
+CARD = "Card/R02 Fixture Card.md"
+OTHER_CARD = "Card/R03 Module Build Card.md"
+R01_CARD = "Card/R01 Core Bootstrap Card.md"
+R01_READ_SET = "Read Set/R01 Core Bootstrap Read Set.md"
 
 PAGE = {
     "path": "Notes/First Owner.md",
@@ -173,20 +116,12 @@ class TaskPlanTransactionTests(unittest.TestCase):
         # as the repository paths resolved by the production loaders.
         self.root = Path(self.tmp.name).resolve() / "repo"
         install_loadable_profile(self.root, profile_id="sample")
-        for relative, text in ((READ_SET, READ_SET_TEXT), (CARD, CARD_TEXT),
-                               (OTHER_CARD, CARD_TEXT),
-                               (R01_READ_SET, READ_SET_TEXT),
-                               (MODULE, "# Fixture Standards Governance\n"),
-                               (CARD_INDEX, CARD_INDEX_TEXT),
-                               (READ_SET_INDEX, READ_SET_INDEX_TEXT)):
-            path = self.root / relative
-            path.parent.mkdir(parents=True, exist_ok=True)
-            path.write_text(text, encoding="utf-8")
         result = subprocess.run(
             [sys.executable, str(TOOLS / "init_state.py"), str(self.root),
              "--task-id", TASK_ID, "--objective", "Exercise task planning",
              "--scope-version", "s1", "--completion-semantics", "build",
-             "--standards-version", "3.0.0", "--profile-manifest", PROFILE,
+             "--standards-version", FIXTURE_UPSTREAM_REVISION,
+             "--profile-manifest", PROFILE,
              "--at", "2026-08-04T00:00:00Z", "--apply"],
             text=True, capture_output=True, check=False)
         self.assertEqual(0, result.returncode,
@@ -238,7 +173,7 @@ class TaskPlanTransactionTests(unittest.TestCase):
                 "exclusions": [],
                 "scope_version": "s1",
                 "concurrency_cap": 1,
-                "standards_version": "3.0.0",
+                "standards_version": FIXTURE_UPSTREAM_REVISION,
                 "selected_profile_manifest": PROFILE,
                 "selected_route_ids": ["R02"],
                 "selected_card_paths": [],
@@ -279,6 +214,13 @@ class TaskPlanTransactionTests(unittest.TestCase):
         with self.assertRaises(apply_task_plan.Refusal) as caught:
             apply_task_plan.prepare(str(self.root), relative)
         return str(caught.exception)
+
+    def test_shipped_template_carries_the_required_page_shape(self):
+        template = kblib.load_yaml_file(
+            REPOSITORY / "Tools/schemas/task_plan.template.yaml")
+        page = template["coverage_after"]["pages"][0]
+        self.assertEqual({}, page["property_state"])
+        self.assertEqual([], sorted(set(PAGE) - set(page)))
 
     # ---- the edge it closes --------------------------------------------
 
