@@ -122,6 +122,15 @@ class DerivationTests(unittest.TestCase):
         self.assertIn("--policy-fingerprint", command)
         self.assertIn(fingerprint, command)
 
+    def test_the_vocab_sweep_excludes_the_card_control_plane(self):
+        """Card metadata has its own contract and stamp preflight."""
+        recipes = self.recipes()
+        vocab_command = recipes[("check_vocab", "*")]
+        links_command = recipes[("check_links", "*")]
+        self.assertIn("--exclude", vocab_command)
+        self.assertIn(run_gates.CARD_CONTROL_PLANE_PATH, vocab_command)
+        self.assertNotIn(run_gates.CARD_CONTROL_PLANE_PATH, links_command)
+
     def test_manual_rows_remain_human_recorded_gates(self):
         derived, _ = run_gates.derive_verification_set(
             self.ROOT, self.registry(), self.recipes())
@@ -146,11 +155,36 @@ class DerivationTests(unittest.TestCase):
         self.assertTrue(any("stamp_cards" in part for part in command))
         self.assertEqual("--check", command[-1])
 
+        interface_commands = [
+            command for capability, _label, command in preflights
+            if capability == "compiled-currentness" and
+            any("interface" in part or "cli_contract" in part
+                for part in command)
+        ]
+        self.assertEqual(2, len(interface_commands))
+        for interface_command in interface_commands:
+            self.assertIn("--projection-target", interface_command)
+            self.assertIn("source-distribution", interface_command)
+
         derived, _ = run_gates.derive_verification_set(
             self.ROOT, registry, self.recipes())
         self.assertNotIn(
             run_gates.CARD_CURRENTNESS_CAPABILITY,
             {gate_id for gate_id, _kind, _command in derived})
+
+    def test_an_adopter_preflight_checks_carried_runtime_projections(self):
+        preflights = run_gates._preflight_commands(
+            self.ROOT, "profiles/selected/profile.md")
+        interface_commands = [
+            command for capability, _label, command in preflights
+            if capability == "compiled-currentness" and
+            any("interface" in part or "cli_contract" in part
+                for part in command)
+        ]
+        self.assertEqual(2, len(interface_commands))
+        for command in interface_commands:
+            self.assertIn("--projection-target", command)
+            self.assertIn("carried-runtime", command)
 
 
 class BoundaryTests(unittest.TestCase):
