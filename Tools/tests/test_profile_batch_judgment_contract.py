@@ -10,11 +10,13 @@ from unittest import mock
 
 
 TOOLS = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(TOOLS / "tests"))
 sys.path.insert(0, str(TOOLS))
 
 import audit_evidence_runtime
 import profile_batch_judgment_contract as contract_module
 import record_batch_judgment
+from profile_fixture import FIXTURE_UPSTREAM_REVISION
 
 
 SHA_A = "sha256:" + "a" * 64
@@ -65,7 +67,7 @@ class ProfileBatchJudgmentContractTests(unittest.TestCase):
             "task_id": "task-1",
             "batch_id": "B1",
             "opening_transition_receipt": "opening-1",
-            "standards_version": "3.17.0",
+            "standards_version": FIXTURE_UPSTREAM_REVISION,
             "active_standards_sha256": SHA_A,
             "selected_profile_manifest": "profiles/fixture/profile.md",
             "profile_snapshot_sha256": SHA_B,

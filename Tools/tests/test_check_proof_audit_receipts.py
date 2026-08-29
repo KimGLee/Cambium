@@ -8,9 +8,11 @@ from unittest import mock
 
 
 TOOLS = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(TOOLS / "tests"))
 sys.path.insert(0, str(TOOLS))
 
 import check_proof
+from profile_fixture import FIXTURE_UPSTREAM_REVISION
 
 
 SHA_A = "sha256:" + "a" * 64
@@ -40,7 +42,7 @@ class TerminalProofAuditReceiptBoundaryTests(unittest.TestCase):
             "task_id": "task-1",
             "batch_id": "batch-1",
             "opening_transition_receipt": "open-1",
-            "standards_version": "3.17.0",
+            "standards_version": FIXTURE_UPSTREAM_REVISION,
             "active_standards_sha256": SHA_A,
             "selected_profile_manifest": "profiles/test/profile.md",
             "profile_snapshot_sha256": SHA_B,

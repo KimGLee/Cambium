@@ -14,6 +14,7 @@ sys.path.insert(0, str(TOOLS))
 import audit_dimension_contract  # noqa: E402
 import audit_plan_contract as contract  # noqa: E402
 import kblib  # noqa: E402
+import upstream_identity  # noqa: E402
 
 
 class AuditPlanContractTests(unittest.TestCase):
@@ -28,6 +29,8 @@ class AuditPlanContractTests(unittest.TestCase):
         self.assertEqual(tuple(plan), values["field_order"])
         self.assertEqual(
             ("obligation-001",), contract.required_obligation_ids(plan))
+        self.assertTrue(upstream_identity.is_full_commit_sha(
+            plan["standards_version"]))
         self.assertRegex(contract.plan_sha256(plan), r"^sha256:[0-9a-f]{64}$")
 
     def test_evidence_roles_resolve_from_the_canonical_registry(self):

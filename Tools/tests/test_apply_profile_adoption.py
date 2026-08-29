@@ -58,6 +58,7 @@ import standards_state  # noqa: E402
 import upstream_identity  # noqa: E402
 import test_profile_onboarding_status as tpos  # noqa: E402
 import test_template_fill  # noqa: E402  (reused semantic fill + scan config)
+from profile_fixture import FIXTURE_UPSTREAM_REVISION  # noqa: E402
 
 _BASE = None  # pristine adopting root, built once
 _ADOPTED = None  # the same root after one committed initial adoption
@@ -491,7 +492,7 @@ class ApplyProfileAdoptionTests(unittest.TestCase):
 
         root = self.clone()
         write_plan(root, initial_plan(
-            root, standards_version_after="3.17.0"))
+            root, standards_version_after=FIXTURE_UPSTREAM_REVISION))
         self.assert_refused(root, "compatibility alias")
 
     def test_component_byte_drift_is_refused_without_rewriting_card(self):

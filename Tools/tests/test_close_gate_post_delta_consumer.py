@@ -6,11 +6,13 @@ import unittest
 
 
 TOOLS = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(TOOLS / "tests"))
 sys.path.insert(0, str(TOOLS))
 
 import batch_close_audit
 import batch_close_contract
 from queue_runtime import close_gate
+from profile_fixture import FIXTURE_UPSTREAM_REVISION
 
 
 SHA_A = "sha256:" + "a" * 64
@@ -69,7 +71,7 @@ class PostDeltaCloseConsumerTests(unittest.TestCase):
             "task_id": "task-1",
             "batch_id": "B1",
             "opening_transition_receipt": "open-b1",
-            "standards_version": "3.17.0",
+            "standards_version": FIXTURE_UPSTREAM_REVISION,
             "active_standards_sha256": SHA_B,
             "selected_profile_manifest": "profiles/test/profile.md",
             "profile_snapshot_sha256": SHA_C,

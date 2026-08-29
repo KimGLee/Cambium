@@ -170,7 +170,7 @@ python3 Tools/init_state.py . \
   --profile-manifest profiles/my-profile/profile.md
 ```
 
-Read `APPROVED_UPSTREAM_COMMIT_SHA` from the active `.cambium/governance/standards_state.yaml`; it is the full upstream commit SHA, not a release label such as `3.17.0`.
+Read `APPROVED_UPSTREAM_COMMIT_SHA` from the active `.cambium/governance/standards_state.yaml`; it is the full upstream commit SHA, not a release label such as `X.Y.Z`.
 
 Review the dry run, then repeat the command with `--apply`.
 

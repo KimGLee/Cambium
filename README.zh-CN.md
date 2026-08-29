@@ -172,7 +172,7 @@ python3 Tools/init_state.py . \
   --profile-manifest profiles/my-profile/profile.md
 ```
 
-`APPROVED_UPSTREAM_COMMIT_SHA` 应读取当前 `.cambium/governance/standards_state.yaml` 中的完整上游 commit SHA，而不是 `3.17.0` 之类的发布标签。
+`APPROVED_UPSTREAM_COMMIT_SHA` 应读取当前 `.cambium/governance/standards_state.yaml` 中的完整上游 commit SHA，而不是 `X.Y.Z` 之类的发布标签。
 
 先检查预览结果，再加上 `--apply` 重复运行。
 

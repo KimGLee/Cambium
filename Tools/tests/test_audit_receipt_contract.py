@@ -8,9 +8,11 @@ import unittest
 
 REPOSITORY = Path(__file__).resolve().parents[2]
 TOOLS = REPOSITORY / "Tools"
+sys.path.insert(0, str(TOOLS / "tests"))
 sys.path.insert(0, str(TOOLS))
 
 import audit_receipt_contract as contract  # noqa: E402
+from profile_fixture import FIXTURE_UPSTREAM_REVISION  # noqa: E402
 
 
 class AuditReceiptContractTests(unittest.TestCase):
@@ -29,7 +31,7 @@ class AuditReceiptContractTests(unittest.TestCase):
             "task_id": "task-example",
             "batch_id": "batch-example",
             "opening_transition_receipt": "audit-update_queue-open-1",
-            "standards_version": "3.17.0",
+            "standards_version": FIXTURE_UPSTREAM_REVISION,
             "active_standards_sha256": "sha256:" + "2" * 64,
             "selected_profile_manifest": "profiles/example/profile.md",
             "profile_snapshot_sha256": "sha256:" + "3" * 64,

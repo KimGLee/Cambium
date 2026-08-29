@@ -4,12 +4,15 @@ import unittest
 from pathlib import Path
 
 TOOLS = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(TOOLS / "tests"))
 sys.path.insert(0, str(TOOLS))
 import standards_state
+from profile_fixture import FIXTURE_UPSTREAM_REVISION
 
 
 class StandardsStateTests(unittest.TestCase):
-    REVISION = "0123456789abcdef0123456789abcdef01234567"
+    REVISION = FIXTURE_UPSTREAM_REVISION
+    OTHER_REVISION = "fedcba9876543210fedcba9876543210fedcba98"
 
     def value(self):
         return {
@@ -67,7 +70,7 @@ class StandardsStateTests(unittest.TestCase):
 
     def test_next_state_advances_only_current_identity(self):
         before = self.value()
-        revision = "fedcba9876543210fedcba9876543210fedcba98"
+        revision = self.OTHER_REVISION
         after = standards_state.next_state(
             before,
             effective_date="2026-08-22",
@@ -81,7 +84,7 @@ class StandardsStateTests(unittest.TestCase):
 
     def test_version_alias_and_upstream_commit_are_one_identity(self):
         for mutation in (
-                {"standards_version": "3.17.0"},
+                {"standards_version": self.OTHER_REVISION},
                 {"upstream_revision_id": "abc123"},
                 {"upstream_source_ref": None},
                 {"upstream_revision_id": None}):

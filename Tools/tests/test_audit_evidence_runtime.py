@@ -12,6 +12,7 @@ import unittest
 
 REPOSITORY = Path(__file__).resolve().parents[2]
 TOOLS = REPOSITORY / "Tools"
+sys.path.insert(0, str(TOOLS / "tests"))
 sys.path.insert(0, str(TOOLS))
 
 import audit_evidence_runtime
@@ -27,6 +28,7 @@ import project_page_state
 import record_changed_scope_evidence
 import runtime_paths
 import substantive_review_contract
+from profile_fixture import FIXTURE_UPSTREAM_REVISION
 
 from queue_runtime import UPDATE_QUEUE_TOOL_VERSION
 
@@ -124,7 +126,7 @@ class AuditEvidenceRuntimeTests(unittest.TestCase):
             "queue_revision": 3,
             "queue_state_revision": 5,
             "required_queue_sha256": SHA_A,
-            "standards_version": "3.17.0",
+            "standards_version": FIXTURE_UPSTREAM_REVISION,
             "active_standards_sha256": SHA_B,
             "selected_profile_manifest": "profiles/atlas/profile.md",
             "profile_snapshot_sha256": SHA_C,
@@ -158,7 +160,7 @@ class AuditEvidenceRuntimeTests(unittest.TestCase):
             "task_id": "task-1",
             "batch_id": "B001",
             "opening_transition_receipt": "opening-1",
-            "standards_version": "3.17.0",
+            "standards_version": FIXTURE_UPSTREAM_REVISION,
             "active_standards_sha256": SHA_B,
             "selected_profile_manifest": "profiles/atlas/profile.md",
             "profile_snapshot_sha256": SHA_C,
@@ -193,7 +195,7 @@ class AuditEvidenceRuntimeTests(unittest.TestCase):
             "task_id": "task-1",
             "batch_id": "B001",
             "opening_transition_receipt": "opening-1",
-            "standards_version": "3.17.0",
+            "standards_version": FIXTURE_UPSTREAM_REVISION,
             "active_standards_sha256": SHA_B,
             "selected_profile_manifest": "profiles/atlas/profile.md",
             "profile_snapshot_sha256": SHA_C,
@@ -268,7 +270,7 @@ class AuditEvidenceRuntimeTests(unittest.TestCase):
             "items_by_id": {"B001": self.item},
             "current_receipt_catalog": self.catalog,
             "_active_standards_authorized_view": {
-                "standards_version": "3.17.0",
+                "standards_version": FIXTURE_UPSTREAM_REVISION,
                 "active_standards_sha256": SHA_B,
             },
             "_profile_authorized_view": {

@@ -10,6 +10,7 @@ from unittest import mock
 
 REPOSITORY = Path(__file__).resolve().parents[2]
 TOOLS = REPOSITORY / "Tools"
+sys.path.insert(0, str(TOOLS / "tests"))
 sys.path.insert(0, str(TOOLS))
 
 import audit_plan_contract  # noqa: E402
@@ -18,6 +19,7 @@ import audit_producer_runtime  # noqa: E402
 import complete_audit_receipt  # noqa: E402
 import record_rendering_verification as producer  # noqa: E402
 import rendering_verification_contract as contract  # noqa: E402
+from profile_fixture import FIXTURE_UPSTREAM_REVISION  # noqa: E402
 
 
 SHA_A = "sha256:" + "a" * 64
@@ -65,7 +67,7 @@ class RenderingVerificationContractTests(unittest.TestCase):
             "queue_revision": 1,
             "queue_state_revision": 2,
             "required_queue_sha256": SHA_A,
-            "standards_version": "3.17.0",
+            "standards_version": FIXTURE_UPSTREAM_REVISION,
             "active_standards_sha256": SHA_A,
             "selected_profile_manifest": "profiles/test/profile.md",
             "profile_snapshot_sha256": SHA_A,
