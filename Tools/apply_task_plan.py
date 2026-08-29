@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Materialize a task's runtime from one operator-confirmed plan.
+"""Declare a task and its Queue structure from one operator-confirmed plan.
 
 `init_state.py` creates the namespace and stops: the Task Contract's five
 loaded-set fields are empty, Coverage holds no pages, and the Queue is empty
@@ -9,7 +9,8 @@ state -- which R01 forbids, and which leaves no evidence of what was confirmed.
 
 This is that writer. It consumes one closed restricted-YAML plan, verifies the
 runtime is still the empty skeleton the plan was prepared against, and writes
-the Contract and the Coverage inventory as one transaction.
+the Contract plus planning-only Coverage rows as one transaction.  Those rows
+declare work and Queue assignment but own no current page status or evidence.
 
 It deliberately does not write the Queue. `check_queue._coverage_provenance_
 errors` states that before the first Queue materialization both Coverage and
@@ -26,11 +27,12 @@ not an inconsistent window -- it is exactly the pre-materialization state the
 runtime model already blesses, and a crash there is resumed by running the
 compiler.
 
-What it will not do: infer. The plan supplies which objects are Required, who
-owns them, their priority, dependencies, and batch assignment. Exactly two
-derivations are allowed, both deterministic and both owned elsewhere -- the
-Queue from the confirmed Coverage, and the Card/Read Set closure from the
-confirmed route IDs. Everything else is an answer the operator gave.
+What it will not do: infer or adopt page state. The plan supplies which objects
+are Required, who owns them, their priority, dependencies, and batch
+assignment. Exactly two derivations are allowed, both deterministic and both
+owned elsewhere -- the Queue from the confirmed planning rows, and the Card/
+Read Set closure from the confirmed route IDs. Current page state is created
+only by the queued -> open transaction for that batch.
 
 It also refuses to run twice with different bytes. A plan interrupted mid-write
 may be re-applied from the same path and SHA to finish; a *different* plan
@@ -50,29 +52,26 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import check_proof
 import check_queue
 import compile_queue
+import coverage_contract
 import kblib
 import amendment_policy
-import metadata_execution_contract
-import metadata_property_state
-import project_page_state
 import profile_contract
 import runtime_paths
 import runtime_state_contract
 
 TOOL = "apply_task_plan"
-TOOL_VERSION = "1.2.0"
+TOOL_VERSION = "1.3.0"
 CHECK = "task_plan"
 PLAN_PREFIX = runtime_paths.TASK_PLAN_DELTA_ROOT
 RECEIPT_PATH = runtime_paths.TASK_PLAN_RECEIPT_PATH
 SENTINEL = "TODO(plan)"
-LEGACY_PROPERTY_ADOPTION_OPERATION = "legacy-property-adoption-v1"
 
 PLAN_FIELDS = {
     "schema_version", "plan_id", "task_id", "approval_reference",
-    "before", "contract_after", "coverage_after",
+    "before", "contract_after", "planned_work",
 }
 BEFORE_FIELDS = runtime_state_contract.RUNTIME_LEDGER_FINGERPRINT_FIELDS
-COVERAGE_AFTER_FIELDS = {"pages", "batch_specs"}
+PLANNED_WORK_FIELDS = {"pages", "batch_specs"}
 
 # Owned by K13/02; this tool supplies values for exactly this closed set and
 # never adds a field.  Kept in step with check_queue's own contract field set.
@@ -183,8 +182,8 @@ def _validate_plan_shape(plan):
             "task plan still carries the template's %s sentinel; every one of "
             "them is an answer this transaction will not invent" % SENTINEL)
     _closed(plan, PLAN_FIELDS, "task plan")
-    if plan["schema_version"] != 1:
-        raise Refusal("task plan schema_version must be 1")
+    if plan["schema_version"] != 2:
+        raise Refusal("task plan schema_version must be 2")
     for field in ("plan_id", "task_id", "approval_reference"):
         value = plan[field]
         if not isinstance(value, str) or not value.strip():
@@ -207,33 +206,27 @@ def _validate_plan_shape(plan):
             raise Refusal(
                 "task plan amendment authority is not the K13/02 shape:\n  %s"
                 % "\n  ".join(authority_errors[:8]))
-    _closed(plan["coverage_after"], COVERAGE_AFTER_FIELDS,
-            "task plan coverage_after")
-    for field in sorted(COVERAGE_AFTER_FIELDS):
-        if not isinstance(plan["coverage_after"][field], list):
-            raise Refusal("task plan coverage_after.%s must be a list" % field)
-    if not plan["coverage_after"]["pages"]:
+    _closed(plan["planned_work"], PLANNED_WORK_FIELDS,
+            "task plan planned_work")
+    for field in sorted(PLANNED_WORK_FIELDS):
+        if not isinstance(plan["planned_work"][field], list):
+            raise Refusal("task plan planned_work.%s must be a list" % field)
+    if not plan["planned_work"]["pages"]:
         raise Refusal(
-            "task plan coverage_after.pages is empty; a plan that materializes "
+            "task plan planned_work.pages is empty; a plan that declares "
             "no Required object leaves the runtime exactly as init_state left "
             "it and has nothing to confirm")
-    for index, page in enumerate(plan["coverage_after"]["pages"]):
-        label = "task plan coverage_after.pages[%d]" % index
+    for index, page in enumerate(plan["planned_work"]["pages"]):
+        label = "task plan planned_work.pages[%d]" % index
         if not isinstance(page, dict):
             raise Refusal("%s must be a mapping" % label)
-        if "property_state" not in page or not isinstance(
-                page.get("property_state"), dict):
+        shape_errors = coverage_contract.page_shape_errors(page, label)
+        if shape_errors:
+            raise Refusal("\n  ".join(shape_errors))
+        if not coverage_contract.is_planning_page(page):
             raise Refusal(
-                "%s must carry an explicit property_state mapping; an empty "
-                "mapping is the current no-owner state" % label)
-        if page.get("property_state"):
-            raise Refusal(
-                "%s is a new runtime page and may not claim pre-existing "
-                "current property evidence" % label)
-        if "legacy_property_state" in page:
-            raise Refusal(
-                "%s is a new runtime page and may not claim legacy property "
-                "observations" % label)
+                "%s claims current page state; initial Task Plan rows may "
+                "declare only scope and Queue assignment" % label)
 
 
 def _state_paths(root):
@@ -296,86 +289,11 @@ def _require_empty_skeleton(documents, plan):
                 % (name, recorded, plan["task_id"]))
 
 
-def _derive_property_state_adoption(root, pages, profile_view):
-    """Derive honest legacy observations from immutable page snapshots.
-
-    The operator confirms inventory and scope, not evidence it cannot prove.
-    Existing machine fields are therefore observed by the writer itself under
-    the same Core + typed-Profile rule set later used by ``check_queue``.  The
-    result records either an exact page SHA and explicit unverified values, or
-    an absent page and an empty owner state.  Nothing here manufactures a
-    review/content date or receipt.
-    """
-    try:
-        metadata_contract, rules = \
-            metadata_property_state.authorized_profile_projection_rules(
-                root, profile_view)
-        if not metadata_execution_contract.compiled_capability_supports(
-                metadata_contract, LEGACY_PROPERTY_ADOPTION_OPERATION,
-                LEGACY_PROPERTY_ADOPTION_OPERATION, kind="writer"):
-            raise ValueError(
-                "compiled metadata contract does not authorize the %s "
-                "writer operation" % LEGACY_PROPERTY_ADOPTION_OPERATION)
-    except (OSError, TypeError, UnicodeError, ValueError,
-            metadata_execution_contract.MetadataExecutionContractError) as exc:
-        raise Refusal(
-            "cannot compose the metadata rules used for initial property "
-            "adoption: %s" % exc)
-    indexed = {}
-    for index, row in enumerate(pages):
-        path = row.get("path") if isinstance(row, dict) else None
-        if (not isinstance(path, str) or not path.strip() or
-                path in indexed):
-            raise Refusal(
-                "coverage_after.pages[%d] has no unique page path" % index)
-        indexed[path] = row
-    try:
-        adoption = metadata_property_state.build_legacy_property_removal_plan(
-            root, sorted(indexed), rules=rules)
-    except (OSError, TypeError, UnicodeError, ValueError,
-            kblib.YamlSubsetError) as exc:
-        raise Refusal(
-            "cannot freeze initial property source pages: %s" % exc)
-    for record in adoption["records"]:
-        legacy = record["legacy_property_state"]
-        if legacy:
-            indexed[record["path"]][
-                check_queue.LEGACY_PROPERTY_STATE_FIELD] = \
-                copy.deepcopy(legacy)
-    adoption["metadata_execution_contract_fingerprint"] = \
-        metadata_contract.contract_fingerprint
-    adoption["metadata_execution_rule_fingerprint"] = \
-        adoption["plan"].contract_rule_fingerprint
-    adoption["operation_capability"] = \
-        LEGACY_PROPERTY_ADOPTION_OPERATION
-    return adoption
-
-
-def _require_property_sources_current(root, adoption):
-    """CAS every page/absence from which the migration was derived.
-
-    The metadata contract is part of the surrounding runtime-authority CAS;
-    reopening it here would create a second observation rather than strengthen
-    the transaction.
-    """
-    for record in adoption["records"]:
-        path = record["path"]
-        snapshot = kblib.repository_target_snapshot(
-            root, path, suffixes=(".md", ".MD"), singly_linked=True)
-        current = snapshot.sha256 if snapshot.exists else None
-        if current != record["before_page_sha256"]:
-            raise Refusal(
-                "initial property source page %s changed between planning "
-                "and commit" % path)
-
-
 def _build_after(root, documents, plan, profile_view):
     coverage = copy.deepcopy(documents["coverage"])
     progress = copy.deepcopy(documents["progress"])
-    coverage["pages"] = copy.deepcopy(plan["coverage_after"]["pages"])
-    coverage["batch_specs"] = copy.deepcopy(plan["coverage_after"]["batch_specs"])
-    adoption = _derive_property_state_adoption(
-        root, coverage["pages"], profile_view)
+    coverage["pages"] = copy.deepcopy(plan["planned_work"]["pages"])
+    coverage["batch_specs"] = copy.deepcopy(plan["planned_work"]["batch_specs"])
     contract = copy.deepcopy(progress.get("contract") or {})
     contract.update(copy.deepcopy(plan["contract_after"]))
     derived = _derive_load_sets(root, contract)
@@ -393,11 +311,10 @@ def _build_after(root, documents, plan, profile_view):
         raise Refusal(
             "the Queue compiler rejects this plan's Coverage, so no runtime "
             "could be materialized from it: %s" % exc)
-    return coverage, queue, progress, derived, adoption
+    return coverage, queue, progress, derived
 
 
-def _validate_proposed(root, coverage, progress, _documents,
-                       property_adoption):
+def _validate_proposed(root, coverage, progress, _documents):
     """Validate the state this transaction writes, with the Queue untouched.
 
     A Coverage inventory whose batches have no Queue items is not a broken
@@ -419,7 +336,6 @@ def _validate_proposed(root, coverage, progress, _documents,
             check_queue.COVERAGE_PATH: (texts["coverage"], coverage),
             check_queue.PROGRESS_PATH: (texts["progress"], progress),
         },
-        page_projection_overrides=property_adoption["after_text_by_path"],
         allow_unmaterialized_queue=True,
     )["errors"]
     return texts, errors
@@ -522,7 +438,7 @@ def prepare(root, plan_relative):
             % "\n  ".join(current["errors"][:5]))
 
     authority = check_queue.runtime_authority_context(current)
-    coverage, queue, progress, derived, property_adoption = _build_after(
+    coverage, queue, progress, derived = _build_after(
         root, documents, plan, authority["profile_view"])
 
     # The derivation must satisfy the checker that resolves the same canonical
@@ -537,8 +453,7 @@ def prepare(root, plan_relative):
             "the derived load declaration does not satisfy the checker that "
             "judges it:\n  %s" % "\n  ".join(gaps[:10]))
 
-    texts, errors = _validate_proposed(
-        root, coverage, progress, documents, property_adoption)
+    texts, errors = _validate_proposed(root, coverage, progress, documents)
     if errors:
         raise Refusal(
             "the runtime this plan proposes does not validate:\n  %s"
@@ -559,7 +474,6 @@ def prepare(root, plan_relative):
         "queue": queue,
         "queue_revision": documents["queue"].get("queue_revision"),
         "derived": derived,
-        "property_adoption": property_adoption,
         "authority": authority,
     }
 
@@ -582,16 +496,6 @@ def _lock_operation(prepared, commit, abort):
         "receipt_id": commit["receipt_id"],
         "receipt_path": RECEIPT_PATH,
         "transaction_phase": "commit",
-        "property_state_adoption_set_sha256":
-            prepared["property_adoption"]["set_sha256"],
-        "metadata_execution_contract_fingerprint":
-            prepared["property_adoption"][
-                "metadata_execution_contract_fingerprint"],
-        "metadata_execution_rule_fingerprint":
-            prepared["property_adoption"][
-                "metadata_execution_rule_fingerprint"],
-        "operation_capability": prepared["property_adoption"][
-            "operation_capability"],
     }
     operation.update(check_queue.runtime_authority_lock_fields(
         prepared["authority"]))
@@ -611,10 +515,11 @@ def commit(prepared, receipt_path):
     root = prepared["root"]
     commit_receipt = _receipt(
         plan, "commit", "pass",
-        "wrote the Task Contract and %d Coverage record(s) from plan %s; the "
+        "wrote the Task Contract and %d planning-only Coverage record(s) "
+        "from plan %s; the "
         "Queue it compiles to has %d item(s) and is materialized by "
         "compile_queue"
-        % (len(plan["coverage_after"]["pages"]), prepared["plan_path"],
+        % (len(plan["planned_work"]["pages"]), prepared["plan_path"],
            len(prepared["queue"].get("required_queue") or [])), 1)
     # The state edge, on the receipt itself, so the generic writer recovery
     # protocol can compare declared intent against the landed receipt.
@@ -624,20 +529,7 @@ def commit(prepared, receipt_path):
         "before_progress_sha256": prepared["before_sha"]["progress"],
         "after_coverage_sha256": prepared["after_sha"]["coverage"],
         "after_progress_sha256": prepared["after_sha"]["progress"],
-        "property_state_adoption_records": copy.deepcopy(
-            prepared["property_adoption"]["records"]),
-        "property_state_adoption_count":
-            prepared["property_adoption"]["count"],
-        "property_state_adoption_set_sha256":
-            prepared["property_adoption"]["set_sha256"],
-        "metadata_execution_contract_fingerprint":
-            prepared["property_adoption"][
-                "metadata_execution_contract_fingerprint"],
-        "metadata_execution_rule_fingerprint":
-            prepared["property_adoption"][
-                "metadata_execution_rule_fingerprint"],
-        "operation_capability": prepared["property_adoption"][
-            "operation_capability"],
+        "planning_record_count": len(plan["planned_work"]["pages"]),
     })
     profile_view = prepared["authority"]["profile_view"]
     for field in profile_contract.PROFILE_LOAD_EVIDENCE_FIELDS:
@@ -657,29 +549,16 @@ def commit(prepared, receipt_path):
                         "%s changed between planning and commit" % name)
             check_queue.require_runtime_authority_current(
                 root, prepared["authority"],
-                "runtime authority changed before initial property adoption")
-            _require_property_sources_current(
-                root, prepared["property_adoption"])
+                "runtime authority changed before initial task planning")
         written = []
-        page_transaction = None
         try:
-            page_plan = prepared["property_adoption"]["plan"]
-            if any(page.changed for page in page_plan.pages):
-                page_transaction = project_page_state.stage_projection_plan(
-                    root, page_plan, lease,
-                    transaction_id="task-plan-property-%s" %
-                    commit_receipt["receipt_id"])
             for name in WRITTEN_NAMES:
                 kblib.atomic_write_text(
                     prepared["paths"][name], prepared["after_text"][name])
                 written.append(name)
             check_queue.require_runtime_authority_current(
                 root, prepared["authority"],
-                "runtime authority changed during initial property adoption")
-            _require_property_sources_current(
-                root, prepared["property_adoption"])
-            if page_transaction is not None:
-                page_transaction.publish()
+                "runtime authority changed during initial task planning")
             post = check_queue.validate_runtime(
                 root, extra_receipts=[commit_receipt],
                 allow_unmaterialized_queue=True,
@@ -687,7 +566,7 @@ def commit(prepared, receipt_path):
                     prepared["authority"]))
             if post["errors"]:
                 raise Refusal(
-                    "initial property adoption after-image does not validate: "
+                    "initial task planning after-image does not validate: "
                     "%s" % "; ".join(post["errors"][:10]))
             before = kblib.receipt_append_observation(
                 receipt_path, [commit_receipt])
@@ -707,25 +586,10 @@ def commit(prepared, receipt_path):
                     prepared["authority"]))
             if persisted["errors"]:
                 raise Refusal(
-                    "persisted initial property adoption does not validate: "
+                    "persisted initial task planning does not validate: "
                     "%s" % "; ".join(persisted["errors"][:10]))
-            if page_transaction is not None:
-                page_transaction.commit()
         except Exception as original:
-            if (page_transaction is not None and
-                    page_transaction.state == "commit-cleanup-failed"):
-                raise ValueError(
-                    "initial property adoption committed but page recovery "
-                    "cleanup is incomplete; inspect the retained writer "
-                    "journal: %s" % original) from original
             rollback_failures = []
-            if (page_transaction is not None and
-                    page_transaction.state not in
-                    ("rolled-back", "committed")):
-                try:
-                    page_transaction.rollback()
-                except Exception as exc:
-                    rollback_failures.append("page projection: %s" % exc)
             for name in reversed(written):
                 try:
                     kblib.atomic_write_text(
@@ -735,7 +599,7 @@ def commit(prepared, receipt_path):
                     rollback_failures.append("%s: %s" % (name, exc))
             if rollback_failures:
                 raise ValueError(
-                    "initial property adoption failed and rollback is "
+                    "initial task planning failed and rollback is "
                     "incomplete: %s; %s" %
                     (original, "; ".join(rollback_failures))) from original
             abort_before = kblib.receipt_append_observation(
@@ -745,7 +609,7 @@ def commit(prepared, receipt_path):
                 before=abort_before)
             if abort_error is not None or abort_outcome != "present":
                 raise ValueError(
-                    "initial property adoption rolled back but abort evidence "
+                    "initial task planning rolled back but abort evidence "
                     "is incomplete: outcome=%s error=%s" %
                     (abort_outcome, abort_error)) from original
             lease.mark_reconciled()
@@ -772,8 +636,9 @@ def _report(prepared):
     print("apply_task_plan: plan %s task %s"
           % (plan["plan_id"], plan["task_id"]))
     print("  confirmed by: %s" % plan["approval_reference"])
-    print("  Coverage records: %d" % len(plan["coverage_after"]["pages"]))
-    print("  batch specs: %d" % len(plan["coverage_after"]["batch_specs"]))
+    print("  planning-only Coverage records: %d" %
+          len(plan["planned_work"]["pages"]))
+    print("  batch specs: %d" % len(plan["planned_work"]["batch_specs"]))
     print("  Queue items it compiles to: %d" % len(items))
     print("  resolved from %d selected route(s): %d Read Set(s), %d module(s)"
           % (prepared["derived"]["routes"], prepared["derived"]["read_sets"],

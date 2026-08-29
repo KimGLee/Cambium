@@ -17,6 +17,7 @@ import datetime
 import re
 
 import kblib
+import coverage_contract
 import metadata_execution_contract
 import metadata_property_state
 import project_page_state
@@ -395,6 +396,12 @@ def coverage_property_state_errors(
     seen_content_receipts = set()
     for index, row in enumerate(pages):
         if not isinstance(row, dict):
+            continue
+        # Planning-only Coverage rows declare future work and assignment but
+        # deliberately own no current metadata value or page projection.  The
+        # queued -> open transaction materializes the selected manifest before
+        # any page-state consumer may use it.
+        if coverage_contract.is_complete_planning_page(row):
             continue
         path = row.get("path")
         label = "Coverage pages[%d] property_state" % index

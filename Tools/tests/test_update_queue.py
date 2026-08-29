@@ -140,6 +140,49 @@ class UpdateQueueFixture:
             page_contract_text, encoding="utf-8")
         self.assertEqual([], check_queue.validate_runtime(self.root)["errors"])
 
+    def dematerialize_for_initial_planning(self):
+        """Convert the untouched queued fixture to the Task Plan v2 boundary.
+
+        Other Queue tests intentionally begin from already-materialized
+        lifecycle states.  Only tests of the first queued -> open edge use
+        this helper, so historical scenario fixtures are not silently
+        rewritten as planning records.
+        """
+        coverage_path = self.root / check_queue.COVERAGE_PATH
+        progress_path = self.root / check_queue.PROGRESS_PATH
+        origin_path = self.root / ".cambium/receipts/task-transitions.jsonl"
+        coverage = self.load(check_queue.COVERAGE_PATH)
+        for page in coverage["pages"]:
+            for field in ("authoring_status", "gate_receipts",
+                          "property_state", "legacy_property_state"):
+                page.pop(field, None)
+            page_path = self.root / page["path"]
+            text = page_path.read_text(encoding="utf-8")
+            lines = text.splitlines()
+            lines.insert(lines.index("---", 1),
+                         "authoring_status: reviewed")
+            page_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+        coverage_path.write_text(
+            kblib.canonical_yaml(coverage), encoding="utf-8")
+        progress = self.load(check_queue.PROGRESS_PATH)
+        progress["checkpoint"]["coverage_sha256"] = \
+            kblib.sha256_file(coverage_path)
+        progress_path.write_text(
+            kblib.canonical_yaml(progress), encoding="utf-8")
+        records = [json.loads(line) for line in origin_path.read_text(
+            encoding="utf-8").splitlines() if line.strip()]
+        for record in records:
+            if record.get("receipt_id") == "audit-fixture-initial-queue":
+                coverage_sha256 = kblib.sha256_file(coverage_path)
+                record["before_coverage_sha256"] = coverage_sha256
+                record["after_coverage_sha256"] = coverage_sha256
+                record["after_progress_sha256"] = \
+                    kblib.sha256_file(progress_path)
+        origin_path.write_text(
+            "".join(json.dumps(record, separators=(",", ":")) + "\n"
+                    for record in records), encoding="utf-8")
+        self.assertEqual([], check_queue.validate_runtime(self.root)["errors"])
+
     def write_delta(self, batch_id, object_path, receipt_id, *,
                     open_gaps_added=None, open_gaps_closed=None,
                     generated_at="2026-08-04T02:00:00Z"):
@@ -1219,6 +1262,14 @@ def _build_ready(walker, inherited):
     return {"ready_gate": walker.queue_gate("--require-ready", "B1")}
 
 
+def _build_planning_base(walker, inherited):
+    walker.dematerialize_for_initial_planning()
+
+
+def _build_planning_ready(walker, inherited):
+    return {"ready_gate": walker.queue_gate("--require-ready", "B1")}
+
+
 def _build_active(walker, inherited):
     walker.make_task_active_without_open()
 
@@ -1298,6 +1349,8 @@ def _build_req_open_b1(walker, inherited):
 _TEMPLATE_PARENTS = {
     "base": None,
     "ready": "base",
+    "planning-base": "base",
+    "planning-ready": "planning-base",
     "active": "base",
     "active-ready": "active",
     "open-b1": "base",
@@ -1314,6 +1367,8 @@ _TEMPLATE_PARENTS = {
 _TEMPLATE_BUILDERS = {
     "base": _build_base,
     "ready": _build_ready,
+    "planning-base": _build_planning_base,
+    "planning-ready": _build_planning_ready,
     "active": _build_active,
     "active-ready": _build_active_ready,
     "open-b1": _build_open_b1,
@@ -1382,7 +1437,7 @@ class ReadyGateScenarioTests(_TemplateBackedCase):
     # "ready" template.  Every test here runs (or poisons) its own open
     # against that gate -- the open is each test's subject, never shared --
     # so each starts from a private copy of the tree.
-    TEMPLATE = "ready"
+    TEMPLATE = "planning-ready"
 
     def test_dry_run_does_not_write(self):
         path = self.root / check_queue.QUEUE_PATH
@@ -1438,6 +1493,22 @@ class ReadyGateScenarioTests(_TemplateBackedCase):
         self.assertEqual(
             receipt["manifest_semantic_before_set_sha256"],
             opening["manifest_semantic_before_set_sha256"])
+        coverage = {
+            row["path"]: row for row in result["coverage"]["pages"]
+        }
+        self.assertEqual("unassessed",
+                         coverage["Topics/A.md"]["authoring_status"])
+        self.assertEqual([], coverage["Topics/A.md"]["gate_receipts"])
+        self.assertEqual({}, coverage["Topics/A.md"]["property_state"])
+        self.assertNotIn("authoring_status", coverage["Topics/B.md"])
+        self.assertNotIn("gate_receipts", coverage["Topics/B.md"])
+        self.assertNotIn("property_state", coverage["Topics/B.md"])
+        self.assertIn(
+            "authoring_status: unassessed",
+            (self.root / "Topics/A.md").read_text(encoding="utf-8"))
+        self.assertIn(
+            "authoring_status: reviewed",
+            (self.root / "Topics/B.md").read_text(encoding="utf-8"))
 
     def test_page_change_after_open_state_write_aborts_without_losing_edit(self):
         gate = self.scenario["ready_gate"]
@@ -1470,7 +1541,10 @@ class ReadyGateScenarioTests(_TemplateBackedCase):
             ])
 
         self.assertEqual(1, code, output.getvalue())
-        self.assertIn("opening semantic baseline changed", output.getvalue())
+        self.assertTrue(
+            "opening semantic baseline changed" in output.getvalue() or
+            "page identity or bytes changed before publication" in
+            output.getvalue(), output.getvalue())
         for path, before in tracked.items():
             self.assertEqual(before, (self.root / path).read_bytes(), path)
         self.assertEqual(concurrent, page.read_text(encoding="utf-8"))

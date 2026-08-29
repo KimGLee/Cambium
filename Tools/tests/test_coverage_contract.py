@@ -72,6 +72,13 @@ def required_page(batch_id="B1"):
     }
 
 
+def planned_page(batch_id="B1"):
+    page = required_page(batch_id)
+    for field in ("authoring_status", "gate_receipts", "property_state"):
+        page.pop(field)
+    return page
+
+
 def _literal_string_set(node):
     """Read a top-level literal collection, including frozenset((...))."""
     if isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and \
@@ -147,6 +154,8 @@ class SharedShapeOwnershipTests(unittest.TestCase):
         protected = {
             coverage_contract.COVERAGE_TOP_LEVEL_FIELDS,
             coverage_contract.COVERAGE_PAGE_FIELDS,
+            coverage_contract.COVERAGE_PLANNED_PAGE_FIELDS,
+            coverage_contract.COVERAGE_RUNTIME_PAGE_REQUIRED_FIELDS,
             coverage_contract.COVERAGE_REROUTE_FIELDS,
             coverage_contract.COVERAGE_BATCH_SPEC_FIELDS,
             coverage_contract.COVERAGE_DELTA_FIELDS,
@@ -173,6 +182,34 @@ class SharedShapeOwnershipTests(unittest.TestCase):
 
 
 class SharedShapeBehaviorTests(unittest.TestCase):
+    def test_planning_and_runtime_page_shapes_are_distinct_closed_forms(self):
+        self.assertEqual(
+            [], coverage_contract.page_shape_errors(
+                planned_page(), "planned"))
+        self.assertTrue(coverage_contract.is_planning_page(planned_page()))
+        self.assertTrue(coverage_contract.is_complete_planning_page(
+            planned_page()))
+        self.assertEqual(
+            [], coverage_contract.page_shape_errors(
+                required_page(), "runtime"))
+        self.assertFalse(coverage_contract.is_planning_page(required_page()))
+
+        partial = planned_page()
+        partial["authoring_status"] = "reviewed"
+        errors = coverage_contract.page_shape_errors(partial, "partial")
+        self.assertTrue(any("partially materializes" in error
+                            for error in errors), errors)
+        self.assertFalse(coverage_contract.is_complete_planning_page(
+            {"path": "Topics/Only.md"}))
+
+        legacy = required_page()
+        legacy.pop("property_state")
+        self.assertTrue(coverage_contract.page_shape_errors(
+            legacy, "legacy"))
+        self.assertEqual([], coverage_contract.page_shape_errors(
+            legacy, "legacy",
+            allow_legacy_missing_property=True))
+
     def test_unknown_coverage_top_level_field_stays_rejected_by_both_paths(self):
         current = coverage()
         proposal = copy.deepcopy(current)

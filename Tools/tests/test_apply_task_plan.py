@@ -84,12 +84,9 @@ PAGE = {
     "tier": "M",
     "priority": "P1",
     "coverage_disposition": "required",
-    "authoring_status": "unassessed",
     "prerequisites": [],
     "batch": None,
     "next_batch": "%s-B0" % TASK_ID,
-    "gate_receipts": [],
-    "property_state": {},
     "deferred_reason": None,
     "reentry_condition": None,
 }
@@ -157,7 +154,7 @@ class TaskPlanTransactionTests(unittest.TestCase):
 
     def plan(self, **overrides):
         plan = {
-            "schema_version": 1,
+            "schema_version": 2,
             "plan_id": "TP-001",
             "task_id": TASK_ID,
             "approval_reference": "operator confirmation 2026-08-04",
@@ -185,7 +182,7 @@ class TaskPlanTransactionTests(unittest.TestCase):
                 "hard_stop_at": "",
                 "completion_gate": "required-queue-complete",
             },
-            "coverage_after": {
+            "planned_work": {
                 "pages": [copy.deepcopy(PAGE)],
                 "batch_specs": [copy.deepcopy(BATCH_SPEC)],
             },
@@ -218,8 +215,10 @@ class TaskPlanTransactionTests(unittest.TestCase):
     def test_shipped_template_carries_the_required_page_shape(self):
         template = kblib.load_yaml_file(
             REPOSITORY / "Tools/schemas/task_plan.template.yaml")
-        page = template["coverage_after"]["pages"][0]
-        self.assertEqual({}, page["property_state"])
+        page = template["planned_work"]["pages"][0]
+        self.assertNotIn("authoring_status", page)
+        self.assertNotIn("gate_receipts", page)
+        self.assertNotIn("property_state", page)
         self.assertEqual([], sorted(set(PAGE) - set(page)))
 
     # ---- the edge it closes --------------------------------------------
@@ -411,18 +410,18 @@ class TaskPlanTransactionTests(unittest.TestCase):
         check here would be exactly the accretion K00/03 asks about.
         """
         no_batch = self.plan()
-        no_batch["coverage_after"]["pages"][0]["next_batch"] = None
+        no_batch["planned_work"]["pages"][0]["next_batch"] = None
         message = self.prepare_error(no_batch)
         self.assertIn("the Queue compiler rejects", message)
         self.assertIn("no explicit batch/next_batch", message)
 
         nothing_required = self.plan()
-        nothing_required["coverage_after"]["pages"][0].update(
+        nothing_required["planned_work"]["pages"][0].update(
             {"coverage_disposition": "deferred",
              "next_batch": None,
              "deferred_reason": "not in this task",
              "reentry_condition": "operator revisits scope"})
-        nothing_required["coverage_after"]["batch_specs"] = []
+        nothing_required["planned_work"]["batch_specs"] = []
         message = self.prepare_error(nothing_required)
         self.assertIn("the Queue compiler rejects", message)
         self.assertIn("no Required objects to compile", message)
@@ -444,51 +443,33 @@ class TaskPlanTransactionTests(unittest.TestCase):
             "gates that already exist")
         self.assertEqual(TASK_ID, record["task_id"])
 
-    def test_existing_page_properties_are_derived_as_legacy_not_asserted(self):
+    def test_existing_page_state_is_not_read_or_adopted_by_planning(self):
         page_path = self.root / PAGE["path"]
         page_path.parent.mkdir(parents=True, exist_ok=True)
         page_path.write_text(
             "---\ntitle: First\nlast_reviewed: 2026-07-31\n---\nBody\n",
             encoding="utf-8")
+        before_page = page_path.read_bytes()
         self.write_plan(self.plan())
 
         prepared = apply_task_plan.prepare(str(self.root), PLAN_RELATIVE)
         coverage = kblib.parse_yaml_subset(
             prepared["after_text"]["coverage"])
         row = coverage["pages"][0]
-        self.assertEqual({}, row["property_state"])
-        self.assertEqual({
-            "last_reviewed": {
-                "status": "legacy-unverified",
-                "value": "2026-07-31",
-            },
-        }, row["legacy_property_state"])
-        adoption = prepared["property_adoption"]
-        self.assertEqual(1, adoption["count"])
-        self.assertEqual(
-            kblib.sha256_file(page_path),
-            adoption["records"][0]["before_page_sha256"])
+        self.assertEqual(PAGE, row)
+        self.assertNotIn("authoring_status", row)
+        self.assertNotIn("gate_receipts", row)
+        self.assertNotIn("property_state", row)
 
         self.assertEqual(0, self.run_tool(apply=True), self.printed)
         receipt = json.loads((
             self.root / apply_task_plan.RECEIPT_PATH).read_text(
                 encoding="utf-8").splitlines()[-1])
-        self.assertEqual(
-            adoption["records"], receipt["property_state_adoption_records"])
-        self.assertEqual(
-            adoption["set_sha256"],
-            receipt["property_state_adoption_set_sha256"])
-        self.assertEqual(
-            adoption["metadata_execution_contract_fingerprint"],
-            receipt["metadata_execution_contract_fingerprint"])
-        self.assertNotIn(
-            "last_reviewed",
-            kblib.parse_yaml_subset(kblib.extract_frontmatter(
-                page_path.read_text(encoding="utf-8"))),
-            "initial adoption must retire the unowned page-side copy in the "
-            "same transaction that records the legacy observation")
+        self.assertEqual(1, receipt["planning_record_count"])
+        self.assertNotIn("property_state_adoption_records", receipt)
+        self.assertEqual(before_page, page_path.read_bytes())
 
-    def test_property_adoption_page_snapshot_is_rechecked_under_lock(self):
+    def test_page_changes_do_not_invalidate_a_state_free_plan(self):
         page_path = self.root / PAGE["path"]
         page_path.parent.mkdir(parents=True, exist_ok=True)
         page_path.write_text(
@@ -505,24 +486,25 @@ class TaskPlanTransactionTests(unittest.TestCase):
             "---\nlast_reviewed: 2026-08-01\n---\nBody\n",
             encoding="utf-8")
 
-        with self.assertRaisesRegex(
-                apply_task_plan.Refusal,
-                "changed between planning and commit"):
-            apply_task_plan.commit(
-                prepared, self.root / apply_task_plan.RECEIPT_PATH)
-        for relative, fingerprint in before.items():
-            self.assertEqual(fingerprint, self.state_sha(relative))
+        apply_task_plan.commit(
+            prepared, self.root / apply_task_plan.RECEIPT_PATH)
+        self.assertNotEqual(before[check_queue.COVERAGE_PATH],
+                            self.state_sha(check_queue.COVERAGE_PATH))
+        self.assertNotEqual(before[check_queue.PROGRESS_PATH],
+                            self.state_sha(check_queue.PROGRESS_PATH))
+        self.assertIn("last_reviewed: 2026-08-01",
+                      page_path.read_text(encoding="utf-8"))
 
     def test_plan_cannot_supply_its_own_legacy_marker(self):
         plan = self.plan()
-        plan["coverage_after"]["pages"][0]["legacy_property_state"] = {
+        plan["planned_work"]["pages"][0]["legacy_property_state"] = {
             "last_reviewed": {
                 "status": "legacy-unverified",
                 "value": "2026-07-31",
             },
         }
         self.assertIn(
-            "may not claim legacy property observations",
+            "unsupported field(s): legacy_property_state",
             self.prepare_error(plan))
 
     # ---- the refusals that keep it from becoming a back door ------------
@@ -533,7 +515,7 @@ class TaskPlanTransactionTests(unittest.TestCase):
 
         second = self.plan()
         second["plan_id"] = "TP-002"
-        second["coverage_after"]["pages"][0]["path"] = "Notes/Rewritten.md"
+        second["planned_work"]["pages"][0]["path"] = "Notes/Rewritten.md"
         message = self.prepare_error(second)
         self.assertTrue(
             "Coverage already holds page records" in message
@@ -556,7 +538,7 @@ class TaskPlanTransactionTests(unittest.TestCase):
 
     def test_a_plan_with_no_required_object_is_refused(self):
         plan = self.plan()
-        plan["coverage_after"]["pages"] = []
+        plan["planned_work"]["pages"] = []
         self.assertIn("pages is empty", self.prepare_error(plan))
 
     def test_an_unfilled_template_sentinel_is_refused(self):

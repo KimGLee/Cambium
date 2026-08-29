@@ -3825,7 +3825,7 @@ class CheckQueueTests(QueueFixture):
         self.coverage_path.write_text(kblib.canonical_yaml(coverage),
                                       encoding="utf-8")
         errors = "\n".join(check_queue.validate_runtime(self.root)["errors"])
-        self.assertIn("misses core field(s): gate_receipts", errors)
+        self.assertIn("misses required field(s): gate_receipts", errors)
         self.assertIn("gate_receipts must be an explicit string list", errors)
 
     def test_global_transition_history_requires_exact_complete_chain(self):

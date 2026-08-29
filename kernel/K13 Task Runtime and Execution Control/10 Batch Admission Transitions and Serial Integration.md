@@ -19,6 +19,8 @@ A queued batch may open concurrently only when:
   manifest;
 - confirmation and any other admission preconditions are satisfied.
 
+For a manifest member that still has a planning-only Coverage record, admission is also its first current-state boundary. The same `queued -> open` transaction replaces the complete manifest's planning-only records with runtime records initialized to `authoring_status: unassessed`, empty current evidence and empty property state, and projects only those pages. It does not inspect, adopt, reset or project any unopened batch. A partial manifest materialization is invalid.
+
 The hub/control set is supplied by canonical machine metadata and selected Profile extension bindings; this module does not hardcode current repository types or infer future roles. Editing an existing exclusive owner requires exclusive or `serial-integrator` execution. Creating a new future hub does not retroactively make its pre-creation path shared, but it must be surfaced for post-merge synchronization.
 
 Migration and refactor batches that necessarily cross owner partitions are exclusive. While one is open, no other batch opens.
@@ -45,7 +47,7 @@ The control plane is single-threaded under the integrator role, including Guidan
 
 ## Transition Gates
 
-Only the registered Queue transaction changes lifecycle or holds, and only the registered Coverage-delta transaction changes canonical Coverage. Except for the first atomic activation from `planned`, these writes require task state `active`.
+Only the registered Queue transaction changes lifecycle or holds. That transaction may additionally materialize planning-only Coverage for the exact manifest on first admission and project closing review results; ordinary content changes remain owned by the registered Coverage-delta transaction. Except for the first atomic activation from `planned`, these writes require task state `active`.
 
 Exact edge membership and its division between the ordinary Queue writer, Amendment cancellation writer, and historical replay protocol are owned only by [`runtime-state-model.json`](runtime-state-model.json). The operation categories below specify the evidence attached when the registry authorizes a corresponding edge; they do not create an edge or form a second edge catalog.
 

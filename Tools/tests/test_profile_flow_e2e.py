@@ -843,7 +843,7 @@ class RuntimeCreationTests(unittest.TestCase):
         def sha(relative):
             return kblib.sha256_file(cls.root / relative)
         return {
-            "schema_version": 1,
+            "schema_version": 2,
             "plan_id": "TP-001",
             "task_id": ttp.TASK_ID,
             "approval_reference": "operator confirmation 2026-08-13",
@@ -871,7 +871,7 @@ class RuntimeCreationTests(unittest.TestCase):
                 "hard_stop_at": "",
                 "completion_gate": "required-queue-complete",
             },
-            "coverage_after": {
+            "planned_work": {
                 "pages": [copy.deepcopy(ttp.PAGE)],
                 "batch_specs": [copy.deepcopy(ttp.BATCH_SPEC)],
             },
@@ -892,6 +892,10 @@ class RuntimeCreationTests(unittest.TestCase):
             [ttp.PAGE["path"]],
             [page["path"] for page in self.coverage_after_plan["pages"]],
             "Coverage rows must be exactly the confirmed plan's own")
+        row = self.coverage_after_plan["pages"][0]
+        self.assertNotIn("authoring_status", row)
+        self.assertNotIn("gate_receipts", row)
+        self.assertNotIn("property_state", row)
         self.assertEqual([ttp.R01_CARD, ttp.CARD],
                          self.contract_after_plan["selected_card_paths"])
         self.assertEqual([ttp.R01_READ_SET, ttp.READ_SET],

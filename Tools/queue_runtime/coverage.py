@@ -202,7 +202,8 @@ def coverage_provenance_errors(progress, queue, catalog, coverage_sha,
     return errors
 
 
-def coverage_records(root, coverage, errors):
+def coverage_records(root, coverage, errors,
+                     allow_legacy_missing_property=False):
     pages = coverage.get("pages")
     if not isinstance(pages, list):
         errors.append("Coverage pages must be an explicit list")
@@ -214,10 +215,14 @@ def coverage_records(root, coverage, errors):
         if not isinstance(page, dict):
             errors.append("%s must be a mapping" % label)
             continue
+        errors.extend(coverage_contract.page_shape_errors(
+            page, label,
+            allow_legacy_missing_property=allow_legacy_missing_property))
+        planning_only = coverage_contract.is_planning_page(page)
         core_fields = (
             "path", "coverage_disposition", "canonical_owner",
             "prerequisites", "batch", "next_batch", "deferred_reason",
-            "reentry_condition", "gate_receipts",
+            "reentry_condition",
         )
         missing = [field for field in core_fields if field not in page]
         if missing:
@@ -241,7 +246,10 @@ def coverage_records(root, coverage, errors):
                            disposition))
         if not nonempty_string(page.get("canonical_owner")):
             errors.append("%s canonical_owner must be a non-empty string" % label)
-        for field in ("prerequisites", "gate_receipts"):
+        list_fields = ["prerequisites"]
+        if not planning_only:
+            list_fields.append("gate_receipts")
+        for field in list_fields:
             values = page.get(field)
             if (not isinstance(values, list) or
                     not all(nonempty_string(value) for value in values)):

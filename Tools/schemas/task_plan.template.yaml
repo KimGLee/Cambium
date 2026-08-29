@@ -1,6 +1,6 @@
 # =============================================================================
-# Initial Task Plan template (the one operator-confirmed input that materializes
-# a task's runtime; the template is the schema doc)
+# Initial Task Plan template (the one operator-confirmed input that declares a
+# task and its Queue structure; the template is the schema doc)
 # Owner standard: "kernel/K13 Task Runtime and Execution Control/18 Initial Task Planning Transaction.md"
 # Location: .cambium/deltas/task-plans/<plan-id>.yaml
 #
@@ -12,9 +12,12 @@
 # key, and nested mappings. Unknown top-level fields fail closed.
 #
 # What this file is NOT:
-#   - It carries no Required Queue body. The Queue is compiled deterministically
-#     from `coverage_after` by the same compiler that owns it; a Queue written
-#     here would be a second Queue authority.
+#   - It carries no Required Queue lifecycle body. The Queue is compiled
+#     deterministically from `planned_work` by the same compiler that owns it;
+#     a Queue state written here would be a second Queue authority.
+#   - It carries no page authoring status, property state, Gate evidence or
+#     Receipt. Those become current runtime state only when the corresponding
+#     queued batch is actually opened.
 #   - It is not a place to record decisions. Every value here is one the
 #     operator already confirmed; `approval_reference` names where.
 #   - It never authorizes inference. Which pages are Required, who owns them,
@@ -23,7 +26,7 @@
 #     the same reason, and this transaction does not weaken it.
 # =============================================================================
 
-schema_version: 1
+schema_version: 2
 
 # Stable identity of this plan document. Lowercase/uppercase alphanumerics,
 # hyphen and underscore; unique within the task-plans directory.
@@ -90,11 +93,12 @@ contract_after:
     mode: user-only
     allowed_change_classes: []
 
-# The complete initial Coverage inventory and the compiler's batch inputs.
-# Record shapes are owned by K02/01; `batch_specs` shape by K13/08.
-# A record for an object that does not exist yet is normal and expected --
-# K02/01 requires one for every Required object, created or not.
-coverage_after:
+# The complete initial work declaration and the Queue compiler's inputs.
+# These rows establish only scope, ownership and task assignment. They do not
+# claim a current page status and therefore deliberately omit
+# `authoring_status`, `gate_receipts` and `property_state`. The queued -> open
+# transaction materializes those fields for that batch alone.
+planned_work:
   pages:
     - path: TODO(plan)
       canonical_owner: TODO(plan)
@@ -102,13 +106,9 @@ coverage_after:
       tier: TODO(plan)
       priority: TODO(plan)
       coverage_disposition: required
-      authoring_status: TODO(plan)
       prerequisites: []
       batch: null
       next_batch: TODO(plan)
-      gate_receipts: []
-      # Explicit even when empty: apply_task_plan fails closed on omission.
-      property_state: {}
       deferred_reason: null
       reentry_condition: null
   batch_specs:

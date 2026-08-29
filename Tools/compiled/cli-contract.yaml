@@ -79,7 +79,7 @@ source_files:
   - Tools/stamp_cards.py
   - Tools/update_queue.py
   - Tools/update_task.py
-source_hash: sha256:622a040edd98f6b88a40e8d878da43d50d4afcd43ade1882bc2feee55eb6c031
+source_hash: sha256:a1d8dd9a5beb0aa6164ccaaa3076c362e60191f8e2ecdcbe86b7683d08e24c63
 agent_interface_policy:
   path: Tools/agent-interface-policy.yaml
   sha256: sha256:4d622b3e3927861cb36f5eda5e27c9eca1e1899d3beea2885135f9a8ec2a6839
@@ -1187,7 +1187,7 @@ tools:
       external_write: none
   - tool: apply_task_plan
     module: Tools/apply_task_plan.py
-    source_hash: sha256:43fe3f88328c3cae5113972fb7f6a979cd3ef51f56512a70c4164eae9bc9b49e
+    source_hash: sha256:2c1726c2228cd3fa13d2f94c91838a25c2e8f686c1d2d071f8c1636099d9ba2b
     description: Materialize a task runtime from one confirmed plan.
     arguments:
       - dest: root
@@ -2099,7 +2099,7 @@ tools:
       external_write: none
   - tool: check_page_contract
     module: Tools/check_page_contract.py
-    source_hash: sha256:526722fdbc69320f703de3701a6121dafdc49b0241c9bb26ce07a596d01d87dc
+    source_hash: sha256:3f5bcb776ed907b93182ca48da6c36ef82070077039ff1722dba0f25f47b7abe
     description: "Validate pages against the compiled frontmatter page contract (gate: page-contract; advisory by default)."
     arguments:
       - dest: vault_root
@@ -7369,7 +7369,7 @@ tools:
       external_write: none
   - tool: update_queue
     module: Tools/update_queue.py
-    source_hash: sha256:a9c3cd6794975a3b7ffbd9ee0b3b8d5eaf5bcff9fc1d0165ecf831bef109ab80
+    source_hash: sha256:e43c0c003c8fb2d3273233bf27fbb92912b6f1ea17352b64b0b9298c770fc9b1
     description: Apply one Required Queue transition
     arguments:
       - dest: root

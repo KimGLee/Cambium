@@ -127,11 +127,13 @@ Do not infer task, scope, route, Card, Read Set, or Profile choices from this RE
 The main runtime entry points are:
 
 - [`init_state.py`](init_state.py): initialize an empty adopter task runtime from explicit inputs;
-- [`apply_task_plan.py`](apply_task_plan.py): apply the confirmed initial task plan;
+- [`apply_task_plan.py`](apply_task_plan.py): apply the confirmed initial Task Plan as task/Queue structure only; it creates planning-only Coverage rows and never imports current page status or evidence;
 - [`compile_queue.py`](compile_queue.py): materialize Required Queue state;
 - [`check_queue.py`](check_queue.py): validate state and report the next resumable boundary;
 - [`update_task.py`](update_task.py), [`update_queue.py`](update_queue.py), and [`apply_delta.py`](apply_delta.py): perform their named controlled transitions;
 - [`check_proof.py`](check_proof.py): verify the terminal proof object and its bound state when invoked in root mode.
+
+Task Plan schema v2 deliberately omits `authoring_status`, `gate_receipts`, and `property_state`. Queue compilation preserves all declared targets, while the first `queued -> open` transition materializes current Coverage for that batch's manifest only. Unopened batches remain planning-only and their knowledge pages are not reset, projected, or treated as currently reviewed.
 
 Start from the live CLI contracts rather than copying a long example with instance-specific values:
 

@@ -593,6 +593,9 @@ modules:
       - COVERAGE_PROMOTION_FIELDS
       - COVERAGE_REROUTE_FIELDS
       - COVERAGE_TOP_LEVEL_FIELDS
+      - is_complete_planning_page
+      - is_planning_page
+      - page_shape_errors
   - module: coverage_delta
     path: Tools/coverage_delta.py
     provisional: true

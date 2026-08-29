@@ -58,6 +58,7 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import kblib
 import compose_page_contract
+import coverage_contract
 import profile_admission
 import metadata_execution_contract
 import metadata_property_state
@@ -509,7 +510,14 @@ def run(root, profile_override, contract_path, scope, excludes, strict,
                 check_shape(root, rel, name, spec, value, report)
 
         owner_row = ledger_dispositions.get(rel)
+        owner_is_planning = coverage_contract.is_complete_planning_page(
+            owner_row)
         for name, rule in sorted(projection_rule_by_field.items()):
+            if owner_is_planning:
+                # A queued planning row deliberately owns no current page
+                # projection.  Reconciliation starts only when its batch is
+                # opened and the row is materialized as runtime Coverage.
+                continue
             present = name in fields
             page_value = fields.get(name)
             adapter = rule.get("source_adapter")

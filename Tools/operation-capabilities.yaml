@@ -21,7 +21,6 @@ capabilities:
       - Tools/apply_amendment.py
       - Tools/apply_delta.py
       - Tools/apply_metadata_transition.py
-      - Tools/apply_task_plan.py
       - Tools/update_queue.py
     checkers:
       - Tools/check_batch_close.py
@@ -83,7 +82,6 @@ capabilities:
     implementation_owner: Tools/metadata_property_state.py
     writers:
       - Tools/apply_amendment.py
-      - Tools/apply_task_plan.py
     checkers: []
     consumers: []
     operations:

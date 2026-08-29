@@ -24,6 +24,7 @@ import kblib
 import update_task
 import apply_delta
 import batch_settlement
+import coverage_contract
 import metadata_property_state
 import project_page_state
 import runtime_paths
@@ -152,6 +153,26 @@ def _projection_overrides(plan):
     }
 
 
+def _projected_semantic_records(plan):
+    """Return the exact page identities expected after our own projection."""
+    records = []
+    for page in plan.pages:
+        if page.after_data is None:
+            raise ValueError(
+                "opening projection target %s is not a materialized page" %
+                page.relative)
+        text = page.after_data.decode("utf-8")
+        records.append({
+            "path": page.relative,
+            "page_sha256": kblib.sha256_bytes(page.after_data),
+            "semantic_content_sha256":
+                project_page_state.semantic_content_fingerprint(
+                    page.relative, text, plan.rules),
+        })
+    metadata_property_state.validate_semantic_baseline_records(records)
+    return tuple(records)
+
+
 def _opening_semantic_records(root, item, rules):
     """Freeze the exact semantic before-set for one opening batch."""
     manifest = item.get("manifest") if isinstance(item, dict) else None
@@ -161,6 +182,48 @@ def _opening_semantic_records(root, item, rules):
             "opening batch manifest must be a sorted unique page list")
     return metadata_property_state.semantic_baseline_records(
         root, manifest, rules=rules)
+
+
+def _materialize_opening_coverage(coverage, item, at):
+    """Promote only the opening manifest from planning to current Coverage.
+
+    Initial Task Planning declares scope and Queue assignment without claiming
+    any page status.  Opening is the first lifecycle edge allowed to establish
+    that current state.  The neutral initial value is ``unassessed``; it is a
+    new-runtime fact, not an interpretation of legacy page frontmatter.
+    """
+    result = copy.deepcopy(coverage)
+    rows = {
+        row.get("path"): row
+        for row in result.get("pages") or []
+        if isinstance(row, dict) and _nonempty(row.get("path"))
+    }
+    changed = False
+    for path in item.get("manifest") or []:
+        row = rows.get(path)
+        if row is None:
+            raise ValueError(
+                "opening manifest page %s has no Coverage planning row" % path)
+        if not coverage_contract.is_complete_planning_page(row):
+            # Replans and successors may point at a page whose current state
+            # was materialized by an earlier batch.  Opening must preserve
+            # that state; only planning-only rows take the initial transition.
+            continue
+        if row.get("coverage_disposition") != "required":
+            raise ValueError(
+                "opening manifest page %s is not Required Coverage" % path)
+        if item.get("id") not in {
+                row.get("batch"), row.get("next_batch")}:
+            raise ValueError(
+                "opening manifest page %s is not assigned to %s" %
+                (path, item.get("id")))
+        row["authoring_status"] = "unassessed"
+        row["gate_receipts"] = []
+        row["property_state"] = {}
+        changed = True
+    if changed:
+        result["updated_at"] = at
+    return result
 
 
 def _require_opening_semantics_current(root, item, rules, expected, label):
@@ -1118,12 +1181,24 @@ def _run(args, produced):
             return 1
 
     coverage_restore = getattr(args, "coverage_restore", None)
-    write_coverage = args.transition == "closed" or coverage_restore is not None
+    write_coverage = (opening_first_batch or args.transition == "closed" or
+                      coverage_restore is not None)
     page_projection_plan = None
+    opening_current_records = opening_semantic_records
     page_review_receipts = ()
     page_review_paths = ()
     try:
-        if args.transition == "closed":
+        if opening_first_batch:
+            coverage_new = _materialize_opening_coverage(
+                result["coverage"], target, args.at)
+            page_projection_plan = \
+                metadata_property_state.build_projection_plan(
+                    root, coverage_new, target.get("manifest") or [],
+                    rules=projection_rules)
+            opening_current_records = _projected_semantic_records(
+                page_projection_plan)
+            coverage_text = kblib.canonical_yaml(coverage_new)
+        elif args.transition == "closed":
             coverage_new = _project_closed_coverage(
                 result["coverage"], queue_new, args.id)
             page_review_receipts = _close_page_review_receipts(
@@ -1358,6 +1433,7 @@ def _run(args, produced):
             lock_operation["task_transition_receipt_path"] = (
                 update_task.RECEIPT_PATH)
         with kblib.runtime_write_lock(root, owner_metadata=lock_operation) as lock:
+            locked_page_plan = None
             with kblib.no_authoritative_write_guard(lock):
                 queue_path = result["queue_path"]
                 progress_path = kblib.managed_repository_path(
@@ -1414,6 +1490,22 @@ def _run(args, produced):
                         root, locked_open_item, projection_rules,
                         opening_semantic_records,
                         "opening semantic baseline changed under lock")
+                if opening_first_batch:
+                    locked_projection = _materialize_opening_coverage(
+                        current["coverage"], locked_open_item, args.at)
+                    locked_page_plan = \
+                        metadata_property_state.build_projection_plan(
+                            root, locked_projection,
+                            locked_open_item.get("manifest") or [],
+                            rules=projection_rules)
+                    if (locked_projection != coverage_new or
+                            kblib.canonical_yaml(locked_projection) !=
+                            coverage_text or
+                            _projection_signature(locked_page_plan) !=
+                            _projection_signature(page_projection_plan)):
+                        raise ValueError(
+                            "Coverage opening materialization changed under "
+                            "lock")
                 if args.transition == "closed":
                     locked_snapshot = kblib.repository_snapshot_sha256(root)
                     if locked_snapshot != getattr(
@@ -1564,11 +1656,12 @@ def _run(args, produced):
             page_transaction = None
             state_written = False
             try:
-                if args.transition == "closed":
+                if opening_first_batch or args.transition == "closed":
                     page_transaction = project_page_state.stage_projection_plan(
                         root, locked_page_plan, lock,
-                        transaction_id="queue-close-%s" %
-                        receipt["receipt_id"])
+                        transaction_id="queue-%s-%s" %
+                        ("open" if opening_first_batch else "close",
+                         receipt["receipt_id"]))
                 if delta_move:
                     check_queue.require_runtime_authority_current(
                         root, authority,
@@ -1603,8 +1696,7 @@ def _run(args, produced):
                                         if task_receipt is not None
                                         else [receipt]),
                         page_projection_overrides=_projection_overrides(
-                            locked_page_plan
-                            if args.transition == "closed" else None),
+                            locked_page_plan),
                         **authority_kwargs,
                     )
                     if proposed["errors"]:
@@ -1638,7 +1730,7 @@ def _run(args, produced):
                 if args.transition == "open":
                     _require_opening_semantics_current(
                         root, current.get("items_by_id", {}).get(args.id),
-                        projection_rules, opening_semantic_records,
+                        projection_rules, opening_current_records,
                         "opening semantic baseline changed before receipt "
                         "publication")
                 if task_receipt is not None:
@@ -1656,7 +1748,7 @@ def _run(args, produced):
                 if args.transition == "open":
                     _require_opening_semantics_current(
                         root, current.get("items_by_id", {}).get(args.id),
-                        projection_rules, opening_semantic_records,
+                        projection_rules, opening_current_records,
                         "opening semantic baseline changed before Queue receipt")
                 attempted_receipts.append(receipt_path)
                 kblib.write_receipts(receipt_path, [receipt])
@@ -1666,7 +1758,7 @@ def _run(args, produced):
                 if args.transition == "open":
                     _require_opening_semantics_current(
                         root, current.get("items_by_id", {}).get(args.id),
-                        projection_rules, opening_semantic_records,
+                        projection_rules, opening_current_records,
                         "opening semantic baseline changed during Queue receipt")
                 persisted = check_queue.validate_runtime(
                     root, **authority_kwargs)

@@ -559,7 +559,10 @@ def validate_runtime(root, allowed_open_delta=None,
     items_by_id = {}
     orders = {}
     manifest_owners = {}
-    records, assignments = coverage_records(root, coverage, errors)
+    records, assignments = coverage_records(
+        root, coverage, errors,
+        allow_legacy_missing_property=
+            allow_legacy_property_state_for_migration)
     legacy_property_state_source_receipt_ids = []
     if profile_view is not None:
         errors.extend(coverage_property_state_errors(
@@ -677,6 +680,15 @@ def validate_runtime(root, allowed_open_delta=None,
                 errors.append("%s manifest path %s has no Coverage record" %
                               (item_id, object_path))
             else:
+                if (item.get("state") in
+                        runtime_state_contract.QUEUE_STARTED_STATES and
+                        coverage_contract.is_complete_planning_page(
+                            records[object_path])):
+                    errors.append(
+                        "%s started manifest path %s is still planning-only; "
+                        "queued -> open must materialize current Coverage "
+                        "state for the complete manifest" %
+                        (item_id, object_path))
                 disposition = records[object_path].get("coverage_disposition")
                 cancellation_staging = (
                     item_id == allowed_cancellation_id and

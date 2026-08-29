@@ -8,7 +8,7 @@
 
 This module owns only the transaction that turns empty task runtime into a planned task. It defines no Task Contract, Coverage, Queue, Card, or Read Set field. K13/02 owns Task Contract semantics, K02/01 owns Coverage, K13/08 owns Required Queue, and the independent routing/loading mechanism owns resolution of the task's loading selection.
 
-The transaction writes one confirmed Task Contract and initial Coverage state together or writes neither. It cannot infer that a repository has work merely because files, templates, Cards, Read Sets, or candidate Coverage entries exist.
+The transaction writes one confirmed Task Contract and the planning-only Coverage inventory together or writes neither. It cannot infer that a repository has work merely because files, templates, Cards, Read Sets, or candidate Coverage entries exist, and it does not establish current page state.
 
 ## What The Plan Supplies And What It May Never Infer
 
@@ -16,14 +16,16 @@ The registered initial-task-plan machine contract is the sole normative source f
 
 - the complete Task Contract, including the user-confirmed objective, scope,
   authority, completion semantics, and resolved loading selection;
-- the initial Coverage inventory and batch specifications;
+- the complete planned-work inventory and batch specifications, containing
+  object identity, ownership, disposition and Queue assignment but no current
+  authoring status, property state, Gate evidence or Receipt;
 - an approval reference for every semantic decision supplied by a person.
 
-The transaction may deterministically validate and normalize those confirmed values but cannot decide which objects are Required, their semantic owners, priority, prerequisites, batch assignment, route selection, or Profile policy. An object need not already exist as a file to be planned as Required.
+The transaction may deterministically validate and normalize those confirmed values but cannot decide which objects are Required, their semantic owners, priority, prerequisites, batch assignment, route selection, Profile policy, or current page status. An object need not already exist as a file to be planned as Required. Pre-existing page metadata and old runtime evidence are outside this transaction's inputs and cannot be copied into the new runtime by it.
 
 ## Where The Transaction Stops
 
-The initial planning transaction writes Task Contract and Coverage. It does not write or own the Required Queue. Before first Queue materialization those are confirmed adopter inputs; Queue compilation is the separate authority boundary owned by K13/09.
+The initial planning transaction writes the Task Contract and planning-only Coverage records. It does not write or own the Required Queue and does not project page metadata. Before first Queue materialization those are confirmed adopter inputs; Queue compilation is the separate authority boundary owned by K13/09. Current Coverage state for one manifest is first materialized by the queued-to-open transition owned by K13/10.
 
 The resulting unmaterialized state may validly have Coverage batch projections while the Queue is still empty. The transaction result must make that state explicit and identify Queue materialization as the next owned capability. A generic success result that hides this remaining boundary is insufficient.
 
@@ -35,8 +37,9 @@ The registered initial-task-planning transaction must:
   image;
 - reject unresolved references, unfilled sentinels, current-state drift, a
   different task identity, or an after image that fails cross-state validation;
-- publish complete Task Contract and Coverage after images together with one
-  immutable transaction result, or preserve the before image;
+- publish the complete Task Contract and planning-only Coverage after images
+  together with one immutable transaction result, or preserve the before
+  image;
 - make interruption fail closed and recoverable without losing the confirmed
   plan or inventing a commit;
 - emit no Gate claim of its own; existing consistency, admission, large-scale,
