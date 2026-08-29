@@ -204,7 +204,7 @@ class CiImpactTests(unittest.TestCase):
         # An inequality here would pass on a single unsharded job, which is
         # the regression this test exists to catch.
         self.assertEqual(
-            min(len(plan["selected_tests"]), len(ci_impact.FULL_SHARD_RANGES)),
+            min(len(plan["selected_tests"]), ci_impact.FULL_SHARD_COUNT),
             len(shards))
         version = ci_impact.PYTHON_VERSIONS[0]
         packed = [name
@@ -257,11 +257,29 @@ class CiImpactTests(unittest.TestCase):
         plan = self._plan(("M", "Makefile"))
         expected = ci_impact.discover_tests(self.root)
         for version in ci_impact.PYTHON_VERSIONS:
-            selected = []
-            for item in plan["test_matrix"]["include"]:
-                if item["python-version"] == version:
-                    selected.extend(item["test-files"].split(","))
+            version_groups = [
+                item for item in plan["test_matrix"]["include"]
+                if item["python-version"] == version
+            ]
+            self.assertEqual(
+                min(ci_impact.FULL_SHARD_COUNT, len(expected)),
+                len(version_groups),
+            )
+            selected = [
+                name for item in version_groups
+                for name in item["test-files"].split(",")
+            ]
             self.assertEqual(expected, sorted(selected))
+            self.assertEqual(len(selected), len(set(selected)))
+
+    def test_full_matrix_packs_current_source_weight_evenly(self):
+        tests = ci_impact.discover_tests(ROOT)
+        groups = ci_impact._full_groups(ROOT, tests)
+        loads = [
+            sum(ci_impact._test_weight(ROOT, name) for name in members)
+            for _, members in groups
+        ]
+        self.assertLessEqual(max(loads), min(loads) * 1.10)
 
     def test_selected_test_validation_rejects_unknown_and_duplicates(self):
         with self.assertRaisesRegex(ValueError, "unknown"):

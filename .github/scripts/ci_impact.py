@@ -267,32 +267,12 @@ def impacted_tool_tests(root, changed_tool_paths):
     return selected, "affected Tool closure: %s" % ", ".join(sorted(affected))
 
 
-# How many ways this repository shards, named once.  Selective mode reads the
-# length rather than restating it, so changing the split changes both.
-FULL_SHARD_RANGES = (
-    ("a-b", "ab"),
-    ("c-m", "cdefghijklm"),
-    ("n-r", "nopqr"),
-    ("s-z", "stuvwxyz"),
-)
-
-
-def _full_groups(test_names):
-    ranges = FULL_SHARD_RANGES
-    groups = []
-    assigned = []
-    for name, letters in ranges:
-        members = [
-            test_name for test_name in test_names
-            if test_name[len("test_")] in letters
-        ]
-        if not members:
-            raise ValueError("full CI group %s is empty" % name)
-        groups.append((name, members))
-        assigned.extend(members)
-    if sorted(assigned) != sorted(test_names) or len(assigned) != len(set(assigned)):
-        raise ValueError("full CI groups must cover every test file exactly once")
-    return groups
+# Full verification used to shard by the first letter of the test module.  That
+# split became structurally unbalanced as the suite grew: the c-m group reached
+# more than twice the source weight of s-z and exceeded the job timeout while a
+# lighter peer completed.  The shard count is therefore the stable policy; the
+# membership is a deterministic projection of the current suite.
+FULL_SHARD_COUNT = 10
 
 
 def _test_weight(root, test_name):
@@ -312,20 +292,10 @@ def _test_weight(root, test_name):
         return 0
 
 
-def _selective_groups(root, test_names):
-    """Shard the selected set, the way full mode already shards its own.
-
-    A selective plan that ran in one job was slower than the full matrix it
-    exists to avoid: nine modules measured 451-525s on a runner, against a
-    worst full-mode shard well under that, and the widest closure projects
-    past the job timeout outright.  Splitting is the fix; the packing order
-    only decides how even the split is.
-
-    The bin count follows full mode rather than restating it, so changing how
-    this repository shards changes both together.
-    """
+def _packed_groups(root, test_names, count, prefix):
+    """Pack test modules into deterministic, approximately equal groups."""
     expected = sorted(test_names)
-    count = min(len(FULL_SHARD_RANGES), len(expected))
+    count = min(count, len(expected))
     members = [[] for _ in range(count)]
     loads = [0] * count
     for name in sorted(expected, key=lambda item: (-_test_weight(root, item), item)):
@@ -333,16 +303,37 @@ def _selective_groups(root, test_names):
         members[lightest].append(name)
         loads[lightest] += _test_weight(root, name)
 
-    groups = [("affected-%d" % (index + 1), sorted(bin_names))
-              for index, bin_names in enumerate(members) if bin_names]
-
-    # The assertion full mode makes, for the same reason: a packing bug must
-    # fail the planner rather than quietly drop a test file.
+    groups = [
+        ("%s-%02d" % (prefix, index + 1), sorted(bin_names))
+        for index, bin_names in enumerate(members)
+        if bin_names
+    ]
     assigned = sorted(name for _, bin_names in groups for name in bin_names)
     if assigned != expected or len(assigned) != len(set(assigned)):
-        raise ValueError(
-            "selective CI groups must cover every test file exactly once")
+        raise ValueError("CI groups must cover every test file exactly once")
     return groups
+
+
+def _full_groups(root, test_names):
+    """Build the complete-suite matrix from the current test source weights."""
+    return _packed_groups(root, test_names, FULL_SHARD_COUNT, "full")
+
+
+def _selective_groups(root, test_names):
+    """Shard the selected set using the same packing policy as full mode.
+
+    A selective plan that ran in one job was slower than the full matrix it
+    exists to avoid: nine modules measured 451-525s on a runner, against a
+    worst full-mode shard well under that, and the widest closure projects
+    past the job timeout outright.  Splitting is the fix; the packing order
+    only decides how even the split is.
+
+    The bin count follows full mode rather than restating it, so changing the
+    complete-suite concurrency also changes the selective ceiling.
+    """
+    expected = sorted(test_names)
+    return _packed_groups(
+        root, expected, min(FULL_SHARD_COUNT, len(expected)), "affected")
 
 
 def _matrix(versions, groups):
@@ -369,7 +360,7 @@ def _full_plan(root, changed, reasons):
             "include": [{"python-version": value}
                         for value in PYTHON_VERSIONS],
         },
-        "test_matrix": _matrix(PYTHON_VERSIONS, _full_groups(tests)),
+        "test_matrix": _matrix(PYTHON_VERSIONS, _full_groups(root, tests)),
         "run_tests": True,
     }
 
@@ -557,7 +548,7 @@ def main(argv=None):
             print("ci-impact: %s" % error, file=sys.stderr)
             return 1
         tests = discover_tests(root)
-        _full_groups(tests)
+        _full_groups(root, tests)
         print("repository_layout_tracked_files = %d" % tracked_count)
         print("ci_impact_tests = %d" % len(tests))
         return 0
