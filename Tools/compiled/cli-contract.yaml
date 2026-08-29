@@ -79,7 +79,7 @@ source_files:
   - Tools/stamp_cards.py
   - Tools/update_queue.py
   - Tools/update_task.py
-source_hash: sha256:f9c702a190d62d9bf5856ce4ea285ab71d33394ee164a124fc4f1e7c36c11af3
+source_hash: sha256:622a040edd98f6b88a40e8d878da43d50d4afcd43ade1882bc2feee55eb6c031
 agent_interface_policy:
   path: Tools/agent-interface-policy.yaml
   sha256: sha256:4d622b3e3927861cb36f5eda5e27c9eca1e1899d3beea2885135f9a8ec2a6839
@@ -7061,7 +7061,7 @@ tools:
       external_write: none
   - tool: run_gates
     module: Tools/run_gates.py
-    source_hash: sha256:35dc07b219c09f56cc461a8e0ec1a9b61835d2b58741d4e8ff0c76a0b8751355
+    source_hash: sha256:f7ed56d17d2ed2d5d3bbdfebe3b0985cb4e6c150712644b6686c4dc531c365f2
     description: Run the adopter verification set derived from the K00/12 Stable Gate ID Registry (deterministic, not-batch-scoped producers).
     arguments:
       - dest: root

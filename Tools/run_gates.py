@@ -51,11 +51,13 @@ import kblib
 import profile_contract
 import profile_layout_contract
 import runtime_paths
+import tool_availability
 
 TOOL = "run_gates"
 TOOL_VERSION = "1.1.0"
 
 CARD_CURRENTNESS_CAPABILITY = "card-currentness-v1"
+CARD_CONTROL_PLANE_PATH = "Card"
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 
@@ -229,13 +231,26 @@ def _recipes(root, manifest, excludes):
     exclude_args = []
     for value in excludes:
         exclude_args.extend(["--exclude", value])
+    # Card frontmatter is owned by the curated Card machine contract, not by
+    # K08's knowledge-page vocabulary.  The same sweep already validates that
+    # contract through stamp_cards; handing Card to check_vocab creates a
+    # second, contradictory metadata authority (``card`` versus the K08
+    # knowledge-page type vocabulary).  Keep caller exclusions for every
+    # scanner, but add this owner boundary only to the vocabulary producer.
+    vocab_excludes = []
+    for value in [CARD_CONTROL_PLANE_PATH] + list(excludes):
+        if value not in vocab_excludes:
+            vocab_excludes.append(value)
+    vocab_exclude_args = []
+    for value in vocab_excludes:
+        vocab_exclude_args.extend(["--exclude", value])
     python = _python()
     policy, policy_fingerprint = _effective_policy(root, manifest)
     recipes = {
         ("check_links", "*"): [
             python, _tool_path("check_links"), root, *exclude_args],
         ("check_vocab", "*"): [
-            python, _tool_path("check_vocab"), root, *exclude_args,
+            python, _tool_path("check_vocab"), root, *vocab_exclude_args,
             "--quota-p0",
             str(policy["resolved"]["priority_quota.P0"]),
             "--quota-p1",
@@ -276,6 +291,10 @@ def _preflight_commands(root, manifest):
     Receipt, and none enters the derived Gate count.
     """
     profile_dir = os.path.join(root, os.path.dirname(manifest))
+    location = profile_layout_contract.parse_profile_manifest_path(manifest)
+    projection_target = (
+        tool_availability.SOURCE_DISTRIBUTION if location.example else
+        tool_availability.CARRIED_RUNTIME)
     python = _python()
     return [
         (CARD_CURRENTNESS_CAPABILITY, "stamp_cards --check", [
@@ -293,20 +312,18 @@ def _preflight_commands(root, manifest):
             "--output", os.path.join(
                 root, runtime_paths.PAGE_CONTRACT_ARTIFACT_PATH),
             "--check"]),
-        # The interface artifacts are derived from this repository's own tool
-        # set, so they are the two that can be carried in from elsewhere and
-        # still parse.  Checking them here is what makes "regenerate in the
-        # target repository" enforceable rather than merely documented: the
-        # contract binds its projection target, the boundary hash and the
-        # tool set it was compiled from, and a copy from another repository
-        # disagrees with at least one of the three.  No target is passed --
-        # the stored artifact declares its own, and an artifact that declares
-        # none is refused rather than assigned one here.
+        # The selected Profile namespace declares which repository form is
+        # being verified: shipped examples exercise the source distribution;
+        # a selectable adopter Profile exercises carried runtime.  Pass that
+        # target explicitly.  Falling back to each compiler's source default
+        # makes a correctly trimmed adopter look for intentionally omitted
+        # Tools/compiled artifacts and never inspects its actual projections.
         ("compiled-currentness", "compile_cli_contract --check", [
-            python, _tool_path("compile_cli_contract"), root, "--check"]),
+            python, _tool_path("compile_cli_contract"), root, "--check",
+            "--projection-target", projection_target]),
         ("compiled-currentness", "render_interface_projection --check", [
             python, _tool_path("render_interface_projection"), root,
-            "--check"]),
+            "--check", "--projection-target", projection_target]),
     ]
 
 
