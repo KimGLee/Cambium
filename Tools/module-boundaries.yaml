@@ -2287,6 +2287,7 @@ modules:
     layer: application
     public:
       - ContractError
+      - TOOL
       - apply_gated_writer_tools
       - compile_contract
       - main

@@ -10,6 +10,7 @@ and stop behavior between those boundaries.
 import json
 import os
 from pathlib import Path
+import tempfile
 from types import SimpleNamespace
 import sys
 import unittest
@@ -21,6 +22,9 @@ TOOLS = Path(__file__).resolve().parents[1]
 import Tools.execution.task_runtime.task_runtime_action as action_contract  # noqa: E402
 import Tools.execution.task_runtime.task_runtime_runner as runner  # noqa: E402
 from Tools.execution.task_runtime import queue_runtime  # noqa: E402
+from Tools.execution.task_runtime import runtime_paths  # noqa: E402
+from Tools.platform.agent_interface import compile_cli_contract  # noqa: E402
+from Tools.platform.agent_interface import tool_availability  # noqa: E402
 from Tools.tests.support.task_runtime_object_factory import (  # noqa: E402
     parsed_runtime_state,
 )
@@ -183,13 +187,18 @@ class TaskRuntimeRunnerContractTests(unittest.TestCase):
     """One representative compiled-CLI consumption contract."""
 
     def test_command_consumes_compiled_positionals_and_transport_once(self):
-        delta = ".cambium/deltas/B1.yaml"
-        command = runner._command(
-            "/fixture", "apply_delta", {
-                "delta": delta,
-                "apply": True,
-                "json": False,
-            })
+        root = TOOLS.parent
+        contract = compile_cli_contract.compile_contract(
+            root, tool_availability.CARRIED_RUNTIME)
+        with mock.patch.object(
+                runner, "_compiled_cli_contract", return_value=contract):
+            delta = ".cambium/deltas/B1.yaml"
+            command = runner._command(
+                root, "apply_delta", {
+                    "delta": delta,
+                    "apply": True,
+                    "json": False,
+                })
 
         self.assertEqual(sys.executable, command[0])
         self.assertEqual(
@@ -197,10 +206,78 @@ class TaskRuntimeRunnerContractTests(unittest.TestCase):
         self.assertEqual(delta, command[2])
         self.assertNotIn("--delta", command)
         self.assertIn("--apply", command)
-        self.assertEqual("/fixture",
+        self.assertEqual(str(root),
                          command[command.index("--root") + 1])
         self.assertEqual("--json", command[-1])
         self.assertEqual(1, command.count("--json"))
+
+    def test_runner_does_not_fall_back_to_distribution_contract(self):
+        with tempfile.TemporaryDirectory() as directory, \
+                self.assertRaisesRegex(
+                    runner.RunnerError,
+                    "generate it with .*--projection-target carried-runtime"):
+            runner._command(
+                Path(directory).resolve(), "apply_delta", {
+                    "delta": ".cambium/deltas/B1.yaml",
+                    "apply": True,
+                    "json": False,
+                })
+
+    def test_stale_or_hand_edited_contract_is_refused_before_route_use(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory).resolve()
+            path = root / runtime_paths.CLI_CONTRACT_ARTIFACT_PATH
+            path.parent.mkdir(parents=True)
+            path.write_text(
+                "artifact: cli-invocation-contract\n"
+                "projection_target: carried-runtime\n"
+                "tools:\n"
+                "  - tool: apply_delta\n"
+                "    module: Tools/check_links.py\n",
+                encoding="utf-8")
+            refused = completed(
+                returncode=2,
+                stdout="compile_cli_contract --check: stale or hand-edited\n")
+            with mock.patch.object(
+                    runner, "_carried_cli_contract_currentness_check",
+                    return_value=refused), mock.patch.object(
+                        runner, "_compiled_entrypoint") as dispatch, \
+                    self.assertRaisesRegex(
+                        runner.RunnerError, "not current"):
+                runner._command(root, "apply_delta", {
+                    "delta": ".cambium/deltas/B1.yaml",
+                    "apply": True,
+                    "json": False,
+                })
+
+            dispatch.assert_not_called()
+
+    def test_contract_is_reloaded_after_each_currentness_check(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory).resolve()
+            path = root / runtime_paths.CLI_CONTRACT_ARTIFACT_PATH
+            path.parent.mkdir(parents=True)
+            first = {
+                "artifact": "cli-invocation-contract",
+                "projection_target": "carried-runtime",
+                "tools": [],
+            }
+            second = dict(first, tools=[{"tool": "sample"}])
+            current = completed(returncode=0)
+            with mock.patch.object(
+                    runner, "_carried_cli_contract_currentness_check",
+                    return_value=current):
+                path.write_text(
+                    compile_cli_contract.kblib.canonical_yaml(first),
+                    encoding="utf-8")
+                loaded_first = runner._compiled_cli_contract(root)
+                path.write_text(
+                    compile_cli_contract.kblib.canonical_yaml(second),
+                    encoding="utf-8")
+                loaded_second = runner._compiled_cli_contract(root)
+
+            self.assertEqual([], loaded_first["tools"])
+            self.assertEqual([{"tool": "sample"}], loaded_second["tools"])
 
 
 class TaskRuntimeRunnerCheckpointIntegrationTests(unittest.TestCase):

@@ -148,7 +148,7 @@ source_files:
   - Tools/stamp_cards.py
   - Tools/update_queue.py
   - Tools/update_task.py
-source_hash: sha256:21732c4dfc979a6adc5e04b0ab2fa83d2898e2df15234a4ad7e613d07b42cc49
+source_hash: sha256:3ceed7c4fe3edd4a566fc949b385d7d14c018e9d319c6e83d56c01bfaa6cbe34
 agent_interface_policy:
   path: Tools/agent-interface-policy.yaml
   sha256: sha256:26afb19c445def06866398b3019e8043ef4d4548f793e9eafb7a6d3a67d4ca32
@@ -7705,7 +7705,7 @@ tools:
     source_hash: sha256:321b9c879068af47ec42eb4bbee7d4b3bdfe857b5c441292324363e4580dfa75
     implementation_module: Tools.execution.task_runtime.task_runtime_runner
     implementation_path: Tools/execution/task_runtime/task_runtime_runner.py
-    implementation_source_hash: sha256:130797dcacd4526847369e71954129cc22ff4ccc7ddafbcbf0ef792fb7d4b1b6
+    implementation_source_hash: sha256:c81c5c3ebf659a8bae214de28c7928775841048f8513565674bde61d18e3b196
     description: Read the current Task Runtime action, execute that exact action, or advance deterministic actions to the next semantic boundary.
     arguments:
       - dest: root
@@ -7797,7 +7797,7 @@ tools:
     receipt_extensions_extraction: complete
     receipt_extension_sources:
       - path: Tools/execution/task_runtime/task_runtime_runner.py
-        sha256: sha256:130797dcacd4526847369e71954129cc22ff4ccc7ddafbcbf0ef792fb7d4b1b6
+        sha256: sha256:c81c5c3ebf659a8bae214de28c7928775841048f8513565674bde61d18e3b196
     agent_interface:
       exposure: mcp
       workspace_argument: root

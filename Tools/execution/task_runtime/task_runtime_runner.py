@@ -7,9 +7,6 @@ Receipts, AuditPlans, Deltas, or governed pages itself.
 """
 from Tools.platform.repository.path_contract import \
     canonical_repository_relative_path
-from Tools.platform.repository.repository import tools_source_root
-
-import functools
 import json
 import os
 import subprocess
@@ -22,6 +19,9 @@ import Tools.execution.audit.assemble_terminal_proof as assemble_terminal_proof
 import Tools.execution.audit.batch_review_receipt_contract as batch_review_receipt_contract
 import Tools.platform.common.kblib as kblib
 import Tools.platform.agent_interface.cli_argv_renderer as cli_argv_renderer
+import Tools.platform.agent_interface.compile_cli_contract as compile_cli_contract
+import Tools.platform.agent_interface.entrypoint_loader as entrypoint_loader
+import Tools.platform.agent_interface.tool_availability as tool_availability
 import Tools.governance.control.metadata_execution_contract as metadata_execution_contract
 from Tools.execution.task_runtime import queue_runtime
 import Tools.execution.task_runtime.queue_runtime.gate_registry as gate_registry
@@ -35,9 +35,6 @@ from Tools.platform.common.reporting import write_canonical_json
 AUDIT_PLAN_CAPABILITY = "audit-plan-producer-v1"
 RUNNER_CAPABILITY = task_runtime_action.action_route(
     "activate-ready-batch").capability_chain[0]
-TOOLS_ROOT = tools_source_root(__file__)
-REPOSITORY_ROOT = os.path.dirname(TOOLS_ROOT)
-CLI_CONTRACT_PATH = os.path.join(TOOLS_ROOT, "compiled", "cli-contract.yaml")
 ACTIVATION_RECEIPT_TEMPLATE = \
     runtime_paths.RECEIPT_ROOT + "/ready-%s.jsonl"
 COMPLETION_RECEIPT_PATH = runtime_paths.child_path(
@@ -645,40 +642,15 @@ def next_action(root):
     return _resume_action(result)
 
 
-@functools.lru_cache(maxsize=1)
-def _compiled_cli_contract():
-    """Load and pin the source distribution's compiled CLI contract."""
-    try:
-        document = kblib.load_yaml_file(CLI_CONTRACT_PATH)
-    except (OSError, kblib.YamlSubsetError) as exc:
-        raise RunnerError(
-            "compiled CLI contract cannot be loaded: %s" % exc) from exc
-    if document.get("artifact") != "cli-invocation-contract" or \
-            not isinstance(document.get("tools"), list):
-        raise RunnerError("compiled CLI contract has an invalid artifact shape")
-    return document
-
-
-def _compiled_cli_tool(tool):
-    matches = [
-        row for row in _compiled_cli_contract()["tools"]
-        if isinstance(row, dict) and row.get("tool") == tool
-    ]
-    if len(matches) != 1:
-        raise RunnerError(
-            "compiled CLI contract resolves %s to %d entries" %
-            (tool, len(matches)))
-    return matches[0]
-
-
-def _compiled_entrypoint(tool, record):
-    relative = record.get("module")
+def _repository_tool_entrypoint(root, tool, relative):
+    """Resolve one registered adapter inside the Tool root being executed."""
     if not isinstance(relative, str) or not relative.endswith(".py"):
         raise RunnerError(
             "compiled CLI contract gives %s no Python entrypoint" % tool)
-    script = os.path.realpath(os.path.join(REPOSITORY_ROOT, relative))
+    tools_root = os.path.realpath(os.path.join(root, "Tools"))
+    script = os.path.realpath(os.path.join(root, relative))
     try:
-        contained = os.path.commonpath((TOOLS_ROOT, script)) == TOOLS_ROOT
+        contained = os.path.commonpath((tools_root, script)) == tools_root
     except ValueError:
         contained = False
     if not contained or not os.path.isfile(script):
@@ -688,9 +660,99 @@ def _compiled_entrypoint(tool, record):
     return script
 
 
+def _carried_cli_contract_currentness_check(root):
+    """Run the contract owner's currentness check in the executed Tool root."""
+    try:
+        descriptor = entrypoint_loader.describe_entrypoint(
+            compile_cli_contract.TOOL, os.path.join(root, "Tools"),
+            require_marker=True)
+    except entrypoint_loader.EntrypointResolutionError as exc:
+        raise RunnerError(
+            "carried-runtime CLI contract validator is unavailable: %s" %
+            exc) from exc
+    script = _repository_tool_entrypoint(
+        root, compile_cli_contract.TOOL, descriptor.invocation_path)
+    return kblib.run_cambium_subprocess(
+        [sys.executable, script, root, "--check", "--projection-target",
+         tool_availability.CARRIED_RUNTIME],
+        cwd=root, text=True, stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE, check=False)
+
+
+def _compiled_cli_contract(root):
+    """Validate and load this adopter runtime's carried CLI contract.
+
+    ``Tools/compiled/cli-contract.yaml`` describes the complete source
+    distribution and is deliberately omitted from an adopter.  A Runner
+    controls the reduced Tool surface installed in ``root``, so its only
+    admissible invocation contract is the carried-runtime projection generated
+    below that same root's derived namespace.  The compiler owner must prove
+    the stored bytes current against that root's actual adapters,
+    implementations, interface policy, runtime-path registry, and
+    distribution boundary before any route in those bytes can be executed.
+    """
+    root = os.path.realpath(os.path.abspath(os.fspath(root)))
+    try:
+        path = kblib.managed_repository_path(
+            root, runtime_paths.CLI_CONTRACT_ARTIFACT_PATH,
+            runtime_paths.DERIVED_ROOT,
+            suffixes=(".yaml",), must_exist=True)
+        with open(path, "rb") as handle:
+            before = handle.read()
+    except (OSError, ValueError) as exc:
+        raise RunnerError(
+            "carried-runtime CLI contract cannot be loaded; generate it with "
+            "`python3 Tools/compile_cli_contract.py . "
+            "--projection-target carried-runtime`: %s" % exc) from exc
+    checked = _carried_cli_contract_currentness_check(root)
+    if checked.returncode != 0:
+        details = (checked.stderr or checked.stdout or "").strip()
+        raise RunnerError(
+            "carried-runtime CLI contract is not current for the executed "
+            "Tool root%s" % (": " + details if details else ""))
+    try:
+        with open(path, "rb") as handle:
+            after = handle.read()
+        if after != before:
+            raise RunnerError(
+                "carried-runtime CLI contract changed during currentness "
+                "validation")
+        document = kblib.parse_yaml_subset(after.decode("utf-8"))
+    except (OSError, UnicodeError, kblib.YamlSubsetError, ValueError) as exc:
+        raise RunnerError(
+            "validated carried-runtime CLI contract cannot be loaded: %s" %
+            exc) from exc
+    if not isinstance(document, dict) or \
+            document.get("artifact") != "cli-invocation-contract" or \
+            not isinstance(document.get("tools"), list):
+        raise RunnerError("compiled CLI contract has an invalid artifact shape")
+    if document.get("projection_target") != "carried-runtime":
+        raise RunnerError(
+            "Runner requires a carried-runtime CLI contract; found %r" %
+            document.get("projection_target"))
+    return document
+
+
+def _compiled_cli_tool(root, tool):
+    matches = [
+        row for row in _compiled_cli_contract(root)["tools"]
+        if isinstance(row, dict) and row.get("tool") == tool
+    ]
+    if len(matches) != 1:
+        raise RunnerError(
+            "compiled CLI contract resolves %s to %d entries" %
+            (tool, len(matches)))
+    return matches[0]
+
+
+def _compiled_entrypoint(root, tool, record):
+    relative = record.get("module")
+    return _repository_tool_entrypoint(root, tool, relative)
+
+
 def _command(root, tool, arguments):
-    record = _compiled_cli_tool(tool)
-    script = _compiled_entrypoint(tool, record)
+    record = _compiled_cli_tool(root, tool)
+    script = _compiled_entrypoint(root, tool, record)
     schema = cli_argv_renderer.schema_from_compiled_tool(record)
     values = dict(arguments)
     interface = record.get("agent_interface") or {}

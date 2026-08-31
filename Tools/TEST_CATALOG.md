@@ -6,7 +6,7 @@ This file is generated from `Tools/test-ownership.yaml` and static source facts.
 
 | Test modules | Test cases | Fixtures | Fixture bundles | Parallel-safe cases | Test process calls | Fixture process calls | Test full copies | Fixture full copies | Cross-test imports |
 | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| 127 | 1061 | 51 | 8 | 885 | 40 | 12 | 15 | 29 | 0 |
+| 127 | 1064 | 51 | 8 | 888 | 40 | 12 | 15 | 29 | 0 |
 
 ### Method-level transitive exposure
 
@@ -14,16 +14,16 @@ These counts identify test methods whose per-method, per-class, or per-process s
 
 | Process | Temporary resource | File copy | Full repository copy | E2E builder | Full lifecycle |
 | ---: | ---: | ---: | ---: | ---: | ---: |
-| 38 | 263 | 47 | 49 | 2 | 2 |
+| 38 | 266 | 47 | 49 | 2 | 2 |
 
 ## Before and current static baseline
 
 | Metric | Before closure | Current |
 | --- | ---: | ---: |
 | Test modules | 129 | 127 |
-| Test cases | 2543 | 1061 |
+| Test cases | 2543 | 1064 |
 | Process-launch call sites | 192 | 52 |
-| Temporary-resource call sites | 233 | 141 |
+| Temporary-resource call sites | 233 | 144 |
 | Full repository copy call sites | 86 | 44 |
 | Cross-test import sites | 22 | 0 |
 
@@ -42,7 +42,7 @@ These counts identify test methods whose per-method, per-class, or per-process s
 | Level | Definition | Cases |
 | --- | --- | ---: |
 | `unit` | In-process deterministic computation owned by one module. | 368 |
-| `contract` | Schema, registry, owner, closed-set, or producer-consumer contract. | 485 |
+| `contract` | Schema, registry, owner, closed-set, or producer-consumer contract. | 488 |
 | `integration` | Adjacent production modules joined in an isolated temporary runtime. | 134 |
 | `e2e` | One representative complete current-contract lifecycle. | 4 |
 | `slow` | Real security, concurrency, crash, recovery, or host-isolation behavior. | 69 |
@@ -163,7 +163,7 @@ These counts identify test methods whose per-method, per-class, or per-process s
 | `Tools/tests/test_substantive_review_contract.py` | `Tools/execution/audit/substantive_review_contract.py` | `contract` | True | 10 | 0 | 0 | 0 | 0 | 0 |
 | `Tools/tests/test_task_runtime_action.py` | `Tools/execution/task_runtime/task_runtime_action.py` | `unit` | True | 14 | 0 | 0 | 0 | 0 | 0 |
 | `Tools/tests/test_task_runtime_identity_field_contract.py` | `kernel/K13 Task Runtime and Execution Control/runtime-state-model.json` | `contract` | True | 3 | 0 | 0 | 0 | 0 | 0 |
-| `Tools/tests/test_task_runtime_runner.py` | `Tools/execution/task_runtime/task_runtime_runner.py` | `unit` | True | 8 | 3 | 0 | 0 | 0 | 0 |
+| `Tools/tests/test_task_runtime_runner.py` | `Tools/execution/task_runtime/task_runtime_runner.py` | `unit` | True | 11 | 3 | 0 | 3 | 0 | 0 |
 | `Tools/tests/test_template_parity.py` | `profiles/template-files.yaml` | `integration` | False | 6 | 0 | 1 | 0 | 0 | 0 |
 | `Tools/tests/test_test_catalog.py` | `Tools/platform/distribution/test_catalog.py` | `contract` | True | 9 | 1 | 0 | 1 | 0 | 0 |
 | `Tools/tests/test_tool_availability.py` | `Tools/platform/agent_interface/tool_availability.py` | `contract` | True | 5 | 3 | 0 | 1 | 0 | 0 |
@@ -607,6 +607,9 @@ Only mixed test modules need method-level rows. All other cases inherit their mo
 | `test_task_runtime_runner.TaskRuntimeRunnerCheckpointIntegrationTests.test_execute_dispatches_invoke_and_await_then_returns_readback` | `Tools/execution/task_runtime/task_runtime_runner.py` | `integration` | True | task_runtime_runner_dispatch_readback_checkpoint |
 | `test_task_runtime_runner.TaskRuntimeRunnerCheckpointIntegrationTests.test_terminal_chain_orders_producers_consumer_and_closed_readback` | `Tools/execution/task_runtime/task_runtime_runner.py` | `integration` | True | task_runtime_runner_terminal_chain_checkpoint |
 | `test_task_runtime_runner.TaskRuntimeRunnerContractTests.test_command_consumes_compiled_positionals_and_transport_once` | `Tools/execution/task_runtime/task_runtime_runner.py` | `contract` | True | task_runtime_runner_compiled_cli_consumption |
+| `test_task_runtime_runner.TaskRuntimeRunnerContractTests.test_contract_is_reloaded_after_each_currentness_check` | `Tools/execution/task_runtime/task_runtime_runner.py` | `contract` | True | task_runtime_runner_compiled_cli_consumption |
+| `test_task_runtime_runner.TaskRuntimeRunnerContractTests.test_runner_does_not_fall_back_to_distribution_contract` | `Tools/execution/task_runtime/task_runtime_runner.py` | `contract` | True | task_runtime_runner_compiled_cli_consumption |
+| `test_task_runtime_runner.TaskRuntimeRunnerContractTests.test_stale_or_hand_edited_contract_is_refused_before_route_use` | `Tools/execution/task_runtime/task_runtime_runner.py` | `contract` | True | task_runtime_runner_compiled_cli_consumption |
 | `test_test_catalog.TestCatalogProjectionIntegrationTests.test_repository_manifest_and_both_projections_are_current` | `Tools/platform/distribution/test_catalog.py` | `integration` | False | test_catalog_repository_projection_freshness |
 | `test_tool_availability.AvailabilityPartitionContractTests.test_target_permission_and_missing_module_partition_are_distinct` | `Tools/platform/agent_interface/tool_availability.py` | `contract` | True | target_specific_missing_tool_partition |
 | `test_tool_availability.AvailabilityPartitionContractTests.test_unknown_projection_target_is_refused_before_resolution` | `Tools/platform/agent_interface/tool_availability.py` | `contract` | True | target_specific_missing_tool_partition |
@@ -1576,6 +1579,9 @@ Ownership fields come from `Tools/test-ownership.yaml`; fixture entrypoints and 
 | `test_task_runtime_runner.TaskRuntimeRunnerCheckpointIntegrationTests.test_execute_dispatches_invoke_and_await_then_returns_readback` | `task_runtime_runner.execute` | `test_task_runtime_runner.TaskRuntimeRunnerCheckpointIntegrationTests.test_execute_dispatches_invoke_and_await_then_returns_readback` | `integration` | — | — | — | — | — | — | `Tools/tests/support/task_runtime_object_factory.py:parsed_runtime_state` | False | — | `keep` |
 | `test_task_runtime_runner.TaskRuntimeRunnerCheckpointIntegrationTests.test_terminal_chain_orders_producers_consumer_and_closed_readback` | `task_runtime_runner._await_terminal_audit` | `test_task_runtime_runner.TaskRuntimeRunnerCheckpointIntegrationTests.test_terminal_chain_orders_producers_consumer_and_closed_readback` | `integration` | — | — | — | — | — | — | — | False | — | `keep` |
 | `test_task_runtime_runner.TaskRuntimeRunnerContractTests.test_command_consumes_compiled_positionals_and_transport_once` | `task_runtime_runner._command` | `test_task_runtime_runner.TaskRuntimeRunnerContractTests.test_command_consumes_compiled_positionals_and_transport_once` | `contract` | — | — | — | — | — | — | — | False | — | `keep` |
+| `test_task_runtime_runner.TaskRuntimeRunnerContractTests.test_contract_is_reloaded_after_each_currentness_check` | `task_runtime_runner._command` | `test_task_runtime_runner.TaskRuntimeRunnerContractTests.test_contract_is_reloaded_after_each_currentness_check` | `contract` | temp=1 | — | — | — | — | — | — | False | — | `keep` |
+| `test_task_runtime_runner.TaskRuntimeRunnerContractTests.test_runner_does_not_fall_back_to_distribution_contract` | `task_runtime_runner._command` | `test_task_runtime_runner.TaskRuntimeRunnerContractTests.test_runner_does_not_fall_back_to_distribution_contract` | `contract` | temp=1 | — | — | — | — | — | — | False | — | `keep` |
+| `test_task_runtime_runner.TaskRuntimeRunnerContractTests.test_stale_or_hand_edited_contract_is_refused_before_route_use` | `task_runtime_runner._command` | `test_task_runtime_runner.TaskRuntimeRunnerContractTests.test_stale_or_hand_edited_contract_is_refused_before_route_use` | `contract` | temp=1 | — | — | — | — | — | — | False | — | `keep` |
 | `test_task_runtime_runner.TaskRuntimeRunnerUnitTests.test_close_action_consumes_queue_owned_transition_arguments` | `task_runtime_runner.next_action` | `test_task_runtime_runner.TaskRuntimeRunnerUnitTests.test_close_action_consumes_queue_owned_transition_arguments` | `unit` | — | — | — | — | — | — | `Tools/tests/support/task_runtime_object_factory.py:parsed_runtime_state` | False | — | `keep` |
 | `test_task_runtime_runner.TaskRuntimeRunnerUnitTests.test_next_action_projects_representative_runtime_boundaries` | `task_runtime_runner.next_action` | `test_task_runtime_runner.TaskRuntimeRunnerUnitTests.test_next_action_projects_representative_runtime_boundaries` | `unit` | — | — | — | — | — | — | `Tools/tests/support/task_runtime_object_factory.py:parsed_runtime_state` | False | — | `keep` |
 | `test_task_runtime_runner.TaskRuntimeRunnerUnitTests.test_open_batch_internal_route_preserves_audit_owner_outcome` | `task_runtime_runner.next_action` | `test_task_runtime_runner.TaskRuntimeRunnerUnitTests.test_open_batch_internal_route_preserves_audit_owner_outcome` | `unit` | — | — | — | — | — | — | `Tools/tests/support/task_runtime_object_factory.py:parsed_runtime_state` | False | — | `keep` |
@@ -1775,11 +1781,11 @@ Bundle membership, sizes, and hashes come from the adjacent generated manifest; 
 
 | Bundle | Manifest | Owner | Generator | Files | Bytes | Tree SHA-256 |
 | --- | --- | --- | --- | ---: | ---: | --- |
-| `Tools/tests/fixtures/integration/batch_close_applied_checkpoint` | `Tools/tests/fixtures/integration/batch_close_applied_checkpoint.manifest.json` | `Tools/tests/fixtures/e2e/batch_close_scenarios.py` | `Tools.tests.fixtures.e2e.batch_close_scenarios.generate_batch_close_checkpoint` | 25 | 110711 | `sha256:bbc25c455aa2907660e0feddefc96bf96e93fd4792688792e399337f0642065d` |
-| `Tools/tests/fixtures/integration/batch_close_state_mutating_checkpoint` | `Tools/tests/fixtures/integration/batch_close_state_mutating_checkpoint.manifest.json` | `Tools/tests/fixtures/e2e/batch_close_scenarios.py` | `Tools.tests.fixtures.e2e.batch_close_scenarios.generate_batch_close_checkpoint` | 25 | 110711 | `sha256:3cc2658f83588a8f17bd2ee4dca9d04f3e7be9e54930ce38e1e51c4cea8dc6a3` |
-| `Tools/tests/fixtures/integration/maintenance_closed_checkpoint` | `Tools/tests/fixtures/integration/maintenance_closed_checkpoint.manifest.json` | `Tools/tests/fixtures/e2e/required_queue_scenarios.py` | `Tools.tests.fixtures.e2e.required_queue_scenarios.generate_required_queue_checkpoint` | 36 | 395202 | `sha256:2dfc03828608b0ec02ae25908ad562cf88473e704566f2f66dee054d0cf110e5` |
-| `Tools/tests/fixtures/integration/terminal_closed_checkpoint` | `Tools/tests/fixtures/integration/terminal_closed_checkpoint.manifest.json` | `Tools/tests/fixtures/e2e/required_queue_scenarios.py` | `Tools.tests.fixtures.e2e.required_queue_scenarios.generate_required_queue_checkpoint` | 33 | 388628 | `sha256:d5716b24f1f8f3ab58f79f48ffc767133f1e1d4ad1ed7ff31b7db1178c142310` |
-| `Tools/tests/fixtures/integration/update_queue_merge_admission_checkpoint` | `Tools/tests/fixtures/integration/update_queue_merge_admission_checkpoint.manifest.json` | `Tools/tests/fixtures/e2e/update_queue_scenarios.py` | `Tools.tests.fixtures.e2e.update_queue_scenarios.generate_update_queue_checkpoint` | 23 | 103916 | `sha256:fbc69f9d4cf824deedcbb25c1d0d1cb100e9777c463219a2fd65f6aecb783427` |
-| `Tools/tests/fixtures/integration/update_queue_merged_checkpoint` | `Tools/tests/fixtures/integration/update_queue_merged_checkpoint.manifest.json` | `Tools/tests/fixtures/e2e/update_queue_scenarios.py` | `Tools.tests.fixtures.e2e.update_queue_scenarios.generate_update_queue_checkpoint` | 23 | 106424 | `sha256:b26575442a2777424740d0107843e9bdc9cbfc80439d08e3f57281870449653a` |
-| `Tools/tests/fixtures/integration/update_queue_open_checkpoint` | `Tools/tests/fixtures/integration/update_queue_open_checkpoint.manifest.json` | `Tools/tests/fixtures/e2e/update_queue_scenarios.py` | `Tools.tests.fixtures.e2e.update_queue_scenarios.generate_update_queue_checkpoint` | 16 | 34704 | `sha256:15b4b3982ba8405a69ad865fb12108b330f555a34c3727d46f22a0bb835f2f96` |
-| `Tools/tests/fixtures/integration/update_queue_planning_ready_checkpoint` | `Tools/tests/fixtures/integration/update_queue_planning_ready_checkpoint.manifest.json` | `Tools/tests/fixtures/e2e/update_queue_scenarios.py` | `Tools.tests.fixtures.e2e.update_queue_scenarios.generate_update_queue_checkpoint` | 15 | 29737 | `sha256:5e39c3cac1e11dd6d110da152944fa2a99fc8177187fbe250c13833b2ed4a009` |
+| `Tools/tests/fixtures/integration/batch_close_applied_checkpoint` | `Tools/tests/fixtures/integration/batch_close_applied_checkpoint.manifest.json` | `Tools/tests/fixtures/e2e/batch_close_scenarios.py` | `Tools.tests.fixtures.e2e.batch_close_scenarios.generate_batch_close_checkpoint` | 25 | 110711 | `sha256:fc6b9acdf4d4622d982fccd49dbaf78a6312634ea733625abee2857800516856` |
+| `Tools/tests/fixtures/integration/batch_close_state_mutating_checkpoint` | `Tools/tests/fixtures/integration/batch_close_state_mutating_checkpoint.manifest.json` | `Tools/tests/fixtures/e2e/batch_close_scenarios.py` | `Tools.tests.fixtures.e2e.batch_close_scenarios.generate_batch_close_checkpoint` | 25 | 110711 | `sha256:08102af2e12ab003c0bf6689f818e901e588e55ac767dd294487d329b925ea8e` |
+| `Tools/tests/fixtures/integration/maintenance_closed_checkpoint` | `Tools/tests/fixtures/integration/maintenance_closed_checkpoint.manifest.json` | `Tools/tests/fixtures/e2e/required_queue_scenarios.py` | `Tools.tests.fixtures.e2e.required_queue_scenarios.generate_required_queue_checkpoint` | 36 | 395202 | `sha256:8c6d9c85943a8e8dc9c3a63d127318bd810ff623c4ce1ade962cc2867786cfcf` |
+| `Tools/tests/fixtures/integration/terminal_closed_checkpoint` | `Tools/tests/fixtures/integration/terminal_closed_checkpoint.manifest.json` | `Tools/tests/fixtures/e2e/required_queue_scenarios.py` | `Tools.tests.fixtures.e2e.required_queue_scenarios.generate_required_queue_checkpoint` | 33 | 388628 | `sha256:3c665e464b0916265d08164068ed2aad265af0565cf22d91ca4722d7197dfdf5` |
+| `Tools/tests/fixtures/integration/update_queue_merge_admission_checkpoint` | `Tools/tests/fixtures/integration/update_queue_merge_admission_checkpoint.manifest.json` | `Tools/tests/fixtures/e2e/update_queue_scenarios.py` | `Tools.tests.fixtures.e2e.update_queue_scenarios.generate_update_queue_checkpoint` | 23 | 103916 | `sha256:339f02845d3491530b6d82603cc73c13ee9307d6865653aea92ccd834f98db73` |
+| `Tools/tests/fixtures/integration/update_queue_merged_checkpoint` | `Tools/tests/fixtures/integration/update_queue_merged_checkpoint.manifest.json` | `Tools/tests/fixtures/e2e/update_queue_scenarios.py` | `Tools.tests.fixtures.e2e.update_queue_scenarios.generate_update_queue_checkpoint` | 23 | 106424 | `sha256:1d76c10170a3408bc16c325509d47ce2e111759aecb80372370608c4da6b9f36` |
+| `Tools/tests/fixtures/integration/update_queue_open_checkpoint` | `Tools/tests/fixtures/integration/update_queue_open_checkpoint.manifest.json` | `Tools/tests/fixtures/e2e/update_queue_scenarios.py` | `Tools.tests.fixtures.e2e.update_queue_scenarios.generate_update_queue_checkpoint` | 16 | 34704 | `sha256:ecf7ed5ee0c38495b45fcc11be00ab9f98fe411d11f52601360edd55743718e4` |
+| `Tools/tests/fixtures/integration/update_queue_planning_ready_checkpoint` | `Tools/tests/fixtures/integration/update_queue_planning_ready_checkpoint.manifest.json` | `Tools/tests/fixtures/e2e/update_queue_scenarios.py` | `Tools.tests.fixtures.e2e.update_queue_scenarios.generate_update_queue_checkpoint` | 15 | 29737 | `sha256:18214fa1e5aac51751e1a17c9613c913f9ebf059d5ec26d5c0e4f874bc315ceb` |
