@@ -1,17 +1,18 @@
-"""Contract-to-consumer projection checks for Card, Read Set, and Profile layout.
+"""Owner-to-consumer checks for distributed component layout projections.
 
-These tests deliberately change owner values in isolated repository copies.
-A consumer that keeps a second directory, index, type, mode, or phase-field
-literal will fail even though the owner and its data agree.  The AST guard
-also prevents the retired compatibility constants from reappearing under
-their old public names.
+The serialized Card, Read Set, and Profile layout contracts are the machine
+owners. Contract tests exercise those owners and their direct consumers
+without copying a repository. One integration test builds a single-route
+repository from the owner documents and proves that discovery, activation,
+load-closure resolution, and generated navigation consume the same changed
+layout. A single negative contract keeps the retired compatibility surface
+from becoming public again.
 """
 
 import ast
-from contextlib import redirect_stdout
+from contextlib import contextmanager, redirect_stdout
 import io
 from pathlib import Path
-import shutil
 import sys
 import tempfile
 import unittest
@@ -21,23 +22,37 @@ TOOLS = Path(__file__).resolve().parents[1]
 REPOSITORY = TOOLS.parent
 sys.path.insert(0, str(TOOLS))
 
-import card_activation  # noqa: E402
-import card_contract  # noqa: E402
-import profile_layout_contract  # noqa: E402
-import profile_onboarding_status  # noqa: E402
-import read_set_contract  # noqa: E402
-import scaffold_profile  # noqa: E402
-import stamp_cards  # noqa: E402
-from queue_runtime import task_contract  # noqa: E402
+import Tools.execution.audit.check_proof as check_proof  # noqa: E402
+import Tools.execution.context_delivery.card_activation as card_activation  # noqa: E402
+import Tools.execution.context_delivery.card_contract as card_contract  # noqa: E402
+import Tools.execution.context_delivery.read_set_contract as read_set_contract  # noqa: E402
+import Tools.execution.planning.apply_task_plan as apply_task_plan  # noqa: E402
+import Tools.governance.profile.profile_layout_contract as profile_layout_contract  # noqa: E402
+import Tools.governance.profile.profile_onboarding_status as profile_onboarding_status  # noqa: E402
+import Tools.governance.profile.scaffold_profile as scaffold_profile  # noqa: E402
+import Tools.platform.common.kblib as kblib  # noqa: E402
+import Tools.platform.distribution.stamp_cards as stamp_cards  # noqa: E402
+from Tools.execution.task_runtime.queue_runtime import task_contract  # noqa: E402
 
 
-def _replace_once(path, old, new):
-    text = path.read_text(encoding="utf-8")
+SOURCE = "kernel/K00 Fixture.md"
+READ_SET = "Runtime Read/R01 Fixture Read Set.md"
+CARD = "Action Card/R01 Fixture Card.md"
+
+
+def _replace_once(text, old, new, label):
     if text.count(old) != 1:
         raise AssertionError(
             "%s expected one %r anchor, found %d" %
-            (path, old, text.count(old)))
-    path.write_text(text.replace(old, new), encoding="utf-8")
+            (label, old, text.count(old)))
+    return text.replace(old, new)
+
+
+def _write(root, relative, text):
+    path = Path(root) / relative
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(text, encoding="utf-8")
+    return path
 
 
 def _top_level_names(path):
@@ -52,140 +67,142 @@ def _top_level_names(path):
     return names
 
 
-class ProjectionFixture(unittest.TestCase):
-    def setUp(self):
-        self.temporary = tempfile.TemporaryDirectory()
-        self.addCleanup(self.temporary.cleanup)
-        self.root = Path(self.temporary.name) / "repo"
-        self.root.mkdir()
-        for name in ("Card", "Read Set", "kernel"):
-            shutil.copytree(REPOSITORY / name, self.root / name)
-        (self.root / "Tools/schemas").mkdir(parents=True)
-        shutil.copy2(TOOLS / "schemas/card.schema.yaml",
-                     self.root / "Tools/schemas/card.schema.yaml")
-        shutil.copy2(TOOLS / "module-boundaries.yaml",
-                     self.root / "Tools/module-boundaries.yaml")
+@contextmanager
+def _changed_layout_root():
+    """Yield one route materialized from deliberately changed owner values."""
+    with tempfile.TemporaryDirectory() as workspace:
+        root = Path(workspace)
 
-    def refresh_card_review_bindings(self):
-        cards, _read_sets = stamp_cards.discover_cards(self.root)
-        for record in cards.values():
-            expected_source = stamp_cards.source_digest(
-                self.root, record["source_files"])
-            text = record["text"]
-            text = stamp_cards.replace_frontmatter_scalar(
-                text, "source_hash", expected_source)
-            text = stamp_cards.replace_frontmatter_scalar(
-                text, "reviewed_source_hash", expected_source)
-            text = stamp_cards.replace_frontmatter_scalar(
-                text, "reviewed_card_hash", record["body_hash"])
-            (self.root / record["path"]).write_text(text, encoding="utf-8")
+        card_schema_text = (REPOSITORY / card_contract.SCHEMA_PATH).read_text(
+            encoding="utf-8")
+        for old, new in (
+                ("document_type: card", "document_type: action-card"),
+                ("generation_mode: curated", "generation_mode: reviewed"),
+                ('path_prefix: "Card/"', 'path_prefix: "Action Card/"'),
+                ('index_name: "Card Index.md"',
+                 'index_name: "Cards Navigation.md"')):
+            card_schema_text = _replace_once(
+                card_schema_text, old, new, card_contract.SCHEMA_PATH)
+        _write(root, card_contract.SCHEMA_PATH, card_schema_text)
 
-
-class CardProjectionTests(ProjectionFixture):
-    def test_card_consumers_follow_schema_directory_type_and_mode(self):
-        schema_path = self.root / card_contract.SCHEMA_PATH
-        _replace_once(schema_path, 'document_type: card',
-                      'document_type: action-card')
-        _replace_once(schema_path, 'generation_mode: curated',
-                      'generation_mode: reviewed')
-        _replace_once(schema_path, 'path_prefix: "Card/"',
-                      'path_prefix: "Action Card/"')
-
-        target = self.root / "Action Card"
-        target.mkdir()
-        for path in sorted((self.root / "Card").glob("*.md")):
-            shutil.move(str(path), target / path.name)
-        for path in sorted(target.glob("R*.md")):
-            text = path.read_text(encoding="utf-8")
-            text = text.replace("type: card", "type: action-card", 1)
-            text = text.replace(
-                "generation_mode: curated", "generation_mode: reviewed", 1)
-            path.write_text(text, encoding="utf-8")
-
-        schema = card_contract.load_schema(self.root)
-        cards, read_sets = stamp_cards.discover_cards(self.root)
-        registry, _fingerprint = card_activation._route_registry(self.root)
-
-        self.assertEqual("Action Card", schema["directory"])
-        self.assertEqual(set(read_sets), set(cards))
-        self.assertEqual(set(cards), set(registry))
-        self.assertTrue(all(
-            record["path"].startswith(schema["path_prefix"])
-            for record in cards.values()))
-
-    def test_both_generated_index_paths_come_from_their_schemas(self):
-        self.refresh_card_review_bindings()
-        card_schema_path = self.root / card_contract.SCHEMA_PATH
-        read_schema_path = self.root / read_set_contract.SCHEMA_PATH
-        _replace_once(card_schema_path, 'index_name: "Card Index.md"',
-                      'index_name: "Cards Navigation.md"')
-        _replace_once(read_schema_path,
-                      'index_name: "Read Sets Index.md"',
-                      'index_name: "Loading Navigation.md"')
-        (self.root / "Card/Card Index.md").rename(
-            self.root / "Card/Cards Navigation.md")
-        (self.root / "Read Set/Read Sets Index.md").rename(
-            self.root / "Read Set/Loading Navigation.md")
-
-        output = io.StringIO()
-        with redirect_stdout(output):
-            exit_code = stamp_cards.main([str(self.root), "--check"])
-
-        self.assertEqual(0, exit_code, output.getvalue())
-        self.assertEqual(
-            "Card/Cards Navigation.md",
-            card_contract.load_schema(self.root)["index_path"])
-        self.assertEqual(
-            "Read Set/Loading Navigation.md",
-            read_set_contract.load_schema(self.root)["index_path"])
-
-
-class ReadSetProjectionTests(ProjectionFixture):
-    def test_consumers_follow_schema_layout_type_and_phase_field_order(self):
-        schema_path = self.root / read_set_contract.SCHEMA_PATH
-        _replace_once(schema_path, 'document_type: read-set',
-                      'document_type: route-load')
-        _replace_once(schema_path, 'path_prefix: "Read Set/"',
-                      'path_prefix: "Runtime Read/"')
-        _replace_once(
-            schema_path,
-            "phase_fields:\n  - phase_id\n  - conditional\n  - standard\n  - trigger",
-            "phase_fields:\n  - trigger\n  - standard\n  - conditional\n  - phase_id",
+        read_schema_text = (REPOSITORY / read_set_contract.SCHEMA_PATH).read_text(
+            encoding="utf-8")
+        for old, new in (
+                ("document_type: read-set", "document_type: route-load"),
+                ('path_prefix: "Read Set/"',
+                 'path_prefix: "Runtime Read/"'),
+                ('index_name: "Read Sets Index.md"',
+                 'index_name: "Loading Navigation.md"'),
+                ("phase_fields:\n  - phase_id\n  - conditional\n"
+                 "  - standard\n  - trigger",
+                 "phase_fields:\n  - trigger\n  - standard\n"
+                 "  - conditional\n  - phase_id")):
+            read_schema_text = _replace_once(
+                read_schema_text, old, new, read_set_contract.SCHEMA_PATH)
+        _write(root, read_set_contract.SCHEMA_PATH, read_schema_text)
+        _write(
+            root, stamp_cards.CARD_BUDGET_PATH,
+            (REPOSITORY / stamp_cards.CARD_BUDGET_PATH).read_text(
+                encoding="utf-8"),
         )
 
-        target = self.root / "Runtime Read"
-        target.mkdir()
-        for path in sorted((self.root / "Read Set").glob("*.md")):
-            shutil.move(str(path), target / path.name)
-        for path in sorted(target.glob("R*.md")):
-            text = path.read_text(encoding="utf-8")
-            path.write_text(
-                text.replace("type: read-set", "type: route-load", 1),
-                encoding="utf-8")
-        for path in sorted((self.root / "Card").glob("R*.md")):
-            text = path.read_text(encoding="utf-8")
-            path.write_text(
-                text.replace("Read Set/", "Runtime Read/"),
-                encoding="utf-8")
+        card_schema = card_contract.load_schema(root)
+        read_schema = read_set_contract.load_schema(root)
+        _write(root, SOURCE, "# Fixture source\n")
+        declaration = {
+            "type": read_schema["document_type"],
+            "schema_version": read_schema["schema_version"],
+            "route_id": "R01",
+            "activation_phase": "batch-preflight",
+            "narrowable": False,
+            "load_edges": [{
+                "edge_id": "R01:start",
+                "kind": "required",
+                "phase_id": "batch-preflight",
+                "trigger_id": "route-selected",
+                "targets": [SOURCE],
+                "read_sets": [],
+            }],
+        }
+        _write(
+            root, READ_SET,
+            "---\n%s---\n# Fixture Read Set\n\n"
+            "## Purpose\n\nFixture loading boundary.\n\n"
+            "## Non-deterministic triggers\n\nNone.\n" %
+            kblib.canonical_yaml(declaration),
+        )
 
-        schema = read_set_contract.load_schema(self.root)
-        records = read_set_contract.discover(self.root, schema=schema)
-        cards, paired = stamp_cards.discover_cards(self.root)
-        selected = [records["R01"]["path"]]
-        closure = task_contract.read_set_load_closure(self.root, selected)
+        body = (
+            "# Fixture Card\n\n"
+            "## Purpose\n\nFixture action projection.\n\n"
+            "## Actions\n\n- Read the declared source.\n\n"
+            "## Stop or escalate\n\nStop when the source is stale.\n\n"
+            "## Read-back hook\n\nReturn to the declared Read Set.\n"
+        )
+        sources = [READ_SET, SOURCE]
+        source_hash = stamp_cards.source_digest(root, sources)
+        card_data = {
+            "type": card_schema["document_type"],
+            "generation_mode": card_schema["generation_mode"],
+            "route_id": "R01",
+            "read_set_id": "R01",
+            "read_set": READ_SET,
+            "source_files": sources,
+            "source_hash": source_hash,
+            "reviewed_source_hash": source_hash,
+            "reviewed_card_hash": "0" * 12,
+        }
+        provisional = "---\n%s---\n%s" % (
+            kblib.canonical_yaml(card_data), body)
+        card_data["reviewed_card_hash"] = stamp_cards.card_body_digest(
+            provisional)
+        _write(
+            root, CARD,
+            "---\n%s---\n%s" % (kblib.canonical_yaml(card_data), body),
+        )
 
-        self.assertEqual("Runtime Read", schema["directory"])
-        self.assertEqual(
-            ["trigger", "standard", "conditional", "phase_id"],
-            schema["phase_fields"])
-        self.assertEqual(set(records), set(cards))
-        self.assertEqual(set(records), set(paired))
-        self.assertIn(selected[0], closure[0])
-        self.assertEqual([], closure[3])
+        cards, read_sets = stamp_cards.discover_cards(root)
+        _write(
+            root, card_schema["index_path"],
+            stamp_cards.render_card_index(cards, read_sets),
+        )
+        _write(
+            root, read_schema["index_path"],
+            stamp_cards.render_read_set_index(read_sets),
+        )
+        yield root, card_schema, read_schema
 
 
-class ProfileLayoutProjectionTests(unittest.TestCase):
-    def test_manifest_parser_classifies_candidates_and_shipped_namespaces(self):
+class LayoutProjectionIntegrationTests(unittest.TestCase):
+    def test_changed_owner_layout_reaches_every_direct_projection(self):
+        with _changed_layout_root() as (root, card_schema, read_schema):
+            cards, read_sets = stamp_cards.discover_cards(root)
+            registry, _fingerprint = card_activation._route_registry(root)
+            closure = task_contract.read_set_load_closure(root, [READ_SET])
+            output = io.StringIO()
+            with redirect_stdout(output):
+                exit_code = stamp_cards.main([str(root), "--check"])
+
+            self.assertEqual("Action Card", card_schema["directory"])
+            self.assertEqual(
+                "Action Card/Cards Navigation.md", card_schema["index_path"])
+            self.assertEqual("Runtime Read", read_schema["directory"])
+            self.assertEqual(
+                "Runtime Read/Loading Navigation.md",
+                read_schema["index_path"])
+            self.assertEqual(
+                ["trigger", "standard", "conditional", "phase_id"],
+                read_schema["phase_fields"])
+            self.assertEqual({"R01"}, set(cards))
+            self.assertEqual({"R01"}, set(read_sets))
+            self.assertEqual({"R01"}, set(registry))
+            self.assertEqual({SOURCE}, closure[1])
+            self.assertEqual([], closure[3])
+            self.assertEqual(0, exit_code, output.getvalue())
+
+
+class ProfileLayoutContractTests(unittest.TestCase):
+    def test_owner_classifies_candidate_template_and_example_manifests(self):
         self.assertEqual(
             frozenset((profile_layout_contract.TEMPLATE_PROFILE_ID,)),
             profile_layout_contract.TEMPLATE_PROFILE_IDS)
@@ -199,7 +216,6 @@ class ProfileLayoutProjectionTests(unittest.TestCase):
                 "profiles/candidate/profile.md")
         self.assertEqual("candidate", candidate.profile_id)
         self.assertTrue(candidate.selectable)
-        self.assertIsNone(candidate.reserved_namespace)
 
         example = profile_layout_contract.parse_profile_manifest_path(
             "profiles/examples/worked-planning/profile.md")
@@ -210,8 +226,9 @@ class ProfileLayoutProjectionTests(unittest.TestCase):
         for template_id in profile_layout_contract.TEMPLATE_PROFILE_IDS:
             with self.subTest(template_id=template_id):
                 location = profile_layout_contract.parse_profile_manifest_path(
-                    profile_layout_contract.profile_manifest_relative(
-                        template_id))
+                    "%s/%s" % (
+                        profile_layout_contract.profile_relative(template_id),
+                        profile_layout_contract.PROFILE_MANIFEST_NAME))
                 self.assertEqual(template_id, location.reserved_namespace)
                 with self.assertRaises(
                         profile_layout_contract.ProfileLayoutError):
@@ -222,7 +239,7 @@ class ProfileLayoutProjectionTests(unittest.TestCase):
             profile_layout_contract.parse_profile_manifest_path(
                 "profiles/examples/profile.md")
 
-    def test_both_profile_clis_consume_the_same_reserved_set(self):
+    def test_direct_consumers_use_the_owner_reserved_namespace_set(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
             profiles = root / profile_layout_contract.PROFILES_DIRECTORY
@@ -239,7 +256,19 @@ class ProfileLayoutProjectionTests(unittest.TestCase):
                         scaffold_profile.validate_profile_id(reserved)
 
 
-class NoDuplicateAuthorityTests(unittest.TestCase):
+class SingleOwnerContractTests(unittest.TestCase):
+    def test_route_registry_consumers_share_the_current_projection(self):
+        self.assertIs(
+            stamp_cards.discover_cards,
+            apply_task_plan.stamp_cards.discover_cards)
+        self.assertIs(
+            stamp_cards.discover_cards,
+            check_proof.stamp_cards.discover_cards)
+        self.assertIs(
+            stamp_cards.discover_cards,
+            card_activation.stamp_cards.discover_cards)
+        self.assertFalse(hasattr(check_proof, "load_route_registry"))
+
     def test_profile_manifest_filename_has_one_production_owner(self):
         duplicates = []
         for path in TOOLS.rglob("*.py"):
@@ -256,28 +285,34 @@ class NoDuplicateAuthorityTests(unittest.TestCase):
                         path.relative_to(TOOLS), node.lineno))
         self.assertEqual([], duplicates)
 
-    def test_retired_owner_constants_do_not_reappear_in_consumers(self):
-        forbidden = {
-            "read_set_contract.py": {"READ_SET_DIRECTORY", "INDEX_NAME"},
-            "stamp_cards.py": {
-                "DEFAULT_CARDS_DIR", "CARD_SCHEMA_PATH", "READ_SET_INDEX_PATH",
-            },
-            "card_activation.py": {"CARD_DIRECTORY"},
-            "profile_onboarding_status.py": {"NON_CANDIDATE_DIRECTORIES"},
-            "scaffold_profile.py": {"RESERVED_PROFILE_IDS"},
+    def test_retired_layout_aliases_and_exports_cannot_reappear(self):
+        forbidden_names = {
+            "execution/context_delivery/read_set_contract.py": {
+                "READ_SET_DIRECTORY", "INDEX_NAME"},
+            "platform/distribution/stamp_cards.py": {
+                "DEFAULT_CARDS_DIR", "CARD_SCHEMA_PATH",
+                "READ_SET_INDEX_PATH", "load_card_schema",
+                "CardContractError"},
+            "execution/context_delivery/card_activation.py": {
+                "CARD_DIRECTORY"},
+            "governance/profile/profile_onboarding_status.py": {
+                "NON_CANDIDATE_DIRECTORIES"},
+            "governance/profile/scaffold_profile.py": {
+                "RESERVED_PROFILE_IDS"},
         }
-        for filename, names in forbidden.items():
+        for filename, names in forbidden_names.items():
             with self.subTest(filename=filename):
                 self.assertEqual(
                     set(), names & _top_level_names(TOOLS / filename))
 
-    def test_stamp_cards_exports_the_single_card_loader_for_compatibility(self):
-        self.assertIs(stamp_cards.load_card_schema, card_contract.load_schema)
-        self.assertIs(stamp_cards.CardContractError,
-                      card_contract.CardContractError)
-
-    def test_read_set_path_consumers_do_not_read_a_deployed_literal_alias(self):
-        for relative in ("check_proof.py", "queue_runtime/task_contract.py"):
+        self.assertIs(
+            stamp_cards._load_card_schema, card_contract.load_schema)
+        self.assertIs(
+            stamp_cards._CardContractError,
+            card_contract.CardContractError)
+        for relative in (
+                "execution/audit/check_proof.py",
+                "execution/task_runtime/queue_runtime/task_contract.py"):
             with self.subTest(relative=relative):
                 text = (TOOLS / relative).read_text(encoding="utf-8")
                 self.assertNotIn("READ_SET_DIRECTORY", text)

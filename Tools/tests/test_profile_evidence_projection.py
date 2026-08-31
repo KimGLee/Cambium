@@ -9,7 +9,7 @@ import unittest
 TOOLS = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(TOOLS))
 
-import profile_contract  # noqa: E402
+import Tools.governance.profile.profile_contract as profile_contract  # noqa: E402
 
 
 def _literal_string_collection(node):
@@ -39,6 +39,7 @@ class ProfileLoadEvidenceProjectionTests(unittest.TestCase):
         )
 
     def test_consumers_do_not_redeclare_the_owner_collections(self):
+        owner = Path(profile_contract.__file__).resolve()
         protected = {
             frozenset(profile_contract.PROFILE_LOAD_EVIDENCE_FIELDS),
             frozenset(
@@ -47,8 +48,7 @@ class ProfileLoadEvidenceProjectionTests(unittest.TestCase):
         duplicates = []
         for path in sorted(TOOLS.rglob("*.py")):
             relative = path.relative_to(TOOLS)
-            if "tests" in relative.parts or relative.as_posix() == \
-                    "profile_contract.py":
+            if "tests" in relative.parts or path.resolve() == owner:
                 continue
             tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
             for node in ast.walk(tree):

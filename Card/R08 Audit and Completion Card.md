@@ -11,8 +11,8 @@ source_files:
   - kernel/K12 Quality Assurance/15 Terminal Audit and Convergence.md
   - kernel/K12 Quality Assurance/16 Terminal Proof Contract.md
   - kernel/K13 Task Runtime and Execution Control/11 Completion Policy.md
-source_hash: '0d3732bfb8cc'
-reviewed_source_hash: '0d3732bfb8cc'
+source_hash: '0059869a6ba3'
+reviewed_source_hash: '0059869a6ba3'
 reviewed_card_hash: '9fd4b42419e2'
 ---
 # R08 Audit and Completion Card

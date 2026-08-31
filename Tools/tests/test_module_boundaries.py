@@ -13,19 +13,160 @@ below is either "the tree does something the manifest does not declare" or
 the advisory report next door and never reach an assertion here.
 """
 
+import ast
 import os
+from pathlib import Path
 import sys
+import tempfile
 import unittest
 
 TOOLS = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 REPO = os.path.dirname(TOOLS)
-sys.path.insert(0, TOOLS)
+for import_root in (REPO, TOOLS):
+    if import_root not in sys.path:
+        sys.path.insert(0, import_root)
 
-import kblib  # noqa: E402
-import module_boundary_facts as boundary_facts  # noqa: E402
+import Tools.platform.common.kblib as kblib  # noqa: E402
+import Tools.platform.common.implementation_marker as implementation_marker  # noqa: E402
+import Tools.execution.audit.audit_reconciliation_contract as audit_reconciliation_contract  # noqa: E402
+import Tools.platform.distribution.module_boundary_facts as boundary_facts  # noqa: E402
+import Tools.platform.distribution.module_boundary_report as module_boundary_report  # noqa: E402
 
 
 MANIFEST = os.path.join(TOOLS, "module-boundaries.yaml")
+TAXONOMY = os.path.join(TOOLS, "tool-taxonomy.yaml")
+
+
+class ImportAttributionProbes(unittest.TestCase):
+    KNOWN = {"consumer", "pkg", "rootmod", "area.domain.owner"}
+    KNOWN_FULL = {
+        "consumer", "pkg", "pkg.sub", "rootmod", "area.domain.owner",
+    }
+
+    def facts(self, source):
+        with tempfile.TemporaryDirectory() as temp:
+            path = Path(temp) / "consumer.py"
+            path.write_text(source, encoding="utf-8")
+            return boundary_facts.module_facts(
+                temp, "consumer.py", self.KNOWN, self.KNOWN_FULL)
+
+    def test_from_package_import_submodule_credits_the_submodule(self):
+        facts = self.facts(
+            "from pkg import sub\n"
+            "answer = sub.public_call()\n")
+
+        self.assertIn(("pkg.sub", "public_call"), facts["consumes"])
+        self.assertNotIn(("pkg", "public_call"), facts["consumes"])
+
+    def test_from_package_import_submodule_alias_keeps_full_identity(self):
+        facts = self.facts(
+            "from pkg import sub as selected\n"
+            "answer = selected.public_call()\n")
+
+        self.assertIn(("pkg.sub", "public_call"), facts["consumes"])
+        self.assertNotIn(("pkg", "public_call"), facts["consumes"])
+
+    def test_import_package_submodule_forms_keep_python_bindings(self):
+        direct = self.facts(
+            "import pkg.sub\n"
+            "answer = pkg.sub.public_call()\n")
+        aliased = self.facts(
+            "import pkg.sub as selected\n"
+            "answer = selected.public_call()\n")
+
+        self.assertIn(("pkg.sub", "public_call"), direct["consumes"])
+        self.assertIn(("pkg.sub", "public_call"), aliased["consumes"])
+
+    def test_root_import_and_direct_symbol_import_are_unchanged(self):
+        root = self.facts(
+            "import pkg\n"
+            "answer = pkg.public_call()\n")
+        symbol = self.facts(
+            "from rootmod import exported\n"
+            "answer = exported()\n")
+
+        self.assertIn(("pkg", "public_call"), root["consumes"])
+        self.assertIn(("rootmod", "exported"), symbol["consumes"])
+
+    def test_tools_prefix_is_removed_without_collapsing_the_module(self):
+        facts = self.facts(
+            "import Tools.area.domain.owner as owner\n"
+            "answer = owner.public_call()\n")
+
+        self.assertEqual(["area.domain.owner"], facts["imports"])
+        self.assertIn(
+            ("area.domain.owner", "public_call"), facts["consumes"])
+
+    def test_function_argument_shadowing_does_not_widen_module_surface(self):
+        facts = self.facts(
+            "import Tools.area.domain.owner as contract\n"
+            "def read(contract):\n"
+            "    return contract.root\n")
+
+        self.assertNotIn(
+            ("area.domain.owner", "root"), facts["consumes"])
+
+    def test_lazy_import_is_local_to_the_function_that_declares_it(self):
+        facts = self.facts(
+            "def producing():\n"
+            "    import Tools.area.domain.owner as selected\n"
+            "    return selected.public_call()\n"
+            "def unrelated(selected):\n"
+            "    return selected.not_a_module_export\n")
+
+        self.assertIn(
+            ("area.domain.owner", "public_call"), facts["consumes"])
+        self.assertNotIn(
+            ("area.domain.owner", "not_a_module_export"), facts["consumes"])
+
+    def test_function_defaults_use_enclosing_not_function_local_scope(self):
+        facts = self.facts(
+            "import Tools.area.domain.owner as contract\n"
+            "def read(contract=contract.default_value()):\n"
+            "    return contract.local_value\n")
+
+        self.assertIn(
+            ("area.domain.owner", "default_value"), facts["consumes"])
+        self.assertNotIn(
+            ("area.domain.owner", "local_value"), facts["consumes"])
+
+    def test_unaliased_tools_import_resolves_an_arbitrarily_deep_chain(self):
+        facts = self.facts(
+            "import Tools.area.domain.owner\n"
+            "answer = Tools.area.domain.owner.public_call()\n")
+
+        self.assertEqual(["area.domain.owner"], facts["imports"])
+        self.assertIn(
+            ("area.domain.owner", "public_call"), facts["consumes"])
+
+    def test_a_qualified_marker_is_a_wrapper_and_absence_is_ordinary(self):
+        self.assertTrue(boundary_facts.is_cli_module(
+            "IMPLEMENTATION_MODULE = 'Tools.area.domain.owner'\n"
+            "def main(argv=None):\n"
+            "    return 0\n"))
+        self.assertIsNone(boundary_facts.implementation_module(
+            "VALUE = 1\n"))
+        self.assertFalse(boundary_facts.is_cli_module(
+            "def main(argv=None):\n"
+            "    return 0\n"))
+        self.assertTrue(boundary_facts.is_cli_module(
+            "import argparse\n"
+            "def main(argv=None):\n"
+            "    return argparse.ArgumentParser().parse_args(argv)\n"))
+        self.assertFalse(boundary_facts.is_cli_module(
+            "IMPLEMENTATION_MODULE = 'Tools.area.domain.owner'\n"))
+
+    def test_malformed_marker_never_degrades_to_not_a_wrapper(self):
+        cases = (
+            "IMPLEMENTATION_MODULE = 'Tools.a.b'\n"
+            "IMPLEMENTATION_MODULE = 'Tools.a.c'\n",
+            "IMPLEMENTATION_MODULE = choose_owner()\n",
+            "IMPLEMENTATION_MODULE = 'elsewhere.owner'\n",
+        )
+        for source in cases:
+            with self.subTest(source=source), self.assertRaises(
+                    implementation_marker.ImplementationMarkerError):
+                boundary_facts.is_cli_module(source)
 
 # Every refusal below names the command that answers it.  A contract whose
 # failures a reader cannot act on becomes a contract people route around, and
@@ -41,21 +182,119 @@ def load_manifest():
         return kblib.parse_yaml_subset(handle.read())
 
 
+def load_taxonomy():
+    with open(TAXONOMY, encoding="utf-8") as handle:
+        return kblib.parse_yaml_subset(handle.read())
+
+
 class ManifestShape(unittest.TestCase):
     """The declaration itself must be well formed before it can bind."""
 
     @classmethod
     def setUpClass(cls):
         cls.manifest = load_manifest()
+        cls.taxonomy = load_taxonomy()
         cls.facts = boundary_facts.collect(REPO)
 
     def test_schema_version_is_current(self):
-        self.assertEqual(1, self.manifest.get("schema_version"))
+        self.assertEqual(
+            module_boundary_report.MANIFEST_SCHEMA_VERSION,
+            self.manifest.get("schema_version"))
+        self.assertEqual(1, self.taxonomy.get("schema_version"))
+        self.assertEqual([], module_boundary_report.manifest_errors(
+            self.manifest))
+
+    def test_retired_migration_fields_are_not_part_of_the_current_schema(self):
+        candidate = dict(self.manifest)
+        candidate["modules"] = [dict(row)
+                                for row in self.manifest["modules"]]
+        candidate["modules"][0]["provisional"] = True
+
+        errors = module_boundary_report.manifest_errors(candidate)
+
+        self.assertTrue(any("fields are not closed" in error
+                            for error in errors), errors)
+
+    def test_every_module_has_one_resolved_hierarchical_classification(self):
+        area_domains = {}
+        for area in self.taxonomy.get("areas") or ():
+            area_id = area.get("area_id")
+            self.assertIsInstance(area_id, str)
+            self.assertTrue(area_id)
+            self.assertNotIn(area_id, area_domains)
+            area_domains[area_id] = set(area.get("domains") or ())
+        layers = {row.get("layer_id")
+                  for row in self.taxonomy.get("layers") or ()}
+        self.assertNotIn(None, layers)
+        errors = []
+        for row in self.manifest.get("modules") or ():
+            module = row.get("module")
+            area = row.get("area")
+            domain = row.get("domain")
+            layer = row.get("layer")
+            if area not in area_domains:
+                errors.append("%s has unknown area %r" % (module, area))
+            elif domain not in area_domains[area]:
+                errors.append("%s has unknown %s domain %r" %
+                              (module, area, domain))
+            if layer not in layers:
+                errors.append("%s has unknown layer %r" % (module, layer))
+        self.assertEqual([], errors)
+
+    def test_manifest_regeneration_preserves_reviewed_classification(self):
+        rendered = module_boundary_report._emit_manifest(
+            REPO, manifest_path=MANIFEST)
+        regenerated = kblib.parse_yaml_subset(rendered)
+        before = {
+            row["module"]: (row["area"], row["domain"], row["layer"])
+            for row in self.manifest["modules"]
+        }
+        after = {
+            row["module"]: (row["area"], row["domain"], row["layer"])
+            for row in regenerated["modules"]
+        }
+        self.assertEqual(before, after)
+
+    def test_manifest_regeneration_preserves_current_public_surface_and_adds_consumers(
+            self):
+        """Reviewed current exports are not derivable from imports alone."""
+        rendered = module_boundary_report._emit_manifest(
+            REPO, manifest_path=MANIFEST)
+        regenerated = kblib.parse_yaml_subset(rendered)
+        before = {
+            row["module"]: set(row.get("public") or ())
+            for row in self.manifest["modules"]
+        }
+        after = {
+            row["module"]: set(row.get("public") or ())
+            for row in regenerated["modules"]
+        }
+        for module, promised in before.items():
+            with self.subTest(module=module, source="recorded"):
+                self.assertLessEqual(promised, after[module])
+        for _consumer, target, symbol in boundary_facts.consumption_pairs(
+                self.facts):
+            if symbol.startswith("_") or target not in after:
+                continue
+            with self.subTest(module=target, symbol=symbol,
+                              source="observed"):
+                self.assertIn(symbol, after[target])
+
+    def test_hierarchy_projection_lists_every_module_once(self):
+        rendered = module_boundary_report.render_hierarchy(
+            module_boundary_report.build_report(REPO))
+        for row in self.manifest["modules"]:
+            marker = "      %s  [%s]\n" % (
+                row["module"], row["path"].removeprefix("Tools/"))
+            self.assertEqual(1, rendered.count(marker), row["module"])
 
     def test_every_entry_names_a_module_once(self):
         names = [row.get("module") for row in self.manifest["modules"]]
+        paths = [row.get("path") for row in self.manifest["modules"]]
         self.assertEqual(sorted(names), sorted(set(names)),
                          "a module is declared more than once")
+        self.assertEqual(sorted(paths), sorted(set(paths)),
+                         "a shipped path is declared more than once")
         for row in self.manifest["modules"]:
             self.assertTrue(row.get("path", "").startswith("Tools/"),
                             "%s declares no shipped path" % row.get("module"))
@@ -99,12 +338,15 @@ class ProcessBoundaries(unittest.TestCase):
 
         # mcp_server brokers the original descriptors; kblib owns the one
         # wrapper that merges them into subsequent Cambium process launches.
-        owners = {"kblib.py", "mcp_server.py"}
+        owners = {
+            "platform/common/kblib.py",
+            "platform/agent_interface/mcp_server.py",
+        }
         bypasses = []
-        for filename in sorted(os.listdir(TOOLS)):
-            if not filename.endswith(".py") or filename in owners:
+        for relative in boundary_facts.shipped_modules(TOOLS):
+            if relative in owners:
                 continue
-            path = os.path.join(TOOLS, filename)
+            path = os.path.join(TOOLS, relative)
             with open(path, encoding="utf-8") as handle:
                 tree = ast.parse(handle.read(), filename=path)
             for node in ast.walk(tree):
@@ -113,7 +355,7 @@ class ProcessBoundaries(unittest.TestCase):
                             alias.name in ("run", "Popen")
                             for alias in node.names):
                     bypasses.append("%s:%d imports subprocess.%s" % (
-                        filename, node.lineno,
+                        relative, node.lineno,
                         "/".join(alias.name for alias in node.names)))
                 if not isinstance(node, ast.Call) or \
                         not isinstance(node.func, ast.Attribute) or \
@@ -122,7 +364,7 @@ class ProcessBoundaries(unittest.TestCase):
                         node.func.attr not in ("run", "Popen"):
                     continue
                 bypasses.append("%s:%d calls subprocess.%s" % (
-                    filename, node.lineno, node.func.attr))
+                    relative, node.lineno, node.func.attr))
         self.assertEqual(
             [], bypasses,
             "Cambium child processes must use "
@@ -167,6 +409,81 @@ class PublicSurface(unittest.TestCase):
             "owner marked internal -- record why with a retirement condition. "
             "Regenerating stages it as an exception for you to annotate:\n"
             "  %s" % (", ".join(sorted(undeclared)), REGENERATE))
+
+    def test_every_declared_public_symbol_exists_in_its_owner(self):
+        missing = []
+        for module, row in sorted(self.by_module.items()):
+            available = set(self.facts.get(module, {}).get(
+                "top_level_symbols") or ())
+            for symbol in row.get("public") or ():
+                if symbol not in available:
+                    missing.append("%s.%s" % (module, symbol))
+        self.assertEqual(
+            [], missing,
+            "declared public symbols absent from their machine owner: %s; "
+            "retire the stale declaration or restore the actual current "
+            "owner before regenerating interface projections" %
+            ", ".join(missing))
+
+    def test_source_export_lists_cannot_widen_the_boundary_contract(self):
+        invalid = []
+        undeclared = []
+        for module, facts in sorted(self.facts.items()):
+            for error in facts.get("source_public_export_errors") or ():
+                invalid.append("%s: %s" % (module, error))
+            declared = set(
+                (self.by_module.get(module) or {}).get("public") or ())
+            for symbol in facts.get("source_public_exports") or ():
+                if symbol not in declared:
+                    undeclared.append("%s.%s" % (module, symbol))
+        self.assertEqual(
+            [], invalid,
+            "invalid source __all__ declarations: %s" %
+            "; ".join(invalid))
+        self.assertEqual(
+            [], undeclared,
+            "source __all__ creates a second public surface outside "
+            "module-boundaries.yaml: %s" % ", ".join(undeclared))
+
+    def test_reconciliation_projection_field_consumers_are_closed(self):
+        """Runtime and transports read one lower-level field owner."""
+        actual = {
+            consumer
+            for consumer, target, symbol in
+            boundary_facts.consumption_pairs(self.facts)
+            if target == "execution.audit.audit_reconciliation_contract" and
+            symbol == "projection_fields"
+        }
+        self.assertEqual({
+            "execution.audit.audit_evidence_runtime",
+            "execution.audit.check_batch_close",
+            "execution.audit.record_batch_review",
+            "execution.task_runtime.queue_runtime.close_gate",
+        }, actual)
+
+    def test_reconciliation_projection_fields_have_one_literal_owner(self):
+        """No production module restates the closed transport field set."""
+        import ast
+
+        expected = set(audit_reconciliation_contract.projection_fields())
+        owners = set()
+        for row in self.manifest["modules"]:
+            path = os.path.join(REPO, row["path"])
+            with open(path, encoding="utf-8") as handle:
+                tree = ast.parse(handle.read(), filename=path)
+            for node in ast.walk(tree):
+                values = None
+                if isinstance(node, (ast.Tuple, ast.List, ast.Set)):
+                    values = [getattr(value, "value", None)
+                              for value in node.elts]
+                elif isinstance(node, ast.Dict):
+                    values = [getattr(value, "value", None)
+                              for value in node.keys]
+                if values is not None and len(values) == len(expected) and \
+                        set(values) == expected:
+                    owners.add(row["module"])
+        self.assertEqual(
+            {"execution.audit.audit_reconciliation_contract"}, owners)
 
     def test_exception_content_bindings_still_match(self):
         """An excepted private symbol that was rewritten must be re-argued.
@@ -274,115 +591,64 @@ class StagedTreesAreDerived(unittest.TestCase):
             % "; ".join(sorted(offenders)))
 
 
-# The declared rank of every `queue_runtime` submodule, and the one rule that
-# orders the package: an import may only run downward.  The ranks are not a
-# preference about layering -- they are the acyclicity the contract already
-# requires, written where a machine can read it, because `import_graph` keys
-# every module by its first name segment and therefore sees a package as a
-# single node.  A cycle entirely inside a package is invisible to the rule
-# whose whole purpose is forbidding cycles; a deliberate one on a probe tree
-# reported none.
-#
-# The package root sits above every submodule because `__init__.py` imports
-# all of them to re-export the facade surface.  Nothing inside may import the
-# root: that would be a submodule depending on the whole package.
-QUEUE_RUNTIME_RANKS = {
-    "queue_runtime.canon": 0,
-    "queue_runtime.primitives": 0,
-    "queue_runtime.repofs": 0,
+class CompleteModuleGraphProbes(unittest.TestCase):
+    """The one graph sees Area, Domain, package, and wrapper boundaries."""
 
-    "queue_runtime.evidence_identity": 1,
-    "queue_runtime.gate_registry": 1,
-    "queue_runtime.locks": 1,
-    "queue_runtime.policy_exceptions": 1,
-    "queue_runtime.producer_era": 1,
-    "queue_runtime.profile_view": 1,
-    "queue_runtime.receipts": 1,
-    "queue_runtime.task_contract": 1,
-    "queue_runtime.work_spec": 1,
+    def setUp(self):
+        self.temporary = tempfile.TemporaryDirectory()
+        self.root = Path(self.temporary.name)
 
-    "queue_runtime.amendments": 2,
-    "queue_runtime.authority": 2,
-    "queue_runtime.control_plane": 2,
-    "queue_runtime.coverage": 2,
-    "queue_runtime.item_history": 2,
-    "queue_runtime.property_state": 2,
-    "queue_runtime.review": 2,
-    "queue_runtime.task_record": 2,
+    def tearDown(self):
+        self.temporary.cleanup()
 
-    "queue_runtime.adoption": 3,
-    "queue_runtime.delta": 3,
-    "queue_runtime.maintenance": 3,
-    "queue_runtime.revalidation": 3,
+    def write(self, relative, source):
+        path = self.root / "Tools" / relative
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(source, encoding="utf-8")
 
-    "queue_runtime.close_gate": 4,
-    "queue_runtime.task_progress": 4,
+    def test_full_graph_detects_a_cycle_inside_one_domain_package(self):
+        self.write(
+            "execution/task_runtime/runtime/left.py",
+            "import Tools.execution.task_runtime.runtime.right as right\n")
+        self.write(
+            "execution/task_runtime/runtime/right.py",
+            "import Tools.execution.task_runtime.runtime.left as left\n")
 
-    "queue_runtime.item_evidence": 5,
-    "queue_runtime.resume": 5,
+        facts = boundary_facts.collect(self.root)
+        graph = boundary_facts.import_graph(facts)
 
-    "queue_runtime.runtime": 6,
-
-    "queue_runtime": 7,
-}
-
-
-class IntraPackageDirection(unittest.TestCase):
-    """A package must be ordered inside, where the module graph cannot look.
-
-    Every finding here is about direction, never about size or membership for
-    its own sake: an edge that runs upward, a submodule nobody ranked, or a
-    rank naming a file that no longer ships.  The second and third matter
-    because a rank table that has stopped describing the tree stops refusing
-    anything, which is the same silence the contract was written against.
-    """
-
-    PACKAGE = "queue_runtime"
-
-    @classmethod
-    def setUpClass(cls):
-        cls.facts = boundary_facts.collect(REPO)
-        cls.edges = boundary_facts.package_layers(cls.facts, cls.PACKAGE)
-
-    def test_the_rank_table_matches_the_shipped_package(self):
-        if not self.edges:
-            self.skipTest("queue_runtime is not shipped")
-        shipped = set(self.edges)
-        declared = set(QUEUE_RUNTIME_RANKS)
-        unranked = sorted(shipped - declared)
         self.assertEqual(
-            [], unranked,
-            "submodules with no declared rank: %s\n"
-            "Add each to QUEUE_RUNTIME_RANKS with the rank its imports allow. "
-            "An unranked submodule sits outside the only rule that orders the "
-            "package." % ", ".join(unranked))
-        stale = sorted(declared - shipped)
-        self.assertEqual(
-            [], stale,
-            "ranks naming modules that are not shipped: %s"
-            % ", ".join(stale))
+            ["execution.task_runtime.runtime.right"],
+            graph["execution.task_runtime.runtime.left"])
+        self.assertEqual([[
+            "execution.task_runtime.runtime.left",
+            "execution.task_runtime.runtime.right",
+        ]], boundary_facts.strongly_connected(graph))
+        self.assertNotIn("execution", graph)
 
-    def test_every_intra_package_import_runs_downward(self):
-        if not self.edges:
-            self.skipTest("queue_runtime is not shipped")
-        upward = []
-        for name, targets in sorted(self.edges.items()):
-            source = QUEUE_RUNTIME_RANKS.get(name)
-            if source is None:
-                continue  # the rank-table test owns this failure
-            for target in targets:
-                rank = QUEUE_RUNTIME_RANKS.get(target)
-                if rank is None or rank < source:
-                    continue
-                upward.append("%s (rank %s) -> %s (rank %s)"
-                              % (name, source, target, rank))
+    def test_standard_wrapper_is_the_only_external_cli_node(self):
+        self.write(
+            "run_alpha.py",
+            "from Tools.execution.audit.alpha import main as _main\n"
+            "IMPLEMENTATION_MODULE = 'Tools.execution.audit.alpha'\n"
+            "def main(argv=None):\n"
+            "    return _main(argv)\n")
+        self.write(
+            "execution/audit/alpha.py",
+            "import argparse\n"
+            "def main(argv=None):\n"
+            "    return argparse.ArgumentParser().parse_args(argv)\n")
+
+        facts = boundary_facts.collect(self.root)
+        graph = boundary_facts.import_graph(facts)
+
+        self.assertEqual(["run_alpha"], boundary_facts.cli_modules(facts))
         self.assertEqual(
-            [], sorted(upward),
-            "intra-package imports that do not run downward: %s\n"
-            "Either the edge is wrong, or the two responsibilities are one "
-            "and belong in the same file. Raising a rank to admit the edge is "
-            "only honest when nothing below it still reaches back up."
-            % "; ".join(sorted(upward)))
+            "execution.audit.alpha",
+            facts["run_alpha"]["implementation_module"])
+        self.assertEqual(
+            ["execution.audit.alpha"], graph["run_alpha"])
+        self.assertFalse(facts["execution.audit.alpha"]["cli_entrypoint"])
 
 
 class SuiteCollectsEachTestOnce(unittest.TestCase):
@@ -401,7 +667,6 @@ class SuiteCollectsEachTestOnce(unittest.TestCase):
     """
 
     def test_no_file_collects_another_files_tests(self):
-        import importlib
         import unittest.loader
 
         here = os.path.dirname(os.path.abspath(__file__))
@@ -563,6 +828,7 @@ class DependencyDirection(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.facts = boundary_facts.collect(REPO)
+        cls.manifest = load_manifest()
 
     def test_import_graph_is_acyclic(self):
         graph = boundary_facts.import_graph(self.facts)
@@ -571,6 +837,73 @@ class DependencyDirection(unittest.TestCase):
             [], cycles,
             "static import cycles (no exception is available): %s" % cycles)
 
+    def test_entrypoints_are_not_imported_as_production_libraries(self):
+        """A true adapter may be invoked, but never imported as an owner.
+
+        An imported command module is not actually a thin entry point: some
+        callable, constant, or contract inside it is serving production code.
+        Such a module must be classified by that defining responsibility until
+        the adapter is physically split, so the hierarchy never labels a live
+        library dependency as presentation-only.
+        """
+        layers = {
+            row["module"]: row["layer"]
+            for row in self.manifest.get("modules") or ()
+        }
+        violations = []
+        for consumer, facts in sorted(self.facts.items()):
+            for target in facts.get("imported_modules") or ():
+                if target != consumer and layers.get(target) == "entrypoint":
+                    violations.append("%s -> %s" % (consumer, target))
+        self.assertEqual(
+            [], violations,
+            "production modules import modules classified as entrypoints; "
+            "move the shared owner to contract/application or classify the "
+            "hybrid module by its present defining responsibility: %s" %
+            ", ".join(violations))
+
+    def test_cli_discovery_is_exactly_the_top_level_adapter_surface(self):
+        graph = boundary_facts.import_graph(self.facts)
+        problems = []
+        for module in boundary_facts.cli_modules(self.facts):
+            row = self.facts[module]
+            if "/" in row["path"]:
+                problems.append("%s is not top-level" % module)
+            implementation = row.get("implementation_module")
+            if implementation and implementation not in graph.get(module, ()):
+                problems.append(
+                    "%s does not depend on %s" % (module, implementation))
+        self.assertEqual([], problems)
+
+    def test_top_level_cli_wrappers_define_only_main_and_entry_metadata(self):
+        """A command adapter must never become a compatibility Python API."""
+        problems = []
+        allowed = {"IMPLEMENTATION_MODULE", "main"}
+        for module in boundary_facts.cli_modules(self.facts):
+            path = Path(TOOLS, self.facts[module]["path"])
+            tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+            defined = set()
+            for node in tree.body:
+                if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef,
+                                     ast.ClassDef)):
+                    if not node.name.startswith("_"):
+                        defined.add(node.name)
+                elif isinstance(node, (ast.Assign, ast.AnnAssign)):
+                    targets = node.targets if isinstance(
+                        node, ast.Assign) else (node.target,)
+                    for target in targets:
+                        if (isinstance(target, ast.Name) and
+                                not target.id.startswith("_")):
+                            defined.add(target.id)
+            unexpected = sorted(defined - allowed)
+            if unexpected:
+                problems.append("%s: %s" % (
+                    module, ", ".join(unexpected)))
+        self.assertEqual(
+            [], problems,
+            "top-level CLI wrappers expose a Python compatibility surface: "
+            "%s" % "; ".join(problems))
+
     def test_gate_runtime_does_not_depend_on_the_cli_facade(self):
         """The one direction the Tool boundary freezes by name.
 
@@ -578,12 +911,25 @@ class DependencyDirection(unittest.TestCase):
         defect the contract was written for, and a generic check would let it
         return as one half of a longer ring without naming it.
         """
-        entry = self.facts.get("metadata_gate_runtime")
+        entry = self.facts.get("execution.evidence.metadata_gate_runtime")
         if entry is None:
             self.skipTest("metadata_gate_runtime is not shipped")
         self.assertNotIn(
             "check_queue", entry["imports"],
             "metadata_gate_runtime must not depend on check_queue")
+        self.assertNotIn(
+            "execution.task_runtime.check_queue", entry["imports"],
+            "metadata_gate_runtime must not depend on the check_queue owner")
+
+    def test_coverage_delta_uses_platform_not_queue_runtime_primitives(self):
+        """Coverage planning must not point back into its Queue consumer."""
+        entry = self.facts.get("execution.planning.coverage_delta")
+        if entry is None:
+            self.skipTest("coverage_delta is not shipped")
+        self.assertIn("platform.common.primitives", entry["imports"])
+        self.assertNotIn(
+            "execution.task_runtime.queue_runtime.primitives",
+            entry["imports"])
 
 
 if __name__ == "__main__":

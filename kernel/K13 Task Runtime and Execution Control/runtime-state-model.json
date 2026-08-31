@@ -57,10 +57,11 @@
     "historical_replay": [
       {
         "protocol_id": "queue-transition-receipt-v1",
-        "edge_catalog_ids": [
-          "batch-ordinary-v1",
-          "batch-amendment-cancellation-v1"
-        ]
+        "edge_catalog_ids": ["batch-ordinary-v1"]
+      },
+      {
+        "protocol_id": "amendment-queue-transition-receipt-v1",
+        "edge_catalog_ids": ["batch-amendment-cancellation-v1"]
       }
     ]
   },
@@ -254,15 +255,6 @@
       },
       {
         "operation_id": "gap-routing-reconciliation",
-        "execution_capability": "cross-ledger-amendment-v1",
-        "classes": [
-          "scope-preserving",
-          "state-revision-preserving",
-          "cancel-id-forbidden"
-        ]
-      },
-      {
-        "operation_id": "property-state-migration",
         "execution_capability": "cross-ledger-amendment-v1",
         "classes": [
           "scope-preserving",

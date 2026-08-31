@@ -1,40 +1,191 @@
+"""Owner-focused contracts and writer-boundary checks for Delta apply.
+
+Pure path, Receipt, and rejection contracts stay in process. Integration and
+recovery cases consume the one generated merge-ready checkpoint; this module
+does not recreate the Task, AuditPlan, Queue-open, or merge-admission prologue.
+Generic lock and Receipt algorithms remain owned by ``test_runtime_safety``;
+post-apply rollback remains owned by ``test_update_queue``; and close
+consumption remains owned by ``test_check_batch_close``.
+"""
+
 import contextlib
 import io
 import json
 from pathlib import Path
-import shutil
 import subprocess
 import sys
 import tempfile
+from types import SimpleNamespace
 import unittest
 from unittest import mock
 
 
 TOOLS = Path(__file__).resolve().parents[1]
-FIXTURE = TOOLS / "tests" / "fixtures" / "runtime_state" / "valid"
 sys.path.insert(0, str(TOOLS / "tests"))
 sys.path.insert(0, str(TOOLS))
 
-import apply_delta
-import check_queue
-import compose_page_contract
-import compose_vocab
-import kblib
-import metadata_execution_contract
-import metadata_property_state
-import profile_admission
-import project_page_state
-import runtime_paths
-from profile_fixture import install_loadable_profile
+import Tools.execution.task_runtime.apply_delta as apply_delta
+from Tools.execution.task_runtime import queue_runtime
+import Tools.execution.task_runtime.runtime_validation as runtime_validation
+import Tools.platform.common.kblib as kblib
+from Tools.tests.fixtures.integration.update_queue_checkpoints import (  # noqa: E402
+    install_update_queue_checkpoint,
+)
+
+
+class ApplyDeltaCliContractTests(unittest.TestCase):
+    """Parser contradictions stop before any repository input is consumed."""
+
+    def test_invalid_invocations_never_reach_the_writer(self):
+        cases = (
+            ("missing-root", [".cambium/deltas/B1.yaml"],
+             "the following arguments are required: --root"),
+            ("contradictory-mode", [
+                ".cambium/deltas/B1.yaml", "--root", "/unused",
+                "--preflight", "--apply",
+            ], "not allowed with argument"),
+        )
+        for label, arguments, expected in cases:
+            with self.subTest(case=label), \
+                    mock.patch.object(apply_delta, "_run") as writer:
+                output = io.StringIO()
+                with contextlib.redirect_stderr(output):
+                    with self.assertRaises(SystemExit) as raised:
+                        apply_delta.main(arguments)
+                self.assertEqual(1, raised.exception.code)
+                self.assertIn(expected, output.getvalue())
+                writer.assert_not_called()
+
+
+class ApplyDeltaProducerContractTests(unittest.TestCase):
+    """Own the current path and Receipt projections without a repository."""
+
+    def test_delta_path_is_derived_from_batch(self):
+        expected, errors = apply_delta._canonical_delta_path(
+            SimpleNamespace(delta=".cambium/deltas/B1.yaml"), "B1")
+        self.assertEqual(".cambium/deltas/B1.yaml", expected)
+        self.assertEqual([], errors)
+
+        expected, errors = apply_delta._canonical_delta_path(
+            SimpleNamespace(delta="elsewhere/B1.yaml"), "B1")
+        self.assertEqual(".cambium/deltas/B1.yaml", expected)
+        self.assertEqual([
+            "canonical delta argument must be exactly "
+            ".cambium/deltas/B1.yaml",
+        ], errors)
+
+    def test_pre_apply_archive_path_is_derived_from_queue_revision(self):
+        self.assertEqual(
+            ".cambium/receipts/pre-apply-coverage/B1-r7.yaml",
+            apply_delta.pre_apply_coverage_archive_path("B1", 7),
+        )
+
+    def test_receipt_binds_delta_after_image_and_unchanged_queue_state(self):
+        result = {
+            "queue": {
+                "task_id": "T1",
+                "queue_revision": "rev-1",
+                "state_revision": 7,
+            },
+            "queue_sha256": "sha256:" + "3" * 64,
+            "progress_sha256": "sha256:" + "4" * 64,
+        }
+        settlement = {
+            "protocol": "routed-gap-settlement/1",
+            "obligation_count_before": 1,
+            "obligation_set_sha256_before": "sha256:" + "5" * 64,
+            "obligation_record_set_sha256_before": "sha256:" + "6" * 64,
+            "unsettled_count_after": 0,
+            "unsettled_set_sha256_after": "sha256:" + "7" * 64,
+        }
+        with mock.patch.object(
+                apply_delta.kblib, "make_receipt",
+                return_value={"receipt_id": "audit-apply-delta"}):
+            receipt = apply_delta._prepare_receipt(
+                result, "B1", ".cambium/deltas/B1.yaml",
+                "sha256:" + "0" * 64,
+                "sha256:" + "1" * 64,
+                "sha256:" + "2" * 64,
+                "integrator",
+                ".cambium/receipts/pre-apply-coverage/B1-r7.yaml",
+                settlement,
+            )
+
+        self.assertEqual("T1", receipt["task_id"])
+        self.assertEqual("B1", receipt["batch_id"])
+        self.assertEqual("sha256:" + "1" * 64,
+                         receipt["before_coverage_sha256"])
+        self.assertEqual("sha256:" + "2" * 64,
+                         receipt["after_coverage_sha256"])
+        self.assertEqual(
+            result["queue_sha256"],
+            receipt["before_required_queue_sha256"])
+        self.assertEqual(
+            result["queue_sha256"],
+            receipt["after_required_queue_sha256"])
+        self.assertEqual(
+            result["progress_sha256"], receipt["before_progress_sha256"])
+        self.assertEqual(
+            result["progress_sha256"], receipt["after_progress_sha256"])
+        self.assertEqual(7, receipt["queue_state_revision"])
+        self.assertEqual(
+            "routed-gap-settlement/1", receipt["settlement_protocol"])
+        self.assertEqual(0, receipt["prospective_unsettled_count"])
+
+
+class ApplyDeltaRunContractTests(unittest.TestCase):
+    """Input and producer-policy failures stop before the writer seam."""
+
+    def run_arguments(self):
+        return SimpleNamespace(
+            root="/repo", delta=".cambium/deltas/B1.yaml")
+
+    def test_unsafe_input_path_stops_before_the_writer(self):
+        with mock.patch.object(
+                apply_delta.kblib, "repository_path",
+                side_effect=ValueError("unsafe path")), \
+                mock.patch.object(apply_delta, "_canonical_apply") as writer:
+            output = io.StringIO()
+            with contextlib.redirect_stdout(output):
+                code = apply_delta._run(self.run_arguments())
+
+        self.assertEqual(1, code)
+        self.assertIn("cannot load Coverage delta inputs: unsafe path",
+                      output.getvalue())
+        writer.assert_not_called()
+
+    def test_delta_policy_rejection_stops_before_the_writer(self):
+        delta = {
+            "batch": "B1",
+            "pages": [{"path": "Topics/A.md", "next_batch": None}],
+        }
+        with mock.patch.object(
+                apply_delta.kblib, "repository_path",
+                side_effect=("/repo/delta.yaml", "/repo/coverage.yaml")), \
+                mock.patch.object(
+                    apply_delta.kblib, "read_bytes",
+                    side_effect=(b"delta", b"pages: []\n")), \
+                mock.patch.object(
+                    apply_delta, "_parse_delta_bytes", return_value=delta), \
+                mock.patch.object(apply_delta, "_canonical_apply") as writer:
+            output = io.StringIO()
+            with contextlib.redirect_stdout(output):
+                code = apply_delta._run(self.run_arguments())
+
+        self.assertEqual(1, code)
+        self.assertIn("control field", output.getvalue())
+        writer.assert_not_called()
 
 
 class CanonicalApplyDeltaTests(unittest.TestCase):
+    """Consume one validated merge-ready checkpoint at the writer boundary."""
+
     def setUp(self):
         self.temporary = tempfile.TemporaryDirectory()
         self.root = Path(self.temporary.name) / "repo"
-        shutil.copytree(FIXTURE, self.root)
-        install_loadable_profile(self.root)
-        self.install_current_audit_fixture_contracts()
+        install_update_queue_checkpoint(self.root, "merged-b1")
+        delta = self.load(".cambium/deltas/B1.yaml")
+        self.delta_gate_receipts = list(delta["pages"][0]["gate_receipts"])
 
     def tearDown(self):
         self.temporary.cleanup()
@@ -42,210 +193,16 @@ class CanonicalApplyDeltaTests(unittest.TestCase):
     def load(self, relative):
         return kblib.load_yaml_file(self.root / relative)
 
-    def install_current_audit_fixture_contracts(self):
-        """Give this Delta-only fixture one legal, low-cost audit shape.
-
-        The shared historical runtime fixture predates AuditPlan closure and
-        classifies both pages as M.  These tests exercise the canonical Delta
-        writer, not M-tier semantic review, so this local copy uses S and
-        compiles the selected Profile's two deterministic artifacts before a
-        batch opens.  The original Queue origin is then rebound to the exact
-        Coverage bytes, just as the fixture's initial materializer would have
-        done.
-        """
-        admission, errors = profile_admission.admit_profile(
-            self.root, require_approved=True)
-        self.assertIsNotNone(admission, errors)
-        self.assertEqual([], errors)
-        artifacts = (
-            (runtime_paths.PAGE_CONTRACT_ARTIFACT_PATH,
-             compose_page_contract.compiled_artifact(
-                 self.root, admission)),
-            (runtime_paths.VOCAB_ARTIFACT_PATH,
-             compose_vocab.compiled_artifact(self.root, admission)),
-        )
-        for relative, (text, _document, compile_errors) in artifacts:
-            self.assertEqual([], compile_errors)
-            self.assertIsInstance(text, str)
-            path = self.root / relative
-            path.parent.mkdir(parents=True, exist_ok=True)
-            path.write_text(text, encoding="utf-8")
-
-        coverage_path = self.root / check_queue.COVERAGE_PATH
-        coverage = self.load(check_queue.COVERAGE_PATH)
-        for page in coverage["pages"]:
-            page["tier"] = "S"
-        coverage_path.write_text(
-            kblib.canonical_yaml(coverage), encoding="utf-8")
-        origin_path = (
-            self.root / ".cambium/receipts/task-transitions.jsonl")
-        records = [
-            json.loads(line) for line in
-            origin_path.read_text(encoding="utf-8").splitlines()
-            if line.strip()
-        ]
-        for record in records:
-            if record.get("receipt_id") == "audit-fixture-initial-queue":
-                record["after_coverage_sha256"] = \
-                    kblib.sha256_file(coverage_path)
-        origin_path.write_text(
-            "".join(json.dumps(record, separators=(",", ":")) + "\n"
-                    for record in records),
-            encoding="utf-8",
-        )
-
-    def run_tool(self, name, *arguments):
-        return subprocess.run(
-            [sys.executable, str(TOOLS / name), str(self.root), *arguments],
-            text=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
-            check=False,
-        )
-
-    def queue_gate(self, *mode):
-        relative = ".cambium/receipts/gates.jsonl"
-        completed = self.run_tool(
-            "check_queue.py", *mode, "--receipts", relative
-        )
-        self.assertEqual(0, completed.returncode, completed.stdout)
-        records = [
-            json.loads(line) for line in
-            (self.root / relative).read_text(encoding="utf-8").splitlines()
-        ]
-        return records[-1]["receipt_id"]
-
-    def queue_expected(self):
-        queue = self.load(check_queue.QUEUE_PATH)
-        return str(queue["state_revision"]), kblib.sha256_file(
-            self.root / check_queue.QUEUE_PATH
-        )
-
-    def transition(self, *arguments):
-        completed = self.run_tool("update_queue.py", *arguments)
-        self.assertEqual(0, completed.returncode, completed.stdout)
-
-    def record_pre_merge_audit_evidence(self):
-        prepared = self.run_tool(
-            "prepare_audit_plan.py", "--batch", "B1", "--at",
-            "2026-08-04T01:01:00Z", "--apply")
-        self.assertEqual(0, prepared.returncode, prepared.stdout)
-        prepared_payload = json.loads(prepared.stdout)
-        plan_path = prepared_payload["plan_path"]
-        plan = self.load(plan_path)
-
-        sampled_page_receipts = []
-        for obligation in plan["obligations"]:
-            if obligation["due_stage"] != "pre-merge":
-                continue
-            common = (
-                "--batch", "B1", "--plan", plan_path,
-                "--obligation-id", obligation["obligation_id"],
-            )
-            if obligation["partition"] == "bounded-sampling":
-                produced = self.run_tool(
-                    "record_batch_page_review.py", *common,
-                    "--page", obligation["target"],
-                    "--variant", "s-sampled-page",
-                    "--reviewer-context-id", "fixture-reviewer-context",
-                    "--reviewer-role", "reviewer", "--verdict", "passed",
-                    "--statement", "Fixture sampled S page review passed.",
-                    "--apply",
-                )
-            elif obligation["producer_check"] == \
-                    "changed_scope_rendering_escalation_record":
-                produced = self.run_tool(
-                    "record_rendering_verification.py", *common,
-                    "--rendering-mode", "source-only", "--apply")
-            else:
-                produced = self.run_tool(
-                    "record_changed_scope_evidence.py", *common, "--apply")
-
-            # A triggers-role Gate may legitimately record a candidate with
-            # exit 2.  Its structured record is still the exact evidence the
-            # AuditPlan requests; audit-receipt producers must pass with 0.
-            expected_codes = (0, 2) \
-                if obligation["evidence_role"] == "triggers" else (0,)
-            self.assertIn(
-                produced.returncode, expected_codes, produced.stdout)
-            payload = json.loads(produced.stdout)
-            self.assertEqual([], payload["errors"])
-            self.assertEqual("recorded", payload["status"])
-            if obligation["evidence_kind"] == "batch-page-review-record":
-                sampled_page_receipts.append(payload["receipt_id"])
-
-            if obligation["evidence_kind"] == "audit-receipt":
-                completed = self.run_tool(
-                    "complete_audit_receipt.py", *common,
-                    "--evidence-receipt", payload["receipt_id"], "--apply")
-                self.assertEqual(0, completed.returncode, completed.stdout)
-                completion = json.loads(completed.stdout)
-                self.assertEqual([], completion["errors"])
-                self.assertEqual("recorded", completion["status"])
-
-        self.assertEqual(1, len(sampled_page_receipts), plan)
-        return plan_path, sampled_page_receipts[0]
-
-    def make_merge_ready(self, page_fields=None):
-        gate = self.queue_gate("--require-ready", "B1")
-        revision, queue_sha = self.queue_expected()
-        self.transition(
-            "--id", "B1", "--transition", "open",
-            "--gate-receipt", gate,
-            "--expected-state-revision", revision,
-            "--expected-sha256", queue_sha,
-            "--actor-role", "integrator",
-            "--at", "2026-08-04T01:00:00Z", "--apply",
-        )
-        _plan_path, page_receipt_id = \
-            self.record_pre_merge_audit_evidence()
-        self.page_review_receipt_id = page_receipt_id
-        page = {
-            "path": "Topics/A.md",
-            "authoring_status": "reviewed",
-            "gate_receipts": [page_receipt_id],
-        }
-        page.update(page_fields or {})
-        delta = {
-            "batch": "B1",
-            "generated_at": "2026-08-04T02:00:00Z",
-            "pages": [page],
-            "open_gaps_added": [],
-            "open_gaps_closed": [],
-            "next_batch_updates": ["Topics/A.md -> B2"],
-            "watermark_advance": None,
-        }
-        delta_path = self.root / ".cambium/deltas/B1.yaml"
-        delta_path.parent.mkdir(parents=True, exist_ok=True)
-        delta_path.write_text(kblib.canonical_yaml(delta), encoding="utf-8")
-        reviewed = self.run_tool(
-            "record_batch_review.py", "--batch", "B1",
-            "--actor-role", "integrator", "--statement",
-            "Fixture evidence-complete Batch Review passed.",
-            "--receipts", ".cambium/receipts/fixture.jsonl",
-            "--apply", "--json",
-        )
-        self.assertEqual(0, reviewed.returncode, reviewed.stdout)
-        batch_receipt = json.loads(reviewed.stdout)[0]["receipt_id"]
-        revision, queue_sha = self.queue_expected()
-        self.transition(
-            "--id", "B1", "--transition", "merge-ready",
-            "--delta-path", ".cambium/deltas/B1.yaml",
-            "--batch-receipt", batch_receipt,
-            "--expected-state-revision", revision,
-            "--expected-sha256", queue_sha,
-            "--actor-role", "integrator",
-            "--at", "2026-08-04T02:00:00Z", "--apply",
-        )
-
     def apply_arguments(self, receipt=".cambium/receipts/applied.jsonl"):
         return [
-            check_queue.COVERAGE_PATH, ".cambium/deltas/B1.yaml",
+            ".cambium/deltas/B1.yaml",
             "--root", str(self.root), "--apply",
             "--actor-role", "integrator",
             "--expected-coverage-sha256", kblib.sha256_file(
-                self.root / check_queue.COVERAGE_PATH
+                self.root / queue_runtime.COVERAGE_PATH
             ),
             "--expected-queue-sha256", kblib.sha256_file(
-                self.root / check_queue.QUEUE_PATH
+                self.root / queue_runtime.QUEUE_PATH
             ),
             "--receipts", receipt,
         ]
@@ -257,7 +214,7 @@ class CanonicalApplyDeltaTests(unittest.TestCase):
         return code, output.getvalue()
 
     def assert_no_write_debris(self):
-        coverage = self.root / check_queue.COVERAGE_PATH
+        coverage = self.root / queue_runtime.COVERAGE_PATH
         self.assertFalse(Path(str(coverage) + ".bak").exists())
         self.assertFalse(Path(str(coverage) + ".tmp").exists())
         self.assertEqual([], list(self.root.rglob(".cambium-write-*")))
@@ -265,144 +222,8 @@ class CanonicalApplyDeltaTests(unittest.TestCase):
             (self.root / ".cambium/tmp/state-writer.lock").exists()
         )
 
-    def test_control_field_rejects_entire_delta_without_any_write(self):
-        before = (self.root / check_queue.COVERAGE_PATH).read_bytes()
-        with self.assertRaisesRegex(AssertionError, "control field"):
-            self.make_merge_ready({"next_batch": None})
-        self.assertEqual(before,
-                         (self.root / check_queue.COVERAGE_PATH).read_bytes())
-        self.assertFalse(
-            (self.root / ".cambium/receipts/applied.jsonl").exists()
-        )
-        self.assert_no_write_debris()
-
-    def test_every_declared_control_field_is_forbidden(self):
-        for field in sorted(apply_delta.CONTROL_FIELDS):
-            with self.subTest(field=field):
-                errors = apply_delta._delta_policy_errors({
-                    "batch": "B1",
-                    "pages": [{"path": "Topics/A.md", field: None}],
-                })
-                self.assertTrue(any(field in error for error in errors), errors)
-
-    def test_gap_delta_adds_and_closes_by_page_type_without_partial_guessing(self):
-        coverage = self.load(check_queue.COVERAGE_PATH)
-        coverage["open_gaps"] = [{
-            "page": "Topics/A.md", "type": "link", "note": "old gap",
-        }]
-        merged = apply_delta._merge_coverage_sections(
-            kblib.canonical_yaml(coverage), {
-                "generated_at": "2026-08-04T03:00:00Z",
-                "open_gaps_closed": [{
-                    "page": "Topics/A.md", "type": "link",
-                }],
-                "open_gaps_added": [{
-                    "page": "Topics/B.md", "type": "rereview",
-                    "note": "downstream reasoning changed",
-                }],
-            },
-        )
-        result = kblib.parse_yaml_subset(merged)
-        self.assertEqual("2026-08-04T03:00:00Z", result["updated_at"])
-        self.assertEqual([{
-            "page": "Topics/B.md", "type": "rereview",
-            "note": "downstream reasoning changed",
-        }], result["open_gaps"])
-        with self.assertRaisesRegex(ValueError, "absent gap"):
-            apply_delta._merge_coverage_sections(
-                merged, {"open_gaps_added": [], "open_gaps_closed": [{
-                    "page": "Topics/A.md", "type": "link",
-                }]})
-
-    def test_detached_mode_cannot_write_canonical_runtime_state(self):
-        delta = self.root / ".cambium/deltas/B1.yaml"
-        delta.parent.mkdir(parents=True, exist_ok=True)
-        delta.write_text(kblib.canonical_yaml({
-            "batch": "B1", "generated_at": "2026-08-04T00:00:00Z",
-            "pages": [], "open_gaps_added": [],
-            "open_gaps_closed": [], "next_batch_updates": [],
-            "watermark_advance": None,
-        }), encoding="utf-8")
-        coverage = self.root / check_queue.COVERAGE_PATH
-        before = coverage.read_bytes()
-        completed = subprocess.run(
-            [sys.executable, str(TOOLS / "apply_delta.py"),
-             str(coverage), str(delta), "--apply"],
-            text=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
-            check=False,
-        )
-        self.assertEqual(1, completed.returncode, completed.stdout)
-        self.assertIn("canonical ledger access requires --root",
-                      completed.stdout)
-        self.assertEqual(before, coverage.read_bytes())
-        self.assertFalse(Path(str(coverage) + ".bak").exists())
-
-    def test_preflight_and_apply_cannot_be_requested_together(self):
-        coverage = self.root / check_queue.COVERAGE_PATH
-        before = coverage.read_bytes()
-        # Planning writes nothing and applying writes the ledger; naming both
-        # is a contradiction the parser's own mutually exclusive group
-        # refuses, before any path is bound or any input is read.
-        completed = subprocess.run(
-            [sys.executable, str(TOOLS / "apply_delta.py"),
-             check_queue.COVERAGE_PATH, ".cambium/deltas/B1.yaml",
-             "--root", str(self.root), "--preflight", "--apply"],
-            text=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
-            check=False,
-        )
-        self.assertEqual(1, completed.returncode, completed.stdout)
-        self.assertIn("not allowed with argument", completed.stdout)
-        self.assertEqual(before, coverage.read_bytes())
-        self.assert_no_write_debris()
-
-    def test_detached_receipt_cannot_overwrite_runtime_state(self):
-        coverage_copy = self.root / "coverage-copy.yaml"
-        delta_copy = self.root / "delta-copy.yaml"
-        coverage_copy.write_bytes(
-            (self.root / check_queue.COVERAGE_PATH).read_bytes())
-        delta_copy.write_text(kblib.canonical_yaml({
-            "batch": "B1", "generated_at": "2026-08-04T00:00:00Z",
-            "pages": [], "open_gaps_added": [],
-            "open_gaps_closed": [], "next_batch_updates": [],
-            "watermark_advance": None,
-        }), encoding="utf-8")
-        state = self.root / check_queue.QUEUE_PATH
-        before = state.read_bytes()
-        completed = subprocess.run(
-            [sys.executable, str(TOOLS / "apply_delta.py"),
-             str(coverage_copy), str(delta_copy),
-             "--receipts", str(state)],
-            text=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
-            check=False,
-        )
-        self.assertEqual(1, completed.returncode, completed.stdout)
-        self.assertIn("canonical receipt access requires --root",
-                      completed.stdout)
-        self.assertEqual(before, state.read_bytes())
-
-    def test_existing_writer_lock_blocks_without_mutation(self):
-        self.make_merge_ready()
-        coverage_path = self.root / check_queue.COVERAGE_PATH
-        before = coverage_path.read_bytes()
-        lock = self.root / ".cambium/tmp/state-writer.lock"
-        lock.mkdir()
-        (lock / "owner.json").write_text(
-            json.dumps({"lock_name": "state-writer", "pid": 999999}) + "\n",
-            encoding="utf-8",
-        )
-
-        code, output = self.invoke(self.apply_arguments())
-
-        self.assertEqual(1, code, output)
-        self.assertIn("active or interrupted writer lock", output)
-        self.assertEqual(before, coverage_path.read_bytes())
-        self.assertFalse(
-            (self.root / ".cambium/receipts/applied.jsonl").exists()
-        )
-
     def test_stale_coverage_or_queue_sha_fails_before_lock_and_write(self):
-        self.make_merge_ready()
-        coverage = self.root / check_queue.COVERAGE_PATH
+        coverage = self.root / queue_runtime.COVERAGE_PATH
         before = coverage.read_bytes()
         base = self.apply_arguments()
         cases = (
@@ -425,9 +246,8 @@ class CanonicalApplyDeltaTests(unittest.TestCase):
                 self.assert_no_write_debris()
 
     def test_locked_cas_rejection_does_not_leave_false_recovery_lock(self):
-        self.make_merge_ready()
-        coverage_path = self.root / check_queue.COVERAGE_PATH
-        concurrent = self.load(check_queue.COVERAGE_PATH)
+        coverage_path = self.root / queue_runtime.COVERAGE_PATH
+        concurrent = self.load(queue_runtime.COVERAGE_PATH)
         concurrent["updated_at"] = "2026-08-04T02:30:00Z"
         concurrent_text = kblib.canonical_yaml(concurrent)
         real_lock = apply_delta.kblib.runtime_write_lock
@@ -453,11 +273,21 @@ class CanonicalApplyDeltaTests(unittest.TestCase):
             (self.root / ".cambium/receipts/applied.jsonl").exists())
 
     def test_success_uses_writer_lock_merges_state_and_writes_bound_receipt(self):
-        self.make_merge_ready()
-        coverage_path = self.root / check_queue.COVERAGE_PATH
+        # Exercise the writer's metadata handoff in the one successful
+        # transaction.  The metadata owner's complete predicate matrix stays
+        # in test_metadata_property_state; this test only proves that the
+        # canonical Delta writer binds and publishes its result atomically.
+        page_path = self.root / "Topics/A.md"
+        page_path.write_text(
+            page_path.read_text(encoding="utf-8")
+            + "\nSemantic content changed after opening.\n",
+            encoding="utf-8",
+        )
+        coverage_path = self.root / queue_runtime.COVERAGE_PATH
+        before_coverage = coverage_path.read_bytes()
         before_coverage_sha = kblib.sha256_file(coverage_path)
-        queue_sha = kblib.sha256_file(self.root / check_queue.QUEUE_PATH)
-        progress_sha = kblib.sha256_file(self.root / check_queue.PROGRESS_PATH)
+        queue_sha = kblib.sha256_file(self.root / queue_runtime.QUEUE_PATH)
+        progress_sha = kblib.sha256_file(self.root / queue_runtime.PROGRESS_PATH)
         real_atomic = kblib.atomic_write_text
         observed_owner = {}
 
@@ -482,14 +312,13 @@ class CanonicalApplyDeltaTests(unittest.TestCase):
         self.assertEqual(before_coverage_sha,
                          operation["before_coverage_sha256"])
         self.assertEqual(queue_sha,
-                         operation["before_required_queue_sha256"])
+                         operation["before_queue_sha256"])
         self.assertEqual(queue_sha,
-                         operation["planned_after_required_queue_sha256"])
+                         operation["planned_after_queue_sha256"])
         self.assertEqual(progress_sha,
                          operation["before_progress_sha256"])
         self.assertEqual(progress_sha,
                          operation["planned_after_progress_sha256"])
-        self.assertEqual(queue_sha, operation["required_queue_sha256"])
         self.assertEqual(
             kblib.sha256_file(self.root / ".cambium/deltas/B1.yaml"),
             operation["delta_sha256"],
@@ -501,13 +330,13 @@ class CanonicalApplyDeltaTests(unittest.TestCase):
         self.assertEqual(".cambium/receipts/applied.jsonl",
                          operation["receipt_path"])
 
-        coverage = self.load(check_queue.COVERAGE_PATH)
+        coverage = self.load(queue_runtime.COVERAGE_PATH)
         page = coverage["pages"][0]
-        self.assertEqual("reviewed", page["authoring_status"])
-        self.assertEqual(
-            [self.page_review_receipt_id], page["gate_receipts"])
+        self.assertEqual("drafted", page["authoring_status"])
+        self.assertEqual(self.delta_gate_receipts, page["gate_receipts"])
         self.assertEqual("B1", page["next_batch"])
-        self.assertEqual([], check_queue.validate_runtime(self.root)["errors"])
+        self.assertEqual(
+            [], runtime_validation.validate_runtime(self.root)["errors"])
         receipt = json.loads(
             (self.root / ".cambium/receipts/applied.jsonl")
             .read_text(encoding="utf-8")
@@ -519,37 +348,36 @@ class CanonicalApplyDeltaTests(unittest.TestCase):
         self.assertEqual(kblib.sha256_file(coverage_path),
                          receipt["after_coverage_sha256"])
         self.assertEqual(queue_sha, receipt["required_queue_sha256"])
+        self.assertEqual(queue_sha, kblib.sha256_file(
+            self.root / queue_runtime.QUEUE_PATH))
+        self.assertEqual(progress_sha, kblib.sha256_file(
+            self.root / queue_runtime.PROGRESS_PATH))
         self.assertEqual(operation["delta_sha256"], receipt["delta_sha256"])
-        self.assertEqual([], receipt["property_events"])
+        self.assertEqual(
+            ["Topics/A.md"],
+            [event["path"] for event in receipt["property_events"]],
+        )
+        property_state = page["property_state"]["last_content_modified"]
+        self.assertEqual(receipt["receipt_id"],
+                         property_state["evidence_receipt"])
+        self.assertIn(
+            "last_content_modified: %s" % receipt["checked_at"][:10],
+            page_path.read_text(encoding="utf-8"),
+        )
         self.assertEqual(
             operation["opening_transition_receipt"],
             receipt["opening_transition_receipt"])
         self.assertEqual(
             operation["manifest_semantic_before_set_sha256"],
             receipt["manifest_semantic_before_set_sha256"])
-        # The delta changes only machine-managed Coverage/projection fields.
-        # It must not manufacture a semantic content-change event or advance
-        # the user-facing intermediate timestamp.
-        self.assertNotIn(
-            "last_content_modified", page.get("property_state") or {})
-        self.assert_no_write_debris()
-
-    def test_canonical_apply_runs_profile_load_producer_once(self):
-        self.make_merge_ready()
-        producer = check_queue.check_profile.evaluate_profile_load
-        with mock.patch.object(
-                check_queue.check_profile, "evaluate_profile_load",
-                wraps=producer) as evaluate:
-            code, output = self.invoke(self.apply_arguments())
-        self.assertEqual(0, code, output)
-        self.assertEqual(1, evaluate.call_count)
+        archive = self.root / receipt["before_coverage_archive_path"]
+        self.assertEqual(before_coverage, archive.read_bytes())
         self.assert_no_write_debris()
 
     def test_hard_exit_records_three_ledger_recovery_state(self):
-        self.make_merge_ready()
-        coverage_path = self.root / check_queue.COVERAGE_PATH
-        queue_path = self.root / check_queue.QUEUE_PATH
-        progress_path = self.root / check_queue.PROGRESS_PATH
+        coverage_path = self.root / queue_runtime.COVERAGE_PATH
+        queue_path = self.root / queue_runtime.QUEUE_PATH
+        progress_path = self.root / queue_runtime.PROGRESS_PATH
         before_coverage_sha = kblib.sha256_file(coverage_path)
         before_queue_sha = kblib.sha256_file(queue_path)
         before_progress_sha = kblib.sha256_file(progress_path)
@@ -558,11 +386,11 @@ import os
 import sys
 
 sys.path.insert(0, sys.argv[1])
-import apply_delta
+import Tools.execution.task_runtime.apply_delta as apply_delta
 
 root = os.path.realpath(sys.argv[2])
 coverage = os.path.realpath(os.path.join(
-    root, apply_delta.check_queue.COVERAGE_PATH
+    root, apply_delta.queue_runtime.COVERAGE_PATH
 ))
 real_atomic = apply_delta.kblib.atomic_write_text
 
@@ -596,228 +424,32 @@ raise SystemExit(apply_delta.main(sys.argv[3:]))
         self.assertEqual(after_coverage_sha,
                          operation["planned_after_coverage_sha256"])
         self.assertEqual(before_queue_sha,
-                         operation["before_required_queue_sha256"])
+                         operation["before_queue_sha256"])
         self.assertEqual(before_queue_sha,
-                         operation["planned_after_required_queue_sha256"])
+                         operation["planned_after_queue_sha256"])
         self.assertEqual(before_progress_sha,
                          operation["before_progress_sha256"])
         self.assertEqual(before_progress_sha,
                          operation["planned_after_progress_sha256"])
 
-        resume = self.run_tool("check_queue.py", "--resume-status")
-        self.assertIn(resume.returncode, (1, 2), resume.stdout)
-        self.assertIn("state.coverage phase=planned-after", resume.stdout)
-        self.assertIn("state.queue phase=before", resume.stdout)
-        self.assertIn("state.progress phase=before", resume.stdout)
-        self.assertIn("partial write is possible", resume.stdout)
-
-    def test_receipt_failure_rolls_back_coverage(self):
-        self.make_merge_ready()
-        coverage_path = self.root / check_queue.COVERAGE_PATH
-        before = coverage_path.read_bytes()
-        receipt_path = self.root / ".cambium/receipts/applied.jsonl"
-
-        with mock.patch.object(
-                apply_delta.kblib, "write_receipts",
-                side_effect=OSError("injected receipt publication failure")):
-            code, output = self.invoke(self.apply_arguments())
-
-        self.assertEqual(1, code, output)
-        self.assertIn("rollback attempted", output)
-        self.assertEqual(before, coverage_path.read_bytes())
-        self.assertFalse(receipt_path.exists())
-        self.assert_no_write_debris()
-
-    def test_semantic_content_change_updates_date_and_invalidates_old_review(self):
-        page_path = self.root / "Topics/A.md"
-        page_path.write_text(
-            "# A\n\nBefore\n",
-            encoding="utf-8")
-        contract = metadata_execution_contract.load_metadata_execution_contract(
-            self.root)
-        rules = metadata_execution_contract.rules_for_capability(
-            contract, project_page_state.WRITER_CAPABILITY)
-        before_fingerprint = project_page_state.semantic_content_fingerprint(
-            "Topics/A.md", page_path.read_text(encoding="utf-8"), rules)
-        coverage_path = self.root / check_queue.COVERAGE_PATH
-        coverage = self.load(check_queue.COVERAGE_PATH)
-        # This test targets the content-change writer's retirement of an old
-        # review, not frontmatter-vocabulary production.  Model that old
-        # review at the runtime's explicit legacy/unverified boundary so the
-        # batch can open without manufacturing a current frontmatter copy.
-        coverage["pages"][0]["property_state"] = {}
-        coverage["pages"][0]["legacy_property_state"] = {
-            "last_reviewed": {
-                "status": metadata_property_state.LEGACY_PROPERTY_STATUS,
-                "value": "2026-08-01",
-            },
-        }
-        coverage_path.write_text(
-            kblib.canonical_yaml(coverage), encoding="utf-8")
-        initial_receipts = (
-            self.root / ".cambium/receipts/task-transitions.jsonl")
-        initial = json.loads(initial_receipts.read_text(encoding="utf-8"))
-        initial["before_coverage_sha256"] = kblib.sha256_file(coverage_path)
-        initial["after_coverage_sha256"] = kblib.sha256_file(coverage_path)
-        initial_receipts.write_text(
-            json.dumps(initial, separators=(",", ":")) + "\n",
-            encoding="utf-8")
-        profile_view, profile_errors = check_queue.profile_load_authorized_view(
-            self.root, coverage["selected_profile_manifest"])
-        self.assertEqual([], profile_errors)
-        legacy_records = [{
-            "path": "Topics/A.md",
-            "before_page_sha256": kblib.sha256_bytes(
-                b"---\nlast_reviewed: 2026-08-01\n---\n# A\n\nBefore\n"),
-            "after_page_sha256": kblib.sha256_file(page_path),
-            "legacy_property_state": {
-                "last_reviewed": {
-                    "status":
-                        metadata_property_state.LEGACY_PROPERTY_STATUS,
-                    "value": "2026-08-01",
-                },
-            },
-        }]
-        kblib.write_receipts(
-            self.root / ".cambium/receipts/task-plans.jsonl",
-            [{
-                "receipt_id": "audit-property-adoption",
-                "tool": "apply_task_plan",
-                "tool_version": "1.2.0",
-                "check": "task_plan",
-                "target": "fixture-task",
-                "transaction_phase": "commit",
-                "result": "pass",
-                "invalidated_by": None,
-                "operation_capability":
-                    metadata_execution_contract.
-                    LEGACY_PROPERTY_ADOPTION_OPERATION,
-                "property_state_adoption_records": legacy_records,
-                "property_state_adoption_count": len(legacy_records),
-                "property_state_adoption_set_sha256":
-                    metadata_property_state.
-                    legacy_property_migration_set_sha256(legacy_records),
-                "metadata_execution_contract_fingerprint":
-                    contract.contract_fingerprint,
-                "metadata_execution_rule_fingerprint":
-                    project_page_state._rules_fingerprint(rules),
-                "selected_profile_manifest":
-                    profile_view["selected_profile_manifest"],
-                "profile_snapshot_sha256":
-                    profile_view["profile_snapshot_sha256"],
-                "profile_contract_fingerprint":
-                    profile_view["profile_contract_fingerprint"],
-                "profile_load_inputs_sha256":
-                    profile_view["profile_load_inputs_sha256"],
-            }],
+        recovery = runtime_validation.validate_runtime(self.root)
+        self.assertEqual(1, len(recovery["_writer_locks"]))
+        interrupted = recovery["_writer_locks"][0]
+        self.assertEqual(
+            {"coverage": "planned-after", "progress": "before",
+             "queue": "before", "standards": "before"},
+            {name: phase["phase"] for name, phase in
+             interrupted["state_phases"].items()},
         )
-        attestation_id = "audit-review-before-attestation"
-        merged_snapshot = "sha256:" + "7" * 64
-        kblib.write_receipts(
-            self.root / ".cambium/receipts/fixture.jsonl",
-            [{
-                "receipt_id": attestation_id,
-                "tool": check_queue.BATCH_CLOSE_TOOL,
-                "tool_version": check_queue.BATCH_CLOSE_TOOL_VERSION,
-                "check": "batch_global_review_attestation",
-                "target": "B0",
-                "result": "pass",
-                "invalidated_by": None,
-                "task_id": coverage["task_id"],
-                "batch_id": "B0",
-                "integrator_id": "integrator-a",
-                "reviewer_id": "reviewer-b",
-                "merged_snapshot_sha256": merged_snapshot,
-                "details": "independent review accepted",
-            }, {
-                "receipt_id": "audit-review-before",
-                "tool": check_queue.BATCH_CLOSE_TOOL,
-                "tool_version": check_queue.BATCH_CLOSE_TOOL_VERSION,
-                "check": "page_review_acceptance",
-                "target": "Topics/A.md",
-                "result": "pass",
-                "invalidated_by": None,
-                "task_id": coverage["task_id"],
-                "batch_id": "B0",
-                "integrator_id": "integrator-a",
-                "reviewer_id": "reviewer-b",
-                "merged_snapshot_sha256": merged_snapshot,
-                "checked_at": "2026-08-01T00:00:00Z",
-                "reviewed_on": "2026-08-01",
-                "semantic_content_sha256": before_fingerprint,
-                "reviewer_attestation_receipt": attestation_id,
-                "selected_profile_manifest":
-                    profile_view["selected_profile_manifest"],
-                "profile_snapshot_sha256":
-                    profile_view["profile_snapshot_sha256"],
-                "profile_contract_fingerprint":
-                    profile_view["profile_contract_fingerprint"],
-                "profile_load_inputs_sha256":
-                    profile_view["profile_load_inputs_sha256"],
-                "metadata_execution_contract_fingerprint":
-                    contract.contract_fingerprint,
-            }],
-        )
-        self.make_merge_ready()
-        page_path.write_text(
-            "---\ntitle: A\n---\nAfter\n",
-            encoding="utf-8")
+        self.assertIn("partial write is possible",
+                      interrupted["reconciliation_hint"])
 
-        code, output = self.invoke(self.apply_arguments())
-        self.assertEqual(0, code, output)
-        applied = self.load(check_queue.COVERAGE_PATH)["pages"][0][
-            "property_state"]
-        receipts = [json.loads(line) for line in
-                    (self.root / ".cambium/receipts/applied.jsonl").read_text(
-                        encoding="utf-8").splitlines()]
-        receipt = receipts[-1]
-        event = receipt["property_events"][0]
-        runtime = check_queue.validate_runtime(self.root)
-        self.assertEqual([], runtime["errors"])
-        opening = check_queue.current_opening_semantic_context(runtime, "B1")
-        self.assertEqual(
-            opening["opening_transition_receipt"],
-            receipt["opening_transition_receipt"])
-        self.assertEqual(
-            opening["manifest_semantic_before_set_sha256"],
-            receipt["manifest_semantic_before_set_sha256"])
-        self.assertEqual(
-            opening["before_semantic_fingerprints"]["Topics/A.md"],
-            event["before_semantic_content_sha256"])
-        self.assertEqual(receipt["checked_at"][:10],
-                         applied["last_content_modified"]["value"])
-        self.assertEqual(receipt["receipt_id"],
-                         applied["last_content_modified"][
-                             "evidence_receipt"])
-        self.assertIsNone(applied["last_reviewed"]["value"])
-        self.assertTrue(event["last_reviewed_invalidated"])
-        page_text = page_path.read_text(encoding="utf-8")
-        self.assertIn("last_content_modified: %s" %
-                      receipt["checked_at"][:10], page_text)
-        self.assertNotIn("last_reviewed:", page_text)
-
-    def test_receipt_failure_rolls_back_content_property_page_and_owner_state(self):
+    def test_external_receipt_race_rolls_back_without_deleting_winner(self):
         page_path = self.root / "Topics/A.md"
-        self.make_merge_ready()
         page_path.write_text(
             "---\ntitle: A\n---\nChanged body\n", encoding="utf-8")
         before_page = page_path.read_bytes()
-        coverage_path = self.root / check_queue.COVERAGE_PATH
-        before_coverage = coverage_path.read_bytes()
-        with mock.patch.object(
-                apply_delta.kblib, "write_receipts",
-                side_effect=OSError("injected receipt failure")):
-            code, output = self.invoke(self.apply_arguments())
-        self.assertEqual(1, code, output)
-        self.assertEqual(before_coverage, coverage_path.read_bytes())
-        self.assertEqual(before_page, page_path.read_bytes())
-        self.assertNotIn(
-            "last_content_modified:", page_path.read_text(encoding="utf-8"))
-        self.assert_no_write_debris()
-
-    def test_concurrent_receipt_creator_is_not_overwritten_or_deleted(self):
-        self.make_merge_ready()
-        coverage_path = self.root / check_queue.COVERAGE_PATH
+        coverage_path = self.root / queue_runtime.COVERAGE_PATH
         before = coverage_path.read_bytes()
         receipt_path = self.root / ".cambium/receipts/applied.jsonl"
         external = {
@@ -840,6 +472,9 @@ raise SystemExit(apply_delta.main(sys.argv[3:]))
 
         self.assertEqual(1, code, output)
         self.assertEqual(before, coverage_path.read_bytes())
+        self.assertEqual(before_page, page_path.read_bytes())
+        self.assertNotIn(
+            "last_content_modified:", page_path.read_text(encoding="utf-8"))
         self.assertEqual(
             [external],
             [json.loads(line) for line in
@@ -848,8 +483,7 @@ raise SystemExit(apply_delta.main(sys.argv[3:]))
         self.assert_no_write_debris()
 
     def test_failure_after_own_receipt_preserves_both_records_and_lock(self):
-        self.make_merge_ready()
-        coverage_path = self.root / check_queue.COVERAGE_PATH
+        coverage_path = self.root / queue_runtime.COVERAGE_PATH
         before = coverage_path.read_bytes()
         receipt_path = self.root / ".cambium/receipts/applied.jsonl"
         external = {
@@ -884,7 +518,7 @@ raise SystemExit(apply_delta.main(sys.argv[3:]))
         self.assertTrue(
             (self.root / ".cambium/tmp/state-writer.lock/owner.json").is_file()
         )
-        recovery = check_queue.validate_runtime(self.root)
+        recovery = runtime_validation.validate_runtime(self.root)
         lock = recovery["_writer_locks"][0]
         self.assertEqual("matching",
                          lock["operation_receipt"]["status"])
@@ -894,23 +528,6 @@ raise SystemExit(apply_delta.main(sys.argv[3:]))
              "standards": "before"},
             {name: phase["phase"] for name, phase in
              lock["state_phases"].items()},
-        )
-
-    def test_exclusive_creation_without_complete_record_preserves_lock(self):
-        self.make_merge_ready()
-        coverage_path = self.root / check_queue.COVERAGE_PATH
-        before = coverage_path.read_bytes()
-        receipt_path = self.root / ".cambium/receipts/applied.jsonl"
-
-        with mock.patch.object(apply_delta.kblib.os, "write", return_value=0):
-            code, output = self.invoke(self.apply_arguments())
-
-        self.assertEqual(1, code, output)
-        self.assertEqual(before, coverage_path.read_bytes())
-        self.assertTrue(receipt_path.is_file())
-        self.assertEqual(b"", receipt_path.read_bytes())
-        self.assertTrue(
-            (self.root / ".cambium/tmp/state-writer.lock/owner.json").is_file()
         )
 
 

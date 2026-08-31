@@ -1,521 +1,242 @@
-"""`Tools/scaffold_profile.py` — the safe candidate-profile scaffolder.
+"""Primary owner tests for the current candidate Profile scaffolder.
 
-The scaffolder copies exactly the whitelist in `profiles/template-files.yaml`
-(never a directory walk), performs only the mechanical derivations that are
-pure functions of the profile id, refuses any pre-existing destination, and
-leaves every semantic ``TODO(profile)`` answer in place. This module pins:
-
-1. dry-run writes nothing anywhere (no staging directory either);
-2. the whitelist and the real template agree in both directions, so a new
-   template file must be classified as copied or orientation to land;
-3. apply creates exactly the whitelisted files — junk planted in the
-   template is never copied, orientation files are never copied;
-4. any existing destination (populated directory, EMPTY directory, regular
-   file, symlink) refuses distinctly with no modification;
-5. invalid or reserved slugs refuse;
-6. an interruption (including KeyboardInterrupt) leaves no destination and
-   no staging directory behind;
-7. the three interview `self_path_rewrites` and the identity land, semantic
-   sentinels survive unchanged, and `check_profile.py` on the fresh
-   candidate fails with sentinel findings only — no path-resolution finding
-   for the rewritten cells;
-8. `kernel/` (including K00/03) is untouched and no `.cambium/` appears;
-9. filling only the remaining semantic answers yields a profile
-   `check_profile.py` accepts, proving the derived paths are exactly the
-   ones a passing fill needs.
-
-Regression tests, not gates: no receipt, no Gate ID, no answer-quality call.
+The scaffolder owns only the mechanical ``profiles/_template`` to candidate
+projection, its parameters, and safe publication.  Template answer quality,
+filled-template validation, examples, onboarding, and adoption are verified by
+their own primary suites and are deliberately absent here.
 """
 
-import contextlib
-import hashlib
-import io
 import json
-import shutil
-import subprocess
-import sys
-import tempfile
-import unittest
 from pathlib import Path
+import unittest
 from unittest import mock
 
-REPOSITORY = Path(__file__).resolve().parents[2]
-TOOLS = REPOSITORY / "Tools"
-TEMPLATE = REPOSITORY / "profiles" / "_template"
-MANIFEST = REPOSITORY / "profiles" / "template-files.yaml"
-CHECK_PROFILE = TOOLS / "check_profile.py"
-K00_03 = REPOSITORY / "kernel" / "K00 Standards Control" / \
-    "03 Standards Governance.md"
-SENTINEL = "TODO(profile)"
-PROFILE_ID = "cand"
-
-sys.path.insert(0, str(TOOLS / "tests"))
-sys.path.insert(0, str(TOOLS))
-import kblib  # noqa: E402
-import scaffold_profile  # noqa: E402
-import test_template_fill  # noqa: E402  (reused semantic fill + scan config)
-import test_profile_onboarding_status as onboarding_fixture  # noqa: E402
+import Tools.governance.profile.scaffold_profile as scaffold_profile
+from Tools.tests.support.scaffold_profile_fixture import (
+    ScaffoldProfileFixture,
+)
 
 
-def make_root(tmp):
-    """A minimal repository the scaffolder and check_profile both accept."""
-    root = Path(tmp).resolve() / "repo"
-    onboarding_fixture.copy_profile_load_fixture(root)
-    for relative in (
-            "kernel/K00 Standards Control/03 Standards Governance.md",
-            "profiles/template-files.yaml"):
-        target = root / relative
-        target.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copyfile(REPOSITORY / relative, target)
-    shutil.copytree(TEMPLATE, root / "profiles" / "_template")
-    return root
+PROFILE_ID = "candidate"
 
 
-def run_scaffold(root, profile_id, *extra):
-    buffer = io.StringIO()
-    with contextlib.redirect_stdout(buffer):
-        # `--profile-id=<slug>` keeps a leading-dash slug a value, so the
-        # tool's own validation refuses it instead of argparse exiting.
-        code = scaffold_profile.main(
-            [str(root), "--profile-id=%s" % profile_id, *extra])
-    return code, buffer.getvalue()
+class ScaffoldPredicateUnitTests(unittest.TestCase):
+    def test_profile_id_acceptance_reuses_the_current_namespace_boundary(self):
+        for profile_id in ("candidate", "candidate-1", "candidate_1"):
+            with self.subTest(profile_id=profile_id, result="accepted"):
+                self.assertIsNone(
+                    scaffold_profile.validate_profile_id(profile_id))
+        rejected = (
+            "", "Upper", "-leading", "a/b", "a b", "café",
+            *sorted(scaffold_profile.profile_layout_contract.
+                    RESERVED_PROFILE_IDS),
+        )
+        for profile_id in rejected:
+            with self.subTest(profile_id=profile_id, result="rejected"):
+                with self.assertRaises(scaffold_profile.ScaffoldRefusal):
+                    scaffold_profile.validate_profile_id(profile_id)
 
-
-def tree_state(root):
-    """Every path under ``root`` with a content/type fingerprint."""
-    state = {}
-    for path in sorted(Path(root).rglob("*")):
-        relative = path.relative_to(root).as_posix()
-        if path.is_symlink():
-            state[relative] = "symlink:%s" % path.readlink()
-        elif path.is_dir():
-            state[relative] = "dir"
-        else:
-            state[relative] = hashlib.sha256(path.read_bytes()).hexdigest()
-    return state
-
-
-def manifest_lists():
-    data = kblib.parse_yaml_subset(MANIFEST.read_text(encoding="utf-8"))
-    return data["copy"], data["orientation_not_copied"]
-
-
-def template_files():
-    return sorted(
-        path.relative_to(TEMPLATE).as_posix()
-        for path in TEMPLATE.rglob("*")
-        if path.is_file() and path.name != ".DS_Store")
-
-
-def candidate_files(destination):
-    return sorted(
-        path.relative_to(destination).as_posix()
-        for path in Path(destination).rglob("*") if path.is_file())
-
-
-def sentinel_counts(base, names):
-    return {name: (base / name).read_text(encoding="utf-8").count(SENTINEL)
-            for name in names}
-
-
-class WhitelistParity(unittest.TestCase):
-    """profiles/template-files.yaml must classify every real template file."""
-
-    def test_every_template_file_is_classified_exactly_once(self):
-        copy, orientation = manifest_lists()
+    def test_manifest_entries_accept_only_canonical_relative_paths(self):
         self.assertEqual(
-            [], sorted(set(copy) & set(orientation)),
-            "a file cannot be both copied and orientation")
+            "registries/roles.md",
+            scaffold_profile._canonical_manifest_entry(
+                "registries/roles.md", "copy"))
+        for value in (
+                "", " /absolute", "/absolute", "../outside.md",
+                "a/../b.md", "a//b.md", "a\\b.md", "a.md ", None):
+            with self.subTest(value=value):
+                with self.assertRaises(scaffold_profile.ScaffoldRefusal):
+                    scaffold_profile._canonical_manifest_entry(value, "copy")
+
+
+class ScaffoldManifestContractTests(unittest.TestCase):
+    def setUp(self):
+        self.fixture = ScaffoldProfileFixture(self, PROFILE_ID)
+
+    def test_manifest_classifies_current_template_and_rewrites_once(self):
+        copy, orientation = scaffold_profile.load_manifest(self.fixture.root)
+        self.assertFalse(set(copy) & set(orientation))
+        actual = sorted(
+            path.relative_to(self.fixture.template).as_posix()
+            for path in self.fixture.template.rglob("*") if path.is_file())
+        self.assertEqual(actual, sorted(copy + orientation))
+
+        plan = scaffold_profile.build_plan(self.fixture.root, PROFILE_ID)
+        self.assertEqual(copy, plan["copy"])
+        self.assertEqual(orientation, plan["orientation_not_copied"])
         self.assertEqual(
-            template_files(), sorted(set(copy) | set(orientation)),
-            "profiles/template-files.yaml and profiles/_template drifted; "
-            "classify every template file as copy or orientation")
+            list(scaffold_profile.derived_rewrites(PROFILE_ID)),
+            [(row["file"], row["old"], row["new"])
+             for row in plan["rewrites"]])
+        for row in plan["rewrites"]:
+            source = (self.fixture.template / row["file"]).read_text(
+                encoding="utf-8")
+            after = plan["files"][row["file"]].decode("utf-8")
+            self.assertEqual(1, source.count(row["old"]))
+            self.assertNotIn(row["old"], after)
+            self.assertIn(row["new"], after)
+        self.assertTrue(any(
+            scaffold_profile.SENTINEL.encode("utf-8") in body
+            for body in plan["files"].values()))
 
-    def test_orientation_carries_at_least_the_readme(self):
-        _copy, orientation = manifest_lists()
-        self.assertIn("README.md", orientation)
+    def test_manifest_shape_and_unlisted_files_are_fail_closed(self):
+        manifest = self.fixture.root / scaffold_profile.MANIFEST_RELATIVE
+        original = manifest.read_text(encoding="utf-8")
+        invalid_documents = (
+            original + "\nunknown_field: true\n",
+            original.replace(
+                "copy:\n", "copy:\n  - corpus-planning.yaml\n", 1),
+            original.replace(
+                "source: profiles/_template",
+                "source: profiles/another-template", 1),
+        )
+        for document in invalid_documents:
+            with self.subTest(document=document[-60:]):
+                manifest.write_text(document, encoding="utf-8")
+                with self.assertRaises(scaffold_profile.ScaffoldRefusal):
+                    scaffold_profile.load_manifest(self.fixture.root)
+        manifest.write_text(original, encoding="utf-8")
+
+        junk = self.fixture.template / "unlisted-editor-file.md"
+        junk.write_text("must not enter the plan\n", encoding="utf-8")
+        plan = scaffold_profile.build_plan(self.fixture.root, PROFILE_ID)
+        self.assertNotIn(junk.name, plan["copy"])
+        self.assertNotIn(junk.name, plan["files"])
+
+    def test_destination_conflict_classifies_every_existing_path_kind(self):
+        destination = self.fixture.destination
+        self.assertIsNone(scaffold_profile.destination_conflict(destination))
+
+        destination.mkdir()
+        self.assertIn(
+            "directory", scaffold_profile.destination_conflict(destination))
+        destination.rmdir()
+
+        destination.write_text("existing file\n", encoding="utf-8")
+        self.assertIn(
+            "file", scaffold_profile.destination_conflict(destination))
+        destination.unlink()
+
+        destination.symlink_to("does-not-exist")
+        self.assertIn(
+            "symlink", scaffold_profile.destination_conflict(destination))
 
 
-class DryRun(unittest.TestCase):
-    def test_dry_run_writes_nothing_and_reports_the_plan(self):
-        with tempfile.TemporaryDirectory() as tmp:
-            root = make_root(tmp)
-            before = tree_state(root)
-            code, out = run_scaffold(root, PROFILE_ID)
-            self.assertEqual(0, code, out)
-            self.assertEqual(before, tree_state(root),
-                             "dry run must write nothing anywhere")
-            self.assertIn("dry run", out)
-            self.assertIn("profiles/%s/profile.md" % PROFILE_ID, out)
-            self.assertIn("README.md", out)
-            self.assertIn(
-                "profiles/%s/scan-configs/residual-scan.yaml" % PROFILE_ID,
-                out)
+class ScaffoldWriterIntegrationTests(unittest.TestCase):
+    def setUp(self):
+        self.fixture = ScaffoldProfileFixture(self, PROFILE_ID)
 
-    def test_dry_run_json_reports_the_structured_plan(self):
-        with tempfile.TemporaryDirectory() as tmp:
-            root = make_root(tmp)
-            code, out = run_scaffold(root, PROFILE_ID, "--json")
-            self.assertEqual(0, code, out)
-            report = json.loads(out)
-            copy, orientation = manifest_lists()
-            self.assertFalse(report["apply"])
-            self.assertFalse(report["created"])
-            self.assertEqual("dry-run", report["result"])
-            self.assertIsNone(report["conflict"])
+    def test_dry_run_projects_the_plan_without_writing(self):
+        before = self.fixture.tree_state(self.fixture.root)
+        code, output = self.fixture.run("--json")
+        report = json.loads(output)
+        plan = scaffold_profile.build_plan(self.fixture.root, PROFILE_ID)
+
+        self.assertEqual(0, code)
+        self.assertEqual(before, self.fixture.tree_state(self.fixture.root))
+        self.assertEqual("dry-run", report["result"])
+        self.assertFalse(report["created"])
+        self.assertEqual(
+            ["profiles/%s/%s" % (PROFILE_ID, item)
+             for item in plan["copy"]],
+            report["files"])
+        self.assertEqual(
+            plan["orientation_not_copied"],
+            report["orientation_not_copied"])
+
+    def test_apply_publishes_exactly_one_mechanical_candidate(self):
+        plan = scaffold_profile.build_plan(self.fixture.root, PROFILE_ID)
+        marker = self.fixture.outside_marker.read_bytes()
+        code, output = self.fixture.run("--apply")
+
+        self.assertEqual(0, code, output)
+        self.assertEqual(plan["copy"], self.fixture.candidate_files())
+        for relative, expected in plan["files"].items():
             self.assertEqual(
-                ["profiles/%s/%s" % (PROFILE_ID, rel) for rel in copy],
-                report["files"])
-            self.assertEqual(orientation, report["orientation_not_copied"])
-            self.assertEqual(4, len(report["rewrites"]))
-            for rewrite in report["rewrites"]:
-                self.assertIn(rewrite["old"],
-                              (TEMPLATE / rewrite["file"]).read_text(
-                                  encoding="utf-8"))
+                expected,
+                (self.fixture.destination / relative).read_bytes(),
+                relative)
+        for relative in plan["orientation_not_copied"]:
+            self.assertFalse((self.fixture.destination / relative).exists())
+        self.assertTrue(any(
+            scaffold_profile.SENTINEL in path.read_text(encoding="utf-8")
+            for path in self.fixture.destination.rglob("*")
+            if path.is_file()))
+        self.assertEqual(marker, self.fixture.outside_marker.read_bytes())
+        self.assertFalse((self.fixture.root / ".cambium").exists())
+        self.assertEqual([], self.fixture.staging_paths())
 
 
-class Apply(unittest.TestCase):
-    def test_apply_creates_exactly_the_whitelisted_files(self):
-        with tempfile.TemporaryDirectory() as tmp:
-            root = make_root(tmp)
-            code, out = run_scaffold(root, PROFILE_ID, "--apply")
-            self.assertEqual(0, code, out)
-            destination = root / "profiles" / PROFILE_ID
-            copy, orientation = manifest_lists()
-            self.assertEqual(sorted(copy), candidate_files(destination))
-            for name in orientation:
-                self.assertFalse((destination / name).exists(),
-                                 "orientation file was copied: %s" % name)
-            leftovers = [p.name for p in (root / "profiles").iterdir()
-                         if p.name.startswith(".scaffold-")]
-            self.assertEqual([], leftovers)
-            self.assertIn("candidate created", out)
-            self.assertIn("check_profile", out)
-            self.assertNotIn("profile ready", out)
+class ScaffoldWriterSlowTests(unittest.TestCase):
+    def assert_no_published_residue(self, fixture):
+        self.assertFalse(fixture.destination.exists())
+        self.assertEqual([], fixture.staging_paths())
 
-    def test_junk_in_the_template_is_never_copied(self):
-        with tempfile.TemporaryDirectory() as tmp:
-            root = make_root(tmp)
-            template = root / "profiles" / "_template"
-            (template / ".DS_Store").write_bytes(b"\x00junk")
-            (template / "registries" / ".audit-dimensions.md.swp").write_bytes(
-                b"swap")
-            (template / "extra-unclassified.md").write_text(
-                "not in the manifest", encoding="utf-8")
-            code, out = run_scaffold(root, PROFILE_ID, "--apply")
-            self.assertEqual(0, code, out)
-            copy, _ = manifest_lists()
-            self.assertEqual(sorted(copy),
-                             candidate_files(root / "profiles" / PROFILE_ID))
+    def test_missing_or_symlinked_whitelist_source_never_publishes(self):
+        for kind in ("missing", "symlink"):
+            with self.subTest(kind=kind):
+                fixture = ScaffoldProfileFixture(self, PROFILE_ID)
+                target = fixture.template / "priority-rubric.md"
+                if kind == "missing":
+                    target.unlink()
+                else:
+                    body = target.read_bytes()
+                    target.unlink()
+                    aside = fixture.template / "aside.bin"
+                    aside.write_bytes(body)
+                    target.symlink_to("aside.bin")
+                code, _output = fixture.run("--apply")
+                self.assertEqual(1, code)
+                self.assert_no_published_residue(fixture)
 
-    def test_unrewritten_files_are_byte_identical_to_the_template(self):
-        with tempfile.TemporaryDirectory() as tmp:
-            root = make_root(tmp)
-            code, _ = run_scaffold(root, PROFILE_ID, "--apply")
-            self.assertEqual(0, code)
-            destination = root / "profiles" / PROFILE_ID
-            copy, _ = manifest_lists()
-            rewritten = {relative for relative, _o, _n in
-                         scaffold_profile.derived_rewrites(PROFILE_ID)}
-            for relative in copy:
-                if relative in rewritten:
-                    continue
-                self.assertEqual(
-                    (TEMPLATE / relative).read_bytes(),
-                    (destination / relative).read_bytes(), relative)
+    def test_race_failure_and_interruption_share_one_cleanup_boundary(self):
+        original_stage = scaffold_profile.stage_candidate
 
-    def test_missing_whitelisted_file_fails_closed(self):
-        with tempfile.TemporaryDirectory() as tmp:
-            root = make_root(tmp)
-            (root / "profiles" / "_template" / "priority-rubric.md").unlink()
-            code, out = run_scaffold(root, PROFILE_ID, "--apply")
-            self.assertEqual(1, code)
-            self.assertIn("manifest drift", out)
-            self.assertFalse((root / "profiles" / PROFILE_ID).exists())
+        raced = ScaffoldProfileFixture(self, PROFILE_ID)
 
-    def test_symlinked_whitelisted_file_is_refused(self):
-        with tempfile.TemporaryDirectory() as tmp:
-            root = make_root(tmp)
-            target = root / "profiles" / "_template" / "priority-rubric.md"
-            real = target.read_bytes()
-            target.unlink()
-            aside = root / "profiles" / "_template" / "aside.bin"
-            aside.write_bytes(real)
-            target.symlink_to("aside.bin")
-            code, out = run_scaffold(root, PROFILE_ID, "--apply")
-            self.assertEqual(1, code)
-            self.assertIn("symlink", out)
-            self.assertFalse((root / "profiles" / PROFILE_ID).exists())
+        def stage_then_race(staging, plan):
+            original_stage(staging, plan)
+            raced.destination.mkdir()
+
+        with mock.patch.object(
+                scaffold_profile, "stage_candidate", stage_then_race):
+            code, _output = raced.run("--apply")
+        self.assertEqual(1, code)
+        self.assertEqual([], list(raced.destination.iterdir()))
+        self.assertEqual([], raced.staging_paths())
+
+        failed = ScaffoldProfileFixture(self, PROFILE_ID)
+
+        def partial_then_fail(staging, _plan):
+            Path(staging, "partial").write_text("partial", encoding="utf-8")
+            raise OSError("injected staging failure")
+
+        with mock.patch.object(
+                scaffold_profile, "stage_candidate", partial_then_fail):
+            code, _output = failed.run("--apply")
+        self.assertEqual(1, code)
+        self.assert_no_published_residue(failed)
+
+        interrupted = ScaffoldProfileFixture(self, PROFILE_ID)
+        with mock.patch.object(
+                scaffold_profile, "publish_candidate",
+                side_effect=KeyboardInterrupt):
+            with self.assertRaises(KeyboardInterrupt):
+                interrupted.run("--apply")
+        self.assert_no_published_residue(interrupted)
 
 
-class ExistingDestination(unittest.TestCase):
-    def refuse_case(self, prepare, expected_phrase):
-        with tempfile.TemporaryDirectory() as tmp:
-            root = make_root(tmp)
-            destination = root / "profiles" / PROFILE_ID
-            prepare(destination)
-            before = tree_state(root)
-            for extra in ((), ("--apply",)):
-                code, out = run_scaffold(root, PROFILE_ID, *extra)
-                self.assertEqual(1, code, out)
-                self.assertIn(expected_phrase, out)
-                self.assertIn("nothing was written", out)
-            self.assertEqual(before, tree_state(root),
-                             "a refusal must modify nothing")
+class ScaffoldCliTransportTests(unittest.TestCase):
+    def test_json_cli_reports_one_created_candidate(self):
+        fixture = ScaffoldProfileFixture(self, PROFILE_ID)
+        completed = fixture.run_cli("--apply", "--json")
+        report = json.loads(completed.stdout)
 
-    def test_existing_directory_with_content_refuses(self):
-        def prepare(destination):
-            destination.mkdir(parents=True)
-            (destination / "profile.md").write_text("mine", encoding="utf-8")
-        self.refuse_case(prepare, "as a directory")
-
-    def test_existing_empty_directory_refuses(self):
-        def prepare(destination):
-            destination.mkdir(parents=True)
-        self.refuse_case(prepare, "even an empty one is refused")
-
-    def test_existing_regular_file_refuses(self):
-        def prepare(destination):
-            destination.write_text("a file, not a directory",
-                                   encoding="utf-8")
-        self.refuse_case(prepare, "as a file")
-
-    def test_existing_symlink_refuses_even_when_dangling(self):
-        def prepare(destination):
-            destination.symlink_to("does-not-exist")
-        self.refuse_case(prepare, "as a symlink")
-
-    def test_destination_appearing_between_check_and_publish_refuses(self):
-        with tempfile.TemporaryDirectory() as tmp:
-            root = make_root(tmp)
-            destination = root / "profiles" / PROFILE_ID
-            original = scaffold_profile.stage_candidate
-
-            def stage_then_race(staging, plan):
-                original(staging, plan)
-                destination.mkdir()
-            with mock.patch.object(
-                    scaffold_profile, "stage_candidate", stage_then_race):
-                code, out = run_scaffold(root, PROFILE_ID, "--apply")
-            self.assertEqual(1, code, out)
-            self.assertEqual([], list(destination.iterdir()),
-                             "the raced destination must not be merged into")
-            leftovers = [p.name for p in (root / "profiles").iterdir()
-                         if p.name.startswith(".scaffold-")]
-            self.assertEqual([], leftovers)
-
-
-class SlugValidation(unittest.TestCase):
-    def test_invalid_and_reserved_slugs_refuse(self):
-        cases = ("Upper", "-leading-dash", "a/b", "a\\b", "a b", "",
-                 "_template", "examples", "café")
-        with tempfile.TemporaryDirectory() as tmp:
-            root = make_root(tmp)
-            before = tree_state(root)
-            for slug in cases:
-                with self.subTest(slug=slug):
-                    code, out = run_scaffold(root, slug, "--apply")
-                    self.assertEqual(1, code, out)
-            self.assertEqual(before, tree_state(root))
-
-
-class InterruptionSafety(unittest.TestCase):
-    def assert_no_residue(self, root):
-        self.assertFalse((root / "profiles" / PROFILE_ID).exists())
-        leftovers = [p.name for p in (root / "profiles").iterdir()
-                     if p.name.startswith(".scaffold-")]
-        self.assertEqual([], leftovers, "staging directory leaked")
-
-    def test_keyboard_interrupt_during_publish_leaves_no_residue(self):
-        with tempfile.TemporaryDirectory() as tmp:
-            root = make_root(tmp)
-            with mock.patch.object(
-                    scaffold_profile, "publish_candidate",
-                    side_effect=KeyboardInterrupt):
-                with self.assertRaises(KeyboardInterrupt):
-                    run_scaffold(root, PROFILE_ID, "--apply")
-            self.assert_no_residue(root)
-
-    def test_failure_midway_through_staging_leaves_no_residue(self):
-        with tempfile.TemporaryDirectory() as tmp:
-            root = make_root(tmp)
-            original = scaffold_profile.stage_candidate
-
-            def stage_partially(staging, plan):
-                partial = dict(plan)
-                partial["copy"] = plan["copy"][:3]
-                original(staging, partial)
-                raise OSError("disk full after three files")
-            with mock.patch.object(
-                    scaffold_profile, "stage_candidate", stage_partially):
-                code, out = run_scaffold(root, PROFILE_ID, "--apply")
-            self.assertEqual(1, code, out)
-            self.assertIn("no candidate was published", out)
-            self.assert_no_residue(root)
-
-
-class MechanicalRewrites(unittest.TestCase):
-    def scaffolded(self, root):
-        code, out = run_scaffold(root, PROFILE_ID, "--apply")
-        self.assertEqual(0, code, out)
-        return root / "profiles" / PROFILE_ID
-
-    def test_identity_and_self_paths_landed(self):
-        with tempfile.TemporaryDirectory() as tmp:
-            candidate = self.scaffolded(make_root(tmp))
-            manifest = (candidate / "profile.md").read_text(encoding="utf-8")
-            self.assertIn("- `profile_id`: `%s`" % PROFILE_ID, manifest)
-            scans = (candidate / "registries" / "registered-scans.md"
-                     ).read_text(encoding="utf-8")
-            self.assertIn(
-                "profiles/%s/scan-configs/residual-scan.yaml"
-                % PROFILE_ID, scans)
-            dimensions = (candidate / "registries" / "audit-dimensions.md"
-                          ).read_text(encoding="utf-8")
-            self.assertIn(
-                "`profiles/%s/scope-and-architecture.md#Foundation Depth "
-                "Requirements`" % PROFILE_ID, dimensions)
-            self.assertIn(
-                "`profiles/%s/registries/audit-dimensions.md#Residual "
-                "Disposition`" % PROFILE_ID, dimensions)
-            # The derived owner headings resolve inside the candidate itself.
-            self.assertIn("## Foundation Depth Requirements",
-                          (candidate / "scope-and-architecture.md"
-                           ).read_text(encoding="utf-8"))
-            self.assertIn("## Residual Disposition", dimensions)
-
-    def test_semantic_sentinels_survive_exactly(self):
-        with tempfile.TemporaryDirectory() as tmp:
-            root = make_root(tmp)
-            candidate = self.scaffolded(root)
-            copy, _ = manifest_lists()
-            before = sentinel_counts(TEMPLATE, copy)
-            after = sentinel_counts(candidate, copy)
-            deltas = {name: before[name] - after[name]
-                      for name in copy if before[name] != after[name]}
-            # profile_id: -1.  audit-dimensions: the two predicate-owner
-            # cells: -2.  The registered-scan configuration reference is a
-            # stable package-local path in the template, so materializing its
-            # repository-relative form removes no semantic sentinel.
-            self.assertEqual(
-                {"profile.md": 1,
-                 "registries/audit-dimensions.md": 2},
-                deltas)
-
-    def test_check_profile_fails_with_sentinel_findings_only(self):
-        with tempfile.TemporaryDirectory() as tmp:
-            root = make_root(tmp)
-            self.scaffolded(root)
-            receipts = Path(tmp) / "receipts.jsonl"
-            completed = subprocess.run(
-                [sys.executable, str(CHECK_PROFILE),
-                 "profiles/%s" % PROFILE_ID, "--root", str(root),
-                 "--receipts", str(receipts)],
-                cwd=str(root), text=True, capture_output=True, check=False)
-            self.assertEqual(1, completed.returncode, completed.stdout)
-            recorded = [json.loads(line) for line in
-                        receipts.read_text(encoding="utf-8").splitlines()
-                        if line.strip()]
-            fail_checks = {r["check"] for r in recorded
-                           if r["result"] == "fail"}
-            self.assertEqual(
-                {"unfilled-placeholder"}, fail_checks,
-                "a fresh candidate must fail only on its open semantic "
-                "answers; a path-resolution or structural finding means a "
-                "mechanical rewrite is wrong: %s" % sorted(fail_checks))
-            self.assertIn("profile_id=%s" % PROFILE_ID, completed.stdout)
-
-    def test_kernel_and_runtime_state_untouched(self):
-        with tempfile.TemporaryDirectory() as tmp:
-            root = make_root(tmp)
-            kernel_before = tree_state(root / "kernel")
-            self.scaffolded(root)
-            self.assertEqual(kernel_before, tree_state(root / "kernel"))
-            self.assertEqual(
-                K00_03.read_bytes(),
-                (root / "kernel" / "K00 Standards Control" /
-                 "03 Standards Governance.md").read_bytes())
-            self.assertFalse((root / ".cambium").exists())
-
-
-class SemanticFillEndToEnd(unittest.TestCase):
-    """Answering only the remaining semantic decisions must yield a pass.
-
-    The fill reuses `test_template_fill.FILL` wherever the scaffolder left
-    the anchor untouched, so a template wording change fails one place. The
-    anchors the scaffolder already materialized are expected to be absent
-    and are answered through their post-scaffold forms instead.
-    """
-
-    def test_semantic_fill_of_a_scaffold_passes_check_profile(self):
-        with tempfile.TemporaryDirectory() as tmp:
-            root = make_root(tmp)
-            code, out = run_scaffold(root, PROFILE_ID, "--apply")
-            self.assertEqual(0, code, out)
-            candidate = root / "profiles" / PROFILE_ID
-
-            skipped = []
-            for relative, old, new in test_template_fill.FILL:
-                path = candidate / relative
-                text = path.read_text(encoding="utf-8")
-                if old not in text:
-                    skipped.append((relative, old))
-                    continue
-                path.write_text(
-                    text.replace(
-                        old, new.replace("fill-e2e", PROFILE_ID), 1),
-                    encoding="utf-8")
-            # Exactly the anchors the scaffolder itself already rewrote.
-            self.assertEqual(
-                sorted({relative for relative, _old in skipped}),
-                ["profile.md", "registries/audit-dimensions.md",
-                 "registries/registered-scans.md"], skipped)
-            self.assertEqual(4, len(skipped), skipped)
-
-            # Post-scaffold forms of the anchors skipped above: the two
-            # judgment-item IDs and the scan row's remaining semantic cells.
-            config_reference = (
-                "`profiles/%s/scan-configs/residual-scan.yaml`" % PROFILE_ID)
-            post_fill = (
-                ("registries/audit-dimensions.md",
-                 "| TODO(profile) | `coverage_and_integration`",
-                 "| `%s-residual-disposition` | `coverage_and_integration`"
-                 % PROFILE_ID),
-                ("registries/registered-scans.md",
-                 "| TODO(profile) | `K12/09 item 6 — residual-content scan` "
-                 "| TODO(profile) | `residual-content-scan-v1` | %s "
-                 "| TODO(profile) | TODO(profile) |" % config_reference,
-                 "| `{pid}-scratch-residuals` | `K12/09 item 6 — "
-                 "residual-content scan` | Run from the vault root; the "
-                 "profile-owned configuration accepts "
-                 "`Notes/Daily Log` as the only root where dated-scratch "
-                 "structure belongs. | `residual-content-scan-v1` | "
-                 "{config_reference} | A Markdown file outside "
-                 "`Notes/Daily Log` is a candidate when it declares "
-                 "`type: daily-log`, carries a `Daily Log Entry` heading, "
-                 "or carries at least two distinct dated-scratch sorting "
-                 "headings. Candidate-only; adjudication belongs to "
-                 "`{pid}-residual-disposition`. "
-                 "| `{pid}-residual-disposition` |".format(
-                     pid=PROFILE_ID,
-                     config_reference=config_reference)),
-            )
-            for relative, old, new in post_fill:
-                path = candidate / relative
-                text = path.read_text(encoding="utf-8")
-                self.assertIn(old, text,
-                              "post-scaffold anchor drifted in %s" % relative)
-                path.write_text(text.replace(old, new, 1), encoding="utf-8")
-            (candidate / "scan-configs" / "residual-scan.yaml").write_text(
-                test_template_fill.SCAN_CONFIG, encoding="utf-8")
-
-            completed = subprocess.run(
-                [sys.executable, str(CHECK_PROFILE),
-                 "profiles/%s" % PROFILE_ID, "--root", str(root)],
-                cwd=str(root), text=True, capture_output=True, check=False)
-            self.assertEqual(0, completed.returncode,
-                             completed.stdout + completed.stderr)
-            self.assertIn("sentinel_hits(fail)=0", completed.stdout)
+        self.assertEqual(0, completed.returncode, completed.stderr)
+        self.assertEqual("scaffold_profile", report["tool"])
+        self.assertEqual("created", report["result"])
+        self.assertTrue(report["created"])
+        self.assertTrue(fixture.destination.is_dir())
 
 
 if __name__ == "__main__":

@@ -13,13 +13,15 @@ TOOLS = REPOSITORY / "Tools"
 sys.path.insert(0, str(TOOLS / "tests"))
 sys.path.insert(0, str(TOOLS))
 
-import audit_plan_contract  # noqa: E402
-import audit_obligation_projection  # noqa: E402
-import audit_producer_runtime  # noqa: E402
-import complete_audit_receipt  # noqa: E402
-import record_rendering_verification as producer  # noqa: E402
-import rendering_verification_contract as contract  # noqa: E402
-from profile_fixture import FIXTURE_UPSTREAM_REVISION  # noqa: E402
+import Tools.execution.audit.audit_plan_contract as audit_plan_contract  # noqa: E402
+import Tools.execution.audit.audit_obligation_projection as audit_obligation_projection  # noqa: E402
+import Tools.execution.audit.audit_evidence_runtime as audit_evidence_runtime  # noqa: E402
+import Tools.execution.audit.audit_producer_runtime as audit_producer_runtime  # noqa: E402
+import Tools.execution.audit.complete_audit_receipt as complete_audit_receipt  # noqa: E402
+import Tools.platform.common.kblib as kblib  # noqa: E402
+import Tools.knowledge.rendering.record_rendering_verification as producer  # noqa: E402
+import Tools.knowledge.rendering.rendering_verification_contract as contract  # noqa: E402
+from Tools.tests.support.profile_fixture import FIXTURE_UPSTREAM_REVISION  # noqa: E402
 
 
 SHA_A = "sha256:" + "a" * 64
@@ -29,37 +31,16 @@ SHA_B = "sha256:" + "b" * 64
 class RenderingVerificationContractTests(unittest.TestCase):
 
     def obligation(self):
-        return {
-            "obligation_id": "rendering-record-001",
-            "owner_kind": "kernel",
-            "owner_rule_id": "k12-02-rendering-verification-record",
-            "kernel_extension_point": None,
-            "partition": "changed-scope-deterministic",
-            "due_stage": "pre-merge",
-            "target": "B001",
-            "applicability": "every-batch",
-            "evidence_role": "emits",
-            "evidence_kind": "audit-receipt",
-            "dimension": "rendering",
-            "acceptance_predicate":
-                "k12-02-rendering-verification-record",
-            "producer_check":
-                "changed_scope_rendering_escalation_record",
-            "producer_capability": "audit-receipt-producer-v1",
-            "producer_gate_id": None,
-            "consumer_gate_id": "batch-review",
-            "fingerprint_binding": "evidence-time",
-            "review_due": None,
-            "status": "required",
-            "evidence_ref": None,
-            "reused_receipt_id": None,
-            "reuse_reason": None,
-        }
+        spec = audit_obligation_projection.obligation_spec_for_rule(
+            "k12-02-rendering-verification-record", REPOSITORY)
+        definition = audit_obligation_projection.\
+            resolve_obligation_definition(spec, "B001")
+        return audit_obligation_projection.required_obligation(definition)
 
     def plan(self, obligation=None):
         obligation = obligation or self.obligation()
         value = {
-            "schema_version": 1,
+            "schema_version": 2,
             "plan_id": "audit-plan-B001",
             "task_id": "task-test",
             "batch_id": "B001",
@@ -67,7 +48,7 @@ class RenderingVerificationContractTests(unittest.TestCase):
             "queue_revision": 1,
             "queue_state_revision": 2,
             "required_queue_sha256": SHA_A,
-            "standards_version": FIXTURE_UPSTREAM_REVISION,
+            "upstream_revision_id": FIXTURE_UPSTREAM_REVISION,
             "active_standards_sha256": SHA_A,
             "selected_profile_manifest": "profiles/test/profile.md",
             "profile_snapshot_sha256": SHA_A,
@@ -107,33 +88,25 @@ class RenderingVerificationContractTests(unittest.TestCase):
         defaults.update(values)
         return producer.build_record(**defaults), plan, obligation
 
-    def test_contract_projects_every_batch_rendering_record_only(self):
+    def test_contract_is_record_shape_only(self):
         document = contract.load_contract()
-        values = contract.validate_contract(document)
-        projection = values["obligation_projection"]
+        contract.validate_contract(document)
         self.assertEqual("K12/02", document["semantic_owner"])
         self.assertEqual(
             {"K12/08", "K12/13"},
             set(document["semantic_dependencies"]))
-        self.assertEqual("every-batch", projection["applicability"])
-        self.assertEqual("batch", projection["target_source"])
-        self.assertEqual("rendering", projection["dimension"])
+        self.assertNotIn("obligation_projection", document)
         self.assertEqual("record-shape-only",
                          document["proof_boundary"])
 
-    def test_kernel_registry_and_record_contract_have_one_projection(self):
-        projection = contract.validate_contract(
-            contract.load_contract())["obligation_projection"]
+    def test_changed_scope_registry_solely_projects_rendering_obligation(self):
         spec = audit_obligation_projection.obligation_spec_for_rule(
             "k12-02-rendering-verification-record")
-        for field in (
-                "owner_kind", "owner_rule_id", "applicability", "partition",
-                "due_stage", "producer_check", "producer_capability",
-                "producer_gate_id", "consumer_gate_id", "evidence_kind",
-                "evidence_role", "dimension", "acceptance_predicate",
-                "fingerprint_binding"):
-            with self.subTest(field=field):
-                self.assertEqual(projection[field], spec[field])
+        self.assertEqual(
+            audit_obligation_projection.CHANGED_SCOPE_REGISTRY_PATH,
+            spec["source_registry"])
+        self.assertEqual("every-batch", spec["applicability"])
+        self.assertEqual("rendering", spec["dimension"])
 
     def test_nonvisual_modes_record_not_applicable_without_visual_claim(self):
         for mode, level in (("source-only", 0),
@@ -200,6 +173,46 @@ class RenderingVerificationContractTests(unittest.TestCase):
         self.assertEqual(evidence["receipt_id"], full["evidence_ref"])
         self.assertIn(obligation["target"], full["scope"])
 
+    def test_rendering_full_receipt_keeps_precursor_chain_visible(self):
+        frozen = []
+        for relative in ("README.md", "README.zh-CN.md"):
+            snapshot = kblib.repository_target_snapshot(
+                str(REPOSITORY), relative, suffixes=(".md", ".MD"),
+                singly_linked=True)
+            frozen.append(audit_producer_runtime.FrozenPage(
+                path=relative, page_sha256=snapshot.sha256,
+                semantic_content_fingerprint=SHA_A, snapshot=snapshot))
+        frozen = tuple(frozen)
+        evidence, plan, obligation = self.build(frozen=frozen)
+        plan_sha = audit_plan_contract.plan_sha256(plan)
+        full = complete_audit_receipt.build_audit_receipt(
+            plan=plan, plan_sha256=plan_sha,
+            obligation=obligation, evidence=evidence)
+        catalog = {
+            evidence["receipt_id"]: evidence,
+            full["receipt_id"]: full,
+        }
+        item = {"id": plan["batch_id"],
+                "manifest": [row.path for row in frozen]}
+        result = {
+            "root": str(REPOSITORY),
+            "items_by_id": {item["id"]: item},
+            "current_receipt_catalog": catalog,
+        }
+
+        resolution = audit_evidence_runtime._required_obligation_resolution(
+            result, item, plan, plan_sha, catalog, obligation,
+            require_current=True)
+        row = audit_evidence_runtime._reconciliation_row(
+            result, plan, obligation, resolution)
+
+        self.assertEqual("satisfied", resolution["status"])
+        self.assertEqual(full["receipt_id"], row["selected_evidence_ref"])
+        self.assertEqual(
+            sorted([full["receipt_id"], evidence["receipt_id"]]),
+            row["produced_evidence_refs"])
+        self.assertFalse(row["unresolved"])
+
     def test_completion_revalidates_the_unique_rendering_contract(self):
         evidence, plan, obligation = self.build(
             rendering_mode="deterministic-static")
@@ -222,6 +235,38 @@ class RenderingVerificationContractTests(unittest.TestCase):
                 complete_audit_receipt._producer_evidence(
                     str(REPOSITORY), {}, drifted["receipt_id"], plan,
                     plan_sha, obligation, self.frozen())
+
+    def test_retry_ignores_stale_rendering_history_but_not_current(self):
+        evidence, plan, obligation = self.build(
+            rendering_mode="deterministic-static")
+        plan_sha = audit_plan_contract.plan_sha256(plan)
+        runtime = {
+            "current_receipt_catalog": {
+                evidence["receipt_id"]: evidence,
+            },
+        }
+        with self.assertRaisesRegex(ValueError, "already has current"):
+            producer._reject_existing(
+                runtime, plan, plan_sha, obligation, self.frozen(),
+                contract.load_contract(), str(REPOSITORY))
+
+        changed_frozen = list(self.frozen())
+        changed_frozen[0] = audit_producer_runtime.FrozenPage(
+            path=changed_frozen[0].path, page_sha256="sha256:" + "c" * 64,
+            semantic_content_fingerprint=
+                changed_frozen[0].semantic_content_fingerprint,
+            snapshot=SimpleNamespace(read_text=lambda: "# A changed\n"))
+        producer._reject_existing(
+            runtime, plan, plan_sha, obligation, tuple(changed_frozen),
+            contract.load_contract(), str(REPOSITORY))
+
+        sibling = copy.deepcopy(evidence)
+        sibling["receipt_id"] = "second-current-rendering-receipt"
+        runtime["current_receipt_catalog"][sibling["receipt_id"]] = sibling
+        with self.assertRaisesRegex(ValueError, "multiple current attempts"):
+            producer._reject_existing(
+                runtime, plan, plan_sha, obligation, self.frozen(),
+                contract.load_contract(), str(REPOSITORY))
 
     def test_contract_and_record_shapes_are_closed(self):
         changed = copy.deepcopy(contract.load_contract())

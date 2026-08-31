@@ -10,8 +10,8 @@ source_files:
   - kernel/K00 Standards Control/13 Runtime Admission and Recovery.md
   - kernel/K13 Task Runtime and Execution Control/19 Card Context Activation and Read-back Delivery.md
   - kernel/K13 Task Runtime and Execution Control/20 Assignment State and Delivery Gate.md
-source_hash: '52bf04d4b126'
-reviewed_source_hash: '52bf04d4b126'
+source_hash: 'af627ccd6556'
+reviewed_source_hash: 'af627ccd6556'
 reviewed_card_hash: '1349cae9d74e'
 ---
 # R01 Core Bootstrap Card

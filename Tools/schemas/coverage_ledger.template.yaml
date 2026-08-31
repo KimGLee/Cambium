@@ -4,14 +4,15 @@
 #
 # The Coverage Ledger owns knowledge-object disposition and assignment. It does
 # not own batch order or batch lifecycle; those belong to Required Queue.
-# Only the restricted YAML subset accepted by Tools/kblib.py is allowed.
+# Only the restricted YAML subset accepted by
+# Tools/platform/common/kblib.py is allowed.
 # =============================================================================
 
-schema_version: 1
+schema_version: 2
 task_id: "kb-build-2026-xx"
 updated_at: "2026-07-21T00:00:00Z"
 scope_version: "s1"
-standards_version: ""
+upstream_revision_id: ""
 selected_profile_manifest: ""
 
 # Explicit compiler input. Each entry has exactly the nine fields shown below;
@@ -59,8 +60,8 @@ maintenance_candidates: []
 #   evidence_receipt: non-empty receipt/event ID
 #   content_fingerprint: sha256:<64 lowercase hex>
 #
-# Existing unproved dates migrate as explicit legacy/unverified state through
-# the migration protocol; they are not copied into this current-value shape.
+# Unproved values from outside the current runtime contract are not admitted
+# into this owner state and cannot authorize a page projection.
 pages:
   - path: "Topics/Example Topic.md"
     coverage_disposition: required

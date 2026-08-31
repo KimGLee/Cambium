@@ -1,0 +1,328 @@
+schema_version: 1
+contract_id: cambium-terminal-proof
+semantic_owner: K12/16
+record_kind: terminal-proof
+producer_capability: terminal-proof-producer-v1
+consumer_gate_id: terminal-proof
+serialization: restricted-yaml-canonical
+
+# This contract is the only machine owner of the Terminal Proof field set.
+# `source` distinguishes values copied or calculated from canonical adopter
+# state from the bounded semantic results supplied by Terminal Audit. The
+# deterministic producer may never accept a runtime-owned or derived field
+# from its caller.
+fields:
+  - field: schema_version
+    type: integer
+    nullable: false
+    source: derived
+    example: 1
+  - field: task_id
+    type: string
+    nullable: false
+    source: runtime
+    example: kb-build-2026-xx
+  - field: scope_version
+    type: string
+    nullable: false
+    source: runtime
+    example: s1
+  - field: contract_version
+    type: string
+    nullable: false
+    source: runtime
+    example: c1
+  - field: coverage_ledger_sha256
+    type: sha256
+    nullable: false
+    source: runtime
+    example: sha256:1111111111111111111111111111111111111111111111111111111111111111
+  - field: progress_ledger_sha256
+    type: sha256
+    nullable: false
+    source: runtime
+    example: sha256:2222222222222222222222222222222222222222222222222222222222222222
+  - field: required_queue_path
+    type: repository-path
+    nullable: false
+    source: runtime
+    example: .cambium/state/required_queue.yaml
+  - field: queue_revision
+    type: integer
+    nullable: false
+    source: runtime
+    example: 1
+  - field: queue_state_revision
+    type: integer
+    nullable: false
+    source: runtime
+    example: 42
+  - field: required_queue_sha256
+    type: sha256
+    nullable: false
+    source: runtime
+    example: sha256:3333333333333333333333333333333333333333333333333333333333333333
+  - field: remaining_required_work_units
+    type: integer
+    nullable: false
+    source: runtime
+    example: 0
+  - field: queue_check_receipt
+    type: receipt-id
+    nullable: false
+    source: derived
+    example: audit-check_queue-20260721T000000Z-11111111111111111111111111111111-0001
+  - field: corpus_plan_check_receipt
+    type: receipt-id
+    nullable: false
+    source: derived
+    example: audit-check_corpus_plan-20260721T000000Z-22222222222222222222222222222222-0001
+  - field: corpus_plan_semantic_acceptance_receipt
+    type: receipt-id
+    nullable: true
+    source: derived
+    example: null
+  - field: upstream_revision_id
+    type: commit-sha
+    nullable: false
+    source: runtime
+    example: 23456789abcdef0123456789abcdef0123456789
+  - field: selected_profile_manifest
+    type: repository-path
+    nullable: false
+    source: runtime
+    example: profiles/example/profile.md
+  - field: selected_route_ids
+    type: string-list
+    nullable: false
+    source: runtime
+    example:
+      - R01
+      - R08
+      - R12
+  - field: selected_card_paths
+    type: repository-path-list
+    nullable: false
+    source: runtime
+    example:
+      - Card/R01 Core Bootstrap Card.md
+      - Card/R08 Terminal Audit Card.md
+      - Card/R12 Targeted Review Card.md
+  - field: selected_profile_route_ids
+    type: string-list
+    nullable: false
+    source: runtime
+    example: []
+  - field: selected_read_sets
+    type: repository-path-list
+    nullable: false
+    source: runtime
+    example:
+      - Read Set/R01 Core Bootstrap Read Set.md
+      - Read Set/R08 Terminal Audit Read Set.md
+      - Read Set/R12 Targeted Review Read Set.md
+  - field: loaded_module_paths
+    type: repository-path-list
+    nullable: false
+    source: runtime
+    example:
+      - kernel/K12 Quality Assurance/16 Terminal Proof Contract.md
+  - field: guidance_cutoff_id
+    type: string
+    nullable: false
+    source: terminal-audit
+    example: G-012
+  - field: guidance_reconciliation_result
+    type: result
+    nullable: false
+    source: derived
+    example: passed
+  - field: coverage_reconciliation_result
+    type: result
+    nullable: false
+    source: derived
+    example: passed
+  - field: required_authoring_gaps
+    type: integer
+    nullable: false
+    source: runtime
+    example: 0
+  - field: unverified_batches
+    type: integer
+    nullable: false
+    source: runtime
+    example: 0
+  - field: automated_QA_result
+    type: result
+    nullable: false
+    source: derived
+    example: passed
+  - field: manual_review_result
+    type: result
+    nullable: false
+    source: terminal-audit
+    example: passed
+  - field: rendering_evidence
+    type: string
+    nullable: false
+    source: terminal-audit
+    example: level-0/1 deterministic passed; visual_trigger: not_applicable
+  - field: audit_snapshot_id
+    type: string
+    nullable: false
+    source: derived
+    example: snap-20260721-01
+  - field: dimension_coverage
+    type: dimension-coverage
+    nullable: false
+    source: derived
+    example:
+      structure_and_links:
+        - audit-fixture-structure-and-links
+      content_and_depth: "not-applicable: no content-and-depth object is in scope"
+      formula_and_numeric: "not-applicable: no formula or numeric claim is in scope"
+      source_and_currentness: "not-applicable: no external source is in scope"
+      coverage_and_integration:
+        - audit-fixture-coverage-and-integration
+      rendering: "not-applicable: no rendering trigger is present"
+      guidance_and_contract:
+        - audit-fixture-guidance-and-contract
+  - field: audit_receipt_register
+    type: repository-path
+    nullable: false
+    source: derived
+    example: .cambium/receipts/audit-receipts.jsonl
+  - field: terminal_audit_receipt_register
+    type: repository-path
+    nullable: false
+    source: derived
+    example: .cambium/receipts/terminal.jsonl
+  - field: reused_receipts
+    type: string-list
+    nullable: false
+    source: derived
+    example: []
+  - field: superseded_receipts
+    type: string-list
+    nullable: false
+    source: derived
+    example: []
+  - field: invalidated_receipts
+    type: string-list
+    nullable: false
+    source: derived
+    example: []
+  - field: unresolved_invalidations
+    type: integer
+    nullable: false
+    source: derived
+    example: 0
+  - field: full_deterministic_results
+    type: repository-path
+    nullable: false
+    source: derived
+    example: .cambium/receipts/audit-receipts.jsonl
+  - field: incremental_manual_scope
+    type: repository-path-list
+    nullable: false
+    source: terminal-audit
+    example:
+      - Topics/Example Topic.md
+  - field: sampling_scope_and_result
+    type: string
+    nullable: false
+    source: terminal-audit
+    example: bounded sampling completed; all sampled objects passed
+  - field: systemic_expansions
+    type: list
+    nullable: false
+    source: terminal-audit
+    example: []
+  - field: deferred_evidence_backlog
+    type: list
+    nullable: false
+    source: terminal-audit
+    example: []
+  - field: final_handoff
+    type: string
+    nullable: false
+    source: terminal-audit
+    example: bounded final-handoff artifact reference
+  - field: time_contract_result
+    type: string
+    nullable: false
+    source: terminal-audit
+    example: minimum_run_until satisfied; hard_stop_at not triggered
+
+zero_fields:
+  - required_authoring_gaps
+  - unverified_batches
+  - remaining_required_work_units
+  - unresolved_invalidations
+
+passed_fields:
+  - guidance_reconciliation_result
+  - coverage_reconciliation_result
+  - automated_QA_result
+  - manual_review_result
+
+no_failure_token_fields:
+  - rendering_evidence
+  - time_contract_result
+
+path_fields:
+  - selected_profile_manifest
+  - selected_card_paths
+  - selected_read_sets
+  - loaded_module_paths
+  - required_queue_path
+  - audit_receipt_register
+  - terminal_audit_receipt_register
+  - full_deterministic_results
+  - incremental_manual_scope
+
+canonical_path_values:
+  required_queue_path: .cambium/state/required_queue.yaml
+  audit_receipt_register: .cambium/receipts/audit-receipts.jsonl
+  terminal_audit_receipt_register: .cambium/receipts/terminal.jsonl
+  full_deterministic_results: .cambium/receipts/audit-receipts.jsonl
+
+required_route_ids:
+  - R01
+  - R08
+  - R12
+
+# These are the only values the Agent may supply to the deterministic
+# assembler. All identity, currentness, counter, Receipt, route, fingerprint,
+# and reconciliation fields are resolved from canonical runtime state.
+terminal_audit_input_fields:
+  - field: guidance_cutoff_id
+    type: string
+    nullable: false
+  - field: manual_review_result
+    type: result
+    nullable: false
+  - field: rendering_evidence
+    type: string
+    nullable: false
+  - field: dimension_not_applicable_reasons
+    type: string-map
+    nullable: false
+  - field: incremental_manual_scope
+    type: repository-path-list
+    nullable: false
+  - field: sampling_scope_and_result
+    type: string
+    nullable: false
+  - field: systemic_expansions
+    type: list
+    nullable: false
+  - field: deferred_evidence_backlog
+    type: list
+    nullable: false
+  - field: final_handoff
+    type: string
+    nullable: false
+  - field: time_contract_result
+    type: string
+    nullable: false

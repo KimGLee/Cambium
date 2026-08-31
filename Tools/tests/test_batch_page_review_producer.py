@@ -14,15 +14,15 @@ REPOSITORY = Path(__file__).resolve().parents[2]
 TOOLS = REPOSITORY / "Tools"
 sys.path.insert(0, str(TOOLS))
 
-import audit_plan_contract  # noqa: E402
-import audit_obligation_projection  # noqa: E402
-import audit_evidence_runtime  # noqa: E402
-import audit_producer_runtime  # noqa: E402
-import audit_receipt_contract  # noqa: E402
-import batch_review_obligation_contract as contract  # noqa: E402
-import kblib  # noqa: E402
-import record_batch_page_review as producer  # noqa: E402
-import runtime_paths  # noqa: E402
+import Tools.execution.audit.audit_plan_contract as audit_plan_contract  # noqa: E402
+import Tools.execution.audit.audit_obligation_projection as audit_obligation_projection  # noqa: E402
+import Tools.execution.audit.audit_evidence_runtime as audit_evidence_runtime  # noqa: E402
+import Tools.execution.audit.audit_producer_runtime as audit_producer_runtime  # noqa: E402
+import Tools.execution.audit.audit_receipt_contract as audit_receipt_contract  # noqa: E402
+import Tools.execution.audit.batch_review_obligation_contract as contract  # noqa: E402
+import Tools.platform.common.kblib as kblib  # noqa: E402
+import Tools.execution.audit.record_batch_page_review as producer  # noqa: E402
+import Tools.execution.task_runtime.runtime_paths as runtime_paths  # noqa: E402
 
 
 SHA_A = "sha256:" + "a" * 64
@@ -52,15 +52,13 @@ class BatchPageReviewProducerTests(unittest.TestCase):
             producer._required_obligation(
                 plan, obligation["obligation_id"], "Other.md",
                 "m-atomic-item", self.registry)
-        with self.assertRaisesRegex(
-                audit_producer_runtime.AuditProducerError,
-                "not exactly one frozen manifest member"):
-            producer._frozen_page(
-                [self.frozen(obligation["target"])], "Other.md")
+        self.assertIsNone(audit_producer_runtime.frozen_manifest_page(
+            [self.frozen(obligation["target"])], "Other.md"))
 
     def plan_header(self, obligations):
         plan = {
-            "schema_version": 1,
+            "schema_version": audit_plan_contract.load_contract(
+                str(REPOSITORY))["schema_version"],
             "plan_id": "audit-plan-test",
             "task_id": "task-test",
             "batch_id": "B001",
@@ -68,7 +66,7 @@ class BatchPageReviewProducerTests(unittest.TestCase):
             "queue_revision": 1,
             "queue_state_revision": 2,
             "required_queue_sha256": SHA_A,
-            "standards_version": "standards-test",
+            "upstream_revision_id": "standards-test",
             "active_standards_sha256": SHA_A,
             "selected_profile_manifest": "profiles/test/profile.md",
             "profile_snapshot_sha256": SHA_B,
@@ -230,13 +228,15 @@ class BatchPageReviewProducerTests(unittest.TestCase):
             })
             return common
         receipt = {
-            "schema_version": 1,
+            "schema_version": audit_receipt_contract.load_contract(
+                str(REPOSITORY))["schema_version"],
+            "receipt_type_id": audit_receipt_contract.RECEIPT_TYPE_ID,
             **common,
             "task_id": plan["task_id"],
             "batch_id": plan["batch_id"],
             "opening_transition_receipt":
                 plan["opening_transition_receipt"],
-            "standards_version": plan["standards_version"],
+            "upstream_revision_id": plan["upstream_revision_id"],
             "active_standards_sha256": plan["active_standards_sha256"],
             "selected_profile_manifest": plan["selected_profile_manifest"],
             "profile_snapshot_sha256": plan["profile_snapshot_sha256"],
@@ -624,6 +624,125 @@ class BatchPageReviewProducerTests(unittest.TestCase):
         self.assertEqual([wiki["receipt_id"]],
                          receipt["consumed_evidence_refs"])
 
+    def test_m_selector_uses_explicit_live_current_receipt_ids(self):
+        plan, manifest, tiers, _selection = self.full_plan(s_count=0)
+        plan, source_obligations = self.with_same_page_changed_scope(
+            plan, "M.md", rule_ids=(
+                "k12-02-level0-wiki-link-resolution",))
+        closure = contract.validate_plan_base_closure(
+            plan, manifest, tiers, self.registry)
+        item = next(
+            row for row in self.registry["m_tier_atomic_items"]
+            if row["item_id"] == "m05-no-required-link-missing")
+        obligation = closure["obligations_by_target_rule"][
+            ("M.md", item["rule_id"])]
+        spec = contract.obligation_spec_for_rule(
+            item["rule_id"], self.registry)
+        plan_sha256 = audit_plan_contract.plan_sha256(plan)
+
+        successor = self.passing_evidence(plan, source_obligations[0], 1)
+        predecessor = copy.deepcopy(successor)
+        predecessor["receipt_id"] = "stale-predecessor-receipt"
+        catalog = {
+            predecessor["receipt_id"]: predecessor,
+            successor["receipt_id"]: successor,
+        }
+        selected = contract.resolve_consumed_evidence(
+            plan, plan_sha256, spec, obligation["target"], catalog,
+            [successor["receipt_id"]], "applicable", self.registry,
+            current_receipt_ids={successor["receipt_id"]})
+        self.assertEqual((successor,), selected)
+
+        with self.assertRaisesRegex(ValueError, "exactly one current"):
+            contract.resolve_consumed_evidence(
+                plan, plan_sha256, spec, obligation["target"], catalog,
+                [successor["receipt_id"]], "applicable", self.registry,
+                current_receipt_ids={
+                    predecessor["receipt_id"], successor["receipt_id"],
+                })
+
+        with self.assertRaisesRegex(ValueError, "found 0"):
+            contract.resolve_consumed_evidence(
+                plan, plan_sha256, spec, obligation["target"], catalog,
+                [successor["receipt_id"]], "applicable", self.registry,
+                current_receipt_ids=frozenset())
+
+    def test_producer_attempt_selector_allows_stale_and_rejects_ambiguity(self):
+        plan, manifest, tiers, _selection = self.full_plan(s_count=0)
+        closure = contract.validate_plan_base_closure(
+            plan, manifest, tiers, self.registry)
+        item_spec = self.registry["m_tier_atomic_items"][0]
+        spec = contract.obligation_spec_for_rule(
+            item_spec["rule_id"], self.registry)
+        obligation = closure["obligations_by_target_rule"][
+            ("M.md", item_spec["rule_id"])]
+        page = self.frozen("M.md")
+        receipt = producer.build_review_receipt(
+            root=str(REPOSITORY), plan=plan,
+            plan_sha256=audit_plan_contract.plan_sha256(plan),
+            obligation=obligation, spec=spec, page_snapshot=page,
+            reviewer_context_id="review-context",
+            reviewer_role="batch-reviewer", verdict="passed",
+            statement="the registered M atom is satisfied",
+            applicability_disposition="applicable",
+            registry=self.registry, identity={})
+        result = {
+            "root": str(REPOSITORY),
+            "current_receipt_catalog": {receipt["receipt_id"]: receipt},
+        }
+        queue_item = {"id": "B001"}
+        plan_sha256 = audit_plan_contract.plan_sha256(plan)
+        self.assertIs(
+            receipt, producer.current_review_attempt(
+                result, queue_item, plan, plan_sha256, obligation, spec,
+                page, self.registry))
+
+        changed_text = PAGE_TEXT.replace("Mechanism", "Changed mechanism")
+        changed_page = audit_producer_runtime.FrozenPage(
+            path="M.md", page_sha256=SHA_C,
+            semantic_content_fingerprint=SHA_C,
+            snapshot=SimpleNamespace(read_text=lambda: changed_text))
+        self.assertIsNone(producer.current_review_attempt(
+            result, queue_item, plan, plan_sha256, obligation, spec,
+            changed_page, self.registry))
+
+        sibling = copy.deepcopy(receipt)
+        sibling["receipt_id"] = "second-current-batch-page-review"
+        result["current_receipt_catalog"][sibling["receipt_id"]] = sibling
+        with self.assertRaisesRegex(ValueError, "multiple current attempts"):
+            producer.current_review_attempt(
+                result, queue_item, plan, plan_sha256, obligation, spec,
+                page, self.registry)
+
+    def test_producer_attempt_selector_fails_closed_on_invalid_stable_row(self):
+        plan, manifest, tiers, _selection = self.full_plan(s_count=0)
+        closure = contract.validate_plan_base_closure(
+            plan, manifest, tiers, self.registry)
+        item_spec = self.registry["m_tier_atomic_items"][0]
+        spec = contract.obligation_spec_for_rule(
+            item_spec["rule_id"], self.registry)
+        obligation = closure["obligations_by_target_rule"][
+            ("M.md", item_spec["rule_id"])]
+        page = self.frozen("M.md")
+        receipt = producer.build_review_receipt(
+            root=str(REPOSITORY), plan=plan,
+            plan_sha256=audit_plan_contract.plan_sha256(plan),
+            obligation=obligation, spec=spec, page_snapshot=page,
+            reviewer_context_id="review-context",
+            reviewer_role="batch-reviewer", verdict="passed",
+            statement="the registered M atom is satisfied",
+            applicability_disposition="applicable",
+            registry=self.registry, identity={})
+        receipt["tool_version"] = "forged"
+        result = {"current_receipt_catalog": {
+            receipt["receipt_id"]: receipt,
+        }}
+        with self.assertRaisesRegex(ValueError, "invalid stable attempt"):
+            producer.current_review_attempt(
+                result, {"id": "B001"}, plan,
+                audit_plan_contract.plan_sha256(plan), obligation, spec,
+                page, self.registry)
+
     def test_complete_plain_m_page_chain_has_one_record_per_atom(self):
         plan, manifest, tiers, _selection = self.full_plan(s_count=0)
         plan, source_obligations = self.with_same_page_changed_scope(
@@ -687,8 +806,11 @@ class BatchPageReviewProducerTests(unittest.TestCase):
                 audit_evidence_runtime.metadata_property_state,
                 "semantic_page_snapshot",
                 return_value=(current_snapshot, SHA_B)),
+            mock.patch.object(
+                audit_evidence_runtime, "current_consumption_evidence_ids",
+                return_value=frozenset(catalog)),
         )
-        with patches[0], patches[1]:
+        with patches[0], patches[1], patches[2]:
             for record in records:
                 obligation = closure["obligations_by_target_rule"][
                     ("M.md", record["rule_id"])]
@@ -702,7 +824,7 @@ class BatchPageReviewProducerTests(unittest.TestCase):
                     return_value=[]):
                 selected = audit_evidence_runtime._required_stage_records(
                     result, {"id": "B001"}, plan, plan_sha256, catalog,
-                    "pre-merge")
+                    "pre-merge", require_current=False)
         self.assertEqual(len(plan["obligations"]), len(selected))
         self.assertEqual(
             {row["obligation_id"] for row in plan["obligations"]},
@@ -748,8 +870,11 @@ class BatchPageReviewProducerTests(unittest.TestCase):
                 audit_evidence_runtime.metadata_property_state,
                 "semantic_page_snapshot",
                 return_value=(current_snapshot, SHA_B)),
+            mock.patch.object(
+                audit_evidence_runtime, "current_consumption_evidence_ids",
+                return_value=frozenset(catalog)),
         )
-        with patches[0], patches[1]:
+        with patches[0], patches[1], patches[2]:
             self.assertEqual(
                 [], audit_evidence_runtime._batch_page_binding_errors(
                     result, catalog, str(REPOSITORY), plan, plan_sha256,
@@ -923,13 +1048,37 @@ class BatchPageReviewProducerTests(unittest.TestCase):
             plan["generated_at"], receipt["selection_frozen_at"])
         self.assertIn(page, receipt["sample_selected_targets"])
 
+        result = {
+            "root": str(REPOSITORY),
+            "_profile_authorized_view": {},
+        }
+        current_snapshot = SimpleNamespace(read_text=lambda: PAGE_TEXT)
+        with mock.patch.object(
+                audit_evidence_runtime.metadata_property_state,
+                "authorized_profile_projection_rules",
+                return_value=(None, {})), mock.patch.object(
+                audit_evidence_runtime.metadata_property_state,
+                "semantic_page_snapshot",
+                return_value=(current_snapshot, SHA_B)), mock.patch.object(
+                audit_evidence_runtime,
+                "current_consumption_evidence_ids",
+                side_effect=AssertionError(
+                    "sampled S evidence has no consumption edge")):
+            self.assertEqual(
+                [], audit_evidence_runtime._batch_page_binding_errors(
+                    result, {receipt["receipt_id"]: receipt},
+                    str(REPOSITORY), plan,
+                    audit_plan_contract.plan_sha256(plan), obligation,
+                    receipt))
+
     def test_runtime_path_is_dedicated_registered_evidence(self):
         self.assertEqual(
             ".cambium/receipts/batch-page-reviews.jsonl",
             runtime_paths.BATCH_PAGE_REVIEW_RECEIPT_PATH)
         self.assertEqual(
             runtime_paths.EVIDENCE,
-            runtime_paths.category_for("batch-page-review-receipts"))
+            runtime_paths.RUNTIME_OBJECTS[
+                "batch-page-review-receipts"].category)
 
     def test_append_preserves_prior_rows_and_exact_readback_is_mandatory(self):
         plan, manifest, tiers, _selection = self.full_plan()

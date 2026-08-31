@@ -41,7 +41,7 @@ A current raw receipt proves only its registered Gate. It does not acquire Stand
 
 An owner receipt does not erase its leaves. Its contract binds the exact member receipts, scope, and fingerprints required for that decision. A revalidation aggregate may record native owners deferred to their transitions but cannot manufacture those owner receipts or upgrade a raw leaf.
 
-These rules govern new current authorization. A historical transition and its aggregate replay under the producer-era protocol they recorded; immutable historical evidence is not rejected for lacking fields or owner links added later.
+Only receipts produced under the current hard-cut contract enter Cambium runtime. Current-format receipts may later be retained as immutable history or sealed cold evidence, but neither state restores current authorization. Objects from retired runtime contracts remain external archives and are not parsed or replayed.
 
 ## Recording Authority
 

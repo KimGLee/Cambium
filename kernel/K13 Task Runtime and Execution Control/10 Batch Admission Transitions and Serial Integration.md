@@ -49,7 +49,7 @@ The control plane is single-threaded under the integrator role, including Guidan
 
 Only the registered Queue transaction changes lifecycle or holds. That transaction may additionally materialize planning-only Coverage for the exact manifest on first admission and project closing review results; ordinary content changes remain owned by the registered Coverage-delta transaction. Except for the first atomic activation from `planned`, these writes require task state `active`.
 
-Exact edge membership and its division between the ordinary Queue writer, Amendment cancellation writer, and historical replay protocol are owned only by [`runtime-state-model.json`](runtime-state-model.json). The operation categories below specify the evidence attached when the registry authorizes a corresponding edge; they do not create an edge or form a second edge catalog.
+Exact edge membership and its division between the ordinary Queue writer, Amendment cancellation writer, and current-contract historical receipt validation are owned only by [`runtime-state-model.json`](runtime-state-model.json). The operation categories below specify the evidence attached when the registry authorizes a corresponding edge; they do not create an edge or form a second edge catalog.
 
 | Operation boundary | Required observable evidence |
 |---|---|

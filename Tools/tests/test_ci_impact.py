@@ -1,12 +1,17 @@
 #!/usr/bin/env python3
-import contextlib
+"""Changed-path to required-verification impact contracts.
+
+This suite owns only the planner's path classification and affected Tool test
+closure. Test discovery/catalog correctness, test execution, Git transport,
+repository-layout inspection, workflow output rendering, and shard balancing
+have separate owners and are not replayed here.
+"""
+
 import importlib.util
-import io
 from pathlib import Path
-import shutil
-import subprocess
 import tempfile
 import unittest
+from unittest import mock
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -15,302 +20,178 @@ SPEC = importlib.util.spec_from_file_location(
 ci_impact = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(ci_impact)
 
+MARKDOWN_PREFIXES = ("kernel/", "Card/", "Read Set/", "profiles/")
 
-class CiImpactTests(unittest.TestCase):
-    def setUp(self):
-        self.tmp = tempfile.TemporaryDirectory()
-        self.root = Path(self.tmp.name)
-        (self.root / "Tools/tests/fixtures").mkdir(parents=True)
-        (self.root / "Tools/compiled").mkdir()
-        (self.root / "Tools/schemas").mkdir()
-        (self.root / ".github/workflows").mkdir(parents=True)
-        (self.root / "kernel").mkdir()
-        (self.root / "Card").mkdir()
-        (self.root / "Read Set").mkdir()
-        (self.root / "profiles").mkdir()
-        shutil.copy(
-            ROOT / "Tools/schemas/card.schema.yaml",
-            self.root / "Tools/schemas/card.schema.yaml",
+
+class CiImpactFixture(unittest.TestCase):
+
+    @classmethod
+    def setUpClass(cls):
+        cls.temporary = tempfile.TemporaryDirectory()
+        cls.root = Path(cls.temporary.name)
+        sources = {
+            "Tools/alpha.py": "VALUE = 1\n",
+            "Tools/beta.py": "import alpha\n",
+            "Tools/orphan.py": "VALUE = 2\n",
+            "Tools/execution/audit/leaf.py": (
+                "def main(argv=None):\n"
+                "    return 0\n"),
+            "Tools/execution/audit/consumer.py": (
+                "import Tools.execution.audit.leaf as leaf\n"
+                "VALUE = leaf.main([])\n"),
+            "Tools/run_leaf.py": (
+                "from Tools.execution.audit.leaf import main as _main\n"
+                "IMPLEMENTATION_MODULE = 'Tools.execution.audit.leaf'\n"
+                "def main(argv=None):\n"
+                "    return _main(argv)\n"),
+            "Tools/tests/test_alpha.py": "import alpha\n",
+            "Tools/tests/test_beta.py": "import beta\n",
+            "Tools/tests/test_consumer.py": (
+                "import Tools.execution.audit.consumer\n"),
+            "Tools/tests/test_leaf.py": (
+                "from Tools.execution.audit import leaf\n"),
+            "Tools/tests/test_run_leaf.py": "import run_leaf\n",
+            "Tools/tests/test_charlie.py": "def test_charlie(): pass\n",
+            "Tools/tests/test_mcp_server.py": "def test_transport(): pass\n",
+            "Tools/tests/test_tools_readme_inventory.py": (
+                "def test_inventory(): pass\n"),
+        }
+        for relative, text in sources.items():
+            path = cls.root / relative
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(text, encoding="utf-8")
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.temporary.cleanup()
+
+    def plan(self, *changes, event="pull_request"):
+        with mock.patch.object(
+                ci_impact, "check_only_markdown_prefixes",
+                return_value=MARKDOWN_PREFIXES):
+            return ci_impact.plan_changes(
+                self.root,
+                [ci_impact.Change(status, path, old_path)
+                 for status, path, old_path in changes],
+                event=event)
+
+
+class ChangedPathImpactContractTests(CiImpactFixture):
+
+    def test_check_only_classes_use_the_ceiling_required_check(self):
+        paths = (
+            "README.md",
+            "ROADMAP.zh-CN.md",
+            "assets/readme/diagram.png",
+            "Tools/compiled/example.json",
+            "kernel/K00 Standards Control/README.md",
+            "Card/R01 Core Bootstrap Card.md",
+            "Read Set/R01 Core Bootstrap Read Set.md",
+            "profiles/example/README.md",
         )
-        shutil.copy(
-            ROOT / "Read Set/read-set.schema.yaml",
-            self.root / "Read Set/read-set.schema.yaml",
-        )
-        self._write("Tools/alpha.py", "VALUE = 1\n")
-        self._write("Tools/beta.py", "import alpha\n")
-        self._write("Tools/orphan.py", "VALUE = 2\n")
-        self._write("Tools/tests/test_alpha.py", "import alpha\n")
-        self._write("Tools/tests/test_beta.py", "import beta\n")
-        self._write(
-            "Tools/tests/test_charlie.py",
-            "import unittest\n\n"
-            "class CharlieTests(unittest.TestCase):\n"
-            "    def test_charlie(self):\n"
-            "        self.assertTrue(True)\n",
-        )
-        self._write("Tools/tests/test_november.py", "pass\n")
-        self._write("Tools/tests/test_sierra.py", "pass\n")
-        self._write("Tools/tests/test_tools_readme_inventory.py", "pass\n")
-
-    def tearDown(self):
-        self.tmp.cleanup()
-
-    def _write(self, relative, value):
-        path = self.root / relative
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(value, encoding="utf-8")
-
-    def _plan(self, *changes, event="pull_request"):
-        return ci_impact.plan_changes(
-            self.root,
-            [ci_impact.Change(status, path) for status, path in changes],
-            event=event,
-        )
-
-    def test_markdown_only_change_runs_checks_only_on_ceiling(self):
-        for path in (
-                "README.md",
-                "README.zh-CN.md",
-                "ROADMAP.md",
-                "ROADMAP.zh-CN.md",
-                "kernel/K00 Standards Control/README.md",
-                "Card/R01 Core Bootstrap Card.md",
-                "Read Set/R01 Core Bootstrap Read Set.md"):
+        for path in paths:
             with self.subTest(path=path):
-                plan = self._plan(("M", path))
+                plan = self.plan(("M", path, ""))
                 self.assertEqual("checks-only", plan["mode"])
                 self.assertEqual(["3.14"], plan["check_versions"])
+                self.assertEqual([], plan["selected_tests"])
                 self.assertFalse(plan["run_tests"])
 
-    def test_markdown_roots_follow_component_schema_prefixes(self):
-        cases = (
-            ("Tools/schemas/card.schema.yaml", "Card/", "Flight-Cards/"),
-            ("Read Set/read-set.schema.yaml", "Read Set/", "Reading/"),
-        )
-        for schema_relative, old_prefix, new_prefix in cases:
-            with self.subTest(schema=schema_relative):
-                schema_path = self.root / schema_relative
-                source = schema_path.read_text(encoding="utf-8")
-                schema_path.write_text(
-                    source.replace(
-                        'path_prefix: "%s"' % old_prefix,
-                        'path_prefix: "%s"' % new_prefix,
-                    ),
-                    encoding="utf-8",
-                )
+    def test_direct_test_and_tools_readme_select_owned_tests(self):
+        direct = self.plan(("M", "Tools/tests/test_charlie.py", ""))
+        self.assertEqual("selective", direct["mode"])
+        self.assertEqual(["test_charlie.py"], direct["selected_tests"])
+        self.assertEqual(["3.10", "3.14"], direct["check_versions"])
 
-                projected = self._plan(("M", new_prefix + "R01.md"))
-                stale = self._plan(("M", old_prefix + "R01.md"))
-
-                self.assertEqual("checks-only", projected["mode"])
-                self.assertEqual("full", stale["mode"])
-
-    def test_readme_assets_are_checks_only_but_local_docs_fail_closed(self):
-        allowed = self._plan(("A", "assets/readme/diagram.png"))
-        forbidden = self._plan(("A", "docs/private.md"))
-        self.assertEqual("checks-only", allowed["mode"])
-        self.assertEqual("full", forbidden["mode"])
-
-    def test_forbidden_tracked_paths_are_exactly_local_only_roots(self):
+        inventory = self.plan(("M", "Tools/README.md", ""))
+        self.assertEqual("selective", inventory["mode"])
         self.assertEqual(
-            ["_to_delete/old.md", "docs/private.md"],
-            ci_impact.forbidden_tracked_paths([
-                "README.md",
-                "assets/readme/diagram.png",
-                "docs/private.md",
-                "_to_delete/old.md",
-            ]),
+            ["test_tools_readme_inventory.py"],
+            inventory["selected_tests"])
+        self.assertEqual(["3.14"], inventory["check_versions"])
+
+    def test_shared_authority_and_unclassified_paths_require_full(self):
+        paths = (
+            ".github/workflows/verify.yml",
+            "Makefile",
+            ".github/scripts/ci_impact.py",
+            "Tools/platform/common/kblib.py",
+            "Tools/platform/distribution/module_boundary_facts.py",
+            "Tools/schemas/example.yaml",
+            "Tools/tests/fixtures/state.json",
+            "Tools/tests/support/profile_fixture.py",
+            "kernel/example.yaml",
+            "profiles/example/profile.yaml",
+            "docs/private.md",
+            "misc/notes.md",
+            "unexpected.bin",
         )
-
-    def test_repository_layout_catches_force_added_ignored_file(self):
-        repo = self.root / "layout-repository"
-        repo.mkdir()
-        subprocess.run(["git", "init", "-q"], cwd=repo, check=True)
-        self._write("layout-repository/.gitignore", "docs/\n")
-        self._write("layout-repository/docs/private.md", "private\n")
-        subprocess.run(
-            ["git", "add", ".gitignore"], cwd=repo, check=True)
-        subprocess.run(
-            ["git", "add", "-f", "docs/private.md"],
-            cwd=repo, check=True,
-        )
-        with self.assertRaisesRegex(ValueError, "docs/private.md"):
-            ci_impact.validate_repository_layout(repo)
-
-    def test_direct_test_change_selects_only_that_module_on_both_versions(self):
-        plan = self._plan(("M", "Tools/tests/test_charlie.py"))
-        self.assertEqual("selective", plan["mode"])
-        self.assertEqual(["test_charlie.py"], plan["selected_tests"])
-        self.assertEqual(["3.10", "3.14"], plan["check_versions"])
-
-    def test_changed_tool_selects_reverse_dependency_closure(self):
-        plan = self._plan(("M", "Tools/alpha.py"))
-        self.assertEqual("selective", plan["mode"])
-        self.assertEqual(
-            ["test_alpha.py", "test_beta.py"], plan["selected_tests"])
-
-    def test_tool_without_a_reachable_test_falls_back_to_full(self):
-        plan = self._plan(("M", "Tools/orphan.py"))
-        self.assertEqual("full", plan["mode"])
-
-    def test_tools_readme_runs_its_inventory_contract(self):
-        plan = self._plan(("M", "Tools/README.md"))
-        self.assertEqual("selective", plan["mode"])
-        self.assertEqual(
-            ["test_tools_readme_inventory.py"], plan["selected_tests"])
-        self.assertEqual(["3.14"], plan["check_versions"])
-
-    def test_shared_ci_authority_falls_back_to_full(self):
-        for path in (
-                ".github/workflows/verify.yml",
-                "Makefile",
-                ".github/scripts/ci_impact.py",
-                "Tools/kblib.py",
-                "Tools/schemas/example.yaml",
-                "Tools/tests/fixtures/state.json",
-                "Tools/tests/profile_fixture.py"):
+        for path in paths:
             with self.subTest(path=path):
-                self.assertEqual("full", self._plan(("M", path))["mode"])
+                self.assertEqual(
+                    "full", self.plan(("M", path, ""))["mode"])
 
-    def test_a_compiled_projection_is_checked_rather_than_re_tested(self):
-        """The artifact is derived, so its sources decide the mode, not it.
-
-        While this path forced the full suite it also fired on every Tool
-        change -- the artifact is regenerated alongside one -- and the
-        selective branch went unreached in 22 consecutive runs.  What
-        protected the artifact was never the test suite: `make check` runs
-        `metadata_execution_contract --check` in every mode, including this
-        one, and a tampered artifact exits non-zero there.
-        """
-        plan = self._plan(("M", "Tools/compiled/example.json"))
-        self.assertEqual("checks-only", plan["mode"])
-
-    def test_the_sources_of_a_compiled_projection_still_force_full(self):
-        """The reason the projection may be demoted: its inputs are not."""
-        for path in ("kernel/K08 Metadata and Status/authority.yaml",
-                     "Tools/operation-capabilities.yaml"):
-            with self.subTest(path=path):
-                self.assertEqual("full", self._plan(("M", path))["mode"])
-
-    def test_a_selective_plan_is_sharded_like_a_full_one(self):
-        """A narrow plan in one job was slower than the matrix it replaced.
-
-        Nine modules measured 451-525s on a runner in a single unsharded
-        job, and the widest closure projects past the job timeout outright.
-        """
-        plan = self._plan(("M", "Tools/alpha.py"))
-        self.assertEqual("selective", plan["mode"])
-        shards = {entry["shard"] for entry in plan["test_matrix"]["include"]}
-        # An inequality here would pass on a single unsharded job, which is
-        # the regression this test exists to catch.
+    def test_event_and_change_boundaries_fail_closed(self):
+        self.assertEqual("full", self.plan(event="pull_request")["mode"])
         self.assertEqual(
-            min(len(plan["selected_tests"]), ci_impact.FULL_SHARD_COUNT),
-            len(shards))
-        version = ci_impact.PYTHON_VERSIONS[0]
-        packed = [name
-                  for entry in plan["test_matrix"]["include"]
-                  if entry["python-version"] == version
-                  for name in entry["test-files"].split(",")]
-        self.assertEqual(sorted(packed), sorted(plan["selected_tests"]))
-        self.assertEqual(len(packed), len(set(packed)))
+            "full",
+            self.plan(("M", "README.md", ""), event="push")["mode"])
+        self.assertEqual(
+            "full", self.plan(("D", "Tools/alpha.py", ""))["mode"])
+        self.assertEqual(
+            "full",
+            self.plan(("R", "Tools/new.py", "Tools/alpha.py"))["mode"])
 
-    def test_the_cli_surface_test_joins_every_closure(self):
-        """mcp_server reaches tools by command line, never by import.
+    def test_combined_paths_select_the_strictest_required_mode(self):
+        selective = self.plan(
+            ("M", "README.md", ""),
+            ("M", "Tools/tests/test_charlie.py", ""))
+        self.assertEqual("selective", selective["mode"])
+        self.assertEqual(["test_charlie.py"],
+                         selective["selected_tests"])
 
-        No reverse-import closure can reach it, so the edge is declared
-        rather than discovered -- the remedy the Tool module boundary names
-        for this blind spot.
-        """
-        self._write("Tools/tests/test_mcp_server.py", "pass\n")
-        plan = self._plan(("M", "Tools/alpha.py"))
+        full = self.plan(
+            ("M", "Tools/tests/test_charlie.py", ""),
+            ("M", "Makefile", ""))
+        self.assertEqual("full", full["mode"])
+
+
+class ToolDependencyImpactContractTests(CiImpactFixture):
+
+    def test_changed_tool_selects_reverse_closure_and_cli_surface(self):
+        plan = self.plan(("M", "Tools/alpha.py", ""))
+
         self.assertEqual("selective", plan["mode"])
-        self.assertIn("test_mcp_server.py", plan["selected_tests"])
+        self.assertEqual(
+            ["test_alpha.py", "test_beta.py", "test_mcp_server.py"],
+            plan["selected_tests"])
 
-    def test_authoritative_non_markdown_and_unknown_paths_fail_closed(self):
-        for path in (
-                "kernel/example.yaml",
-                "profiles/example/profile.yaml",
-                "misc/notes.md",
-                "unexpected.bin"):
-            with self.subTest(path=path):
-                self.assertEqual("full", self._plan(("M", path))["mode"])
+    def test_recursive_leaf_and_wrapper_preserve_dependency_direction(self):
+        leaf = self.plan(
+            ("M", "Tools/execution/audit/leaf.py", ""))
+        self.assertEqual("selective", leaf["mode"])
+        self.assertEqual(
+            [
+                "test_consumer.py",
+                "test_leaf.py",
+                "test_mcp_server.py",
+                "test_run_leaf.py",
+            ],
+            leaf["selected_tests"])
 
-    def test_delete_and_rename_fail_closed(self):
-        deleted = ci_impact.plan_changes(
-            self.root, [ci_impact.Change("D", "Tools/alpha.py")])
-        renamed = ci_impact.plan_changes(
-            self.root,
-            [ci_impact.Change("R", "Tools/new.py", "Tools/alpha.py")],
-        )
-        self.assertEqual("full", deleted["mode"])
-        self.assertEqual("full", renamed["mode"])
+        wrapper = self.plan(("M", "Tools/run_leaf.py", ""))
+        self.assertEqual("selective", wrapper["mode"])
+        self.assertEqual(
+            ["test_mcp_server.py", "test_run_leaf.py"],
+            wrapper["selected_tests"])
 
-    def test_non_pull_request_event_is_always_full(self):
-        plan = self._plan(("M", "README.md"), event="push")
-        self.assertEqual("full", plan["mode"])
+    def test_uncovered_or_overwide_tool_closure_requires_full(self):
+        orphan = self.plan(("M", "Tools/orphan.py", ""))
+        self.assertEqual("full", orphan["mode"])
 
-    def test_empty_diff_fails_closed(self):
-        self.assertEqual("full", ci_impact.plan_changes(
-            self.root, [], event="pull_request")["mode"])
-
-    def test_full_matrix_covers_every_test_once_per_python(self):
-        plan = self._plan(("M", "Makefile"))
-        expected = ci_impact.discover_tests(self.root)
-        for version in ci_impact.PYTHON_VERSIONS:
-            version_groups = [
-                item for item in plan["test_matrix"]["include"]
-                if item["python-version"] == version
-            ]
-            self.assertEqual(
-                min(ci_impact.FULL_SHARD_COUNT, len(expected)),
-                len(version_groups),
-            )
-            selected = [
-                name for item in version_groups
-                for name in item["test-files"].split(",")
-            ]
-            self.assertEqual(expected, sorted(selected))
-            self.assertEqual(len(selected), len(set(selected)))
-
-    def test_full_matrix_packs_current_source_weight_evenly(self):
-        tests = ci_impact.discover_tests(ROOT)
-        groups = ci_impact._full_groups(ROOT, tests)
-        loads = [
-            sum(ci_impact._test_weight(ROOT, name) for name in members)
-            for _, members in groups
-        ]
-        self.assertLessEqual(max(loads), min(loads) * 1.10)
-
-    def test_selected_test_validation_rejects_unknown_and_duplicates(self):
-        with self.assertRaisesRegex(ValueError, "unknown"):
-            ci_impact.validate_selected_tests(
-                self.root, "../../test_escape.py")
-        with self.assertRaisesRegex(ValueError, "duplicates"):
-            ci_impact.validate_selected_tests(
-                self.root, "test_alpha.py,test_alpha.py")
-
-    def test_selected_test_runner_executes_real_tests_and_rejects_zero(self):
-        output = io.StringIO()
-        with contextlib.redirect_stdout(output), \
-                contextlib.redirect_stderr(output):
-            self.assertEqual(
-                0, ci_impact.run_selected_tests(
-                    self.root, "test_charlie.py"))
-            self.assertEqual(
-                1, ci_impact.run_selected_tests(self.root, "test_alpha.py"))
-
-    def test_name_status_parser_includes_rename_boundaries(self):
-        changes = ci_impact.parse_name_status(
-            b"M\0README.md\0R100\0old.py\0new.py\0D\0gone.py\0")
-        self.assertEqual([
-            ci_impact.Change("M", "README.md"),
-            ci_impact.Change("R", "new.py", "old.py"),
-            ci_impact.Change("D", "gone.py"),
-        ], changes)
-
-    def test_path_normalization_rejects_repository_escape(self):
-        with self.assertRaisesRegex(ValueError, "repository-relative"):
-            ci_impact.parse_name_status(b"M\0../outside.py\0")
+        with mock.patch.object(ci_impact, "MAX_SELECTIVE_TESTS", 1):
+            overwide = self.plan(("M", "Tools/alpha.py", ""))
+        self.assertEqual("full", overwide["mode"])
 
 
 if __name__ == "__main__":

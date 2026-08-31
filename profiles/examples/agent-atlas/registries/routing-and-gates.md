@@ -32,7 +32,7 @@ Interface: [Kernel-owned Profile interface](../../../../kernel/K00%20Standards%2
 
 | Judgment Item ID reference | Target selector: `each-manifest-page` or `batch` | Trigger: `before-merge-ready` | Producer kind: `manual-attestation` | Receipt schema | Pass-authority Role ID reference |
 |---|---|---|---|---|---|
-| `agent-atlas-content-form-classification` | `each-manifest-page` | `before-merge-ready` | `manual-attestation` | `page-batch-judgment-v1` | `content-reviewer` |
+| `agent-atlas-content-form-classification` | `each-manifest-page` | `before-merge-ready` | `manual-attestation` | `page-batch-judgment-v2` | `content-reviewer` |
 
 ## Extension Gates
 

@@ -5,7 +5,7 @@
 #   policy. A hand edit is reported by --check as a HOLD.
 # regenerate with: python3 Tools/compile_cli_contract.py . --projection-target source-distribution
 # verify with:     python3 Tools/compile_cli_contract.py . --projection-target source-distribution --check
-# `source_hash` covers the policy, path registries, and 56
+# `source_hash` covers the policy, runtime path registry, and 62
 #   CLI tool sources listed under source_files.
 # A positional argument is one whose `option_strings` is empty.
 # `choices` is the admissible SET in canonical order, not the
@@ -14,22 +14,21 @@
 # The auto-added -h/--help action is omitted: argparse translates
 #   its help text, which would make this artifact locale-dependent.
 
-schema_version: 5
+schema_version: 9
 artifact: cli-invocation-contract
 generator: Tools/compile_cli_contract.py
-generator_version: 1.5.0
-derived_from: argparse-introspection
+generator_version: 1.8.0
+derived_from: entrypoint-owner-argparse-and-receipt-analysis
 source_files:
   - Tools/agent-interface-policy.yaml
-  - Tools/runtime_paths.py
-  - Tools/schemas/card.schema.yaml
+  - Tools/execution/task_runtime/runtime_paths.py
   - Tools/adopt_standards.py
   - Tools/apply_amendment.py
   - Tools/apply_contract_amendment.py
   - Tools/apply_delta.py
   - Tools/apply_metadata_transition.py
   - Tools/apply_profile_adoption.py
-  - Tools/apply_task_plan.py
+  - Tools/assemble_terminal_proof.py
   - Tools/check_batch_close.py
   - Tools/check_boundary_contract.py
   - Tools/check_corpus_plan.py
@@ -41,6 +40,7 @@ source_files:
   - Tools/check_profile.py
   - Tools/check_proof.py
   - Tools/check_queue.py
+  - Tools/check_repository_structure.py
   - Tools/check_residual_content.py
   - Tools/check_structure.py
   - Tools/check_upstream_components.py
@@ -51,13 +51,79 @@ source_files:
   - Tools/compose_page_contract.py
   - Tools/compose_vocab.py
   - Tools/duplicate_check.py
+  - Tools/execution/audit/assemble_terminal_proof.py
+  - Tools/execution/audit/check_batch_close.py
+  - Tools/execution/audit/check_proof.py
+  - Tools/execution/audit/complete_audit_receipt.py
+  - Tools/execution/audit/prepare_audit_plan.py
+  - Tools/execution/audit/record_batch_judgment.py
+  - Tools/execution/audit/record_batch_page_review.py
+  - Tools/execution/audit/record_batch_review.py
+  - Tools/execution/audit/record_changed_scope_evidence.py
+  - Tools/execution/audit/record_substantive_review.py
+  - Tools/execution/evidence/record_gate_attestation.py
+  - Tools/execution/evidence/record_gate_result.py
+  - Tools/execution/evidence/seal_receipts.py
+  - Tools/execution/planning/check_corpus_plan.py
+  - Tools/execution/planning/compile_queue.py
+  - Tools/execution/planning/record_corpus_acceptance.py
+  - Tools/execution/task_runtime/apply_amendment.py
+  - Tools/execution/task_runtime/apply_contract_amendment.py
+  - Tools/execution/task_runtime/apply_delta.py
+  - Tools/execution/task_runtime/candidate_delta_runtime.py
+  - Tools/execution/task_runtime/check_queue.py
+  - Tools/execution/task_runtime/init_state.py
+  - Tools/execution/task_runtime/queue_check_receipt.py
+  - Tools/execution/task_runtime/record_maintenance_evidence.py
+  - Tools/execution/task_runtime/register_amendment.py
+  - Tools/execution/task_runtime/render_queue.py
+  - Tools/execution/task_runtime/task_runtime_runner.py
+  - Tools/execution/task_runtime/update_queue.py
+  - Tools/execution/task_runtime/update_task.py
+  - Tools/generate_test_catalog.py
+  - Tools/generate_tool_catalog.py
+  - Tools/governance/control/metadata_execution_contract.py
+  - Tools/governance/control/run_gates.py
+  - Tools/governance/profile/apply_profile_adoption.py
+  - Tools/governance/profile/check_profile.py
+  - Tools/governance/profile/profile_onboarding_status.py
+  - Tools/governance/profile/scaffold_profile.py
+  - Tools/governance/standards/adopt_standards.py
   - Tools/init_state.py
+  - Tools/knowledge/content/check_links.py
+  - Tools/knowledge/content/check_residual_content.py
+  - Tools/knowledge/content/duplicate_check.py
+  - Tools/knowledge/metadata/apply_metadata_transition.py
+  - Tools/knowledge/metadata/check_freshness.py
+  - Tools/knowledge/metadata/check_page_contract.py
+  - Tools/knowledge/metadata/check_vocab.py
+  - Tools/knowledge/metadata/compose_page_contract.py
+  - Tools/knowledge/metadata/compose_vocab.py
+  - Tools/knowledge/metadata/project_page_state.py
+  - Tools/knowledge/rendering/record_rendering_verification.py
+  - Tools/knowledge/structure/check_boundary_contract.py
+  - Tools/knowledge/structure/check_moc.py
+  - Tools/knowledge/structure/check_structure.py
+  - Tools/knowledge/structure/render_boundary_projection.py
+  - Tools/knowledge/structure/render_structure_projection.py
+  - Tools/knowledge/structure/repository_structure.py
   - Tools/metadata_execution_contract.py
-  - Tools/migrate_standards_state.py
   - Tools/module_boundary_report.py
+  - Tools/platform/agent_interface/compile_cli_contract.py
+  - Tools/platform/agent_interface/render_host_configs.py
+  - Tools/platform/agent_interface/render_interface_projection.py
+  - Tools/platform/common/kblib.py
+  - Tools/platform/distribution/check_kernel_size.py
+  - Tools/platform/distribution/check_upstream_components.py
+  - Tools/platform/distribution/module_boundary_report.py
+  - Tools/platform/distribution/stamp_cards.py
+  - Tools/platform/distribution/test_catalog.py
+  - Tools/platform/distribution/test_runner.py
+  - Tools/platform/distribution/tool_catalog.py
   - Tools/prepare_audit_plan.py
   - Tools/profile_onboarding_status.py
   - Tools/project_page_state.py
+  - Tools/publish_delta.py
   - Tools/record_batch_judgment.py
   - Tools/record_batch_page_review.py
   - Tools/record_batch_review.py
@@ -65,6 +131,7 @@ source_files:
   - Tools/record_corpus_acceptance.py
   - Tools/record_gate_attestation.py
   - Tools/record_gate_result.py
+  - Tools/record_maintenance_evidence.py
   - Tools/record_rendering_verification.py
   - Tools/record_substantive_review.py
   - Tools/register_amendment.py
@@ -74,26 +141,24 @@ source_files:
   - Tools/render_queue.py
   - Tools/render_structure_projection.py
   - Tools/run_gates.py
+  - Tools/run_task.py
+  - Tools/run_tests.py
   - Tools/scaffold_profile.py
   - Tools/seal_receipts.py
   - Tools/stamp_cards.py
   - Tools/update_queue.py
   - Tools/update_task.py
-source_hash: sha256:a1d8dd9a5beb0aa6164ccaaa3076c362e60191f8e2ecdcbe86b7683d08e24c63
+source_hash: sha256:21732c4dfc979a6adc5e04b0ab2fa83d2898e2df15234a4ad7e613d07b42cc49
 agent_interface_policy:
   path: Tools/agent-interface-policy.yaml
-  sha256: sha256:4d622b3e3927861cb36f5eda5e27c9eca1e1899d3beea2885135f9a8ec2a6839
+  sha256: sha256:26afb19c445def06866398b3019e8043ef4d4548f793e9eafb7a6d3a67d4ca32
 runtime_path_registry:
-  path: Tools/runtime_paths.py
-  sha256: sha256:b6e997b29173cf3d54f3d3d8690235e03e66fee80046902f224d71d2da825106
-component_path_registries:
-  card-directory:
-    path: Tools/schemas/card.schema.yaml
-    sha256: sha256:efcf14bac67f5831cae0b598391d1f71868fddbd9bc2dc27024df387961fd4f0
+  path: Tools/execution/task_runtime/runtime_paths.py
+  sha256: sha256:7055c30c747c2a2f015b139dd8f9256927089891330d2d7498e39de4490a5882
 projection_target: source-distribution
 distribution_boundary:
   path: distribution-boundary.yaml
-  sha256: sha256:d37f6f63cd4a1ef6b48083f9c977fe74faab2b06a303fe1da1a5ea1336e417f2
+  sha256: sha256:dfc2b6c781a6f84e6acc73040192f0a4c2944aa4e84af64a2283e66376178fb3
 included_tools:
   - adopt_standards
   - apply_amendment
@@ -101,7 +166,7 @@ included_tools:
   - apply_delta
   - apply_metadata_transition
   - apply_profile_adoption
-  - apply_task_plan
+  - assemble_terminal_proof
   - check_batch_close
   - check_boundary_contract
   - check_corpus_plan
@@ -113,6 +178,7 @@ included_tools:
   - check_profile
   - check_proof
   - check_queue
+  - check_repository_structure
   - check_residual_content
   - check_structure
   - check_upstream_components
@@ -123,13 +189,15 @@ included_tools:
   - compose_page_contract
   - compose_vocab
   - duplicate_check
+  - generate_test_catalog
+  - generate_tool_catalog
   - init_state
   - metadata_execution_contract
-  - migrate_standards_state
   - module_boundary_report
   - prepare_audit_plan
   - profile_onboarding_status
   - project_page_state
+  - publish_delta
   - record_batch_judgment
   - record_batch_page_review
   - record_batch_review
@@ -137,6 +205,7 @@ included_tools:
   - record_corpus_acceptance
   - record_gate_attestation
   - record_gate_result
+  - record_maintenance_evidence
   - record_rendering_verification
   - record_substantive_review
   - register_amendment
@@ -146,6 +215,8 @@ included_tools:
   - render_queue
   - render_structure_projection
   - run_gates
+  - run_task
+  - run_tests
   - scaffold_profile
   - seal_receipts
   - stamp_cards
@@ -153,8 +224,10 @@ included_tools:
   - update_task
 excluded_tools: []
 receipt_shape:
-  base_fields:
+  common_envelope_owner: Tools.platform.common.kblib:make_receipt
+  common_envelope_fields:
     - receipt_id
+    - receipt_type_id
     - check
     - target
     - result
@@ -163,14 +236,15 @@ receipt_shape:
     - tool
     - tool_version
     - invalidated_by
-  conditional_fields:
-    - gate_id
-  extension_policy: derived-per-tool-from-source
-tool_count: 56
+  extension_policy: derived-per-tool-from-implementation-source-closure
+tool_count: 62
 tools:
   - tool: adopt_standards
     module: Tools/adopt_standards.py
-    source_hash: sha256:5c60faf0a134d0bb26a4514007e9cf100f01a246442456a1a988e3ff7a94511b
+    source_hash: sha256:aad8b4f06c7a9d650ac0d5ed7297d427deb23844544543e7dbc308f56db0e601
+    implementation_module: Tools.governance.standards.adopt_standards
+    implementation_path: Tools/governance/standards/adopt_standards.py
+    implementation_source_hash: sha256:8297cae8d4cd4feaa1b433079bec23086b5bf122781beb0122b8a570767a4504
     description: Adopt one approved Standards/Profile revision
     arguments:
       - dest: root
@@ -261,9 +335,11 @@ tools:
         nargs: null
         action: store
         type: null
-        help: Git revision in --upstream-root that must resolve to the plan's full upstream_revision_id
+        help: Git revision in --upstream-root that must resolve to the plan's full upstream_revision_id_after
     mutually_exclusive_groups: []
     receipt_extensions:
+      - _writer_locks
+      - active_card_context_deliveries
       - actor_role
       - adoption_id
       - after_contract_scope_version
@@ -273,6 +349,9 @@ tools:
       - after_progress_sha256
       - after_queue_sha256
       - after_standards_state_sha256
+      - applied_delta_receipts
+      - batch_close_recovery
+      - batch_work_specs
       - before_contract_scope_version
       - before_contract_sha256
       - before_contract_version
@@ -282,18 +361,31 @@ tools:
       - before_standards_state_sha256
       - boundary_gate_reruns
       - changed_predicate_ids
+      - checkpoint
+      - checkpoint_binding
+      - confirmation_receipt
       - contract_version_after
       - contract_version_before
+      - coverage_ledger_sha256
+      - exclusions
       - gate_id
       - governance_revision_ref
       - governance_revision_sha256
-      - identity
+      - hub_page_candidates
       - immediate_gate_receipts
       - immediate_gate_reruns
       - invalidated_evidence_receipt_ids
       - invalidation_boundary_ids
+      - last_reconciled_guidance_id
       - loaded_module_paths_after
       - loaded_module_paths_before
+      - maintenance_candidate_state
+      - managed_deltas
+      - next_action
+      - objective
+      - pending_amendments
+      - pending_delta_applies
+      - pending_guidance
       - plan_path
       - plan_sha256
       - preserved_coverage_projection_sha256
@@ -302,10 +394,18 @@ tools:
       - profile_contract_fingerprint_after
       - profile_load_inputs_sha256_after
       - profile_snapshot_sha256_after
+      - progress_ledger_sha256
+      - queue_check_mode
+      - queue_revision
       - queue_revision_after
       - queue_revision_before
+      - queue_state_revision
+      - remaining_required_work_units
+      - repository_snapshot_sha256
+      - required_queue_sha256
       - selected_card_paths_after
       - selected_card_paths_before
+      - selected_profile_manifest
       - selected_profile_manifest_after
       - selected_profile_manifest_before
       - selected_profile_route_ids_after
@@ -315,19 +415,29 @@ tools:
       - selected_route_ids_after
       - selected_route_ids_before
       - standards_effective_date_after
+      - standards_revalidation_barriers
+      - standards_revalidation_outstanding
       - standards_snapshot_sha256_after
-      - standards_version_after
-      - standards_version_before
       - state_revision_after
       - state_revision_before
       - task_id
+      - task_state
       - task_state_after
       - task_state_before
       - transaction_id
       - transaction_phase
       - upstream_revision_id
+      - upstream_revision_id_after
+      - upstream_revision_id_before
       - upstream_source_ref
-    receipt_extensions_extraction: complete
+    receipt_extensions_extraction: partial
+    receipt_extension_sources:
+      - path: Tools/execution/task_runtime/queue_check_receipt.py
+        sha256: sha256:0cbe8593fa3e1fbaf38b76a34f4f84f283a7ed5c70db0052d4db838a3f8f002f
+      - path: Tools/governance/standards/adopt_standards.py
+        sha256: sha256:8297cae8d4cd4feaa1b433079bec23086b5bf122781beb0122b8a570767a4504
+      - path: Tools/platform/common/kblib.py
+        sha256: sha256:e3c4768907708d817747072c0b797c7bd0e4ce2c7b5005292bee6624c1febd70
     agent_interface:
       exposure: cli-only
       workspace_argument: root
@@ -345,7 +455,6 @@ tools:
           constraint: contained
           value: null
           runtime_path_id: null
-          component_path_id: null
           suffixes: []
           active_when_any: []
           inactive_when_any: []
@@ -355,7 +464,6 @@ tools:
           constraint: namespace
           value: .cambium/receipts
           runtime_path_id: receipt-root
-          component_path_id: null
           suffixes:
             - .jsonl
           active_when_any:
@@ -364,7 +472,10 @@ tools:
       external_write: none
   - tool: apply_amendment
     module: Tools/apply_amendment.py
-    source_hash: sha256:ba4e77222ee2d1fb84d070946d06fee5e0c07dd543280861dbddea5efadefb6e
+    source_hash: sha256:39505133331854f04ec54b431ffd36db92d902cb67f24587924cddc06622b0d8
+    implementation_module: Tools.execution.task_runtime.apply_amendment
+    implementation_path: Tools/execution/task_runtime/apply_amendment.py
+    implementation_source_hash: sha256:4d61fa446fbb6d78120c78692fb066fbedb8d92781e0f7553383cb41241fcac3
     description: Apply one approved cross-Ledger Amendment transaction
     arguments:
       - dest: root
@@ -470,32 +581,24 @@ tools:
     mutually_exclusive_groups: []
     receipt_extensions:
       - actor_role
-      - after_hold_state
-      - after_required_queue_sha256
-      - after_state
-      - after_state_revision
       - amendment_id
-      - before_hold_state
-      - before_required_queue_sha256
-      - before_state
-      - before_state_revision
       - coverage_proposal_path
       - coverage_proposal_sha256
       - operation
       - plan_path
       - plan_sha256
       - previous_transaction_commit_receipt
-      - queue_revision
-      - queue_revision_after
-      - queue_revision_before
       - registration_receipt
-      - state_revision_after
-      - state_revision_before
       - task_id
       - transaction_id
       - transaction_phase
       - transaction_sequence
-    receipt_extensions_extraction: partial
+    receipt_extensions_extraction: complete
+    receipt_extension_sources:
+      - path: Tools/execution/task_runtime/apply_amendment.py
+        sha256: sha256:4d61fa446fbb6d78120c78692fb066fbedb8d92781e0f7553383cb41241fcac3
+      - path: Tools/platform/common/kblib.py
+        sha256: sha256:e3c4768907708d817747072c0b797c7bd0e4ce2c7b5005292bee6624c1febd70
     agent_interface:
       exposure: mcp
       workspace_argument: root
@@ -514,7 +617,6 @@ tools:
           constraint: contained
           value: null
           runtime_path_id: null
-          component_path_id: null
           suffixes: []
           active_when_any: []
           inactive_when_any: []
@@ -524,7 +626,6 @@ tools:
           constraint: namespace
           value: .cambium/receipts
           runtime_path_id: receipt-root
-          component_path_id: null
           suffixes:
             - .jsonl
           active_when_any:
@@ -533,7 +634,10 @@ tools:
       external_write: none
   - tool: apply_contract_amendment
     module: Tools/apply_contract_amendment.py
-    source_hash: sha256:17962d2a2b3b5fe0787e8c2a90c162081d896bbbd42be0265708bfebf5f17b0a
+    source_hash: sha256:9731e6a12aa98d18c1734c67ca9528c5f09b2f97d2e6d9377ccfb7a401e63f51
+    implementation_module: Tools.execution.task_runtime.apply_contract_amendment
+    implementation_path: Tools/execution/task_runtime/apply_contract_amendment.py
+    implementation_source_hash: sha256:cbc680cdf9d067101c5b2b2987d1d3525693289ce1d33de819236c8eb0324c34
     description: Amend the frozen Task Contract from one confirmed plan.
     arguments:
       - dest: root
@@ -619,14 +723,21 @@ tools:
       - before_progress_sha256
       - before_required_queue_sha256
       - changed_contract_fields
-      - identity
       - plan_path
       - plan_sha256
       - policy_fingerprint
       - queue_revision_after
       - queue_revision_before
+      - selected_profile_manifest
+      - task_id
       - transaction_phase
+      - upstream_revision_id
     receipt_extensions_extraction: complete
+    receipt_extension_sources:
+      - path: Tools/execution/task_runtime/apply_contract_amendment.py
+        sha256: sha256:cbc680cdf9d067101c5b2b2987d1d3525693289ce1d33de819236c8eb0324c34
+      - path: Tools/platform/common/kblib.py
+        sha256: sha256:e3c4768907708d817747072c0b797c7bd0e4ce2c7b5005292bee6624c1febd70
     agent_interface:
       exposure: mcp
       workspace_argument: root
@@ -642,7 +753,6 @@ tools:
           constraint: contained
           value: null
           runtime_path_id: null
-          component_path_id: null
           suffixes: []
           active_when_any: []
           inactive_when_any: []
@@ -652,7 +762,6 @@ tools:
           constraint: namespace
           value: .cambium/receipts
           runtime_path_id: receipt-root
-          component_path_id: null
           suffixes:
             - .jsonl
           active_when_any:
@@ -661,19 +770,12 @@ tools:
       external_write: none
   - tool: apply_delta
     module: Tools/apply_delta.py
-    source_hash: sha256:c5af8f723ffdf0e5606bb21e6e6561bf6f3ec3732112e50df71f5f36711beca7
+    source_hash: sha256:f5a72d70472103b8d2c493ce2577259f73a05d59b04575a7edc4a5ba7dbe39e7
+    implementation_module: Tools.execution.task_runtime.apply_delta
+    implementation_path: Tools/execution/task_runtime/apply_delta.py
+    implementation_source_hash: sha256:b68b5625f203d8568dbd67be7f9844d4c70fd559885ad5fa7150160ae42fa937
     description: Deterministic Coverage Delta application
     arguments:
-      - dest: ledger
-        option_strings: []
-        required: true
-        default: null
-        default_type: NoneType
-        choices: null
-        nargs: null
-        action: store
-        type: null
-        help: Coverage ledger to merge into; canonical mode requires exactly .cambium/state/coverage_ledger.yaml
       - dest: delta
         option_strings: []
         required: true
@@ -683,18 +785,18 @@ tools:
         nargs: null
         action: store
         type: null
-        help: batch Coverage delta to apply; canonical mode requires exactly .cambium/deltas/<batch>.yaml
+        help: canonical batch Coverage delta; must be exactly .cambium/deltas/<batch>.yaml
       - dest: root
         option_strings:
           - --root
-        required: false
+        required: true
         default: null
         default_type: NoneType
         choices: null
         nargs: null
         action: store
         type: null
-        help: adopting repository root (canonical mode)
+        help: adopting repository root
       - dest: apply
         option_strings:
           - --apply
@@ -717,17 +819,6 @@ tools:
         action: store_true
         type: null
         help: plan canonical Coverage and routed-gap settlement without writes; allows an open batch
-      - dest: force
-        option_strings:
-          - --force
-        required: false
-        default: false
-        default_type: bool
-        choices: null
-        nargs: 0
-        action: store_true
-        type: null
-        help: "legacy mode only: keep pages whose ledger batch/next_batch does not match the delta batch"
       - dest: actor_role
         option_strings:
           - --actor-role
@@ -803,22 +894,16 @@ tools:
       - coverage_ledger_path
       - delta_path
       - delta_sha256
-      - manifest_semantic_before_set_sha256
-      - metadata_execution_contract_fingerprint
-      - metadata_execution_rule_fingerprint
-      - opening_transition_receipt
-      - profile_contract_fingerprint
-      - profile_load_inputs_sha256
-      - profile_snapshot_sha256
-      - property_events
       - queue_revision
       - queue_state_revision
-      - receipt_path
       - required_queue_sha256
-      - selected_profile_manifest
-      - semantic_content_protocol
       - task_id
     receipt_extensions_extraction: partial
+    receipt_extension_sources:
+      - path: Tools/execution/task_runtime/apply_delta.py
+        sha256: sha256:b68b5625f203d8568dbd67be7f9844d4c70fd559885ad5fa7150160ae42fa937
+      - path: Tools/platform/common/kblib.py
+        sha256: sha256:e3c4768907708d817747072c0b797c7bd0e4ce2c7b5005292bee6624c1febd70
     agent_interface:
       exposure: mcp
       workspace_argument: root
@@ -828,7 +913,6 @@ tools:
         - apply
         - expected_coverage_sha256
         - expected_queue_sha256
-        - force
         - json
         - preflight
       path_arguments:
@@ -838,17 +922,6 @@ tools:
           constraint: contained
           value: null
           runtime_path_id: null
-          component_path_id: null
-          suffixes: []
-          active_when_any: []
-          inactive_when_any: []
-        - argument: ledger
-          access: read-write
-          consumption: transaction
-          constraint: contained
-          value: null
-          runtime_path_id: null
-          component_path_id: null
           suffixes: []
           active_when_any: []
           inactive_when_any: []
@@ -858,7 +931,6 @@ tools:
           constraint: namespace
           value: .cambium/receipts
           runtime_path_id: receipt-root
-          component_path_id: null
           suffixes:
             - .jsonl
           active_when_any:
@@ -867,7 +939,10 @@ tools:
       external_write: none
   - tool: apply_metadata_transition
     module: Tools/apply_metadata_transition.py
-    source_hash: sha256:ac2020bbce928314311c6e9a3a6100cd608afcf0530cf4451d37f81de021d952
+    source_hash: sha256:4c0c34cca711212f7b97774ab8e8e6e9e9937bd2b6bf450a70a345ebeef15bd6
+    implementation_module: Tools.knowledge.metadata.apply_metadata_transition
+    implementation_path: Tools/knowledge/metadata/apply_metadata_transition.py
+    implementation_source_hash: sha256:4328c1038510fdf9f9940d27f275c873301eedabf3b0759662efb35e7a14b6b4
     description: Apply one receipt-backed Profile metadata transition
     arguments:
       - dest: root
@@ -1020,15 +1095,20 @@ tools:
       - profile_load_inputs_sha256
       - profile_snapshot_sha256
       - property_field
-      - receipt_path
       - receipt_schema
       - requested_completion_value
-      - root
       - selected_profile_manifest
       - selected_profile_manifest_sha256
       - semantic_content_fingerprint
+      - task_id
       - transition_id
+      - upstream_revision_id
     receipt_extensions_extraction: complete
+    receipt_extension_sources:
+      - path: Tools/knowledge/metadata/apply_metadata_transition.py
+        sha256: sha256:4328c1038510fdf9f9940d27f275c873301eedabf3b0759662efb35e7a14b6b4
+      - path: Tools/platform/common/kblib.py
+        sha256: sha256:e3c4768907708d817747072c0b797c7bd0e4ce2c7b5005292bee6624c1febd70
     agent_interface:
       exposure: mcp
       workspace_argument: root
@@ -1049,7 +1129,6 @@ tools:
           constraint: contained
           value: null
           runtime_path_id: null
-          component_path_id: null
           suffixes: []
           active_when_any: []
           inactive_when_any: []
@@ -1059,7 +1138,6 @@ tools:
           constraint: namespace
           value: .cambium/receipts
           runtime_path_id: receipt-root
-          component_path_id: null
           suffixes:
             - .jsonl
           active_when_any:
@@ -1068,7 +1146,10 @@ tools:
       external_write: none
   - tool: apply_profile_adoption
     module: Tools/apply_profile_adoption.py
-    source_hash: sha256:9015f6e501ef795494b81627cf5ae7dfcccc57ba2cb93fe6c2e700e8014612f6
+    source_hash: sha256:27d1518c56a1c06b1d8a5ff9ec57283c94de6c2a8716a351dae67d54dbb68632
+    implementation_module: Tools.governance.profile.apply_profile_adoption
+    implementation_path: Tools/governance/profile/apply_profile_adoption.py
+    implementation_source_hash: sha256:7c6e7ac6fd74b8051e5ed297a03304a76779b18b7b8298166b97e9aaf6dd0121
     description: Apply one no-runtime R09 Profile adoption (initial adoption or pre-runtime profile revision) from a restricted-YAML plan
     arguments:
       - dest: root
@@ -1146,12 +1227,19 @@ tools:
         nargs: null
         action: store
         type: null
-        help: Git revision in --upstream-root that must resolve to the plan's full upstream_revision_id
+        help: Git revision in --upstream-root that must resolve to the plan's full upstream_revision_id_after
     mutually_exclusive_groups: []
     receipt_extensions:
-      - identity
+      - selected_profile_manifest
+      - task_id
       - transaction_id
+      - upstream_revision_id
     receipt_extensions_extraction: complete
+    receipt_extension_sources:
+      - path: Tools/governance/profile/apply_profile_adoption.py
+        sha256: sha256:7c6e7ac6fd74b8051e5ed297a03304a76779b18b7b8298166b97e9aaf6dd0121
+      - path: Tools/platform/common/kblib.py
+        sha256: sha256:e3c4768907708d817747072c0b797c7bd0e4ce2c7b5005292bee6624c1febd70
     agent_interface:
       exposure: cli-only
       workspace_argument: root
@@ -1168,7 +1256,6 @@ tools:
           constraint: contained
           value: null
           runtime_path_id: null
-          component_path_id: null
           suffixes: []
           active_when_any: []
           inactive_when_any: []
@@ -1178,17 +1265,19 @@ tools:
           constraint: namespace
           value: .cambium/receipts
           runtime_path_id: receipt-root
-          component_path_id: null
           suffixes:
             - .jsonl
           active_when_any:
             - apply
           inactive_when_any: []
       external_write: none
-  - tool: apply_task_plan
-    module: Tools/apply_task_plan.py
-    source_hash: sha256:2c1726c2228cd3fa13d2f94c91838a25c2e8f686c1d2d071f8c1636099d9ba2b
-    description: Materialize a task runtime from one confirmed plan.
+  - tool: assemble_terminal_proof
+    module: Tools/assemble_terminal_proof.py
+    source_hash: sha256:3ca2bc71fe11e490e074c1f0b10d7be4bade74ab0d1483ceb788aaa939bf0374
+    implementation_module: Tools.execution.audit.assemble_terminal_proof
+    implementation_path: Tools/execution/audit/assemble_terminal_proof.py
+    implementation_source_hash: sha256:69f449509a6480dd2d20f533a9e3dbf90313e64e14903e8909ff60bd715deb3c
+    description: Assemble one current K12/16 Terminal Proof
     arguments:
       - dest: root
         option_strings: []
@@ -1200,9 +1289,9 @@ tools:
         action: store
         type: null
         help: adopting repository root
-      - dest: plan
+      - dest: terminal_audit_input
         option_strings:
-          - --plan
+          - --terminal-audit-input
         required: true
         default: null
         default_type: NoneType
@@ -1210,18 +1299,73 @@ tools:
         nargs: null
         action: store
         type: null
-        help: repository-relative path under .cambium/deltas/task-plans
-      - dest: receipts
+        help: closed YAML/JSON below .cambium/tmp
+      - dest: queue_check_receipt
         option_strings:
-          - --receipts
+          - --queue-check-receipt
+        required: true
+        default: null
+        default_type: NoneType
+        choices: null
+        nargs: null
+        action: store
+        type: null
+        help: null
+      - dest: corpus_plan_check_receipt
+        option_strings:
+          - --corpus-plan-check-receipt
+        required: true
+        default: null
+        default_type: NoneType
+        choices: null
+        nargs: null
+        action: store
+        type: null
+        help: null
+      - dest: audit_receipt_register
+        option_strings:
+          - --audit-receipt-register
         required: false
-        default: .cambium/receipts/task-plans.jsonl
+        default: .cambium/receipts/audit-receipts.jsonl
         default_type: str
         choices: null
         nargs: null
         action: store
         type: null
-        help: receipt JSONL path under .cambium/receipts
+        help: null
+      - dest: terminal_audit_receipt_register
+        option_strings:
+          - --terminal-audit-receipt-register
+        required: false
+        default: .cambium/receipts/terminal.jsonl
+        default_type: str
+        choices: null
+        nargs: null
+        action: store
+        type: null
+        help: null
+      - dest: full_deterministic_results
+        option_strings:
+          - --full-deterministic-results
+        required: false
+        default: .cambium/receipts/audit-receipts.jsonl
+        default_type: str
+        choices: null
+        nargs: null
+        action: store
+        type: null
+        help: null
+      - dest: proof
+        option_strings:
+          - --proof
+        required: false
+        default: .cambium/receipts/terminal-proof.yaml
+        default_type: str
+        choices: null
+        nargs: null
+        action: store
+        type: null
+        help: null
       - dest: apply
         option_strings:
           - --apply
@@ -1232,7 +1376,7 @@ tools:
         nargs: 0
         action: store_true
         type: null
-        help: write the transaction; omit for a dry run
+        help: null
       - dest: json
         option_strings:
           - --json
@@ -1243,46 +1387,79 @@ tools:
         nargs: 0
         action: store_true
         type: null
-        help: write this run's receipt objects to stdout as one canonical JSON array and move the human-readable report to stderr; receipt writing, verdicts, and exit codes are unchanged
+        help: null
     mutually_exclusive_groups: []
-    receipt_extensions:
-      - identity
-      - transaction_phase
+    receipt_extensions: []
     receipt_extensions_extraction: complete
+    receipt_extension_sources:
+      - path: Tools/execution/audit/assemble_terminal_proof.py
+        sha256: sha256:69f449509a6480dd2d20f533a9e3dbf90313e64e14903e8909ff60bd715deb3c
     agent_interface:
       exposure: mcp
       workspace_argument: root
       workspace_access: write
       value_arguments:
         - apply
+        - corpus_plan_check_receipt
         - json
+        - queue_check_receipt
       path_arguments:
-        - argument: plan
+        - argument: audit_receipt_register
           access: read
           consumption: snapshot
-          constraint: contained
-          value: null
-          runtime_path_id: null
-          component_path_id: null
+          constraint: exact
+          value: .cambium/receipts/audit-receipts.jsonl
+          runtime_path_id: audit-receipt-register
           suffixes: []
           active_when_any: []
           inactive_when_any: []
-        - argument: receipts
+        - argument: full_deterministic_results
+          access: read
+          consumption: snapshot
+          constraint: exact
+          value: .cambium/receipts/audit-receipts.jsonl
+          runtime_path_id: audit-receipt-register
+          suffixes: []
+          active_when_any: []
+          inactive_when_any: []
+        - argument: proof
           access: write
-          consumption: append
+          consumption: replace
           constraint: namespace
           value: .cambium/receipts
           runtime_path_id: receipt-root
-          component_path_id: null
           suffixes:
-            - .jsonl
+            - .yaml
           active_when_any:
             - apply
+          inactive_when_any: []
+        - argument: terminal_audit_input
+          access: read
+          consumption: snapshot
+          constraint: namespace
+          value: .cambium/tmp
+          runtime_path_id: transient-root
+          suffixes:
+            - .yaml
+            - .json
+          active_when_any: []
+          inactive_when_any: []
+        - argument: terminal_audit_receipt_register
+          access: read
+          consumption: snapshot
+          constraint: exact
+          value: .cambium/receipts/terminal.jsonl
+          runtime_path_id: terminal-audit-receipts
+          suffixes: []
+          active_when_any: []
           inactive_when_any: []
       external_write: none
   - tool: check_batch_close
     module: Tools/check_batch_close.py
-    source_hash: sha256:a26b6730e227cb79e154a5b17ab83f296bf73f860e6acbc06fd2a18017d37ced
+    source_hash: sha256:e96843bfa7534219f9589f8c54e9924f0e8ab47af058031091fc67d096fd247c
+    implementation_module: Tools.execution.audit.check_batch_close
+    implementation_path: Tools/execution/audit/check_batch_close.py
+    implementation_source_hash: sha256:32a5583cf917f74d6bf2126e14294681e56c5eac9c0a7f5751b677af85dea734
     description: Run and publish the K12/09 batch-close evidence bundle
     arguments:
       - dest: root
@@ -1407,17 +1584,22 @@ tools:
         help: write the receipts this run produced to stdout as one canonical JSON array and move the human-readable summary to stderr; receipts written and the exit code are unchanged
     mutually_exclusive_groups: []
     receipt_extensions:
+      - _writer_locks
       - accepted_by_type_counts
       - accepted_candidate_count
       - accepted_candidate_types
+      - active_card_context_deliveries
       - active_standards_sha256
       - after_coverage_sha256
       - after_progress_sha256
       - after_required_queue_sha256
+      - applied_delta_receipts
       - artifact_fingerprint
       - audit_plan_path
       - audit_plan_sha256
+      - batch_close_recovery
       - batch_id
+      - batch_work_specs
       - before_coverage_sha256
       - before_progress_sha256
       - before_required_queue_sha256
@@ -1430,8 +1612,11 @@ tools:
       - candidate_type_counts
       - carried_candidate_count
       - carried_candidate_set_sha256
+      - checkpoint
+      - checkpoint_binding
       - closed_list_evidence
       - closed_list_producer_evidence
+      - confirmation_receipt
       - contract_fingerprint
       - corpus_plan_receipt
       - corpus_plan_required
@@ -1440,41 +1625,63 @@ tools:
       - delta_apply_receipt
       - delta_sha256
       - dependency_fingerprint
+      - exclusions
       - fingerprint_binding
       - fresh_candidate_count
       - fresh_candidate_set_sha256
       - gate_id
       - global_review_receipt
+      - hub_page_candidates
       - integrator_id
+      - last_reconciled_guidance_id
+      - maintenance_candidate_state
+      - managed_deltas
       - merged_snapshot_sha256
       - metadata_execution_contract_fingerprint
+      - next_action
+      - objective
       - obligation_id
       - opening_transition_receipt
       - page_review_receipt_count
       - page_review_receipt_set_sha256
       - page_review_receipts
+      - pending_amendments
+      - pending_delta_applies
+      - pending_guidance
       - plan_id
       - profile_contract_fingerprint
       - profile_snapshot_sha256
       - progress_ledger_sha256
+      - queue_check_mode
       - queue_consistency_receipt
       - queue_revision
       - queue_state_revision
+      - remaining_required_work_units
       - repository_snapshot_sha256
       - required_queue_sha256
       - reviewed_on
       - reviewer_attestation_receipt
       - reviewer_id
-      - root
       - selected_profile_manifest
       - semantic_content_sha256
-      - seq
       - source_command
-      - standards_version
+      - standards_revalidation_barriers
+      - standards_revalidation_outstanding
       - task_id
+      - task_state
+      - upstream_revision_id
       - work_spec_path
       - work_spec_sha256
     receipt_extensions_extraction: partial
+    receipt_extension_sources:
+      - path: Tools/execution/audit/check_batch_close.py
+        sha256: sha256:32a5583cf917f74d6bf2126e14294681e56c5eac9c0a7f5751b677af85dea734
+      - path: Tools/execution/planning/check_corpus_plan.py
+        sha256: sha256:30343195d3c9c1401fd2ec7bdd7ca9c59b1c60d13915fa4ee108cb21b56db67c
+      - path: Tools/execution/task_runtime/queue_check_receipt.py
+        sha256: sha256:0cbe8593fa3e1fbaf38b76a34f4f84f283a7ed5c70db0052d4db838a3f8f002f
+      - path: Tools/platform/common/kblib.py
+        sha256: sha256:e3c4768907708d817747072c0b797c7bd0e4ce2c7b5005292bee6624c1febd70
     agent_interface:
       exposure: mcp
       workspace_argument: root
@@ -1496,7 +1703,6 @@ tools:
           constraint: namespace
           value: .cambium/receipts
           runtime_path_id: receipt-root
-          component_path_id: null
           suffixes:
             - .jsonl
           active_when_any: []
@@ -1504,7 +1710,10 @@ tools:
       external_write: none
   - tool: check_boundary_contract
     module: Tools/check_boundary_contract.py
-    source_hash: sha256:797782de27be81b2ec62bf11554a3dd01d4cc380034cee50d2570de04e049e68
+    source_hash: sha256:033483a5b0cf6a9f305f9290b0e130eb56b7f4cbb59b9273bec98a57ee3e1401
+    implementation_module: Tools.knowledge.structure.check_boundary_contract
+    implementation_path: Tools/knowledge/structure/check_boundary_contract.py
+    implementation_source_hash: sha256:a152ad6b15d48334714379c4c5250b62c1c57c243a00634d276c3aae134b5c3c
     description: "Validate page boundary blocks against the K08/09 page boundary contract (gate: boundary-contract; advisory by default)."
     arguments:
       - dest: vault_root
@@ -1601,9 +1810,15 @@ tools:
       - profile_contract_fingerprint
       - profile_load_inputs_sha256
       - profile_snapshot_sha256
-      - root
       - selected_profile_manifest
+      - task_id
+      - upstream_revision_id
     receipt_extensions_extraction: complete
+    receipt_extension_sources:
+      - path: Tools/knowledge/structure/check_boundary_contract.py
+        sha256: sha256:a152ad6b15d48334714379c4c5250b62c1c57c243a00634d276c3aae134b5c3c
+      - path: Tools/platform/common/kblib.py
+        sha256: sha256:e3c4768907708d817747072c0b797c7bd0e4ce2c7b5005292bee6624c1febd70
     agent_interface:
       exposure: mcp
       workspace_argument: vault_root
@@ -1619,7 +1834,6 @@ tools:
           constraint: exact
           value: .cambium/derived/page_contract.yaml
           runtime_path_id: effective-page-contract
-          component_path_id: null
           suffixes: []
           active_when_any: []
           inactive_when_any: []
@@ -1629,7 +1843,6 @@ tools:
           constraint: contained
           value: null
           runtime_path_id: null
-          component_path_id: null
           suffixes: []
           active_when_any: []
           inactive_when_any: []
@@ -1639,7 +1852,6 @@ tools:
           constraint: namespace
           value: .cambium/receipts
           runtime_path_id: receipt-root
-          component_path_id: null
           suffixes:
             - .jsonl
           active_when_any: []
@@ -1650,14 +1862,16 @@ tools:
           constraint: contained
           value: null
           runtime_path_id: null
-          component_path_id: null
           suffixes: []
           active_when_any: []
           inactive_when_any: []
       external_write: none
   - tool: check_corpus_plan
     module: Tools/check_corpus_plan.py
-    source_hash: sha256:cda4453df2b3c10dcb5426ec1a5db62ffc93e9b3f4c9afe553592f40e29c00c8
+    source_hash: sha256:b9b4e26d2da393302c327ec70940c502de5c4e4d5b356d177347037f13ce7f8c
+    implementation_module: Tools.execution.planning.check_corpus_plan
+    implementation_path: Tools/execution/planning/check_corpus_plan.py
+    implementation_source_hash: sha256:30343195d3c9c1401fd2ec7bdd7ca9c59b1c60d13915fa4ee108cb21b56db67c
     description: Validate explicit Corpus Planning artifacts
     arguments:
       - dest: root
@@ -1706,10 +1920,15 @@ tools:
     mutually_exclusive_groups: []
     receipt_extensions:
       - gate_id
-      - repository_snapshot_sha256
-      - root
-      - seq
+      - selected_profile_manifest
+      - task_id
+      - upstream_revision_id
     receipt_extensions_extraction: partial
+    receipt_extension_sources:
+      - path: Tools/execution/planning/check_corpus_plan.py
+        sha256: sha256:30343195d3c9c1401fd2ec7bdd7ca9c59b1c60d13915fa4ee108cb21b56db67c
+      - path: Tools/platform/common/kblib.py
+        sha256: sha256:e3c4768907708d817747072c0b797c7bd0e4ce2c7b5005292bee6624c1febd70
     agent_interface:
       exposure: mcp
       workspace_argument: root
@@ -1723,7 +1942,6 @@ tools:
           constraint: contained
           value: null
           runtime_path_id: null
-          component_path_id: null
           suffixes: []
           active_when_any: []
           inactive_when_any: []
@@ -1733,7 +1951,6 @@ tools:
           constraint: namespace
           value: .cambium/receipts
           runtime_path_id: receipt-root
-          component_path_id: null
           suffixes:
             - .jsonl
           active_when_any: []
@@ -1741,7 +1958,10 @@ tools:
       external_write: none
   - tool: check_freshness
     module: Tools/check_freshness.py
-    source_hash: sha256:ac94b165ea93bd99e5444f9428316e400a2597b2d994c86e82413e6d3b40bf3b
+    source_hash: sha256:d9c6c2eab88b62bc822c821cbf38d64d6f14b9bed0961c6d12c67cfeb970da99
+    implementation_module: Tools.knowledge.metadata.check_freshness
+    implementation_path: Tools/knowledge/metadata/check_freshness.py
+    implementation_source_hash: sha256:01bf601fbba54ef916da17bc36068f24b710889483858c24a5aadd5d0d7c3548
     description: Closed-world freshness / review_by candidate check
     arguments:
       - dest: vault_root
@@ -1819,41 +2039,15 @@ tools:
         nargs: 0
         action: store_true
         type: null
-        help: write the receipts this run produced to stdout as one canonical JSON array and move the human-readable report to stderr; receipts written, verdicts, and exit codes are unchanged
+        help: write the receipts this run produced to stdout as one canonical JSON array and move the human-readable summary to stderr; receipts written and the exit code are unchanged
     mutually_exclusive_groups: []
-    receipt_extensions:
-      - as_of
-      - baseline
-      - baseline_field
-      - candidate_count
-      - candidate_id
-      - candidate_ids
-      - candidate_kind
-      - candidate_records
-      - candidate_set_basis
-      - candidate_set_sha256
-      - classification_counts
-      - defaults_fingerprint
-      - defaults_source
-      - defaults_source_kind
-      - discovered_count
-      - exclude_components
-      - files_count
-      - freshness_schema_version
-      - input_snapshot_sha256
-      - overdue_days
-      - page_candidate_count
-      - priority
-      - reason_codes
-      - reasons
-      - review_by
-      - scan_complete
-      - scan_finding_codes
-      - scan_id
-      - scope
-      - volatility
-      - volatility_source
+    receipt_extensions: []
     receipt_extensions_extraction: partial
+    receipt_extension_sources:
+      - path: Tools/knowledge/metadata/check_freshness.py
+        sha256: sha256:01bf601fbba54ef916da17bc36068f24b710889483858c24a5aadd5d0d7c3548
+      - path: Tools/platform/common/kblib.py
+        sha256: sha256:e3c4768907708d817747072c0b797c7bd0e4ce2c7b5005292bee6624c1febd70
     agent_interface:
       exposure: mcp
       workspace_argument: vault_root
@@ -1869,7 +2063,6 @@ tools:
           constraint: contained
           value: null
           runtime_path_id: null
-          component_path_id: null
           suffixes: []
           active_when_any: []
           inactive_when_any: []
@@ -1879,7 +2072,6 @@ tools:
           constraint: namespace
           value: .cambium/receipts
           runtime_path_id: receipt-root
-          component_path_id: null
           suffixes:
             - .jsonl
           active_when_any: []
@@ -1890,14 +2082,16 @@ tools:
           constraint: contained
           value: null
           runtime_path_id: null
-          component_path_id: null
           suffixes: []
           active_when_any: []
           inactive_when_any: []
       external_write: none
   - tool: check_kernel_size
     module: Tools/check_kernel_size.py
-    source_hash: sha256:b7ed3ae7152eccdb4acae072a8af011c8576da3210bc9229e904bb86aafd2498
+    source_hash: sha256:9a0b6e22390896786c9aa46ccaf473b627b76842243ef82e1f83d665c6c7cf77
+    implementation_module: Tools.platform.distribution.check_kernel_size
+    implementation_path: Tools/platform/distribution/check_kernel_size.py
+    implementation_source_hash: sha256:a9e6714ceb5215f268d8ea79ac620988405da52368bb02ed2c3a4eaa0203e99b
     description: Check the Tool-owned Kernel leaf-size policy
     arguments:
       - dest: root
@@ -1924,6 +2118,9 @@ tools:
     mutually_exclusive_groups: []
     receipt_extensions: []
     receipt_extensions_extraction: complete
+    receipt_extension_sources:
+      - path: Tools/platform/distribution/check_kernel_size.py
+        sha256: sha256:a9e6714ceb5215f268d8ea79ac620988405da52368bb02ed2c3a4eaa0203e99b
     agent_interface:
       exposure: cli-only
       workspace_argument: root
@@ -1934,7 +2131,10 @@ tools:
       external_write: none
   - tool: check_links
     module: Tools/check_links.py
-    source_hash: sha256:783f81ffe3b2de38b0adee6a2e081ac870edebb07660155a5e462f3bd8de9252
+    source_hash: sha256:f26487ca233963d954dab7f8f351a88dfd9abbc220e936c693c25b769eef711f
+    implementation_module: Tools.knowledge.content.check_links
+    implementation_path: Tools/knowledge/content/check_links.py
+    implementation_source_hash: sha256:fb914c1f6872fe1808e1a75ec954b485560ca9b09f5b16beb25af716c7e65cda
     description: Wiki link missing/ambiguous/heading check
     arguments:
       - dest: vault_root
@@ -1992,10 +2192,11 @@ tools:
         type: null
         help: write the receipts this run produced to stdout as one canonical JSON array and move the human-readable summary to stderr; receipts written and the exit code are unchanged
     mutually_exclusive_groups: []
-    receipt_extensions:
-      - gate_id
-      - root
-    receipt_extensions_extraction: complete
+    receipt_extensions: []
+    receipt_extensions_extraction: partial
+    receipt_extension_sources:
+      - path: Tools/knowledge/content/check_links.py
+        sha256: sha256:fb914c1f6872fe1808e1a75ec954b485560ca9b09f5b16beb25af716c7e65cda
     agent_interface:
       exposure: mcp
       workspace_argument: vault_root
@@ -2010,7 +2211,6 @@ tools:
           constraint: namespace
           value: .cambium/receipts
           runtime_path_id: receipt-root
-          component_path_id: null
           suffixes:
             - .jsonl
           active_when_any: []
@@ -2021,14 +2221,16 @@ tools:
           constraint: contained
           value: null
           runtime_path_id: null
-          component_path_id: null
           suffixes: []
           active_when_any: []
           inactive_when_any: []
       external_write: none
   - tool: check_moc
     module: Tools/check_moc.py
-    source_hash: sha256:bf3e830bda2bd641885848954a7df6267d0b9013f63bfaedfb4d51fbeb8772ec
+    source_hash: sha256:8518aee6c5c32dabd261f1b2c858c7e900328d791a85d6e4701ed80c97808996
+    implementation_module: Tools.knowledge.structure.check_moc
+    implementation_path: Tools/knowledge/structure/check_moc.py
+    implementation_source_hash: sha256:d94c087f06f952d8ea09aa0be2c237054966b98669ba34bdbe1dfe234ff6ea79
     description: MOC Module Index consistency candidate detection
     arguments:
       - dest: root
@@ -2073,10 +2275,15 @@ tools:
         nargs: 0
         action: store_true
         type: null
-        help: write the receipts this run produced to stdout as one canonical JSON array and move the human-readable report to stderr; receipts written, verdicts, and exit codes are unchanged
+        help: write the receipts this run produced to stdout as one canonical JSON array and move the human-readable summary to stderr; receipts written and the exit code are unchanged
     mutually_exclusive_groups: []
     receipt_extensions: []
-    receipt_extensions_extraction: partial
+    receipt_extensions_extraction: complete
+    receipt_extension_sources:
+      - path: Tools/knowledge/structure/check_moc.py
+        sha256: sha256:d94c087f06f952d8ea09aa0be2c237054966b98669ba34bdbe1dfe234ff6ea79
+      - path: Tools/platform/common/kblib.py
+        sha256: sha256:e3c4768907708d817747072c0b797c7bd0e4ce2c7b5005292bee6624c1febd70
     agent_interface:
       exposure: mcp
       workspace_argument: root
@@ -2091,7 +2298,6 @@ tools:
           constraint: namespace
           value: .cambium/receipts
           runtime_path_id: receipt-root
-          component_path_id: null
           suffixes:
             - .jsonl
           active_when_any: []
@@ -2099,7 +2305,10 @@ tools:
       external_write: none
   - tool: check_page_contract
     module: Tools/check_page_contract.py
-    source_hash: sha256:3f5bcb776ed907b93182ca48da6c36ef82070077039ff1722dba0f25f47b7abe
+    source_hash: sha256:69b2536b9cb009290b100e54b030e6d10867ea7f9e4d8ddf23e5615e34a888f6
+    implementation_module: Tools.knowledge.metadata.check_page_contract
+    implementation_path: Tools/knowledge/metadata/check_page_contract.py
+    implementation_source_hash: sha256:bc5dfe1e0d2c38159c3479a16ab9e03d026802338740eab194bf0cee36ee889e
     description: "Validate pages against the compiled frontmatter page contract (gate: page-contract; advisory by default)."
     arguments:
       - dest: vault_root
@@ -2196,9 +2405,15 @@ tools:
       - profile_contract_fingerprint
       - profile_load_inputs_sha256
       - profile_snapshot_sha256
-      - root
       - selected_profile_manifest
+      - task_id
+      - upstream_revision_id
     receipt_extensions_extraction: complete
+    receipt_extension_sources:
+      - path: Tools/knowledge/metadata/check_page_contract.py
+        sha256: sha256:bc5dfe1e0d2c38159c3479a16ab9e03d026802338740eab194bf0cee36ee889e
+      - path: Tools/platform/common/kblib.py
+        sha256: sha256:e3c4768907708d817747072c0b797c7bd0e4ce2c7b5005292bee6624c1febd70
     agent_interface:
       exposure: mcp
       workspace_argument: vault_root
@@ -2214,7 +2429,6 @@ tools:
           constraint: exact
           value: .cambium/derived/page_contract.yaml
           runtime_path_id: effective-page-contract
-          component_path_id: null
           suffixes: []
           active_when_any: []
           inactive_when_any: []
@@ -2224,7 +2438,6 @@ tools:
           constraint: contained
           value: null
           runtime_path_id: null
-          component_path_id: null
           suffixes: []
           active_when_any: []
           inactive_when_any: []
@@ -2234,7 +2447,6 @@ tools:
           constraint: namespace
           value: .cambium/receipts
           runtime_path_id: receipt-root
-          component_path_id: null
           suffixes:
             - .jsonl
           active_when_any: []
@@ -2245,14 +2457,16 @@ tools:
           constraint: contained
           value: null
           runtime_path_id: null
-          component_path_id: null
           suffixes: []
           active_when_any: []
           inactive_when_any: []
       external_write: none
   - tool: check_profile
     module: Tools/check_profile.py
-    source_hash: sha256:6e5479b8856b1bef0131114dc39934fc858b5ad060dd56f77fab95797e369beb
+    source_hash: sha256:f96d687d93a05e35e7d20cda94db8ebc2e2447fd6e2c840dd88b6a028ac6c66f
+    implementation_module: Tools.governance.profile.check_profile
+    implementation_path: Tools/governance/profile/check_profile.py
+    implementation_source_hash: sha256:e1ad274e44816c13be6755ed07726e3f5df304928121d670e761f85e1312fc6c
     description: Profile manifest completeness and unfilled-template check
     arguments:
       - dest: profile_dir
@@ -2332,11 +2546,11 @@ tools:
         type: null
         help: write one deterministic JSON object (tool, root, result, findings each carrying a closed mechanical/semantic-unresolved category) to stdout instead of the human summary; receipts and exit codes are unchanged
     mutually_exclusive_groups: []
-    receipt_extensions:
-      - dimension
-      - gate_id
-      - identity
+    receipt_extensions: []
     receipt_extensions_extraction: complete
+    receipt_extension_sources:
+      - path: Tools/governance/profile/check_profile.py
+        sha256: sha256:e1ad274e44816c13be6755ed07726e3f5df304928121d670e761f85e1312fc6c
     agent_interface:
       exposure: mcp
       workspace_argument: root
@@ -2350,7 +2564,6 @@ tools:
           constraint: exact
           value: Tools/schemas/execution_defaults.template.yaml
           runtime_path_id: null
-          component_path_id: null
           suffixes: []
           active_when_any: []
           inactive_when_any: []
@@ -2360,7 +2573,6 @@ tools:
           constraint: exact
           value: kernel/K00 Standards Control/execution-defaults-base.yaml
           runtime_path_id: null
-          component_path_id: null
           suffixes: []
           active_when_any: []
           inactive_when_any: []
@@ -2370,7 +2582,6 @@ tools:
           constraint: exact
           value: kernel/K00 Standards Control/profile-interface.yaml
           runtime_path_id: null
-          component_path_id: null
           suffixes: []
           active_when_any: []
           inactive_when_any: []
@@ -2380,7 +2591,6 @@ tools:
           constraint: contained
           value: null
           runtime_path_id: null
-          component_path_id: null
           suffixes: []
           active_when_any: []
           inactive_when_any: []
@@ -2390,7 +2600,6 @@ tools:
           constraint: namespace
           value: .cambium/receipts
           runtime_path_id: receipt-root
-          component_path_id: null
           suffixes:
             - .jsonl
           active_when_any: []
@@ -2398,7 +2607,10 @@ tools:
       external_write: none
   - tool: check_proof
     module: Tools/check_proof.py
-    source_hash: sha256:d8401e6317040a4b066cc8e7eb9cbacb4efad356e251a127a6587a92fbae7374
+    source_hash: sha256:2955a05d3c37a62d239025e7ae0cd06e100d55760c6dcea1a9e2b4b90cd26567
+    implementation_module: Tools.execution.audit.check_proof
+    implementation_path: Tools/execution/audit/check_proof.py
+    implementation_source_hash: sha256:0cccdec5f62dd9f1b12d205e85af08dcc46ca98258b34dc5ab522c2ee512d1fa
     description: Terminal Proof completeness and zero-condition check
     arguments:
       - dest: proof
@@ -2433,17 +2645,6 @@ tools:
         action: store
         type: null
         help: Progress Ledger YAML; required with --root and must be exactly .cambium/state/progress_ledger.yaml
-      - dest: template
-        option_strings:
-          - --template
-        required: false
-        default: Tools/schemas/terminal_proof.template.yaml
-        default_type: str
-        choices: null
-        nargs: null
-        action: store
-        type: null
-        help: field-list template (default Tools/schemas/terminal_proof.template.yaml)
       - dest: root
         option_strings:
           - --root
@@ -2479,6 +2680,7 @@ tools:
         help: write the receipts this run produced to stdout as one canonical JSON array and move the human-readable summary to stderr; receipts written and the exit code are unchanged
     mutually_exclusive_groups: []
     receipt_extensions:
+      - diagnostic_id
       - gate_id
       - profile_contract_fingerprint
       - profile_load_inputs_sha256
@@ -2487,6 +2689,11 @@ tools:
       - terminal_proof_path
       - terminal_proof_sha256
     receipt_extensions_extraction: partial
+    receipt_extension_sources:
+      - path: Tools/execution/audit/check_proof.py
+        sha256: sha256:0cccdec5f62dd9f1b12d205e85af08dcc46ca98258b34dc5ab522c2ee512d1fa
+      - path: Tools/platform/common/kblib.py
+        sha256: sha256:e3c4768907708d817747072c0b797c7bd0e4ce2c7b5005292bee6624c1febd70
     agent_interface:
       exposure: mcp
       workspace_argument: root
@@ -2500,7 +2707,6 @@ tools:
           constraint: exact
           value: .cambium/state/coverage_ledger.yaml
           runtime_path_id: coverage-ledger
-          component_path_id: null
           suffixes: []
           active_when_any: []
           inactive_when_any: []
@@ -2510,7 +2716,6 @@ tools:
           constraint: exact
           value: .cambium/state/progress_ledger.yaml
           runtime_path_id: progress-ledger
-          component_path_id: null
           suffixes: []
           active_when_any: []
           inactive_when_any: []
@@ -2520,7 +2725,6 @@ tools:
           constraint: contained
           value: null
           runtime_path_id: null
-          component_path_id: null
           suffixes: []
           active_when_any: []
           inactive_when_any: []
@@ -2530,25 +2734,17 @@ tools:
           constraint: namespace
           value: .cambium/receipts
           runtime_path_id: receipt-root
-          component_path_id: null
           suffixes:
             - .jsonl
-          active_when_any: []
-          inactive_when_any: []
-        - argument: template
-          access: read
-          consumption: snapshot
-          constraint: exact
-          value: Tools/schemas/terminal_proof.template.yaml
-          runtime_path_id: null
-          component_path_id: null
-          suffixes: []
           active_when_any: []
           inactive_when_any: []
       external_write: none
   - tool: check_queue
     module: Tools/check_queue.py
-    source_hash: sha256:b9b82c162f97ffaa1a60d2a2ffe79ca765eb4bf4d78c9546a67741c487feafb6
+    source_hash: sha256:c396539817741aec0da658f599cd1cfcd9903bd2ea1421dc00b1855683bd9262
+    implementation_module: Tools.execution.task_runtime.check_queue
+    implementation_path: Tools/execution/task_runtime/check_queue.py
+    implementation_source_hash: sha256:bc36bc163a06482419857f9d8a12ea64aae044a1bb2435599929085e3a87982b
     description: Validate canonical Required Queue state
     arguments:
       - dest: root
@@ -2627,28 +2823,6 @@ tools:
         action: store
         type: null
         help: deliver one registered conditional Card read-back source for an already-open batch
-      - dest: deliver_activation_piece
-        option_strings:
-          - --deliver-activation-piece
-        required: false
-        default: null
-        default_type: NoneType
-        choices: null
-        nargs: null
-        action: store
-        type: null
-        help: deliver one frozen activation piece of BATCH_ID inside the protocol delivery budget
-      - dest: ack_activation_piece
-        option_strings:
-          - --ack-activation-piece
-        required: false
-        default: null
-        default_type: NoneType
-        choices: null
-        nargs: null
-        action: store
-        type: null
-        help: return one delivered piece nonce as same-context delivery evidence
       - dest: deliver_phase
         option_strings:
           - --deliver-phase
@@ -2726,39 +2900,6 @@ tools:
         action: store
         type: null
         help: delivery receipt the acknowledged phase nonce came from, supplied to --ack-activation-phase
-      - dest: piece
-        option_strings:
-          - --piece
-        required: false
-        default: null
-        default_type: NoneType
-        choices: null
-        nargs: null
-        action: store
-        type: null
-        help: frozen activation piece selected with --deliver-activation-piece or --ack-activation-piece
-      - dest: piece_nonce
-        option_strings:
-          - --piece-nonce
-        required: false
-        default: null
-        default_type: NoneType
-        choices: null
-        nargs: null
-        action: store
-        type: null
-        help: nonce returned from the delivered piece, supplied to --ack-activation-piece
-      - dest: piece_delivery_receipt
-        option_strings:
-          - --piece-delivery-receipt
-        required: false
-        default: null
-        default_type: NoneType
-        choices: null
-        nargs: null
-        action: store
-        type: null
-        help: delivery receipt the acknowledged nonce came from, supplied to --ack-activation-piece
       - dest: confirmation_receipt
         option_strings:
           - --confirmation-receipt
@@ -2845,13 +2986,10 @@ tools:
           - require_maintenance_complete
           - resume_status
           - deliver_readback
-          - deliver_activation_piece
-          - ack_activation_piece
           - deliver_phase
           - ack_activation_phase
     receipt_extensions:
       - _writer_locks
-      - activation_context
       - active_card_context_deliveries
       - applied_delta_receipts
       - batch_close_recovery
@@ -2865,46 +3003,42 @@ tools:
       - hub_page_candidates
       - last_reconciled_guidance_id
       - maintenance_candidate_state
-      - maintenance_context
       - managed_deltas
       - next_action
       - objective
       - pending_amendments
       - pending_delta_applies
       - pending_guidance
-      - phase_ack_context
-      - phase_context
-      - piece_ack_context
-      - piece_context
       - progress_ledger_sha256
       - queue_check_mode
       - queue_revision
       - queue_state_revision
-      - readback_context
       - remaining_required_work_units
       - repository_snapshot_sha256
       - required_queue_sha256
-      - resume_activation_contexts
-      - runtime_errors
       - selected_profile_manifest
       - standards_revalidation_barriers
-      - standards_revalidation_context
       - standards_revalidation_outstanding
-      - standards_version
       - task_id
       - task_state
+      - upstream_revision_id
     receipt_extensions_extraction: partial
+    receipt_extension_sources:
+      - path: Tools/execution/task_runtime/check_queue.py
+        sha256: sha256:bc36bc163a06482419857f9d8a12ea64aae044a1bb2435599929085e3a87982b
+      - path: Tools/execution/task_runtime/queue_check_receipt.py
+        sha256: sha256:0cbe8593fa3e1fbaf38b76a34f4f84f283a7ed5c70db0052d4db838a3f8f002f
+      - path: Tools/platform/common/kblib.py
+        sha256: sha256:e3c4768907708d817747072c0b797c7bd0e4ce2c7b5005292bee6624c1febd70
     agent_interface:
       exposure: mcp
       workspace_argument: root
       workspace_access: write
       value_arguments:
         - ack_activation_phase
-        - ack_activation_piece
         - boundary_gate_receipt
         - budget_manifest_receipt
         - confirmation_receipt
-        - deliver_activation_piece
         - deliver_phase
         - deliver_readback
         - json
@@ -2913,9 +3047,6 @@ tools:
         - phase_delivery_receipt
         - phase_nonce
         - phase_part
-        - piece
-        - piece_delivery_receipt
-        - piece_nonce
         - readback_rule
         - require_complete
         - require_maintenance_complete
@@ -2930,15 +3061,68 @@ tools:
           constraint: namespace
           value: .cambium/receipts
           runtime_path_id: receipt-root
-          component_path_id: null
           suffixes:
             - .jsonl
           active_when_any: []
           inactive_when_any: []
       external_write: none
+  - tool: check_repository_structure
+    module: Tools/check_repository_structure.py
+    source_hash: sha256:f87c90c04769a7f624e875bee94689816448e2ab6a5f37053f71faf50ac7d122
+    implementation_module: Tools.knowledge.structure.repository_structure
+    implementation_path: Tools/knowledge/structure/repository_structure.py
+    implementation_source_hash: sha256:d459af2362c850897afe439f8f5114fa368efee28f4747476e946dbc0d564572
+    description: Check deterministic repository structure
+    arguments:
+      - dest: root
+        option_strings: []
+        required: true
+        default: null
+        default_type: NoneType
+        choices: null
+        nargs: null
+        action: store
+        type: null
+        help: repository root
+      - dest: profile_manifest
+        option_strings:
+          - --profile-manifest
+        required: true
+        default: null
+        default_type: NoneType
+        choices: null
+        nargs: null
+        action: store
+        type: null
+        help: repository-relative selected Profile manifest path
+    mutually_exclusive_groups: []
+    receipt_extensions: []
+    receipt_extensions_extraction: complete
+    receipt_extension_sources:
+      - path: Tools/knowledge/structure/repository_structure.py
+        sha256: sha256:d459af2362c850897afe439f8f5114fa368efee28f4747476e946dbc0d564572
+    agent_interface:
+      exposure: cli-only
+      workspace_argument: root
+      workspace_access: read
+      value_arguments: []
+      path_arguments:
+        - argument: profile_manifest
+          access: read
+          consumption: snapshot
+          constraint: contained
+          value: null
+          runtime_path_id: null
+          suffixes: []
+          active_when_any: []
+          inactive_when_any: []
+      external_write: none
   - tool: check_residual_content
     module: Tools/check_residual_content.py
-    source_hash: sha256:f3a8ef3121c8337b1835da63ca8af4bd2f27c4d91b7750e339ed26d032d73b08
+    source_hash: sha256:d25bd0d86c3dda8f2eedae9575f1ee8747737ad1bf191657a62dd8e2b905e66e
+    implementation_module: Tools.knowledge.content.check_residual_content
+    implementation_path: Tools/knowledge/content/check_residual_content.py
+    implementation_source_hash: sha256:583be9fa3a41094523c78a64346b89ac9fb18c308b4a16dfd49ef0542b79d319
     description: Find profile-configured residual content outside accepted roots.
     arguments:
       - dest: vault_root
@@ -3018,12 +3202,11 @@ tools:
         type: null
         help: write this run's receipt objects to stdout as one canonical JSON array and move the human summary to stderr; receipt writing and exit codes are unchanged
     mutually_exclusive_groups: []
-    receipt_extensions:
-      - config_fingerprint
-      - gate_id
-      - root
-      - scan_id
-    receipt_extensions_extraction: partial
+    receipt_extensions: []
+    receipt_extensions_extraction: complete
+    receipt_extension_sources:
+      - path: Tools/knowledge/content/check_residual_content.py
+        sha256: sha256:583be9fa3a41094523c78a64346b89ac9fb18c308b4a16dfd49ef0542b79d319
     agent_interface:
       exposure: mcp
       workspace_argument: vault_root
@@ -3040,7 +3223,6 @@ tools:
           constraint: contained
           value: null
           runtime_path_id: null
-          component_path_id: null
           suffixes: []
           active_when_any: []
           inactive_when_any: []
@@ -3050,7 +3232,6 @@ tools:
           constraint: namespace
           value: .cambium/receipts
           runtime_path_id: receipt-root
-          component_path_id: null
           suffixes:
             - .jsonl
           active_when_any: []
@@ -3058,7 +3239,10 @@ tools:
       external_write: none
   - tool: check_structure
     module: Tools/check_structure.py
-    source_hash: sha256:73fafced20ba3dd0604c81ad7324a5457d67addc1c82b6f6b3d69d5996800399
+    source_hash: sha256:f5ba34d97395de51884f3c5c3bd2890872ea75e0a63f109f5a30ac0c3fd79994
+    implementation_module: Tools.knowledge.structure.check_structure
+    implementation_path: Tools/knowledge/structure/check_structure.py
+    implementation_source_hash: sha256:2f32a940570d737bef6afe26d19cbf9b6c861e2450e784adffd6ebd8fc3e1a51
     description: "Validate the selected profile's Structure Registry against the vault (gate: structure-registry)."
     arguments:
       - dest: vault_root
@@ -3110,8 +3294,15 @@ tools:
       - gate_id
       - global_map_path
       - global_map_sha256
-      - root
+      - selected_profile_manifest
+      - task_id
+      - upstream_revision_id
     receipt_extensions_extraction: partial
+    receipt_extension_sources:
+      - path: Tools/knowledge/structure/check_structure.py
+        sha256: sha256:2f32a940570d737bef6afe26d19cbf9b6c861e2450e784adffd6ebd8fc3e1a51
+      - path: Tools/platform/common/kblib.py
+        sha256: sha256:e3c4768907708d817747072c0b797c7bd0e4ce2c7b5005292bee6624c1febd70
     agent_interface:
       exposure: mcp
       workspace_argument: vault_root
@@ -3125,7 +3316,6 @@ tools:
           constraint: contained
           value: null
           runtime_path_id: null
-          component_path_id: null
           suffixes: []
           active_when_any: []
           inactive_when_any: []
@@ -3135,7 +3325,6 @@ tools:
           constraint: namespace
           value: .cambium/receipts
           runtime_path_id: receipt-root
-          component_path_id: null
           suffixes:
             - .jsonl
           active_when_any: []
@@ -3143,7 +3332,10 @@ tools:
       external_write: none
   - tool: check_upstream_components
     module: Tools/check_upstream_components.py
-    source_hash: sha256:524bbacd7a388256f5d540495948f881528780fb3dc1e9b0ff803df221ac09ba
+    source_hash: sha256:a147ff5e7f5ed2845a62f79149fd8d43e748b30a5fa2672fde974b00fccdce8d
+    implementation_module: Tools.platform.distribution.check_upstream_components
+    implementation_path: Tools/platform/distribution/check_upstream_components.py
+    implementation_source_hash: sha256:ed404a92034725a752ca824333272fa6a75dae89d65029353534381cc903dcde
     description: Compare adopter Cambium component bytes with one exact upstream Git revision
     arguments:
       - dest: root
@@ -3218,6 +3410,9 @@ tools:
           - check_manifest
     receipt_extensions: []
     receipt_extensions_extraction: complete
+    receipt_extension_sources:
+      - path: Tools/platform/distribution/check_upstream_components.py
+        sha256: sha256:ed404a92034725a752ca824333272fa6a75dae89d65029353534381cc903dcde
     agent_interface:
       exposure: cli-only
       workspace_argument: root
@@ -3232,7 +3427,10 @@ tools:
       external_write: none
   - tool: check_vocab
     module: Tools/check_vocab.py
-    source_hash: sha256:44a92247a944ac808b67cc6f2fe7d00c07f121852064a6db67b271c56fcdcffd
+    source_hash: sha256:e3394f88fa9bb21c3dc83a2f93e0b1fd135edd8d7098aa422b6dbc8891e35777
+    implementation_module: Tools.knowledge.metadata.check_vocab
+    implementation_path: Tools/knowledge/metadata/check_vocab.py
+    implementation_source_hash: sha256:4de6b08830d83a161f92d8bb56130db5f28792575a000c298994e042312254e9
     description: Frontmatter controlled-vocabulary check
     arguments:
       - dest: vault_root
@@ -3340,8 +3538,10 @@ tools:
       - priority_share
       - priority_shares
       - quota_exceeded
-      - root
     receipt_extensions_extraction: partial
+    receipt_extension_sources:
+      - path: Tools/knowledge/metadata/check_vocab.py
+        sha256: sha256:4de6b08830d83a161f92d8bb56130db5f28792575a000c298994e042312254e9
     agent_interface:
       exposure: mcp
       workspace_argument: vault_root
@@ -3359,7 +3559,6 @@ tools:
           constraint: namespace
           value: .cambium/receipts
           runtime_path_id: receipt-root
-          component_path_id: null
           suffixes:
             - .jsonl
           active_when_any: []
@@ -3370,7 +3569,6 @@ tools:
           constraint: contained
           value: null
           runtime_path_id: null
-          component_path_id: null
           suffixes: []
           active_when_any: []
           inactive_when_any: []
@@ -3380,14 +3578,16 @@ tools:
           constraint: exact
           value: .cambium/derived/vocab.yaml
           runtime_path_id: effective-vocabulary
-          component_path_id: null
           suffixes: []
           active_when_any: []
           inactive_when_any: []
       external_write: none
   - tool: compile_cli_contract
     module: Tools/compile_cli_contract.py
-    source_hash: sha256:4ca93fd442192e72b010a135078d594249029d1809b6da9055507f6988812006
+    source_hash: sha256:ca58aeb7dde871401210c081c022be48ef80d2c4e1eb74fdb4e7dd04baa75973
+    implementation_module: Tools.platform.agent_interface.compile_cli_contract
+    implementation_path: Tools/platform/agent_interface/compile_cli_contract.py
+    implementation_source_hash: sha256:c63392a63075ad431c83365f8f6d227c905993ad3c4edff1175a443a076acf68
     description: Compile the machine-readable CLI invocation contract from every Tools/*.py argparse declaration.
     arguments:
       - dest: root
@@ -3436,8 +3636,16 @@ tools:
         type: null
         help: "which projection this repository is compiling: the distribution that owns every tool, or a runtime carrying only what the distribution boundary lets it carry. Required to write; with --check it defaults to the target the stored artifact records. Declared either way, never inferred from which files happen to be present"
     mutually_exclusive_groups: []
-    receipt_extensions: []
+    receipt_extensions:
+      - selected_profile_manifest
+      - task_id
+      - upstream_revision_id
     receipt_extensions_extraction: complete
+    receipt_extension_sources:
+      - path: Tools/platform/agent_interface/compile_cli_contract.py
+        sha256: sha256:c63392a63075ad431c83365f8f6d227c905993ad3c4edff1175a443a076acf68
+      - path: Tools/platform/common/kblib.py
+        sha256: sha256:e3c4768907708d817747072c0b797c7bd0e4ce2c7b5005292bee6624c1febd70
     agent_interface:
       exposure: cli-only
       workspace_argument: root
@@ -3452,14 +3660,16 @@ tools:
           constraint: contained
           value: null
           runtime_path_id: null
-          component_path_id: null
           suffixes: []
           active_when_any: []
           inactive_when_any: []
       external_write: none
   - tool: compile_queue
     module: Tools/compile_queue.py
-    source_hash: sha256:cf4b1753e8a8b9d580185d1f6ab2e9b0a739517e37c097caf14c2ed13a9f5059
+    source_hash: sha256:e014f09f7377489a95d3791eadbcaeb236a5f7be0027aad9a08bb8455ad1fd46
+    implementation_module: Tools.execution.planning.compile_queue
+    implementation_path: Tools/execution/planning/compile_queue.py
+    implementation_source_hash: sha256:6468db4ac13abf581ac6a4badd461b199e43b31924a82fffc7304c8fce0e3b16
     description: Compile Required Queue from explicit Coverage assignments
     arguments:
       - dest: root
@@ -3651,15 +3861,18 @@ tools:
       - contract_version
       - coverage_proposal_path
       - coverage_proposal_sha256
-      - failure
       - queue_state_revision
       - registration_receipt
       - replan_diff_sha256
-      - rollback_failures
       - task_id
       - transaction_id
       - transaction_phase
     receipt_extensions_extraction: partial
+    receipt_extension_sources:
+      - path: Tools/execution/planning/compile_queue.py
+        sha256: sha256:6468db4ac13abf581ac6a4badd461b199e43b31924a82fffc7304c8fce0e3b16
+      - path: Tools/platform/common/kblib.py
+        sha256: sha256:e3c4768907708d817747072c0b797c7bd0e4ce2c7b5005292bee6624c1febd70
     agent_interface:
       exposure: mcp
       workspace_argument: root
@@ -3682,7 +3895,6 @@ tools:
           constraint: contained
           value: null
           runtime_path_id: null
-          component_path_id: null
           suffixes: []
           active_when_any: []
           inactive_when_any: []
@@ -3692,7 +3904,6 @@ tools:
           constraint: namespace
           value: .cambium
           runtime_path_id: runtime-root
-          component_path_id: null
           suffixes:
             - .yaml
           active_when_any: []
@@ -3703,7 +3914,6 @@ tools:
           constraint: namespace
           value: .cambium/receipts
           runtime_path_id: receipt-root
-          component_path_id: null
           suffixes:
             - .jsonl
           active_when_any:
@@ -3716,7 +3926,6 @@ tools:
           constraint: contained
           value: null
           runtime_path_id: null
-          component_path_id: null
           suffixes: []
           active_when_any:
             - apply_replan
@@ -3724,7 +3933,10 @@ tools:
       external_write: none
   - tool: complete_audit_receipt
     module: Tools/complete_audit_receipt.py
-    source_hash: sha256:c475bbfdfb78ebef0131ff58dd64dbf42b910c799d5a91092fc91a5c7ab553ac
+    source_hash: sha256:c6689b1638e5592ea2756bef0107062c8cdd60735659820621683482aa362bbc
+    implementation_module: Tools.execution.audit.complete_audit_receipt
+    implementation_path: Tools/execution/audit/complete_audit_receipt.py
+    implementation_source_hash: sha256:95d16e76f5b68f3e2e9bf95a241f7b67adede84acef1a4beab32dea4fc46f39a
     description: Complete one plan obligation into a full AuditReceipt
     arguments:
       - dest: root
@@ -3806,6 +4018,11 @@ tools:
     mutually_exclusive_groups: []
     receipt_extensions: []
     receipt_extensions_extraction: complete
+    receipt_extension_sources:
+      - path: Tools/execution/audit/complete_audit_receipt.py
+        sha256: sha256:95d16e76f5b68f3e2e9bf95a241f7b67adede84acef1a4beab32dea4fc46f39a
+      - path: Tools/platform/common/kblib.py
+        sha256: sha256:e3c4768907708d817747072c0b797c7bd0e4ce2c7b5005292bee6624c1febd70
     agent_interface:
       exposure: mcp
       workspace_argument: root
@@ -3822,7 +4039,6 @@ tools:
           constraint: namespace
           value: .cambium/work_specs/audit-plans
           runtime_path_id: audit-plan-root
-          component_path_id: null
           suffixes:
             - .yaml
           active_when_any: []
@@ -3833,7 +4049,6 @@ tools:
           constraint: exact
           value: .cambium/receipts/audit-receipts.jsonl
           runtime_path_id: audit-receipt-register
-          component_path_id: null
           suffixes: []
           active_when_any:
             - apply
@@ -3841,7 +4056,10 @@ tools:
       external_write: none
   - tool: compose_page_contract
     module: Tools/compose_page_contract.py
-    source_hash: sha256:b10a94cb6a60bd77c15a822323359f0c840e1aa4ea7fe8b8fd7190baa8e6abd3
+    source_hash: sha256:7972ccd2c1d84e1029576452599f05dfac1b7b74bca9080b1ff397d2de0ab597
+    implementation_module: Tools.knowledge.metadata.compose_page_contract
+    implementation_path: Tools/knowledge/metadata/compose_page_contract.py
+    implementation_source_hash: sha256:581ecb70dc5f842da24e61d52465a7d7395382e81af0a2f464fbd0d54eb36642
     description: Compose the effective frontmatter page contract from the kernel bases and the selected profile's Metadata Contract.
     arguments:
       - dest: root
@@ -3924,6 +4142,9 @@ tools:
     mutually_exclusive_groups: []
     receipt_extensions: []
     receipt_extensions_extraction: complete
+    receipt_extension_sources:
+      - path: Tools/knowledge/metadata/compose_page_contract.py
+        sha256: sha256:581ecb70dc5f842da24e61d52465a7d7395382e81af0a2f464fbd0d54eb36642
     agent_interface:
       exposure: cli-only
       workspace_argument: root
@@ -3937,7 +4158,6 @@ tools:
           constraint: contained
           value: null
           runtime_path_id: null
-          component_path_id: null
           suffixes: []
           active_when_any: []
           inactive_when_any: []
@@ -3947,7 +4167,6 @@ tools:
           constraint: contained
           value: null
           runtime_path_id: null
-          component_path_id: null
           suffixes: []
           active_when_any: []
           inactive_when_any: []
@@ -3957,7 +4176,6 @@ tools:
           constraint: contained
           value: null
           runtime_path_id: null
-          component_path_id: null
           suffixes: []
           active_when_any: []
           inactive_when_any: []
@@ -3967,7 +4185,6 @@ tools:
           constraint: contained
           value: null
           runtime_path_id: null
-          component_path_id: null
           suffixes: []
           active_when_any: []
           inactive_when_any: []
@@ -3977,14 +4194,16 @@ tools:
           constraint: contained
           value: null
           runtime_path_id: null
-          component_path_id: null
           suffixes: []
           active_when_any: []
           inactive_when_any: []
       external_write: none
   - tool: compose_vocab
     module: Tools/compose_vocab.py
-    source_hash: sha256:1a2a779dc1eda13743ad9aad94df03dc967042a933bbb168c4ced5566080f51e
+    source_hash: sha256:1bcabafa9fc4ceec824541e4921d15c1e597bb909325c2bd7d1220efe3c9afbb
+    implementation_module: Tools.knowledge.metadata.compose_vocab
+    implementation_path: Tools/knowledge/metadata/compose_vocab.py
+    implementation_source_hash: sha256:b4b65a70c9a74611d843949e48e40f6af86da9e9949110c80c618f17ebed7c20
     description: Deterministically compose the vocabulary artifact from the kernel base and the selected profile's extensions.
     arguments:
       - dest: base
@@ -4034,6 +4253,9 @@ tools:
     mutually_exclusive_groups: []
     receipt_extensions: []
     receipt_extensions_extraction: complete
+    receipt_extension_sources:
+      - path: Tools/knowledge/metadata/compose_vocab.py
+        sha256: sha256:b4b65a70c9a74611d843949e48e40f6af86da9e9949110c80c618f17ebed7c20
     agent_interface:
       exposure: cli-only
       workspace_argument: null
@@ -4047,7 +4269,6 @@ tools:
           constraint: contained
           value: null
           runtime_path_id: null
-          component_path_id: null
           suffixes: []
           active_when_any: []
           inactive_when_any: []
@@ -4057,7 +4278,6 @@ tools:
           constraint: contained
           value: null
           runtime_path_id: null
-          component_path_id: null
           suffixes: []
           active_when_any: []
           inactive_when_any: []
@@ -4067,26 +4287,28 @@ tools:
           constraint: contained
           value: null
           runtime_path_id: null
-          component_path_id: null
           suffixes: []
           active_when_any: []
           inactive_when_any: []
       external_write: none
   - tool: duplicate_check
     module: Tools/duplicate_check.py
-    source_hash: sha256:1a955241c2560d3fb4c6c73637123b8f53994ba5046c996bffe887ecd8e3af81
+    source_hash: sha256:4a4cfa18fdde5ef4edbc09be650fb9861153877e714ffff73767b88bfc8784ed
+    implementation_module: Tools.knowledge.content.duplicate_check
+    implementation_path: Tools/knowledge/content/duplicate_check.py
+    implementation_source_hash: sha256:082a1dd31fed42e756d59ce0a290d6ea71811c1858aa3003383485b2ec1f48cf
     description: Cross-file duplicate paragraph candidate detection (for maintenance runs and governance tasks)
     arguments:
       - dest: vault
         option_strings: []
-        required: false
-        default: .
-        default_type: str
+        required: true
+        default: null
+        default_type: NoneType
         choices: null
-        nargs: "?"
+        nargs: null
         action: store
         type: null
-        help: "vault root directory (default: current directory)"
+        help: repository root directory
       - dest: scope
         option_strings:
           - --scope
@@ -4102,13 +4324,13 @@ tools:
         option_strings:
           - --exclude
         required: false
-        default: null
-        default_type: NoneType
+        default: []
+        default_type: list
         choices: null
         nargs: null
         action: append
         type: null
-        help: "skip files whose path contains this component (repeatable; default: legacy)"
+        help: skip files whose path contains this component (repeatable; no component is excluded by default)
       - dest: receipts
         option_strings:
           - --receipts
@@ -4130,10 +4352,15 @@ tools:
         nargs: 0
         action: store_true
         type: null
-        help: write the receipts this run produced to stdout as one canonical JSON array and move the human-readable report to stderr; receipts written, verdicts, and exit codes are unchanged
+        help: write the receipts this run produced to stdout as one canonical JSON array and move the human-readable summary to stderr; receipts written and the exit code are unchanged
     mutually_exclusive_groups: []
     receipt_extensions: []
-    receipt_extensions_extraction: partial
+    receipt_extensions_extraction: complete
+    receipt_extension_sources:
+      - path: Tools/knowledge/content/duplicate_check.py
+        sha256: sha256:082a1dd31fed42e756d59ce0a290d6ea71811c1858aa3003383485b2ec1f48cf
+      - path: Tools/platform/common/kblib.py
+        sha256: sha256:e3c4768907708d817747072c0b797c7bd0e4ce2c7b5005292bee6624c1febd70
     agent_interface:
       exposure: mcp
       workspace_argument: vault
@@ -4148,7 +4375,6 @@ tools:
           constraint: namespace
           value: .cambium/receipts
           runtime_path_id: receipt-root
-          component_path_id: null
           suffixes:
             - .jsonl
           active_when_any: []
@@ -4159,15 +4385,103 @@ tools:
           constraint: contained
           value: null
           runtime_path_id: null
-          component_path_id: null
           suffixes: []
           active_when_any: []
           inactive_when_any: []
       external_write: none
+  - tool: generate_test_catalog
+    module: Tools/generate_test_catalog.py
+    source_hash: sha256:e36e927061f489c16087bd6e3870386cc594b0304aed98e034608b085e818aa6
+    implementation_module: Tools.platform.distribution.test_catalog
+    implementation_path: Tools/platform/distribution/test_catalog.py
+    implementation_source_hash: sha256:0b04f219c0b6adf82334c9cfd6ba0b971d2c873bd40ca03f638004cbc98d09ce
+    description: Generate the non-authoritative test ownership and execution catalog. ``Tools/test-ownership.yaml`` is the only reviewed source for test ownership, level, lifecycle, and execution disposition. This module joins that manifest with facts observed directly from the test sources. The generated Markdown and JSON files are navigation and runner inputs; neither may be edited as a second classification source.
+    arguments:
+      - dest: root
+        option_strings: []
+        required: false
+        default: .
+        default_type: str
+        choices: null
+        nargs: "?"
+        action: store
+        type: null
+        help: null
+      - dest: check
+        option_strings:
+          - --check
+        required: false
+        default: false
+        default_type: bool
+        choices: null
+        nargs: 0
+        action: store_true
+        type: null
+        help: null
+    mutually_exclusive_groups: []
+    receipt_extensions: []
+    receipt_extensions_extraction: complete
+    receipt_extension_sources:
+      - path: Tools/platform/distribution/test_catalog.py
+        sha256: sha256:0b04f219c0b6adf82334c9cfd6ba0b971d2c873bd40ca03f638004cbc98d09ce
+    agent_interface:
+      exposure: cli-only
+      workspace_argument: root
+      workspace_access: write
+      value_arguments:
+        - check
+      path_arguments: []
+      external_write: none
+  - tool: generate_tool_catalog
+    module: Tools/generate_tool_catalog.py
+    source_hash: sha256:294e46e3ede8233e13a569e8d7a11b3e72363a6122dd14674ee002962bebe999
+    implementation_module: Tools.platform.distribution.tool_catalog
+    implementation_path: Tools/platform/distribution/tool_catalog.py
+    implementation_source_hash: sha256:817b319bb3a0ebc56b7296cfe0fcc9798f102ddb965430303facc8fa5d7beeb4
+    description: generate the non-authoritative Tool hierarchy and interface catalog from machine contracts and static source facts
+    arguments:
+      - dest: root
+        option_strings: []
+        required: false
+        default: .
+        default_type: str
+        choices: null
+        nargs: "?"
+        action: store
+        type: null
+        help: "Cambium repository root (default: source repository root)"
+      - dest: check
+        option_strings:
+          - --check
+        required: false
+        default: false
+        default_type: bool
+        choices: null
+        nargs: 0
+        action: store_true
+        type: null
+        help: compare both projections byte-for-byte without writing
+    mutually_exclusive_groups: []
+    receipt_extensions: []
+    receipt_extensions_extraction: complete
+    receipt_extension_sources:
+      - path: Tools/platform/distribution/tool_catalog.py
+        sha256: sha256:817b319bb3a0ebc56b7296cfe0fcc9798f102ddb965430303facc8fa5d7beeb4
+    agent_interface:
+      exposure: cli-only
+      workspace_argument: root
+      workspace_access: write
+      value_arguments:
+        - check
+      path_arguments: []
+      external_write: none
   - tool: init_state
     module: Tools/init_state.py
-    source_hash: sha256:cd6432a1b0206afaf86f20a4b24941f5755961e5dad824207d747770d72e9558
-    description: Initialize empty Cambium runtime state
+    source_hash: sha256:0b56030750956f4c93ea32b376b1a692ad516bc0de1d166072c345d61572ae08
+    implementation_module: Tools.execution.task_runtime.init_state
+    implementation_path: Tools/execution/task_runtime/init_state.py
+    implementation_source_hash: sha256:e4071749bd9af05ecd6376a47693fa8c756c4963606c616519983aa50bfc12f5
+    description: Publish one confirmed Task Plan as initial runtime state
     arguments:
       - dest: root
         option_strings: []
@@ -4179,9 +4493,9 @@ tools:
         action: store
         type: null
         help: adopting repository root
-      - dest: task_id
+      - dest: plan
         option_strings:
-          - --task-id
+          - --plan
         required: true
         default: null
         default_type: NoneType
@@ -4189,108 +4503,7 @@ tools:
         nargs: null
         action: store
         type: null
-        help: non-empty task identity stamped on the Queue, Coverage Ledger and Progress Ledger
-      - dest: objective
-        option_strings:
-          - --objective
-        required: true
-        default: null
-        default_type: NoneType
-        choices: null
-        nargs: null
-        action: store
-        type: null
-        help: non-empty statement of the task outcome
-      - dest: exclusions
-        option_strings:
-          - --exclude
-        required: false
-        default: []
-        default_type: list
-        choices: null
-        nargs: null
-        action: append
-        type: null
-        help: explicit out-of-scope item; repeatable
-      - dest: scope_version
-        option_strings:
-          - --scope-version
-        required: true
-        default: null
-        default_type: NoneType
-        choices: null
-        nargs: null
-        action: store
-        type: null
-        help: non-empty scope identity stamped on the Queue, Coverage Ledger and task contract
-      - dest: standards_version
-        option_strings:
-          - --standards-version
-        required: true
-        default: null
-        default_type: NoneType
-        choices: null
-        nargs: null
-        action: store
-        type: null
-        help: Standards version this runtime adopts; must equal the approved standards_version of the canonical adopter Standards state
-      - dest: profile_manifest
-        option_strings:
-          - --profile-manifest
-        required: true
-        default: null
-        default_type: NoneType
-        choices: null
-        nargs: null
-        action: store
-        type: null
-        help: repository-relative selected profile manifest; must equal the selected_profile_manifest of the canonical adopter Standards state
-      - dest: contract_version
-        option_strings:
-          - --contract-version
-        required: false
-        default: c1
-        default_type: str
-        choices: null
-        nargs: null
-        action: store
-        type: null
-        help: non-empty task-contract version recorded on the Progress Ledger contract
-      - dest: completion_semantics
-        option_strings:
-          - --completion-semantics
-        required: true
-        default: null
-        default_type: NoneType
-        choices:
-          - build
-          - maintenance
-        nargs: null
-        action: store
-        type: null
-        help: build requires completion-candidate plus Terminal Proof; maintenance closes directly through the bounded maintenance completion gate
-      - dest: concurrency_cap
-        option_strings:
-          - --concurrency-cap
-        required: false
-        default: null
-        default_type: NoneType
-        choices: null
-        nargs: null
-        action: store
-        type: int
-        help: explicit task-contract override of K13/10's concurrency cap; omit it to take the selected profile manifest's registered override, or the kernel default 3 when the manifest registers none
-      - dest: at
-        option_strings:
-          - --at
-        required: false
-        default: null
-        default_type: NoneType
-        choices: null
-        nargs: null
-        action: store
-        type: null
-        help: "initial Coverage timestamp (default: current UTC)"
+        help: confirmed Task Plan below .cambium/deltas/task-plans
       - dest: apply
         option_strings:
           - --apply
@@ -4301,40 +4514,49 @@ tools:
         nargs: 0
         action: store_true
         type: null
-        help: materialize .cambium/; omit for a dry run
+        help: publish the transaction; omit for a dry run
+      - dest: json
+        option_strings:
+          - --json
+        required: false
+        default: false
+        default_type: bool
+        choices: null
+        nargs: 0
+        action: store_true
+        type: null
+        help: write this run's receipt objects to stdout as one canonical JSON array and move the human-readable report to stderr; receipt writing, verdicts, and exit codes are unchanged
     mutually_exclusive_groups: []
     receipt_extensions: []
     receipt_extensions_extraction: complete
+    receipt_extension_sources:
+      - path: Tools/execution/task_runtime/init_state.py
+        sha256: sha256:e4071749bd9af05ecd6376a47693fa8c756c4963606c616519983aa50bfc12f5
     agent_interface:
       exposure: mcp
       workspace_argument: root
       workspace_access: write
       value_arguments:
         - apply
-        - at
-        - completion_semantics
-        - concurrency_cap
-        - contract_version
-        - exclusions
-        - objective
-        - scope_version
-        - standards_version
-        - task_id
+        - json
       path_arguments:
-        - argument: profile_manifest
+        - argument: plan
           access: read
           consumption: snapshot
-          constraint: contained
-          value: null
-          runtime_path_id: null
-          component_path_id: null
-          suffixes: []
+          constraint: namespace
+          value: .cambium/deltas/task-plans
+          runtime_path_id: task-plan-delta-root
+          suffixes:
+            - .yaml
           active_when_any: []
           inactive_when_any: []
       external_write: none
   - tool: metadata_execution_contract
     module: Tools/metadata_execution_contract.py
-    source_hash: sha256:942aa6417491d06e210e0d34269693c4e4f85cf81e67bf9d6b083c6fb6dda3a3
+    source_hash: sha256:6525eba20d8f532ec478500699f0763a140d1224bf75f44fc14e4057a0d917d3
+    implementation_module: Tools.governance.control.metadata_execution_contract
+    implementation_path: Tools/governance/control/metadata_execution_contract.py
+    implementation_source_hash: sha256:47fceabe6a662f037c2d876f176d4496f90100721c1bf0eaf8a27569a7794ecc
     description: Compile and load Cambium's closed metadata-execution authority contract. This module is deliberately the single authority boundary between metadata declarations and executable writers. A field rule is executable only when an installed writer capability declares the same ``(field, transition, adapter)`` operation, and every installed writer operation must be authorized by exactly one rule. Unknown keys, unknown adapters, orphan implementations, and partial evidence bindings fail closed.
     arguments:
       - dest: root
@@ -4395,6 +4617,9 @@ tools:
     mutually_exclusive_groups: []
     receipt_extensions: []
     receipt_extensions_extraction: complete
+    receipt_extension_sources:
+      - path: Tools/governance/control/metadata_execution_contract.py
+        sha256: sha256:47fceabe6a662f037c2d876f176d4496f90100721c1bf0eaf8a27569a7794ecc
     agent_interface:
       exposure: cli-only
       workspace_argument: root
@@ -4408,7 +4633,6 @@ tools:
           constraint: contained
           value: null
           runtime_path_id: null
-          component_path_id: null
           suffixes: []
           active_when_any: []
           inactive_when_any: []
@@ -4418,7 +4642,6 @@ tools:
           constraint: contained
           value: null
           runtime_path_id: null
-          component_path_id: null
           suffixes: []
           active_when_any: []
           inactive_when_any: []
@@ -4428,51 +4651,16 @@ tools:
           constraint: contained
           value: null
           runtime_path_id: null
-          component_path_id: null
           suffixes: []
           active_when_any: []
           inactive_when_any: []
       external_write: none
-  - tool: migrate_standards_state
-    module: Tools/migrate_standards_state.py
-    source_hash: sha256:173a966096fed221484af15e283f6f69e028bcf255e2708c54976b1688282585
-    description: Migrate existing runtime identity to Standards state
-    arguments:
-      - dest: root
-        option_strings: []
-        required: true
-        default: null
-        default_type: NoneType
-        choices: null
-        nargs: null
-        action: store
-        type: null
-        help: adopting repository root
-      - dest: apply
-        option_strings:
-          - --apply
-        required: false
-        default: false
-        default_type: bool
-        choices: null
-        nargs: 0
-        action: store_true
-        type: null
-        help: write state; omit for a dry run
-    mutually_exclusive_groups: []
-    receipt_extensions: []
-    receipt_extensions_extraction: complete
-    agent_interface:
-      exposure: mcp
-      workspace_argument: root
-      workspace_access: write
-      value_arguments:
-        - apply
-      path_arguments: []
-      external_write: none
   - tool: module_boundary_report
     module: Tools/module_boundary_report.py
-    source_hash: sha256:4b7cdfe241c5461bd77d3abb0d50b4757ce09a4ed2f107905a654329c370692b
+    source_hash: sha256:1568c5a205175450932ff3aa835c017bc66a042af6d64b0e1cff33315751f8db
+    implementation_module: Tools.platform.distribution.module_boundary_report
+    implementation_path: Tools/platform/distribution/module_boundary_report.py
+    implementation_source_hash: sha256:2ef817b30b1b0a7f25004b33cd0d025071666dbca0a400789db50c1ae26caec6
     description: Non-blocking module boundary observations
     arguments:
       - dest: root
@@ -4493,6 +4681,7 @@ tools:
         default: text
         default_type: str
         choices:
+          - hierarchy
           - json
           - text
         nargs: null
@@ -4546,6 +4735,9 @@ tools:
     mutually_exclusive_groups: []
     receipt_extensions: []
     receipt_extensions_extraction: complete
+    receipt_extension_sources:
+      - path: Tools/platform/distribution/module_boundary_report.py
+        sha256: sha256:2ef817b30b1b0a7f25004b33cd0d025071666dbca0a400789db50c1ae26caec6
     agent_interface:
       exposure: cli-only
       workspace_argument: root
@@ -4562,14 +4754,16 @@ tools:
           constraint: contained
           value: null
           runtime_path_id: null
-          component_path_id: null
           suffixes: []
           active_when_any: []
           inactive_when_any: []
       external_write: temporary-git-worktree
   - tool: prepare_audit_plan
     module: Tools/prepare_audit_plan.py
-    source_hash: sha256:b0b52dafbb5be2ae0a5dd3b3180db92c012049756f2eb07cf1d17447ed6ab90e
+    source_hash: sha256:42f531a47ea9b60b99cc79e6c8b12cf1c7514505969b9d17fd7a7156b68cbb57
+    implementation_module: Tools.execution.audit.prepare_audit_plan
+    implementation_path: Tools/execution/audit/prepare_audit_plan.py
+    implementation_source_hash: sha256:f932965a72908af193eed0277786f216d8e8bc388eb580b1f2f1bb7815af49f7
     description: Prepare the complete immutable AuditPlan for an open batch
     arguments:
       - dest: root
@@ -4618,6 +4812,9 @@ tools:
     mutually_exclusive_groups: []
     receipt_extensions: []
     receipt_extensions_extraction: complete
+    receipt_extension_sources:
+      - path: Tools/execution/audit/prepare_audit_plan.py
+        sha256: sha256:f932965a72908af193eed0277786f216d8e8bc388eb580b1f2f1bb7815af49f7
     agent_interface:
       exposure: mcp
       workspace_argument: root
@@ -4630,7 +4827,10 @@ tools:
       external_write: none
   - tool: profile_onboarding_status
     module: Tools/profile_onboarding_status.py
-    source_hash: sha256:578fbdbbeea4df25f27f5c0a78c9f2f7608adf26b3b6eb92d37610976e61d304
+    source_hash: sha256:9057939fdc33a1af0c776bcc059ba620313c63377c64f901b7495e1699744f42
+    implementation_module: Tools.governance.profile.profile_onboarding_status
+    implementation_path: Tools/governance/profile/profile_onboarding_status.py
+    implementation_source_hash: sha256:e9af2f11ab7f4ecdf3fea8a5acdf87e43306abbf53ce42e5cf12c11f49cff3c4
     description: "Read-only onboarding status projector: derives the adoption/onboarding state of one root and exactly one next_action token; writes nothing and owns no ledger"
     arguments:
       - dest: root
@@ -4668,6 +4868,9 @@ tools:
     mutually_exclusive_groups: []
     receipt_extensions: []
     receipt_extensions_extraction: complete
+    receipt_extension_sources:
+      - path: Tools/governance/profile/profile_onboarding_status.py
+        sha256: sha256:e9af2f11ab7f4ecdf3fea8a5acdf87e43306abbf53ce42e5cf12c11f49cff3c4
     agent_interface:
       exposure: mcp
       workspace_argument: root
@@ -4679,7 +4882,10 @@ tools:
       external_write: none
   - tool: project_page_state
     module: Tools/project_page_state.py
-    source_hash: sha256:826071e2c9c21bfd7ba306d450f2e396b046e2312ce37d9d396a36aee403bd07
+    source_hash: sha256:f670641ff09fc606407ad4a32ad4451ed8110c07e9ce1059ba131724a63f8169
+    implementation_module: Tools.knowledge.metadata.project_page_state
+    implementation_path: Tools/knowledge/metadata/project_page_state.py
+    implementation_source_hash: sha256:2c7e3fa8bb8db43e60d6bd728d3f565364c1a2535992afd248d9f221256c332e
     description: Project metadata-contract owner state onto page frontmatter
     arguments:
       - dest: root
@@ -4717,6 +4923,9 @@ tools:
     mutually_exclusive_groups: []
     receipt_extensions: []
     receipt_extensions_extraction: complete
+    receipt_extension_sources:
+      - path: Tools/knowledge/metadata/project_page_state.py
+        sha256: sha256:2c7e3fa8bb8db43e60d6bd728d3f565364c1a2535992afd248d9f221256c332e
     agent_interface:
       exposure: mcp
       workspace_argument: root
@@ -4730,14 +4939,104 @@ tools:
           constraint: contained
           value: null
           runtime_path_id: null
-          component_path_id: null
           suffixes: []
+          active_when_any: []
+          inactive_when_any: []
+      external_write: none
+  - tool: publish_delta
+    module: Tools/publish_delta.py
+    source_hash: sha256:6c3b30d4fd804e807acbbe4a35d54ac1bea63d41f380884daaa31d1a28e62309
+    implementation_module: Tools.execution.task_runtime.candidate_delta_runtime
+    implementation_path: Tools/execution/task_runtime/candidate_delta_runtime.py
+    implementation_source_hash: sha256:3c9f411128c8f606fb5de96ff41bc2ffdf2e179943fe7aa11ff2be11d041c01b
+    description: Validate an Agent-complete proposal and publish it to the canonical candidate Delta path for one current open batch.
+    arguments:
+      - dest: root
+        option_strings: []
+        required: true
+        default: null
+        default_type: NoneType
+        choices: null
+        nargs: null
+        action: store
+        type: null
+        help: adopting repository root
+      - dest: batch
+        option_strings:
+          - --batch
+        required: true
+        default: null
+        default_type: NoneType
+        choices: null
+        nargs: null
+        action: store
+        type: null
+        help: current open Queue batch id
+      - dest: proposal
+        option_strings:
+          - --proposal
+        required: true
+        default: null
+        default_type: NoneType
+        choices: null
+        nargs: null
+        action: store
+        type: null
+        help: complete YAML proposal below .cambium/tmp/
+      - dest: expected_delta_sha256
+        option_strings:
+          - --expected-delta-sha256
+        required: true
+        default: null
+        default_type: NoneType
+        choices: null
+        nargs: null
+        action: store
+        type: null
+        help: "'absent' for first publication or the current canonical sha256"
+      - dest: apply
+        option_strings:
+          - --apply
+        required: false
+        default: false
+        default_type: bool
+        choices: null
+        nargs: 0
+        action: store_true
+        type: null
+        help: publish after successful validation
+    mutually_exclusive_groups: []
+    receipt_extensions: []
+    receipt_extensions_extraction: complete
+    receipt_extension_sources:
+      - path: Tools/execution/task_runtime/candidate_delta_runtime.py
+        sha256: sha256:3c9f411128c8f606fb5de96ff41bc2ffdf2e179943fe7aa11ff2be11d041c01b
+    agent_interface:
+      exposure: mcp
+      workspace_argument: root
+      workspace_access: write
+      value_arguments:
+        - apply
+        - batch
+        - expected_delta_sha256
+      path_arguments:
+        - argument: proposal
+          access: read
+          consumption: snapshot
+          constraint: namespace
+          value: .cambium/tmp
+          runtime_path_id: transient-root
+          suffixes:
+            - .yaml
           active_when_any: []
           inactive_when_any: []
       external_write: none
   - tool: record_batch_judgment
     module: Tools/record_batch_judgment.py
-    source_hash: sha256:70ac0eb07df0ab91d957cee41090c7c02ae7784406b487d5bf723980c93b5e16
+    source_hash: sha256:ca961c691cf98d9d1b08a6249ad5285221673664745c8a36578c85501aea41c4
+    implementation_module: Tools.execution.audit.record_batch_judgment
+    implementation_path: Tools/execution/audit/record_batch_judgment.py
+    implementation_source_hash: sha256:79c873271a2c9f1888672c412c3216c89fb028dc2379cbf3f36390d1d92c361f
     description: Record one AuditPlan-bound Batch Review judgment
     arguments:
       - dest: root
@@ -4870,15 +5169,19 @@ tools:
       - record_kind
       - review_requirement_set_sha256
       - reviewer_role
-      - root
       - schema_version
       - selected_profile_manifest
       - semantic_content_sha256
-      - standards_version
       - target_selector
       - task_id
       - trigger
+      - upstream_revision_id
     receipt_extensions_extraction: partial
+    receipt_extension_sources:
+      - path: Tools/execution/audit/record_batch_judgment.py
+        sha256: sha256:79c873271a2c9f1888672c412c3216c89fb028dc2379cbf3f36390d1d92c361f
+      - path: Tools/platform/common/kblib.py
+        sha256: sha256:e3c4768907708d817747072c0b797c7bd0e4ce2c7b5005292bee6624c1febd70
     agent_interface:
       exposure: mcp
       workspace_argument: root
@@ -4898,7 +5201,6 @@ tools:
           constraint: exact
           value: .cambium/receipts/batch-judgments.jsonl
           runtime_path_id: batch-judgment-receipts
-          component_path_id: null
           suffixes: []
           active_when_any:
             - apply
@@ -4906,7 +5208,10 @@ tools:
       external_write: none
   - tool: record_batch_page_review
     module: Tools/record_batch_page_review.py
-    source_hash: sha256:8e5c9117aaca1ec08d454692a1766d1edfc6b55a9e57e06c13e39f7df0807b51
+    source_hash: sha256:52fc885f88a3c28ced57d1b888736f78a01d3fb29b5fcbfe3ceaeb2232d3509f
+    implementation_module: Tools.execution.audit.record_batch_page_review
+    implementation_path: Tools/execution/audit/record_batch_page_review.py
+    implementation_source_hash: sha256:5e5fefb7b51f962f9edc788a9b9af67c45f4f7ac37eab47e0916d341f031183d
     description: Record one plan-bound Batch Review page judgment
     arguments:
       - dest: root
@@ -5086,7 +5391,6 @@ tools:
       - evidence_kind
       - evidence_role
       - fingerprint_binding
-      - identity
       - item_id
       - obligation_id
       - opening_transition_receipt
@@ -5099,18 +5403,22 @@ tools:
       - review_variant
       - reviewer_context_id
       - reviewer_role
-      - root
       - rule_id
       - schema_version
       - selected_profile_manifest
       - selection_frozen_at
       - semantic_content_fingerprint
       - source_group
-      - standards_version
       - task_id
       - tier
+      - upstream_revision_id
       - verdict
     receipt_extensions_extraction: partial
+    receipt_extension_sources:
+      - path: Tools/execution/audit/record_batch_page_review.py
+        sha256: sha256:5e5fefb7b51f962f9edc788a9b9af67c45f4f7ac37eab47e0916d341f031183d
+      - path: Tools/platform/common/kblib.py
+        sha256: sha256:e3c4768907708d817747072c0b797c7bd0e4ce2c7b5005292bee6624c1febd70
     agent_interface:
       exposure: mcp
       workspace_argument: root
@@ -5135,7 +5443,6 @@ tools:
           constraint: namespace
           value: .cambium/work_specs/audit-plans
           runtime_path_id: audit-plan-root
-          component_path_id: null
           suffixes:
             - .yaml
           active_when_any: []
@@ -5143,7 +5450,10 @@ tools:
       external_write: none
   - tool: record_batch_review
     module: Tools/record_batch_review.py
-    source_hash: sha256:8453399009a88ab0c244754e6e58ee2e577da39989b0cce928794cc2aeb6eb7c
+    source_hash: sha256:602ded0d03e38223cc28f3b1ef139266434586b229fa9964cec6aeaa68eb87c2
+    implementation_module: Tools.execution.audit.record_batch_review
+    implementation_path: Tools/execution/audit/record_batch_review.py
+    implementation_source_hash: sha256:bc3f66e7bea7372ec727705f5275609eb6b968f797fd75b138cef2c678ff1a8e
     description: Record one current, evidence-complete Batch Review wrapper
     arguments:
       - dest: root
@@ -5231,8 +5541,6 @@ tools:
       - audit_plan_id
       - audit_plan_path
       - audit_plan_sha256
-      - audit_receipt_ids
-      - audit_receipt_set_sha256
       - batch_id
       - delta_page_receipt_ids
       - delta_path
@@ -5242,8 +5550,15 @@ tools:
       - judgment_record_set_sha256
       - opening_transition_receipt
       - review_requirement_set_sha256
-      - root
-    receipt_extensions_extraction: complete
+      - selected_profile_manifest
+      - task_id
+      - upstream_revision_id
+    receipt_extensions_extraction: partial
+    receipt_extension_sources:
+      - path: Tools/execution/audit/record_batch_review.py
+        sha256: sha256:bc3f66e7bea7372ec727705f5275609eb6b968f797fd75b138cef2c678ff1a8e
+      - path: Tools/platform/common/kblib.py
+        sha256: sha256:e3c4768907708d817747072c0b797c7bd0e4ce2c7b5005292bee6624c1febd70
     agent_interface:
       exposure: mcp
       workspace_argument: root
@@ -5261,7 +5576,6 @@ tools:
           constraint: exact
           value: .cambium/receipts/gate-attestations.jsonl
           runtime_path_id: gate-attestation-receipts
-          component_path_id: null
           suffixes: []
           active_when_any:
             - apply
@@ -5269,7 +5583,10 @@ tools:
       external_write: none
   - tool: record_changed_scope_evidence
     module: Tools/record_changed_scope_evidence.py
-    source_hash: sha256:a62e8b6033168961718792a34c1f951861ec2064ffc3e0a7a8e6c22e8bee8b80
+    source_hash: sha256:8340ff288c48bfe7bef06b963072286279f42dc81c4fd20669523469a99c1f41
+    implementation_module: Tools.execution.audit.record_changed_scope_evidence
+    implementation_path: Tools/execution/audit/record_changed_scope_evidence.py
+    implementation_source_hash: sha256:daa4fbe203e7aa084572217e2275bc6d31361d2e099d48fd2af7700bb8b7f636
     description: Record exact plan-bound K12/05 changed-scope evidence
     arguments:
       - dest: root
@@ -5370,7 +5687,6 @@ tools:
       - evidence_role
       - fingerprint_binding
       - gate_id
-      - identity
       - input_binding
       - kernel_extension_point
       - obligation_id
@@ -5385,7 +5701,16 @@ tools:
       - profile_contract_fingerprint
       - profile_snapshot_sha256
       - record_kind
-      - root
+      - registered_scan_command_sha256
+      - registered_scan_config_sha256
+      - registered_scan_execution_input_sha256
+      - registered_scan_invocation_path
+      - registered_scan_invocation_sha256
+      - registered_scan_invocation_tool
+      - registered_scan_python_runtime_sha256
+      - registered_scan_receipt_count
+      - registered_scan_tool_sha256
+      - repository_snapshot_sha256
       - schema_version
       - scope
       - selected_profile_manifest
@@ -5394,11 +5719,17 @@ tools:
       - source_gate_selector
       - source_receipt_set_sha256
       - source_receipts
+      - source_scan_selector
       - source_scope
       - source_summary_receipt_id
-      - standards_version
       - task_id
+      - upstream_revision_id
     receipt_extensions_extraction: complete
+    receipt_extension_sources:
+      - path: Tools/execution/audit/record_changed_scope_evidence.py
+        sha256: sha256:daa4fbe203e7aa084572217e2275bc6d31361d2e099d48fd2af7700bb8b7f636
+      - path: Tools/platform/common/kblib.py
+        sha256: sha256:e3c4768907708d817747072c0b797c7bd0e4ce2c7b5005292bee6624c1febd70
     agent_interface:
       exposure: mcp
       workspace_argument: root
@@ -5415,7 +5746,6 @@ tools:
           constraint: namespace
           value: .cambium/work_specs/audit-plans
           runtime_path_id: audit-plan-root
-          component_path_id: null
           suffixes:
             - .yaml
           active_when_any: []
@@ -5427,7 +5757,6 @@ tools:
           constraint: exact
           value: .cambium/receipts/changed-scope-evidence.jsonl
           runtime_path_id: changed-scope-evidence-receipts
-          component_path_id: null
           suffixes: []
           active_when_any:
             - apply
@@ -5436,7 +5765,10 @@ tools:
       external_write: none
   - tool: record_corpus_acceptance
     module: Tools/record_corpus_acceptance.py
-    source_hash: sha256:d6c8ccfa2fa768209ed965a8a74659362e574bfe981f67a4cae891b4407a8b80
+    source_hash: sha256:ed60ef89cfe764ad3467e569402a1ff556897c6ec3b931d5dcf52363e927ee39
+    implementation_module: Tools.execution.planning.record_corpus_acceptance
+    implementation_path: Tools/execution/planning/record_corpus_acceptance.py
+    implementation_source_hash: sha256:c060a906e6ece0e2b3ff53ff5bf7441567f7de2cfc6339021331ee4b3b28608d
     description: Record a Profile-authorized Corpus Planning semantic decision as machine-readable JSONL
     arguments:
       - dest: root
@@ -5503,11 +5835,18 @@ tools:
       - capability_decisions
       - decision_scope_id
       - gate_id
-      - repository_snapshot_sha256
-      - root
-      - seq
+      - selected_profile_manifest
       - structural_check_receipt
+      - task_id
+      - upstream_revision_id
     receipt_extensions_extraction: partial
+    receipt_extension_sources:
+      - path: Tools/execution/planning/check_corpus_plan.py
+        sha256: sha256:30343195d3c9c1401fd2ec7bdd7ca9c59b1c60d13915fa4ee108cb21b56db67c
+      - path: Tools/execution/planning/record_corpus_acceptance.py
+        sha256: sha256:c060a906e6ece0e2b3ff53ff5bf7441567f7de2cfc6339021331ee4b3b28608d
+      - path: Tools/platform/common/kblib.py
+        sha256: sha256:e3c4768907708d817747072c0b797c7bd0e4ce2c7b5005292bee6624c1febd70
     agent_interface:
       exposure: mcp
       workspace_argument: root
@@ -5522,7 +5861,6 @@ tools:
           constraint: contained
           value: null
           runtime_path_id: null
-          component_path_id: null
           suffixes: []
           active_when_any: []
           inactive_when_any: []
@@ -5532,7 +5870,6 @@ tools:
           constraint: namespace
           value: .cambium/receipts
           runtime_path_id: receipt-root
-          component_path_id: null
           suffixes:
             - .jsonl
           active_when_any:
@@ -5541,7 +5878,10 @@ tools:
       external_write: none
   - tool: record_gate_attestation
     module: Tools/record_gate_attestation.py
-    source_hash: sha256:352cc0b3c9960a2a1ead69bff9f5d84c5e4caf793e99686b070392fc73ef4293
+    source_hash: sha256:d9d21dd9952bbaed761144a8e9059dbea6a3fd40c59b028dd62af027e42cb4f2
+    implementation_module: Tools.execution.evidence.record_gate_attestation
+    implementation_path: Tools/execution/evidence/record_gate_attestation.py
+    implementation_source_hash: sha256:b3d6dc6d33db2225c6662fa1d25df67056cf1bc23e9c2fab0520f008303a8635
     description: Record snapshot-bound manual Extension Gate evidence
     arguments:
       - dest: root
@@ -5662,12 +6002,18 @@ tools:
       - property_field
       - receipt_schema
       - requested_completion_value
-      - root
       - selected_profile_manifest
       - selected_profile_manifest_sha256
       - semantic_content_fingerprint
+      - task_id
       - transition_id
+      - upstream_revision_id
     receipt_extensions_extraction: complete
+    receipt_extension_sources:
+      - path: Tools/execution/evidence/record_gate_attestation.py
+        sha256: sha256:b3d6dc6d33db2225c6662fa1d25df67056cf1bc23e9c2fab0520f008303a8635
+      - path: Tools/platform/common/kblib.py
+        sha256: sha256:e3c4768907708d817747072c0b797c7bd0e4ce2c7b5005292bee6624c1febd70
     agent_interface:
       exposure: mcp
       workspace_argument: root
@@ -5686,7 +6032,6 @@ tools:
           constraint: contained
           value: null
           runtime_path_id: null
-          component_path_id: null
           suffixes: []
           active_when_any: []
           inactive_when_any: []
@@ -5696,7 +6041,6 @@ tools:
           constraint: namespace
           value: .cambium/receipts
           runtime_path_id: receipt-root
-          component_path_id: null
           suffixes:
             - .jsonl
           active_when_any:
@@ -5705,7 +6049,10 @@ tools:
       external_write: none
   - tool: record_gate_result
     module: Tools/record_gate_result.py
-    source_hash: sha256:99265277fa430babfa9796e0cabdad04ebd40865bbd9cb90b6692f93c21a822b
+    source_hash: sha256:74ec10af9eeddf4e86976ef6d65bb44a4ca615d87f2f8298a1d4c0568c85eae1
+    implementation_module: Tools.execution.evidence.record_gate_result
+    implementation_path: Tools/execution/evidence/record_gate_result.py
+    implementation_source_hash: sha256:9fa582ba54f1ca4c05654b9a48dd28739f9455c37d07b4c355789b84212f22ea
     description: Run a registered scan and record a deterministic Extension Gate result
     arguments:
       - dest: root
@@ -5775,8 +6122,48 @@ tools:
         help: write the applied receipt as one JSON array
     mutually_exclusive_groups: []
     receipt_extensions:
-      - root
-    receipt_extensions_extraction: complete
+      - active_standards_sha256
+      - consumer_capability
+      - gate_id
+      - judgment_item_id
+      - metadata_execution_contract_fingerprint
+      - page_sha256
+      - pass_authority_role_id
+      - producer_capability
+      - producer_kind
+      - producer_reference
+      - profile_contract_fingerprint
+      - profile_load_inputs_sha256
+      - profile_snapshot_sha256
+      - property_field
+      - receipt_schema
+      - registered_scan_command_sha256
+      - registered_scan_config_sha256
+      - registered_scan_execution_input_sha256
+      - registered_scan_invocation_path
+      - registered_scan_invocation_sha256
+      - registered_scan_invocation_tool
+      - registered_scan_python_runtime_sha256
+      - registered_scan_receipt
+      - registered_scan_receipt_count
+      - registered_scan_receipt_set_sha256
+      - registered_scan_receipt_sha256
+      - registered_scan_tool_sha256
+      - repository_snapshot_sha256
+      - requested_completion_value
+      - scan_id
+      - selected_profile_manifest
+      - selected_profile_manifest_sha256
+      - semantic_content_fingerprint
+      - task_id
+      - transition_id
+      - upstream_revision_id
+    receipt_extensions_extraction: partial
+    receipt_extension_sources:
+      - path: Tools/execution/evidence/record_gate_result.py
+        sha256: sha256:9fa582ba54f1ca4c05654b9a48dd28739f9455c37d07b4c355789b84212f22ea
+      - path: Tools/platform/common/kblib.py
+        sha256: sha256:e3c4768907708d817747072c0b797c7bd0e4ce2c7b5005292bee6624c1febd70
     agent_interface:
       exposure: mcp
       workspace_argument: root
@@ -5792,7 +6179,6 @@ tools:
           constraint: contained
           value: null
           runtime_path_id: null
-          component_path_id: null
           suffixes: []
           active_when_any: []
           inactive_when_any: []
@@ -5802,16 +6188,165 @@ tools:
           constraint: namespace
           value: .cambium/receipts
           runtime_path_id: receipt-root
-          component_path_id: null
           suffixes:
             - .jsonl
           active_when_any:
             - apply
           inactive_when_any: []
       external_write: none
+  - tool: record_maintenance_evidence
+    module: Tools/record_maintenance_evidence.py
+    source_hash: sha256:2f150822bd3ebffa412ca6b918a00030511b790fe36f6e2d6871e0c23ca734cf
+    implementation_module: Tools.execution.task_runtime.record_maintenance_evidence
+    implementation_path: Tools/execution/task_runtime/record_maintenance_evidence.py
+    implementation_source_hash: sha256:5f3ec0452b9404d5c17960e75a764b3ef2bfdfd3eae348cff53b640213a64cf6
+    description: Publish the current typed evidence for one maintenance completion
+    arguments:
+      - dest: root
+        option_strings: []
+        required: true
+        default: null
+        default_type: NoneType
+        choices: null
+        nargs: null
+        action: store
+        type: null
+        help: adopting repository root
+      - dest: budget_manifest
+        option_strings:
+          - --budget-manifest
+        required: true
+        default: null
+        default_type: NoneType
+        choices: null
+        nargs: null
+        action: store
+        type: null
+        help: closed maintenance budget manifest under .cambium/receipts
+      - dest: before_coverage_sha256
+        option_strings:
+          - --before-coverage-sha256
+        required: true
+        default: null
+        default_type: NoneType
+        choices: null
+        nargs: null
+        action: store
+        type: null
+        help: Coverage Ledger fingerprint before this maintenance run
+      - dest: before_watermark_sha256
+        option_strings:
+          - --before-watermark-sha256
+        required: true
+        default: null
+        default_type: NoneType
+        choices: null
+        nargs: null
+        action: store
+        type: null
+        help: watermark fingerprint before this maintenance run
+      - dest: receipts
+        option_strings:
+          - --receipts
+        required: false
+        default: .cambium/receipts/maintenance-evidence.jsonl
+        default_type: str
+        choices: null
+        nargs: null
+        action: store
+        type: null
+        help: current maintenance evidence JSONL destination
+      - dest: apply
+        option_strings:
+          - --apply
+        required: false
+        default: false
+        default_type: bool
+        choices: null
+        nargs: 0
+        action: store_true
+        type: null
+        help: append the three typed receipts
+      - dest: json
+        option_strings:
+          - --json
+        required: false
+        default: false
+        default_type: bool
+        choices: null
+        nargs: 0
+        action: store_true
+        type: null
+        help: write published receipts as one JSON array
+    mutually_exclusive_groups: []
+    receipt_extensions:
+      - advanced
+      - after_coverage_sha256
+      - after_maintenance_candidate_state_sha256
+      - after_watermark_sha256
+      - before_coverage_sha256
+      - before_maintenance_candidate_state_sha256
+      - before_watermark_sha256
+      - budget_manifest_closed_at
+      - budget_manifest_path
+      - budget_manifest_sha256
+      - budget_manifest_state
+      - coverage_ledger_path
+      - coverage_updated_at
+      - deferred_candidate_ids
+      - maintenance_candidate_state_sha256
+      - manifest_open_items
+      - selected_candidate_ids
+      - selected_profile_manifest
+      - task_id
+      - upstream_revision_id
+      - watermark_batch_id
+      - watermark_path
+      - watermark_run_id
+      - watermark_updated_at
+    receipt_extensions_extraction: partial
+    receipt_extension_sources:
+      - path: Tools/execution/task_runtime/record_maintenance_evidence.py
+        sha256: sha256:5f3ec0452b9404d5c17960e75a764b3ef2bfdfd3eae348cff53b640213a64cf6
+      - path: Tools/platform/common/kblib.py
+        sha256: sha256:e3c4768907708d817747072c0b797c7bd0e4ce2c7b5005292bee6624c1febd70
+    agent_interface:
+      exposure: mcp
+      workspace_argument: root
+      workspace_access: write
+      value_arguments:
+        - apply
+        - before_coverage_sha256
+        - before_watermark_sha256
+        - json
+      path_arguments:
+        - argument: budget_manifest
+          access: read
+          consumption: snapshot
+          constraint: namespace
+          value: .cambium/receipts
+          runtime_path_id: receipt-root
+          suffixes:
+            - .yaml
+          active_when_any: []
+          inactive_when_any: []
+        - argument: receipts
+          access: write
+          consumption: append
+          constraint: exact
+          value: .cambium/receipts/maintenance-evidence.jsonl
+          runtime_path_id: maintenance-evidence-receipts
+          suffixes: []
+          active_when_any:
+            - apply
+          inactive_when_any: []
+      external_write: none
   - tool: record_rendering_verification
     module: Tools/record_rendering_verification.py
-    source_hash: sha256:7d376428be83ae3eab2c10eca786017b5666f9fdf4475f53808d73b0dd7979d9
+    source_hash: sha256:c5ab20e2f236f4fda84918f481988e203815b17d2194a269f7ab997384557ee7
+    implementation_module: Tools.knowledge.rendering.record_rendering_verification
+    implementation_path: Tools/knowledge/rendering/record_rendering_verification.py
+    implementation_source_hash: sha256:c62a5e5d7dcd85fe4e3847a915f9ee2287ad6cfd5f9bdd8962f147bd67216d57
     description: Record one plan-bound K12/02 rendering record shape
     arguments:
       - dest: root
@@ -5950,20 +6485,23 @@ tools:
       - dependency_fingerprint
       - dimension
       - fingerprint_binding
-      - identity
       - obligation_id
       - opening_transition_receipt
       - plan_id
       - profile_contract_fingerprint
       - profile_snapshot_sha256
       - record_kind
-      - root
       - schema_version
       - scope
       - selected_profile_manifest
-      - standards_version
       - task_id
+      - upstream_revision_id
     receipt_extensions_extraction: partial
+    receipt_extension_sources:
+      - path: Tools/knowledge/rendering/record_rendering_verification.py
+        sha256: sha256:c62a5e5d7dcd85fe4e3847a915f9ee2287ad6cfd5f9bdd8962f147bd67216d57
+      - path: Tools/platform/common/kblib.py
+        sha256: sha256:e3c4768907708d817747072c0b797c7bd0e4ce2c7b5005292bee6624c1febd70
     agent_interface:
       exposure: mcp
       workspace_argument: root
@@ -5984,7 +6522,6 @@ tools:
           constraint: namespace
           value: .cambium/work_specs/audit-plans
           runtime_path_id: audit-plan-root
-          component_path_id: null
           suffixes:
             - .yaml
           active_when_any: []
@@ -5995,7 +6532,6 @@ tools:
           constraint: exact
           value: .cambium/receipts/rendering-verification.jsonl
           runtime_path_id: rendering-verification-receipts
-          component_path_id: null
           suffixes: []
           active_when_any:
             - apply
@@ -6003,7 +6539,10 @@ tools:
       external_write: none
   - tool: record_substantive_review
     module: Tools/record_substantive_review.py
-    source_hash: sha256:f973af1423f82da35c866fdcb6647b3d5ef39c131e862287a88a3882a0bd89a9
+    source_hash: sha256:92c096085c0ce20630da08a3610ed020a10ca70a0e2b4c39cbe9b41fa1a46e45
+    implementation_module: Tools.execution.audit.record_substantive_review
+    implementation_path: Tools/execution/audit/record_substantive_review.py
+    implementation_source_hash: sha256:4eaf14c94f727c4040784137e567b5e8438ec649f1c01b1ecba17cddf66daae8
     description: Record one plan-bound substantive correctness review
     arguments:
       - dest: root
@@ -6196,17 +6735,21 @@ tools:
       - record_kind
       - reviewer_context_id
       - reviewer_role
-      - root
       - round
       - round_1_receipt_id
       - schema_version
       - selected_profile_manifest
       - semantic_content_fingerprint
       - sources_sha256
-      - standards_version
       - task_id
+      - upstream_revision_id
       - verdict
     receipt_extensions_extraction: complete
+    receipt_extension_sources:
+      - path: Tools/execution/audit/record_substantive_review.py
+        sha256: sha256:4eaf14c94f727c4040784137e567b5e8438ec649f1c01b1ecba17cddf66daae8
+      - path: Tools/platform/common/kblib.py
+        sha256: sha256:e3c4768907708d817747072c0b797c7bd0e4ce2c7b5005292bee6624c1febd70
     agent_interface:
       exposure: mcp
       workspace_argument: root
@@ -6231,7 +6774,6 @@ tools:
           constraint: namespace
           value: .cambium/work_specs/audit-plans
           runtime_path_id: audit-plan-root
-          component_path_id: null
           suffixes:
             - .yaml
           active_when_any: []
@@ -6242,7 +6784,6 @@ tools:
           constraint: exact
           value: .cambium/receipts/substantive-reviews.jsonl
           runtime_path_id: substantive-review-receipts
-          component_path_id: null
           suffixes: []
           active_when_any:
             - apply
@@ -6250,7 +6791,10 @@ tools:
       external_write: none
   - tool: register_amendment
     module: Tools/register_amendment.py
-    source_hash: sha256:8feebec1d0001986a133d2d119dbb77df734df16e05377e5868e720c3c3da843
+    source_hash: sha256:0f88dcb82ee7cfe9ca6d9b94c047c2ab129a4f2ba089af31c8418b471184f325
+    implementation_module: Tools.execution.task_runtime.register_amendment
+    implementation_path: Tools/execution/task_runtime/register_amendment.py
+    implementation_source_hash: sha256:ad7ccc3c5ced4bce9c934e00d8373ef88076bf05dca48f6f341113dc72ac2244
     description: Register one approved current-protocol Amendment
     arguments:
       - dest: root
@@ -6272,7 +6816,6 @@ tools:
         choices:
           - cancel-batch
           - gap-routing-reconciliation
-          - property-state-migration
           - queue-replan
           - scope-replan
         nargs: null
@@ -6480,6 +7023,11 @@ tools:
       - task_id
       - withdrawal_reason
     receipt_extensions_extraction: partial
+    receipt_extension_sources:
+      - path: Tools/execution/task_runtime/register_amendment.py
+        sha256: sha256:ad7ccc3c5ced4bce9c934e00d8373ef88076bf05dca48f6f341113dc72ac2244
+      - path: Tools/platform/common/kblib.py
+        sha256: sha256:e3c4768907708d817747072c0b797c7bd0e4ce2c7b5005292bee6624c1febd70
     agent_interface:
       exposure: mcp
       workspace_argument: root
@@ -6506,7 +7054,6 @@ tools:
           constraint: contained
           value: null
           runtime_path_id: null
-          component_path_id: null
           suffixes: []
           active_when_any: []
           inactive_when_any: []
@@ -6516,7 +7063,6 @@ tools:
           constraint: contained
           value: null
           runtime_path_id: null
-          component_path_id: null
           suffixes: []
           active_when_any: []
           inactive_when_any: []
@@ -6526,7 +7072,6 @@ tools:
           constraint: namespace
           value: .cambium/receipts
           runtime_path_id: receipt-root
-          component_path_id: null
           suffixes:
             - .jsonl
           active_when_any:
@@ -6535,7 +7080,10 @@ tools:
       external_write: none
   - tool: render_boundary_projection
     module: Tools/render_boundary_projection.py
-    source_hash: sha256:5912505b0c4b33c4a9bf63c9d96e9023dd3bc7eb912ade64c8346feb016bf21e
+    source_hash: sha256:71de41a47159b256df7ccbc740dfe264cb673793f967f7124aba2b5229f3420c
+    implementation_module: Tools.knowledge.structure.render_boundary_projection
+    implementation_path: Tools/knowledge/structure/render_boundary_projection.py
+    implementation_source_hash: sha256:6a8f79d41e2dabd458e9e3f5846a98de3ee969a09de19e651e9860735ce63f9a
     description: Render the K08/09 boundary projection blocks from page `boundary` frontmatter.
     arguments:
       - dest: vault_root
@@ -6606,6 +7154,9 @@ tools:
     mutually_exclusive_groups: []
     receipt_extensions: []
     receipt_extensions_extraction: complete
+    receipt_extension_sources:
+      - path: Tools/knowledge/structure/render_boundary_projection.py
+        sha256: sha256:6a8f79d41e2dabd458e9e3f5846a98de3ee969a09de19e651e9860735ce63f9a
     agent_interface:
       exposure: mcp
       workspace_argument: vault_root
@@ -6620,7 +7171,6 @@ tools:
           constraint: exact
           value: .cambium/derived/page_contract.yaml
           runtime_path_id: effective-page-contract
-          component_path_id: null
           suffixes: []
           active_when_any: []
           inactive_when_any: []
@@ -6630,7 +7180,6 @@ tools:
           constraint: contained
           value: null
           runtime_path_id: null
-          component_path_id: null
           suffixes: []
           active_when_any: []
           inactive_when_any: []
@@ -6640,14 +7189,16 @@ tools:
           constraint: contained
           value: null
           runtime_path_id: null
-          component_path_id: null
           suffixes: []
           active_when_any: []
           inactive_when_any: []
       external_write: none
   - tool: render_host_configs
     module: Tools/render_host_configs.py
-    source_hash: sha256:d49981a21acdbae089923a551194dca0961132cb6dee53105b089a53acc67c2b
+    source_hash: sha256:1c6e4ed13be8932039c672647b411e7a89a25a93106bc1e013bf5799c69f4c56
+    implementation_module: Tools.platform.agent_interface.render_host_configs
+    implementation_path: Tools/platform/agent_interface/render_host_configs.py
+    implementation_source_hash: sha256:552432288a552a7b2ea4d7d6a4359e9c681adc98dc755ca23dc86913d664904f
     description: Render the Cambium MCP server's registration and corpus binding into the configuration file each supported host reads.
     arguments:
       - dest: root
@@ -6762,6 +7313,9 @@ tools:
           - sources
     receipt_extensions: []
     receipt_extensions_extraction: complete
+    receipt_extension_sources:
+      - path: Tools/platform/agent_interface/render_host_configs.py
+        sha256: sha256:552432288a552a7b2ea4d7d6a4359e9c681adc98dc755ca23dc86913d664904f
     agent_interface:
       exposure: cli-only
       workspace_argument: root
@@ -6780,7 +7334,6 @@ tools:
           constraint: contained
           value: null
           runtime_path_id: null
-          component_path_id: null
           suffixes: []
           active_when_any: []
           inactive_when_any: []
@@ -6790,14 +7343,16 @@ tools:
           constraint: contained
           value: null
           runtime_path_id: null
-          component_path_id: null
           suffixes: []
           active_when_any: []
           inactive_when_any: []
       external_write: none
   - tool: render_interface_projection
     module: Tools/render_interface_projection.py
-    source_hash: sha256:8913d34811aeaf6cf655a23e8541784de33faca7e5ddba6af48effb1ec4710b0
+    source_hash: sha256:9f3693000315a358f9a30453cf2cae08ac37c52fa971a00398ab8074227ba2f6
+    implementation_module: Tools.platform.agent_interface.render_interface_projection
+    implementation_path: Tools/platform/agent_interface/render_interface_projection.py
+    implementation_source_hash: sha256:dc5984bdd951b83983fc977bfe082903a9e424f53b3aa4807722d3eaa16a1b6f
     description: Project the compiled CLI invocation contract into the agent-facing interface forms registered in this tool.
     arguments:
       - dest: root
@@ -6886,6 +7441,9 @@ tools:
           - sources
     receipt_extensions: []
     receipt_extensions_extraction: complete
+    receipt_extension_sources:
+      - path: Tools/platform/agent_interface/render_interface_projection.py
+        sha256: sha256:dc5984bdd951b83983fc977bfe082903a9e424f53b3aa4807722d3eaa16a1b6f
     agent_interface:
       exposure: cli-only
       workspace_argument: root
@@ -6902,7 +7460,6 @@ tools:
           constraint: contained
           value: null
           runtime_path_id: null
-          component_path_id: null
           suffixes: []
           active_when_any: []
           inactive_when_any: []
@@ -6912,14 +7469,16 @@ tools:
           constraint: contained
           value: null
           runtime_path_id: null
-          component_path_id: null
           suffixes: []
           active_when_any: []
           inactive_when_any: []
       external_write: none
   - tool: render_queue
     module: Tools/render_queue.py
-    source_hash: sha256:d045ebc0d158888f551abdf0feb771e4b4826bc84d6986bb830d96fbade6c05d
+    source_hash: sha256:6b6629cdfa5a067d58a302af8ab71a985ee49202d87fe4d06a0ee83de0db3e95
+    implementation_module: Tools.execution.task_runtime.render_queue
+    implementation_path: Tools/execution/task_runtime/render_queue.py
+    implementation_source_hash: sha256:b73451e91e83b58dd129e6059dba3d2f4e98492ffb9da8121569b29f36f3bfff
     description: Render Required Queue human report
     arguments:
       - dest: root
@@ -6968,6 +7527,9 @@ tools:
     mutually_exclusive_groups: []
     receipt_extensions: []
     receipt_extensions_extraction: complete
+    receipt_extension_sources:
+      - path: Tools/execution/task_runtime/render_queue.py
+        sha256: sha256:b73451e91e83b58dd129e6059dba3d2f4e98492ffb9da8121569b29f36f3bfff
     agent_interface:
       exposure: mcp
       workspace_argument: root
@@ -6982,7 +7544,6 @@ tools:
           constraint: namespace
           value: .cambium/reports
           runtime_path_id: report-root
-          component_path_id: null
           suffixes:
             - .md
           active_when_any: []
@@ -6991,7 +7552,10 @@ tools:
       external_write: none
   - tool: render_structure_projection
     module: Tools/render_structure_projection.py
-    source_hash: sha256:359488e1841ec7708a7d5dae414c269e7e561c8dca3ebd18a3e3627036289869
+    source_hash: sha256:953ab673b51ea6040bf4d3e4e894967a4f94e512f5364cc5648f67c68def0f37
+    implementation_module: Tools.knowledge.structure.render_structure_projection
+    implementation_path: Tools/knowledge/structure/render_structure_projection.py
+    implementation_source_hash: sha256:236d53c16e37458fa2467c1060d6fc851760d160742b21cfa995538c46491009
     description: Render derived Structure Registry coverage projections (K01/05 derived roles).
     arguments:
       - dest: vault_root
@@ -7040,6 +7604,9 @@ tools:
     mutually_exclusive_groups: []
     receipt_extensions: []
     receipt_extensions_extraction: complete
+    receipt_extension_sources:
+      - path: Tools/knowledge/structure/render_structure_projection.py
+        sha256: sha256:236d53c16e37458fa2467c1060d6fc851760d160742b21cfa995538c46491009
     agent_interface:
       exposure: mcp
       workspace_argument: vault_root
@@ -7054,14 +7621,16 @@ tools:
           constraint: contained
           value: null
           runtime_path_id: null
-          component_path_id: null
           suffixes: []
           active_when_any: []
           inactive_when_any: []
       external_write: none
   - tool: run_gates
     module: Tools/run_gates.py
-    source_hash: sha256:f7ed56d17d2ed2d5d3bbdfebe3b0985cb4e6c150712644b6686c4dc531c365f2
+    source_hash: sha256:cd4b00b71266279cf20b51043f60f1c55d32bf077fcf0f5f7fa91a8cfe691ac1
+    implementation_module: Tools.governance.control.run_gates
+    implementation_path: Tools/governance/control/run_gates.py
+    implementation_source_hash: sha256:6cbb634a8c58c0f39152b89a0e2293227cdddc77c718605c1acd2e12869585f5
     description: Run the adopter verification set derived from the K00/12 Stable Gate ID Registry (deterministic, not-batch-scoped producers).
     arguments:
       - dest: root
@@ -7110,6 +7679,9 @@ tools:
     mutually_exclusive_groups: []
     receipt_extensions: []
     receipt_extensions_extraction: complete
+    receipt_extension_sources:
+      - path: Tools/governance/control/run_gates.py
+        sha256: sha256:6cbb634a8c58c0f39152b89a0e2293227cdddc77c718605c1acd2e12869585f5
     agent_interface:
       exposure: mcp
       workspace_argument: root
@@ -7124,14 +7696,230 @@ tools:
           constraint: contained
           value: null
           runtime_path_id: null
-          component_path_id: null
           suffixes: []
           active_when_any: []
           inactive_when_any: []
       external_write: none
+  - tool: run_task
+    module: Tools/run_task.py
+    source_hash: sha256:321b9c879068af47ec42eb4bbee7d4b3bdfe857b5c441292324363e4580dfa75
+    implementation_module: Tools.execution.task_runtime.task_runtime_runner
+    implementation_path: Tools/execution/task_runtime/task_runtime_runner.py
+    implementation_source_hash: sha256:130797dcacd4526847369e71954129cc22ff4ccc7ddafbcbf0ef792fb7d4b1b6
+    description: Read the current Task Runtime action, execute that exact action, or advance deterministic actions to the next semantic boundary.
+    arguments:
+      - dest: root
+        option_strings: []
+        required: true
+        default: null
+        default_type: NoneType
+        choices: null
+        nargs: null
+        action: store
+        type: null
+        help: adopting repository root
+      - dest: execute
+        option_strings:
+          - --execute
+        required: false
+        default: null
+        default_type: NoneType
+        choices: null
+        nargs: null
+        action: store
+        type: null
+        help: execute exactly this current action identity
+      - dest: run_until_boundary
+        option_strings:
+          - --run-until-boundary
+        required: false
+        default: false
+        default_type: bool
+        choices: null
+        nargs: 0
+        action: store_true
+        type: null
+        help: advance invoke actions until Agent, user, Host, repair, or terminal
+      - dest: input
+        option_strings:
+          - --input
+        required: false
+        default: null
+        default_type: NoneType
+        choices: null
+        nargs: null
+        action: store
+        type: null
+        help: repository-relative JSON object below .cambium/tmp for await input
+      - dest: proposal
+        option_strings:
+          - --proposal
+        required: false
+        default: null
+        default_type: NoneType
+        choices: null
+        nargs: null
+        action: store
+        type: null
+        help: candidate Delta YAML below .cambium/tmp for the current publication action
+      - dest: max_steps
+        option_strings:
+          - --max-steps
+        required: false
+        default: 64
+        default_type: int
+        choices: null
+        nargs: null
+        action: store
+        type: int
+        help: maximum deterministic actions for --run-until-boundary
+      - dest: json
+        option_strings:
+          - --json
+        required: false
+        default: false
+        default_type: bool
+        choices: null
+        nargs: 0
+        action: store_true
+        type: null
+        help: emit the canonical machine result; output is always JSON and this flag marks that contract for transports
+    mutually_exclusive_groups:
+      - required: false
+        dests:
+          - execute
+          - run_until_boundary
+      - required: false
+        dests:
+          - input
+          - proposal
+    receipt_extensions: []
+    receipt_extensions_extraction: complete
+    receipt_extension_sources:
+      - path: Tools/execution/task_runtime/task_runtime_runner.py
+        sha256: sha256:130797dcacd4526847369e71954129cc22ff4ccc7ddafbcbf0ef792fb7d4b1b6
+    agent_interface:
+      exposure: mcp
+      workspace_argument: root
+      workspace_access: write
+      value_arguments:
+        - execute
+        - json
+        - max_steps
+        - run_until_boundary
+      path_arguments:
+        - argument: input
+          access: read
+          consumption: snapshot
+          constraint: namespace
+          value: .cambium/tmp
+          runtime_path_id: transient-root
+          suffixes:
+            - .json
+          active_when_any: []
+          inactive_when_any: []
+        - argument: proposal
+          access: read
+          consumption: snapshot
+          constraint: namespace
+          value: .cambium/tmp
+          runtime_path_id: transient-root
+          suffixes:
+            - .yaml
+          active_when_any: []
+          inactive_when_any: []
+      external_write: none
+  - tool: run_tests
+    module: Tools/run_tests.py
+    source_hash: sha256:aee907dd12ee3686b8797504e95599af2396f10ddc5026b895c178e0e0961a4c
+    implementation_module: Tools.platform.distribution.test_runner
+    implementation_path: Tools/platform/distribution/test_runner.py
+    implementation_source_hash: sha256:ceee0c56adbb82d9cd6ecabbde05ff5b9c330ee88ee328123840ac16611f91a1
+    description: Run catalog-owned tests with bounded, file-level isolation. The ownership manifest decides which cases are safe to overlap. One child process always receives every selected case from one test module, so failures remain attributable to a file and module-local process state is never split across workers. Modules not declared ``parallel_safe`` run serially.
+    arguments:
+      - dest: suite
+        option_strings: []
+        required: true
+        default: null
+        default_type: NoneType
+        choices:
+          - e2e
+          - fast
+          - full
+          - historical-read-only
+          - integration
+          - slow
+        nargs: null
+        action: store
+        type: null
+        help: null
+      - dest: root
+        option_strings:
+          - --root
+        required: false
+        default: .
+        default_type: str
+        choices: null
+        nargs: null
+        action: store
+        type: null
+        help: null
+      - dest: python
+        option_strings:
+          - --python
+        required: false
+        default: /Applications/Xcode.app/Contents/Developer/usr/bin/python3
+        default_type: str
+        choices: null
+        nargs: null
+        action: store
+        type: null
+        help: null
+      - dest: jobs
+        option_strings:
+          - --jobs
+        required: false
+        default: 4
+        default_type: int
+        choices: null
+        nargs: null
+        action: store
+        type: int
+        help: "maximum parallel-safe test files to run at once (default: %(default)s)"
+      - dest: list_only
+        option_strings:
+          - --list
+        required: false
+        default: false
+        default_type: bool
+        choices: null
+        nargs: 0
+        action: store_true
+        type: null
+        help: null
+    mutually_exclusive_groups: []
+    receipt_extensions: []
+    receipt_extensions_extraction: complete
+    receipt_extension_sources:
+      - path: Tools/platform/distribution/test_runner.py
+        sha256: sha256:ceee0c56adbb82d9cd6ecabbde05ff5b9c330ee88ee328123840ac16611f91a1
+    agent_interface:
+      exposure: cli-only
+      workspace_argument: root
+      workspace_access: read
+      value_arguments:
+        - jobs
+        - list_only
+        - python
+        - suite
+      path_arguments: []
+      external_write: none
   - tool: scaffold_profile
     module: Tools/scaffold_profile.py
-    source_hash: sha256:1721637934e67d5e60e42058b1511a96b6c96314913b497ccf3e7cc78e55c9f2
+    source_hash: sha256:826cbb5f86408dea54ce0c8a1a89e525dc3a1f2acdcf12209e5b0a1993c4e70a
+    implementation_module: Tools.governance.profile.scaffold_profile
+    implementation_path: Tools/governance/profile/scaffold_profile.py
+    implementation_source_hash: sha256:dcfea4b573f5be8701ddf43558a2394bdd14a0cea7a43b186133502c8b1423ea
     description: Scaffold a candidate profile from profiles/_template using the exact-copy whitelist in profiles/template-files.yaml
     arguments:
       - dest: root
@@ -7180,6 +7968,9 @@ tools:
     mutually_exclusive_groups: []
     receipt_extensions: []
     receipt_extensions_extraction: complete
+    receipt_extension_sources:
+      - path: Tools/governance/profile/scaffold_profile.py
+        sha256: sha256:dcfea4b573f5be8701ddf43558a2394bdd14a0cea7a43b186133502c8b1423ea
     agent_interface:
       exposure: mcp
       workspace_argument: root
@@ -7192,7 +7983,10 @@ tools:
       external_write: none
   - tool: seal_receipts
     module: Tools/seal_receipts.py
-    source_hash: sha256:141a63a8be5af98f1c6b70bf454378472ad3c5088c31046577ec2d8501bc3cfd
+    source_hash: sha256:1e83640d23ec955e551eb669acc4a40841f802114e51e391d04ae814bb7ecf44
+    implementation_module: Tools.execution.evidence.seal_receipts
+    implementation_path: Tools/execution/evidence/seal_receipts.py
+    implementation_source_hash: sha256:6ec4c83e0ae1eb0ff3456d09065cbd58b5aad736f96061316053a18bcb379b55
     description: "Seal verified frozen receipt history (K12/07). --apply is a maintenance-window operation: run it only with no other Cambium or adopter writer, checker or receipt appender active against this repository."
     arguments:
       - dest: root
@@ -7259,7 +8053,7 @@ tools:
         nargs: 0
         action: store_true
         type: null
-        help: write the receipts this run produced to stdout as one canonical JSON array and move the human-readable report to stderr; receipts written, verdicts, and exit codes are unchanged
+        help: write the receipts this run produced to stdout as one canonical JSON array and move the human-readable summary to stderr; receipts written and the exit code are unchanged
     mutually_exclusive_groups: []
     receipt_extensions:
       - index_rows
@@ -7268,10 +8062,17 @@ tools:
       - manifest_rows_sha256
       - queue_revision
       - queue_state_revision
-      - root
       - sealed_records
       - sealed_segments
+      - selected_profile_manifest
+      - task_id
+      - upstream_revision_id
     receipt_extensions_extraction: complete
+    receipt_extension_sources:
+      - path: Tools/execution/evidence/seal_receipts.py
+        sha256: sha256:6ec4c83e0ae1eb0ff3456d09065cbd58b5aad736f96061316053a18bcb379b55
+      - path: Tools/platform/common/kblib.py
+        sha256: sha256:e3c4768907708d817747072c0b797c7bd0e4ce2c7b5005292bee6624c1febd70
     agent_interface:
       exposure: mcp
       workspace_argument: root
@@ -7288,7 +8089,6 @@ tools:
           constraint: namespace
           value: .cambium/receipts
           runtime_path_id: receipt-root
-          component_path_id: null
           suffixes:
             - .jsonl
           active_when_any:
@@ -7299,7 +8099,10 @@ tools:
       external_write: none
   - tool: stamp_cards
     module: Tools/stamp_cards.py
-    source_hash: sha256:9c510ed6d25db209a0ad5eef6a3cf448f65fe9ef42418d82f0ad1de92f4d172c
+    source_hash: sha256:d30f1b73c2dfa7178738e737c55cef647acf8868744f0a4aa8ee8dbb19be3e51
+    implementation_module: Tools.platform.distribution.stamp_cards
+    implementation_path: Tools/platform/distribution/stamp_cards.py
+    implementation_source_hash: sha256:36440a08b78cdc27e1f2b819e9fbb405a6f111bfa82e904552f90a75b7613072
     description: Validate curated Cambium Cards
     arguments:
       - dest: root
@@ -7312,17 +8115,6 @@ tools:
         action: store
         type: null
         help: repository root
-      - dest: cards_dir
-        option_strings:
-          - --cards-dir
-        required: false
-        default: null
-        default_type: NoneType
-        choices: null
-        nargs: null
-        action: store
-        type: null
-        help: "Card directory relative to <root> (default: schema path_prefix)"
       - dest: acknowledge_review
         option_strings:
           - --acknowledge-curated-review
@@ -7348,6 +8140,9 @@ tools:
     mutually_exclusive_groups: []
     receipt_extensions: []
     receipt_extensions_extraction: complete
+    receipt_extension_sources:
+      - path: Tools/platform/distribution/stamp_cards.py
+        sha256: sha256:36440a08b78cdc27e1f2b819e9fbb405a6f111bfa82e904552f90a75b7613072
     agent_interface:
       exposure: cli-only
       workspace_argument: root
@@ -7355,21 +8150,14 @@ tools:
       value_arguments:
         - acknowledge_review
         - check
-      path_arguments:
-        - argument: cards_dir
-          access: read-write
-          consumption: transaction
-          constraint: exact
-          value: Card
-          runtime_path_id: null
-          component_path_id: card-directory
-          suffixes: []
-          active_when_any: []
-          inactive_when_any: []
+      path_arguments: []
       external_write: none
   - tool: update_queue
     module: Tools/update_queue.py
-    source_hash: sha256:e43c0c003c8fb2d3273233bf27fbb92912b6f1ea17352b64b0b9298c770fc9b1
+    source_hash: sha256:3f20f9f64b52bb8437231d10b6ceb8b2ebefeee535655cbcd864e89c3e3963dc
+    implementation_module: Tools.execution.task_runtime.update_queue
+    implementation_path: Tools/execution/task_runtime/update_queue.py
+    implementation_source_hash: sha256:95ccf2ad402cf1a1f67b70e03b7777343ab8c107c496a9665b5062d37fc811e2
     description: Apply one Required Queue transition
     arguments:
       - dest: root
@@ -7596,24 +8384,14 @@ tools:
           - transition
           - hold_state
     receipt_extensions:
-      - actor_role
       - after_coverage_sha256
-      - after_hold_state
       - after_progress_sha256
       - after_required_queue_sha256
-      - after_state
-      - after_state_revision
-      - before_coverage_sha256
-      - before_hold_state
       - before_progress_sha256
-      - before_required_queue_sha256
-      - before_state
-      - before_state_revision
       - close_gate_receipt
       - delta_apply_receipt
       - delta_path
       - delta_sha256
-      - evidence_receipt
       - invalidation
       - manifest_semantic_before_count
       - manifest_semantic_before_records
@@ -7631,8 +8409,10 @@ tools:
       - settlement_coverage_sha256_before
       - settlement_prospective_coverage_sha256
       - standards_revalidation_receipt
-      - task_id
     receipt_extensions_extraction: partial
+    receipt_extension_sources:
+      - path: Tools/execution/task_runtime/update_queue.py
+        sha256: sha256:95ccf2ad402cf1a1f67b70e03b7777343ab8c107c496a9665b5062d37fc811e2
     agent_interface:
       exposure: mcp
       workspace_argument: root
@@ -7661,7 +8441,6 @@ tools:
           constraint: namespace
           value: .cambium/deltas
           runtime_path_id: delta-root
-          component_path_id: null
           suffixes:
             - .yaml
           active_when_any: []
@@ -7672,7 +8451,6 @@ tools:
           constraint: namespace
           value: .cambium/receipts
           runtime_path_id: receipt-root
-          component_path_id: null
           suffixes:
             - .jsonl
           active_when_any:
@@ -7681,7 +8459,10 @@ tools:
       external_write: none
   - tool: update_task
     module: Tools/update_task.py
-    source_hash: sha256:b50027d388058d34ebbd167e53087fc55e123e80c1e7b09f58488b4f5c1f0b7e
+    source_hash: sha256:7e6829bb0a8c34b53673b75a10c11a725b80f78fe126c6b1ecf75c6df5082bee
+    implementation_module: Tools.execution.task_runtime.update_task
+    implementation_path: Tools/execution/task_runtime/update_task.py
+    implementation_source_hash: sha256:15b01b886c9f862e5ef49fb2fd693bc145a510622e86dd41840e828051713174
     description: Apply one canonical task-state transition
     arguments:
       - dest: root
@@ -7851,13 +8632,19 @@ tools:
       - evidence_receipt
       - first_open_batch_id
       - first_open_transition_receipt
-      - identity
       - planned_after_progress_sha256
       - queue_revision
       - queue_state_revision
+      - selected_profile_manifest
       - task_id
       - transaction_id
+      - upstream_revision_id
     receipt_extensions_extraction: partial
+    receipt_extension_sources:
+      - path: Tools/execution/task_runtime/update_task.py
+        sha256: sha256:15b01b886c9f862e5ef49fb2fd693bc145a510622e86dd41840e828051713174
+      - path: Tools/platform/common/kblib.py
+        sha256: sha256:e3c4768907708d817747072c0b797c7bd0e4ce2c7b5005292bee6624c1febd70
     agent_interface:
       exposure: mcp
       workspace_argument: root
@@ -7881,7 +8668,6 @@ tools:
           constraint: namespace
           value: .cambium/receipts
           runtime_path_id: receipt-root
-          component_path_id: null
           suffixes:
             - .jsonl
           active_when_any:

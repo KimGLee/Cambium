@@ -1,445 +1,293 @@
-"""The compiled CLI invocation contract and the compiler that derives it.
+"""Ownership tests for the compiled CLI invocation contract.
 
-These cover the properties the artifact is only useful for having: that it is
-derived from each tool's own argparse declaration rather than restated, that
-two runs of the compiler agree byte for byte (including across hash seeds,
-because several tools build `choices` from a Python set), that `--check`
-separates a stale artifact (2, a HOLD) from unreliable evidence (1), and that
-introspecting a tool runs none of that tool's behaviour.
-
-No flag, default, or help string is restated here. Every expectation is read
-either from the repository's own tools or from a fixture built inside the
-test, so this file cannot drift into a second declaration of the contract.
+``argparse`` and ``agent-interface-policy.yaml`` remain the machine owners of
+the invocation and capability inputs. This suite tests the compiler's join,
+source closure, deterministic projection, and write/check lifecycle without
+copying the current CLI dictionary into test code. MCP and Host projections
+have their own consumer suites; one test here alone owns compiler CLI
+transport.
 """
 
+import argparse
 import copy
-import os
-import shutil
-import subprocess
-import sys
-import tempfile
-import textwrap
-import unittest
 from pathlib import Path
+import unittest
+
+from Tools.execution.task_runtime import runtime_paths
+from Tools.platform.agent_interface import agent_interface_policy
+from Tools.platform.agent_interface import compile_cli_contract as compiler
+from Tools.platform.agent_interface import entrypoint_loader
+from Tools.platform.agent_interface import tool_availability
+from Tools.platform.common import kblib
+from Tools.tests.support.cli_contract_fixture import CliContractFixture
 
 
-TOOLS_DIR = Path(__file__).resolve().parents[1]
-REPO_ROOT = TOOLS_DIR.parent
-SCRIPT = TOOLS_DIR / "compile_cli_contract.py"
-ARTIFACT = TOOLS_DIR / "compiled" / "cli-contract.yaml"
-
-sys.path.insert(0, str(TOOLS_DIR))
-import card_contract  # noqa: E402
-import compile_cli_contract as compiler  # noqa: E402
-import tool_availability  # noqa: E402
-import kblib  # noqa: E402
-import runtime_paths  # noqa: E402
+REPOSITORY = Path(__file__).resolve().parents[2]
 
 
-def write_distribution_boundary(root, entries=()):
-    """A workspace needs a boundary before any projection can be compiled.
-
-    The default declares nothing excluded, so both targets resolve to the
-    same effective tool set and these cases keep testing what they were
-    written to test rather than the exclusion rule.
-    """
-    lines = ["schema_version: 1"]
-    if entries:
-        lines.append("distribution_only:")
-        for path in entries:
-            lines.append("  - path: %s" % path)
-            lines.append("    reason: fixture entry")
-    else:
-        lines.append("distribution_only: []")
-    with open(os.path.join(root, "distribution-boundary.yaml"), "w",
-              encoding="utf-8") as handle:
-        handle.write("\n".join(lines) + "\n")
+def by_tool(contract):
+    return {record["tool"]: record for record in contract["tools"]}
 
 
-def write_interface_policy(root, tool_names):
-    arguments = {}
-    original_parse_args = compiler.argparse.ArgumentParser.parse_args
-    original_argv = list(sys.argv)
+class CurrentCliOwnerClosureTests(unittest.TestCase):
+    """Contract: current parser, policy, and implementation owners join once."""
 
-    def capture(parser, _args=None, _namespace=None):
-        raise compiler._CapturedParser(parser)
+    @classmethod
+    def setUpClass(cls):
+        cls.contract = compiler.compile_contract(
+            REPOSITORY, tool_availability.SOURCE_DISTRIBUTION)
+        cls.policy, cls.policy_raw = agent_interface_policy.load_policy(
+            REPOSITORY)
+        cls.descriptors = entrypoint_loader.discover_entrypoints(
+            REPOSITORY / "Tools")
 
-    compiler.argparse.ArgumentParser.parse_args = capture
-    try:
-        for name, path, _source in compiler.discover_tools(root):
-            sys.argv = [os.path.basename(path)]
-            parser = compiler.load_parser(
-                "_cambium_test_policy_%s" % name, path)
-            arguments[name] = [
-                item["dest"] for item in
-                compiler.describe_arguments(root, parser)
-            ]
-    finally:
-        compiler.argparse.ArgumentParser.parse_args = original_parse_args
-        sys.argv = original_argv
-    rows = []
-    for name in sorted(tool_names):
-        rows.append({
-            "tool": name,
-            "exposure": "cli-only",
-            "workspace_argument": None,
-            "workspace_access": None,
-            "value_arguments": arguments[name],
-            "read_paths": [],
-            "write_paths": [],
-            "read_write_paths": [],
-            "external_write": "none",
-        })
-    path = Path(root) / compiler.DEFAULT_INTERFACE_POLICY
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(kblib.canonical_yaml({
-        "schema_version": compiler.INTERFACE_POLICY_SCHEMA_VERSION,
-        "artifact": "agent-interface-policy",
-        "consumption_defaults": {
-            "read": "snapshot",
-            "write": "replace",
-            "read-write": "transaction",
-        },
-        "path_defaults": [],
-        "path_overrides": [],
-        "path_activation_overrides": [],
-        "tools": rows,
-    }), encoding="utf-8")
+    def test_compiled_surface_is_the_exact_join_of_current_machine_owners(self):
+        records = by_tool(self.contract)
+        descriptors = {row.tool: row for row in self.descriptors}
+        policy_tools = {row["tool"] for row in self.policy["tools"]}
 
+        self.assertEqual(set(records), set(descriptors))
+        self.assertEqual(set(records), policy_tools)
+        self.assertEqual(self.contract["tool_count"], len(records))
+        self.assertEqual(
+            self.contract["agent_interface_policy"]["sha256"],
+            kblib.sha256_bytes(self.policy_raw))
 
-def run(*arguments, env=None, cwd=None):
-    environment = dict(os.environ)
-    environment["PYTHONDONTWRITEBYTECODE"] = "1"
-    environment.update(env or {})
-    return subprocess.run(
-        [sys.executable, str(SCRIPT)] + list(arguments),
-        capture_output=True, text=True, env=environment,
-        cwd=str(cwd or REPO_ROOT), check=False)
-
-
-class ShippedArtifactTests(unittest.TestCase):
-    """The artifact in the tree must be what the tools currently declare."""
-
-    def test_check_accepts_the_shipped_artifact(self):
-        result = run(".", "--check")
-
-        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
-
-    def test_every_shipped_cli_has_a_section(self):
-        contract = compiler.compile_contract(str(REPO_ROOT),
-            tool_availability.SOURCE_DISTRIBUTION)
-
-        modules = {record["module"] for record in contract["tools"]}
-        expected = {
-            "Tools/%s" % path.name
-            for path in sorted(TOOLS_DIR.glob("*.py"))
-            if not path.name.startswith("_") and
-            compiler.is_cli_module(path.read_text(encoding="utf-8"))
+        expected_sources = {
+            compiler.DEFAULT_INTERFACE_POLICY,
+            compiler.DEFAULT_RUNTIME_PATH_REGISTRY,
+            compiler.KBLIB_RECEIPT_SOURCE,
         }
+        for tool, descriptor in descriptors.items():
+            record = records[tool]
+            expected_sources.update((
+                descriptor.invocation_path,
+                descriptor.implementation_path,
+            ))
+            expected_sources.update(
+                row["path"] for row in record["receipt_extension_sources"])
+            with self.subTest(tool=tool):
+                self.assertEqual(record["module"], descriptor.invocation_path)
+                self.assertEqual(
+                    record["implementation_path"],
+                    descriptor.implementation_path)
+                self.assertEqual(
+                    record["source_hash"],
+                    kblib.sha256_bytes(
+                        descriptor.invocation_source.encode("utf-8")))
+                self.assertEqual(
+                    record["implementation_source_hash"],
+                    kblib.sha256_bytes(
+                        descriptor.implementation_source.encode("utf-8")))
+        self.assertEqual(set(self.contract["source_files"]), expected_sources)
 
-        self.assertEqual(modules, expected)
+    def test_receipt_shape_is_projected_from_the_common_envelope_owner(self):
+        owner_record = kblib.make_receipt(
+            "owner-probe", "0", "shape", "shape", "pass", "shape", 0,
+            receipt_type_id="owner-probe-receipt-v1", identity={},
+        )
+        shape = self.contract["receipt_shape"]
+
         self.assertEqual(
-            set(contract["source_files"]),
-            expected | {
-                compiler.DEFAULT_INTERFACE_POLICY,
-                compiler.DEFAULT_RUNTIME_PATH_REGISTRY,
-                card_contract.SCHEMA_PATH,
+            set(shape), {
+                "common_envelope_owner", "common_envelope_fields",
+                "extension_policy",
             })
-        self.assertEqual(contract["tool_count"], len(expected))
-
-    def test_each_section_records_the_source_it_was_read_from(self):
-        contract = compiler.compile_contract(str(REPO_ROOT),
-            tool_availability.SOURCE_DISTRIBUTION)
-
-        for record in contract["tools"]:
-            with self.subTest(tool=record["tool"]):
-                source = (REPO_ROOT / record["module"]).read_bytes()
-
-                self.assertEqual(record["source_hash"],
-                                 kblib.sha256_bytes(source))
-
-    def test_the_artifact_is_readable_by_the_shared_subset_parser(self):
-        parsed = kblib.parse_yaml_subset(ARTIFACT.read_text(encoding="utf-8"))
-
-        self.assertEqual(parsed["artifact"], "cli-invocation-contract")
-        self.assertTrue(parsed["tools"])
-
-    def test_adoption_writers_classify_the_resolved_upstream_identity(self):
-        contract = compiler.compile_contract(str(REPO_ROOT),
-            tool_availability.SOURCE_DISTRIBUTION)
-        by_tool = {record["tool"]: record for record in contract["tools"]}
-
-        for tool in ("adopt_standards", "apply_profile_adoption"):
-            with self.subTest(tool=tool):
-                interface = by_tool[tool]["agent_interface"]
-                self.assertIn("upstream_root", interface["value_arguments"])
-                self.assertIn("upstream_ref", interface["value_arguments"])
-
-    def test_plan_frozen_page_selectors_do_not_grant_path_access(self):
-        contract = compiler.compile_contract(
-            str(REPO_ROOT), tool_availability.SOURCE_DISTRIBUTION)
-        by_tool = {record["tool"]: record for record in contract["tools"]}
-
-        for tool in ("record_batch_page_review",
-                     "record_substantive_review"):
-            with self.subTest(tool=tool):
-                interface = by_tool[tool]["agent_interface"]
-                self.assertIn("page", interface["value_arguments"])
-                self.assertNotIn(
-                    "page",
-                    {row["argument"] for row in interface["path_arguments"]})
-                plan = next(
-                    row for row in interface["path_arguments"]
-                    if row["argument"] == "plan")
-                self.assertEqual("read", plan["access"])
-                self.assertEqual("namespace", plan["constraint"])
-                self.assertEqual("audit-plan-root", plan["runtime_path_id"])
-
-
-class DeterminismTests(unittest.TestCase):
-    def test_two_runs_agree_across_hash_seeds(self):
-        with tempfile.TemporaryDirectory() as workspace:
-            shutil.copytree(TOOLS_DIR, Path(workspace) / "Tools")
-            # CLI imports now validate several Kernel-owned machine contracts
-            # at module load. The isolated determinism fixture must stage the
-            # real owner tree, not replace those validations with test stubs.
-            shutil.copytree(REPO_ROOT / "kernel", Path(workspace) / "kernel")
-            shutil.copytree(REPO_ROOT / "Card", Path(workspace) / "Card")
-            shutil.copytree(
-                REPO_ROOT / "Read Set", Path(workspace) / "Read Set")
-            write_distribution_boundary(workspace)
-            artifact = Path(workspace) / compiler.DEFAULT_OUTPUT
-            first_run = run(workspace, "--projection-target", tool_availability.SOURCE_DISTRIBUTION,
-                            env={"PYTHONHASHSEED": "0"})
-            self.assertEqual(first_run.returncode, 0,
-                             first_run.stdout + first_run.stderr)
-            first = artifact.read_bytes()
-            second_run = run(workspace, "--projection-target", tool_availability.SOURCE_DISTRIBUTION,
-                             env={"PYTHONHASHSEED": "12345"})
-            self.assertEqual(second_run.returncode, 0,
-                             second_run.stdout + second_run.stderr)
-
-            self.assertEqual(first, artifact.read_bytes())
-
-    def test_choices_are_recorded_in_one_canonical_order(self):
-        root = str(REPO_ROOT)
-
         self.assertEqual(
-            compiler.normalize_choices(root, ("gamma", "alpha", "beta")),
-            compiler.normalize_choices(root, {"beta", "gamma", "alpha"}),
+            shape["common_envelope_owner"],
+            compiler.COMMON_RECEIPT_ENVELOPE_OWNER)
+        self.assertEqual(
+            shape["common_envelope_fields"], list(owner_record))
+        self.assertIn("receipt_type_id", shape["common_envelope_fields"])
+        self.assertNotIn("gate_id", shape["common_envelope_fields"])
+        self.assertIn(compiler.KBLIB_RECEIPT_SOURCE,
+                      self.contract["source_files"])
+
+
+class CliContractUnitTests(unittest.TestCase):
+
+    def test_choice_sets_have_one_canonical_projection_order(self):
+        self.assertEqual(
+            compiler.normalize_choices(
+                REPOSITORY, ("gamma", "alpha", "beta")),
+            compiler.normalize_choices(
+                REPOSITORY, {"beta", "gamma", "alpha"}),
         )
 
 
-class FixtureTests(unittest.TestCase):
-    """Behaviour that the shipped tools do not happen to exercise."""
+class CompilerFixtureContractTests(unittest.TestCase):
+    """Contract: one parser checkpoint covers compiler-only derivations."""
 
-    def setUp(self):
-        self.workspace = tempfile.mkdtemp()
-        self.addCleanup(shutil.rmtree, self.workspace, ignore_errors=True)
-        self.tools = os.path.join(self.workspace, "Tools")
-        os.makedirs(self.tools)
-        shutil.copy(str(TOOLS_DIR / "kblib.py"), self.tools)
-        shutil.copy(str(TOOLS_DIR / "runtime_paths.py"), self.tools)
-        shutil.copy(str(TOOLS_DIR / "tool_availability.py"), self.tools)
-        write_distribution_boundary(self.workspace)
-
-    def write_tool(self, name, body):
-        path = os.path.join(self.tools, name)
-        with open(path, "w", encoding="utf-8") as handle:
-            handle.write(textwrap.dedent(body))
-        return path
-
-    def compile(self):
-        names = [name for name, _path, _source in
-                 compiler.discover_tools(self.workspace)]
-        write_interface_policy(self.workspace, names)
-        return compiler.compile_contract(self.workspace,
-            tool_availability.SOURCE_DISTRIBUTION)
-
-    def only_tool(self):
-        tools = self.compile()["tools"]
-        self.assertEqual(len(tools), 1)
-        return tools[0]
-
-    def test_a_positional_is_the_argument_with_no_option_strings(self):
-        self.write_tool("sample.py", """
-            import argparse
-
-            def main(argv=None):
-                parser = argparse.ArgumentParser(description="Sample tool")
-                parser.add_argument("root", help="where to look")
-                parser.add_argument("--check", action="store_true",
-                                    help="verify only")
-                return parser.parse_args(argv)
-        """)
-
-        arguments = {record["dest"]: record for record in
-                     self.only_tool()["arguments"]}
-
-        self.assertEqual(arguments["root"]["option_strings"], [])
-        self.assertEqual(arguments["check"]["option_strings"], ["--check"])
-        self.assertEqual(arguments["check"]["action"], "store_true")
-        self.assertEqual(arguments["root"]["help"], "where to look")
-
-    def test_mutually_exclusive_groups_are_recorded_with_their_members(self):
-        self.write_tool("sample.py", """
-            import argparse
-
-            def main(argv=None):
-                parser = argparse.ArgumentParser(description="Sample tool")
-                group = parser.add_mutually_exclusive_group(required=True)
-                group.add_argument("--apply", action="store_true", help="a")
-                group.add_argument("--revert", action="store_true", help="b")
-                return parser.parse_args(argv)
-        """)
-
-        groups = self.only_tool()["mutually_exclusive_groups"]
-
-        self.assertEqual(groups, [{"required": True,
-                                   "dests": ["apply", "revert"]}])
-
-    def test_defaults_are_evaluated_and_made_repository_relative(self):
-        self.write_tool("sample.py", """
+    @classmethod
+    def setUpClass(cls):
+        cls.fixture = CliContractFixture()
+        cls.addClassCleanup(cls.fixture.cleanup)
+        cls.marker = cls.fixture.root / "tool-body-ran"
+        cls.fixture.write_tool("shape", """
             import argparse
             import os
 
-            ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+            ROOT = os.path.dirname(os.path.dirname(os.path.dirname(
+                os.path.abspath(__file__))))
 
             def main(argv=None):
-                parser = argparse.ArgumentParser(description="Sample tool")
-                parser.add_argument("--out", default=os.path.join(
-                    ROOT, "Tools", "out.yaml"), help="where to write")
-                parser.add_argument("--limit", type=int, default=3,
-                                    help="how many")
-                return parser.parse_args(argv)
-        """)
-
-        arguments = {record["dest"]: record for record in
-                     self.only_tool()["arguments"]}
-
-        self.assertEqual(arguments["out"]["default"], "Tools/out.yaml")
-        self.assertEqual(arguments["limit"]["default"], 3)
-        self.assertEqual(arguments["limit"]["default_type"], "int")
-        self.assertEqual(arguments["limit"]["type"], "int")
-
-    def test_no_tool_behaviour_runs_during_introspection(self):
-        marker = os.path.join(self.workspace, "ran")
-        self.write_tool("sample.py", """
-            import argparse
-
-            def main(argv=None):
-                parser = argparse.ArgumentParser(description="Sample tool")
-                parser.add_argument("root", help="where to look")
+                parser = argparse.ArgumentParser(description="Shape fixture")
+                parser.add_argument("root", help="workspace")
+                parser.add_argument("--output", default=os.path.join(
+                    ROOT, "Tools", "out.yaml"), help="projection")
+                parser.add_argument("--limit", type=int, default=3)
+                group = parser.add_mutually_exclusive_group(required=True)
+                group.add_argument("--apply", action="store_true")
+                group.add_argument("--revert", action="store_true")
                 args = parser.parse_args(argv)
-                open(%r, "w").write("the tool body ran")
-                return 0
-        """ % marker)
-
-        self.compile()
-
-        self.assertFalse(os.path.exists(marker))
-
-    def test_receipt_extension_fields_come_from_the_tool_source(self):
-        self.write_tool("sample.py", """
+                open(%r, "w").write("unexpected execution")
+                return args
+        """ % str(cls.marker))
+        cls.fixture.write_tool("static_receipt", """
             import argparse
-            import kblib
+            from Tools.platform.common import kblib
 
             def emit():
                 receipt = kblib.make_receipt(
-                    "sample", "1.0.0", "c", "t", "pass", "d", 1)
+                    "sample", "1.0.0", "c", "t", "pass", "d", 1,
+                    receipt_type_id="fixture-receipt-v1")
                 receipt.update({"scan_id": "s", "checked_at": "z"})
                 receipt["gate_id"] = "g"
                 return receipt
 
             def main(argv=None):
-                parser = argparse.ArgumentParser(description="Sample tool")
-                parser.add_argument("root", help="where to look")
+                parser = argparse.ArgumentParser()
                 return parser.parse_args(argv)
         """)
-
-        record = self.only_tool()
-
-        self.assertEqual(record["receipt_extensions"], ["gate_id", "scan_id"])
-        self.assertEqual(record["receipt_extensions_extraction"], "complete")
-
-    def test_a_runtime_computed_receipt_key_is_reported_as_partial(self):
-        self.write_tool("sample.py", """
+        cls.fixture.write_tool("dynamic_receipt", """
             import argparse
-            import kblib
+            from Tools.platform.common import kblib
 
             def emit(name):
                 receipt = kblib.make_receipt(
-                    "sample", "1.0.0", "c", "t", "pass", "d", 1)
+                    "sample", "1.0.0", "c", "t", "pass", "d", 1,
+                    receipt_type_id="fixture-receipt-v1")
                 receipt[name] = "value"
                 return receipt
 
             def main(argv=None):
-                parser = argparse.ArgumentParser(description="Sample tool")
-                parser.add_argument("root", help="where to look")
+                parser = argparse.ArgumentParser()
                 return parser.parse_args(argv)
         """)
+        cls.fixture.write_library("fixture_receipts.py", """
+            from Tools.platform.common import kblib
 
-        record = self.only_tool()
+            def make_fixture_receipt(payload=None, runtime_errors=None):
+                receipt = kblib.make_receipt(
+                    "sample", "1.0.0", "c", "t", "pass", "d", 1,
+                    receipt_type_id="fixture-receipt-v1")
+                receipt["helper_field"] = payload
+                if runtime_errors:
+                    receipt.update(runtime_errors)
+                return receipt
+        """)
+        cls.fixture.write_tool("imported_receipt", """
+            import argparse
+            from Tools.fixture_receipts import make_fixture_receipt
 
-        self.assertEqual(record["receipt_extensions"], [])
-        self.assertEqual(record["receipt_extensions_extraction"], "partial")
+            def emit():
+                return make_fixture_receipt(
+                    payload="value", runtime_errors={"dynamic": True})
 
-    def test_a_library_module_is_not_treated_as_a_command(self):
-        self.write_tool("helper.py", """
+            def main(argv=None):
+                parser = argparse.ArgumentParser()
+                return parser.parse_args(argv)
+        """)
+        cls.fixture.write_library("helper.py", """
             def helper():
                 return 1
         """)
-        self.write_tool("sample.py", """
+        cls.policy = cls.fixture.write_policy()
+        cls.contract = cls.fixture.compile()
+
+    def test_argument_and_group_shape_are_derived_from_argparse(self):
+        record = by_tool(self.contract)["shape"]
+        parser = entrypoint_loader.capture_argument_parser(
+            "shape", self.fixture.tools, require_marker=True)
+        actions = [
+            action for action in parser._actions
+            if not (type(action).__name__ == "_HelpAction" and
+                    action.default is argparse.SUPPRESS)
+        ]
+        self.assertEqual(
+            [item["dest"] for item in record["arguments"]],
+            [action.dest for action in actions])
+        self.assertEqual(
+            [item["option_strings"] for item in record["arguments"]],
+            [list(action.option_strings) for action in actions])
+
+        arguments = {item["dest"]: item for item in record["arguments"]}
+        self.assertEqual(arguments["output"]["default"], "Tools/out.yaml")
+        self.assertEqual(
+            (arguments["limit"]["default"],
+             arguments["limit"]["default_type"],
+             arguments["limit"]["type"]),
+            (3, "int", "int"))
+        expected_groups = [
+            {"required": bool(group.required),
+             "dests": [action.dest for action in group._group_actions]}
+            for group in parser._mutually_exclusive_groups
+            if group._group_actions
+        ]
+        self.assertEqual(record["mutually_exclusive_groups"], expected_groups)
+
+    def test_introspection_stops_before_behavior_and_ignores_libraries(self):
+        self.assertFalse(self.marker.exists())
+        self.assertNotIn("helper", by_tool(self.contract))
+        self.assertNotIn("fixture_receipts", by_tool(self.contract))
+
+    def test_receipt_source_closure_classifies_static_and_dynamic_fields(self):
+        records = by_tool(self.contract)
+        expected = {
+            "static_receipt": (["gate_id", "scan_id"], "complete"),
+            "dynamic_receipt": ([], "partial"),
+            "imported_receipt": (["helper_field"], "partial"),
+        }
+        for tool, result in expected.items():
+            with self.subTest(tool=tool):
+                record = records[tool]
+                self.assertEqual(
+                    (record["receipt_extensions"],
+                     record["receipt_extensions_extraction"]),
+                    result)
+        imported_sources = {
+            row["path"]
+            for row in records["imported_receipt"][
+                "receipt_extension_sources"]
+        }
+        self.assertIn("Tools/fixture_receipts.py", imported_sources)
+
+    def test_same_owner_inputs_render_identically_without_process_replay(self):
+        first = compiler.render(self.contract)
+        second = compiler.render(self.fixture.compile())
+        self.assertEqual(first, second)
+
+
+class AgentInterfaceJoinContractTests(unittest.TestCase):
+    """Contract: compiler closes parser arguments over the policy relation."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.fixture = CliContractFixture()
+        cls.addClassCleanup(cls.fixture.cleanup)
+        cls.fixture.write_tool("sample", """
             import argparse
 
             def main(argv=None):
-                parser = argparse.ArgumentParser(description="Sample tool")
-                parser.add_argument("root", help="where to look")
-                return parser.parse_args(argv)
-        """)
-
-        self.assertEqual([record["tool"] for record in
-                          self.compile()["tools"]], ["sample"])
-
-    def test_an_unclassified_new_argument_fails_policy_compilation(self):
-        self.write_tool("sample.py", """
-            import argparse
-
-            def main(argv=None):
-                parser = argparse.ArgumentParser(description="Sample tool")
-                parser.add_argument("root", help="where to look")
-                parser.add_argument("--new-capability", help="new surface")
-                return parser.parse_args(argv)
-        """)
-        write_interface_policy(self.workspace, ["sample"])
-        policy_path = Path(self.workspace) / compiler.DEFAULT_INTERFACE_POLICY
-        policy = kblib.parse_yaml_subset(
-            policy_path.read_text(encoding="utf-8"))
-        policy["tools"][0]["value_arguments"].remove("new_capability")
-        policy_path.write_text(kblib.canonical_yaml(policy), encoding="utf-8")
-
-        with self.assertRaisesRegex(
-                compiler.ContractError, "unclassified=new_capability"):
-            compiler.compile_contract(self.workspace,
-            tool_availability.SOURCE_DISTRIBUTION)
-
-    def test_path_activation_is_closed_over_same_tool_boolean_modes(self):
-        self.write_tool("sample.py", """
-            import argparse
-
-            def main(argv=None):
-                parser = argparse.ArgumentParser(description="Sample tool")
-                parser.add_argument("root", help="where to look")
+                parser = argparse.ArgumentParser(description="Policy fixture")
+                parser.add_argument("root")
                 parser.add_argument("--output", default="reports/out.md")
                 parser.add_argument("--apply", action="store_true")
                 parser.add_argument("--label")
                 return parser.parse_args(argv)
         """)
-        write_interface_policy(self.workspace, ["sample"])
-        policy_path = Path(self.workspace) / compiler.DEFAULT_INTERFACE_POLICY
-        policy = kblib.parse_yaml_subset(
-            policy_path.read_text(encoding="utf-8"))
-        row = policy["tools"][0]
+        cls.policy = cls.fixture.policy_document()
+        row = cls.policy["tools"][0]
         row.update({
             "exposure": "mcp",
             "workspace_argument": "root",
@@ -447,372 +295,220 @@ class FixtureTests(unittest.TestCase):
             "value_arguments": ["apply", "label"],
             "write_paths": ["output"],
         })
-        policy["path_activation_overrides"] = [{
-            "tool": "sample", "argument": "output",
-            "active_when_any": ["apply"], "inactive_when_any": [],
+        cls.policy["path_overrides"] = [{
+            "tool": "sample",
+            "argument": "output",
+            "constraint": "namespace",
+            "runtime_path_id": "report-root",
+            "suffixes": [".md"],
         }]
-        policy_path.write_text(
-            kblib.canonical_yaml(policy), encoding="utf-8")
+        cls.policy["path_activation_overrides"] = [{
+            "tool": "sample",
+            "argument": "output",
+            "active_when_any": ["apply"],
+            "inactive_when_any": [],
+        }]
+        cls.fixture.write_policy(cls.policy)
+        cls.contract = cls.fixture.compile()
+        cls.records = copy.deepcopy(cls.contract["tools"])
+        cls.availability = tool_availability.resolve(
+            cls.fixture.root, tool_availability.SOURCE_DISTRIBUTION)
 
-        compiled = compiler.compile_contract(self.workspace,
-            tool_availability.SOURCE_DISTRIBUTION)
-        capability = compiled["tools"][0]["agent_interface"][
-            "path_arguments"][0]
+    def test_policy_identity_resolves_to_one_compiled_path_capability(self):
+        interface = self.contract["tools"][0]["agent_interface"]
+        capability, = interface["path_arguments"]
+        owner = runtime_paths.path_reference_for("report-root")
+
+        self.assertEqual(interface["value_arguments"], ["apply", "label"])
+        self.assertEqual(capability["argument"], "output")
+        self.assertEqual(capability["access"], "write")
+        self.assertEqual(capability["consumption"], "replace")
+        self.assertEqual(capability["runtime_path_id"], owner.runtime_path_id)
+        self.assertEqual(capability["constraint"], owner.constraint)
+        self.assertEqual(capability["value"], owner.path)
         self.assertEqual(capability["active_when_any"], ["apply"])
 
-        policy["path_activation_overrides"][0]["active_when_any"] = [
-            "label"]
-        policy_path.write_text(
-            kblib.canonical_yaml(policy), encoding="utf-8")
-        with self.assertRaisesRegex(
-                compiler.ContractError, "must name one store_true"):
-            compiler.compile_contract(self.workspace,
+    def test_apply_gated_writers_are_derived_from_compiled_path_effects(self):
+        self.assertEqual(
+            frozenset(("sample",)),
+            compiler.apply_gated_writer_tools(self.contract),
+        )
+
+        unguarded = copy.deepcopy(self.contract)
+        unguarded["tools"][0]["agent_interface"]["path_arguments"][0][
+            "active_when_any"] = []
+        self.assertEqual(
+            frozenset(), compiler.apply_gated_writer_tools(unguarded))
+
+    def test_policy_join_fails_closed_without_redeclaring_policy_shape(self):
+        def unclassify(document):
+            document["tools"][0]["value_arguments"].remove("label")
+
+        def use_non_boolean_activation(document):
+            document["path_activation_overrides"][0][
+                "active_when_any"] = ["label"]
+
+        def use_unknown_runtime_identity(document):
+            document["path_overrides"][0][
+                "runtime_path_id"] = "not-registered"
+
+        def use_literal_runtime_path(document):
+            row = document["path_overrides"][0]
+            row.pop("runtime_path_id")
+            row["value"] = ".cambium/reports"
+
+        cases = (
+            (unclassify, "unclassified=label"),
+            (use_non_boolean_activation, "must name one store_true"),
+            (use_unknown_runtime_identity,
+             "unknown runtime_path_id not-registered"),
+            (use_literal_runtime_path, "must use runtime_path_id"),
+        )
+        try:
+            for mutate, message in cases:
+                with self.subTest(message=message):
+                    document = copy.deepcopy(self.policy)
+                    mutate(document)
+                    self.fixture.write_policy(document)
+                    with self.assertRaisesRegex(
+                            compiler.ContractError, message):
+                        compiler.load_interface_policy(
+                            self.fixture.root,
+                            self.records,
+                            self.availability,
+                        )
+        finally:
+            self.fixture.write_policy(self.policy)
+
+
+class CompilerProjectionLifecycleTests(unittest.TestCase):
+    """Integration: one local artifact distinguishes HOLD from bad evidence."""
+
+    def test_write_check_stale_and_unreliable_evidence_share_one_lifecycle(self):
+        fixture = CliContractFixture()
+        self.addCleanup(fixture.cleanup)
+        implementation = fixture.write_tool("sample", """
+            import argparse
+
+            def main(argv=None):
+                parser = argparse.ArgumentParser(description="Lifecycle")
+                parser.add_argument("root")
+                return parser.parse_args(argv)
+        """)
+        fixture.write_policy()
+        args = (
+            fixture.root, "--projection-target",
+            tool_availability.SOURCE_DISTRIBUTION,
+        )
+
+        missing = fixture.run_in_process(
+            fixture.root, "--check", "--projection-target",
             tool_availability.SOURCE_DISTRIBUTION)
+        self.assertEqual(missing.returncode, 2)
 
-    def test_runtime_path_id_resolves_value_and_retains_source_identity(self):
-        self.write_tool("sample.py", """
-            import argparse
+        generated = fixture.run_in_process(*args)
+        current = fixture.run_in_process(
+            fixture.root, "--check", "--projection-target",
+            tool_availability.SOURCE_DISTRIBUTION)
+        self.assertEqual(generated.returncode, 0, generated.stdout)
+        self.assertEqual(current.returncode, 0, current.stdout)
 
-            def main(argv=None):
-                parser = argparse.ArgumentParser(description="Sample tool")
-                parser.add_argument("root")
-                parser.add_argument("--output")
-                return parser.parse_args(argv)
-        """)
-        write_interface_policy(self.workspace, ["sample"])
-        policy_path = Path(self.workspace) / compiler.DEFAULT_INTERFACE_POLICY
-        policy = kblib.parse_yaml_subset(
-            policy_path.read_text(encoding="utf-8"))
-        policy["tools"][0].update({
-            "exposure": "mcp",
-            "workspace_argument": "root",
-            "workspace_access": "write",
-            "value_arguments": [],
-            "write_paths": ["output"],
-        })
-        policy["path_overrides"] = [{
-            "tool": "sample",
-            "argument": "output",
-            "constraint": "namespace",
-            "runtime_path_id": "report-root",
-            "suffixes": [".md"],
-        }]
-        policy_path.write_text(
-            kblib.canonical_yaml(policy), encoding="utf-8")
-
-        compiled = compiler.compile_contract(
-            self.workspace, tool_availability.SOURCE_DISTRIBUTION)
-        capability = compiled["tools"][0]["agent_interface"][
-            "path_arguments"][0]
-
-        self.assertEqual("report-root", capability["runtime_path_id"])
-        self.assertEqual(runtime_paths.REPORT_ROOT, capability["value"])
+        fixture.output.write_text(
+            fixture.output.read_text(encoding="utf-8").replace(
+                "tool_count: 1", "tool_count: 2"),
+            encoding="utf-8")
         self.assertEqual(
-            compiler.DEFAULT_RUNTIME_PATH_REGISTRY,
-            compiled["runtime_path_registry"]["path"],
-        )
+            fixture.run_in_process(
+                fixture.root, "--check", "--projection-target",
+                tool_availability.SOURCE_DISTRIBUTION).returncode,
+            2)
 
-    def test_path_override_keeps_the_argument_consumption_default(self):
-        self.write_tool("sample.py", """
-            import argparse
-
-            def main(argv=None):
-                parser = argparse.ArgumentParser(description="Sample tool")
-                parser.add_argument("root")
-                parser.add_argument("--receipts")
-                return parser.parse_args(argv)
-        """)
-        write_interface_policy(self.workspace, ["sample"])
-        policy_path = Path(self.workspace) / compiler.DEFAULT_INTERFACE_POLICY
-        policy = kblib.parse_yaml_subset(
-            policy_path.read_text(encoding="utf-8"))
-        policy["tools"][0].update({
-            "exposure": "mcp",
-            "workspace_argument": "root",
-            "workspace_access": "write",
-            "value_arguments": [],
-            "write_paths": ["receipts"],
-        })
-        policy["path_defaults"] = [{
-            "argument": "receipts",
-            "constraint": "namespace",
-            "runtime_path_id": "receipt-root",
-            "suffixes": [".jsonl"],
-            "consumption": "append",
-        }]
-        policy["path_overrides"] = [{
-            "tool": "sample",
-            "argument": "receipts",
-            "constraint": "exact",
-            "runtime_path_id": "gate-attestation-receipts",
-            "suffixes": [],
-        }]
-        policy_path.write_text(
-            kblib.canonical_yaml(policy), encoding="utf-8")
-
-        compiled = compiler.compile_contract(
-            self.workspace, tool_availability.SOURCE_DISTRIBUTION)
-        capability = compiled["tools"][0]["agent_interface"][
-            "path_arguments"][0]
-
-        self.assertEqual("append", capability["consumption"])
-        self.assertEqual("exact", capability["constraint"])
+        self.assertEqual(fixture.run_in_process(*args).returncode, 0)
+        implementation.write_text(
+            implementation.read_text(encoding="utf-8") + "\n# drift\n",
+            encoding="utf-8")
         self.assertEqual(
-            "gate-attestation-receipts", capability["runtime_path_id"])
+            fixture.run_in_process(
+                fixture.root, "--check", "--projection-target",
+                tool_availability.SOURCE_DISTRIBUTION).returncode,
+            2)
 
-    def test_component_path_id_tracks_card_schema_path_prefix(self):
-        self.write_tool("sample.py", """
+        fixture.write_tool("sample", """
+            import argparse
+            raise RuntimeError("unreliable fixture")
+
+            def main(argv=None):
+                parser = argparse.ArgumentParser()
+                return parser.parse_args(argv)
+        """)
+        unreliable = fixture.run_in_process(
+            fixture.root, "--check", "--projection-target",
+            tool_availability.SOURCE_DISTRIBUTION)
+        self.assertEqual(unreliable.returncode, 1)
+        self.assertIn("evidence is unreliable", unreliable.stdout)
+
+    def test_projection_identity_fixes_the_current_artifact_path(self):
+        fixture = CliContractFixture()
+        self.addCleanup(fixture.cleanup)
+        fixture.write_tool("sample", """
             import argparse
 
             def main(argv=None):
-                parser = argparse.ArgumentParser(description="Sample tool")
+                parser = argparse.ArgumentParser(description="Projection")
                 parser.add_argument("root")
-                parser.add_argument("--cards-dir")
                 return parser.parse_args(argv)
         """)
-        card_directory = Path(self.workspace) / "Card"
-        card_directory.mkdir()
-        schema_path = Path(self.workspace) / "Tools/schemas/card.schema.yaml"
-        schema_path.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copy(REPO_ROOT / "Tools/schemas/card.schema.yaml", schema_path)
-        write_interface_policy(self.workspace, ["sample"])
-        policy_path = Path(self.workspace) / compiler.DEFAULT_INTERFACE_POLICY
-        policy = kblib.parse_yaml_subset(
-            policy_path.read_text(encoding="utf-8"))
-        policy["tools"][0].update({
-            "exposure": "mcp",
-            "workspace_argument": "root",
-            "workspace_access": "write",
-            "value_arguments": [],
-            "read_write_paths": ["cards_dir"],
-        })
-        policy["path_overrides"] = [{
-            "tool": "sample",
-            "argument": "cards_dir",
-            "constraint": "exact",
-            "component_path_id": compiler.CARD_DIRECTORY_COMPONENT_PATH_ID,
-            "suffixes": [],
-        }]
-        policy_path.write_text(
-            kblib.canonical_yaml(policy), encoding="utf-8")
+        fixture.write_policy()
+        carried = fixture.root / runtime_paths.CLI_CONTRACT_ARTIFACT_PATH
 
-        before = compiler.compile_contract(
-            self.workspace, tool_availability.SOURCE_DISTRIBUTION)
-        before_path = before["tools"][0]["agent_interface"][
-            "path_arguments"][0]
-        before_hash = before["component_path_registries"][
-            compiler.CARD_DIRECTORY_COMPONENT_PATH_ID]["sha256"]
-        self.assertEqual("Card", before_path["value"])
-        self.assertEqual(
-            compiler.CARD_DIRECTORY_COMPONENT_PATH_ID,
-            before_path["component_path_id"],
-        )
-
-        schema = kblib.parse_yaml_subset(
-            schema_path.read_text(encoding="utf-8"))
-        schema["path_prefix"] = "Flight-Cards/"
-        schema_path.write_text(
-            kblib.canonical_yaml(schema), encoding="utf-8")
-        after = compiler.compile_contract(
-            self.workspace, tool_availability.SOURCE_DISTRIBUTION)
-        after_path = after["tools"][0]["agent_interface"][
-            "path_arguments"][0]
-        after_hash = after["component_path_registries"][
-            compiler.CARD_DIRECTORY_COMPONENT_PATH_ID]["sha256"]
-
-        self.assertEqual("Flight-Cards", after_path["value"])
-        self.assertNotEqual(before_hash, after_hash)
-        self.assertNotEqual(before["source_hash"], after["source_hash"])
-
-    def test_runtime_path_binding_shape_and_identity_fail_closed(self):
-        self.write_tool("sample.py", """
-            import argparse
-
-            def main(argv=None):
-                parser = argparse.ArgumentParser(description="Sample tool")
-                parser.add_argument("root")
-                parser.add_argument("--output")
-                return parser.parse_args(argv)
-        """)
-        write_interface_policy(self.workspace, ["sample"])
-        policy_path = Path(self.workspace) / compiler.DEFAULT_INTERFACE_POLICY
-        base = kblib.parse_yaml_subset(
-            policy_path.read_text(encoding="utf-8"))
-        base["tools"][0].update({
-            "exposure": "mcp",
-            "workspace_argument": "root",
-            "workspace_access": "write",
-            "value_arguments": [],
-            "write_paths": ["output"],
-        })
-        valid_row = {
-            "tool": "sample",
-            "argument": "output",
-            "constraint": "namespace",
-            "runtime_path_id": "report-root",
-            "suffixes": [".md"],
-        }
-        cases = []
-        both = dict(valid_row, value="reports")
-        cases.append((both, "exactly one of value/runtime_path_id"))
-        both_registries = dict(
-            valid_row,
-            component_path_id=compiler.CARD_DIRECTORY_COMPONENT_PATH_ID,
-        )
-        cases.append((both_registries,
-                      "exactly one of value/runtime_path_id"))
-        neither = dict(valid_row)
-        del neither["runtime_path_id"]
-        cases.append((neither, "exactly one of value/runtime_path_id"))
-        cases.append((
-            dict(valid_row, runtime_path_id="not-registered"),
-            "unknown runtime_path_id not-registered",
-        ))
-        cases.append((
-            dict(valid_row, runtime_path_id=None),
-            "runtime_path_id must be a non-empty string",
-        ))
-        cases.append((
-            dict(valid_row, runtime_path_id="effective-vocabulary"),
-            "constraint mismatch",
-        ))
-        literal_runtime = dict(valid_row)
-        del literal_runtime["runtime_path_id"]
-        literal_runtime["value"] = ".cambium/reports"
-        cases.append((literal_runtime, "must use runtime_path_id"))
-
-        for row, message in cases:
-            with self.subTest(message=message):
-                policy = copy.deepcopy(base)
-                policy["path_overrides"] = [row]
-                policy_path.write_text(
-                    kblib.canonical_yaml(policy), encoding="utf-8")
-
-                with self.assertRaisesRegex(
-                        compiler.ContractError, message):
-                    compiler.compile_contract(
-                        self.workspace,
-                        tool_availability.SOURCE_DISTRIBUTION,
-                    )
-
-
-class ExitCodeTests(unittest.TestCase):
-    def setUp(self):
-        self.workspace = tempfile.mkdtemp()
-        self.addCleanup(shutil.rmtree, self.workspace, ignore_errors=True)
-        self.tools = os.path.join(self.workspace, "Tools")
-        os.makedirs(self.tools)
-        shutil.copy(str(TOOLS_DIR / "kblib.py"), self.tools)
-        shutil.copy(str(TOOLS_DIR / "runtime_paths.py"), self.tools)
-        shutil.copy(str(TOOLS_DIR / "tool_availability.py"), self.tools)
-        write_distribution_boundary(self.workspace)
-        with open(os.path.join(self.tools, "sample.py"), "w",
-                  encoding="utf-8") as handle:
-            handle.write(textwrap.dedent("""
-                import argparse
-
-                def main(argv=None):
-                    parser = argparse.ArgumentParser(description="Sample")
-                    parser.add_argument("root", help="where to look")
-                    return parser.parse_args(argv)
-            """))
-        write_interface_policy(self.workspace, ["sample"])
-        self.output = os.path.join(
-            self.workspace, compiler.DEFAULT_OUTPUT)
-        os.makedirs(os.path.dirname(self.output), exist_ok=True)
-
-    def compile_once(self):
-        return run(self.workspace, "--projection-target", tool_availability.SOURCE_DISTRIBUTION)
-
-    def test_write_then_check_passes(self):
-        self.assertEqual(self.compile_once().returncode, 0)
-
-        result = run(self.workspace, "--check", "--projection-target", tool_availability.SOURCE_DISTRIBUTION)
-
-        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
-
-    def test_carried_runtime_writes_only_the_registered_derived_contract(self):
-        result = run(
-            self.workspace, "--projection-target",
+        generated = fixture.run_in_process(
+            fixture.root, "--projection-target",
             tool_availability.CARRIED_RUNTIME)
+        self.assertEqual(generated.returncode, 0, generated.stdout)
+        self.assertTrue(carried.is_file())
+        self.assertFalse(fixture.output.exists())
 
-        self.assertEqual(result.returncode, 0,
-                         result.stdout + result.stderr)
-        runtime_output = Path(
-            self.workspace, runtime_paths.CLI_CONTRACT_ARTIFACT_PATH)
-        self.assertTrue(runtime_output.is_file())
-        self.assertFalse(Path(self.output).exists())
-        contract = kblib.parse_yaml_subset(
-            runtime_output.read_text(encoding="utf-8"))
-        self.assertEqual(contract["projection_target"],
-                         tool_availability.CARRIED_RUNTIME)
-        header = runtime_output.read_text(encoding="utf-8").splitlines()[:12]
-        self.assertTrue(any(
-            "--projection-target carried-runtime" in line
-            for line in header))
-        self.assertFalse(any(
-            "compile_cli_contract.py . --check" in line
-            for line in header))
+        inferred_check = fixture.run_in_process(
+            fixture.root, "--check", "--output", carried)
+        self.assertEqual(
+            inferred_check.returncode, 0,
+            inferred_check.stdout + inferred_check.stderr)
 
-    def test_carried_runtime_refuses_the_distribution_output(self):
-        result = run(
-            self.workspace, "--projection-target",
+        wrong_owner = fixture.run_in_process(
+            fixture.root, "--projection-target",
             tool_availability.CARRIED_RUNTIME,
-            "--output", self.output)
+            "--output", fixture.output)
+        self.assertEqual(wrong_owner.returncode, 1)
+        self.assertIn("unsafe artifact output", wrong_owner.stdout)
+        self.assertFalse(fixture.output.exists())
 
-        self.assertEqual(result.returncode, 1,
-                         result.stdout + result.stderr)
-        self.assertFalse(Path(self.output).exists())
 
-    def test_a_hand_edited_artifact_holds_with_2(self):
-        self.compile_once()
-        text = Path(self.output).read_text(encoding="utf-8")
-        Path(self.output).write_text(
-            text.replace("tool_count: 1", "tool_count: 2"), encoding="utf-8")
+class CompilerCliTransportTests(unittest.TestCase):
+    """Integration: the public compiler wrapper transports one current check."""
 
-        result = run(self.workspace, "--check", "--projection-target", tool_availability.SOURCE_DISTRIBUTION)
+    def test_public_cli_transports_one_current_projection_check(self):
+        fixture = CliContractFixture()
+        self.addCleanup(fixture.cleanup)
+        fixture.write_tool("sample", """
+            import argparse
 
-        self.assertEqual(result.returncode, 2, result.stdout + result.stderr)
-
-    def test_a_missing_artifact_holds_with_2(self):
-        result = run(self.workspace, "--check", "--projection-target", tool_availability.SOURCE_DISTRIBUTION)
-
-        self.assertEqual(result.returncode, 2, result.stdout + result.stderr)
-
-    def test_a_stale_artifact_holds_with_2(self):
-        self.compile_once()
-        with open(os.path.join(self.tools, "sample.py"), "a",
-                  encoding="utf-8") as handle:
-            handle.write("\n# a later edit to the tool\n")
-
-        result = run(self.workspace, "--check", "--projection-target", tool_availability.SOURCE_DISTRIBUTION)
-
-        self.assertEqual(result.returncode, 2, result.stdout + result.stderr)
-
-    def test_unreliable_evidence_fails_with_1_not_2(self):
-        with open(os.path.join(self.tools, "broken.py"), "w",
-                  encoding="utf-8") as handle:
-            handle.write(textwrap.dedent("""
-                import argparse
-                raise RuntimeError("import side effect")
-
-                def main(argv=None):
-                    parser = argparse.ArgumentParser(description="Broken")
-                    return parser.parse_args(argv)
-            """))
-
-        result = run(self.workspace, "--check", "--projection-target", tool_availability.SOURCE_DISTRIBUTION)
-
-        self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
-
-    def test_parse_args_is_restored_after_a_run(self):
-        import argparse
-
-        before = argparse.ArgumentParser.parse_args
-        compiler.compile_contract(self.workspace,
+            def main(argv=None):
+                parser = argparse.ArgumentParser(description="Transport")
+                parser.add_argument("root")
+                return parser.parse_args(argv)
+        """)
+        fixture.write_policy()
+        generated = fixture.run_in_process(
+            fixture.root, "--projection-target",
             tool_availability.SOURCE_DISTRIBUTION)
+        self.assertEqual(generated.returncode, 0, generated.stdout)
 
-        self.assertIs(argparse.ArgumentParser.parse_args, before)
+        checked = fixture.run_cli(
+            fixture.root, "--check", "--projection-target",
+            tool_availability.SOURCE_DISTRIBUTION)
+        self.assertEqual(
+            checked.returncode, 0, checked.stdout + checked.stderr)
+        self.assertIn("is current", checked.stdout)
 
 
 if __name__ == "__main__":

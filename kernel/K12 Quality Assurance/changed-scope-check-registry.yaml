@@ -8,7 +8,7 @@ semantic_owner: K12/05
 base_rules:
   - rule_id: k12-05-guidance-state-zero-counts
     applicability: every-batch-close
-    producer_capability: audit-receipt-producer-v1
+    producer_capability: changed-scope-evidence-adapter-v1
     producer_check: changed_scope_guidance_state_zero_counts
     evidence_role: emits
     evidence_kind: audit-receipt
@@ -19,7 +19,7 @@ base_rules:
     nonblocking: false
   - rule_id: k12-05-coverage-routing-state
     applicability: changed-scope-includes-coverage-or-required-routing-state
-    producer_capability: audit-receipt-producer-v1
+    producer_capability: changed-scope-evidence-adapter-v1
     producer_check: changed_scope_coverage_routing_state
     evidence_role: emits
     evidence_kind: audit-receipt
@@ -52,7 +52,7 @@ base_rules:
     nonblocking: false
   - rule_id: k12-05-frozen-task-contract-references
     applicability: batch-contract-freezes-machine-checkable-component-references
-    producer_capability: audit-receipt-producer-v1
+    producer_capability: changed-scope-evidence-adapter-v1
     producer_check: changed_scope_frozen_task_contract_references
     evidence_role: emits
     evidence_kind: audit-receipt
@@ -63,7 +63,7 @@ base_rules:
     nonblocking: false
   - rule_id: k12-02-level0-fence-closure
     applicability: every-changed-markdown-page
-    producer_capability: audit-receipt-producer-v1
+    producer_capability: changed-scope-evidence-adapter-v1
     producer_check: changed_scope_level0_fence_closure
     evidence_role: emits
     evidence_kind: audit-receipt
@@ -85,7 +85,7 @@ base_rules:
     nonblocking: false
   - rule_id: k12-02-level0-mermaid-fence-closure
     applicability: changed-scope-includes-mermaid-fence
-    producer_capability: audit-receipt-producer-v1
+    producer_capability: changed-scope-evidence-adapter-v1
     producer_check: changed_scope_level0_mermaid_fence_closure
     evidence_role: emits
     evidence_kind: audit-receipt
@@ -96,7 +96,7 @@ base_rules:
     nonblocking: false
   - rule_id: k12-02-level1-markdown-table-static
     applicability: changed-scope-includes-markdown-table
-    producer_capability: audit-receipt-producer-v1
+    producer_capability: changed-scope-evidence-adapter-v1
     producer_check: changed_scope_level1_markdown_table_static
     evidence_role: emits
     evidence_kind: audit-receipt
@@ -107,7 +107,7 @@ base_rules:
     nonblocking: false
   - rule_id: k12-02-rendering-verification-record
     applicability: every-batch
-    producer_capability: audit-receipt-producer-v1
+    producer_capability: dedicated-rendering-verification-v1
     producer_check: changed_scope_rendering_escalation_record
     evidence_role: emits
     evidence_kind: audit-receipt

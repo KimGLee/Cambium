@@ -1,4 +1,5 @@
-# Restricted-YAML configuration for Tools/check_residual_content.py.
+# Restricted-YAML configuration for
+# Tools/knowledge/content/check_residual_content.py.
 # Copy this file into a selected profile and replace every TODO(profile).
 # The Registered Scan Registry remains the owner of the scan ID, invocation,
 # candidate predicate, and Judgment Item binding; this file contains only

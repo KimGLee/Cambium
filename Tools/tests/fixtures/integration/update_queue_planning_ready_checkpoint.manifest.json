@@ -1,0 +1,96 @@
+{
+  "artifacts": {
+    "ready_gate": "audit-check_queue-20260831T171409Z-b351b95485c84c1083770e33b2e1dabf-0001"
+  },
+  "checkpoint_id": "update-queue-planning-ready-current",
+  "current_contract_owner": "Tools.execution.task_runtime.runtime_validation.validate_runtime",
+  "dependency_builder": "Tools.tests.support.profile_fixture.install_loadable_profile",
+  "files": [
+    {
+      "path": ".cambium/deltas/task-plans/TP-fixture-initial.yaml",
+      "sha256": "sha256:2dd701dadcd6f71a2bef2614550854d834cbeda79ffde60e3791054c362f1187",
+      "size": 2272
+    },
+    {
+      "path": ".cambium/derived/page_contract.yaml",
+      "sha256": "sha256:db783fd56b9107968da1f8cc252b39c975f08cc27d54c56429f11bc9c9a08101",
+      "size": 5146
+    },
+    {
+      "path": ".cambium/derived/vocab.yaml",
+      "sha256": "sha256:e80d30b4b7e28dfeaef23546dd8c1224c41cbfac991b08d58a7eaf12711d69a6",
+      "size": 3762
+    },
+    {
+      "path": ".cambium/governance/standards_state.yaml",
+      "sha256": "sha256:1b5f9edb1b58d7f4b10ffee3de26b13cf13233254a0d54fb6758d9761f5e0083",
+      "size": 300
+    },
+    {
+      "path": ".cambium/receipts/gates.jsonl",
+      "sha256": "sha256:215c033fe440156bffc17612ececaa11606473acc8fc17ab0279540d92bb51d4",
+      "size": 8114
+    },
+    {
+      "path": ".cambium/receipts/standards-adoptions.jsonl",
+      "sha256": "sha256:62c56af9f7db27ea158d1f6594328c70a197f828fea77e41a89b54f1ee4e616f",
+      "size": 2414
+    },
+    {
+      "path": ".cambium/receipts/task-plans.jsonl",
+      "sha256": "sha256:701ad634cc9fb913f36a8276fb1867308129dda228eb8d2f5581345d1234009a",
+      "size": 1738
+    },
+    {
+      "path": ".cambium/receipts/task-transitions.jsonl",
+      "sha256": "sha256:821e51adf2339c0698d7edd6856127828311ca5d2f26c32f56b24f1e6d9f18cc",
+      "size": 1345
+    },
+    {
+      "path": ".cambium/state/coverage_ledger.yaml",
+      "sha256": "sha256:f7cfec39b0c7e6f5bc8dd90b52d3620a13d20f5fbf6072557f515c8d07940954",
+      "size": 1212
+    },
+    {
+      "path": ".cambium/state/progress_ledger.yaml",
+      "sha256": "sha256:3b2542c7635d82f149d8438f68412e44ef36e2bc8ebcf394744e71632dd87dc4",
+      "size": 2139
+    },
+    {
+      "path": ".cambium/state/required_queue.yaml",
+      "sha256": "sha256:e4b81d65c97edfa4b445d238f54fcfa1ccc447dbbb50c3eb805e1005ea6a9fe5",
+      "size": 837
+    },
+    {
+      "path": ".cambium/tmp/.gitkeep",
+      "sha256": "sha256:01ba4719c80b6fe911b091a7c05124b64eeece964e09c058ef8f9805daca546b",
+      "size": 1
+    },
+    {
+      "path": ".cambium/tmp/receipt-append.free",
+      "sha256": "sha256:b9fca8ab185f79e9ceeec87174e9c66e3687bdff1ea96df31a120d30d6507f51",
+      "size": 91
+    },
+    {
+      "path": "Topics/A.md",
+      "sha256": "sha256:572e677507e1f16c87dad64262f79df479f263e746cdcbbc68bc60c6a4ebe5b8",
+      "size": 183
+    },
+    {
+      "path": "Topics/B.md",
+      "sha256": "sha256:7a2f49f0a8ca7cdec50ab11d29a32bb097c21d675bdd341eb61513b37580c6a9",
+      "size": 183
+    }
+  ],
+  "generator": "Tools.tests.fixtures.e2e.update_queue_scenarios.generate_update_queue_checkpoint",
+  "generator_command": "python3 -m Tools.tests.fixtures.e2e.update_queue_scenarios --scenario planning-ready --output <checkpoint-dir> --manifest <manifest.json>",
+  "persisted_paths": [
+    ".cambium",
+    "Topics"
+  ],
+  "scenario": "planning-ready",
+  "scenario_dependency_builder": "Tools.tests.fixtures.integration.update_queue_checkpoints.install_update_queue_profile",
+  "schema_version": 1,
+  "tree_sha256": "sha256:5e39c3cac1e11dd6d110da152944fa2a99fc8177187fbe250c13833b2ed4a009",
+  "validated_tree_sha256": "sha256:3d828ae0f09b29b9101f616de2b8e55192fe87fe561874d27e1f5ae2cf20d1c9"
+}

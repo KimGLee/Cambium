@@ -5,15 +5,25 @@
 # CAMBIUM_WORKSPACE_ROOT.  Each argparse argument is closed as exactly that
 # workspace argument, one read/write path, or one ordinary value. Path defaults
 # and overrides narrow containment to a registered namespace or exact artifact.
-# Runtime paths bind the stable `runtime_path_id` owned by runtime_paths.py;
-# component paths bind a `component_path_id` owned by that component's machine
-# contract. compile_cli_contract resolves either identity to its current
-# physical value. Other paths retain a literal `value`. Every row carries
-# exactly one source form.
+# Runtime paths bind the stable `runtime_path_id` owned by
+# Tools/execution/task_runtime/runtime_paths.py. Other caller-supplied paths
+# retain a literal `value` or the default contained-workspace constraint.
+# Component-owned paths are resolved by the component's own machine contract,
+# not rebound through the agent-interface policy. Every row carries exactly
+# one source form.
 # A CLI-only tool may retain an external-write workflow, but that effect is
 # never inherited by MCP merely because the CLI happens to declare it.
-schema_version: 4
+schema_version: 6
 artifact: agent-interface-policy
+host_transports:
+  - transport_id: cambium-mcp-stdio
+    protocol: mcp
+    mode: stdio
+    host_exposure: shared-bridge
+    module: mcp_server
+    path: Tools/mcp_server.py
+    server_name: cambium
+    command: python3
 consumption_defaults:
   read: snapshot
   write: replace
@@ -25,6 +35,11 @@ path_defaults:
     suffixes: [.jsonl]
     consumption: append
 path_overrides:
+  - tool: init_state
+    argument: plan
+    constraint: namespace
+    runtime_path_id: task-plan-delta-root
+    suffixes: [.yaml]
   - tool: complete_audit_receipt
     argument: plan
     constraint: namespace
@@ -75,11 +90,31 @@ path_overrides:
     constraint: exact
     runtime_path_id: progress-ledger
     suffixes: []
-  - tool: check_proof
-    argument: template
+  - tool: assemble_terminal_proof
+    argument: terminal_audit_input
+    constraint: namespace
+    runtime_path_id: transient-root
+    suffixes: [.yaml, .json]
+  - tool: assemble_terminal_proof
+    argument: audit_receipt_register
     constraint: exact
-    value: Tools/schemas/terminal_proof.template.yaml
+    runtime_path_id: audit-receipt-register
     suffixes: []
+  - tool: assemble_terminal_proof
+    argument: terminal_audit_receipt_register
+    constraint: exact
+    runtime_path_id: terminal-audit-receipts
+    suffixes: []
+  - tool: assemble_terminal_proof
+    argument: full_deterministic_results
+    constraint: exact
+    runtime_path_id: audit-receipt-register
+    suffixes: []
+  - tool: assemble_terminal_proof
+    argument: proof
+    constraint: namespace
+    runtime_path_id: receipt-root
+    suffixes: [.yaml]
   - tool: check_vocab
     argument: vocab
     constraint: exact
@@ -90,10 +125,35 @@ path_overrides:
     constraint: namespace
     runtime_path_id: runtime-root
     suffixes: [.yaml]
+  - tool: publish_delta
+    argument: proposal
+    constraint: namespace
+    runtime_path_id: transient-root
+    suffixes: [.yaml]
+  - tool: run_task
+    argument: input
+    constraint: namespace
+    runtime_path_id: transient-root
+    suffixes: [.json]
+  - tool: run_task
+    argument: proposal
+    constraint: namespace
+    runtime_path_id: transient-root
+    suffixes: [.yaml]
   - tool: record_batch_review
     argument: receipts
     constraint: exact
     runtime_path_id: gate-attestation-receipts
+    suffixes: []
+  - tool: record_maintenance_evidence
+    argument: budget_manifest
+    constraint: namespace
+    runtime_path_id: receipt-root
+    suffixes: [.yaml]
+  - tool: record_maintenance_evidence
+    argument: receipts
+    constraint: exact
+    runtime_path_id: maintenance-evidence-receipts
     suffixes: []
   - tool: record_batch_judgment
     argument: receipts
@@ -140,11 +200,6 @@ path_overrides:
     constraint: namespace
     runtime_path_id: report-root
     suffixes: [.md]
-  - tool: stamp_cards
-    argument: cards_dir
-    constraint: exact
-    component_path_id: card-directory
-    suffixes: []
   - tool: update_queue
     argument: delta_path
     constraint: namespace
@@ -175,10 +230,6 @@ path_activation_overrides:
     argument: receipts
     active_when_any: [apply]
     inactive_when_any: []
-  - tool: apply_task_plan
-    argument: receipts
-    active_when_any: [apply]
-    inactive_when_any: []
   - tool: compile_queue
     argument: receipts
     active_when_any: [apply, apply_replan]
@@ -191,7 +242,15 @@ path_activation_overrides:
     argument: receipts
     active_when_any: [apply]
     inactive_when_any: []
+  - tool: assemble_terminal_proof
+    argument: proof
+    active_when_any: [apply]
+    inactive_when_any: []
   - tool: record_batch_review
+    argument: receipts
+    active_when_any: [apply]
+    inactive_when_any: []
+  - tool: record_maintenance_evidence
     argument: receipts
     active_when_any: [apply]
     inactive_when_any: []
@@ -279,10 +338,10 @@ tools:
     exposure: mcp
     workspace_argument: root
     workspace_access: write
-    value_arguments: [apply, preflight, force, actor_role, expected_coverage_sha256, expected_queue_sha256, json]
+    value_arguments: [apply, preflight, actor_role, expected_coverage_sha256, expected_queue_sha256, json]
     read_paths: [delta]
     write_paths: [receipts]
-    read_write_paths: [ledger]
+    read_write_paths: []
     external_write: none
   - tool: apply_metadata_transition
     exposure: mcp
@@ -298,15 +357,6 @@ tools:
     workspace_argument: root
     workspace_access: write
     value_arguments: [apply, json, upstream_root, upstream_ref]
-    read_paths: [plan]
-    write_paths: [receipts]
-    read_write_paths: []
-    external_write: none
-  - tool: apply_task_plan
-    exposure: mcp
-    workspace_argument: root
-    workspace_access: write
-    value_arguments: [apply, json]
     read_paths: [plan]
     write_paths: [receipts]
     read_write_paths: []
@@ -397,17 +447,35 @@ tools:
     workspace_argument: root
     workspace_access: write
     value_arguments: [json]
-    read_paths: [proof, ledger, progress_ledger, template]
+    read_paths: [proof, ledger, progress_ledger]
     write_paths: [receipts]
+    read_write_paths: []
+    external_write: none
+  - tool: assemble_terminal_proof
+    exposure: mcp
+    workspace_argument: root
+    workspace_access: write
+    value_arguments: [queue_check_receipt, corpus_plan_check_receipt, apply, json]
+    read_paths: [terminal_audit_input, audit_receipt_register, terminal_audit_receipt_register, full_deterministic_results]
+    write_paths: [proof]
     read_write_paths: []
     external_write: none
   - tool: check_queue
     exposure: mcp
     workspace_argument: root
     workspace_access: write
-    value_arguments: [require_ready, require_revalidation, require_complete, require_maintenance_complete, resume_status, deliver_readback, deliver_activation_piece, ack_activation_piece, deliver_phase, ack_activation_phase, readback_rule, phase, phase_part, phase_nonce, phase_delivery_receipt, piece, piece_nonce, piece_delivery_receipt, confirmation_receipt, boundary_gate_receipt, budget_manifest_receipt, ledger_advance_receipt, watermark_advance_receipt, json]
+    value_arguments: [require_ready, require_revalidation, require_complete, require_maintenance_complete, resume_status, deliver_readback, deliver_phase, ack_activation_phase, readback_rule, phase, phase_part, phase_nonce, phase_delivery_receipt, confirmation_receipt, boundary_gate_receipt, budget_manifest_receipt, ledger_advance_receipt, watermark_advance_receipt, json]
     read_paths: []
     write_paths: [receipts]
+    read_write_paths: []
+    external_write: none
+  - tool: check_repository_structure
+    exposure: cli-only
+    workspace_argument: root
+    workspace_access: read
+    value_arguments: []
+    read_paths: [profile_manifest]
+    write_paths: []
     read_write_paths: []
     external_write: none
   - tool: check_residual_content
@@ -500,12 +568,30 @@ tools:
     write_paths: [receipts]
     read_write_paths: []
     external_write: none
+  - tool: generate_tool_catalog
+    exposure: cli-only
+    workspace_argument: root
+    workspace_access: write
+    value_arguments: [check]
+    read_paths: []
+    write_paths: []
+    read_write_paths: []
+    external_write: none
+  - tool: generate_test_catalog
+    exposure: cli-only
+    workspace_argument: root
+    workspace_access: write
+    value_arguments: [check]
+    read_paths: []
+    write_paths: []
+    read_write_paths: []
+    external_write: none
   - tool: init_state
     exposure: mcp
     workspace_argument: root
     workspace_access: write
-    value_arguments: [task_id, objective, exclusions, scope_version, standards_version, contract_version, completion_semantics, concurrency_cap, at, apply]
-    read_paths: [profile_manifest]
+    value_arguments: [apply, json]
+    read_paths: [plan]
     write_paths: []
     read_write_paths: []
     external_write: none
@@ -517,15 +603,6 @@ tools:
     read_paths: [authority, capabilities]
     write_paths: []
     read_write_paths: [output]
-    external_write: none
-  - tool: migrate_standards_state
-    exposure: mcp
-    workspace_argument: root
-    workspace_access: write
-    value_arguments: [apply]
-    read_paths: []
-    write_paths: []
-    read_write_paths: []
     external_write: none
   - tool: module_boundary_report
     exposure: cli-only
@@ -541,6 +618,33 @@ tools:
     workspace_argument: root
     workspace_access: write
     value_arguments: [batch, at, apply]
+    read_paths: []
+    write_paths: []
+    read_write_paths: []
+    external_write: none
+  - tool: publish_delta
+    exposure: mcp
+    workspace_argument: root
+    workspace_access: write
+    value_arguments: [batch, expected_delta_sha256, apply]
+    read_paths: [proposal]
+    write_paths: []
+    read_write_paths: []
+    external_write: none
+  - tool: run_task
+    exposure: mcp
+    workspace_argument: root
+    workspace_access: write
+    value_arguments: [execute, run_until_boundary, max_steps, json]
+    read_paths: [input, proposal]
+    write_paths: []
+    read_write_paths: []
+    external_write: none
+  - tool: run_tests
+    exposure: cli-only
+    workspace_argument: root
+    workspace_access: read
+    value_arguments: [suite, python, jobs, list_only]
     read_paths: []
     write_paths: []
     read_write_paths: []
@@ -569,6 +673,15 @@ tools:
     workspace_access: write
     value_arguments: [batch, actor_role, statement, apply, json]
     read_paths: []
+    write_paths: [receipts]
+    read_write_paths: []
+    external_write: none
+  - tool: record_maintenance_evidence
+    exposure: mcp
+    workspace_argument: root
+    workspace_access: write
+    value_arguments: [before_coverage_sha256, before_watermark_sha256, apply, json]
+    read_paths: [budget_manifest]
     write_paths: [receipts]
     read_write_paths: []
     external_write: none
@@ -732,7 +845,7 @@ tools:
     value_arguments: [acknowledge_review, check]
     read_paths: []
     write_paths: []
-    read_write_paths: [cards_dir]
+    read_write_paths: []
     external_write: none
   - tool: update_queue
     exposure: mcp

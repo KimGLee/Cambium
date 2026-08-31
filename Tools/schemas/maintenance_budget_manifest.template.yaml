@@ -10,11 +10,11 @@
 # and the receipt that binds them; this template is not runtime state itself.
 # =============================================================================
 
-schema_version: 2
+schema_version: 3
 task_id: "kb-maint-2026-xx"
 run_id: "maint-2026-xx-r1"
 scope_version: "s1"
-standards_version: ""
+upstream_revision_id: ""
 selected_profile_manifest: "profiles/my-profile/profile.md"
 # Null on the first run. A later run names the prior maintenance-completion
 # receipt whose candidate-state projection supplies previous_deferred_runs.

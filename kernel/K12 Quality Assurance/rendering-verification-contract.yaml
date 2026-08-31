@@ -1,4 +1,4 @@
-schema_version: 1
+schema_version: 3
 contract_id: cambium-rendering-verification-record
 semantic_owner: K12/02
 semantic_dependencies:
@@ -12,27 +12,6 @@ record_kind: rendering-verification-evidence
 # rendered artifact passed its separate acceptance checks.
 proof_boundary: record-shape-only
 acceptance_predicate: k12-02-rendering-verification-record
-
-# The highest rendering level is known only after the batch has run. The
-# AuditPlan therefore freezes one every-batch record-shape obligation at open;
-# this producer fills the final mode and record fields at evidence time.
-obligation_projection:
-  owner_kind: kernel
-  owner_rule_id: k12-02-rendering-verification-record
-  kernel_extension_point: null
-  target_source: batch
-  applicability: every-batch
-  partition: changed-scope-deterministic
-  due_stage: pre-merge
-  producer_check: changed_scope_rendering_escalation_record
-  producer_capability: audit-receipt-producer-v1
-  producer_gate_id: null
-  consumer_gate_id: batch-review
-  evidence_kind: audit-receipt
-  evidence_role: emits
-  dimension: rendering
-  acceptance_predicate: k12-02-rendering-verification-record
-  fingerprint_binding: evidence-time
 
 rendering_modes:
   - rendering_mode: source-only
@@ -56,6 +35,9 @@ fields:
     type: integer
     nullable: false
   - field: record_kind
+    type: string
+    nullable: false
+  - field: receipt_type_id
     type: string
     nullable: false
   - field: receipt_id
@@ -103,7 +85,7 @@ fields:
   - field: opening_transition_receipt
     type: string
     nullable: false
-  - field: standards_version
+  - field: upstream_revision_id
     type: string
     nullable: false
   - field: active_standards_sha256

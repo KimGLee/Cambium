@@ -1,394 +1,217 @@
-"""The composed vocabulary artifact is a gate input, so it fails closed.
+"""Vocabulary source-to-compiled-artifact identity and currentness tests."""
 
-`check_vocab` decides whether a frontmatter value is legal by looking it up in
-`.cambium/derived/vocab.yaml`. An artifact with no fields makes *every* value
-legal, so a
-truncated or half-written file does not make the gate noisy -- it makes the
-gate silently pass. Two halves are covered here:
-
-- the producer (`compose_vocab.py`) publishes the artifact atomically and only
-  after it satisfies the same predicate the consumer applies, so an
-  interrupted run cannot leave a readable-but-empty artifact behind;
-- the consumer (`check_vocab.py`) refuses an artifact that is not a
-  composition instead of scanning against an empty vocabulary.
-
-Rule owner: "kernel/K12 Quality Assurance/05 Automated and Manual Checks.md"
-requires this check's input to be "composed from the kernel base vocabulary and
-the selected profile's `Vocabulary Extensions`"; "kernel/K00 Standards
-Control/03 Standards Governance.md" keeps the artifact absent in a distribution
-that has selected no profile, and that legal state is asserted here too.
-
-Only set/existence/equality/byte judgments are made; nothing restates a rule.
-"""
-
-import shutil
-import subprocess
-import sys
+import copy
+import io
+from pathlib import Path
 import tempfile
 import unittest
-from pathlib import Path
+from contextlib import redirect_stdout
+from types import SimpleNamespace
+from unittest import mock
 
-TOOLS = Path(__file__).resolve().parents[1]
-REPOSITORY = TOOLS.parent
-
-sys.path.insert(0, str(TOOLS))
-import module_boundary_facts  # noqa: E402
-import kblib  # noqa: E402
-import runtime_paths  # noqa: E402
-import standards_state  # noqa: E402
-from Tools.tests.profile_fixture import install_loadable_profile
-
-ACTIVE_STATE = standards_state.STATE_PATH
-VOCABULARY_BASE = "kernel/K08 Metadata and Status/vocabulary-base.yaml"
-PROFILE_ID = "agent-atlas"
+import Tools.execution.task_runtime.runtime_paths as runtime_paths
+import Tools.governance.profile.profile_contract as profile_contract
+import Tools.platform.common.kblib as kblib
+import Tools.knowledge.metadata.check_vocab as check_vocab
+import Tools.knowledge.metadata.compose_vocab as compose_vocab
 
 
-def build_composable_tree(destination):
-    """Lay out the smallest tree `compose_vocab.py` will compose from.
-
-    `compose_vocab` resolves the active selection against the repository root
-    it derives from its own location, so the tool has to be copied in rather
-    than pointed at this tree.
-    """
-    destination = Path(destination).resolve()
-    # Derived, not listed: this staging used to name its dependencies by hand,
-    # so extracting one capability into a new module broke a test that never
-    # mentioned either module.  The closure is over the same static imports the
-    # boundary guard reads.
-    tools = destination / "Tools"
-    module_boundary_facts.stage_shipped_modules(
-        str(TOOLS.parent), str(destination),
-        ["compose_vocab", "check_vocab", "check_freshness"])
-
-    source_profile = install_loadable_profile(
-        destination, profile_id=PROFILE_ID)
-    selected_profile = source_profile
-    shutil.copy2(
-        REPOSITORY / "profiles" / "examples" / PROFILE_ID /
-        "vocabulary-extensions.yaml",
-        selected_profile / "vocabulary-extensions.yaml")
-    manifest = selected_profile / "profile.md"
-    manifest.write_text(
-        manifest.read_text(encoding="utf-8").replace(
-            "- `Vocabulary Extensions`: `slots.md`",
-            "- `Vocabulary Extensions`: `vocabulary-extensions.yaml`"),
-        encoding="utf-8")
-
-    (destination / VOCABULARY_BASE).parent.mkdir(parents=True, exist_ok=True)
-    shutil.copy2(REPOSITORY / VOCABULARY_BASE, destination / VOCABULARY_BASE)
-
-    state = destination / ACTIVE_STATE
-    current, _view, errors = standards_state.snapshot(destination)
-    assert not errors, errors
-    current = dict(current)
-    current["selected_profile_manifest"] = (
-        "profiles/%s/profile.md" % PROFILE_ID)
-    state.write_text(
-        standards_state.canonical_text(current), encoding="utf-8")
-    return destination
+BASE_PATH = compose_vocab.DEFAULT_BASE
+EXTENSION_PATH = "profiles/fixture/vocabulary-extensions.yaml"
 
 
-def compose(tree, *arguments):
-    return subprocess.run(
-        [sys.executable, str(tree / "Tools" / "compose_vocab.py"), *arguments],
-        cwd=str(tree), capture_output=True, text=True, check=False)
+def base_document():
+    return {
+        "schema_version": 1,
+        "composition_policy": "append-only-profile-extensions",
+        "fields": {
+            "priority": {
+                "owner": "fixture-priority-owner",
+                "values": ["P0", "P1", "P2"],
+            },
+            "volatility": {
+                "owner": "fixture-volatility-owner",
+                "values": ["slow"],
+            },
+            "coverage_disposition": {
+                "owner": "fixture-coverage-owner",
+                "values": ["required"],
+            },
+        },
+        "review_intervals_days": {"slow": 365},
+    }
 
 
-class VocabularyArtifactPredicate(unittest.TestCase):
-    """`fields` is what separates a vocabulary from a file."""
-
-    def test_a_composed_artifact_parses(self):
-        data = kblib.parse_vocabulary_artifact(
-            "fields:\n  priority:\n    values:\n      - P0\n")
-        self.assertEqual(["P0"], data["fields"]["priority"]["values"])
-
-    def test_empty_bytes_are_refused(self):
-        # The restricted-subset parser maps empty input to `{}`, so without
-        # this predicate a truncated artifact is indistinguishable from a
-        # vocabulary that happens to control nothing.
-        self.assertEqual({}, kblib.parse_yaml_subset(""))
-        for text in ("", "\n", "# only a comment\n"):
-            with self.subTest(text=text):
-                with self.assertRaises(ValueError):
-                    kblib.parse_vocabulary_artifact(text)
-
-    def test_an_artifact_without_fields_is_refused(self):
-        with self.assertRaises(ValueError):
-            kblib.parse_vocabulary_artifact("schema_version: 1\n")
-
-    def test_an_empty_field_set_is_refused(self):
-        with self.assertRaises(ValueError):
-            kblib.parse_vocabulary_artifact("fields: []\n")
-
-    def test_unparseable_bytes_are_refused(self):
-        with self.assertRaises(kblib.YamlSubsetError):
-            kblib.parse_vocabulary_artifact("fields:\n  not a mapping line\n")
+def extension_document():
+    return {
+        "schema_version": 1,
+        "frontmatter_extensions": {"fields": []},
+        "fields": {},
+        "volatility_defaults": {"general": "slow"},
+    }
 
 
-class ConsumerFailsClosed(unittest.TestCase):
-    """`check_vocab` must not scan against a vocabulary it never loaded."""
+class FixtureAdmission:
 
-    def setUp(self):
-        self.temporary = tempfile.TemporaryDirectory()
-        self.addCleanup(self.temporary.cleanup)
-        self.tree = Path(self.temporary.name)
-        corpus = self.tree / "corpus"
-        corpus.mkdir()
-        # `priority` carries a value no kernel base vocabulary allows, so a
-        # loaded vocabulary must report exit 1 for this page.
-        (corpus / "page.md").write_text(
-            "---\npriority: P9-NOT-A-REAL-PRIORITY\n---\n\n# Page\n",
-            encoding="utf-8")
-        self.vocabulary = self.tree / "vocab.yaml"
+    def __init__(self, root, extension_bytes):
+        self.root = str(Path(root).resolve())
+        self.profile_id = "fixture"
+        self.manifest_repo_path = "profiles/fixture/profile.md"
+        self.slot_bytes = {"Vocabulary Extensions": extension_bytes}
+        self.contract = profile_contract.ProfileContract(
+            root=self.root,
+            manifest_path=str(Path(self.root) / self.manifest_repo_path),
+            manifest_repo_path=self.manifest_repo_path,
+            profile_root=str(Path(self.root) / "profiles/fixture"),
+            profile_repo_dir="profiles/fixture",
+            audit_registry_path=None,
+            scan_registry_path=None,
+            routing_registry_path=None,
+            extension_registration=None,
+            extension_dimensions=(),
+            judgment_items=(),
+            registered_scans=(),
+            extension_gate_registration=None,
+            extension_gates=(),
+            dependency_edges=(),
+            source_cells=(),
+            diagnostics=(),
+            volatility_defaults=(("general", "slow"),),
+        )
+        self.evaluation = SimpleNamespace(
+            profile_snapshot_sha256="sha256:" + "1" * 64,
+            profile_contract_fingerprint="sha256:" + "2" * 64,
+            profile_load_inputs_sha256="sha256:" + "3" * 64,
+        )
 
-    def run_check(self):
-        return subprocess.run(
-            [sys.executable, str(TOOLS / "check_vocab.py"), str(self.tree),
-             "--scope", "corpus", "--vocab", str(self.vocabulary)],
-            capture_output=True, text=True, check=False)
+    def slot_text(self, name):
+        return self.slot_bytes[name].decode("utf-8")
 
-    def test_a_real_vocabulary_reports_the_illegal_value(self):
-        self.vocabulary.write_text(
-            "fields:\n  priority:\n    owner: K08/02\n    values:\n"
-            "      - P0\n      - P1\n      - P2\n", encoding="utf-8")
-        completed = self.run_check()
-        self.assertEqual(1, completed.returncode, completed.stdout)
-        self.assertIn("P9-NOT-A-REAL-PRIORITY", completed.stdout)
-
-    def test_a_truncated_vocabulary_does_not_pass_the_same_page(self):
-        """The defect: 0 bytes turned a hard fail into a silent exit 0."""
-        self.vocabulary.write_text("", encoding="utf-8")
-        completed = self.run_check()
-        self.assertNotEqual(
-            0, completed.returncode,
-            "a zero-byte vocabulary made every controlled value legal and the "
-            "gate reported a pass it never checked:\n" + completed.stdout)
-        self.assertEqual(1, completed.returncode, completed.stdout)
-        self.assertIn("not usable", completed.stdout)
-
-    def test_an_unparseable_vocabulary_fails_without_a_traceback(self):
-        self.vocabulary.write_text("fields:\n  not a mapping line\n",
-                                   encoding="utf-8")
-        completed = self.run_check()
-        self.assertEqual(1, completed.returncode, completed.stdout)
-        self.assertNotIn("Traceback", completed.stderr)
-
-    def test_a_refusal_still_emits_a_receipt(self):
-        self.vocabulary.write_text("", encoding="utf-8")
-        receipts = self.tree / "receipts.jsonl"
-        completed = subprocess.run(
-            [sys.executable, str(TOOLS / "check_vocab.py"), str(self.tree),
-             "--scope", "corpus", "--vocab", str(self.vocabulary),
-             "--receipts", str(receipts)],
-            capture_output=True, text=True, check=False)
-        self.assertEqual(1, completed.returncode, completed.stdout)
-        rows = [line for line in
-                receipts.read_text(encoding="utf-8").splitlines() if line]
-        self.assertTrue(rows, "an evidence-production failure must be visible "
-                              "to a gate consumer, not only on stdout")
-        self.assertIn("vocab-artifact-invalid", rows[-1])
-        self.assertIn('"result": "fail"', rows[-1])
+    def slot_path(self, name):
+        if name != "Vocabulary Extensions":
+            return None
+        return str(Path(self.root) / EXTENSION_PATH)
 
 
-class ProducerPublishesAtomically(unittest.TestCase):
-    """An interrupted compose must not leave a readable empty artifact."""
-
-    def setUp(self):
-        self.temporary = tempfile.TemporaryDirectory()
-        self.addCleanup(self.temporary.cleanup)
-        self.tree = build_composable_tree(Path(self.temporary.name).resolve())
-        self.artifact = self.tree / runtime_paths.VOCAB_ARTIFACT_PATH
-
-    def test_compose_writes_a_usable_artifact(self):
-        completed = compose(self.tree)
-        self.assertEqual(0, completed.returncode,
-                         completed.stdout + completed.stderr)
-        data = kblib.parse_vocabulary_artifact(
-            self.artifact.read_text(encoding="utf-8"))
-        self.assertTrue(data["fields"])
-
-    def test_recompose_is_byte_identical(self):
-        self.assertEqual(0, compose(self.tree).returncode)
-        first = self.artifact.read_bytes()
-        self.assertEqual(0, compose(self.tree).returncode)
-        self.assertEqual(first, self.artifact.read_bytes())
-
-    def test_kernel_base_byte_change_makes_vocabulary_stale(self):
-        self.assertEqual(0, compose(self.tree).returncode)
-        base = self.tree / VOCABULARY_BASE
-        base.write_text(
-            base.read_text(encoding="utf-8") + "\n# revision B\n",
-            encoding="utf-8")
-
-        completed = compose(self.tree, "--check")
-
-        self.assertEqual(2, completed.returncode, completed.stdout)
-        self.assertIn("MISMATCH", completed.stdout)
-
-    def test_unrelated_unloadable_slot_blocks_vocabulary_publication(self):
-        manifest = self.tree / "profiles" / PROFILE_ID / \
-            "profile.md"
-        manifest_text = manifest.read_text(encoding="utf-8")
-        bindings = kblib.profile_slot_bindings(manifest_text)
-        kind, priority_path = kblib.resolve_profile_binding(
-            bindings["Priority Rubric"], self.tree.resolve(),
-            manifest.parent.resolve())
-        self.assertEqual("path", kind)
-        Path(priority_path).write_text("TODO(profile)\n", encoding="utf-8")
-        completed = compose(self.tree)
-        self.assertEqual(1, completed.returncode,
-                         completed.stdout + completed.stderr)
-        self.assertIn("profile-load", completed.stdout)
-        self.assertFalse(self.artifact.exists())
-
-    def test_consumer_rejects_artifact_from_previous_profile_revision(self):
-        """A valid Profile B must not be checked with Profile A vocabulary."""
-        self.assertEqual(0, compose(self.tree).returncode)
-        corpus = self.tree / "corpus"
-        corpus.mkdir()
-        (corpus / "page.md").write_text(
-            "---\ntype: interview-card\n---\n\n# Interview card\n",
-            encoding="utf-8")
-        extension = self.tree / "profiles" / PROFILE_ID / \
-            "vocabulary-extensions.yaml"
-        extension.write_text(
-            extension.read_text(encoding="utf-8").replace(
-                "      - interview-card\n", ""),
-            encoding="utf-8")
-
-        completed = subprocess.run(
-            [sys.executable, str(self.tree / "Tools/check_vocab.py"),
-             str(self.tree), "--scope", "corpus"],
-            cwd=str(self.tree), capture_output=True, text=True, check=False)
-
-        self.assertEqual(1, completed.returncode, completed.stdout)
-        self.assertIn("composed vocabulary is not current", completed.stdout)
-        self.assertIn("does not match the selected Profile", completed.stdout)
-
-    def test_freshness_rejects_canonical_defaults_from_previous_profile(self):
-        self.assertEqual(0, compose(self.tree).returncode)
-        corpus = self.tree / "corpus"
-        corpus.mkdir()
-        (corpus / "page.md").write_text(
-            "---\ndomain: interview\nlast_verified: 2026-01-01\n---\n# Page\n",
-            encoding="utf-8")
-        extension = self.tree / "profiles" / PROFILE_ID / \
-            "vocabulary-extensions.yaml"
-        extension.write_text(
-            extension.read_text(encoding="utf-8").replace(
-                "  interview: slow\n", "  interview: fast\n"),
-            encoding="utf-8")
-
-        completed = subprocess.run(
-            [sys.executable, str(self.tree / "Tools/check_freshness.py"),
-             str(self.tree), "--scope", "corpus", "--as-of", "2026-08-01",
-             "--defaults", str(self.artifact)],
-            cwd=str(self.tree), capture_output=True, text=True, check=False)
-
-        self.assertEqual(1, completed.returncode, completed.stdout)
-        self.assertIn("canonical .cambium/derived/vocab.yaml is not current",
-                      completed.stdout)
-
-    def test_freshness_consumes_current_canonical_defaults(self):
-        self.assertEqual(0, compose(self.tree).returncode)
-        corpus = self.tree / "corpus"
-        corpus.mkdir()
-        (corpus / "page.md").write_text(
-            "---\ndomain: interview\nlast_verified: 2026-01-01\n---\n# Page\n",
-            encoding="utf-8")
-
-        completed = subprocess.run(
-            [sys.executable, str(self.tree / "Tools/check_freshness.py"),
-             str(self.tree), "--scope", "corpus", "--as-of", "2026-08-01",
-             "--defaults", str(self.artifact)],
-            cwd=str(self.tree), capture_output=True, text=True, check=False)
-
-        self.assertEqual(0, completed.returncode, completed.stdout)
-        self.assertIn("fresh=1", completed.stdout)
-
-    def test_check_mode_never_writes(self):
-        self.assertEqual(0, compose(self.tree).returncode)
-        before = (self.artifact.read_bytes(),
-                  self.artifact.stat().st_mtime_ns)
-        completed = compose(self.tree, "--check")
-        self.assertEqual(0, completed.returncode,
-                         completed.stdout + completed.stderr)
-        self.assertEqual(
-            before, (self.artifact.read_bytes(),
-                     self.artifact.stat().st_mtime_ns),
-            "--check is a read-only mode; it must not republish the artifact")
-
-    def test_no_scratch_file_survives_a_successful_compose(self):
-        self.assertEqual(0, compose(self.tree).returncode)
-        leftovers = [entry.name for entry in self.artifact.parent.iterdir()
-                     if entry.name.startswith(".cambium-write-")]
-        self.assertEqual([], leftovers)
-
-    def test_a_failed_publish_keeps_the_previous_artifact(self):
-        """The defect this replaces: `open(path, "w")` truncates first.
-
-        A bare truncating write leaves a zero-byte artifact behind whenever the
-        process dies before the bytes are flushed, and a zero-byte artifact is
-        the one state that makes the consuming gate pass unconditionally.
-        """
-        self.assertEqual(0, compose(self.tree).returncode)
-        good = self.artifact.read_bytes()
-        self.assertTrue(good)
-
-        def die(*_arguments, **_keywords):
-            raise KeyboardInterrupt("interrupted mid-publish")
-
-        original = kblib.tempfile.mkstemp
-        kblib.tempfile.mkstemp = die
-        try:
-            with self.assertRaises(KeyboardInterrupt):
-                kblib.atomic_write_text(
-                    str(self.artifact), "fields:\n  a:\n    values:\n      - x\n",
-                    validator=kblib.parse_vocabulary_artifact)
-        finally:
-            kblib.tempfile.mkstemp = original
-        self.assertEqual(
-            good, self.artifact.read_bytes(),
-            "the previous artifact must survive an interrupted publish")
-
-    def test_a_rejected_document_is_never_published(self):
-        self.assertEqual(0, compose(self.tree).returncode)
-        good = self.artifact.read_bytes()
-        with self.assertRaises(ValueError):
-            kblib.atomic_write_text(str(self.artifact), "",
-                                    validator=kblib.parse_vocabulary_artifact)
-        self.assertEqual(
-            good, self.artifact.read_bytes(),
-            "the validator runs before any byte reaches the artifact path")
+def install_sources(root):
+    root = Path(root)
+    base_bytes = kblib.canonical_yaml(base_document()).encode("utf-8")
+    extension_bytes = kblib.canonical_yaml(
+        extension_document()).encode("utf-8")
+    base = root / BASE_PATH
+    extension = root / EXTENSION_PATH
+    base.parent.mkdir(parents=True, exist_ok=True)
+    extension.parent.mkdir(parents=True, exist_ok=True)
+    base.write_bytes(base_bytes)
+    extension.write_bytes(extension_bytes)
+    return base, extension, FixtureAdmission(root, extension_bytes)
 
 
-class UnselectedProfileStaysLegal(unittest.TestCase):
-    """A distribution with no adopter state carries no selected artifact."""
+class VocabularyArtifactIdentityContractTests(unittest.TestCase):
 
-    def test_compose_refuses_without_selecting_one_and_writes_nothing(self):
-        with tempfile.TemporaryDirectory() as temporary:
-            tree = build_composable_tree(Path(temporary))
-            state = tree / ACTIVE_STATE
-            state.unlink()
-            completed = compose(tree)
-            self.assertEqual(1, completed.returncode, completed.stdout)
-            self.assertFalse(
-                (tree / runtime_paths.VOCAB_ARTIFACT_PATH).exists(),
-                "the generic distribution carries no composed vocabulary; "
-                "refusing to select one must not create an empty artifact")
+    def test_identity_is_deterministic_and_all_byte_drift_is_stale(self):
+        with tempfile.TemporaryDirectory() as directory, mock.patch.object(
+                compose_vocab.profile_admission, "currency_errors",
+                return_value=[]):
+            root = Path(directory)
+            base, extension, admission = install_sources(root)
+            original_base = base.read_bytes()
+            original_extension = extension.read_bytes()
+            artifact = root / runtime_paths.VOCAB_ARTIFACT_PATH
+            artifact.parent.mkdir(parents=True)
 
-    def test_check_vocab_reports_the_unconfigured_tree_rather_than_passing(self):
-        with tempfile.TemporaryDirectory() as temporary:
-            tree = Path(temporary)
-            (tree / "corpus").mkdir()
-            (tree / "corpus" / "page.md").write_text(
-                "---\npriority: P0\n---\n\n# Page\n", encoding="utf-8")
-            completed = subprocess.run(
-                [sys.executable, str(TOOLS / "check_vocab.py"), str(tree),
-                 "--scope", "corpus", "--vocab", str(tree / "missing.yaml")],
-                capture_output=True, text=True, check=False)
-            self.assertEqual(1, completed.returncode, completed.stdout)
-            self.assertIn("no composed vocabulary", completed.stdout)
+            first, first_projection, errors = compose_vocab.compiled_artifact(
+                root, admission)
+            second, second_projection, repeated_errors = \
+                compose_vocab.compiled_artifact(root, admission)
+            self.assertEqual([], errors)
+            self.assertEqual([], repeated_errors)
+            self.assertEqual(first, second)
+            self.assertEqual(first_projection, second_projection)
+            artifact.write_text(first, encoding="utf-8")
+            snapshot, current_errors = compose_vocab.admitted_artifact(
+                root, runtime_paths.VOCAB_ARTIFACT_PATH, admission)
+            self.assertEqual([], current_errors)
+            self.assertEqual(first.encode("utf-8"), snapshot.data)
+            defaults_snapshot, defaults, defaults_errors = \
+                compose_vocab.admitted_volatility_defaults(
+                    root, runtime_paths.VOCAB_ARTIFACT_PATH, admission)
+            self.assertEqual([], defaults_errors)
+            self.assertEqual(snapshot.data, defaults_snapshot.data)
+            self.assertEqual(snapshot.sha256, defaults_snapshot.sha256)
+            self.assertEqual({"general": "slow"}, defaults)
+
+            reordered = base_document()
+            reordered["fields"] = {
+                key: reordered["fields"][key]
+                for key in reversed(tuple(reordered["fields"]))
+            }
+            mutations = (
+                ("artifact-bytes", None, None,
+                 first.encode("utf-8") + b"# drift\n"),
+                ("base-bytes", original_base + b"# drift\n", None,
+                 first.encode("utf-8")),
+                ("extension-bytes", None,
+                 original_extension + b"# drift\n", first.encode("utf-8")),
+                ("base-field-order",
+                 kblib.canonical_yaml(reordered).encode("utf-8"), None,
+                 first.encode("utf-8")),
+            )
+            for name, changed_base, changed_extension, changed_artifact \
+                    in mutations:
+                with self.subTest(name=name):
+                    base.write_bytes(changed_base or original_base)
+                    extension.write_bytes(
+                        changed_extension or original_extension)
+                    admission.slot_bytes["Vocabulary Extensions"] = \
+                        changed_extension or original_extension
+                    artifact.write_bytes(changed_artifact)
+
+                    stale = compose_vocab.artifact_currency_errors(
+                        root, runtime_paths.VOCAB_ARTIFACT_PATH, admission)
+
+                    self.assertTrue(stale)
+                    self.assertTrue(any("does not match" in error
+                                        for error in stale), stale)
+
+
+class VocabularyComposeCheckIntegrationTests(unittest.TestCase):
+
+    def test_small_compose_output_is_accepted_by_the_current_checker(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            _base, _extension, admission = install_sources(root)
+            (root / ".cambium").mkdir()
+            corpus = root / "corpus"
+            corpus.mkdir()
+            (corpus / "Page.md").write_text(
+                "---\npriority: P2\n---\n\n# Page\n",
+                encoding="utf-8")
+            selected = (
+                EXTENSION_PATH, admission.profile_id, [], admission)
+            compose_output = io.StringIO()
+            check_output = io.StringIO()
+
+            with mock.patch.object(compose_vocab, "REPO_ROOT", str(root)), \
+                    mock.patch.object(
+                        compose_vocab, "active_extensions_selection",
+                        return_value=selected), \
+                    mock.patch.object(
+                        compose_vocab.profile_admission, "currency_errors",
+                        return_value=[]):
+                with redirect_stdout(compose_output):
+                    compose_code = compose_vocab.main([])
+                with redirect_stdout(check_output):
+                    check_code = check_vocab.main(
+                        [str(root), "--scope", "corpus"],
+                        authorized_admission=admission)
+
+            artifact = root / runtime_paths.VOCAB_ARTIFACT_PATH
+            artifact_exists = artifact.exists()
+
+        self.assertEqual(0, compose_code, compose_output.getvalue())
+        self.assertEqual(0, check_code, check_output.getvalue())
+        self.assertTrue(artifact_exists)
 
 
 if __name__ == "__main__":

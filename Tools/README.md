@@ -1,8 +1,8 @@
 # Tools: deterministic execution for Cambium
 
-`Tools/` contains the programs that check, calculate, transform, generate, and write Cambium data in deterministic, repeatable, and testable ways. This README explains how to find and run those programs. It is not a second copy of the governance rules, state contracts, Card checklists, or Read Set loading declarations.
+`Tools/` contains Cambium's deterministic, repeatable, and testable programs. This README is navigation and operating guidance, not a copy of governance rules, state contracts, Cards, or Read Sets.
 
-All shipped scripts use the Python 3 standard library. Cambium's supported restricted-YAML parsing and rendering goes through [`kblib.py`](kblib.py).
+All shipped Python code uses the standard library. Cambium's supported restricted-YAML parsing and rendering goes through [`platform/common/kblib.py`](platform/common/kblib.py).
 
 ## Responsibility boundary
 
@@ -19,7 +19,22 @@ Tools do not decide whether knowledge is deep, accurate, clear, valuable, or app
 | `.cambium/` | One adopter's current state, bound inputs, evidence, recovery material, transient work, and derived projections | Read or change registered objects through the responsible checker or writer |
 | [`Tools/`](./) | Deterministic implementation and Tool-owned machine contracts | Provide the program, diagnostics, and verifiable result |
 
-A checker observes and reports; it does not repair the object while checking. A writer changes only the transaction named by its interface and uses an explicit write mode such as `--apply`. A zero process exit is not, by itself, proof of the resulting state: critical writers perform the read-back required by their external contract.
+A checker observes without repairing. A writer changes only its named transaction through an explicit mode such as `--apply`. Process success alone does not prove resulting state; critical writers perform required read-back.
+
+## Layered organization
+
+[`tool-taxonomy.yaml`](tool-taxonomy.yaml) owns the Area, Domain, and Layer vocabulary. [`module-boundaries.yaml`](module-boundaries.yaml) assigns every shipped implementation module to one `Area → Domain → Layer` and checks dependency direction. The paths below are navigation into that checked structure, not a second classification.
+
+| Physical Area | Domains |
+|---|---|
+| [`governance/`](governance/) | `standards/`, `profile/`, `control/` |
+| [`knowledge/`](knowledge/) | `structure/`, `metadata/`, `content/`, `rendering/` |
+| [`execution/`](execution/) | `planning/`, `task_runtime/`, `audit/`, `evidence/`, `context_delivery/` |
+| [`platform/`](platform/) | `agent_interface/`, `distribution/`, `repository/`, `common/` |
+
+Top-level `Tools/<tool>.py` paths remain the stable public CLI surface and forward to their Area/Domain modules. Layer is a checked classification, not another directory level: `entrypoint`, `application`, `contract`, `infrastructure`, or `api`. Shared mechanics live under [`platform/common/`](platform/common/); task state lives under [`execution/task_runtime/`](execution/task_runtime/), including [`queue_runtime/`](execution/task_runtime/queue_runtime/).
+
+Use `python3 Tools/module_boundary_report.py --format hierarchy` to view every shipped module as `Area / Domain / Layer / module`; that report and [`TOOL_CATALOG.md`](TOOL_CATALOG.md) are generated views, not additional owners. The Catalog describes the complete Cambium source distribution and is therefore distribution-only; an adopter carries the governed runtime subset instead of a stale copy of this source-tree projection.
 
 ## Canonical navigation
 
@@ -27,36 +42,33 @@ The following files are the maintained entry points. Follow them instead of copy
 
 | Concern | Canonical or machine-readable entry point | Tool consumer or producer |
 |---|---|---|
-| Common Gate identities, receipt selectors, producer positions, and revalidation projection | [K00/12 Control Registry](<../kernel/K00 Standards Control/12 Control Registry.md>) and [`control-registry.yaml`](<../kernel/K00 Standards Control/control-registry.yaml>) | [`control_registry_contract.py`](control_registry_contract.py) parses the shared machine contract; [`queue_runtime/gate_registry.py`](queue_runtime/gate_registry.py), [`run_gates.py`](run_gates.py), and the registered producer consume it |
-| Profile extension interface | [Profile Extension Interface](<../kernel/K00 Standards Control/19 Profile Extension Interface.md>) and [`profile-interface.yaml`](<../kernel/K00 Standards Control/profile-interface.yaml>) | [`profile_contract.py`](profile_contract.py), [`profile_admission.py`](profile_admission.py), [`check_profile.py`](check_profile.py) |
-| Corpus Planning slot envelope, applicability branches, receipt freshness binding, and close triggers | [K02 Corpus Planning](<../kernel/K02 Knowledge Work Construction/03 Corpus Planning Applicability and Lifecycle.md>) and [`corpus-planning-contract.yaml`](<../kernel/K02 Knowledge Work Construction/corpus-planning-contract.yaml>) | [`corpus_planning_contract.py`](corpus_planning_contract.py) projects the shared contract for [`check_profile.py`](check_profile.py), [`check_corpus_plan.py`](check_corpus_plan.py), and receipt producers/consumers |
-| Base audit dimensions, evidence roles, and Profile extension-target mappings | [K12 audit evidence semantics](<../kernel/K12 Quality Assurance/07 Audit Evidence Reuse and Invalidation.md>) and [`audit-dimension-base.yaml`](<../kernel/K12 Quality Assurance/audit-dimension-base.yaml>) | [`audit_dimension_contract.py`](audit_dimension_contract.py), [`profile_contract.py`](profile_contract.py), [`check_proof.py`](check_proof.py), and Gate consumers |
-| AuditPlan and full AuditReceipt contracts | [K12/19](<../kernel/K12 Quality Assurance/19 Incremental Audit Planning.md>), [`audit-plan-contract.yaml`](<../kernel/K12 Quality Assurance/audit-plan-contract.yaml>), and [`audit-receipt-contract.yaml`](<../kernel/K12 Quality Assurance/audit-receipt-contract.yaml>) | [`audit_plan_contract.py`](audit_plan_contract.py), [`audit_receipt_contract.py`](audit_receipt_contract.py), and their registered producers/consumers |
+| Common Gate identities, receipt selectors, producer positions, and revalidation projection | [K00/12 Control Registry](<../kernel/K00 Standards Control/12 Control Registry.md>) and [`control-registry.yaml`](<../kernel/K00 Standards Control/control-registry.yaml>) | [`control_registry_contract.py`](governance/control/control_registry_contract.py), [`queue_runtime/gate_registry.py`](execution/task_runtime/queue_runtime/gate_registry.py), [`run_gates.py`](run_gates.py), and registered producers |
+| Profile extension interface | [Profile Extension Interface](<../kernel/K00 Standards Control/19 Profile Extension Interface.md>) and [`profile-interface.yaml`](<../kernel/K00 Standards Control/profile-interface.yaml>) | [`profile_contract.py`](governance/profile/profile_contract.py), [`profile_admission.py`](governance/profile/profile_admission.py), [`check_profile.py`](check_profile.py) |
+| Corpus Planning slot envelope and close triggers | [K02 Corpus Planning](<../kernel/K02 Knowledge Work Construction/03 Corpus Planning Applicability and Lifecycle.md>) and [`corpus-planning-contract.yaml`](<../kernel/K02 Knowledge Work Construction/corpus-planning-contract.yaml>) | [`corpus_planning_contract.py`](execution/planning/corpus_planning_contract.py), [`check_profile.py`](check_profile.py), [`check_corpus_plan.py`](check_corpus_plan.py) |
+| Base audit dimensions, evidence roles, and Profile extension targets | [K12 audit evidence semantics](<../kernel/K12 Quality Assurance/07 Audit Evidence Reuse and Invalidation.md>) and [`audit-dimension-base.yaml`](<../kernel/K12 Quality Assurance/audit-dimension-base.yaml>) | [`audit_dimension_contract.py`](execution/audit/audit_dimension_contract.py), [`profile_contract.py`](governance/profile/profile_contract.py), [`check_proof.py`](check_proof.py) |
+| AuditPlan and full AuditReceipt contracts | [K12/19](<../kernel/K12 Quality Assurance/19 Incremental Audit Planning.md>), [`audit-plan-contract.yaml`](<../kernel/K12 Quality Assurance/audit-plan-contract.yaml>), [`audit-receipt-contract.yaml`](<../kernel/K12 Quality Assurance/audit-receipt-contract.yaml>) | [`audit_plan_contract.py`](execution/audit/audit_plan_contract.py), [`audit_receipt_contract.py`](execution/audit/audit_receipt_contract.py) |
 | Substantive and Batch Review protocols | [K12/12](<../kernel/K12 Quality Assurance/12 Substantive Correctness Review.md>), [`substantive-review-contract.yaml`](<../kernel/K12 Quality Assurance/substantive-review-contract.yaml>), and [K12/14](<../kernel/K12 Quality Assurance/14 Batch Review.md>) | [`record_substantive_review.py`](record_substantive_review.py), [`complete_audit_receipt.py`](complete_audit_receipt.py), and [`record_batch_review.py`](record_batch_review.py) |
-| Exceptable policy identities, owner references, limit domains, defaults, and effective-policy payload | [`contract-exception-policy-base.yaml`](<../kernel/K00 Standards Control/contract-exception-policy-base.yaml>) | [`contract_exception_policy.py`](contract_exception_policy.py) loads, validates, resolves, and fingerprints the policy without owning it |
-| Batch-close Closed List membership and order | [`batch-close-closed-list.yaml`](<../kernel/K12 Quality Assurance/batch-close-closed-list.yaml>) | [`batch_close_contract.py`](batch_close_contract.py) loads and validates the registry and projects its producer-era evidence fields |
-| Installed Profile scan capabilities | [`scan-capabilities.yaml`](scan-capabilities.yaml) | [`profile_contract.py`](profile_contract.py) and registered scan adapters |
-| Serialized Card layout, document discriminator, generation mode, and field shape | [`schemas/card.schema.yaml`](schemas/card.schema.yaml) | [`card_contract.py`](card_contract.py) is the sole engineering-schema loader; [`stamp_cards.py`](stamp_cards.py), [`card_activation.py`](card_activation.py), and interface tooling consume its projection without treating it as Card governance semantics |
+| Exceptable policy identities, limits, defaults, and effective payload | [`contract-exception-policy-base.yaml`](<../kernel/K00 Standards Control/contract-exception-policy-base.yaml>) | [`contract_exception_policy.py`](governance/control/contract_exception_policy.py) |
+| Batch-close Closed List membership and order | [`batch-close-closed-list.yaml`](<../kernel/K12 Quality Assurance/batch-close-closed-list.yaml>) | [`batch_close_contract.py`](execution/audit/batch_close_contract.py) |
+| Installed Profile scan capabilities | [`scan-capabilities.yaml`](scan-capabilities.yaml) | [`profile_contract.py`](governance/profile/profile_contract.py) and scan adapters |
+| Serialized Card shape and generation mode | [`schemas/card.schema.yaml`](schemas/card.schema.yaml) | [`card_contract.py`](execution/context_delivery/card_contract.py), [`stamp_cards.py`](stamp_cards.py), [`card_activation.py`](execution/context_delivery/card_activation.py) |
 | Independent Card size budget | [`Card/card-budget.yaml`](../Card/card-budget.yaml) | [`stamp_cards.py`](stamp_cards.py) enforces the Card-specific body and action-item ceilings |
-| Read Set layout, generated-index name, phase fields, and declaration shape | [`Read Set/read-set.schema.yaml`](<../Read Set/read-set.schema.yaml>) | [`read_set_contract.py`](read_set_contract.py) loads and resolves the owner; Card, activation, proof, and Task Contract consumers read that projection |
-| Producer-era Task Contract component-path migrations | [`schemas/component-path-migrations.yaml`](schemas/component-path-migrations.yaml) | [`queue_runtime/task_contract.py`](queue_runtime/task_contract.py) projects only a persisted Standards-adoption before-image; ordinary runtime and the proposed after-image remain strict |
-| Shipped `profiles/` namespace layout and reserved non-candidate members | [`profile_layout_contract.py`](profile_layout_contract.py) | [`scaffold_profile.py`](scaffold_profile.py) and [`profile_onboarding_status.py`](profile_onboarding_status.py) |
-| Tool capability implementation ownership | [`operation-capabilities.yaml`](operation-capabilities.yaml) | [`metadata_execution_contract.py`](metadata_execution_contract.py) and capability consumers |
-| K08 priority ordering and volatility review intervals | [`vocabulary-base.yaml`](<../kernel/K08 Metadata and Status/vocabulary-base.yaml>) | [`vocabulary_contract.py`](vocabulary_contract.py) strictly projects the owner values for [`freshness_engine.py`](freshness_engine.py), [`check_freshness.py`](check_freshness.py), and [`compile_queue.py`](compile_queue.py) |
-| Metadata value/source-adapter record shapes and legacy property-state shape | [`metadata_execution_contract.py`](metadata_execution_contract.py) and [`metadata_property_state.py`](metadata_property_state.py) | [`project_page_state.py`](project_page_state.py) and [`queue_runtime/property_state.py`](queue_runtime/property_state.py) consume the owner projections without restating their members |
-| Runtime Ledger identities, state classes, transition catalogs, and control-status closed sets | [`runtime-state-model.json`](<../kernel/K13 Task Runtime and Execution Control/runtime-state-model.json>) | [`runtime_state_contract.py`](runtime_state_contract.py) and runtime writers/checkers |
-| Shared Coverage, Work Spec binding, and Coverage Delta field shapes | [`coverage_contract.py`](coverage_contract.py) and [`work_spec_contract.py`](work_spec_contract.py) | Runtime validators, [`amendment_policy.py`](amendment_policy.py), [`compile_queue.py`](compile_queue.py), and Amendment/Delta apply/check paths |
-| Public CLI and agent interface policy | [`agent-interface-policy.yaml`](agent-interface-policy.yaml) | [`compile_cli_contract.py`](compile_cli_contract.py) resolves runtime `runtime_path_id` references through [`runtime_paths.py`](runtime_paths.py); [`render_interface_projection.py`](render_interface_projection.py) consumes the compiled result |
-| Adopter runtime path spelling, lifecycle class, and policy path-reference projection | [`runtime_paths.py`](runtime_paths.py) | Runtime producers, consumers, and the CLI-contract compiler |
-| Tool and package dependency direction | [`module-boundaries.yaml`](module-boundaries.yaml) | [`module_boundary_facts.py`](module_boundary_facts.py), [`module_boundary_report.py`](module_boundary_report.py), boundary tests |
-| Upstream commit identity and immutable adopter component bytes | [`distribution-boundary.yaml`](../distribution-boundary.yaml) | [`upstream_identity.py`](upstream_identity.py) resolves a Git ref to its full commit SHA; [`upstream_component_boundary.py`](upstream_component_boundary.py) reads component bytes and permitted omissions from that commit; [`check_upstream_components.py`](check_upstream_components.py) verifies an adopter and optionally writes its derived manifest |
+| Read Set layout, generated index, and phase fields | [`Read Set/read-set.schema.yaml`](<../Read Set/read-set.schema.yaml>) | [`read_set_contract.py`](execution/context_delivery/read_set_contract.py) and its consumers |
+| Shipped `profiles/` namespace layout | [`profile_layout_contract.py`](governance/profile/profile_layout_contract.py) | [`scaffold_profile.py`](scaffold_profile.py), [`profile_onboarding_status.py`](profile_onboarding_status.py) |
+| Tool capability implementation ownership | [`operation-capabilities.yaml`](operation-capabilities.yaml) | [`metadata_execution_contract.py`](governance/control/metadata_execution_contract.py) and capability consumers |
+| K08 priority order and review intervals | [`vocabulary-base.yaml`](<../kernel/K08 Metadata and Status/vocabulary-base.yaml>) | [`vocabulary_contract.py`](knowledge/metadata/vocabulary_contract.py), [`freshness_engine.py`](knowledge/metadata/freshness_engine.py), [`check_freshness.py`](check_freshness.py), [`compile_queue.py`](compile_queue.py) |
+| Metadata and property-state record shapes | [`metadata_execution_contract.py`](governance/control/metadata_execution_contract.py), [`metadata_property_state.py`](knowledge/metadata/metadata_property_state.py) | [`project_page_state.py`](knowledge/metadata/project_page_state.py), [`queue_runtime/property_state.py`](execution/task_runtime/queue_runtime/property_state.py) |
+| Runtime identities, state classes, and transitions | [`runtime-state-model.json`](<../kernel/K13 Task Runtime and Execution Control/runtime-state-model.json>) | [`runtime_state_contract.py`](execution/task_runtime/runtime_state_contract.py) and runtime tools |
+| Coverage, Work Spec, and Coverage Delta shapes | [`coverage_contract.py`](execution/planning/coverage_contract.py), [`work_spec_contract.py`](execution/planning/work_spec_contract.py) | Runtime validators, [`amendment_policy.py`](execution/task_runtime/amendment_policy.py), [`compile_queue.py`](compile_queue.py) |
+| Public CLI and agent interface policy | [`agent-interface-policy.yaml`](agent-interface-policy.yaml) | [`compile_cli_contract.py`](compile_cli_contract.py), [`runtime_paths.py`](execution/task_runtime/runtime_paths.py), [`render_interface_projection.py`](render_interface_projection.py) |
+| Adopter runtime path spelling and lifecycle class | [`runtime_paths.py`](execution/task_runtime/runtime_paths.py) | Runtime tools and the CLI-contract compiler |
+| Tool dependency direction | [`module-boundaries.yaml`](module-boundaries.yaml) | [`module_boundary_facts.py`](platform/distribution/module_boundary_facts.py), [`module_boundary_report.py`](module_boundary_report.py), boundary tests |
+| Upstream identity and immutable component bytes | [`distribution-boundary.yaml`](../distribution-boundary.yaml) | [`upstream_identity.py`](platform/distribution/upstream_identity.py), [`upstream_component_boundary.py`](platform/distribution/upstream_component_boundary.py), [`check_upstream_components.py`](check_upstream_components.py) |
 | Kernel leaf-size implementation policy | [`kernel-size-policy.yaml`](kernel-size-policy.yaml) and [`kernel-size-exceptions.md`](kernel-size-exceptions.md) | [`check_kernel_size.py`](check_kernel_size.py) |
 | Host adapter observations | [`host-conformance.yaml`](host-conformance.yaml) | Host conformance tests and interface generation |
 | Input templates | [`schemas/`](schemas/) | The checker or writer named by each workflow |
 
-Files under [`compiled/`](compiled/) are generated projections of declared inputs. They can be checked or regenerated, but they do not acquire semantic authority from being generated. The CLI parser in each entry-point script is the source for its invocation shape; use `--help` for the current options.
-
-Support libraries are intentionally not repeated in an exhaustive prose inventory. Their ownership and permitted dependency direction are checked from source and `module-boundaries.yaml`.
+Files under [`compiled/`](compiled/) are generated, non-authoritative projections. Each entry point's parser owns its invocation shape; use `--help`. Support libraries are not repeated here because source and `module-boundaries.yaml` check their ownership and dependency direction.
 
 ## Quick verification
 
@@ -67,15 +79,13 @@ python3 Tools/run_gates.py . --list
 python3 Tools/run_gates.py .
 ```
 
-Verify adopter components against an upstream Git revision. The result records the resolved full SHA; only `profiles/README.md` belongs to the shared Profile boundary, and omissions require that revision's `distribution-boundary.yaml`.
+Verify adopter components against an upstream Git revision. The result records the resolved full SHA and applies that revision's `distribution-boundary.yaml`.
 
 ```text
 python3 Tools/check_upstream_components.py <adopter-root> --upstream-root <cambium-git-root> --revision <git-ref> --check-manifest
 ```
 
-Run it from a separately trusted upstream checkout, not from the adopter copy: this is drift detection, not self-attestation. Unregistered executable artifacts, including `__pycache__/`, fail the boundary.
-
-After a clean comparison, `--write-manifest` atomically writes only `.cambium/derived/upstream-component-byte-manifest.tsv`.
+Run it from a separately trusted upstream checkout. A clean `--write-manifest` writes only `.cambium/derived/upstream-component-byte-manifest.tsv`; unregistered executable artifacts fail.
 
 Card currentness and Kernel size are independent repository-engineering Tool preflights, not Kernel Gates:
 
@@ -84,7 +94,7 @@ python3 Tools/stamp_cards.py . --check
 python3 Tools/check_kernel_size.py .
 ```
 
-`stamp_cards.py --check` verifies the serialized-Card engineering schema, the Card-owned size budget, source bindings, curated-review bindings, Card/Read Set pairing, and generated navigation. It does not prove that a summary is semantically correct or that an Agent understood it. Card bytes are never bound to an adopter's active Standards identity; the Card layer remains an immutable upstream component.
+`stamp_cards.py --check` reads the Card path from its schema and checks budget, bindings, pairing, and navigation. It does not judge semantics or Agent understanding. Card bytes stay immutable and unbound to adopter Standards.
 
 `kernel-size-policy.yaml` is the sole numeric owner of Kernel leaf-size limits and registered measurements. `check_kernel_size.py` separates a hard failure (exit `1`) from an otherwise safe result that still needs engineering review (exit `2`).
 
@@ -110,9 +120,7 @@ python3 Tools/apply_profile_adoption.py . --plan <root-relative-plan.yaml> \
 
 Omitting `--apply` previews the transaction. A later Standards/Profile change in an existing runtime uses `adopt_standards.py` and the adoption rules owned by [K12/10](<../kernel/K12 Quality Assurance/10 Standards Version Adoption.md>), not an improvised edit to Profile or `.cambium` files.
 
-When a frozen Task Contract names a component path from a registered producer era, `adopt_standards.py` may use that one-way registry only to validate the persisted before-image against the exact current paths declared by the plan. The original contract bytes remain the receipt/fingerprint authority, and the after-image must pass ordinary runtime validation with no legacy alias.
-
-Adoption writers never modify Card bytes. Curated review is a separate source-distribution maintainer operation: after reviewing changed sources and the Card body, a maintainer may run `python3 Tools/stamp_cards.py . --acknowledge-curated-review`. This CLI is not projected into the adopter-facing MCP surface.
+Standards adoption accepts only component paths and objects defined by the current contract. Retired path layouts, producer-era objects, and old runtime formats remain outside Cambium's runtime space; they are not migrated, parsed, or re-authorized. Adoption writers never modify Card bytes. Curated Card review remains the separate, CLI-only `stamp_cards.py --acknowledge-curated-review` operation.
 
 ```text
 python3 Tools/adopt_standards.py --help
@@ -126,24 +134,27 @@ Do not infer task, scope, route, Card, Read Set, or Profile choices from this RE
 
 The main runtime entry points are:
 
-- [`init_state.py`](init_state.py): initialize an empty adopter task runtime from explicit inputs;
-- [`apply_task_plan.py`](apply_task_plan.py): apply the confirmed initial Task Plan as task/Queue structure only; it creates planning-only Coverage rows and never imports current page status or evidence;
+- [`init_state.py`](init_state.py): atomically publish one confirmed Task Plan as an empty Queue, complete Task Contract, planning-only Coverage, and retained transaction Receipt;
 - [`compile_queue.py`](compile_queue.py): materialize Required Queue state;
+- [`run_task.py`](run_task.py): resolve one current, identity-bound action and advance deterministic Tool calls to the next Agent, user, Host, repair, or terminal boundary;
 - [`check_queue.py`](check_queue.py): validate state and report the next resumable boundary;
-- [`update_task.py`](update_task.py), [`update_queue.py`](update_queue.py), and [`apply_delta.py`](apply_delta.py): perform their named controlled transitions;
+- [`update_task.py`](update_task.py) and [`update_queue.py`](update_queue.py): perform their named controlled transitions;
+- [`publish_delta.py`](publish_delta.py): validate and publish an Agent-complete candidate Delta for the current open batch;
+- [`apply_delta.py`](apply_delta.py): preflight or apply one canonical runtime Delta from `--root` plus its repository-relative Delta path; Coverage is derived from the runtime contract and is not a caller-selected input;
 - [`check_proof.py`](check_proof.py): verify the terminal proof object and its bound state when invoked in root mode.
 
-Task Plan schema v2 deliberately omits `authoring_status`, `gate_receipts`, and `property_state`. Queue compilation preserves all declared targets, while the first `queued -> open` transition materializes current Coverage for that batch's manifest only. Unopened batches remain planning-only and their knowledge pages are not reset, projected, or treated as currently reviewed.
+Task Plan schema v3 removes the former skeleton-state SHA copy and deliberately omits `authoring_status`, `gate_receipts`, and `property_state`. Queue compilation preserves all declared targets, while the first `queued -> open` transition materializes current Coverage for that batch's manifest only. Unopened batches remain planning-only and their knowledge pages are not reset, projected, or treated as currently reviewed.
 
 Start from the live CLI contracts rather than copying a long example with instance-specific values:
 
 ```text
 python3 Tools/init_state.py --help
-python3 Tools/apply_task_plan.py --help
+python3 Tools/run_task.py . --run-until-boundary
+python3 Tools/apply_delta.py --help
 python3 Tools/check_queue.py . --resume-status
 ```
 
-Runtime data belongs under `.cambium/`; do not redirect current state or runtime receipts into `Tools/`. Physical path spellings shared by producers and consumers come from `runtime_paths.py`. Agent-interface policy stores the same source identity as `runtime_path_id`; `compile_cli_contract.py` resolves that ID to the physical `value` in its generated projection and rejects an unknown ID, constraint mismatch, or a second literal runtime-path authority.
+Runtime data belongs under `.cambium/`; do not redirect current state or runtime receipts into `Tools/`. Physical path spellings shared by producers and consumers come from [`execution/task_runtime/runtime_paths.py`](execution/task_runtime/runtime_paths.py). Agent-interface policy stores the same source identity as `runtime_path_id`; `compile_cli_contract.py` resolves that ID to the physical `value` in its generated projection and rejects an unknown ID, constraint mismatch, or a second literal runtime-path authority.
 
 For an open batch, create its AuditPlan and invoke the producer named by each due obligation:
 
@@ -162,23 +173,18 @@ Substantive, changed-scope, and rendering producers may emit precursors. Use `co
 
 [`agent-interface-policy.yaml`](agent-interface-policy.yaml) constrains runtime paths. Page and target select AuditPlan identities; they grant no read access.
 
-Profile Rendering status: the production AuditPlan path has no typed Profile slot/validator or Tool/Host capability binding, so `ready` is not runnable. Without it, selector-owned Mermaid fences or outer-pipe tables resolve to `contract-gap` / HOLD; pages with neither resolve to scoped `not-applicable`. Tools must not infer selectors. A basic adopter run may choose plain pages and validates only the ordinary lifecycle. Complex rendering needs a later focused batch and is not a first-run prerequisite.
-
 ## Generated interfaces
 
-The generation chain is:
+There are two independent generation paths. [`governance/control/metadata_execution_contract.py`](governance/control/metadata_execution_contract.py) combines the Kernel metadata contract with installed operation capabilities; it is not an invocation-interface stage. Separately, each CLI parser plus `agent-interface-policy.yaml` produces the CLI contract, which produces the MCP projection, which in turn produces Host registration and workspace bindings:
 
-1. `metadata_execution_contract.py` combines the Kernel metadata contract with installed operation capabilities.
-2. `compile_cli_contract.py` projects each entry point's `argparse` interface together with `agent-interface-policy.yaml`.
-3. `render_interface_projection.py` creates the agent-facing MCP projection.
-4. `render_host_configs.py` creates host registration and workspace-binding products for a selected environment.
+`CLI → compiled CLI contract → MCP projection → Host configuration`
 
 The target fixes storage: `source-distribution` owns `Tools/compiled/`; `carried-runtime` may write only:
 
 - `.cambium/derived/interfaces/cli-contract.yaml`;
 - `.cambium/derived/interfaces/mcp-tools.json`.
 
-Targets cannot relocate these artifacts. Host and transport configuration stay outside `.cambium`; a carried render stages inside the adopter workspace and binds both roots to that adopter. The server accepts only the registered distribution or carried projection.
+Targets cannot relocate these artifacts. Host configuration stays outside `.cambium`; the server accepts only a registered distribution or carried projection.
 
 Check the tracked products without rewriting them:
 
@@ -197,7 +203,7 @@ python3 Tools/render_interface_projection.py . --projection-target carried-runti
 python3 Tools/render_host_configs.py . --projection-target carried-runtime --output-dir /absolute/adopter/.host-config-staging --distribution-root /absolute/adopter --workspace-root /absolute/adopter
 ```
 
-Use `--help` and `--sources` where available before regenerating or installing a host product. [`mcp_server.py`](mcp_server.py) is launched by a rendered host configuration; it preserves the child tool's structured result and exit code instead of making a new governance judgment.
+Use `--help` and `--sources` before regenerating or installing a host product. [`mcp_server.py`](mcp_server.py) preserves the child tool's structured result and exit code; it makes no new governance judgment.
 
 ## Results and evidence
 
@@ -212,52 +218,12 @@ Gate identity, receipt meaning, reuse, and completion authority remain with [K00
 
 ## Receipt-sealing maintenance runbook
 
-`seal_receipts.py --apply` removes frozen receipt bytes from the hot register, so it is supported only in an exclusive quiet window. This is the one recovery procedure that operators need in this README. The receipt semantics remain in [K12/07](<../kernel/K12 Quality Assurance/07 Audit Evidence Reuse and Invalidation.md>); implementation details remain in the tool and its tests.
-
-### Before applying
-
-1. Confirm that no Cambium or adopter writer, checker, or receipt appender is running against the repository on any host or session.
-2. Confirm that the runtime has no interrupted writer:
-
-   ```text
-   python3 Tools/check_queue.py . --resume-status
-   ```
-
-3. Preview the seal and verify the affected registers and counts:
-
-   ```text
-   python3 Tools/seal_receipts.py .
-   ```
-
-4. Take a restorable copy of `.cambium/` and record its hash before using `--apply`.
-
-### After an interruption
-
-1. Inspect the recoverable plan without writing:
-
-   ```text
-   python3 Tools/seal_receipts.py . --reconcile
-   ```
-
-2. If the report says the transaction is safely reconcilable, finish it:
-
-   ```text
-   python3 Tools/seal_receipts.py . --reconcile --apply
-   ```
-
-3. If reconciliation refuses because another owner is still active, wait for or safely resolve that process first. If it refuses because recovery evidence is missing or has changed, do not edit that evidence and do not retry blindly; restore the verified pre-seal `.cambium/` copy.
-4. For any interruption the tool cannot reconcile, restore the pre-seal copy and restart the sealing procedure in a new quiet window.
-
-### After applying
-
-Re-prove the sealed history and then revalidate runtime resumability:
+Use `seal_receipts.py --apply` only in an exclusive quiet window after a resume check, a dry run, and a verified restorable copy of `.cambium/`. After interruption, apply `--reconcile` only when its preview proves the exact plan safe; otherwise restore the copy. Re-prove history and resumability before releasing the window:
 
 ```text
 python3 Tools/seal_receipts.py . --verify
 python3 Tools/check_queue.py . --resume-status
 ```
-
-Release the maintenance window only after both checks are clean.
 
 ## Tool engineering checks
 
@@ -265,6 +231,32 @@ Module-boundary facts and reports are Tool engineering artifacts, not Kernel rul
 
 ```text
 python3 Tools/module_boundary_report.py --root . --emit-manifest
+```
+
+[`TOOL_CATALOG.md`](TOOL_CATALOG.md) and `compiled/tool-catalog.json` are generated navigation views over `module-boundaries.yaml`, `tool-taxonomy.yaml`, `agent-interface-policy.yaml`, `operation-capabilities.yaml`, and source facts. They keep static imports, registered relationships, and transport declarations separate:
+
+```text
+python3 Tools/generate_tool_catalog.py .
+python3 Tools/generate_tool_catalog.py . --check
+```
+
+The first command regenerates both projections. `--check` recomputes both from the same sources and compares them byte for byte without writing.
+
+[`test-ownership.yaml`](test-ownership.yaml) is the single reviewed source for test ownership, execution level, lifecycle, and mixed-module method overrides. [`TEST_CATALOG.md`](TEST_CATALOG.md) and `compiled/test-catalog.json` join that source with test and fixture facts observed from the repository; they are generated navigation and runner inputs, not a second test contract:
+
+```text
+python3 Tools/generate_test_catalog.py .
+python3 Tools/generate_test_catalog.py . --check
+```
+
+The catalog-owned runner keeps fast contract feedback separate from isolated integration, representative end-to-end, and real security/concurrency/recovery tests. Every selected test file runs in exactly one child process. Files whose selected cases are all marked `parallel_safe` may run with bounded file-level concurrency; isolation-sensitive files remain serial. `full` selects every retained level in one file-level pass, so mixed-level modules are not imported or rebuilt more than once:
+
+```text
+make fast
+make integration
+make e2e
+make slow
+make full
 ```
 
 Run the focused README contract tests with:

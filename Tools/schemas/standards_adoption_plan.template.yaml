@@ -1,7 +1,7 @@
 # =============================================================================
 # Active-task Standards adoption transaction plan
 # Owner standard: kernel/K12 Quality Assurance/10 Standards Version Adoption.md
-# Implemented by: Tools/adopt_standards.py
+# Implemented by: Tools/governance/standards/adopt_standards.py
 # Location: .cambium/deltas/standards-adoptions/<adoption-id>.yaml
 #
 # The plan is restricted YAML and binds one exact before-state.  It may change
@@ -10,16 +10,16 @@
 # Coverage dispositions.
 # =============================================================================
 
-schema_version: 2
+schema_version: 3
 adoption_id: "SA-001"
 task_id: "kb-build-2026-xx"
 task_state_before: paused
 contract_version_before: "c1"
 contract_version_after: "c2"
-standards_version_before: TODO(adoption-before)
-# Compatibility alias only. It MUST equal the full upstream_revision_id below;
-# a Profile-only revision keeps the same upstream commit identity.
-standards_version_after: TODO(adoption-after)
+upstream_revision_id_before: TODO(adoption-before)
+# Sole after-identity: the full upstream Git commit SHA. A Profile-only
+# revision keeps the same upstream commit identity.
+upstream_revision_id_after: TODO(adoption-after)
 standards_effective_date_after: TODO(adoption-after)
 selected_profile_manifest_before: "profiles/my-profile/profile.md"
 selected_profile_manifest_after: "profiles/my-profile/profile.md"
@@ -31,7 +31,6 @@ standards_state_sha256_before: "sha256:replace-with-current-standards-state-fing
 # the result is this exact full commit SHA; a source label, tag spelling, or
 # adopter-defined release number is not an upstream identity.
 upstream_source_ref: TODO(adoption-upstream)
-upstream_revision_id: TODO(adoption-upstream)
 standards_snapshot_sha256_after: "sha256:replace-with-kernel-tree-fingerprint"
 profile_snapshot_sha256_after: "sha256:replace-with-selected-profile-closure-fingerprint"
 profile_contract_fingerprint_after: "sha256:replace-with-profile-contract-fingerprint"
@@ -63,8 +62,9 @@ changed_predicates:
     affected_gate_ids:
       - "batch-close"
 
-# Old receipts remain immutable.  Listing one here records that it cannot
-# satisfy the new predicate and identifies the bounded revalidation scope.
+# Current-contract receipts remain immutable after their inputs change.
+# Listing one here records that it no longer authorizes the changed predicate
+# and identifies the bounded revalidation scope.
 invalidated_evidence:
   - receipt_id: "audit-old-gate-..."
     predicate_ids:

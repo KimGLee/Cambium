@@ -22,10 +22,11 @@ Fields sharing one YAML block does not mean they share one writer. This leaf own
   state. `last_content_modified` is advanced only by a guarded Integrator
   content-change event bound to the new semantic content fingerprint.
   `last_reviewed` is advanced only by consumed review evidence bound to that
-  same fingerprint. These completed core events replay under their producer
-  era: a later Profile or tool implementation revision does not erase the
-  fact, while target, value, receipt graph, and current semantic fingerprint
-  still bind exactly. Profile-owned readiness state is different and remains
+  same fingerprint. These completed core events remain usable as history only
+  while their receipts satisfy the current machine contract and their target,
+  value, receipt graph, and current semantic fingerprint still bind exactly;
+  retired producer formats are not replayed. Profile-owned readiness state is
+  different and remains
   subject to the currently selected typed Profile. A content change
   invalidates the prior review authority instead of fabricating a review
   date. `last_verified` remains a separate

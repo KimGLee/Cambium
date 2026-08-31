@@ -12,9 +12,10 @@ TOOLS = REPOSITORY / "Tools"
 K12 = REPOSITORY / "kernel/K12 Quality Assurance"
 sys.path.insert(0, str(TOOLS))
 
-import audit_obligation_projection as projection  # noqa: E402
-import batch_close_contract  # noqa: E402
-import kblib  # noqa: E402
+import Tools.execution.audit.audit_obligation_projection as projection  # noqa: E402
+import Tools.execution.audit.batch_review_obligation_contract as batch_review_obligation_contract  # noqa: E402
+import Tools.execution.audit.batch_close_contract as batch_close_contract  # noqa: E402
+import Tools.platform.common.kblib as kblib  # noqa: E402
 
 
 def raw(name):
@@ -81,8 +82,12 @@ class BaseProjectionTests(unittest.TestCase):
                 expected = population if population < minimum else max(
                     minimum,
                     (population * numerator + denominator - 1) // denominator)
-                self.assertEqual(
-                    expected, projection.s_tier_sample_count(population))
+                self.assertEqual(expected,
+                                 batch_review_obligation_contract.
+                                 s_sample_count(
+                                     population,
+                                     batch_review_obligation_contract.
+                                     load_registry()))
         self.assertEqual("ceiling", count["rounding"])
 
     def test_every_base_spec_binds_exactly_one_producer(self):
@@ -215,6 +220,24 @@ class BaseProjectionTests(unittest.TestCase):
                         self.rows, [profile],
                         registered_dimensions=registered_dimensions,
                         root=REPOSITORY)
+
+    def test_projection_cache_is_bound_to_exact_sources_and_returns_copies(self):
+        first = projection.base_obligation_specs(REPOSITORY)
+        second = projection.base_obligation_specs(REPOSITORY)
+        self.assertEqual(first, second)
+        first[0]["owner_rule_id"] = "consumer-mutation"
+        self.assertNotEqual(
+            first[0]["owner_rule_id"],
+            projection.base_obligation_specs(REPOSITORY)[0]["owner_rule_id"])
+
+        changed = copy.deepcopy(self.batch_review)
+        changed["m_tier_atomic_items"][0]["rule_id"] = \
+            "k12-02-exact-source-cache-probe"
+        snapshots = {
+            projection.BATCH_REVIEW_REGISTRY_PATH: self.snapshot(changed),
+        }
+        with self.assertRaisesRegex(ValueError, "unadmitted K12/02 owner"):
+            projection.base_obligation_specs(REPOSITORY, snapshots)
 
 
 if __name__ == "__main__":

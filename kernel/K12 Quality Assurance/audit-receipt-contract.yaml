@@ -1,4 +1,4 @@
-schema_version: 1
+schema_version: 3
 contract_id: cambium-audit-receipt
 semantic_owner: K12/07-K12/08
 record_kind: audit-receipt
@@ -50,6 +50,9 @@ fields:
   - field: record_kind
     type: string
     nullable: false
+  - field: receipt_type_id
+    type: string
+    nullable: false
   - field: receipt_id
     type: string
     nullable: false
@@ -80,7 +83,7 @@ fields:
   - field: opening_transition_receipt
     type: string
     nullable: false
-  - field: standards_version
+  - field: upstream_revision_id
     type: string
     nullable: false
   - field: active_standards_sha256

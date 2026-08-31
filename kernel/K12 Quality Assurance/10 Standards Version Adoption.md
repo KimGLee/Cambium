@@ -31,7 +31,7 @@ The registered Standards-adoption-plan machine contract is the sole normative so
 - concrete enforcement boundaries and their target and owner Gate identities;
 - the immediate and deferred Gate projection required by K00/12.
 
-All references must resolve and all managed paths must remain repository contained. Before values must equal current authoritative bytes. The upstream revision is resolved from an explicit Git repository and ref to one full commit SHA; `standards_version` is its compatibility alias and MUST equal it. A Profile-only revision MUST retain that upstream identity and instead bind its new Profile snapshot and typed contract fingerprint. `queue_revision` advances by one while `state_revision` remains unchanged. The proposed Profile must pass `profile-load`; its dependency closure is not thereby added to the task's loaded Kernel set. A predicate, Profile, or loaded-set change advances the Contract version; a pure upstream-identity change may retain it.
+All references must resolve and all managed paths must remain repository contained. Before values must equal current authoritative bytes. The upstream revision is resolved from an explicit Git repository and ref to one full commit SHA, recorded only as `upstream_revision_id`. A Profile-only revision MUST retain that upstream identity and instead bind its new Profile snapshot and typed contract fingerprint. `queue_revision` advances by one while `state_revision` remains unchanged. The proposed Profile must pass `profile-load`; its dependency closure is not thereby added to the task's loaded Kernel set. A predicate, Profile, or loaded-set change advances the Contract version; a pure upstream-identity change may retain it.
 
 ### Gate Ownership Projection
 
@@ -63,9 +63,9 @@ For semantic change, predicates are nonempty. Blocking boundaries are present ex
 
 Affected batches are the union of concrete boundary targets and the Queue batches named by invalidated evidence. An affected `merge-ready` batch requires formal rollback before adoption; an affected `open` batch requires `revalidation-required`. The adoption writer records these requirements but does not perform either transition.
 
-Historical receipt bytes and Queue references remain unchanged. Explicitly invalidated evidence is stale for current delta, readiness, completion, and recovery authorization; unaffected evidence remains reusable under K12/07.
+Historical receipt bytes and Queue references produced under the current contract remain unchanged. Explicitly invalidated evidence is stale for current delta, readiness, completion, and recovery authorization; unaffected current-contract evidence remains reusable under K12/07.
 
-Producer-era identity is preserved. Historical evidence is interpreted under the protocol and capability ownership it actually recorded and is never restamped or retroactively checked against a current producer constant. New plans and new authorization use only the current capability registry.
+Retired runtime protocols, producer identities, and receipt formats are outside Cambium's runtime space and are not parsed, adopted, migrated, or reauthorized. If retained at all, their bytes are external static archives. Current authorization and current-format history use only the current capability registry and its current receipt contracts.
 
 ## Acceptance And Resume
 

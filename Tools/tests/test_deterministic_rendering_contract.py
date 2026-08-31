@@ -8,8 +8,8 @@ REPOSITORY = Path(__file__).resolve().parents[2]
 TOOLS = REPOSITORY / "Tools"
 sys.path.insert(0, str(TOOLS))
 
-import audit_obligation_projection
-import deterministic_rendering_contract as contract
+import Tools.execution.audit.audit_obligation_projection as audit_obligation_projection
+import Tools.knowledge.rendering.deterministic_rendering_contract as contract
 
 
 class DeterministicRenderingContractTests(unittest.TestCase):
@@ -41,7 +41,8 @@ class DeterministicRenderingContractTests(unittest.TestCase):
         invalid["base_rules"].append({
             "rule_id": gap["gap_id"],
             "applicability": "every-changed-markdown-page",
-            "producer_capability": "audit-receipt-producer-v1",
+            "producer_capability":
+                self.registry["base_rules"][0]["producer_capability"],
             "producer_check": "invented-gap-pass",
             "evidence_role": "emits",
             "evidence_kind": "audit-receipt",

@@ -21,12 +21,13 @@
 # The kernel registry is registered by
 # "kernel/K00 Standards Control/09 Default Constraints Snapshot.md" and owned
 # per "kernel/K00 Standards Control/11 Standards Map and Rule Registry.md".
-# `Tools/check_profile.py` reads the closed item sets from there and the two
-# placeholder blocks below from here; `Tools/check_queue.py` and
-# `Tools/check_proof.py` read only the placeholder blocks below.
+# `Tools/governance/profile/check_profile.py` reads the closed item sets from
+# there and the two placeholder blocks below from here;
+# `Tools/execution/task_runtime/check_queue.py` and
+# `Tools/execution/audit/check_proof.py` read only the placeholder blocks below.
 #
-# Only the restricted YAML subset is allowed (parseable by Tools/kblib.py
-# parse_yaml_subset):
+# Only the restricted YAML subset is allowed (parseable by
+# Tools/platform/common/kblib.py parse_yaml_subset):
 #   - `key: value` scalars (string/number/boolean/null, quoted strings, inline `[]`);
 #   - `- item` lists indented under `key:`; list items may be a one-level flat map.
 #   Not allowed: anchors/aliases, block scalars (| >), non-empty flow maps, tags, multi-document.

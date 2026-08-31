@@ -1,58 +1,30 @@
-"""What the two residual-scan invocations each prove, and what neither does.
+"""One local lifecycle seam for the registered residual-scan producer.
 
-`check_batch_close` runs the registered verifier twice: once with
-`--positive-controls-only` and once as the registered production command. The
-two prove different things, and the guidance that teaches an adopter how to
-fill the Registered Scan Registry had drifted into treating them as one. The
-claim that spread was that a fabricated matcher — one naming structures no
-page carries — is caught by the non-inert positive control. It is not. The
-bundled verifier synthesizes its controls from `mandated_headings` and runs
-them through the production classifier without reading repository content, so
-that invocation passes on an empty repository and would pass on any fabricated
-matcher that is merely self-consistent.
-
-The requirement the guidance meant is real but belongs to the other
-invocation: the production scan refuses a configuration whose matchers
-recognise nothing in the repository. That is what makes a declared structure
-class have to be materialized rather than left on paper, and it is why a
-corpus starting from zero pages must create the witness in its first batch
-rather than at Profile adoption.
-
-This module pins both halves as behavior, so the corrected prose has
-counter-evidence standing behind it rather than only a more careful sentence,
-and pins that the greenfield branch stays present in the interview that
-conducts the fill.
-
-What it cannot do is stop prose from drifting again. No assertion reads a
-paragraph and decides it attributes a requirement to the right check. These
-tests make a wrong paragraph refutable in one command; they do not make it
-impossible.
+Matcher behavior and positive-control acceptance are owned by their pure
+tests. Profile configuration meaning, Kernel rules, Receipt type dispatch,
+and public CLI transport also remain with their own owners. This module only
+proves that the current producer connects those contracts to a real, minimal
+corpus and emits current-contract evidence for each outcome.
 """
 
-import subprocess
-import sys
+import contextlib
+import io
 import tempfile
 import unittest
 from pathlib import Path
+from types import SimpleNamespace
 
-REPOSITORY = Path(__file__).resolve().parents[2]
-VERIFIER = REPOSITORY / "Tools" / "check_residual_content.py"
-INTERVIEW = REPOSITORY / "profiles" / "interview.yaml"
+from Tools.knowledge.content import check_residual_content as residual
 
-ACCEPTED_ROOT = "Notes/Daily Log"
 
 CONFIG = """residual_scan_config_version: 1
-
 allowed_roots:
-  - %s
-
+  - Accepted
 excluded_roots: []
-
 frontmatter_match:
   field: type
   values:
     - daily-log
-
 heading_match:
   any:
     - Daily Log Entry
@@ -60,18 +32,16 @@ heading_match:
     - Scratch
     - To Sort
   minimum_distinct: 2
-
 mandated_headings:
   - Daily Log Entry
   - Scratch
   - To Sort
-""" % ACCEPTED_ROOT
+"""
 
 WITNESS = """---
 type: daily-log
 ---
-
-# 2026-01-01
+# Daily Log
 
 ## Daily Log Entry
 
@@ -86,136 +56,105 @@ seed
 -
 """
 
-ORDINARY_PAGE = """---
+ORDINARY = """---
 type: note
 ---
-
 # Ordinary
 
 body
 """
 
 
-def run_scan(root, config, positive_controls_only=False):
-    command = [sys.executable, str(VERIFIER), str(root),
-               "--scan-id", "semantics-under-test",
-               "--config", str(config), "--time-limit", "55"]
-    if positive_controls_only:
-        command.append("--positive-controls-only")
-    return subprocess.run(command, text=True, capture_output=True, check=False)
+def run_producer(root, config, *, controls_only=False):
+    receipts = []
+    arguments = SimpleNamespace(
+        vault_root=str(root),
+        scan_id="residual-lifecycle-test",
+        config=str(config),
+        receipts=None,
+        time_limit=5.0,
+        positive_controls_only=controls_only,
+    )
+    stdout = io.StringIO()
+    stderr = io.StringIO()
+    with contextlib.redirect_stdout(stdout), \
+            contextlib.redirect_stderr(stderr):
+        code = residual._run(arguments, receipts)
+    return code, receipts, stdout.getvalue(), stderr.getvalue()
 
 
-class ScanRoot:
-    """A temporary vault plus the profile-owned config that scans it."""
+class ResidualScanProducerIntegrationTests(unittest.TestCase):
+    """Integration from one current Profile configuration checkpoint."""
 
-    def __init__(self, stack):
-        self.root = Path(stack.name)
-        self.config = self.root / "residual-scan.yaml"
-        self.config.write_text(CONFIG, encoding="utf-8")
-
-    def page(self, relative, text):
-        path = self.root / relative
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(text, encoding="utf-8")
-
-    def accepted_root(self):
-        (self.root / ACCEPTED_ROOT).mkdir(parents=True, exist_ok=True)
-
-
-class PositiveControlProvesSelfConsistencyOnly(unittest.TestCase):
-    def test_it_passes_on_an_empty_repository(self):
-        with tempfile.TemporaryDirectory() as tmp:
-            vault = ScanRoot(type("S", (), {"name": tmp}))
-            result = run_scan(vault.root, vault.config,
-                              positive_controls_only=True)
+    def assert_current(self, root, receipts):
+        for receipt in receipts:
             self.assertEqual(
-                0, result.returncode,
-                "the positive control synthesizes its inputs from "
-                "mandated_headings and never reads repository content, so it "
-                "passes with no pages at all. Any guidance claiming it catches "
-                "a matcher that matches nothing real is refuted here:\n"
-                + result.stdout + result.stderr)
+                [], residual.current_receipt_errors(receipt, root=root),
+                receipt,
+            )
+
+    def test_controls_liveness_and_candidate_outcomes_share_one_checkpoint(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            config = root / "residual-scan.yaml"
+            config.write_text(CONFIG, encoding="utf-8")
+
+            code, receipts, stdout, stderr = run_producer(
+                root, config, controls_only=True)
+            self.assertEqual(0, code, stdout + stderr)
+            self.assertEqual(1, len(receipts))
+            self.assertEqual(residual.GATE_CHECK, receipts[0]["check"])
+            self.assertEqual("passed", receipts[0]["positive_control_result"])
+            self.assertEqual(
+                "production-classifier",
+                receipts[0]["positive_control_mode"],
+            )
+            self.assertEqual(3, receipts[0]["positive_control_count"])
+            self.assertIn("scanned 0 file(s)", stdout)
+            self.assert_current(root, receipts)
+
+            ordinary = root / "ordinary.md"
+            ordinary.write_text(ORDINARY, encoding="utf-8")
+            code, receipts, stdout, stderr = run_producer(root, config)
+            self.assertEqual(1, code, stdout + stderr)
             self.assertIn(
-                "scanned 0 file(s)", result.stdout,
-                "the control invocation must not have read repository content "
-                "at all; if it scanned files, the two invocations no longer "
-                "prove different things and this module's premise is wrong")
+                "residual-content-allowed-root",
+                {receipt["check"] for receipt in receipts},
+            )
+            self.assert_current(root, receipts)
 
-    def test_it_passes_even_with_no_accepted_root_directory(self):
-        with tempfile.TemporaryDirectory() as tmp:
-            vault = ScanRoot(type("S", (), {"name": tmp}))
-            result = run_scan(vault.root, vault.config,
-                              positive_controls_only=True)
-            self.assertEqual(0, result.returncode, result.stdout)
+            accepted = root / "Accepted"
+            accepted.mkdir()
+            code, receipts, stdout, stderr = run_producer(root, config)
+            self.assertEqual(1, code, stdout + stderr)
+            self.assertIn(
+                "residual-content-inert-matcher",
+                {receipt["check"] for receipt in receipts},
+            )
+            self.assert_current(root, receipts)
 
+            witness = accepted / "witness.md"
+            witness.write_text(WITNESS, encoding="utf-8")
+            code, receipts, stdout, stderr = run_producer(root, config)
+            self.assertEqual(0, code, stdout + stderr)
+            summary = receipts[-1]
+            self.assertEqual(residual.GATE_CHECK, summary["check"])
+            self.assertIn("Accepted/witness.md", summary["details"])
+            self.assert_current(root, receipts)
 
-class ProductionScanProvesTheRepositoryBacksTheConfiguration(unittest.TestCase):
-    def test_it_fails_when_the_accepted_root_does_not_exist(self):
-        with tempfile.TemporaryDirectory() as tmp:
-            vault = ScanRoot(type("S", (), {"name": tmp}))
-            vault.page("note.md", ORDINARY_PAGE)
-            result = run_scan(vault.root, vault.config)
-            self.assertNotEqual(0, result.returncode, result.stdout)
-            self.assertIn("accepted root", result.stdout)
-
-    def test_it_fails_when_no_file_matches_anywhere(self):
-        with tempfile.TemporaryDirectory() as tmp:
-            vault = ScanRoot(type("S", (), {"name": tmp}))
-            vault.accepted_root()
-            vault.page("note.md", ORDINARY_PAGE)
-            result = run_scan(vault.root, vault.config)
-            self.assertNotEqual(
-                0, result.returncode,
-                "an accepted root that exists but holds nothing the matchers "
-                "recognise is an inert configuration, and creating the "
-                "directory is therefore not enough to close a batch:\n"
-                + result.stdout)
-            self.assertIn("recognised no Markdown file", result.stdout)
-
-    def test_it_passes_once_the_first_batch_materializes_the_witness(self):
-        with tempfile.TemporaryDirectory() as tmp:
-            vault = ScanRoot(type("S", (), {"name": tmp}))
-            vault.page("note.md", ORDINARY_PAGE)
-            vault.page("%s/2026-01-01.md" % ACCEPTED_ROOT, WITNESS)
-            result = run_scan(vault.root, vault.config)
-            self.assertEqual(
-                0, result.returncode,
-                "one page under the accepted root carrying the declared "
-                "structure is the whole of what a corpus starting from zero "
-                "owes this scan; if this fails, the greenfield path the "
-                "interview teaches has no legal ending:\n"
-                + result.stdout + result.stderr)
-            self.assertIn("candidates=0", result.stdout)
-
-
-class TheInterviewTeachesBothBranches(unittest.TestCase):
-    """Structural, not editorial: the branch exists, whatever it says."""
-
-    def setUp(self):
-        text = INTERVIEW.read_text(encoding="utf-8")
-        start = text.index("- id: C1")
-        end = text.index("change_cost", start)
-        self.step = text[start:end]
-
-    def test_c1_branches_on_whether_the_corpus_has_pages(self):
-        for marker in ("Existing corpus:", "Empty corpus:"):
-            with self.subTest(marker=marker):
-                self.assertIn(
-                    marker, self.step,
-                    "C1 fills one slot for two situations that differ in kind "
-                    "-- observing strings that exist, and declaring strings a "
-                    "first batch will create. Collapsing them is what left an "
-                    "empty corpus with no honest answer")
-
-    def test_c1_obliges_bounded_founding_to_materialize_the_witness(self):
-        self.assertIn(
-            "bounded founding MUST materialize the declared class", self.step,
-            "the declared class has to reach the repository or the production "
-            "scan refuses the close; nothing else in the flow says so")
-        self.assertIn(
-            "at least one page under the accepted root", self.step,
-            "the obligation must stay concrete: one real page under the "
-            "accepted root, not a paper declaration")
+            leaked = root / "Loose" / "leaked.md"
+            leaked.parent.mkdir()
+            leaked.write_text(WITNESS, encoding="utf-8")
+            code, receipts, stdout, stderr = run_producer(root, config)
+            self.assertEqual(2, code, stdout + stderr)
+            candidates = [
+                receipt for receipt in receipts
+                if receipt["result"] == "candidate"
+            ]
+            self.assertEqual(1, len(candidates))
+            self.assertTrue(candidates[0]["target"].startswith(
+                "Loose/leaked.md:"))
+            self.assert_current(root, receipts)
 
 
 if __name__ == "__main__":

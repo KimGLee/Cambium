@@ -11,8 +11,8 @@ source_files:
   - kernel/K09 Wiki Link and Navigation/03 Path Alias and Heading Links.md
   - kernel/K12 Quality Assurance/09 Batch-close Closed List.md
   - kernel/K12 Quality Assurance/19 Incremental Audit Planning.md
-source_hash: '45bd111f5597'
-reviewed_source_hash: '45bd111f5597'
+source_hash: '99415359547c'
+reviewed_source_hash: '99415359547c'
 reviewed_card_hash: '70f79fde556d'
 ---
 # R06 Migration and Refactor Card

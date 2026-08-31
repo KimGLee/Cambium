@@ -9,9 +9,11 @@ from pathlib import Path
 TOOLS = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(TOOLS))
 
-import card_activation
-import record_batch_review
-from queue_runtime.receipts import Catalog
+import Tools.execution.context_delivery.card_activation as card_activation
+import Tools.execution.audit.audit_evidence_runtime as audit_evidence_runtime
+import Tools.execution.audit.record_batch_review as record_batch_review
+from Tools.execution.task_runtime.queue_runtime.receipts import Catalog
+from Tools.tests.support.profile_fixture import FIXTURE_UPSTREAM_REVISION
 
 
 class RecordBatchReviewBuilderTests(unittest.TestCase):
@@ -23,7 +25,9 @@ class RecordBatchReviewBuilderTests(unittest.TestCase):
             target_selector="batch",
             trigger="before-merge-ready",
             producer_kind="manual-attestation",
-            receipt_schema="batch-judgment-v1",
+            receipt_schema=(
+                record_batch_review.profile_batch_judgment_contract.RECORD_KIND
+            ),
             pass_authority_role_id="reviewer",
         )
         self.contract = SimpleNamespace(
@@ -54,9 +58,17 @@ class RecordBatchReviewBuilderTests(unittest.TestCase):
         }
         judgment = {
             "receipt_id": "judgment-1",
+            "receipt_type_id": (
+                record_batch_review.profile_batch_judgment_contract.RECEIPT_TYPE_ID
+            ),
             "tool": "record_batch_judgment",
             "check": "profile_batch_judgment",
-            "record_kind": "page-batch-judgment-v1",
+            "record_kind": (
+                record_batch_review.profile_batch_judgment_contract.RECORD_KIND
+            ),
+            "schema_version": (
+                record_batch_review.profile_batch_judgment_contract.SCHEMA_VERSION
+            ),
             "result": "pass",
             "invalidated_by": None,
             "task_id": "task-1",
@@ -64,13 +76,16 @@ class RecordBatchReviewBuilderTests(unittest.TestCase):
             "target": "B1",
             "judgment_item_id": "fixture-depth",
             "target_selector": "batch",
-            "receipt_schema": "batch-judgment-v1",
+            "receipt_schema": (
+                record_batch_review.profile_batch_judgment_contract.RECORD_KIND
+            ),
             "reviewer_role": "reviewer",
             "opening_transition_receipt": "opening-1",
             "activation_receipt_id": "activation-1",
             "review_requirement_set_sha256": expected_sha,
             "profile_contract_fingerprint": "sha256:profile",
         }
+        self.judgment = judgment
         catalog = Catalog({
             "activation-1": ("activation.jsonl", activation),
             "page-1": ("page.jsonl", page),
@@ -103,14 +118,19 @@ class RecordBatchReviewBuilderTests(unittest.TestCase):
                 "evidence_ref": "audit-full-1",
             }],
             "audit_evidence_set_sha256": "sha256:" + "4" * 64,
-            "audit_receipt_ids": ["audit-full-1"],
-            "audit_receipt_set_sha256": "sha256:" + "3" * 64,
+            "audit_evidence_reconciliation": [],
+            "audit_evidence_reconciliation_sha256":
+                "sha256:" + "5" * 64,
+            "audit_evidence_unresolved_count": 0,
         }
 
     @staticmethod
     def _base_receipt(*_args, **_kwargs):
         return {
             "receipt_id": "wrapper-1",
+            "receipt_type_id": (
+                record_batch_review.batch_review_receipt_contract.RECEIPT_TYPE_ID
+            ),
             "check": "batch_gate",
             "target": "B1",
             "result": "pass",
@@ -120,12 +140,16 @@ class RecordBatchReviewBuilderTests(unittest.TestCase):
             "tool_version": "1.0.0",
             "invalidated_by": None,
             "task_id": "task-1",
+            "upstream_revision_id": FIXTURE_UPSTREAM_REVISION,
+            "selected_profile_manifest": "profiles/fixture/profile.md",
         }
 
     def build(self):
         with mock.patch.object(
                 record_batch_review.kblib, "make_receipt",
-                side_effect=self._base_receipt):
+                side_effect=self._base_receipt), mock.patch.object(
+                    record_batch_review, "_current_judgment_receipts",
+                    return_value=[self.judgment]):
             return record_batch_review.build_batch_review_receipt(
                 self.result, self.item, self.delta, self.audit,
                 "integrator", "all current obligations were inspected")
@@ -135,13 +159,18 @@ class RecordBatchReviewBuilderTests(unittest.TestCase):
 
         self.assertEqual(["page-1"], receipt["delta_page_receipt_ids"])
         self.assertEqual(["judgment-1"], receipt["judgment_receipt_ids"])
-        self.assertEqual(["audit-full-1"], receipt["audit_receipt_ids"])
+        self.assertEqual(
+            ["audit-full-1"],
+            [row["evidence_ref"]
+             for row in receipt["audit_evidence_bindings"]],
+        )
         self.assertEqual("audit-plan-1", receipt["audit_plan_id"])
         with mock.patch.object(
-                record_batch_review.check_queue,
-                "batch_review_judgment_errors", return_value=[]), mock.patch(
-                "audit_evidence_runtime.wrapper_binding_errors",
-                return_value=[]):
+                record_batch_review.queue_review,
+                "batch_review_judgment_errors", return_value=[]), \
+                mock.patch.object(
+                    audit_evidence_runtime, "wrapper_binding_errors",
+                    return_value=[]):
             record_batch_review.validate_batch_review_receipt(
                 self.result, self.item, receipt, delta_binding=self.delta,
                 audit_binding=self.audit)
@@ -151,10 +180,11 @@ class RecordBatchReviewBuilderTests(unittest.TestCase):
         receipt["delta_page_receipt_ids"] = ["missing-page-receipt"]
 
         with mock.patch.object(
-                record_batch_review.check_queue,
-                "batch_review_judgment_errors", return_value=[]), mock.patch(
-                "audit_evidence_runtime.wrapper_binding_errors",
-                return_value=[]):
+                record_batch_review.queue_review,
+                "batch_review_judgment_errors", return_value=[]), \
+                mock.patch.object(
+                    audit_evidence_runtime, "wrapper_binding_errors",
+                    return_value=[]):
             with self.assertRaisesRegex(ValueError, "missing-page-receipt"):
                 record_batch_review.validate_batch_review_receipt(
                     self.result, self.item, receipt,
@@ -165,10 +195,11 @@ class RecordBatchReviewBuilderTests(unittest.TestCase):
         receipt["audit_plan_sha256"] = "sha256:" + "9" * 64
 
         with mock.patch.object(
-                record_batch_review.check_queue,
-                "batch_review_judgment_errors", return_value=[]), mock.patch(
-                "audit_evidence_runtime.wrapper_binding_errors",
-                return_value=[]):
+                record_batch_review.queue_review,
+                "batch_review_judgment_errors", return_value=[]), \
+                mock.patch.object(
+                    audit_evidence_runtime, "wrapper_binding_errors",
+                    return_value=[]):
             with self.assertRaisesRegex(ValueError, "audit_plan_sha256"):
                 record_batch_review.validate_batch_review_receipt(
                     self.result, self.item, receipt,
@@ -184,16 +215,31 @@ class RecordBatchReviewBuilderTests(unittest.TestCase):
                     "worker", "reviewed")
 
     def test_audit_binding_delegates_to_runtime_consumer(self):
-        consumer = SimpleNamespace(batch_review_evidence=mock.Mock(
-            return_value=dict(self.audit)))
-        with mock.patch.dict(sys.modules, {
-                "audit_evidence_runtime": consumer}):
+        with mock.patch.object(
+                audit_evidence_runtime, "batch_review_evidence",
+                return_value=dict(self.audit)) as consumer:
             binding = record_batch_review._audit_plan_evidence(
                 self.result, self.item)
 
         self.assertEqual(self.audit, binding)
-        consumer.batch_review_evidence.assert_called_once_with(
-            self.result, self.item)
+        consumer.assert_called_once_with(self.result, self.item)
+
+    def test_judgment_selection_delegates_to_shared_attempt_resolver(self):
+        plan = {"plan_id": self.audit["audit_plan_id"]}
+        with mock.patch.object(
+                record_batch_review.profile_batch_judgment_contract,
+                "load_bound_plan", return_value=plan) as load, \
+                mock.patch.object(
+                    record_batch_review.profile_batch_judgment_contract,
+                    "current_judgment_receipts",
+                    return_value=(self.judgment,)) as resolve:
+            selected = record_batch_review._current_judgment_receipts(
+                self.result, self.item, self.audit)
+        self.assertEqual([self.judgment], selected)
+        load.assert_called_once_with(
+            self.result["root"], self.audit["audit_plan_path"],
+            self.audit["audit_plan_id"], self.audit["audit_plan_sha256"])
+        resolve.assert_called_once()
 
 
 if __name__ == "__main__":

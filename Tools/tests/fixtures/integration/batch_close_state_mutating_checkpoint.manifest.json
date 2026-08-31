@@ -1,0 +1,145 @@
+{
+  "artifacts": {
+    "delta_apply_receipt": "audit-apply_delta-20260831T171515Z-111e195f318b4da7a6bbe2fd09e85b76-0001"
+  },
+  "checkpoint_id": "batch-close-applied-state-mutating-current",
+  "current_contract_owner": "Tools.execution.task_runtime.runtime_validation.validate_runtime",
+  "dependency_builder": "Tools.tests.fixtures.integration.batch_close_checkpoints.install_batch_close_dependencies",
+  "files": [
+    {
+      "path": ".cambium/deltas/B1.yaml",
+      "sha256": "sha256:0405712a75e8305d5b6cb107b69a16965a6d6870d8ae22101cfdb95e0aee443b",
+      "size": 305
+    },
+    {
+      "path": ".cambium/deltas/task-plans/TP-fixture-initial.yaml",
+      "sha256": "sha256:d0c43a3fbd35d439e7598dc04e63ac5c2b76a675f3c132b8eaea5a451091a9ef",
+      "size": 2272
+    },
+    {
+      "path": ".cambium/derived/page_contract.yaml",
+      "sha256": "sha256:f25c7284daf11b723a5ffb1130c31084d4cf6510efb4477f79c78c2580b6cd6a",
+      "size": 5146
+    },
+    {
+      "path": ".cambium/derived/vocab.yaml",
+      "sha256": "sha256:e931729ab0ab043d2fdbd7859c081fdc401040b291d26052e9e30cf2675224ee",
+      "size": 3764
+    },
+    {
+      "path": ".cambium/governance/standards_state.yaml",
+      "sha256": "sha256:1b5f9edb1b58d7f4b10ffee3de26b13cf13233254a0d54fb6758d9761f5e0083",
+      "size": 300
+    },
+    {
+      "path": ".cambium/receipts/applied.jsonl",
+      "sha256": "sha256:ca7a93bee9773219370672551c503cc1cddc29cbe86380008012c53ca3187be7",
+      "size": 2920
+    },
+    {
+      "path": ".cambium/receipts/audit-receipts.jsonl",
+      "sha256": "sha256:80642de863d92f3e17466ef4bf71ab0416a084801e16554b6380b3010c02eee1",
+      "size": 11169
+    },
+    {
+      "path": ".cambium/receipts/batch-page-reviews.jsonl",
+      "sha256": "sha256:7694d42efc70335f0b6f7ecbc33b133e62a2bc2de4b31b84e23963a07893589e",
+      "size": 2852
+    },
+    {
+      "path": ".cambium/receipts/changed-scope-evidence.jsonl",
+      "sha256": "sha256:5132965d5bbaf7b796f639a729cc7872ed21b55b2c73c3ebc4231bd75211d86a",
+      "size": 24031
+    },
+    {
+      "path": ".cambium/receipts/gate-attestations.jsonl",
+      "sha256": "sha256:4ddae215e09cd080f1aa4d2959e46c6696bd5996efb873a28b8fd70462023772",
+      "size": 14570
+    },
+    {
+      "path": ".cambium/receipts/pre-apply-coverage/B1-r2.yaml",
+      "sha256": "sha256:52ca8d4ead8b39a327db74e01372065a83001f8673f641464230c09645d14c90",
+      "size": 1290
+    },
+    {
+      "path": ".cambium/receipts/queue-transitions.jsonl",
+      "sha256": "sha256:13ea09b9d8e128406bad79001c3254ef1e187e598f96e0810d98f90a0040bbef",
+      "size": 4953
+    },
+    {
+      "path": ".cambium/receipts/ready.jsonl",
+      "sha256": "sha256:25f4e9db7220aa23961a0887bf3b2189d50a66acd94af92fbb53055276187073",
+      "size": 8114
+    },
+    {
+      "path": ".cambium/receipts/rendering-verification.jsonl",
+      "sha256": "sha256:b7794eebe815d7debd735ae22ee3c303fb2ae9d7848b456d327776cc9110cd27",
+      "size": 2003
+    },
+    {
+      "path": ".cambium/receipts/standards-adoptions.jsonl",
+      "sha256": "sha256:2ac151ae26a2c6018b71f4e30e1e486fd266a80af7674c210c3011a633c69543",
+      "size": 2414
+    },
+    {
+      "path": ".cambium/receipts/task-plans.jsonl",
+      "sha256": "sha256:13f7ce4a586ea86307b38ade6628c1e6563dd7f4179af1a3579c9e0c15e708f9",
+      "size": 1738
+    },
+    {
+      "path": ".cambium/receipts/task-transitions.jsonl",
+      "sha256": "sha256:f7154fc47e4cc4e2583eaa91bead23ea6a98a4b03b90d2c04945be844aeb9b44",
+      "size": 2841
+    },
+    {
+      "path": ".cambium/state/coverage_ledger.yaml",
+      "sha256": "sha256:4868cf0a1c19a98460da0c5ef67452f457cf08843eaf2cbb03164a07bc52a49b",
+      "size": 1378
+    },
+    {
+      "path": ".cambium/state/progress_ledger.yaml",
+      "sha256": "sha256:bcec4f5727ddb039cf873e31fa7c9012f888c15f3b391c5e053775adfb79cc07",
+      "size": 2394
+    },
+    {
+      "path": ".cambium/state/required_queue.yaml",
+      "sha256": "sha256:380015a5b198f5d4c07ab63b1c2087f272800686c4e4c509432736bcc6d8f8d5",
+      "size": 1443
+    },
+    {
+      "path": ".cambium/tmp/.gitkeep",
+      "sha256": "sha256:01ba4719c80b6fe911b091a7c05124b64eeece964e09c058ef8f9805daca546b",
+      "size": 1
+    },
+    {
+      "path": ".cambium/tmp/receipt-append.free",
+      "sha256": "sha256:7739c103c03f49b135ba6e8c295b87e75dc8c352235256ee9c39e4ba80960505",
+      "size": 93
+    },
+    {
+      "path": ".cambium/work_specs/audit-plans/audit-plan-B1-9bd1ca979e9fdeff.yaml",
+      "sha256": "sha256:c58e32aad89a8a3249f43752483f0717caa0eb0cb5d3d78107f9f0a6ffd0c77d",
+      "size": 14282
+    },
+    {
+      "path": "Topics/A.md",
+      "sha256": "sha256:cedf7d237f3de53d1ae30588205d73ef0e7eee9e9e3b4f7672b62afd106ff9a3",
+      "size": 255
+    },
+    {
+      "path": "Topics/B.md",
+      "sha256": "sha256:b39f4cbc8aedc28cb386e292b8d61fbbc11cd5003d06ddcc2354c1718017e3cb",
+      "size": 183
+    }
+  ],
+  "generator": "Tools.tests.fixtures.e2e.batch_close_scenarios.generate_batch_close_checkpoint",
+  "generator_command": "python3 -m Tools.tests.fixtures.e2e.batch_close_scenarios --scenario applied-state-mutating --output <checkpoint-dir> --manifest <manifest.json>",
+  "persisted_paths": [
+    ".cambium",
+    "Topics"
+  ],
+  "scenario": "applied-state-mutating",
+  "schema_version": 1,
+  "tree_sha256": "sha256:3cc2658f83588a8f17bd2ee4dca9d04f3e7be9e54930ce38e1e51c4cea8dc6a3",
+  "validated_tree_sha256": "sha256:17a0fb8624f350c30d981a4ff89f23007e2ba14cf70da453d29cc0e0e2360f52"
+}

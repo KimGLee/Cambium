@@ -9,7 +9,8 @@
 # Instance location: .cambium/state/watermark.yaml (advanced when maintenance/
 #            source batches close; never hand-edited)
 #
-# Only the restricted YAML subset is allowed (parseable by Tools/kblib.py parse_yaml_subset):
+# Only the restricted YAML subset is allowed (parseable by
+# Tools/platform/common/kblib.py parse_yaml_subset):
 #   - `key: value` scalars (string/number/boolean/null, quoted strings, inline `[]`);
 #   - `- item` lists indented under `key:`; list items may be a one-level flat map;
 #   - two-level indented nested maps.

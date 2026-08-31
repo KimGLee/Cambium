@@ -7,8 +7,9 @@
 # Named by plan ID, not task ID: a task may have a withdrawn draft and an
 # applied plan, and the transaction receipt binds the exact plan bytes.
 #
-# Only the restricted YAML subset is allowed (parseable by Tools/kblib.py
-# parse_yaml_subset): `key: value` scalars, `- item` lists indented under a
+# Only the restricted YAML subset is allowed (parseable by
+# Tools/platform/common/kblib.py parse_yaml_subset): `key: value` scalars,
+# `- item` lists indented under a
 # key, and nested mappings. Unknown top-level fields fail closed.
 #
 # What this file is NOT:
@@ -22,33 +23,23 @@
 #     operator already confirmed; `approval_reference` names where.
 #   - It never authorizes inference. Which pages are Required, who owns them,
 #     their priority, their dependencies, and their batch assignment are
-#     answers, not derivations. `init_state.py` reports `no work inferred` for
-#     the same reason, and this transaction does not weaken it.
+#     answers, not derivations. `init_state.py --plan` consumes exactly those
+#     confirmed answers and does not accept parallel semantic flags.
 # =============================================================================
 
-schema_version: 2
+schema_version: 4
 
 # Stable identity of this plan document. Lowercase/uppercase alphanumerics,
 # hyphen and underscore; unique within the task-plans directory.
 plan_id: TP-001
 
-# The task this plan materializes. MUST equal the task_id already recorded by
-# init_state.py in all three state documents.
+# The task this plan creates. The task state namespace MUST still be absent;
+# this value is stamped into all three state documents by one transaction.
 task_id: TODO(plan)
 
 # Where the operator's confirmation of these exact answers is recorded. Free
 # text; it is evidence for a reader, not a machine reference.
 approval_reference: TODO(plan)
-
-# Compare-and-swap. Each value is the SHA-256 of the current state file's exact
-# bytes, spelled `sha256:<64 hex digits>`. Read the three current values with
-# `python3 Tools/check_queue.py . --resume-status`. A mismatch means the runtime
-# moved after this plan was prepared, and the transaction refuses rather than
-# merging.
-before:
-  coverage_sha256: TODO(plan)
-  queue_sha256: TODO(plan)
-  progress_sha256: TODO(plan)
 
 # The complete Task Contract this transaction freezes. Field set and meanings
 # are owned by K13/02; this document supplies values, never new fields.
@@ -68,7 +59,7 @@ contract_after:
   exclusions: []
   scope_version: TODO(plan)
   concurrency_cap: 1
-  standards_version: TODO(plan)
+  upstream_revision_id: TODO(plan)
   selected_profile_manifest: TODO(plan)
   selected_route_ids: []
   selected_profile_route_ids: []

@@ -30,7 +30,7 @@ The Proof copies the resolved loading selection frozen by the Task Contract; it 
 
 `full_deterministic_results` references the complete deterministic set run against the final frozen snapshot. `unverified_batches = 0` requires the Queue-derived merge view to be empty; it cannot be satisfied by a separate manually maintained list.
 
-Every build Proof consumes one current `corpus-plan-structure` receipt, including when the selected Profile declares Corpus Planning not applicable. When it is configured, the Proof also consumes one current `corpus-plan-semantic-acceptance` receipt covering every current Capability ID under the Profile-authorized role and decision scope. Both receipts must bind the same Profile, planning artifacts, task state, Queue revisions, and frozen repository snapshot as the Proof. Missing, duplicate, rejected, malformed, aliased, or stale evidence blocks completion.
+Every build Proof consumes one current `required-queue-completion` receipt and one current `corpus-plan-structure` receipt, including when the selected Profile declares Corpus Planning not applicable. When it is configured, the Proof also consumes one current `corpus-plan-semantic-acceptance` receipt covering every current Capability ID under the Profile-authorized role and decision scope. The Proof binds these terminal Gate records through the canonical Terminal Audit receipt register; the separate AuditReceipt register supplies dimension evidence. Both registers and every cited record must bind the same Profile, planning artifacts, task state, Queue revisions, and frozen repository snapshot as the Proof. Missing, duplicate, rejected, malformed, aliased, or stale evidence blocks completion.
 
 Rendering evidence states the highest level actually used and the verification result. Where no visual exception trigger exists, an explicit not-applicable result is sufficient; absence of UI, screenshots, or recordings does not block completion.
 
@@ -42,7 +42,7 @@ After the task enters `completion-candidate`, the frozen candidate must produce 
 
 Terminal validation must use the canonical adopter runtime objects for this task; caller-selected substitutes are forbidden. It verifies one common task, scope, Standards, Profile, Contract, state, Queue, and repository identity; zero pending Guidance and Amendment; zero remaining Required work and Coverage gaps; receipt-chain agreement; and evidence currency at the completion boundary. Structural lint that does not resolve and bind authoritative runtime objects cannot authorize `complete`.
 
-Historical replay follows the producer-era contract recorded by the completed Proof and transition evidence. It preserves the past decision without loading today's repository or retroactively demanding fields that its producer never promised. Current authorization always requires the current registered terminal-proof protocol.
+Only Proofs produced under the current hard-cut contract enter Cambium runtime. After completion, those current-format Proofs may be retained as immutable history, but historical preservation never restores current authorization. Objects from retired runtime contracts remain outside Cambium as external archives and are not parsed or replayed.
 
 ## Evidence Trust Boundary
 

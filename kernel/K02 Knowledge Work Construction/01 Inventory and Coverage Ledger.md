@@ -14,19 +14,14 @@ The inventory MUST form a persistent, queryable Coverage Ledger; it cannot exist
 - Every in-scope Markdown file has exactly one record.
 - Knowledge objects not yet created but belonging to Required coverage also have records.
 - File system counts, the excluded scope, and Ledger summary counts can be reconciled.
-- A planning-only record has no `authoring_status`, `gate_receipts`, `property_state`, or legacy observation. Their absence means that the task has declared work but has not yet established current runtime authority for the page; it is not an implicit status value.
+- A planning-only record has no `authoring_status`, `gate_receipts`, or `property_state`. Their absence means that the task has declared work but has not yet established current runtime authority for the page; it is not an implicit status value.
 - When a queued batch first opens, every planning-only record in its frozen manifest becomes a runtime record in the same transition. The neutral initial status is `authoring_status: unassessed`; pre-existing page metadata and old evidence are not adopted as current authority. Pages outside that manifest remain planning-only.
 - A materialized runtime page without prior current evidence begins as `authoring_status: unassessed` and cannot be treated as drafted merely because the file exists.
 - `authoring_status: reviewed` is evidence-bound. The record names current
-  evidence that earned the status; an unsupported value is a re-review
-  candidate rather than a pass. Existing unsupported records require an
-  explicit migration disposition or a bounded policy exception with a stated
-  end; prose alone cannot authorize them. The stable exception identity,
-  record-count limit domain, and effective-policy currentness payload are
-  registered once in
-  [`contract-exception-policy-base.yaml`](../K00%20Standards%20Control/contract-exception-policy-base.yaml);
-  this page remains the semantic owner of why `reviewed` must name its
-  evidence era.
+  evidence that earned the status; an unsupported value is not current
+  authority and cannot pass admission. A page entering a new runtime without
+  current review evidence begins as `unassessed` and must earn a current
+  Receipt before it can become `reviewed`.
 - Every unfinished Required item has an explicit `next_batch`.
 - Every `deferred` and `excluded` item has a reason and a re-entry condition or scope basis.
 

@@ -1,6 +1,6 @@
 # Non-authoritative example only. The unique field, shape, and partition owner
 # is kernel/K12 Quality Assurance/audit-plan-contract.yaml (K12/19).
-schema_version: 1
+schema_version: 2
 plan_id: audit-plan-example-task-example-batch
 task_id: example-task
 batch_id: example-batch
@@ -10,7 +10,7 @@ queue_state_revision: 1
 required_queue_sha256: sha256:1111111111111111111111111111111111111111111111111111111111111111
 # Synthetic full commit SHA placeholder. Replace it with the adopter's
 # approved upstream commit before using this example as input.
-standards_version: "0123456789abcdef0123456789abcdef01234567"
+upstream_revision_id: "0123456789abcdef0123456789abcdef01234567"
 active_standards_sha256: sha256:2222222222222222222222222222222222222222222222222222222222222222
 selected_profile_manifest: profiles/example/profile.md
 profile_snapshot_sha256: sha256:3333333333333333333333333333333333333333333333333333333333333333

@@ -30,7 +30,7 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-import kblib
+import Tools.platform.common.kblib as kblib
 import inline_probe_server
 
 REGISTRY_PATH = "Tools/host-conformance.yaml"

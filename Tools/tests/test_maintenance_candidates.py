@@ -10,7 +10,7 @@ import unittest
 
 TOOLS = pathlib.Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(TOOLS))
-import maintenance_candidates
+import Tools.knowledge.content.maintenance_candidates as maintenance_candidates
 
 
 class MaintenanceCandidateTests(unittest.TestCase):

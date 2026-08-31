@@ -1,8 +1,17 @@
-from pathlib import Path
+"""Layered ownership tests for the current Amendment apply lifecycle.
+
+The fast layers consume parsed plans, Progress rows, and transaction objects.
+Repository-backed tests start at one process-local, contract-validated
+registration checkpoint and exercise only the adjacent apply writer seam.
+Only the public JSON transport test starts a subprocess; only durable Receipt
+interruption remains in the slow recovery layer.
+"""
+
 from contextlib import redirect_stdout
 import copy
 import io
 import json
+from pathlib import Path
 import shutil
 import subprocess
 import sys
@@ -11,29 +20,273 @@ import time
 import unittest
 from unittest import mock
 
+
 TOOLS = Path(__file__).resolve().parents[1]
 FIXTURE = TOOLS / "tests" / "fixtures" / "runtime_state" / "valid"
 sys.path.insert(0, str(TOOLS / "tests"))
 sys.path.insert(0, str(TOOLS))
 
-import apply_amendment
-import check_queue
-import kblib
-import register_amendment
-from profile_fixture import install_loadable_profile
+import Tools.execution.task_runtime.amendment_plan as amendment_plan
+import Tools.execution.task_runtime.apply_amendment as apply_amendment
+import Tools.execution.task_runtime.check_queue as check_queue
+from Tools.execution.task_runtime import queue_runtime
+import Tools.execution.task_runtime.register_amendment as register_amendment
+import Tools.execution.task_runtime.runtime_state_contract as runtime_state_contract
+import Tools.execution.task_runtime.runtime_validation as runtime_validation
+import Tools.platform.common.kblib as kblib
+from Tools.tests.support.profile_fixture import install_loadable_profile
 
 
-class ApplyAmendmentTests(unittest.TestCase):
-    def setUp(self):
-        self.tmp = tempfile.TemporaryDirectory()
-        self.root = Path(self.tmp.name) / "repo"
+def _current_plan(operation="scope-replan"):
+    """Return one complete current-schema plan without repository I/O."""
+    amendment_id = {
+        "scope-replan": "A-SCOPE-CONTRACT",
+        "cancel-batch": "A-CANCEL-CONTRACT",
+        "gap-routing-reconciliation": "A-GAP-CONTRACT",
+    }[operation]
+    cancel_batch_id = "B2" if operation == "cancel-batch" else None
+    affected_pages = (
+        ["Topics/B.md"] if operation == "cancel-batch"
+        else ["Topics/A.md"] if operation == "gap-routing-reconciliation"
+        else ["Topics/C.md"]
+    )
+    affected_batches = (
+        ["B2"] if operation == "cancel-batch"
+        else ["B1", "B2"] if operation == "gap-routing-reconciliation"
+        else ["B3"]
+    )
+    return {
+        "schema_version": 1,
+        "amendment_id": amendment_id,
+        "operation": operation,
+        "affected_pages": affected_pages,
+        "affected_batches": affected_batches,
+        "scope_version_before": "s1",
+        "scope_version_after": (
+            "s1" if operation == "gap-routing-reconciliation" else "s2"),
+        "queue_revision_before": 1,
+        "queue_revision_after": 2,
+        "state_revision_before": 0,
+        "state_revision_after": 1 if operation == "cancel-batch" else 0,
+        "coverage_proposal_path":
+            ".cambium/deltas/amendments/%s.coverage.yaml" % amendment_id,
+        "coverage_proposal_sha256": "sha256:" + "1" * 64,
+        "cancel_batch_id": cancel_batch_id,
+    }
+
+
+def _registered_progress(plan):
+    """Return the exact approved row consumed by the apply writer."""
+    row = {
+        "id": plan["amendment_id"],
+        "status": "approved",
+        "writeback_done": False,
+        "approval_reference": "user:contract-approval",
+        "registration_receipt": "R-REGISTER",
+        "plan_path":
+            ".cambium/deltas/amendments/%s.yaml" % plan["amendment_id"],
+        "plan_sha256": "sha256:" + "2" * 64,
+    }
+    row.update({
+        amendment_field: copy.deepcopy(plan[plan_field])
+        for amendment_field, plan_field
+        in amendment_plan.AMENDMENT_BINDINGS.items()
+    })
+    return {
+        "contract": {"scope_version": plan["scope_version_before"]},
+        "amendments": [row],
+    }
+
+
+class AmendmentPlanContractTests(unittest.TestCase):
+
+    def test_current_operations_share_one_closed_plan_schema(self):
+        for operation in amendment_plan.OPERATIONS:
+            with self.subTest(operation=operation):
+                amendment_plan.validate_plan(_current_plan(operation))
+
+        plan = _current_plan()
+        cases = (
+            ("wrong-schema", {"schema_version": 2},
+             "schema_version must be 1"),
+            ("unknown-field", {"unexpected_field": "unsupported"},
+             "unsupported field.*unexpected_field"),
+            ("unknown-operation", {"operation": "unknown-operation"},
+             "operation must be one of"),
+        )
+        for label, changes, expected in cases:
+            with self.subTest(case=label):
+                candidate = copy.deepcopy(plan)
+                candidate.update(changes)
+                with self.assertRaisesRegex(ValueError, expected):
+                    amendment_plan.validate_plan(candidate)
+
+
+class AmendmentRegistrationBindingContractTests(unittest.TestCase):
+
+    def test_registered_amendment_is_one_exact_current_plan_binding(self):
+        plan = _current_plan()
+        progress = _registered_progress(plan)
+        row = progress["amendments"][0]
+        selected = apply_amendment._find_amendment(
+            progress, plan,
+            plan_path=row["plan_path"],
+            plan_sha=row["plan_sha256"])
+        self.assertIs(selected, row)
+
+        cases = {}
+        wrong_path = copy.deepcopy(progress)
+        wrong_path["amendments"][0]["plan_path"] =             ".cambium/deltas/amendments/other.yaml"
+        cases["plan-link"] = wrong_path
+        wrong_binding = copy.deepcopy(progress)
+        wrong_binding["amendments"][0]["scope_version_after"] = "s9"
+        cases["plan-binding"] = wrong_binding
+        second_pending = copy.deepcopy(progress)
+        second_pending["amendments"].append({
+            "id": "A-SECOND",
+            "operation": "scope-replan",
+            "status": "approved",
+            "writeback_done": False,
+        })
+        cases["one-pending"] = second_pending
+
+        for label, candidate in cases.items():
+            with self.subTest(case=label), self.assertRaises(ValueError):
+                apply_amendment._find_amendment(
+                    candidate, plan,
+                    plan_path=row["plan_path"],
+                    plan_sha=row["plan_sha256"])
+
+
+class AmendmentTransactionProjectionUnitTests(unittest.TestCase):
+
+    def test_transaction_chain_head_is_monotonic_and_exact_linked(self):
+        self.assertEqual(
+            (1, None), apply_amendment._transaction_chain_head({}))
+        progress = {"amendments": [{
+            "operation": "scope-replan",
+            "status": "verified",
+            "writeback_done": True,
+            "transaction_sequence": 4,
+            "verification_receipt": "R-COMMIT-4",
+        }]}
+        self.assertEqual(
+            (5, "R-COMMIT-4"),
+            apply_amendment._transaction_chain_head(progress))
+
+        progress["amendments"][0]["transaction_sequence"] = 0
+        with self.assertRaisesRegex(ValueError, "chain is malformed"):
+            apply_amendment._transaction_chain_head(progress)
+
+    def test_progress_projection_verifies_only_the_selected_amendment(self):
+        plan = _current_plan()
+        progress = _registered_progress(plan)
+        original = copy.deepcopy(progress)
+        queue = {"queue_revision": 2, "state_revision": 0}
+        queue_text = kblib.canonical_yaml(queue)
+        result = apply_amendment._sync_progress(
+            progress, plan, queue, queue_text,
+            "TX-1", "R-COMMIT-1", 1, None,
+            progress["amendments"][0]["plan_path"],
+            progress["amendments"][0]["plan_sha256"],
+            plan["coverage_proposal_path"],
+            plan["coverage_proposal_sha256"])
+
+        self.assertEqual(original, progress)
+        self.assertEqual("s2", result["contract"]["scope_version"])
+        self.assertEqual(2, result["queue_revision"])
+        self.assertEqual(0, result["queue_state_revision"])
+        self.assertEqual(
+            kblib.sha256_bytes(queue_text),
+            result["required_queue_sha256"])
+        amendment = result["amendments"][0]
+        self.assertEqual("verified", amendment["status"])
+        self.assertIs(amendment["writeback_done"], True)
+        self.assertEqual("TX-1", amendment["transaction_id"])
+        self.assertEqual("R-COMMIT-1", amendment["verification_receipt"])
+        self.assertEqual(1, amendment["transaction_sequence"])
+
+
+class AmendmentLockContractTests(unittest.TestCase):
+
+    def test_lock_operation_binds_every_current_ledger_and_staged_byte(self):
+        plan = _current_plan()
+        before = {
+            name: "sha256:" + str(index + 1) * 64
+            for index, name in enumerate(
+                sorted(runtime_state_contract.RUNTIME_LEDGER_IDS))
+        }
+        after = {
+            name: "sha256:" + str(index + 4) * 64
+            for index, name in enumerate(
+                sorted(runtime_state_contract.RUNTIME_LEDGER_IDS))
+        }
+        operation = apply_amendment._lock_operation(
+            plan, "TX-1", "sha256:" + "7" * 64,
+            before, after, "R-PREPARE", 1, None, "T1",
+            plan_path=".cambium/deltas/amendments/A-SCOPE-CONTRACT.yaml",
+            receipt_path=apply_amendment.RECEIPT_PATH)
+
+        self.assertEqual(apply_amendment.TOOL, operation["tool"])
+        self.assertEqual(plan["operation"], operation["action"])
+        self.assertEqual(
+            plan["coverage_proposal_path"],
+            operation["coverage_proposal_path"])
+        self.assertEqual(
+            plan["coverage_proposal_sha256"],
+            operation["coverage_proposal_sha256"])
+        for name in runtime_state_contract.RUNTIME_LEDGER_IDS:
+            self.assertEqual(
+                before[name], operation["before_%s_sha256" % name])
+            self.assertEqual(
+                after[name],
+                operation["planned_after_%s_sha256" % name])
+
+
+class AmendmentCancellationReceiptContractTests(unittest.TestCase):
+
+    def test_cancellation_transition_has_one_current_receipt_identity(self):
+        plan = _current_plan("cancel-batch")
+        digest = "sha256:" + "1" * 64
+        receipt = apply_amendment._new_queue_cancellation_receipt(
+            plan, "T1", "2026-08-31T00:00:00Z")
+        receipt.update({
+            "before_state": "queued",
+            "after_state": "cancelled",
+            "before_hold_state": "none",
+            "after_hold_state": "none",
+            "before_state_revision": 0,
+            "after_state_revision": 1,
+            "before_required_queue_sha256": digest,
+            "after_required_queue_sha256": digest,
+            "queue_revision": 2,
+        })
+        self.assertEqual(
+            [],
+            apply_amendment.current_queue_cancellation_receipt_errors(
+                receipt))
+
+        wrong_kind = copy.deepcopy(receipt)
+        wrong_kind["receipt_type_id"] = "another-receipt-kind-v1"
+        self.assertTrue(
+            apply_amendment.current_queue_cancellation_receipt_errors(
+                wrong_kind))
+        wrong_edge = copy.deepcopy(receipt)
+        wrong_edge["after_state"] = "closed"
+        self.assertIn(
+            "cancellation transition after_state must be cancelled",
+            apply_amendment.current_queue_cancellation_receipt_errors(
+                wrong_edge))
+
+
+class AmendmentFixture:
+    """Minimal current lifecycle fixture for repository-backed connections."""
+
+    def initialize_repository(self):
         shutil.copytree(FIXTURE, self.root)
         install_loadable_profile(self.root)
         self.amendment_dir = self.root / ".cambium/deltas/amendments"
         self.amendment_dir.mkdir(parents=True)
-
-    def tearDown(self):
-        self.tmp.cleanup()
 
     def load(self, relative):
         return kblib.load_yaml_file(self.root / relative)
@@ -47,84 +300,24 @@ class ApplyAmendmentTests(unittest.TestCase):
     def shas(self):
         return {
             "coverage": kblib.sha256_file(
-                self.root / check_queue.COVERAGE_PATH),
+                self.root / queue_runtime.COVERAGE_PATH),
             "progress": kblib.sha256_file(
-                self.root / check_queue.PROGRESS_PATH),
+                self.root / queue_runtime.PROGRESS_PATH),
             "queue": kblib.sha256_file(
-                self.root / check_queue.QUEUE_PATH),
+                self.root / queue_runtime.QUEUE_PATH),
         }
-
-    def assert_resume_envelope(self, completed, next_action="repair-runtime"):
-        """Assert that one fresh resume read exposes the whole recovery fact."""
-        result = check_queue.validate_runtime(self.root)
-        for expected in (
-                "task_id=fixture-task",
-                'objective="Complete fixture Required Queue batches with durable evidence."',
-                'exclusions=["Do not modify profile policy."]',
-                "live.coverage_sha256=%s" % result.get("coverage_sha256"),
-                "live.progress_sha256=%s" % result.get("progress_sha256"),
-                "live.required_queue_sha256=%s" % result.get("queue_sha256"),
-                "checkpoint.recorded_at=", "checkpoint.summary=",
-                "checkpoint.binding=", "lock=.cambium/tmp/state-writer.lock"):
-            self.assertIn(expected, completed.stdout)
-        self.assertTrue(any(
-            line.startswith("  deltas=") or line.startswith("  delta=")
-            for line in completed.stdout.splitlines()), completed.stdout)
-        self.assertEqual(
-            ["next_action=%s" % next_action],
-            [line for line in completed.stdout.splitlines()
-             if line.startswith("next_action=")],
-            completed.stdout,
-        )
-
-    def add_progress_amendment(self, plan, amendment_id=None, **overrides):
-        plan_rel = ".cambium/deltas/amendments/%s.yaml" % plan["amendment_id"]
-        shas = self.shas()
-        completed = subprocess.run(
-            [sys.executable, str(TOOLS / "register_amendment.py"),
-             str(self.root), "--operation", plan["operation"],
-             "--plan", plan_rel,
-             "--date", time.strftime("%Y-%m-%d", time.gmtime()),
-             "--summary", "approved cross-Ledger Amendment",
-             "--approval-reference", "user:fixture-approval",
-             "--expected-coverage-sha256", shas["coverage"],
-             "--expected-progress-sha256", shas["progress"],
-             "--expected-queue-sha256", shas["queue"],
-             "--actor-role", "integrator", "--apply"],
-            text=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
-            check=False,
-        )
-        self.assertEqual(0, completed.returncode, completed.stdout)
-        if amendment_id is not None or overrides:
-            progress = self.load(check_queue.PROGRESS_PATH)
-            amendment = progress["amendments"][-1]
-            if amendment_id is not None:
-                amendment["id"] = amendment_id
-            amendment.update(overrides)
-            self.write_yaml(check_queue.PROGRESS_PATH, progress)
-
-    def tamper_registration_receipt(self, field, value):
-        path = self.root / apply_amendment.RECEIPT_PATH
-        records = [json.loads(line) for line in path.read_text(
-            encoding="utf-8").splitlines()]
-        registration = next(record for record in records
-                            if record.get("tool") == "register_amendment")
-        registration[field] = value
-        path.write_text(
-            "".join(json.dumps(record) + "\n" for record in records),
-            encoding="utf-8",
-        )
 
     def make_plan(self, operation, proposal, affected_pages,
                   affected_batches, cancel_batch_id=None):
         amendment_id = {
             "cancel-batch": "A-CANCEL-001",
             "gap-routing-reconciliation": "A-GAP-001",
-            "property-state-migration": "A-PROPERTY-001",
         }.get(operation, "A-SCOPE-001")
-        proposal_rel = ".cambium/deltas/amendments/%s.coverage.yaml" % amendment_id
+        proposal_rel = (
+            ".cambium/deltas/amendments/%s.coverage.yaml" %
+            amendment_id)
         proposal_path = self.write_yaml(proposal_rel, proposal)
-        queue = self.load(check_queue.QUEUE_PATH)
+        queue = self.load(queue_runtime.QUEUE_PATH)
         plan = {
             "schema_version": 1,
             "amendment_id": amendment_id,
@@ -136,801 +329,261 @@ class ApplyAmendmentTests(unittest.TestCase):
             "queue_revision_before": queue["queue_revision"],
             "queue_revision_after": queue["queue_revision"] + 1,
             "state_revision_before": queue["state_revision"],
-            "state_revision_after": (queue["state_revision"] + 1
-                                     if operation == "cancel-batch"
-                                     else queue["state_revision"]),
+            "state_revision_after": (
+                queue["state_revision"] + 1
+                if operation == "cancel-batch"
+                else queue["state_revision"]),
             "coverage_proposal_path": proposal_rel,
-            "coverage_proposal_sha256": kblib.sha256_file(proposal_path),
+            "coverage_proposal_sha256":
+                kblib.sha256_file(proposal_path),
             "cancel_batch_id": cancel_batch_id,
         }
-        plan_rel = ".cambium/deltas/amendments/%s.yaml" % amendment_id
+        plan_rel = (
+            ".cambium/deltas/amendments/%s.yaml" % amendment_id)
         self.write_yaml(plan_rel, plan)
         return plan_rel, plan
 
-    def command(self, plan_rel, shas, *extra):
-        return subprocess.run(
-            [sys.executable, str(TOOLS / "apply_amendment.py"),
-             str(self.root), "--plan", plan_rel,
-             "--expected-coverage-sha256", shas["coverage"],
-             "--expected-progress-sha256", shas["progress"],
-             "--expected-queue-sha256", shas["queue"], *extra],
-            text=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
-            check=False,
-        )
-
     def scope_proposal(self):
-        coverage = self.load(check_queue.COVERAGE_PATH)
+        coverage = self.load(queue_runtime.COVERAGE_PATH)
         coverage["scope_version"] = "s2"
         coverage["updated_at"] = "2026-08-04T12:00:00Z"
         coverage["batch_specs"].append({
-            "id": "B3", "family": "Core", "order_hint": 3,
-            "source_route": "R03", "execution_mode": "concurrent-worker",
-            "depends_on": ["B2"], "confirmation_required": False,
-            "work_spec_path": None, "work_spec_sha256": None,
+            "id": "B3",
+            "family": "Core",
+            "order_hint": 3,
+            "source_route": "R03",
+            "execution_mode": "concurrent-worker",
+            "depends_on": ["B2"],
+            "confirmation_required": False,
+            "work_spec_path": None,
+            "work_spec_sha256": None,
         })
         coverage["pages"].append({
-            "path": "Topics/C.md", "coverage_disposition": "required",
-            "canonical_owner": "Topics/C.md", "type": "concept",
-            "priority": "P1", "tier": "M", "authoring_status": "drafted",
-            "prerequisites": ["Topics/B.md"], "batch": "B3",
-            "next_batch": "B3", "deferred_reason": None,
-            "reentry_condition": None, "gate_receipts": [],
-            "property_state": {},
+            "path": "Topics/C.md",
+            "coverage_disposition": "required",
+            "canonical_owner": "Topics/C.md",
+            "type": "concept",
+            "priority": "P1",
+            "tier": "M",
+            "prerequisites": ["Topics/B.md"],
+            "batch": "B3",
+            "next_batch": "B3",
+            "deferred_reason": None,
+            "reentry_condition": None,
         })
         return coverage
 
     def cancel_proposal(self):
-        coverage = self.load(check_queue.COVERAGE_PATH)
+        coverage = self.load(queue_runtime.COVERAGE_PATH)
         coverage["scope_version"] = "s2"
         coverage["updated_at"] = "2026-08-04T12:00:00Z"
         coverage["batch_specs"] = [
-            spec for spec in coverage["batch_specs"] if spec["id"] != "B2"
+            spec for spec in coverage["batch_specs"]
+            if spec["id"] != "B2"
         ]
-        page = next(entry for entry in coverage["pages"]
-                    if entry["path"] == "Topics/B.md")
+        page = next(
+            entry for entry in coverage["pages"]
+            if entry["path"] == "Topics/B.md")
         page["coverage_disposition"] = "deferred"
         page["next_batch"] = None
-        page["deferred_reason"] = "removed by approved scope Amendment"
-        page["reentry_condition"] = "a successor Amendment restores scope"
+        page["deferred_reason"] =             "removed by approved scope Amendment"
+        page["reentry_condition"] =             "a successor Amendment restores scope"
         return coverage
 
-    def make_live_legacy_property_fixture(self):
-        """Downgrade only the owner protocol while preserving provenance."""
-        coverage = self.load(check_queue.COVERAGE_PATH)
-        for page in coverage["pages"]:
-            page.pop("property_state", None)
-            page.pop("legacy_property_state", None)
-        self.write_yaml(check_queue.COVERAGE_PATH, coverage)
-        coverage_sha = kblib.sha256_file(
-            self.root / check_queue.COVERAGE_PATH)
-        origin_path = self.root / \
-            ".cambium/receipts/task-transitions.jsonl"
-        origin = [json.loads(line) for line in origin_path.read_text(
-            encoding="utf-8").splitlines()]
-        for receipt in origin:
-            if receipt.get("receipt_id") == "audit-fixture-initial-queue":
-                receipt["before_coverage_sha256"] = coverage_sha
-                receipt["after_coverage_sha256"] = coverage_sha
-        origin_path.write_text(
-            "".join(json.dumps(receipt) + "\n" for receipt in origin),
-            encoding="utf-8")
-        (self.root / "Topics/A.md").write_text(
-            "---\nlast_reviewed: 2026-07-31\n---\n# A\n",
-            encoding="utf-8")
-        return coverage
+    def register_plan(self, plan_rel, plan):
+        expected = self.shas()
+        output = io.StringIO()
+        with redirect_stdout(output):
+            code = register_amendment.main([
+                str(self.root),
+                "--operation", plan["operation"],
+                "--plan", plan_rel,
+                "--date", time.strftime("%Y-%m-%d", time.gmtime()),
+                "--summary", "approved cross-Ledger Amendment",
+                "--approval-reference", "user:fixture-approval",
+                "--expected-coverage-sha256", expected["coverage"],
+                "--expected-progress-sha256", expected["progress"],
+                "--expected-queue-sha256", expected["queue"],
+                "--actor-role", "integrator",
+                "--apply",
+            ])
+        self.assertEqual(0, code, output.getvalue())
+        return output.getvalue()
 
-    def test_property_state_migration_is_the_only_legacy_write_path(self):
-        coverage = self.make_live_legacy_property_fixture()
-        strict = check_queue.validate_runtime(self.root)
-        self.assertTrue(any(
-            "property-state-migration Amendment" in error
-            for error in strict["errors"]), strict["errors"])
-        admitted = check_queue.validate_runtime(
-            self.root,
-            allow_legacy_property_state_for_migration=True)
-        self.assertEqual([], admitted["errors"])
+    def resume_status(self):
+        output = io.StringIO()
+        with redirect_stdout(output):
+            code = check_queue.main([
+                str(self.root), "--resume-status"])
+        return code, output.getvalue()
 
-        proposal = copy.deepcopy(coverage)
-        proposal["updated_at"] = "2026-08-20T00:00:00Z"
-        for page in proposal["pages"]:
-            page["property_state"] = {}
-        proposal["pages"][0]["legacy_property_state"] = {
-            "last_reviewed": {
-                "status": "legacy-unverified",
-                "value": "2026-07-31",
-            },
-        }
-        plan_rel, plan = self.make_plan(
-            "property-state-migration", proposal,
-            ["Topics/A.md", "Topics/B.md"], [])
-        queue_before = self.load(check_queue.QUEUE_PATH)
+    def receipt_rows(self):
+        return [
+            json.loads(line)
+            for line in (
+                self.root / apply_amendment.RECEIPT_PATH
+            ).read_text(encoding="utf-8").splitlines()
+            if line.strip()
+        ]
 
-        self.add_progress_amendment(plan)
-        # Registration authorizes the sole writer; it does not make the live
-        # legacy Coverage current or open a general writer escape.
-        still_legacy = check_queue.validate_runtime(self.root)
-        self.assertTrue(any(
-            "property-state-migration Amendment" in error
-            for error in still_legacy["errors"]), still_legacy["errors"])
 
-        completed = self.command(
-            plan_rel, self.shas(), "--actor-role", "integrator", "--apply")
-        self.assertEqual(0, completed.returncode, completed.stdout)
-        result = check_queue.validate_runtime(self.root)
-        self.assertEqual([], result["errors"])
-        queue_after = self.load(check_queue.QUEUE_PATH)
-        self.assertEqual(
-            queue_before["required_queue"], queue_after["required_queue"])
-        self.assertEqual(
-            queue_before["queue_revision"] + 1,
-            queue_after["queue_revision"])
-        migrated = result["coverage"]["pages"]
-        self.assertEqual({}, migrated[1]["property_state"])
-        self.assertEqual(
-            {"last_reviewed": {
-                "status": "legacy-unverified",
-                "value": "2026-07-31",
-            }}, migrated[0]["legacy_property_state"])
-        self.assertNotIn(
-            "last_reviewed",
-            kblib.parse_yaml_subset(kblib.extract_frontmatter(
-                (self.root / "Topics/A.md").read_text(
-                    encoding="utf-8"))),
-            "migration must retire the unowned page-side copy so freshness "
-            "and other consumers cannot treat it as current authority")
+class _CheckpointBuilder(AmendmentFixture, unittest.TestCase):
 
-    def test_property_state_migration_rejects_invented_legacy_value(self):
-        coverage = self.make_live_legacy_property_fixture()
-        proposal = copy.deepcopy(coverage)
-        proposal["updated_at"] = "2026-08-20T00:00:00Z"
-        for page in proposal["pages"]:
-            page["property_state"] = {}
-        proposal["pages"][0]["legacy_property_state"] = {
-            "last_reviewed": {
-                "status": "legacy-unverified",
-                "value": "2026-07-30",
-            },
-        }
-        _plan_rel, plan = self.make_plan(
-            "property-state-migration", proposal,
-            ["Topics/A.md", "Topics/B.md"], [])
-        with self.assertRaises(ValueError) as caught:
-            register_amendment._prepare(
-                str(self.root), mock.Mock(
-                    operation="property-state-migration",
-                    plan=".cambium/deltas/amendments/%s.yaml" %
-                    plan["amendment_id"],
-                    amendment_id=None, coverage_proposal=None,
-                    decision_mode="explicit-user",
-                    approval_reference="user:test", date=time.strftime(
-                        "%Y-%m-%d", time.gmtime()), summary="migration"),
-                self.shas())
-        self.assertIn("does not equal the exact page-side machine values",
-                      str(caught.exception))
+    def _walk(self):
+        raise NotImplementedError("checkpoint builder is not a test")
 
-    def test_gap_routing_reconciliation_registers_applies_and_replays_cleanly(self):
-        coverage = self.load(check_queue.COVERAGE_PATH)
-        coverage["open_gaps"] = [{
-            "id": "G-ROUTE-001",
-            "page": "Topics/A.md",
-            "type": "review-gap",
-            "next_batch": "B1",
-        }]
-        self.write_yaml(check_queue.COVERAGE_PATH, coverage)
+    @classmethod
+    def at(cls, root):
+        builder = cls("_walk")
+        builder.root = root
+        return builder
 
-        # This fixture is still at the initial Queue origin.  Re-anchor the
-        # fixture-only origin receipt to the added before-image gap so the
-        # production registration begins from a clean runtime.
-        coverage_sha = kblib.sha256_file(
-            self.root / check_queue.COVERAGE_PATH)
-        origin_path = self.root / \
-            ".cambium/receipts/task-transitions.jsonl"
-        origin_records = [json.loads(line) for line in origin_path.read_text(
-            encoding="utf-8").splitlines()]
-        for record in origin_records:
-            if record.get("receipt_id") == "audit-fixture-initial-queue":
-                record["before_coverage_sha256"] = coverage_sha
-                record["after_coverage_sha256"] = coverage_sha
-        origin_path.write_text(
-            "".join(json.dumps(record) + "\n" for record in origin_records),
-            encoding="utf-8")
-        self.assertEqual([], check_queue.validate_runtime(self.root)["errors"])
 
-        proposal = copy.deepcopy(coverage)
-        proposal["updated_at"] = "2026-08-15T00:00:00Z"
-        proposal["open_gaps"][0]["next_batch"] = "B2"
-        plan_rel, plan = self.make_plan(
-            "gap-routing-reconciliation", proposal,
-            ["Topics/A.md"], ["B1", "B2"])
-        before_queue = self.load(check_queue.QUEUE_PATH)
+_CHECKPOINTS = {}
 
-        self.add_progress_amendment(plan)
-        self.assertEqual([], check_queue.validate_runtime(self.root)["errors"])
-        completed = self.command(
-            plan_rel, self.shas(), "--actor-role", "integrator", "--apply")
 
-        self.assertEqual(0, completed.returncode, completed.stdout)
-        result = check_queue.validate_runtime(self.root)
-        self.assertEqual([], result["errors"])
-        self.assertEqual(
-            "B2", result["coverage"]["open_gaps"][0]["next_batch"])
-        self.assertEqual(
-            before_queue["queue_revision"] + 1,
-            result["queue"]["queue_revision"])
-        self.assertEqual(
-            before_queue["state_revision"],
-            result["queue"]["state_revision"])
-        amendment = result["progress"]["amendments"][-1]
-        self.assertEqual("gap-routing-reconciliation",
-                         amendment["operation"])
-        self.assertEqual("verified", amendment["status"])
-        self.assertIs(amendment["writeback_done"], True)
+def _checkpoint(name):
+    """Build and validate each adjacent Amendment checkpoint once."""
+    if name in _CHECKPOINTS:
+        _holder, root, artifacts = _CHECKPOINTS[name]
+        return root, artifacts
+    if name not in ("base", "registered-scope", "registered-cancel"):
+        raise KeyError(name)
 
-    def open_b2(self):
-        coverage = self.load(check_queue.COVERAGE_PATH)
-        next(spec for spec in coverage["batch_specs"]
-             if spec["id"] == "B2")["depends_on"] = []
-        self.write_yaml(check_queue.COVERAGE_PATH, coverage)
-        queue = self.load(check_queue.QUEUE_PATH)
-        next(item for item in queue["required_queue"]
-             if item["id"] == "B2")["depends_on"] = []
-        queue_text = kblib.canonical_yaml(queue)
-        (self.root / check_queue.QUEUE_PATH).write_text(
-            queue_text, encoding="utf-8")
-        progress = self.load(check_queue.PROGRESS_PATH)
-        progress["required_queue_sha256"] = kblib.sha256_bytes(queue_text)
-        self.write_yaml(check_queue.PROGRESS_PATH, progress)
-        origin_path = self.root / ".cambium/receipts/task-transitions.jsonl"
-        origin_records = [json.loads(line) for line in origin_path.read_text(
-            encoding="utf-8").splitlines()]
-        for record in origin_records:
-            if record.get("receipt_id") == "audit-fixture-initial-queue":
-                record["after_required_queue_sha256"] = kblib.sha256_file(
-                    self.root / check_queue.QUEUE_PATH)
-                record["after_coverage_sha256"] = kblib.sha256_file(
-                    self.root / check_queue.COVERAGE_PATH)
-        origin_path.write_text("".join(json.dumps(record) + "\n"
-                                       for record in origin_records),
-                               encoding="utf-8")
+    holder = tempfile.TemporaryDirectory()
+    root = Path(holder.name) / "repo"
+    builder = _CheckpointBuilder.at(root)
+    if name == "base":
+        builder.initialize_repository()
+        initial = runtime_validation.validate_runtime(root)
+        if initial["errors"]:
+            raise AssertionError(
+                "Amendment base checkpoint is not current: %s" %
+                initial["errors"])
+        artifacts = {}
+        _CHECKPOINTS[name] = (holder, root, artifacts)
+        return root, artifacts
 
-        ready_path = self.root / ".cambium/receipts/open-ready.jsonl"
-        ready = subprocess.run(
-            [sys.executable, str(TOOLS / "check_queue.py"), str(self.root),
-             "--require-ready", "B2", "--receipts",
-             ".cambium/receipts/open-ready.jsonl"],
-            text=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
-            check=False)
-        self.assertEqual(0, ready.returncode, ready.stdout)
-        ready_receipt = json.loads(ready_path.read_text(
-            encoding="utf-8").splitlines()[-1])["receipt_id"]
-        queue = self.load(check_queue.QUEUE_PATH)
-        opened = subprocess.run(
-            [sys.executable, str(TOOLS / "update_queue.py"), str(self.root),
-             "--id", "B2", "--transition", "open", "--gate-receipt",
-             ready_receipt, "--expected-state-revision",
-             str(queue["state_revision"]), "--expected-sha256",
-             kblib.sha256_file(self.root / check_queue.QUEUE_PATH),
-             "--actor-role", "integrator", "--apply"],
-            text=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
-            check=False)
-        self.assertEqual(0, opened.returncode, opened.stdout)
-
-    def install_interrupted_prepare(self, mutate_receipt=None):
-        """Materialize one recoverable amendment crash fixture."""
-        plan_rel, plan = self.make_plan(
-            "scope-replan", self.scope_proposal(),
+    base_root, _base_artifacts = _checkpoint("base")
+    shutil.copytree(base_root, root)
+    if name == "registered-scope":
+        plan_rel, plan = builder.make_plan(
+            "scope-replan", builder.scope_proposal(),
             ["Topics/C.md"], ["B3"])
-        self.add_progress_amendment(plan)
-        prepared = apply_amendment._prepare_result(
-            str(self.root), plan_rel, self.shas())
-        receipt = copy.deepcopy(prepared["prepare"])
-        if mutate_receipt is not None:
-            mutate_receipt(receipt)
-        kblib.write_receipts(
-            self.root / apply_amendment.RECEIPT_PATH, [receipt])
-        (self.root / check_queue.COVERAGE_PATH).write_text(
-            prepared["after_text"]["coverage"], encoding="utf-8")
-        operation = apply_amendment._lock_operation(
-            plan, prepared["transaction_id"], prepared["plan_sha"],
-            prepared["before_sha"], prepared["after_sha"],
-            prepared["prepare"]["receipt_id"],
-            prepared["transaction_sequence"],
-            prepared["previous_transaction_commit_receipt"],
-            prepared["task_id"], plan_path=plan_rel,
-            receipt_path=apply_amendment.RECEIPT_PATH,
+    else:
+        plan_rel, plan = builder.make_plan(
+            "cancel-batch", builder.cancel_proposal(),
+            ["Topics/B.md"], ["B2"], cancel_batch_id="B2")
+    builder.register_plan(plan_rel, plan)
+    registered = runtime_validation.validate_runtime(root)
+    if registered["errors"]:
+        raise AssertionError(
+            "Amendment registration checkpoint is not current: %s" %
+            registered["errors"])
+
+    artifacts = {"plan_rel": plan_rel, "plan": plan}
+    _CHECKPOINTS[name] = (holder, root, artifacts)
+    return root, dict(artifacts)
+
+
+class _CheckpointBackedCase(AmendmentFixture, unittest.TestCase):
+    CHECKPOINT = None
+
+    def setUp(self):
+        checkpoint_root, self.scenario = _checkpoint(self.CHECKPOINT)
+        self.tmp = tempfile.TemporaryDirectory()
+        self.root = Path(self.tmp.name) / "repo"
+        shutil.copytree(checkpoint_root, self.root)
+        self.amendment_dir = \
+            self.root / ".cambium/deltas/amendments"
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+
+class AmendmentScopeIntegrationTests(_CheckpointBackedCase):
+    CHECKPOINT = "registered-scope"
+
+    def test_scope_replan_cli_json_commits_one_current_transaction(self):
+        expected = self.shas()
+        completed = subprocess.run(
+            [
+                sys.executable,
+                str(TOOLS / "apply_amendment.py"),
+                str(self.root),
+                "--plan", self.scenario["plan_rel"],
+                "--expected-coverage-sha256", expected["coverage"],
+                "--expected-progress-sha256", expected["progress"],
+                "--expected-queue-sha256", expected["queue"],
+                "--actor-role", "integrator",
+                "--apply",
+                "--json",
+            ],
+            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            check=False,
         )
-        operation["registration_receipt"] = prepared["registration_receipt"]
-        lock = self.root / ".cambium/tmp/state-writer.lock"
-        lock.mkdir()
-        (lock / "owner.json").write_text(json.dumps({
-            "lock_name": "state-writer", "pid": 999999,
-            "created_at": "2026-08-04T12:00:00Z",
-            "operation": operation,
-        }) + "\n", encoding="utf-8")
-        return plan_rel, plan, prepared, operation
+        self.assertEqual(0, completed.returncode, completed.stderr)
+        emitted = json.loads(completed.stdout)
+        self.assertEqual(
+            ["prepare", "commit"],
+            [row["transaction_phase"] for row in emitted])
 
-    def test_scope_replan_adds_new_required_object_atomically(self):
-        # This test intentionally starts from queued-only history.  Preservation
-        # of terminal items is compile_queue's separate history-merge contract;
-        # apply_amendment consumes that helper instead of duplicating it here.
-        plan_rel, plan = self.make_plan(
-            "scope-replan", self.scope_proposal(),
-            ["Topics/C.md"], ["B3"])
-        self.add_progress_amendment(plan)
-        before = self.shas()
-        dry = self.command(plan_rel, before)
-        self.assertEqual(0, dry.returncode, dry.stdout)
-        self.assertIn("dry run", dry.stdout)
-        self.assertEqual(before, self.shas())
-
-        completed = self.command(
-            plan_rel, before, "--actor-role", "integrator", "--apply")
-        self.assertEqual(0, completed.returncode, completed.stdout)
-        result = check_queue.validate_runtime(self.root)
+        result = runtime_validation.validate_runtime(self.root)
         self.assertEqual([], result["errors"])
         self.assertEqual("s2", result["queue"]["scope_version"])
-        self.assertEqual(2, result["queue"]["queue_revision"])
-        self.assertEqual(0, result["queue"]["state_revision"])
         self.assertEqual(["Topics/C.md"],
                          result["items_by_id"]["B3"]["manifest"])
-        amendment = next(entry for entry in result["progress"]["amendments"]
-                         if entry.get("id") == plan["amendment_id"])
+        amendment = result["progress"]["amendments"][-1]
         self.assertEqual("verified", amendment["status"])
-        self.assertIs(True, amendment["writeback_done"])
-        self.assertEqual(plan_rel, amendment["plan_path"])
-        self.assertEqual(kblib.sha256_file(self.root / plan_rel),
-                         amendment["plan_sha256"])
-        self.assertEqual(plan["coverage_proposal_path"],
-                         amendment["coverage_proposal_path"])
-        self.assertEqual(kblib.sha256_file(
-            self.root / plan["coverage_proposal_path"]),
-            amendment["coverage_proposal_sha256"])
-        receipts = [json.loads(line) for line in (
-            self.root / apply_amendment.RECEIPT_PATH).read_text(
-                encoding="utf-8").splitlines()]
-        self.assertEqual(["prepare", "commit"],
-                         [receipt["transaction_phase"]
-                          for receipt in receipts
-                          if receipt.get("transaction_phase")])
-        commit = receipts[-1]
-        for field in ("plan_path", "plan_sha256",
-                      "coverage_proposal_path",
-                      "coverage_proposal_sha256"):
-            self.assertEqual(amendment[field], commit[field])
+        self.assertIs(amendment["writeback_done"], True)
+        self.assertEqual(
+            ["prepare", "commit"],
+            [row["transaction_phase"] for row in self.receipt_rows()
+             if row.get("transaction_phase")])
 
-    def test_register_amendment_runs_profile_load_producer_once(self):
-        plan_rel, plan = self.make_plan(
-            "scope-replan", self.scope_proposal(),
-            ["Topics/C.md"], ["B3"])
-        before = self.shas()
-        producer = check_queue.check_profile.evaluate_profile_load
-        with mock.patch.object(
-                check_queue.check_profile, "evaluate_profile_load",
-                wraps=producer) as evaluate:
-            with redirect_stdout(io.StringIO()):
-                code = register_amendment.main([
-                    str(self.root), "--operation", plan["operation"],
-                    "--plan", plan_rel, "--date",
-                    time.strftime("%Y-%m-%d", time.gmtime()),
-                    "--summary", "approved cross-Ledger Amendment",
-                    "--approval-reference", "user:fixture-approval",
-                    "--expected-coverage-sha256", before["coverage"],
-                    "--expected-progress-sha256", before["progress"],
-                    "--expected-queue-sha256", before["queue"],
-                    "--actor-role", "integrator", "--apply",
-                ])
-        self.assertEqual(0, code)
-        self.assertEqual(1, evaluate.call_count)
 
-    def test_apply_amendment_runs_profile_load_producer_once(self):
-        plan_rel, plan = self.make_plan(
-            "scope-replan", self.scope_proposal(),
-            ["Topics/C.md"], ["B3"])
-        self.add_progress_amendment(plan)
-        before = self.shas()
-        producer = check_queue.check_profile.evaluate_profile_load
-        with mock.patch.object(
-                check_queue.check_profile, "evaluate_profile_load",
-                wraps=producer) as evaluate:
-            with redirect_stdout(io.StringIO()):
-                code = apply_amendment.main([
-                    str(self.root), "--plan", plan_rel,
-                    "--expected-coverage-sha256", before["coverage"],
-                    "--expected-progress-sha256", before["progress"],
-                    "--expected-queue-sha256", before["queue"],
-                    "--actor-role", "integrator", "--apply",
-                ])
-        self.assertEqual(0, code)
-        self.assertEqual(1, evaluate.call_count)
+class AmendmentCancellationIntegrationTests(_CheckpointBackedCase):
+    CHECKPOINT = "registered-cancel"
 
-    def test_verified_amendment_receipt_revision_must_match_plan(self):
-        plan_rel, plan = self.make_plan(
-            "scope-replan", self.scope_proposal(),
-            ["Topics/C.md"], ["B3"])
-        self.add_progress_amendment(plan)
-        completed = self.command(
-            plan_rel, self.shas(), "--actor-role", "integrator", "--apply")
-        self.assertEqual(0, completed.returncode, completed.stdout)
-        receipt_path = self.root / apply_amendment.RECEIPT_PATH
-        receipts = [json.loads(line) for line in receipt_path.read_text(
-            encoding="utf-8").splitlines()]
-        commit = next(receipt for receipt in receipts
-                      if receipt.get("transaction_phase") == "commit")
-        commit["queue_revision_after"] = 999
-        receipt_path.write_text(
-            "".join(json.dumps(receipt) + "\n" for receipt in receipts),
-            encoding="utf-8",
-        )
-        errors = check_queue.validate_runtime(self.root)["errors"]
-        self.assertTrue(any(
-            "queue_revision_after=999" in error or
-            "queue revision does not match its Amendment" in error or
-            "points beyond the live Queue revision" in error
-            for error in errors), errors)
+    def test_cancel_batch_commits_its_distinct_transition_receipt(self):
+        prepared = apply_amendment._prepare_result(
+            str(self.root), self.scenario["plan_rel"], self.shas())
+        apply_amendment._commit_transaction(
+            str(self.root), prepared,
+            str(self.root / apply_amendment.RECEIPT_PATH))
 
-    def test_verified_scope_registration_bridges_execution_preimage(self):
-        plan_rel, plan = self.make_plan(
-            "scope-replan", self.scope_proposal(),
-            ["Topics/C.md"], ["B3"])
-        self.add_progress_amendment(plan)
-        completed = self.command(
-            plan_rel, self.shas(), "--actor-role", "integrator", "--apply")
-        self.assertEqual(0, completed.returncode, completed.stdout)
-        self.tamper_registration_receipt(
-            "after_progress_sha256", "sha256:" + ("0" * 64))
-        errors = "\n".join(check_queue.validate_runtime(self.root)["errors"])
-        self.assertIn("does not bridge to execution before_progress_sha256",
-                      errors)
-
-    def test_verified_cancellation_registration_bridges_execution_preimage(self):
-        plan_rel, plan = self.make_plan(
-            "cancel-batch", self.cancel_proposal(),
-            ["Topics/B.md"], ["B2"], cancel_batch_id="B2")
-        self.add_progress_amendment(plan)
-        completed = self.command(
-            plan_rel, self.shas(), "--actor-role", "integrator", "--apply")
-        self.assertEqual(0, completed.returncode, completed.stdout)
-        self.tamper_registration_receipt(
-            "after_required_queue_sha256", "sha256:" + ("0" * 64))
-        errors = "\n".join(check_queue.validate_runtime(self.root)["errors"])
-        self.assertIn("does not bridge to execution before_queue_sha256",
-                      errors)
-
-    def test_plan_and_proposal_must_stay_in_amendment_namespace(self):
-        plan_rel, plan = self.make_plan(
-            "scope-replan", self.scope_proposal(),
-            ["Topics/C.md"], ["B3"])
-        outside_plan = ".cambium/deltas/A-SCOPE-OUTSIDE.yaml"
-        self.write_yaml(outside_plan, plan)
-        rejected = self.command(outside_plan, self.shas())
-        self.assertEqual(1, rejected.returncode, rejected.stdout)
-        self.assertIn("inside .cambium/deltas/amendments", rejected.stdout)
-
-        outside_proposal = ".cambium/deltas/A-SCOPE-OUTSIDE.coverage.yaml"
-        proposal_path = self.write_yaml(outside_proposal, self.scope_proposal())
-        plan["coverage_proposal_path"] = outside_proposal
-        plan["coverage_proposal_sha256"] = kblib.sha256_file(proposal_path)
-        self.write_yaml(plan_rel, plan)
-        rejected = self.command(plan_rel, self.shas())
-        self.assertEqual(1, rejected.returncode, rejected.stdout)
-        self.assertIn("inside .cambium/deltas/amendments", rejected.stdout)
-
-    def test_tampered_coverage_proposal_is_rejected_before_transaction(self):
-        plan_rel, plan = self.make_plan(
-            "scope-replan", self.scope_proposal(),
-            ["Topics/C.md"], ["B3"])
-        self.add_progress_amendment(plan)
-        proposal_path = self.root / plan["coverage_proposal_path"]
-        proposal_path.write_text(
-            proposal_path.read_text(encoding="utf-8") + "\n",
-            encoding="utf-8",
-        )
-        before = self.shas()
-        rejected = self.command(plan_rel, before)
-        self.assertEqual(1, rejected.returncode, rejected.stdout)
-        self.assertIn("Coverage proposal SHA does not match plan",
-                      rejected.stdout)
-        self.assertEqual(before, self.shas())
-
-    def test_cancel_leaf_batch_updates_all_three_ledgers(self):
-        plan_rel, plan = self.make_plan(
-            "cancel-batch", self.cancel_proposal(),
-            ["Topics/B.md"], ["B2"], cancel_batch_id="B2")
-        self.add_progress_amendment(plan)
-        before = self.shas()
-        completed = self.command(
-            plan_rel, before, "--actor-role", "integrator", "--apply")
-        self.assertEqual(0, completed.returncode, completed.stdout)
-        result = check_queue.validate_runtime(self.root)
+        result = runtime_validation.validate_runtime(self.root)
         self.assertEqual([], result["errors"])
         cancelled = result["items_by_id"]["B2"]
         self.assertEqual("cancelled", cancelled["state"])
-        self.assertEqual(plan["amendment_id"],
-                         cancelled["cancellation_amendment"])
-        self.assertEqual(1, result["queue"]["state_revision"])
+        self.assertEqual(
+            self.scenario["plan"]["amendment_id"],
+            cancelled["cancellation_amendment"])
         transition_id = cancelled["transition_receipts"][-1]
         transition = result["receipt_catalog"][transition_id][1]
-        self.assertEqual("apply_amendment", transition["tool"])
-        page = next(entry for entry in result["coverage"]["pages"]
-                    if entry["path"] == "Topics/B.md")
+        self.assertEqual(
+            [],
+            apply_amendment.current_queue_cancellation_receipt_errors(
+                transition))
+        page = next(
+            entry for entry in result["coverage"]["pages"]
+            if entry["path"] == "Topics/B.md")
         self.assertEqual("deferred", page["coverage_disposition"])
         self.assertIsNone(page["next_batch"])
 
-    def test_planned_all_cancelled_task_can_enter_build_completion_candidate(self):
-        coverage = self.load(check_queue.COVERAGE_PATH)
-        coverage["batch_specs"] = [
-            spec for spec in coverage["batch_specs"] if spec["id"] == "B2"
-        ]
-        coverage["batch_specs"][0]["order_hint"] = 1
-        coverage["batch_specs"][0]["depends_on"] = []
-        coverage["pages"] = [
-            page for page in coverage["pages"] if page["path"] == "Topics/B.md"
-        ]
-        queue = self.load(check_queue.QUEUE_PATH)
-        queue["required_queue"] = [
-            item for item in queue["required_queue"] if item["id"] == "B2"
-        ]
-        queue["required_queue"][0]["order"] = 1
-        queue["required_queue"][0]["depends_on"] = []
-        self.write_yaml(check_queue.COVERAGE_PATH, coverage)
-        queue_text = kblib.canonical_yaml(queue)
-        (self.root / check_queue.QUEUE_PATH).write_text(
-            queue_text, encoding="utf-8")
 
-        progress = self.load(check_queue.PROGRESS_PATH)
-        progress["task_state"] = "planned"
-        progress["task_transition_receipts"] = []
-        progress["required_queue_sha256"] = kblib.sha256_bytes(queue_text)
-        progress["checkpoint"] = {
-            "recorded_at": None,
-            "summary": None,
-            "task_state": "planned",
-            "task_transition_receipt": None,
-            "coverage_sha256": None,
-            "required_queue_sha256": None,
-            "queue_revision": queue["queue_revision"],
-            "queue_state_revision": queue["state_revision"],
-        }
-        self.write_yaml(check_queue.PROGRESS_PATH, progress)
-        progress_sha = kblib.sha256_file(
-            self.root / check_queue.PROGRESS_PATH)
-        receipts_path = self.root / ".cambium/receipts/task-transitions.jsonl"
-        records = [json.loads(line) for line in receipts_path.read_text(
-            encoding="utf-8").splitlines()]
-        records = [record for record in records
-                   if record.get("tool") != "update_task"]
-        initial = next(record for record in records
-                       if record.get("receipt_id") ==
-                       "audit-fixture-initial-queue")
-        initial["after_required_queue_sha256"] = kblib.sha256_file(
-            self.root / check_queue.QUEUE_PATH)
-        initial["after_coverage_sha256"] = kblib.sha256_file(
-            self.root / check_queue.COVERAGE_PATH)
-        initial["after_progress_sha256"] = progress_sha
-        receipts_path.write_text(
-            "".join(json.dumps(record) + "\n" for record in records),
-            encoding="utf-8",
-        )
-        self.assertEqual([], check_queue.validate_runtime(self.root)["errors"])
+class AmendmentCommitIntegrationTests(_CheckpointBackedCase):
+    CHECKPOINT = "registered-scope"
 
-        plan_rel, plan = self.make_plan(
-            "cancel-batch", self.cancel_proposal(),
-            ["Topics/B.md"], ["B2"], cancel_batch_id="B2")
-        self.add_progress_amendment(plan)
-        completed = self.command(
-            plan_rel, self.shas(), "--actor-role", "integrator", "--apply")
-        self.assertEqual(0, completed.returncode, completed.stdout)
-        runtime = check_queue.validate_runtime(self.root)
-        self.assertEqual([], runtime["errors"])
-        self.assertEqual("planned", runtime["progress"]["task_state"])
-        self.assertEqual(0, runtime["remaining"])
+    def prepared(self):
+        return apply_amendment._prepare_result(
+            str(self.root), self.scenario["plan_rel"], self.shas())
 
-        register = ".cambium/receipts/planned-complete.jsonl"
-        gate = subprocess.run(
-            [sys.executable, str(TOOLS / "check_queue.py"), str(self.root),
-             "--require-complete", "--receipts", register],
-            text=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
-            check=False,
-        )
-        self.assertEqual(0, gate.returncode, gate.stdout)
-        gate_id = json.loads((self.root / register).read_text(
-            encoding="utf-8").splitlines()[-1])["receipt_id"]
-        transition = subprocess.run(
-            [sys.executable, str(TOOLS / "update_task.py"), str(self.root),
-             "--transition", "completion-candidate",
-             "--queue-check-receipt", gate_id,
-             "--checkpoint-summary", "all planned work cancelled by Amendment",
-             "--expected-progress-sha256",
-             kblib.sha256_file(self.root / check_queue.PROGRESS_PATH),
-             "--expected-queue-sha256",
-             kblib.sha256_file(self.root / check_queue.QUEUE_PATH),
-             "--actor-role", "integrator", "--apply"],
-            text=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
-            check=False,
-        )
-        self.assertEqual(0, transition.returncode, transition.stdout)
-        resumed = check_queue.validate_runtime(self.root)
-        self.assertEqual([], resumed["errors"])
-        self.assertEqual(
-            "completion-candidate", resumed["progress"]["task_state"])
-
-    def test_cancel_open_leaf_batch_preserves_transition_history(self):
-        self.open_b2()
-        plan_rel, plan = self.make_plan(
-            "cancel-batch", self.cancel_proposal(),
-            ["Topics/B.md"], ["B2"], cancel_batch_id="B2")
-        self.add_progress_amendment(plan)
-        completed = self.command(
-            plan_rel, self.shas(), "--actor-role", "integrator", "--apply")
-        self.assertEqual(0, completed.returncode, completed.stdout)
-        result = check_queue.validate_runtime(self.root)
-        self.assertEqual([], result["errors"])
-        cancelled = result["items_by_id"]["B2"]
-        self.assertEqual("cancelled", cancelled["state"])
-        self.assertEqual(2, len(cancelled["transition_receipts"]))
-        self.assertEqual(2, result["queue"]["state_revision"])
-
-    def test_replan_after_cancellation_preserves_terminal_history(self):
-        cancel_rel, cancel_plan = self.make_plan(
-            "cancel-batch", self.cancel_proposal(),
-            ["Topics/B.md"], ["B2"], cancel_batch_id="B2")
-        self.add_progress_amendment(cancel_plan)
-        cancelled = self.command(
-            cancel_rel, self.shas(), "--actor-role", "integrator", "--apply")
-        self.assertEqual(0, cancelled.returncode, cancelled.stdout)
-
-        coverage = self.load(check_queue.COVERAGE_PATH)
-        coverage["scope_version"] = "s3"
-        coverage["updated_at"] = "2026-08-04T13:00:00Z"
-        coverage["batch_specs"].append({
-            "id": "B3", "family": "Core", "order_hint": 3,
-            "source_route": "R03", "execution_mode": "concurrent-worker",
-            "depends_on": ["B1"], "confirmation_required": False,
-            "work_spec_path": None, "work_spec_sha256": None,
-        })
-        coverage["pages"].append({
-            "path": "Topics/C.md", "coverage_disposition": "required",
-            "canonical_owner": "Topics/C.md", "type": "concept",
-            "priority": "P1", "tier": "M", "authoring_status": "drafted",
-            "prerequisites": ["Topics/A.md"], "batch": "B3",
-            "next_batch": "B3", "deferred_reason": None,
-            "reentry_condition": None, "gate_receipts": [],
-            "property_state": {},
-        })
-        replan_rel, replan_plan = self.make_plan(
-            "scope-replan", coverage, ["Topics/C.md"], ["B3"])
-        self.add_progress_amendment(replan_plan)
-        replanned = self.command(
-            replan_rel, self.shas(), "--actor-role", "integrator", "--apply")
-        self.assertEqual(0, replanned.returncode, replanned.stdout)
-        result = check_queue.validate_runtime(self.root)
-        self.assertEqual([], result["errors"])
-        self.assertEqual("cancelled", result["items_by_id"]["B2"]["state"])
-        self.assertEqual(["Topics/C.md"],
-                         result["items_by_id"]["B3"]["manifest"])
-        transactions = [entry for entry in result["progress"]["amendments"]
-                        if entry.get("operation") in
-                        ("scope-replan", "cancel-batch")]
-        self.assertEqual([1, 2], [entry["transaction_sequence"]
-                                  for entry in transactions])
-        self.assertIsNone(
-            transactions[0]["previous_transaction_commit_receipt"])
-        self.assertEqual(
-            transactions[0]["verification_receipt"],
-            transactions[1]["previous_transaction_commit_receipt"])
-        transactions[1]["previous_transaction_commit_receipt"] = \
-            "audit-not-the-prior-commit"
-        self.write_yaml(check_queue.PROGRESS_PATH, result["progress"])
-        tampered = check_queue.validate_runtime(self.root)
-        self.assertTrue(any("previous transaction commit" in error
-                            for error in tampered["errors"]),
-                        tampered["errors"])
-
-    def test_tampered_registered_amendment_id_is_rejected(self):
-        plan_rel, plan = self.make_plan(
-            "scope-replan", self.scope_proposal(),
-            ["Topics/C.md"], ["B3"])
-        self.add_progress_amendment(plan, amendment_id="A-OTHER")
-        completed = self.command(plan_rel, self.shas())
-        self.assertEqual(1, completed.returncode, completed.stdout)
-        self.assertIn("registration receipt", completed.stdout)
-
-    def test_stale_sha_is_rejected_without_writing(self):
-        plan_rel, plan = self.make_plan(
-            "scope-replan", self.scope_proposal(),
-            ["Topics/C.md"], ["B3"])
-        self.add_progress_amendment(plan)
+    def test_partial_write_rolls_back_and_records_abort(self):
         before = self.shas()
-        stale = dict(before)
-        stale["coverage"] = "sha256:" + "0" * 64
-        completed = self.command(
-            plan_rel, stale, "--actor-role", "integrator", "--apply")
-        self.assertEqual(1, completed.returncode, completed.stdout)
-        self.assertIn("expected coverage SHA", completed.stdout)
-        self.assertEqual(before, self.shas())
-
-    def test_worker_cannot_apply_transaction(self):
-        plan_rel, plan = self.make_plan(
-            "scope-replan", self.scope_proposal(),
-            ["Topics/C.md"], ["B3"])
-        self.add_progress_amendment(plan)
-        before = self.shas()
-        completed = self.command(plan_rel, before, "--apply")
-        self.assertEqual(1, completed.returncode, completed.stdout)
-        self.assertIn("only actor-role integrator", completed.stdout)
-        self.assertEqual(before, self.shas())
-        receipts = [json.loads(line) for line in
-                    (self.root / apply_amendment.RECEIPT_PATH).read_text(
-                        encoding="utf-8").splitlines()]
-        self.assertFalse(any(receipt.get("transaction_phase")
-                             for receipt in receipts))
-
-    def test_verified_amendment_cannot_outlive_commit_receipt(self):
-        plan_rel, plan = self.make_plan(
-            "scope-replan", self.scope_proposal(),
-            ["Topics/C.md"], ["B3"])
-        self.add_progress_amendment(plan)
-        completed = self.command(
-            plan_rel, self.shas(), "--actor-role", "integrator", "--apply")
-        self.assertEqual(0, completed.returncode, completed.stdout)
-        receipt_path = self.root / apply_amendment.RECEIPT_PATH
-        retained = [line for line in receipt_path.read_text(
-            encoding="utf-8").splitlines()
-            if json.loads(line).get("transaction_phase") != "commit"]
-        receipt_path.write_text("\n".join(retained) + "\n", encoding="utf-8")
-        result = check_queue.validate_runtime(self.root)
-        self.assertTrue(any("verification" in error and "missing receipt" in error
-                            for error in result["errors"]), result["errors"])
-
-    def test_simulated_crash_leaves_prepare_and_lock_discoverable(self):
-        # Simulate a process dying after prepare and the first serial replace.
-        plan_rel, plan, prepared, operation = \
-            self.install_interrupted_prepare()
-        self.assertEqual(plan_rel, operation["plan_path"])
-        self.assertEqual(plan["coverage_proposal_path"],
-                         operation["coverage_proposal_path"])
-        self.assertEqual(plan["coverage_proposal_sha256"],
-                         operation["coverage_proposal_sha256"])
-
-        status = subprocess.run(
-            [sys.executable, str(TOOLS / "check_queue.py"), str(self.root),
-             "--resume-status"], text=True, stdout=subprocess.PIPE,
-            stderr=subprocess.STDOUT, check=False)
-        self.assertEqual(1, status.returncode, status.stdout)
-        self.assertIn(prepared["transaction_id"], status.stdout)
-        self.assertIn(prepared["prepare"]["receipt_id"], status.stdout)
-        self.assertIn("transaction_phase=prepare", status.stdout)
-        self.assertIn("planned_after_coverage_sha256", status.stdout)
-        self.assertIn("reconcile Queue/Progress/deltas", status.stdout)
-        self.assert_resume_envelope(status,
-                                    "reconcile-interrupted-write")
-
-    def test_recovery_rejects_semantically_tampered_prepare_receipt(self):
-        def corrupt(receipt):
-            receipt["result"] = "pass"
-            receipt["plan_sha256"] = "sha256:" + "0" * 64
-
-        _, _, prepared, _ = self.install_interrupted_prepare(corrupt)
-        status = subprocess.run(
-            [sys.executable, str(TOOLS / "check_queue.py"), str(self.root),
-             "--resume-status"], text=True, stdout=subprocess.PIPE,
-            stderr=subprocess.STDOUT, check=False)
-        self.assertEqual(1, status.returncode, status.stdout)
-        self.assertIn("transaction_phase=receipt-semantic-mismatch",
-                      status.stdout)
-        self.assertIn("prepare_receipt_matches_owner=False", status.stdout)
-        self.assertIn('"plan_sha256"', status.stdout)
-        self.assertIn('"result"', status.stdout)
-        self.assertIn(prepared["prepare"]["receipt_id"], status.stdout)
-
-    def test_ordinary_partial_write_rolls_back_and_records_abort(self):
-        plan_rel, plan = self.make_plan(
-            "scope-replan", self.scope_proposal(),
-            ["Topics/C.md"], ["B3"])
-        self.add_progress_amendment(plan)
-        before = self.shas()
-        prepared = apply_amendment._prepare_result(
-            str(self.root), plan_rel, before)
+        prepared = self.prepared()
         receipt_path = self.root / apply_amendment.RECEIPT_PATH
         original_write = kblib.atomic_write_text
         calls = {"count": 0}
@@ -944,223 +597,68 @@ class ApplyAmendmentTests(unittest.TestCase):
         with mock.patch.object(
                 apply_amendment.kblib, "atomic_write_text",
                 side_effect=fail_second_replace):
-            with self.assertRaisesRegex(OSError, "injected second-file"):
+            with self.assertRaisesRegex(
+                    OSError, "injected second-file"):
                 apply_amendment._commit_transaction(
                     str(self.root), prepared, str(receipt_path))
 
         self.assertEqual(before, self.shas())
-        phases = [json.loads(line)["transaction_phase"]
-                  for line in receipt_path.read_text(
-                      encoding="utf-8").splitlines()
-                  if json.loads(line).get("transaction_phase")]
-        self.assertEqual(["prepare", "abort"], phases)
+        self.assertEqual(
+            ["prepare", "abort"],
+            [row["transaction_phase"] for row in self.receipt_rows()
+             if row.get("transaction_phase")])
         self.assertFalse(
             (self.root / ".cambium/tmp/state-writer.lock").exists())
+        self.assertEqual(
+            [], runtime_validation.validate_runtime(self.root)["errors"])
 
-    def test_durable_orphan_commit_receipt_retains_recovery_lock(self):
-        plan_rel, plan = self.make_plan(
-            "scope-replan", self.scope_proposal(),
-            ["Topics/C.md"], ["B3"])
-        self.add_progress_amendment(plan)
+
+class AmendmentRecoverySlowTests(_CheckpointBackedCase):
+    CHECKPOINT = "registered-scope"
+
+    def prepared(self):
+        return apply_amendment._prepare_result(
+            str(self.root), self.scenario["plan_rel"], self.shas())
+
+    def test_durable_commit_interruption_keeps_recovery_evidence(self):
         before = self.shas()
-        prepared = apply_amendment._prepare_result(
-            str(self.root), plan_rel, before)
+        prepared = self.prepared()
         receipt_path = self.root / apply_amendment.RECEIPT_PATH
         real_append = kblib.write_receipts
 
         def append_commit_then_fail(path, receipts, **kwargs):
             real_append(path, receipts, **kwargs)
-            if any(record.get("transaction_phase") == "commit"
-                   for record in receipts):
-                raise OSError("injected error after durable commit receipt")
+            if any(
+                    row.get("transaction_phase") == "commit"
+                    for row in receipts):
+                raise OSError(
+                    "injected error after durable commit receipt")
 
         with mock.patch.object(
                 apply_amendment.kblib, "write_receipts",
                 side_effect=append_commit_then_fail):
-            with self.assertRaisesRegex(ValueError, "recovery was incomplete"):
+            with self.assertRaisesRegex(
+                    ValueError, "recovery was incomplete"):
                 apply_amendment._commit_transaction(
                     str(self.root), prepared, str(receipt_path))
 
         self.assertEqual(before, self.shas())
-        records = [json.loads(line) for line in
-                   receipt_path.read_text(encoding="utf-8").splitlines()]
-        phases = [record.get("transaction_phase") for record in records
-                  if record.get("transaction_phase")]
-        self.assertIn("prepare", phases)
-        self.assertIn("commit", phases)
-        self.assertIn("abort", phases)
+        phases = [
+            row["transaction_phase"] for row in self.receipt_rows()
+            if row.get("transaction_phase")
+        ]
+        self.assertEqual(["prepare", "commit", "abort"], phases)
         self.assertTrue((
-            self.root / ".cambium/tmp/state-writer.lock/owner.json"
+            self.root /
+            ".cambium/tmp/state-writer.lock/owner.json"
         ).is_file())
-        status = subprocess.run(
-            [sys.executable, str(TOOLS / "check_queue.py"), str(self.root),
-             "--resume-status"], text=True, stdout=subprocess.PIPE,
-            stderr=subprocess.STDOUT, check=False,
-        )
-        self.assertIn(prepared["commit"]["receipt_id"], status.stdout)
-        self.assertIn("state.coverage phase=before", status.stdout)
-        self.assertIn("state.queue phase=before", status.stdout)
-        self.assertIn("state.progress phase=before", status.stdout)
-        self.assertIn("transaction_phase=abort", status.stdout)
-        self.assert_resume_envelope(
-            status, next_action="reconcile-interrupted-write")
 
-    def test_commit_without_durable_abort_remains_restart_visible(self):
-        plan_rel, plan = self.make_plan(
-            "scope-replan", self.scope_proposal(),
-            ["Topics/C.md"], ["B3"])
-        self.add_progress_amendment(plan)
-        before = self.shas()
-        prepared = apply_amendment._prepare_result(
-            str(self.root), plan_rel, before)
-        receipt_path = self.root / apply_amendment.RECEIPT_PATH
-        real_append = kblib.write_receipts
-
-        def commit_then_refuse_abort(path, receipts, **kwargs):
-            phases = {record.get("transaction_phase") for record in receipts}
-            if "commit" in phases:
-                real_append(path, receipts, **kwargs)
-                raise OSError("injected failure after durable commit")
-            if "abort" in phases:
-                raise OSError("injected abort publication failure")
-            return real_append(path, receipts, **kwargs)
-
-        with mock.patch.object(
-                apply_amendment.kblib, "write_receipts",
-                side_effect=commit_then_refuse_abort):
-            with self.assertRaisesRegex(ValueError, "recovery was incomplete"):
-                apply_amendment._commit_transaction(
-                    str(self.root), prepared, str(receipt_path))
-
-        self.assertEqual(before, self.shas())
-        phases = [json.loads(line).get("transaction_phase") for line in
-                  receipt_path.read_text(encoding="utf-8").splitlines()
-                  if json.loads(line).get("transaction_phase")]
-        self.assertEqual(["prepare", "commit"], phases)
-        status = subprocess.run(
-            [sys.executable, str(TOOLS / "check_queue.py"), str(self.root),
-             "--resume-status"], text=True, stdout=subprocess.PIPE,
-            stderr=subprocess.STDOUT, check=False,
-        )
-        self.assertEqual(2, status.returncode, status.stdout)
-        self.assertIn("transaction_phase=commit", status.stdout)
-        self.assertIn(prepared["commit"]["receipt_id"], status.stdout)
-        self.assert_resume_envelope(
-            status, next_action="reconcile-interrupted-write")
-
-    def test_partial_commit_receipt_retains_lock_and_corruption_evidence(self):
-        plan_rel, plan = self.make_plan(
-            "scope-replan", self.scope_proposal(),
-            ["Topics/C.md"], ["B3"])
-        self.add_progress_amendment(plan)
-        before = self.shas()
-        prepared = apply_amendment._prepare_result(
-            str(self.root), plan_rel, before)
-        receipt_path = self.root / apply_amendment.RECEIPT_PATH
-        commit_id = prepared["commit"]["receipt_id"]
-        real_os_write = kblib.os.write
-
-        def truncate_commit(fd, data):
-            payload = bytes(data)
-            if (commit_id.encode("utf-8") in payload and
-                    b'"transaction_phase": "commit"' in payload):
-                fragment = payload[:max(1, len(payload) // 2)]
-                real_os_write(fd, fragment)
-                return len(fragment)
-            return real_os_write(fd, payload)
-
-        with mock.patch.object(apply_amendment.kblib.os, "write",
-                               side_effect=truncate_commit):
-            with self.assertRaisesRegex(ValueError, "recovery was incomplete"):
-                apply_amendment._commit_transaction(
-                    str(self.root), prepared, str(receipt_path))
-
-        self.assertEqual(before, self.shas())
-        self.assertIn(commit_id.encode("utf-8"), receipt_path.read_bytes())
-        self.assertTrue((
-            self.root / ".cambium/tmp/state-writer.lock/owner.json"
-        ).is_file())
-        status = subprocess.run(
-            [sys.executable, str(TOOLS / "check_queue.py"), str(self.root),
-             "--resume-status"], text=True, stdout=subprocess.PIPE,
-            stderr=subprocess.STDOUT, check=False,
-        )
-        self.assertIn(commit_id, status.stdout)
-        self.assertIn("lock=.cambium/tmp/state-writer.lock", status.stdout)
-
-    def test_prepare_proven_absent_allows_clean_failure_unlock(self):
-        plan_rel, plan = self.make_plan(
-            "scope-replan", self.scope_proposal(),
-            ["Topics/C.md"], ["B3"])
-        self.add_progress_amendment(plan)
-        before = self.shas()
-        prepared = apply_amendment._prepare_result(
-            str(self.root), plan_rel, before)
-        receipt_path = self.root / apply_amendment.RECEIPT_PATH
-        real_append = kblib.write_receipts
-
-        def fail_prepare(path, receipts, **kwargs):
-            if any(record.get("transaction_phase") == "prepare"
-                   for record in receipts):
-                raise OSError("injected pre-append prepare failure")
-            return real_append(path, receipts, **kwargs)
-
-        with mock.patch.object(apply_amendment.kblib, "write_receipts",
-                               side_effect=fail_prepare):
-            with self.assertRaisesRegex(OSError, "pre-append prepare"):
-                apply_amendment._commit_transaction(
-                    str(self.root), prepared, str(receipt_path))
-
-        self.assertEqual(before, self.shas())
-        records = [json.loads(line) for line in receipt_path.read_text(
-            encoding="utf-8").splitlines()]
-        self.assertEqual(["register_amendment"],
-                         [record.get("tool") for record in records])
-        self.assertFalse(
-            (self.root / ".cambium/tmp/state-writer.lock").exists()
-        )
-
-    def test_prepare_present_but_abort_absent_retains_lock(self):
-        plan_rel, plan = self.make_plan(
-            "scope-replan", self.scope_proposal(),
-            ["Topics/C.md"], ["B3"])
-        self.add_progress_amendment(plan)
-        before = self.shas()
-        prepared = apply_amendment._prepare_result(
-            str(self.root), plan_rel, before)
-        receipt_path = self.root / apply_amendment.RECEIPT_PATH
-        real_atomic = kblib.atomic_write_text
-        real_append = kblib.write_receipts
-        calls = {"count": 0}
-
-        def fail_second_state(*args, **kwargs):
-            calls["count"] += 1
-            if calls["count"] == 2:
-                raise OSError("injected second-file failure")
-            return real_atomic(*args, **kwargs)
-
-        def fail_abort(path, receipts, **kwargs):
-            if any(record.get("transaction_phase") == "abort"
-                   for record in receipts):
-                raise OSError("injected abort append failure")
-            return real_append(path, receipts, **kwargs)
-
-        with mock.patch.object(apply_amendment.kblib, "atomic_write_text",
-                               side_effect=fail_second_state), \
-                mock.patch.object(apply_amendment.kblib, "write_receipts",
-                                  side_effect=fail_abort):
-            with self.assertRaisesRegex(ValueError, "recovery was incomplete"):
-                apply_amendment._commit_transaction(
-                    str(self.root), prepared, str(receipt_path))
-
-        self.assertEqual(before, self.shas())
-        phases = [json.loads(line)["transaction_phase"] for line in
-                  receipt_path.read_text(encoding="utf-8").splitlines()
-                  if json.loads(line).get("transaction_phase")]
-        self.assertEqual(["prepare"], phases)
-        self.assertTrue((
-            self.root / ".cambium/tmp/state-writer.lock/owner.json"
-        ).is_file())
+        code, output = self.resume_status()
+        self.assertNotEqual(0, code)
+        self.assertIn(prepared["commit"]["receipt_id"], output)
+        self.assertIn("transaction_phase=abort", output)
+        self.assertIn(
+            "next_action=reconcile-interrupted-write", output)
 
 
 if __name__ == "__main__":

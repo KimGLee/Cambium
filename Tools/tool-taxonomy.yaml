@@ -1,0 +1,52 @@
+# Tool engineering taxonomy -- machine owner: Tools/tool-taxonomy.yaml
+#
+# This classifies implementation, not governance authority.  Every shipped
+# Python module is assigned one Area, one Domain within that Area, and one
+# implementation Layer in Tools/module-boundaries.yaml.
+
+schema_version: 1
+
+areas:
+  - area_id: governance
+    purpose: Bind shared Standards, Profile, and control-plane contracts to deterministic implementations.
+    domains:
+      - standards
+      - profile
+      - control
+
+  - area_id: knowledge
+    purpose: Validate and project governed knowledge structures and page-level contracts.
+    domains:
+      - structure
+      - metadata
+      - content
+      - rendering
+
+  - area_id: execution
+    purpose: Materialize plans, advance runtime state, produce evidence, and close governed work.
+    domains:
+      - planning
+      - task-runtime
+      - audit
+      - evidence
+      - context-delivery
+
+  - area_id: platform
+    purpose: Supply host interfaces, repository safety, distribution controls, and shared Tool mechanics.
+    domains:
+      - agent-interface
+      - distribution
+      - repository
+      - common
+
+layers:
+  - layer_id: entrypoint
+    purpose: Stable CLI or MCP adapter; parsing and presentation stay thin.
+  - layer_id: application
+    purpose: One deterministic use case that composes domain contracts and infrastructure.
+  - layer_id: contract
+    purpose: Machine-contract loading, closed validation, pure projection, and stable predicates.
+  - layer_id: infrastructure
+    purpose: Repository IO, serialization, locking, transport, generation, and other Tool-owned mechanics.
+  - layer_id: api
+    purpose: Stable domain-facing public surface that forwards to defining modules without owning algorithms.

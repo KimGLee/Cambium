@@ -5,7 +5,7 @@ import unittest
 TOOLS = Path(__file__).resolve().parents[1]
 REPOSITORY = TOOLS.parent
 sys.path.insert(0, str(TOOLS))
-import stamp_cards
+import Tools.platform.distribution.stamp_cards as stamp_cards
 
 
 class CuratedCardAuthorityTests(unittest.TestCase):

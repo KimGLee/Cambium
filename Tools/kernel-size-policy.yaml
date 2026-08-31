@@ -17,7 +17,7 @@ exceptions:
     growth_cap_bytes: 7168
     record_id: EXC-001
   - path: kernel/K00 Standards Control/03 Standards Governance.md
-    measured_bytes: 4934
+    measured_bytes: 4923
     growth_cap_bytes: 12288
     record_id: EXC-002
   - path: kernel/K00 Standards Control/06 Completion Precedence and Task Contract.md
@@ -57,11 +57,11 @@ exceptions:
     growth_cap_bytes: 7168
     record_id: EXC-011
   - path: kernel/K12 Quality Assurance/09 Batch-close Closed List.md
-    measured_bytes: 12747
+    measured_bytes: 12737
     growth_cap_bytes: 16896
     record_id: EXC-012
   - path: kernel/K12 Quality Assurance/10 Standards Version Adoption.md
-    measured_bytes: 8282
+    measured_bytes: 8362
     growth_cap_bytes: 16384
     record_id: EXC-013
   - path: kernel/K12 Quality Assurance/15 Terminal Audit and Convergence.md
@@ -69,11 +69,11 @@ exceptions:
     growth_cap_bytes: 7168
     record_id: EXC-014
   - path: kernel/K12 Quality Assurance/16 Terminal Proof Contract.md
-    measured_bytes: 5719
+    measured_bytes: 5974
     growth_cap_bytes: 11264
     record_id: EXC-015
   - path: kernel/K12 Quality Assurance/17 Gate Receipt Payload Contract.md
-    measured_bytes: 5357
+    measured_bytes: 5442
     growth_cap_bytes: 10752
     record_id: EXC-016
   - path: kernel/K12 Quality Assurance/14 Batch Review.md
@@ -81,19 +81,19 @@ exceptions:
     growth_cap_bytes: 7680
     record_id: EXC-017
   - path: kernel/K13 Task Runtime and Execution Control/19 Card Context Activation and Read-back Delivery.md
-    measured_bytes: 5693
+    measured_bytes: 5722
     growth_cap_bytes: 12288
     record_id: EXC-018
   - path: kernel/K13 Task Runtime and Execution Control/06 Amendment Log and Controlled Replanning.md
-    measured_bytes: 6182
+    measured_bytes: 6185
     growth_cap_bytes: 9728
     record_id: EXC-019
   - path: kernel/K13 Task Runtime and Execution Control/08 Required Queue Contract and Lifecycle.md
-    measured_bytes: 7123
+    measured_bytes: 7180
     growth_cap_bytes: 9216
     record_id: EXC-020
   - path: kernel/K13 Task Runtime and Execution Control/10 Batch Admission Transitions and Serial Integration.md
-    measured_bytes: 5852
+    measured_bytes: 5872
     growth_cap_bytes: 9216
     record_id: EXC-021
   - path: kernel/K13 Task Runtime and Execution Control/16 Resume Next Action Vocabulary.md

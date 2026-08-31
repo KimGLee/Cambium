@@ -20,7 +20,6 @@ is visible in the GitHub Actions job summary.
 """
 
 import argparse
-import ast
 from dataclasses import dataclass
 import json
 from pathlib import Path, PurePosixPath
@@ -31,12 +30,14 @@ import unittest
 
 REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
 TOOLS_ROOT = REPOSITORY_ROOT / "Tools"
-if str(TOOLS_ROOT) not in sys.path:
-    sys.path.insert(0, str(TOOLS_ROOT))
+for import_root in (REPOSITORY_ROOT, TOOLS_ROOT):
+    if str(import_root) not in sys.path:
+        sys.path.insert(0, str(import_root))
 
-import card_contract  # noqa: E402
-import profile_layout_contract  # noqa: E402
-import read_set_contract  # noqa: E402
+import Tools.execution.context_delivery.card_contract as card_contract  # noqa: E402
+import Tools.execution.context_delivery.read_set_contract as read_set_contract  # noqa: E402
+import Tools.governance.profile.profile_layout_contract as profile_layout_contract  # noqa: E402
+import Tools.platform.distribution.module_boundary_facts as module_boundary_facts  # noqa: E402
 
 
 PYTHON_VERSIONS = ("3.10", "3.14")
@@ -47,8 +48,9 @@ FULL_EXACT_PATHS = {
     ".gitignore",
     "Makefile",
     ".github/scripts/ci_impact.py",
-    "Tools/kblib.py",
-    "Tools/tests/profile_fixture.py",
+    "Tools/platform/common/kblib.py",
+    "Tools/platform/distribution/module_boundary_facts.py",
+    "Tools/tests/support/profile_fixture.py",
     "Tools/tests/test_ci_impact.py",
 }
 FULL_PREFIXES = (
@@ -192,77 +194,59 @@ def discover_tests(root):
 
 
 def _imports(path, local_modules):
-    tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
-    found = set()
-    for node in ast.walk(tree):
-        if isinstance(node, ast.Import):
-            for alias in node.names:
-                candidate = alias.name.split(".")[0]
-                if candidate == "Tools" and "." in alias.name:
-                    candidate = alias.name.split(".")[1]
-                if candidate in local_modules:
-                    found.add(candidate)
-        elif isinstance(node, ast.ImportFrom) and node.module:
-            parts = node.module.split(".")
-            candidate = parts[1] if parts[0] == "Tools" and len(parts) > 1 \
-                else parts[0]
-            if candidate in local_modules:
-                found.add(candidate)
-            if node.module == "Tools":
-                for alias in node.names:
-                    if alias.name in local_modules:
-                        found.add(alias.name)
-    return found
+    return set(module_boundary_facts.source_imports(
+        path.read_text(encoding="utf-8"), local_modules,
+        filename=str(path)))
 
 
 def impacted_tool_tests(root, changed_tool_paths):
-    tool_paths = {
-        path.stem: path
-        for path in (root / "Tools").glob("*.py")
-        if path.is_file()
+    facts = module_boundary_facts.collect(str(root))
+    local_modules = set(facts)
+    modules_by_path = {
+        "Tools/" + row["path"]: module
+        for module, row in facts.items()
     }
-    local_modules = set(tool_paths)
     changed_modules = {
-        Path(path).stem for path in changed_tool_paths
-        if Path(path).stem in local_modules
+        modules_by_path[path] for path in changed_tool_paths
+        if path in modules_by_path
     }
-    if len(changed_modules) != len(changed_tool_paths):
-        return set(), "changed Tool is absent or is not a top-level Python module"
+    if len(changed_modules) != len(set(changed_tool_paths)):
+        return set(), "changed Tool is absent from the shipped recursive module tree"
 
-    tool_imports = {
-        module: _imports(path, local_modules)
-        for module, path in tool_paths.items()
-    }
+    tool_imports = module_boundary_facts.import_graph(facts)
     affected = set(changed_modules)
     changed = True
     while changed:
         changed = False
         for module, imports in tool_imports.items():
-            if module not in affected and imports.intersection(affected):
+            if module not in affected and set(imports).intersection(affected):
                 affected.add(module)
                 changed = True
 
+    available = set(discover_tests(root))
     selected = set()
-    for test_name in discover_tests(root):
+    for test_name in sorted(available):
         test_path = root / "Tools" / "tests" / test_name
         imports = _imports(test_path, local_modules)
         text = test_path.read_text(encoding="utf-8")
         referenced = any(
             (module in imports) or
-            ("Tools/%s.py" % module in text) or
-            ("%s.py" % module in text)
+            ("Tools/%s" % facts[module]["path"] in text) or
+            (Path(facts[module]["path"]).name != "__init__.py" and
+             Path(facts[module]["path"]).name in text)
             for module in affected
         )
         if referenced:
             selected.add(test_name)
 
     for module in affected:
-        conventional = "test_%s.py" % module
-        if conventional in discover_tests(root):
-            selected.add(conventional)
+        conventional = {
+            "test_%s.py" % module.rsplit(".", 1)[-1],
+            "test_%s.py" % module.replace(".", "_"),
+        }
+        selected.update(conventional.intersection(available))
     if not selected:
         return set(), "no test imports or invokes the affected Tool closure"
-    available = set(discover_tests(root))
     selected.update(name for name in CLI_SURFACE_TESTS if name in available)
     return selected, "affected Tool closure: %s" % ", ".join(sorted(affected))
 
@@ -371,7 +355,7 @@ def plan_changes(root, changes, event="pull_request"):
     if event != "pull_request":
         return _full_plan(
             root, changes,
-            ["%s events always run the complete compatibility suite" % event],
+            ["%s events always run the complete verification suite" % event],
         )
     if not changes:
         return _full_plan(root, changes, ["empty or unavailable diff is fail-closed"])
@@ -408,8 +392,7 @@ def plan_changes(root, changes, event="pull_request"):
                 selected.add(name)
                 python_changed = True
             continue
-        if path.startswith("Tools/") and path.count("/") == 1 \
-                and path.endswith(".py"):
+        if path.startswith("Tools/") and path.endswith(".py"):
             tool_paths.append(path)
             python_changed = True
             continue

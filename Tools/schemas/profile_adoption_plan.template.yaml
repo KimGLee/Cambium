@@ -1,7 +1,7 @@
 # =============================================================================
 # R09 Profile-adoption transaction plan (no-runtime branch)
 # Owner standard: kernel/K00 Standards Control/03 Standards Governance.md
-# Implemented by: Tools/apply_profile_adoption.py
+# Implemented by: Tools/governance/profile/apply_profile_adoption.py
 # Location: any repository-contained path outside kernel/, the candidate
 #   profile directory and .cambium/;
 #   e.g. adoption-plans/<plan-id>.yaml
@@ -17,14 +17,14 @@
 # revision to adopt_standards.py instead.
 # =============================================================================
 
-schema_version: 2
+schema_version: 3
 plan_id: "PA-001"
 # `initial-adoption` requires adopter Standards state absent and null before
 # identity; `profile-revision` requires state present and matching before data.
 branch: initial-adoption
-# Compatibility alias only. It MUST be the same full Git commit SHA as
-# upstream_revision_id; it is never a release label chosen by the adopter.
-standards_version_after: TODO(profile-adoption)
+# Sole after-identity: the full upstream Git commit SHA. It is never a release
+# label chosen by the adopter.
+upstream_revision_id_after: TODO(profile-adoption)
 # The no-runtime writer records only released governance; `approved` is the
 # sole admissible current-state status.
 standards_status_after: approved
@@ -32,7 +32,7 @@ standards_effective_date_after: TODO(profile-adoption)
 selected_profile_manifest_after: "profiles/my-profile/profile.md"
 # profile-revision only; initial adoption declares the absence explicitly with
 # a null pair -- an old profile does not exist and is not a prerequisite.
-standards_version_before: null
+upstream_revision_id_before: null
 selected_profile_manifest_before: null
 
 # Human-readable change detail embedded in the append-only adoption receipt,
@@ -43,9 +43,8 @@ change_summary: TODO(profile-adoption)
 # Upstream provenance belongs to receipt history, not Kernel prose. Both
 # values are required. The writer also requires --upstream-root and
 # --upstream-ref, resolves that ref locally, and refuses unless the result is
-# this exact full upstream_revision_id.
+# this exact full upstream_revision_id_after.
 upstream_source_ref: TODO(profile-adoption)
-upstream_revision_id: TODO(profile-adoption)
 
 # This writer exists for the no-runtime case, where no task state can consume
 # a changed predicate.  The list MUST be empty; a revision with changed

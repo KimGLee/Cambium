@@ -1,1264 +1,319 @@
-import copy
+"""Ownership tests for current Gate and Receipt identity.
+
+The Control Registry owns Gate rows. ``gate_registry`` owns their projection
+to installed producers, receipt matching, and lifecycle position. ``kblib``
+owns the Required Queue identity copied into newly produced Receipts. Receipt
+type dispatch, catalog heat/currentness, sealing, and Queue/Proof verdicts
+have separate owner tests and are intentionally not replayed here.
+"""
+
+from contextlib import contextmanager, redirect_stderr, redirect_stdout
+import io
 import json
-import shutil
-import subprocess
+from pathlib import Path
 import sys
 import tempfile
+from types import SimpleNamespace
 import unittest
-from unittest import mock
-from pathlib import Path
 
 
 TOOLS_DIR = Path(__file__).resolve().parents[1]
-RUNTIME_FIXTURE = TOOLS_DIR / "tests" / "fixtures" / "runtime_state" / "valid"
+REPOSITORY = TOOLS_DIR.parent
 sys.path.insert(0, str(TOOLS_DIR))
 
-import check_links
-import check_batch_close
-import check_boundary_contract
-import check_corpus_plan
-import check_proof
-import check_queue
-# The running-producer version is patched below, and the reader of
-# that name is the module that derives the requirements.
-import queue_runtime.revalidation
-import queue_runtime.gate_registry as gate_registry_contract
-import check_page_contract
-import check_profile
-import check_residual_content
-import check_structure
-import check_vocab
-import adopt_standards
-import kblib
-import record_corpus_acceptance
-from Tools.tests.profile_fixture import FIXTURE_UPSTREAM_REVISION
+import Tools.knowledge.content.check_links as check_links  # noqa: E402
+import Tools.platform.common.kblib as kblib  # noqa: E402
+import Tools.execution.task_runtime.queue_runtime.canon as runtime_canon  # noqa: E402
+import Tools.execution.task_runtime.queue_runtime.gate_registry as gate_registry  # noqa: E402
 
-# K12/18 files these two Gates' canonical judgment items under more than one
-# receipt dimension, so K00/12 registers every one of them.
-DIMENSIONS = {
-    "source-promotion": ("coverage_and_integration", "source_and_currentness"),
-    "expression-layer-acceptance": (
-        "content_and_depth", "coverage_and_integration",
-        "guidance_and_contract", "source_and_currentness",
-        "structure_and_links"),
+
+IDENTITY = {
+    "task_id": "fixture-task",
+    "upstream_revision_id": "a" * 40,
+    "selected_profile_manifest": "profiles/fixture/profile.md",
 }
-# The K00/12 `Lifecycle` cell for a Gate whose producer takes no batch, so no
-# batch position can make it unproducible.
-NOT_BATCH_SCOPED = check_queue.NOT_BATCH_SCOPED_GATE
-# The cell for a Gate reachable only once the Queue holds no non-terminal
-# batch, which is ahead of every live batch and behind none.
-QUEUE_EXHAUSTED = check_queue.QUEUE_EXHAUSTED_GATE
 
 
-class DeterministicGateReceiptIdentityTests(unittest.TestCase):
-    def test_revalidation_owner_projection_is_frozen_by_adoption_era(self):
-        """Current policy may bridge legacy leaves, not rewrite 1.6 owners.
+def current_registry():
+    registry, errors = gate_registry.standards_gate_registry(REPOSITORY)
+    if errors:
+        raise AssertionError("invalid current Gate registry: %s" % errors)
+    return registry
 
-        A pre-1.6 adoption stored raw Gate IDs and therefore needs the current
-        compatibility mapping.  Starting with 1.6, the admitted boundary
-        stores the projected owner closure; a future capability-table change
-        must replay that recorded owner instead of silently moving an
-        outstanding claim to a different transition.
-        """
-        class Catalog:
-            def __init__(self, rows):
-                self.rows = rows
 
-            def resolve(self, receipt_id):
-                row = self.rows.get(receipt_id)
-                return ("hot", row) if row is not None else None
+def receipt_for(gate_id, predicate, *, dimension=None, mode=None):
+    receipt = {
+        "gate_id": gate_id,
+        "tool": predicate["tool"],
+        "tool_version": predicate["tool_version"],
+        "check": predicate["check"],
+    }
+    registered = gate_registry.registered_gate_dimensions(
+        gate_id, {gate_id: predicate})
+    if dimension is None and registered:
+        dimension = sorted(registered)[0]
+    if dimension is not None:
+        receipt["dimension"] = dimension
 
-        with tempfile.TemporaryDirectory() as tmp:
-            root = Path(tmp)
-            plans = root / check_queue.STANDARDS_ADOPTION_PLAN_PREFIX
-            plans.mkdir(parents=True)
-            legacy_path = plans / "SA-LEGACY.yaml"
-            current_path = plans / "SA-CURRENT.yaml"
+    expected_mode = predicate["mode"]
+    if mode is None and expected_mode != "*":
+        mode = (expected_mode[:-1] + "fixture"
+                if expected_mode.endswith("*") else expected_mode)
+    if mode is not None:
+        receipt["queue_check_mode"] = mode
+    return receipt
 
-            def plan(adoption_id, required_gate_id):
-                return {
-                    "adoption_id": adoption_id,
-                    "changed_predicates": [{
-                        "predicate_id": "PRED-PAGE-CONTRACT",
-                        "affected_gate_ids": ["page-contract"],
-                    }],
-                    "invalidated_evidence": [],
-                    "invalidation_boundaries": [{
-                        "boundary_id": "INV-B1",
-                        "predicate_ids": ["PRED-PAGE-CONTRACT"],
-                        "target_kind": "batch",
-                        "target_ids": ["B1"],
-                        "required_gate_ids": [required_gate_id],
-                    }],
-                }
 
-            kblib.atomic_write_yaml(
-                legacy_path, plan("SA-LEGACY", "page-contract"))
-            kblib.atomic_write_yaml(
-                current_path, plan("SA-CURRENT", "batch-close"))
-            progress = {"standards_adoptions": [
-                {
-                    "id": "SA-LEGACY",
-                    "plan_path": str(legacy_path.relative_to(root)),
-                    "plan_sha256": "legacy-plan",
-                    "adopted_at": "2026-08-15T00:00:00Z",
-                    "verification_receipt": "adopt-legacy",
-                },
-                {
-                    "id": "SA-CURRENT",
-                    "plan_path": str(current_path.relative_to(root)),
-                    "plan_sha256": "current-plan",
-                    "adopted_at": "2026-08-15T00:01:00Z",
-                    "verification_receipt": "adopt-current",
-                },
-            ]}
-            catalog = Catalog({
-                "adopt-legacy": {
-                    "tool": check_queue.STANDARDS_ADOPTION_TOOL,
-                    "tool_version": "1.5.0",
-                },
-                "adopt-current": {
-                    "tool": check_queue.STANDARDS_ADOPTION_TOOL,
-                    "tool_version": "1.6.0",
-                },
-            })
-            # Simulate a future 1.7 runtime changing the leaf owner.  Only the
-            # 1.5 compatibility bridge may observe this current mapping.
-            capabilities = {
-                "page-contract": {
-                    "role": "semantic-leaf",
-                    "owner": "batch-review",
-                    "claim_edge": "project-to-owner",
-                },
-                "batch-review": {
-                    "role": "native-owner",
-                    "owner": "batch-review",
-                    "claim_edge": "native-transition",
-                },
-                "batch-close": {
-                    "role": "native-owner",
-                    "owner": "batch-close",
-                    "claim_edge": "native-transition",
-                },
-            }
-            with mock.patch.object(
-                    queue_runtime.revalidation,
-                    "STANDARDS_ADOPTION_TOOL_VERSION", "1.7.0"):
-                requirements = check_queue.standards_revalidation_requirements(
-                    root, progress, capabilities=capabilities,
-                    catalog=catalog)["B1"]
+@contextmanager
+def temporary_repository():
+    with tempfile.TemporaryDirectory() as directory:
+        root = Path(directory, "repository")
+        root.mkdir()
+        yield root
 
-        by_adoption = {row["adoption_id"]: row for row in requirements}
-        self.assertEqual("batch-review",
-                         by_adoption["SA-LEGACY"]["mapped_owner_gate_id"])
-        self.assertEqual("page-contract",
-                         by_adoption["SA-LEGACY"]["required_gate_id"])
-        self.assertEqual("batch-close",
-                         by_adoption["SA-CURRENT"]["mapped_owner_gate_id"])
-        self.assertEqual("batch-close",
-                         by_adoption["SA-CURRENT"]["required_gate_id"])
 
-    def test_revalidation_capabilities_project_semantic_leaves_to_owners(self):
-        """A changed leaf creates its native composite owner's claim.
+def run_check_links(*arguments):
+    stdout = io.StringIO()
+    stderr = io.StringIO()
+    previous = sys.argv
+    try:
+        sys.argv = ["check_links.py", *map(str, arguments)]
+        try:
+            with redirect_stdout(stdout), redirect_stderr(stderr):
+                code = check_links.main()
+        except SystemExit as exc:
+            code = int(exc.code)
+    finally:
+        sys.argv = previous
+    return SimpleNamespace(
+        returncode=int(code or 0), stdout=stdout.getvalue(),
+        stderr=stderr.getvalue())
 
-        Receipt identity and adoption capability are deliberately separate
-        registries.  The former says what a receipt is; this projection says
-        which Gate may actually own a Standards-revalidation boundary.  In
-        particular, neither page-contract leaf may ask the aggregate for one
-        raw per-page receipt.
-        """
-        root = TOOLS_DIR.parent
-        gates, gate_errors = check_queue.standards_gate_registry(root)
-        self.assertEqual([], gate_errors)
-        capabilities, capability_errors = \
-            check_queue.standards_gate_capability_registry(
-                root, gate_registry=gates)
-        self.assertEqual([], capability_errors)
 
-        for leaf in ("frontmatter-vocabulary", "page-contract"):
-            with self.subTest(leaf=leaf):
-                self.assertEqual("semantic-leaf",
-                                 capabilities[leaf]["role"])
-                self.assertEqual("batch-close",
-                                 capabilities[leaf]["owner"])
-                self.assertEqual("project-to-owner",
-                                 capabilities[leaf]["claim_edge"])
-                self.assertEqual("inherit-owner-scope",
-                                 capabilities[leaf]["scope_protocol"])
-                self.assertEqual("owner-member-chain",
-                                 capabilities[leaf]["binding_protocol"])
+class GateReceiptSelectorTests(unittest.TestCase):
+    """Contract: one predicate owns every axis of Gate receipt identity."""
 
-        self.assertEqual("semantic-leaf",
-                         capabilities["structure-registry"]["role"])
-        self.assertEqual("profile-load",
-                         capabilities["structure-registry"]["owner"])
-        self.assertEqual(
-            "profile-load",
-            gate_registry_contract.standards_revalidation_owner(
-                "structure-registry", capabilities))
-
-        immediate, native, projection_errors = \
-            check_queue.project_adoption_gate_ids(
-                ["frontmatter-vocabulary", "page-contract",
-                 "required-queue-consistency", "structure-registry"],
-                capabilities)
-        self.assertEqual([], projection_errors)
-        self.assertEqual(["required-queue-consistency"], immediate)
-        self.assertEqual(["batch-close"], native)
-
-    def test_mechanism_and_unsupported_gates_have_no_boundary_capability(self):
-        """Mechanisms can carry claims but cannot manufacture one."""
-        root = TOOLS_DIR.parent
-        gates, gate_errors = check_queue.standards_gate_registry(root)
-        self.assertEqual([], gate_errors)
-        capabilities, capability_errors = \
-            check_queue.standards_gate_capability_registry(
-                root, gate_registry=gates)
-        self.assertEqual([], capability_errors)
-
-        for gate_id, role in (
-                ("standards-adoption", "mechanism-only"),
-                ("standards-revalidation", "mechanism-only")):
+    def test_every_current_gate_accepts_its_exact_registered_identity(self):
+        registry = current_registry()
+        for gate_id, predicate in sorted(registry.items()):
             with self.subTest(gate_id=gate_id):
-                self.assertEqual(role, capabilities[gate_id]["role"])
-                _immediate, _native, errors = \
-                    check_queue.project_adoption_gate_ids(
-                        [gate_id], capabilities)
-                self.assertTrue(any(
-                    "cannot be used as an adoption boundary Gate" in error
-                    and role in error for error in errors), errors)
+                receipt = receipt_for(gate_id, predicate)
+                self.assertTrue(gate_registry.receipt_matches_gate_id(
+                    receipt, gate_id, registry))
 
-    def test_producer_constants_match_stable_gate_registry(self):
-        repository_root = TOOLS_DIR.parent
-        registry, errors = check_queue.standards_gate_registry(repository_root)
-        self.assertEqual([], errors)
-        expected = {
-            check_profile.GATE_ID: {
-                "tool": check_profile.TOOL,
-                "tool_version": check_profile.TOOL_VERSION,
-                "check": check_profile.GATE_CHECK,
-                "mode": "*",
-                "dimensions": (check_profile.GATE_DIMENSION,),
-                "lifecycle_states": (NOT_BATCH_SCOPED,),
-            },
-            check_links.GATE_ID: {
-                "tool": check_links.TOOL,
-                "tool_version": check_links.TOOL_VERSION,
-                "check": "link-check-summary",
-                "mode": "*",
-                "dimensions": ("*",),
-                "lifecycle_states": (NOT_BATCH_SCOPED,),
-            },
-            check_vocab.GATE_ID: {
-                "tool": check_vocab.TOOL,
-                "tool_version": check_vocab.TOOL_VERSION,
-                "check": "vocab-check-summary",
-                "mode": "*",
-                "dimensions": ("*",),
-                "lifecycle_states": (NOT_BATCH_SCOPED,),
-            },
-            check_residual_content.GATE_ID: {
-                "tool": check_residual_content.TOOL,
-                "tool_version": check_residual_content.TOOL_VERSION,
-                "check": "residual-content-summary",
-                "mode": "*",
-                "dimensions": ("*",),
-                "lifecycle_states": (NOT_BATCH_SCOPED,),
-            },
-            check_batch_close.GATE_ID: {
-                "tool": check_batch_close.TOOL,
-                "tool_version": check_batch_close.TOOL_VERSION,
-                "check": "batch_close_gate",
-                "mode": "*",
-                "dimensions": ("*",),
-                # `check_batch_close` refuses a batch that is not
-                # `merge-ready`, so no other position can produce this Gate.
-                "lifecycle_states": ("merge-ready",),
-            },
-            check_proof.GATE_ID: {
-                "tool": check_proof.TOOL,
-                "tool_version": check_proof.TOOL_VERSION,
-                "check": "proof-check-summary",
-                "mode": "*",
-                "dimensions": ("*",),
-                # `check_proof` fails any non-zero
-                # `remaining_required_work_units`, and cross-checks that field
-                # against the live count of non-terminal Queue batches.
-                "lifecycle_states": (QUEUE_EXHAUSTED,),
-            },
-            adopt_standards.GATE_ID: {
-                "tool": adopt_standards.TOOL,
-                "tool_version": adopt_standards.TOOL_VERSION,
-                "check": "standards_adoption",
-                "mode": "*",
-                "dimensions": ("*",),
-                "lifecycle_states": (NOT_BATCH_SCOPED,),
-            },
-            "corpus-plan-structure": {
-                "tool": check_corpus_plan.TOOL,
-                "tool_version": check_corpus_plan.TOOL_VERSION,
-                "check": "corpus_plan",
-                "mode": "*",
-                "dimensions": ("*",),
-                "lifecycle_states": (NOT_BATCH_SCOPED,),
-            },
-            "corpus-plan-semantic-acceptance": {
-                "tool": record_corpus_acceptance.TOOL,
-                "tool_version": record_corpus_acceptance.TOOL_VERSION,
-                "check": "corpus_plan_semantic_acceptance",
-                "mode": "*",
-                "dimensions": ("*",),
-                "lifecycle_states": (NOT_BATCH_SCOPED,),
-            },
-            check_queue.BATCH_REVIEW_GATE_ID: {
-                "tool": check_queue.MANUAL_ATTESTATION_TOOL,
-                "tool_version":
-                    check_queue.MANUAL_ATTESTATION_TOOL_VERSION,
-                "check": check_queue.BATCH_REVIEW_CHECK,
-                "mode": "*",
-                # The wrapper binds member receipts that already carry the
-                # verdicts, so K12/18 files it under no dimension at all.
-                "dimensions": ("none",),
-                # Only `open -> merge-ready` consumes it, and that edge
-                # departs from `open`; the Delta page receipts it binds
-                # exist nowhere else.
-                "lifecycle_states": ("open",),
-            },
-        }
-        for gate_id, predicate in expected.items():
-            self.assertEqual(predicate, registry.get(gate_id), gate_id)
-
-    def test_registered_gate_rejects_wrong_tool_version(self):
-        registry, errors = check_queue.standards_gate_registry(
-            TOOLS_DIR.parent)
-        self.assertEqual([], errors)
-        receipt = {
-            "gate_id": "required-queue-consistency",
-            "tool": check_queue.TOOL,
-            "tool_version": "0.0.0",
-            "check": "required_queue",
-            "queue_check_mode": "consistency",
-        }
-        self.assertFalse(check_queue.receipt_matches_gate_id(
-            receipt, "required-queue-consistency", registry))
-        receipt["tool_version"] = check_queue.TOOL_VERSION
-        self.assertTrue(check_queue.receipt_matches_gate_id(
-            receipt, "required-queue-consistency", registry))
-
-    def test_registry_rejects_wildcard_producer_identity(self):
-        document = self.control_document()
-        row = next(row for row in document["gates"]
-                   if row["gate_id"] == "wiki-link-integrity")
-        row.update(tool="*", tool_version="*", check="*")
-        registry, errors = self.parsed_registry_document(document)
-        self.assertIn("wiki-link-integrity", registry)
-        self.assertTrue(any("must be exact" in error for error in errors),
-                        errors)
-
-    @staticmethod
-    def control_document():
-        return copy.deepcopy(kblib.load_yaml_file(
-            TOOLS_DIR.parent / check_queue.STANDARDS_GATE_REGISTRY_PATH))
-
-    @staticmethod
-    def parsed_registry_document(document):
-        registry, _capabilities, _metadata, errors = \
-            gate_registry_contract.parse_control_registry_document(document)
-        return registry, errors
-
-    def parsed_wiki_registry(self, **changes):
-        document = self.control_document()
-        row = next(row for row in document["gates"]
-                   if row["gate_id"] == "wiki-link-integrity")
-        for field, value in changes.items():
-            if value is None:
-                row.pop(field, None)
-            else:
-                row[field] = value
-        return self.parsed_registry_document(document)
-
-    def test_registry_rejects_a_row_without_the_lifecycle_cell(self):
-        """A pre-column table is a parse failure, not a defaulted column."""
-        registry, errors = self.parsed_wiki_registry(lifecycle=None)
-        self.assertNotIn("wiki-link-integrity", registry)
-        self.assertTrue(any("fields are not closed" in error
-                            for error in errors), errors)
-
-    def test_registry_rejects_an_unknown_lifecycle_value(self):
-        """Only a batch lifecycle state or the not-batch-scoped marker."""
-        registry, errors = self.parsed_wiki_registry(
-            lifecycle=["under-review"])
-        self.assertIn("wiki-link-integrity", registry)
-        self.assertTrue(any(
-            "registers unknown producer position(s): under-review"
-            in error for error in errors), errors)
-
-    def test_registry_rejects_mixing_a_marker_with_another_position(self):
-        """The three cell forms each answer the whole question alone."""
-        for positions in (("not-batch-scoped", "open"),
-                          ("queue-exhausted", "merge-ready"),
-                          ("not-batch-scoped", "queue-exhausted")):
-            with self.subTest(positions=positions):
-                registry, errors = self.parsed_wiki_registry(
-                    lifecycle=list(positions))
-                self.assertIn("wiki-link-integrity", registry)
-                self.assertTrue(any("mixes" in error and
-                                    "with another position" in error
-                                    for error in errors), errors)
-
-    def test_registry_accepts_the_queue_exhausted_position(self):
-        """A Queue-level position is a registrable cell, not an error."""
-        registry, errors = self.parsed_wiki_registry(
-            lifecycle=["queue-exhausted"])
-        self.assertEqual([], errors)
-        self.assertEqual(("queue-exhausted",),
-                         registry["wiki-link-integrity"]["lifecycle_states"])
-
-    def test_current_batch_review_cannot_wrap_absent_page_evidence(self):
-        wrapper_id = "audit-batch-review"
-        wrapper = {
-            "receipt_id": wrapper_id,
-            "tool": check_queue.MANUAL_ATTESTATION_TOOL,
-            "tool_version": check_queue.MANUAL_ATTESTATION_TOOL_VERSION,
-            "gate_id": check_queue.BATCH_REVIEW_GATE_ID,
-            "check": check_queue.BATCH_REVIEW_CHECK,
-            "target": "B1", "task_id": "fixture-task", "batch_id": "B1",
-            "delta_page_receipt_ids": ["audit-invalidated-page"],
-            "result": "pass", "invalidated_by": None,
-        }
-        errors = check_queue.batch_review_receipt_errors(
-            {wrapper_id: ("current.jsonl", wrapper)}, wrapper_id,
-            item_id="B1", task_id="fixture-task",
-            delta_page_receipt_ids=["audit-invalidated-page"],
+    def test_selector_axes_fail_closed(self):
+        registry = current_registry()
+        base_id = "wiki-link-integrity"
+        base = receipt_for(base_id, registry[base_id])
+        mutations = (
+            ("gate-id", {"gate_id": "other"}),
+            ("tool", {"tool": "other"}),
+            ("tool-version", {"tool_version": "0"}),
+            ("check", {"check": "other"}),
         )
-        self.assertTrue(any("references missing receipt "
-                            "audit-invalidated-page" in error
-                            for error in errors), errors)
+        for name, changes in mutations:
+            with self.subTest(axis=name):
+                receipt = dict(base, **changes)
+                self.assertFalse(gate_registry.receipt_matches_gate_id(
+                    receipt, base_id, registry))
 
-    def run_tool(self, script, *arguments):
-        return subprocess.run(
-            [sys.executable, str(TOOLS_DIR / script), *map(str, arguments)],
-            text=True, capture_output=True, check=False,
+        for gate_id, predicate in sorted(registry.items()):
+            expected_mode = predicate["mode"]
+            if expected_mode == "*":
+                continue
+            with self.subTest(axis="mode", gate_id=gate_id):
+                self.assertFalse(gate_registry.receipt_matches_gate_id(
+                    receipt_for(gate_id, predicate, mode="wrong"),
+                    gate_id, registry))
+
+        dimensioned_id = "content-correctness"
+        dimensions = registry[dimensioned_id]["dimensions"]
+        receipt = receipt_for(
+            dimensioned_id, registry[dimensioned_id],
+            dimension=dimensions[0])
+        self.assertTrue(gate_registry.receipt_matches_gate_id(
+            receipt, dimensioned_id, registry, dimension=dimensions[0]))
+        self.assertFalse(gate_registry.receipt_matches_gate_id(
+            receipt, dimensioned_id, registry, dimension=dimensions[1]))
+        self.assertFalse(gate_registry.receipt_matches_gate_id(
+            {key: value for key, value in receipt.items()
+             if key != "dimension"}, dimensioned_id, registry))
+
+        undimensioned_id = runtime_canon.BATCH_REVIEW_GATE_ID
+        undimensioned = receipt_for(
+            undimensioned_id, registry[undimensioned_id])
+        self.assertTrue(gate_registry.receipt_matches_gate_id(
+            undimensioned, undimensioned_id, registry))
+        self.assertFalse(gate_registry.receipt_matches_gate_id(
+            dict(undimensioned, dimension=dimensions[0]),
+            undimensioned_id, registry))
+
+
+class GateProducerClosureTests(unittest.TestCase):
+    """Contract: every current selector has one installed producer."""
+
+    def test_current_registry_matches_all_installed_producers(self):
+        registry = current_registry()
+        self.assertEqual([], gate_registry.gate_registry_producer_errors(
+            registry))
+
+    def test_producer_drift_matrix(self):
+        cases = (
+            ("tool-version", "wiki-link-integrity",
+             {"tool_version": "0"}, "stamps"),
+            ("check", "wiki-link-integrity",
+             {"check": "other"}, "writes"),
+            ("queue-mode", "required-queue-admission",
+             {"mode": "require-complete"}, "does not emit"),
+            ("nonqueue-mode", "wiki-link-integrity",
+             {"mode": "consistency"}, "only check_queue"),
+            ("manual-version", "content-correctness",
+             {"tool_version": "0"}, "protocol version"),
+            ("unknown-producer", "wiki-link-integrity",
+             {"tool": "check_nothing"}, "not an installed producer"),
+            ("producer-dimension", "profile-load",
+             {"dimensions": ("rendering",)}, "emits"),
+            ("consumer-identity", "terminal-proof",
+             {"tool_version": "0"}, "this checker consumes"),
         )
+        for name, gate_id, changes, message in cases:
+            with self.subTest(case=name):
+                registry = current_registry()
+                registry[gate_id] = dict(registry[gate_id], **changes)
+                errors = gate_registry.gate_registry_producer_errors(registry)
+                self.assertTrue(any(message in error for error in errors),
+                                errors)
 
-    def receipt_rows(self, path):
-        return [json.loads(line) for line in path.read_text(
-            encoding="utf-8").splitlines()]
-
-    def assert_producer_identity(self, rows, tool, version, gate_id):
-        self.assertTrue(rows)
-        self.assertEqual({tool}, {row.get("tool") for row in rows})
-        self.assertEqual({version}, {row.get("tool_version") for row in rows})
-        self.assertEqual({gate_id}, {row.get("gate_id") for row in rows})
-
-    def test_check_links_receipts_bind_registered_gate(self):
-        with tempfile.TemporaryDirectory() as temporary:
-            root = Path(temporary)
-            (root / "Page.md").write_text("# Page\n", encoding="utf-8")
-            receipts = root / "links.jsonl"
-            completed = self.run_tool(
-                "check_links.py", root, "--receipts", receipts)
-            self.assertEqual(0, completed.returncode,
-                             completed.stdout + completed.stderr)
-            rows = self.receipt_rows(receipts)
-            self.assertEqual("link-check-summary", rows[-1]["check"])
-            self.assertEqual(".", rows[-1]["target"])
-            self.assert_producer_identity(
-                rows, check_links.TOOL, check_links.TOOL_VERSION,
-                check_links.GATE_ID)
-
-    def test_check_vocab_receipts_bind_registered_gate(self):
-        with tempfile.TemporaryDirectory() as temporary:
-            root = Path(temporary)
-            (root / "Page.md").write_text(
-                "---\npriority: P0\n---\n\n# Page\n", encoding="utf-8")
-            vocab = root / "vocab.yaml"
-            vocab.write_text(
-                "fields:\n"
-                "  priority:\n"
-                "    values:\n"
-                "      - P0\n"
-                "    owner: fixture\n",
-                encoding="utf-8",
-            )
-            receipts = root / "vocab.jsonl"
-            completed = self.run_tool(
-                "check_vocab.py", root, "--vocab", vocab,
-                "--quota-p0", "100", "--quota-p1", "100",
-                "--receipts", receipts)
-            self.assertEqual(0, completed.returncode,
-                             completed.stdout + completed.stderr)
-            rows = self.receipt_rows(receipts)
-            # check_vocab is a two-Gate producer (K00/12): the corpus-wide
-            # distribution receipt closes every run, and each receipt binds
-            # exactly the Gate whose row registers its check.
-            self.assertEqual("priority-quota-distribution", rows[-1]["check"])
-            self.assert_producer_identity(
-                [rows[-1]], check_vocab.TOOL, check_vocab.TOOL_VERSION,
-                "priority-quota-distribution")
-            summary_rows = [row for row in rows
-                            if row["check"] != "priority-quota-distribution"]
-            self.assertEqual("vocab-check-summary", summary_rows[-1]["check"])
-            self.assertEqual(".", summary_rows[-1]["target"])
-            self.assert_producer_identity(
-                summary_rows, check_vocab.TOOL, check_vocab.TOOL_VERSION,
-                check_vocab.GATE_ID)
-            self.assertEqual(
-                sorted(check_vocab.GATE_CHECKS),
-                sorted({row["gate_id"] for row in rows}))
-
-    def test_residual_receipts_bind_registered_gate(self):
-        with tempfile.TemporaryDirectory() as temporary:
-            root = Path(temporary)
-            content = root / "Content"
-            content.mkdir()
-            # The accepted root carries the known-residual sample the K12/09
-            # item 6 non-triviality check reads as its positive control.
-            (content / "Page.md").write_text(
-                "---\ntype: interview-card\n---\n\n## Interview Card\n",
-                encoding="utf-8")
-            (root / "Other.md").write_text("# Other\n", encoding="utf-8")
-            config = root / "residual.yaml"
-            config.write_text(
-                "residual_scan_config_version: 1\n"
-                "allowed_roots:\n"
-                "  - Content\n"
-                "excluded_roots: []\n"
-                "frontmatter_match:\n"
-                "  field: type\n"
-                "  values:\n"
-                "    - interview-card\n"
-                "heading_match:\n"
-                "  any:\n"
-                "    - Interview Card\n"
-                "  combination:\n"
-                "    - Question\n"
-                "    - Answer\n"
-                "  minimum_distinct: 2\n"
-                "mandated_headings:\n"
-                "  - Interview Card\n",
-                encoding="utf-8",
-            )
-            receipts = root / "residual.jsonl"
-            completed = self.run_tool(
-                "check_residual_content.py", root,
-                "--scan-id", "fixture-residual", "--config", config,
-                "--receipts", receipts)
-            self.assertEqual(0, completed.returncode,
-                             completed.stdout + completed.stderr)
-            rows = self.receipt_rows(receipts)
-            self.assertEqual("residual-content-summary", rows[-1]["check"])
-            self.assert_producer_identity(
-                rows, check_residual_content.TOOL,
-                check_residual_content.TOOL_VERSION,
-                check_residual_content.GATE_ID)
-
-    def build_residual_corpus(self, root, residual_outside):
-        """Lay out an accepted root plus optional residual content outside it."""
-        content = root / "Content"
-        content.mkdir()
-        (content / "Card.md").write_text(
-            "---\ntype: interview-card\n---\n\n## Interview Card\n",
-            encoding="utf-8")
-        (root / "Clean.md").write_text(
-            "---\ntype: concept\n---\n\n## Body\n", encoding="utf-8")
-        if residual_outside:
-            (root / "Leftover.md").write_text(
-                "---\ntype: interview-card\n---\n\n## Interview Card\n",
-                encoding="utf-8")
-
-    def write_residual_config(self, root, name, frontmatter_value, heading):
-        config = root / name
-        config.write_text(
-            "residual_scan_config_version: 1\n"
-            "allowed_roots:\n"
-            "  - Content\n"
-            "excluded_roots: []\n"
-            "frontmatter_match:\n"
-            "  field: type\n"
-            "  values:\n"
-            "    - %s\n"
-            "heading_match:\n"
-            "  any:\n"
-            "    - %s\n"
-            "  combination: []\n"
-            "  minimum_distinct: 0\n"
-            "mandated_headings:\n"
-            "  - %s\n" % (frontmatter_value, heading, heading),
-            encoding="utf-8",
-        )
-        return config
-
-    def run_residual_scan(self, root, config, receipts):
-        return self.run_tool(
-            "check_residual_content.py", root,
-            "--scan-id", "fixture-residual", "--config", config,
-            "--receipts", receipts)
-
-    def test_never_matching_matcher_cannot_report_a_clean_scan(self):
-        """K12/09 item 6: an inert configuration is not scan evidence."""
-        with tempfile.TemporaryDirectory() as temporary:
-            root = Path(temporary)
-            self.build_residual_corpus(root, residual_outside=True)
-            config = self.write_residual_config(
-                root, "inert.yaml", "zzz-never-emitted-type",
-                "ZZZ Never Emitted Heading")
-            receipts = root / "inert.jsonl"
-            completed = self.run_residual_scan(root, config, receipts)
-            self.assertEqual(1, completed.returncode,
-                             completed.stdout + completed.stderr)
-            rows = self.receipt_rows(receipts)
-            self.assertEqual(
-                ["residual-content-inert-matcher"],
-                [row["check"] for row in rows if row["result"] == "fail"])
-            self.assertNotIn(
-                "residual-content-summary", [row["check"] for row in rows])
-            self.assert_producer_identity(
-                rows, check_residual_content.TOOL,
-                check_residual_content.TOOL_VERSION,
-                check_residual_content.GATE_ID)
-
-    def test_honest_matcher_reports_the_same_corpus_as_candidates(self):
-        """The control run: the honest configuration still finds the residue."""
-        with tempfile.TemporaryDirectory() as temporary:
-            root = Path(temporary)
-            self.build_residual_corpus(root, residual_outside=True)
-            config = self.write_residual_config(
-                root, "honest.yaml", "interview-card", "Interview Card")
-            receipts = root / "honest.jsonl"
-            completed = self.run_residual_scan(root, config, receipts)
-            self.assertEqual(2, completed.returncode,
-                             completed.stdout + completed.stderr)
-            self.assertIn("Leftover.md", completed.stdout)
-            rows = self.receipt_rows(receipts)
-            self.assertEqual(
-                [], [row["check"] for row in rows
-                     if row["result"] == "fail"])
-            summary = rows[-1]
-            self.assertEqual("residual-content-summary", summary["check"])
-            self.assertEqual("pass", summary["result"])
-            self.assertEqual("passed", summary["positive_control_result"])
-            self.assertEqual(
-                "production-classifier", summary["positive_control_mode"])
-            self.assertGreater(summary["positive_control_count"], 0)
-            self.assertRegex(
-                summary["positive_control_fingerprint"],
-                r"\Asha256:[0-9a-f]{64}\Z")
-
-    def test_explicit_positive_control_mode_matches_production_summary(self):
-        with tempfile.TemporaryDirectory() as temporary:
-            root = Path(temporary)
-            self.build_residual_corpus(root, residual_outside=True)
-            config = self.write_residual_config(
-                root, "honest.yaml", "interview-card", "Interview Card")
-            control_receipts = root / "controls.jsonl"
-            production_receipts = root / "production.jsonl"
-            control = self.run_tool(
-                "check_residual_content.py", root,
-                "--scan-id", "fixture-residual", "--config", config,
-                "--positive-controls-only", "--receipts", control_receipts)
-            production = self.run_residual_scan(
-                root, config, production_receipts)
-            self.assertEqual(0, control.returncode,
-                             control.stdout + control.stderr)
-            self.assertEqual(2, production.returncode,
-                             production.stdout + production.stderr)
-            control_summary = self.receipt_rows(control_receipts)[-1]
-            production_summary = self.receipt_rows(production_receipts)[-1]
-            for field in check_batch_close.POSITIVE_CONTROL_BINDING_FIELDS:
-                self.assertEqual(
-                    control_summary.get(field), production_summary.get(field),
-                    field)
-
-    def test_clean_corpus_passes_and_names_the_positive_control(self):
-        with tempfile.TemporaryDirectory() as temporary:
-            root = Path(temporary)
-            self.build_residual_corpus(root, residual_outside=False)
-            config = self.write_residual_config(
-                root, "honest.yaml", "interview-card", "Interview Card")
-            receipts = root / "clean.jsonl"
-            completed = self.run_residual_scan(root, config, receipts)
-            self.assertEqual(0, completed.returncode,
-                             completed.stdout + completed.stderr)
-            summary = self.receipt_rows(receipts)[-1]
-            self.assertEqual("residual-content-summary", summary["check"])
-            self.assertEqual("pass", summary["result"])
-            self.assertIn("Content/Card.md", summary["details"])
-            self.assertEqual("passed", summary["positive_control_result"])
-            self.assertEqual(
-                "production-classifier", summary["positive_control_mode"])
-            self.assertEqual(1, summary["positive_control_count"])
-            self.assertRegex(
-                summary["positive_control_fingerprint"],
-                r"\Asha256:[0-9a-f]{64}\Z")
-
-    def test_accepted_root_without_any_registered_structure_fails(self):
-        """An accepted root that proves nothing cannot certify the scan."""
-        with tempfile.TemporaryDirectory() as temporary:
-            root = Path(temporary)
-            content = root / "Content"
-            content.mkdir()
-            (content / "Placeholder.md").write_text(
-                "# Placeholder\n", encoding="utf-8")
-            (root / "Clean.md").write_text("# Clean\n", encoding="utf-8")
-            config = self.write_residual_config(
-                root, "honest.yaml", "interview-card", "Interview Card")
-            receipts = root / "unproven.jsonl"
-            completed = self.run_residual_scan(root, config, receipts)
-            self.assertEqual(1, completed.returncode,
-                             completed.stdout + completed.stderr)
-            self.assertEqual(
-                ["residual-content-inert-matcher"],
-                [row["check"] for row in self.receipt_rows(receipts)
-                 if row["result"] == "fail"])
-
-    def test_check_proof_failure_receipt_binds_registered_gate(self):
-        with tempfile.TemporaryDirectory() as temporary:
-            root = Path(temporary)
-            receipts = root / "proof.jsonl"
-            completed = self.run_tool(
-                "check_proof.py", root / "missing-proof.yaml",
-                "--receipts", receipts)
-            self.assertEqual(1, completed.returncode,
-                             completed.stdout + completed.stderr)
-            rows = self.receipt_rows(receipts)
-            self.assertEqual("proof-unreadable", rows[0]["check"])
-            self.assert_producer_identity(
-                rows, check_proof.TOOL, check_proof.TOOL_VERSION,
-                check_proof.GATE_ID)
-
-
-class StableGateRegistryProducerTableTests(unittest.TestCase):
-    """The whole K00/12 table, not one column of one row.
-
-    ``check_queue.gate_registry_producer_errors`` runs inside the registry
-    parse, so an adopter's own ``check_queue.py`` run reports a row whose
-    ``Tool``, ``Tool version``, ``Check`` or ``Mode`` its producer contradicts.
-    """
-
-    def registry(self):
-        registry, errors = check_queue.standards_gate_registry(
-            TOOLS_DIR.parent)
-        self.assertEqual([], errors)
-        return registry
-
-    def run_tool(self, script, *arguments):
-        return subprocess.run(
-            [sys.executable, str(TOOLS_DIR / script), *map(str, arguments)],
-            text=True, capture_output=True, check=False,
-        )
-
-    def drifted(self, gate_id, **changes):
-        registry = self.registry()
-        registry[gate_id] = dict(registry[gate_id], **changes)
-        return check_queue.gate_registry_producer_errors(registry)
-
-    def test_every_registered_row_agrees_with_its_producer(self):
-        self.assertEqual(
-            [], check_queue.gate_registry_producer_errors(self.registry()))
-
-    def test_the_assertion_runs_inside_the_registry_parse(self):
-        """Not a test-only helper: the current load path reports drift."""
-        with tempfile.TemporaryDirectory() as temporary:
-            root = Path(temporary)
-            registry_path = root / check_queue.STANDARDS_GATE_REGISTRY_PATH
-            audit_path = root / check_profile.DEFAULT_AUDIT_DIMENSION_BASE
-            registry_path.parent.mkdir(parents=True)
-            audit_path.parent.mkdir(parents=True)
-            shutil.copy2(
-                TOOLS_DIR.parent / check_profile.DEFAULT_AUDIT_DIMENSION_BASE,
-                audit_path)
-            document = kblib.load_yaml_file(
-                TOOLS_DIR.parent / check_queue.STANDARDS_GATE_REGISTRY_PATH)
-            row = next(row for row in document["gates"]
-                       if row["gate_id"] == "wiki-link-integrity")
-            row["tool_version"] = "9.9.9"
-            kblib.atomic_write_yaml(registry_path, document)
-            registry, errors = check_queue.standards_gate_registry(root)
-        self.assertIn("wiki-link-integrity", registry)
-        self.assertTrue(any("stamps %s" % check_links.TOOL_VERSION in error
-                            for error in errors), errors)
-
-    def test_tool_version_drift_from_the_producer_is_reported(self):
-        errors = self.drifted("batch-close", tool_version="9.9.9")
-        self.assertTrue(any(
-            "but check_batch_close stamps %s" % check_batch_close.TOOL_VERSION
-            in error for error in errors), errors)
-
-    def test_check_drift_from_the_producer_is_reported(self):
-        errors = self.drifted("frontmatter-vocabulary", check="vocab-summary")
-        self.assertTrue(any("writes vocab-check-summary" in error
-                            for error in errors), errors)
-
-    def test_queue_mode_must_round_trip_to_the_same_gate_id(self):
-        errors = self.drifted("required-queue-admission",
-                              mode="require-complete")
-        self.assertTrue(any("which check_queue does not emit for that Gate"
-                            in error for error in errors), errors)
-
-    def test_only_check_queue_may_register_a_narrower_mode(self):
-        """No other producer writes ``queue_check_mode`` to compare against."""
-        errors = self.drifted("rendering", mode="consistency")
-        self.assertTrue(any("only check_queue receipts carry queue_check_mode"
-                            in error for error in errors), errors)
-
-    def test_manual_rows_carry_the_current_protocol_version(self):
-        errors = self.drifted("duplicate-detection", tool_version="0.9.0")
-        self.assertTrue(any("manual-attestation protocol version 0.9.0"
-                            in error for error in errors), errors)
-
-    def test_a_row_may_not_register_an_uninstalled_producer(self):
-        errors = self.drifted("wiki-link-integrity", tool="check_nothing")
-        self.assertTrue(any("not an installed producer" in error
-                            for error in errors), errors)
-
-    def test_a_row_may_not_register_another_tools_gate_id(self):
-        errors = self.drifted("wiki-link-integrity",
-                              tool=check_vocab.TOOL,
-                              tool_version=check_vocab.TOOL_VERSION,
-                              check=check_vocab.GATE_CHECK)
-        self.assertTrue(any("binds frontmatter-vocabulary to its receipts"
-                            in error for error in errors), errors)
-
-    def test_two_gate_ids_may_not_share_one_receipt_selector(self):
-        errors = self.drifted(
-            "depth-balance", check="rendering",
-            dimensions=("rendering", "structure_and_links"))
+        registry = current_registry()
+        registry["depth-balance"] = dict(registry["rendering"])
+        errors = gate_registry.gate_registry_producer_errors(registry)
         self.assertTrue(any("share one receipt selector" in error
                             for error in errors), errors)
 
-    def test_every_row_registers_a_dimension_the_kernel_fixes(self):
-        """F01-F03: the fifth selector column, checked against K12/07."""
-        registry = self.registry()
-        for gate_id, predicate in sorted(registry.items()):
-            dimensions = predicate["dimensions"]
-            self.assertTrue(dimensions, gate_id)
-            if dimensions in (("*",), ("none",)):
-                continue
-            self.assertEqual(
-                set(), set(dimensions) - check_queue.BASE_RECEIPT_DIMENSIONS,
-                gate_id)
-            if predicate["tool"] != check_queue.MANUAL_ATTESTATION_TOOL:
-                producer = check_queue.producer_module(predicate["tool"])
-                self.assertIsNotNone(producer, gate_id)
-                self.assertEqual(
-                    dimensions,
-                    (getattr(producer, "GATE_DIMENSION", None),),
-                    "%s narrows Dimension without a matching producer field"
-                    % gate_id,
-                )
 
-    def test_the_two_dimension_projections_agree(self):
-        """`check_queue` and `check_proof` project the same closed K12/07 set."""
-        self.assertEqual(check_queue.BASE_RECEIPT_DIMENSIONS,
-                         frozenset(check_proof.BASE_RECEIPT_DIMENSIONS))
+class GateLifecycleProjectionTests(unittest.TestCase):
+    """Contract: lifecycle position partitions one Gate into one next action."""
 
-    def test_a_named_producer_may_not_narrow_dimension(self):
-        errors = self.drifted("wiki-link-integrity",
-                              dimensions=("structure_and_links",))
-        self.assertTrue(any("writes no dimension field" in error
-                            for error in errors), errors)
-
-    def test_an_invented_dimension_is_reported(self):
-        errors = self.drifted("depth-balance", dimensions=("depth_balance",))
-        self.assertTrue(any("K12/07 does not fix as a base receipt dimension"
-                            in error for error in errors), errors)
-
-    def test_a_hand_recorded_row_may_not_carry_the_unnarrowed_marker(self):
-        errors = self.drifted("depth-balance", dimensions=("*",))
-        self.assertTrue(any("manually dimensioned" in error
-                            for error in errors), errors)
-
-    def test_a_row_may_not_mix_the_markers_with_named_dimensions(self):
-        errors = self.drifted("depth-balance",
-                              dimensions=("content_and_depth", "none"))
-        self.assertTrue(any("mixes" in error for error in errors), errors)
-
-    def test_one_gate_id_covering_several_dimensions_is_registered_whole(self):
-        """The reported one-to-many cases, counted from K12/08 and K12/18."""
-        registry = self.registry()
-        self.assertEqual(
-            ("content_and_depth", "formula_and_numeric", "rendering",
-             "source_and_currentness", "structure_and_links"),
-            registry["content-correctness"]["dimensions"])
-        self.assertEqual(("rendering", "structure_and_links"),
-                         registry["rendering"]["dimensions"])
-
-    def test_one_dimensions_receipt_does_not_satisfy_another(self):
-        """The defect itself: A's attestation answering B's obligation."""
-        registry = self.registry()
-        attestation = {
-            "gate_id": "content-correctness",
-            "tool": check_queue.MANUAL_ATTESTATION_TOOL,
-            "tool_version": check_queue.MANUAL_ATTESTATION_TOOL_VERSION,
-            "check": "content-correctness",
-            "dimension": "structure_and_links",
-        }
-        # Registered for the Gate, so the unnarrowed predicate admits it ...
-        self.assertTrue(check_queue.receipt_matches_gate_id(
-            attestation, "content-correctness", registry))
-        # ... but not for an obligation raised in a different dimension.
-        self.assertFalse(check_queue.receipt_matches_gate_id(
-            attestation, "content-correctness", registry,
-            dimension="formula_and_numeric"))
-        self.assertTrue(check_queue.receipt_matches_gate_id(
-            dict(attestation, dimension="formula_and_numeric"),
-            "content-correctness", registry,
-            dimension="formula_and_numeric"))
-
-    def test_an_attestation_without_a_dimension_is_rejected(self):
-        """Silence is not a wildcard."""
-        registry = self.registry()
-        attestation = {
-            "gate_id": "rendering",
-            "tool": check_queue.MANUAL_ATTESTATION_TOOL,
-            "tool_version": check_queue.MANUAL_ATTESTATION_TOOL_VERSION,
-            "check": "rendering",
-        }
-        self.assertFalse(check_queue.receipt_matches_gate_id(
-            attestation, "rendering", registry))
-
-    def test_a_none_dimension_gate_rejects_a_receipt_that_claims_one(self):
-        registry = self.registry()
-        wrapper = {
-            "gate_id": check_queue.BATCH_REVIEW_GATE_ID,
-            "tool": check_queue.MANUAL_ATTESTATION_TOOL,
-            "tool_version": check_queue.MANUAL_ATTESTATION_TOOL_VERSION,
-            "check": check_queue.BATCH_REVIEW_CHECK,
-        }
-        self.assertTrue(check_queue.receipt_matches_gate_id(
-            wrapper, check_queue.BATCH_REVIEW_GATE_ID, registry))
-        self.assertFalse(check_queue.receipt_matches_gate_id(
-            dict(wrapper, dimension="content_and_depth"),
-            check_queue.BATCH_REVIEW_GATE_ID, registry))
-
-    def test_live_registry_loader_enforces_the_producer_boundary(self):
-        """The live YAML loader adds producer checks after contract parsing."""
-        repository_root = TOOLS_DIR.parent
-        with tempfile.TemporaryDirectory() as temporary:
-            root = Path(temporary) / "repo"
-            root.mkdir()
-            shutil.copytree(repository_root / "kernel", root / "kernel")
-            shutil.copytree(
-                repository_root / "Tools", root / "Tools",
-                ignore=shutil.ignore_patterns("tests", "__pycache__"))
-
-            _registry, clean_errors = \
-                check_queue.standards_gate_registry(root)
-            self.assertEqual([], clean_errors)
-
-            registry_path = root / check_queue.STANDARDS_GATE_REGISTRY_PATH
-            document = kblib.load_yaml_file(registry_path)
-            row = next(row for row in document["gates"]
-                       if row["gate_id"] == "batch-close")
-            self.assertEqual(check_batch_close.TOOL_VERSION,
-                             row["tool_version"])
-            row["tool_version"] = "9.9.9"
-            kblib.atomic_write_yaml(registry_path, document)
-
-            _registry, drifted_errors = \
-                check_queue.standards_gate_registry(root)
-        message = "\n".join(drifted_errors)
-        self.assertIn("Gate ID batch-close registers Tool version 9.9.9",
-                      message)
-        self.assertIn("check_batch_close stamps %s"
-                      % check_batch_close.TOOL_VERSION, message)
-
-    def test_consumer_side_identity_must_match_the_registered_row(self):
-        errors = self.drifted("terminal-proof", tool=check_vocab.TOOL,
-                              tool_version=check_vocab.TOOL_VERSION,
-                              check="proof-check-summary")
-        self.assertTrue(any("this checker consumes its receipts as check_proof"
-                            in error for error in errors), errors)
-
-    def test_a_superseded_producer_version_is_still_refused_as_current(self):
-        """Historical tolerance does not reach the current-action predicate.
-
-        Historical validation stopped comparing `tool_version` to the current
-        constant, because a sealed receipt cannot be restamped.  A receipt
-        offered as authorization for a Gate ID now is a different question:
-        `receipt_matches_gate_id` must still compare the registered producer
-        tuple exactly, so a receipt whose Standards era this instance did pass
-        through is nonetheless refused when its producer version has moved.
-        """
-        registry = self.registry()
-        superseded = {
-            "gate_id": "required-queue-consistency",
-            "tool": check_queue.TOOL,
-            "tool_version": "1.5.0",
-            "check": "required_queue",
-            "queue_check_mode": "consistency",
-            "standards_version": "3.0.0",
-        }
-        self.assertIn(
-            "3.0.0",
-            check_queue.accounted_standards_versions(
-                {"contract": {"standards_version": "3.0.0"},
-                 "standards_adoptions": []}))
-        self.assertFalse(check_queue.receipt_matches_gate_id(
-            superseded, "required-queue-consistency", registry))
-        self.assertEqual(
-            check_queue.TOOL_VERSION,
-            registry["required-queue-consistency"]["tool_version"])
-        superseded["tool_version"] = check_queue.TOOL_VERSION
-        self.assertTrue(check_queue.receipt_matches_gate_id(
-            superseded, "required-queue-consistency", registry))
-
-    def test_the_registered_lifecycle_column_partitions_by_position(self):
-        """The K00/12 column, read through the one lifecycle map.
-
-        `merge-ready -> open` is a sanctioned edge, so `open` is reachable
-        from `open` and a `merge-ready` batch may still return for review;
-        `queued` is reachable from nothing, so an admission gate is behind
-        every batch that has left it.
-        """
-        registry = self.registry()
-        probe = ["batch-close", "batch-review", "required-queue-admission",
-                 "wiki-link-integrity"]
+    def test_batch_and_queue_positions_share_one_partition(self):
+        registry = current_registry()
+        gates = [
+            "required-queue-admission",
+            runtime_canon.BATCH_REVIEW_GATE_ID,
+            "batch-close",
+            "wiki-link-integrity",
+            "terminal-proof",
+        ]
         expected = {
-            "queued": (["required-queue-admission", "wiki-link-integrity"],
-                       ["batch-close", "batch-review"], []),
-            "open": (["batch-review", "wiki-link-integrity"],
-                     ["batch-close"], ["required-queue-admission"]),
-            "merge-ready": (["batch-close", "wiki-link-integrity"],
-                            ["batch-review"], ["required-queue-admission"]),
-            "closed": (["wiki-link-integrity"], [],
-                       ["batch-close", "batch-review",
-                        "required-queue-admission"]),
+            "queued": (
+                ["required-queue-admission", "wiki-link-integrity"],
+                ["batch-close", runtime_canon.BATCH_REVIEW_GATE_ID,
+                 "terminal-proof"],
+                [],
+            ),
+            "open": (
+                [runtime_canon.BATCH_REVIEW_GATE_ID, "wiki-link-integrity"],
+                ["batch-close", "terminal-proof"],
+                ["required-queue-admission"],
+            ),
+            "merge-ready": (
+                ["batch-close", "wiki-link-integrity"],
+                [runtime_canon.BATCH_REVIEW_GATE_ID, "terminal-proof"],
+                ["required-queue-admission"],
+            ),
+            "closed": (
+                ["terminal-proof", "wiki-link-integrity"],
+                [],
+                ["batch-close", runtime_canon.BATCH_REVIEW_GATE_ID,
+                 "required-queue-admission"],
+            ),
         }
         for state, partition in expected.items():
             with self.subTest(state=state):
                 self.assertEqual(
                     partition,
-                    check_queue.partition_boundary_gates_by_lifecycle(
-                        probe, state, registry))
+                    gate_registry.partition_boundary_gates_by_lifecycle(
+                        gates, state, registry))
 
-    def test_a_queue_exhausted_gate_is_deferred_by_every_live_batch(self):
-        """The Queue-level position, judged the same way as a batch state.
-
-        `required-queue-completion`, `maintenance-completion` and
-        `terminal-proof` all refuse while any non-terminal batch remains, so
-        every live batch has that position ahead of it and none has it behind:
-        they are deferred everywhere and unrepeatable nowhere.
-        """
-        registry = self.registry()
-        exhaustion = ["maintenance-completion", "required-queue-completion",
-                      "terminal-proof"]
-        for state in ("queued", "open", "merge-ready"):
-            with self.subTest(state=state):
-                self.assertEqual(
-                    ([], exhaustion, []),
-                    check_queue.partition_boundary_gates_by_lifecycle(
-                        exhaustion, state, registry))
-        for state in ("closed", "cancelled"):
-            with self.subTest(state=state):
-                self.assertEqual(
-                    (exhaustion, [], []),
-                    check_queue.partition_boundary_gates_by_lifecycle(
-                        exhaustion, state, registry))
-
-    def test_every_registered_position_is_one_of_the_three_forms(self):
-        """No row falls outside the vocabulary the partition can read."""
-        registry = self.registry()
-        for gate_id in sorted(registry):
-            with self.subTest(gate_id=gate_id):
-                position = check_queue.registered_gate_position(
-                    gate_id, registry)
-                self.assertTrue(
-                    position is None or
-                    position == check_queue.QUEUE_EXHAUSTED_GATE or
-                    (position and position.issubset(
-                        set(kblib.BATCH_LIFECYCLE_TRANSITIONS))), position)
-
-    def test_an_unknown_position_or_gate_leaves_every_gate_due(self):
-        """Fail closed: nothing is waived on an answer the map cannot give."""
-        registry = self.registry()
         self.assertEqual(
-            (["batch-close", "required-queue-admission"], [], []),
-            check_queue.partition_boundary_gates_by_lifecycle(
-                ["batch-close", "required-queue-admission"], "in-review",
-                registry))
-        self.assertEqual(
-            (["never-registered"], [], []),
-            check_queue.partition_boundary_gates_by_lifecycle(
-                ["never-registered"], "open", registry))
-
-    def test_completion_gate_families_have_stable_gate_ids(self):
-        """K00/06 names these two gates; K13/11 requires them to pass."""
-        registry = self.registry()
-        for gate_id in ("source-promotion", "expression-layer-acceptance"):
-            self.assertEqual(
-                {"tool": check_queue.MANUAL_ATTESTATION_TOOL,
-                 "tool_version": check_queue.MANUAL_ATTESTATION_TOOL_VERSION,
-                 "check": gate_id, "mode": "*",
-                 "dimensions": DIMENSIONS[gate_id],
-                 "lifecycle_states": (NOT_BATCH_SCOPED,)},
-                registry.get(gate_id), gate_id)
+            (sorted(gates), [], []),
+            gate_registry.partition_boundary_gates_by_lifecycle(
+                gates, "unknown", registry))
 
 
 class RuntimeReceiptIdentityTests(unittest.TestCase):
-    """Every deterministic Gate producer must bind the Queue identity.
+    """Contract: current Required Queue fields are the only inferred identity."""
 
-    ``check_queue.standards_revalidation_context`` rejects a boundary Gate
-    receipt whose ``task_id`` / ``standards_version`` /
-    ``selected_profile_manifest`` do not equal the live Required Queue, so a
-    producer that never writes them can never clear a boundary it is named for.
-    """
-
-    IDENTITY = kblib.RECEIPT_IDENTITY_FIELDS
-
-    def runtime_root(self):
-        temporary = tempfile.TemporaryDirectory()
-        self.addCleanup(temporary.cleanup)
-        root = Path(temporary.name) / "repo"
-        shutil.copytree(RUNTIME_FIXTURE, root)
-        return root
-
-    def queue_identity(self, root):
-        queue = kblib.load_yaml_file(root / check_queue.QUEUE_PATH)
-        return {field: queue[field] for field in self.IDENTITY}
-
-    def run_tool(self, script, *arguments):
-        return subprocess.run(
-            [sys.executable, str(TOOLS_DIR / script), *map(str, arguments)],
-            text=True, capture_output=True, check=False,
-        )
-
-    def receipt_rows(self, path):
-        return [json.loads(line) for line in Path(path).read_text(
-            encoding="utf-8").splitlines()]
-
-    def test_identity_is_read_from_the_canonical_required_queue(self):
-        root = self.runtime_root()
-        self.assertEqual(
-            {"task_id": "fixture-task",
-             "standards_version": FIXTURE_UPSTREAM_REVISION,
-             "selected_profile_manifest": "profiles/test-profile/profile.md"},
-            kblib.runtime_receipt_identity(root))
-
-    def test_absent_runtime_omits_the_fields_instead_of_writing_null(self):
-        """Absence, not ``null``: an unread field is never asserted.
-
-        Consumers that demand an explicit binding spell it
-        ``field not in receipt or receipt.get(field) != expected``.  An
-        explicit ``null`` would satisfy the presence half of that test, so
-        writing one could admit a receipt those consumers reject today.
-        """
-        with tempfile.TemporaryDirectory() as temporary:
-            self.assertEqual({}, kblib.runtime_receipt_identity(temporary))
-            receipt = kblib.make_receipt(
-                "check_links", "1.5.0", "link-check-summary", ".", "pass",
-                "no runtime", 1, root=temporary)
-        self.assertEqual({}, kblib.runtime_receipt_identity(None))
-        for field in self.IDENTITY:
-            self.assertNotIn(field, receipt)
-
-    def test_unreadable_or_partial_queue_binds_only_what_it_can_read(self):
-        with tempfile.TemporaryDirectory() as temporary:
-            root = Path(temporary)
-            state = root / ".cambium" / "state"
-            state.mkdir(parents=True)
-            queue = state / "required_queue.yaml"
+    def test_required_queue_identity_projection_matrix(self):
+        with temporary_repository() as root:
             self.assertEqual({}, kblib.runtime_receipt_identity(root))
 
-            queue.write_text("- not a mapping\n", encoding="utf-8")
-            self.assertEqual({}, kblib.runtime_receipt_identity(root))
+            full = root / "full" / ".cambium/state/required_queue.yaml"
+            full.parent.mkdir(parents=True)
+            full.write_text(kblib.canonical_yaml(IDENTITY), encoding="utf-8")
+            self.assertEqual(
+                IDENTITY, kblib.runtime_receipt_identity(root / "full"))
 
-            queue.write_text("\ttask_id: tabbed\n", encoding="utf-8")
-            self.assertEqual({}, kblib.runtime_receipt_identity(root))
-
-            queue.write_text(
-                "task_id: partial-task\n"
-                "selected_profile_manifest: profiles/p/profile.md\n",
-                encoding="utf-8")
-            identity = kblib.runtime_receipt_identity(root)
+            partial = root / "partial" / ".cambium/state/required_queue.yaml"
+            partial.parent.mkdir(parents=True)
+            partial.write_text(kblib.canonical_yaml({
+                "task_id": "partial-task",
+                "selected_profile_manifest": "profiles/p/profile.md",
+            }), encoding="utf-8")
             self.assertEqual(
                 {"task_id": "partial-task",
                  "selected_profile_manifest": "profiles/p/profile.md"},
-                identity)
-            self.assertNotIn("standards_version", identity)
+                kblib.runtime_receipt_identity(root / "partial"))
 
-            elsewhere = root / "elsewhere.yaml"
-            elsewhere.write_text("task_id: smuggled\n", encoding="utf-8")
-            queue.unlink()
-            queue.symlink_to(elsewhere)
+            malformed = root / "malformed" / ".cambium/state/required_queue.yaml"
+            malformed.parent.mkdir(parents=True)
+            malformed.write_text("- not a mapping\n", encoding="utf-8")
+            self.assertEqual(
+                {}, kblib.runtime_receipt_identity(root / "malformed"))
+            self.assertEqual({}, kblib.runtime_receipt_identity(None))
+
+
+class RuntimeReceiptIdentitySlowTests(unittest.TestCase):
+    def test_symlinked_queue_cannot_assert_runtime_identity(self):
+        with temporary_repository() as root:
+            state = root / ".cambium/state"
+            state.mkdir(parents=True)
+            outside = root / "outside.yaml"
+            outside.write_text(kblib.canonical_yaml(IDENTITY), encoding="utf-8")
+            (state / "required_queue.yaml").symlink_to(outside)
+
             self.assertEqual({}, kblib.runtime_receipt_identity(root))
 
-    def test_check_links_receipts_bind_the_queue_identity(self):
-        root = self.runtime_root()
-        receipts = root / ".cambium" / "receipts" / "links.jsonl"
-        receipts.parent.mkdir(parents=True, exist_ok=True)
-        completed = self.run_tool("check_links.py", root,
-                                  "--receipts", receipts)
-        self.assertEqual(0, completed.returncode,
-                         completed.stdout + completed.stderr)
-        rows = self.receipt_rows(receipts)
-        expected = self.queue_identity(root)
-        self.assertTrue(rows)
-        for row in rows:
-            self.assertEqual(
-                expected, {field: row.get(field) for field in self.IDENTITY})
 
-    def test_check_vocab_receipts_bind_the_queue_identity(self):
-        root = self.runtime_root()
-        vocab = root / "vocab.yaml"
-        vocab.write_text(
-            "fields:\n"
-            "  priority:\n"
-            "    values:\n"
-            "      - P0\n"
-            "    owner: fixture\n",
-            encoding="utf-8",
-        )
-        receipts = root / ".cambium" / "receipts" / "vocab.jsonl"
-        receipts.parent.mkdir(parents=True, exist_ok=True)
-        completed = self.run_tool(
-            "check_vocab.py", root, "--vocab", vocab,
-            "--quota-p0", "100", "--quota-p1", "100", "--receipts", receipts)
-        self.assertIn(completed.returncode, (0, 2),
-                      completed.stdout + completed.stderr)
-        rows = self.receipt_rows(receipts)
-        expected = self.queue_identity(root)
-        self.assertTrue(rows)
-        for row in rows:
-            self.assertEqual(
-                expected, {field: row.get(field) for field in self.IDENTITY})
+class GateReceiptProducerConsumerTests(unittest.TestCase):
+    """Integration: one real producer connects to the current Gate selector."""
 
-    def test_check_links_still_produces_receipts_without_a_runtime(self):
-        """A generic check outside any Cambium runtime must keep working."""
-        with tempfile.TemporaryDirectory() as temporary:
-            root = Path(temporary)
+    def test_check_links_receipt_binds_queue_and_matches_gate_owner(self):
+        with temporary_repository() as root:
             (root / "Page.md").write_text("# Page\n", encoding="utf-8")
-            receipts = root / "links.jsonl"
-            completed = self.run_tool("check_links.py", root,
-                                      "--receipts", receipts)
-            self.assertEqual(0, completed.returncode,
-                             completed.stdout + completed.stderr)
-            rows = self.receipt_rows(receipts)
+            queue = root / ".cambium/state/required_queue.yaml"
+            queue.parent.mkdir(parents=True)
+            queue.write_text(kblib.canonical_yaml(IDENTITY), encoding="utf-8")
+            receipts = root / ".cambium/receipts/links.jsonl"
+            receipts.parent.mkdir(parents=True)
+
+            completed = run_check_links(root, "--receipts", receipts)
+            self.assertEqual(
+                completed.returncode, 0,
+                completed.stdout + completed.stderr)
+            rows = [json.loads(line) for line in receipts.read_text(
+                encoding="utf-8").splitlines()]
+
+        registry = current_registry()
         self.assertTrue(rows)
         for row in rows:
-            for field in self.IDENTITY:
-                self.assertNotIn(field, row)
-
-    def test_deterministic_gate_producers_are_the_registered_set(self):
-        """Guard the scope of this binding against a new deterministic gate."""
-        registry, errors = check_queue.standards_gate_registry(
-            TOOLS_DIR.parent)
-        self.assertEqual([], errors)
-        producers = {}
-        for gate_id, predicate in registry.items():
-            producers.setdefault(predicate["tool"], set()).add(gate_id)
-        self.assertEqual(
-            {check_profile.TOOL, check_links.TOOL, check_vocab.TOOL,
-             check_residual_content.TOOL,
-             check_batch_close.TOOL, check_corpus_plan.TOOL,
-             record_corpus_acceptance.TOOL, adopt_standards.TOOL,
-             check_structure.TOOL, check_page_contract.TOOL,
-             check_boundary_contract.TOOL},
-            set(producers) - {check_queue.MANUAL_ATTESTATION_TOOL,
-                              check_queue.TOOL, check_proof.TOOL})
-        self.assertEqual(
-            14, len(producers[check_queue.MANUAL_ATTESTATION_TOOL]))
+            with self.subTest(receipt_id=row["receipt_id"]):
+                self.assertEqual(
+                    IDENTITY,
+                    {field: row[field] for field in kblib.RECEIPT_IDENTITY_FIELDS})
+                self.assertEqual(
+                    row["receipt_type_id"], check_links.RECEIPT_TYPE_ID)
+                self.assertTrue(gate_registry.receipt_matches_gate_id(
+                    row, check_links.GATE_ID, registry))
 
 
 if __name__ == "__main__":

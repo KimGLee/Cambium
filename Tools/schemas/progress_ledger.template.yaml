@@ -6,10 +6,11 @@
 # checkpoints, guidance reconciliation, and terminal-audit state. It references
 # Required Queue by revision and fingerprint; it does not duplicate batch
 # membership, order, lifecycle, active batches, or merge queues.
-# Only the restricted YAML subset accepted by Tools/kblib.py is allowed.
+# Only the restricted YAML subset accepted by
+# Tools/platform/common/kblib.py is allowed.
 # =============================================================================
 
-schema_version: 1
+schema_version: 2
 task_id: "kb-build-2026-xx"
 task_state: active
 task_transition_receipts:
@@ -18,6 +19,10 @@ required_queue_path: ".cambium/state/required_queue.yaml"
 queue_revision: 1
 queue_state_revision: 0
 required_queue_sha256: "sha256:replace-after-queue-materialization"
+# Immutable writer-transaction evidence for the confirmed Task Plan that
+# created this Task Contract and planning-only Coverage. It is present before
+# Queue materialization and remains unchanged for the life of the task.
+initial_task_plan_receipt: "audit-apply_task_plan-..."
 # Null only while the initialized Queue is empty. The first successful
 # compile_queue --apply writes the unique queue_structure receipt id here;
 # later lifecycle/replan writes never replace it.
@@ -33,7 +38,7 @@ contract:
   exclusions: []
   scope_version: "s1"
   concurrency_cap: 3
-  standards_version: ""
+  upstream_revision_id: ""
   selected_profile_manifest: ""
   # Materialization writes the routes/Cards actually selected.  The template
   # stays empty rather than presenting one partial route selection as valid.
@@ -117,7 +122,8 @@ amendments:
   # exact derived change-class set, and the complete impact fingerprint.
 
 # Append-only active-task Standards/profile adoption history.  Each record is
-# written only by Tools/adopt_standards.py and binds the immutable plan, all
+# written only by Tools/governance/standards/adopt_standards.py and binds the
+# immutable plan, all
 # three before fingerprints, the after Coverage/Queue fingerprints, and the
 # explicit gate reruns required under the adopted version.  Its commit receipt
 # binds the complete after image, including Progress, without a self-containing

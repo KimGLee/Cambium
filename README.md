@@ -43,7 +43,7 @@ The diagram shows how these layers connect to runtime routes, deterministic tool
 | `Read Set/` | Machine-resolvable declarations of what canonical material an already selected route or phase must load |
 | Selected profile | One repository's scope, language, architecture, sources, priorities, roles, scans, and allowed extensions |
 | `.cambium/` | The adopter's current governance identity, task state, Queue, plans, deltas, receipts, and recovery evidence |
-| `Tools/` | Deterministic checks, controlled writers, schemas, and generated projections |
+| `Tools/` | Stable public commands and Area/Domain implementations for deterministic checks, controlled writes, schemas, and generated projections |
 
 The kernel is normative. A profile can fill or tighten an extension point, but cannot disable a kernel rule. Tools execute declared rules; they do not make the final semantic judgment.
 
@@ -62,9 +62,10 @@ Cambium currently provides:
 - explicit Global Map, Capability Matrix, and Gap Register validation;
 - deterministic page, structure, vocabulary, link, boundary, freshness, and residual-content checks;
 - a generated host-neutral interface: each tool's own CLI declaration and the closed agent-interface capability policy compile into the agent-facing MCP projection and per-host configuration; every active caller-visible path is retained as a descriptor capability through subprocess consumption;
+- a typed Task Runtime Runner that advances registered deterministic tools to the next Agent, user, Host, repair, or terminal boundary;
 - Card-first activation and progressive Read Set delivery primitives.
 
-The generated MCP surface is a call surface, not an orchestrator. The tools still decide whether an operation is valid and whether its evidence counts. For every typed path whose compiled operation-mode predicate is active, including an effective CLI default, the transport retains the admitted file or parent directory descriptor and the shared tool I/O layer consumes that same object for snapshot, append, replacement, or transaction access. A nested Cambium subprocess inherits the same capability; distinct active arguments may not alias one path under the same consumption mode because that would make consumption identity ambiguous. An unsupported platform fails server initialization instead of claiming this assurance.
+The generated MCP surface exposes both leaf calls and the bounded Runner. The Runner is not a scheduler or governance engine: it derives one identity-bound next action from current runtime state, invokes only registered capabilities, reads the result back, and stops at every semantic boundary. Each underlying Tool still decides whether its operation is valid and whether its evidence counts. For every active typed path, the transport retains the admitted file or parent-directory descriptor through subprocess consumption; an unsupported platform fails server initialization instead of claiming this assurance.
 
 ## What Does Not Ship Yet
 
@@ -106,7 +107,7 @@ The adopter-owned namespace contains six lifecycle classes:
 └── <derived projections>
 ```
 
-Do not edit canonical state by hand. Use the owning writer so revisions, hashes, receipts, and recovery evidence move together. [`Tools/runtime_paths.py`](Tools/runtime_paths.py) is the single machine owner of the current physical path spellings and object classifications; this README does not maintain a second directory contract.
+Do not edit canonical state by hand. Use the owning writer so revisions, hashes, receipts, and recovery evidence move together. [`Tools/execution/task_runtime/runtime_paths.py`](Tools/execution/task_runtime/runtime_paths.py) is the single machine owner of the current physical path spellings and object classifications; this README does not maintain a second directory contract.
 
 ## Adopt Cambium
 
@@ -143,7 +144,7 @@ python3 Tools/apply_profile_adoption.py . --plan <plan>.yaml \
   --upstream-root <local-cambium-repository> --upstream-ref <git-ref> --apply
 ```
 
-The transaction resolves the upstream ref to its full Git commit SHA, binds the selected Profile and resulting adopter-owned contracts/evidence, and restores the previous control plane if any step fails. It never restamps or rewrites the adopter's upstream Card bytes; `standards_version` is only a compatibility alias for the resolved commit. Adoption remains an explicit CLI maintenance operation: its external upstream repository input is never exposed as an unrestricted MCP argument.
+The transaction resolves the upstream ref to its full Git commit SHA and records that SHA as the sole Standards identity in `upstream_revision_id`. It binds the selected Profile and resulting adopter-owned contracts/evidence, and restores the previous control plane if any step fails. It never restamps or rewrites the adopter's upstream Card bytes. Adoption remains an explicit CLI maintenance operation: its external upstream repository input is never exposed as an unrestricted MCP argument.
 
 An empty corpus follows the same adoption contract. First perform bounded founding work to create real canonical owners and the residual-scan witness — one page may serve as both owner and witness when that is semantically natural, but pages are never merged only to save files. Then a second R09 revision configures the Corpus Planning slot before large-scale work begins. The candidate and adoption boundary is documented in [profiles/README.md](profiles/README.md#mechanical-validation-and-adoption).
 
@@ -157,36 +158,19 @@ python3 Tools/check_queue.py . --resume-status
 
 If `.cambium/state/` exists, this command reports the recorded task, locks, holds, in-flight batches, recovery state, and exact `next_action`. Do not initialize over it.
 
-Bounded work does not need empty persistent state. For long-running, resumable, or multi-batch work, initialize once after profile adoption:
-
-```text
-python3 Tools/init_state.py . \
-  --task-id YOUR_TASK \
-  --objective "State the concrete outcome" \
-  --exclude "State one explicit boundary" \
-  --completion-semantics build \
-  --scope-version s1 \
-  --standards-version APPROVED_UPSTREAM_COMMIT_SHA \
-  --profile-manifest profiles/my-profile/profile.md
-```
-
-Read `APPROVED_UPSTREAM_COMMIT_SHA` from the active `.cambium/governance/standards_state.yaml`; it is the full upstream commit SHA, not a release label such as `X.Y.Z`.
-
-Review the dry run, then repeat the command with `--apply`.
-
-`init_state.py` deliberately leaves work selection empty. Put the confirmed Task Contract and Coverage choices in one task plan, then materialize the Queue:
+Bounded work does not need persistent state. For long-running, resumable, or multi-batch work, first copy and complete the single Task Plan:
 
 ```text
 cp Tools/schemas/task_plan.template.yaml \
   .cambium/deltas/task-plans/TP-001.yaml
 
-python3 Tools/apply_task_plan.py . \
+python3 Tools/init_state.py . \
   --plan .cambium/deltas/task-plans/TP-001.yaml
 
-python3 Tools/apply_task_plan.py . \
+python3 Tools/init_state.py . \
   --plan .cambium/deltas/task-plans/TP-001.yaml --apply
 
-# Use the revision and SHA printed by apply_task_plan.py.
+# Run the exact compile_queue command printed by init_state.py; it already carries the Queue revision and SHA bound to the published Task Plan.
 python3 Tools/compile_queue.py . --apply --actor-role integrator \
   --expected-queue-revision REVISION \
   --expected-sha256 SHA256
@@ -195,7 +179,7 @@ python3 Tools/check_queue.py .
 python3 Tools/render_queue.py .
 ```
 
-Use `build` when the task closes through Terminal Proof. Use `maintenance` when it closes through the bounded maintenance gate. The choice is frozen in the Task Contract.
+`init_state.py` has no parallel flags for task identity, objective, scope, Standards, Profile, completion model, or concurrency. Those confirmed values have one owner: the Task Plan. The command atomically publishes the empty Queue, complete Task Contract, planning-only Coverage, and the Receipt retained by Progress; `compile_queue.py` remains the sole Queue materializer.
 
 ## Controlled Changes
 
@@ -261,8 +245,10 @@ SHA-256 bindings detect drift and inconsistent history inside the adopter's loca
 | [`Card/`](Card/) | Curated, non-authoritative action checklists |
 | [`Read Set/`](Read%20Set/) | Canonical static loading declarations and generated navigation |
 | [`profiles/`](profiles/) | Candidate template, interview, adoption guidance, and non-authoritative examples |
-| [`Tools/`](Tools/) | Checks, writers, schemas, receipts, and generators |
-| [`Tools/compiled/`](Tools/compiled/) | Generated CLI, MCP, metadata, and host projections |
+| [`Tools/`](Tools/) | Stable `Tools/<tool>.py` public commands, Tool contracts, schemas, and operating guidance |
+| [`Tools/governance/`](Tools/governance/), [`Tools/knowledge/`](Tools/knowledge/), [`Tools/execution/`](Tools/execution/), [`Tools/platform/`](Tools/platform/) | Implementations grouped by the machine-checked Area/Domain hierarchy |
+| [`Tools/TOOL_CATALOG.md`](Tools/TOOL_CATALOG.md) | Generated Tool hierarchy, interface, and dependency navigation |
+| [`Tools/compiled/`](Tools/compiled/) | Generated CLI, MCP, metadata, host, and Tool-catalog projections |
 | [`assets/readme/`](assets/readme/) | Public diagrams embedded by the root READMEs |
 | [`ROADMAP.md`](ROADMAP.md) | Status-based implementation roadmap |
 | [`CONTRIBUTING.md`](CONTRIBUTING.md) | Issue ownership, defect promotion, and pull-request contract |

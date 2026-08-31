@@ -25,7 +25,7 @@ Every example contains the filled template skeleton and may also contain:
 
 Additional support files do not create slots or extend the profile interface. Policy remains in the bound slot owners, and persistent executable code shipped by Cambium remains under `Tools/`. An example must identify auxiliary files and explain why they exist.
 
-Every example README carries a `## Validation Provenance` table: for each validator the example claims to pass, the tool version it was last validated against, the exact command, and the expected result. The public distribution is intentionally uninstantiated and therefore has no `standards_version` for an example to name, so the tool version is the machine-checkable stand-in. `Tools/tests/test_profile_examples.py` re-runs every command in every such table and fails when a declared version no longer matches the tool.
+Every example README carries a `## Validation Provenance` table: for each validator the example claims to pass, the tool version it was last validated against, the exact command, and the expected result. The public distribution is intentionally uninstantiated and therefore has no `upstream_revision_id` for an example to name, so the tool version is the machine-checkable stand-in. `Tools/tests/test_profile_examples.py` re-runs every command in every such table and fails when a declared version no longer matches the tool.
 
 ## Included Examples
 
@@ -42,7 +42,7 @@ Documented forms that still have **no** worked example anywhere in this reposito
 
 | Missing form | Why it is missing |
 |---|---|
-| A supplemental route with its profile Read Set (`type: profile-read-set`) | No example needs a route the kernel does not already provide; the currently supported compatibility shape is validated by the runtime tooling. |
+| A supplemental route with its profile Read Set (`type: profile-read-set`) | No example needs a route the kernel does not already provide; the current machine declaration is validated by the runtime tooling. |
 | Gap Register statuses `promoted` and `resolved` | Both require a real Coverage object and initialized `.cambium/` runtime state, which this repository deliberately does not carry. |
 | A non-generic deterministic residual verifier, and additional optional candidate scans | Every example is served by the generic `Tools/check_residual_content.py` matcher with one registered scan. |
 | A profile-owned extension audit dimension beyond the one Atlas registers | Not needed by the other two domains. |

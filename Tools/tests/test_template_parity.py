@@ -36,7 +36,6 @@ These are regression tests, not gates: they record no receipt, claim no Gate
 ID, and judge no answer quality.
 """
 
-import importlib.util
 import re
 import subprocess
 import sys
@@ -57,19 +56,14 @@ FAIL_CODE_RE = re.compile(r"\[FAIL ([a-z0-9-]+)\]")
 INLINE_FILE_RE = re.compile(r"\{file:\s*([^,}]+)")
 BINDS_SLOT_RE = re.compile(r"^\s*binds_slot:\s*(.+?)\s*$", re.MULTILINE)
 
+if str(REPOSITORY) not in sys.path:
+    sys.path.insert(0, str(REPOSITORY))
 
-def _load_check_profile():
-    """Reuse the production parsers so this test cannot drift from the tool."""
-    if str(TOOLS) not in sys.path:
-        sys.path.insert(0, str(TOOLS))
-    spec = importlib.util.spec_from_file_location(
-        "_check_profile_under_test", CHECK_PROFILE)
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    return module
+import Tools.platform.agent_interface.entrypoint_loader as entrypoint_loader  # noqa: E402
 
 
-check_profile = _load_check_profile()
+check_profile = entrypoint_loader.load_tool_implementation(
+    "check_profile", TOOLS)
 
 
 def interface_document():
