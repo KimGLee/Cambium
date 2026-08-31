@@ -1,0 +1,11 @@
+batch: B2
+generated_at: 2026-08-04T00:00:00Z
+pages:
+  - path: Topics/B.md
+    authoring_status: drafted
+    gate_receipts:
+      - audit-record_batch_page_review-20260831T221148Z-e6d190d7b05248a78444cf8f9a85feca-0001
+open_gaps_added: []
+open_gaps_closed: []
+next_batch_updates: []
+watermark_advance: null

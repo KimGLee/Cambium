@@ -17,11 +17,13 @@ sys.path.insert(0, str(TOOLS / "tests"))
 sys.path.insert(0, str(TOOLS))
 
 from Tools.execution.task_runtime import queue_runtime
+import Tools.execution.audit.assemble_terminal_proof as assemble_terminal_proof
+import Tools.execution.audit.audit_dimension_contract as audit_dimension_contract
+import Tools.execution.audit.audit_evidence_runtime as audit_evidence_runtime
 import Tools.execution.task_runtime.runtime_validation as runtime_validation  # noqa: E402
 import Tools.platform.common.kblib as kblib
 import Tools.knowledge.content.maintenance_candidates as maintenance_candidates
 import Tools.execution.task_runtime.runtime_paths as runtime_paths
-from Tools.tests.support.profile_fixture import FIXTURE_UPSTREAM_REVISION
 from Tools.tests.fixtures.e2e import RequiredQueueE2EScenarioCase
 
 
@@ -69,91 +71,46 @@ class RequiredQueueLifecycleEndToEndTests(RequiredQueueE2EScenarioCase):
                 encoding="utf-8").splitlines()[-1]
         )["receipt_id"]
 
-        # Dimension coverage consumes the full Kernel-owned AuditReceipts
-        # produced by B2's real post-Delta AuditPlan closure.  Queue and Corpus
-        # Gate receipts remain their own evidence kinds; they are never
-        # relabelled as dimension-specific AuditReceipts merely to satisfy the
-        # Terminal Proof schema.
-        dimension_receipts = {
-            "coverage_and_integration": [],
-            "guidance_and_contract": [],
-        }
-        for line in (self.root / audit_register).read_text(
-                encoding="utf-8").splitlines():
-            record = json.loads(line)
-            dimension = record.get("dimension")
-            if (record.get("record_kind") == "audit-receipt" and
-                    record.get("batch_id") == "B2" and
-                    record.get("result") == "passed" and
-                    dimension in dimension_receipts):
-                dimension_receipts[dimension].append(record["receipt_id"])
-        for dimension, receipt_ids in dimension_receipts.items():
-            self.assertTrue(
-                receipt_ids,
-                "B2 close produced no full AuditReceipt for %s" % dimension,
-            )
-
-        proof = kblib.parse_yaml_subset((
-            TOOLS / "schemas/terminal_proof.template.yaml"
-        ).read_text(encoding="utf-8"))
-        progress_contract = kblib.load_yaml_file(
-            self.root / queue_runtime.PROGRESS_PATH)["contract"]
-        proof.update({
-            "task_id": "fixture-task",
-            "scope_version": "s1",
-            "contract_version": "c1",
-            "coverage_ledger_sha256": kblib.sha256_file(
-                self.root / queue_runtime.COVERAGE_PATH),
-            "progress_ledger_sha256": kblib.sha256_file(
-                self.root / queue_runtime.PROGRESS_PATH),
-            "required_queue_path": queue_runtime.QUEUE_PATH,
-            "queue_revision": self.queue()["queue_revision"],
-            "queue_state_revision": self.queue()["state_revision"],
-            "required_queue_sha256": kblib.sha256_file(
-                self.root / queue_runtime.QUEUE_PATH),
-            "remaining_required_work_units": 0,
-            "queue_check_receipt": proof_queue_receipt,
-            "corpus_plan_check_receipt": corpus_plan_receipt,
-            "corpus_plan_semantic_acceptance_receipt": None,
-            "upstream_revision_id": FIXTURE_UPSTREAM_REVISION,
-            "selected_profile_manifest": "profiles/test-profile/profile.md",
-            **{
-                field: progress_contract[field]
-                for field in (
-                    "selected_route_ids", "selected_card_paths",
-                    "selected_profile_route_ids", "selected_read_sets",
-                    "loaded_module_paths",
-                )
-            },
+        # The production projection owns the complete two-batch heterogeneous
+        # binding.  E2E supplies only the semantic not-applicable reasons; it
+        # does not hand-pick evidence IDs from one physical register.
+        terminal_runtime = runtime_validation.validate_runtime(self.root)
+        self.assertEqual([], terminal_runtime["errors"])
+        evidence_rows = audit_evidence_runtime.terminal_dimension_evidence(
+            terminal_runtime)
+        terminal_dimensions = set(
+            audit_dimension_contract.BASE_RECEIPT_DIMENSION_ORDER)
+        terminal_dimensions.update(
+            assemble_terminal_proof._profile_receipt_dimensions(
+                terminal_runtime))
+        covered_dimensions = {row["dimension"] for row in evidence_rows}
+        semantic_input = {
             "guidance_cutoff_id": "G-000",
-            "audit_receipt_register": audit_register,
-            "terminal_audit_receipt_register": terminal_register,
-            "full_deterministic_results": audit_register,
-            "incremental_manual_scope": [],
-            # K12/16 per-dimension accounting: the two dimensions this fixture
-            # actually produced receipts for cite them; the rest carry an
-            # explicit not-applicable declaration rather than silence.
-            "dimension_coverage": {
-                "coverage_and_integration": [
-                    *dimension_receipts["coverage_and_integration"]],
-                "guidance_and_contract": [
-                    *dimension_receipts["guidance_and_contract"]],
-                "structure_and_links":
-                    "not-applicable: the frozen fixture scope holds no "
-                    "authored knowledge page to review for links",
-                "content_and_depth":
-                    "not-applicable: the frozen fixture scope holds no "
-                    "authored knowledge page",
-                "formula_and_numeric":
-                    "not-applicable: the frozen fixture scope states no "
-                    "formula, symbol, numeric example, or metric provenance",
-                "source_and_currentness":
-                    "not-applicable: the frozen fixture scope cites no "
-                    "external source",
-                "rendering":
-                    "not-applicable: visual_trigger: not_applicable",
+            "manual_review_result": "passed",
+            "rendering_evidence":
+                "current rendering checks and visual applicability recorded",
+            "dimension_not_applicable_reasons": {
+                dimension:
+                    "the complete closed AuditPlans contain no applicable "
+                    "obligation in this dimension"
+                for dimension in sorted(
+                    terminal_dimensions - covered_dimensions)
             },
-        })
+            "incremental_manual_scope": [],
+            "sampling_scope_and_result":
+                "the frozen fixture sampling scope passed",
+            "systemic_expansions": [],
+            "deferred_evidence_backlog": [],
+            "final_handoff": "fixture completion handoff",
+            "time_contract_result": "minimum run satisfied",
+        }
+        proof = assemble_terminal_proof.assemble_terminal_proof(
+            self.root, semantic_input,
+            queue_check_receipt=proof_queue_receipt,
+            corpus_plan_check_receipt=corpus_plan_receipt,
+            audit_receipt_register=audit_register,
+            terminal_audit_receipt_register=terminal_register,
+            full_deterministic_results=audit_register)
         proof_relative = ".cambium/receipts/terminal-proof.yaml"
         (self.root / proof_relative).write_text(
             kblib.canonical_yaml(proof), encoding="utf-8")

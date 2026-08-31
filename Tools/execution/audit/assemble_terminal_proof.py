@@ -17,11 +17,13 @@ import Tools.execution.audit.audit_evidence_runtime as audit_evidence_runtime
 import Tools.execution.audit.audit_receipt_contract as audit_receipt_contract
 import Tools.execution.audit.terminal_proof_contract as terminal_proof_contract
 import Tools.execution.planning.check_corpus_plan as check_corpus_plan
+import Tools.execution.planning.corpus_planning_contract as corpus_planning_contract
 import Tools.execution.task_runtime.queue_runtime.gate_registry as gate_registry
 import Tools.execution.task_runtime.queue_runtime.receipts as receipt_catalogs
 import Tools.execution.task_runtime.queue_runtime.runtime as queue_state
 import Tools.execution.task_runtime.runtime_paths as runtime_paths
 import Tools.execution.task_runtime.runtime_validation as runtime_validation
+import Tools.governance.profile.profile_contract as profile_contract
 import Tools.platform.common.kblib as kblib
 from Tools.platform.common.primitives import catalog_record
 from Tools.platform.common.reporting import write_canonical_json
@@ -119,13 +121,17 @@ def _register_records(root, relative):
 
 def _profile_receipt_dimensions(result):
     view = result.get("_profile_authorized_view")
-    evaluation = view.get("_evaluation") if isinstance(view, dict) else None
-    if evaluation is None or not evaluation.authorized:
+    contract = view.get("_contract") if isinstance(view, dict) else None
+    try:
+        dimensions = profile_contract.\
+            terminal_receipt_dimensions_projection(contract)
+    except (TypeError, ValueError) as exc:
         raise TerminalProofAssemblyError(
-            "current runtime exposes no authorized selected Profile")
+            "current runtime exposes no authorized selected Profile "
+            "dimension projection: %s" % exc) from exc
     return tuple(sorted(
-        row.dimension_id for row in evaluation.contract.extension_dimensions
-        if "receipt" in row.targets))
+        dimension for dimension in dimensions
+        if dimension not in audit_dimension_contract.BASE_RECEIPT_DIMENSIONS))
 
 
 def _dimension_coverage(result, register_records, semantic_input):
@@ -134,28 +140,43 @@ def _dimension_coverage(result, register_records, semantic_input):
     if len(dimensions) != len(set(dimensions)):
         raise TerminalProofAssemblyError(
             "selected Profile repeats a Kernel-owned audit dimension")
-    contract = audit_receipt_contract.load_contract(result["root"])
-    current = receipt_catalogs.current_receipt_catalog(result)
     by_dimension = {dimension: [] for dimension in dimensions}
-    for receipt_id in sorted(register_records):
-        record = register_records[receipt_id]
-        if (record.get("record_kind") != "audit-receipt" or
-                record.get("result") != "passed" or
-                record.get("invalidated_by") is not None):
-            continue
-        current_record = catalog_record(current.get(receipt_id))
-        if current_record != record:
-            continue
-        try:
-            audit_receipt_contract.validate_audit_receipt(
-                record, contract=contract, dimensions=set(dimensions))
-        except (TypeError, ValueError) as exc:
+    current = receipt_catalogs.current_receipt_catalog(result)
+    contract = audit_receipt_contract.load_contract(result["root"])
+    try:
+        evidence_rows = audit_evidence_runtime.terminal_dimension_evidence(
+            result)
+    except (OSError, TypeError, UnicodeError, ValueError,
+            kblib.YamlSubsetError) as exc:
+        raise TerminalProofAssemblyError(
+            "plan-bound dimension evidence cannot be resolved: %s" % exc
+        ) from exc
+    for row in evidence_rows:
+        dimension = row["dimension"]
+        receipt_id = row["evidence_ref"]
+        if dimension not in by_dimension:
             raise TerminalProofAssemblyError(
-                "current AuditReceipt %s is invalid: %s" %
-                (receipt_id, exc)) from exc
-        dimension = record.get("dimension")
-        if dimension in by_dimension:
-            by_dimension[dimension].append(receipt_id)
+                "closed AuditPlan selects unregistered receipt dimension %s"
+                % dimension)
+        current_record = catalog_record(current.get(receipt_id))
+        if not isinstance(current_record, dict):
+            raise TerminalProofAssemblyError(
+                "plan-bound dimension evidence %s is not current" %
+                receipt_id)
+        if row["evidence_kind"] == "audit-receipt":
+            if register_records.get(receipt_id) != current_record:
+                raise TerminalProofAssemblyError(
+                    "current AuditReceipt %s is absent from or differs in "
+                    "the canonical AuditReceipt register" % receipt_id)
+            try:
+                audit_receipt_contract.validate_audit_receipt(
+                    current_record, contract=contract,
+                    dimensions=set(dimensions))
+            except (TypeError, ValueError) as exc:
+                raise TerminalProofAssemblyError(
+                    "current AuditReceipt %s is invalid: %s" %
+                    (receipt_id, exc)) from exc
+        by_dimension[dimension].append(receipt_id)
 
     reasons = semantic_input["dimension_not_applicable_reasons"]
     missing = {dimension for dimension, ids in by_dimension.items() if not ids}
@@ -178,7 +199,9 @@ def _dimension_coverage(result, register_records, semantic_input):
     }
 
 
-def _semantic_acceptance_receipt(result, repository_snapshot_sha256):
+def _semantic_acceptance_receipt(
+        result, repository_snapshot_sha256, *, structural_receipt_id,
+        terminal_register_records):
     corpus = check_corpus_plan.validate_corpus_plan(
         result["root"],
         authorized_profile_view=result.get("_profile_authorized_view"),
@@ -191,13 +214,31 @@ def _semantic_acceptance_receipt(result, repository_snapshot_sha256):
                 for row in corpus["errors"]))
     status = check_corpus_plan.semantic_acceptance_status(
         corpus, repository_snapshot_sha256=repository_snapshot_sha256)
-    if status.get("status") == "inactive":
+    if status.get("status") == corpus_planning_contract.INACTIVE_STATE:
         return None
     if status.get("status") != "current":
         raise TerminalProofAssemblyError(
             "configured Corpus Planning semantic acceptance is %s" %
             status.get("status"))
-    return status.get("receipt_id")
+    receipt_id = status.get("receipt_id")
+    record = catalog_record(
+        receipt_catalogs.current_receipt_catalog(
+            corpus.get("runtime") or {}).get(receipt_id))
+    if not isinstance(receipt_id, str) or not isinstance(record, dict):
+        raise TerminalProofAssemblyError(
+            "current Corpus Planning semantic acceptance has no current "
+            "receipt record")
+    if record.get("structural_check_receipt") != structural_receipt_id:
+        raise TerminalProofAssemblyError(
+            "current Corpus Planning semantic acceptance is linked to %r, "
+            "not this Terminal Proof structural receipt %r" % (
+                record.get("structural_check_receipt"),
+                structural_receipt_id))
+    if terminal_register_records.get(receipt_id) != record:
+        raise TerminalProofAssemblyError(
+            "current Corpus Planning semantic acceptance %s is absent from "
+            "or differs in the Terminal Audit receipt register" % receipt_id)
+    return receipt_id
 
 
 def assemble_terminal_proof(
@@ -248,6 +289,14 @@ def assemble_terminal_proof(
             "result": "pass",
         }, gate_id="corpus-plan-structure")
     register_records = _register_records(root, audit_receipt_register)
+    terminal_register_records = _register_records(
+        root, terminal_audit_receipt_register)
+    if terminal_register_records.get(corpus_receipt["receipt_id"]) != \
+            corpus_receipt:
+        raise TerminalProofAssemblyError(
+            "current Corpus Plan structure receipt %s is absent from or "
+            "differs in the Terminal Audit receipt register" %
+            corpus_receipt["receipt_id"])
     repository_snapshot = kblib.repository_snapshot_sha256(root)
     reconciliation = audit_evidence_runtime.terminal_plan_reconciliation(result)
     proof = {
@@ -265,7 +314,10 @@ def assemble_terminal_proof(
         "queue_check_receipt": queue_receipt["receipt_id"],
         "corpus_plan_check_receipt": corpus_receipt["receipt_id"],
         "corpus_plan_semantic_acceptance_receipt":
-            _semantic_acceptance_receipt(result, repository_snapshot),
+            _semantic_acceptance_receipt(
+                result, repository_snapshot,
+                structural_receipt_id=corpus_receipt["receipt_id"],
+                terminal_register_records=terminal_register_records),
         "upstream_revision_id": contract.get("upstream_revision_id"),
         "selected_profile_manifest":
             contract.get("selected_profile_manifest"),

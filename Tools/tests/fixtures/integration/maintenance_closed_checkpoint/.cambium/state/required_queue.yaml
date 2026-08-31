@@ -1,0 +1,67 @@
+schema_version: 2
+task_id: fixture-task
+scope_version: s1
+queue_revision: 2
+state_revision: 6
+upstream_revision_id: 0123456789abcdef0123456789abcdef01234567
+selected_profile_manifest: profiles/test-profile/profile.md
+required_queue:
+  - id: B1
+    family: Core
+    order: 1
+    record_count: 1
+    manifest:
+      - Topics/A.md
+    source_route: R03
+    execution_mode: concurrent-worker
+    depends_on: []
+    confirmation_required: false
+    work_spec_path: null
+    work_spec_sha256: null
+    state: closed
+    hold_state: none
+    opened_at: 2026-08-31T22:11:03Z
+    activation_receipt: audit-check_queue-20260831T221102Z-3260415435aa4579b45edd88550e23b2-0001
+    transition_receipts:
+      - audit-update_queue-20260831T221103Z-3ee909e61ef048f5a142e2aeeba26fab-0001
+      - audit-update_queue-20260831T221129Z-4e00bc88273d49bca8807e66aedefcd4-0001
+      - audit-update_queue-20260831T221137Z-5dcddcaa194d4d0abcf00a484dcf2da6-0001
+    merge_ready_at: 2026-08-31T22:11:26Z
+    delta_path: .cambium/deltas/B1.yaml
+    delta_sha256: sha256:51af05759bd3645284cddfc08b10ebb32eef23a16acaebb2f995b4dbdaea6475
+    batch_receipts:
+      - audit-manual-attestation-20260831T221117Z-b5dbce585b15444fa1a087ec9850024c-0001
+    closed_at: 2026-08-31T22:11:33Z
+    queue_consistency_receipt: audit-check_queue-20260831T221133Z-33dc69a070274b82a0847ef041253f6f-0001
+    close_gate_receipt: audit-check_batch_close-20260831T221131Z-33dc69a070274b82a0847ef041253f6f-9999
+    delta_apply_receipt: audit-apply_delta-20260831T221130Z-ff5ac93f173e415d87a971f6f405856f-0001
+  - id: B2
+    family: Core
+    order: 2
+    record_count: 1
+    manifest:
+      - Topics/B.md
+    source_route: R03
+    execution_mode: concurrent-worker
+    depends_on:
+      - B1
+    confirmation_required: false
+    work_spec_path: null
+    work_spec_sha256: null
+    state: closed
+    hold_state: none
+    opened_at: 2026-08-31T22:11:38Z
+    activation_receipt: audit-check_queue-20260831T221138Z-26c0ab1b4da44ecbac99b1854291b719-0001
+    transition_receipts:
+      - audit-update_queue-20260831T221138Z-3b2908644933426d9badc52f856943de-0001
+      - audit-update_queue-20260831T221210Z-f966592fb1be4479a54f3f00b925b6be-0001
+      - audit-update_queue-20260831T221220Z-674c7fe422d44199acb25cbf4412ea49-0001
+    merge_ready_at: 2026-08-31T22:12:08Z
+    delta_path: .cambium/deltas/B2.yaml
+    delta_sha256: sha256:3df0518820fe26f9a169f898e0069f6d33186966ab9215c2782ebd91e3ca404a
+    batch_receipts:
+      - audit-manual-attestation-20260831T221158Z-d85f087357244df5b043c0e535a53abf-0001
+    closed_at: 2026-08-31T22:12:17Z
+    queue_consistency_receipt: audit-check_queue-20260831T221216Z-d3e19318d4714aff8e4639c53932c04a-0001
+    close_gate_receipt: audit-check_batch_close-20260831T221214Z-d3e19318d4714aff8e4639c53932c04a-9999
+    delta_apply_receipt: audit-apply_delta-20260831T221212Z-daa01cabb58646a2adeb17d97b23fd44-0001

@@ -1256,17 +1256,26 @@ def _member_receipt(field, run, snapshot, runtime, item, integrator,
     return receipt
 
 
-def _receipt_catalog_with(runtime, relative_path, receipts):
+def _receipt_catalog_with(runtime, publications):
+    """Project one unpublished multi-register close bundle.
+
+    ``publications`` carries ``(relative_path, records)`` pairs in commit
+    order.  The catalog records every candidate under its actual machine-owned
+    register so the close consumer validates the same topology that will exist
+    after publication.
+    """
     # Build current-use validation from the adoption-filtered catalog, while
     # still reserving every historical ID so append-only evidence can never
     # collide with an invalidated record.
     full_catalog = runtime.get("receipt_catalog") or {}
     catalog = dict(receipt_catalogs.current_receipt_catalog(runtime))
-    for receipt in receipts:
-        receipt_id = receipt.get("receipt_id")
-        if receipt_id in full_catalog or receipt_id in catalog:
-            raise ValueError("generated receipt ID collides with existing evidence")
-        catalog[receipt_id] = (relative_path, receipt)
+    for relative_path, receipts in publications:
+        for receipt in receipts:
+            receipt_id = receipt.get("receipt_id")
+            if receipt_id in full_catalog or receipt_id in catalog:
+                raise ValueError(
+                    "generated receipt ID collides with existing evidence")
+            catalog[receipt_id] = (relative_path, receipt)
     return catalog
 
 
@@ -1281,6 +1290,18 @@ def _append_receipts(path, receipts):
     if error is not None or outcome != "present":
         raise ReceiptPublicationUncertain(
             "receipt append outcome=%s error=%s" % (outcome, error))
+
+
+def _publish_close_bundle(receipt_path, audit_receipt_path, close_records,
+                          audit_records, commit_record):
+    """Publish one close bundle with its aggregate as the final commit edge."""
+    if not isinstance(commit_record, dict):
+        raise ValueError("batch-close commit record must be a mapping")
+    if close_records:
+        _append_receipts(receipt_path, close_records)
+    if audit_records:
+        _append_receipts(audit_receipt_path, audit_records)
+    _append_receipts(receipt_path, [commit_record])
 
 
 def _failure_receipt(attempt_id, root, batch, details, snapshot=None,
@@ -1378,9 +1399,14 @@ def _main(argv=None):
         receipt_path = kblib.managed_repository_path(
             root, args.receipts, runtime_paths.RECEIPT_ROOT,
             suffixes=(".jsonl",), must_exist=False)
+        audit_receipt_path = kblib.managed_repository_path(
+            root, runtime_paths.AUDIT_RECEIPT_REGISTER_PATH,
+            runtime_paths.RECEIPT_ROOT,
+            suffixes=(".jsonl",), must_exist=False)
     except (OSError, ValueError) as exc:
         invocation_errors.append("unsafe receipt path: %s" % exc)
         receipt_path = None
+        audit_receipt_path = None
     if invocation_errors:
         for error in invocation_errors:
             print("[FAIL] %s" % error)
@@ -1433,6 +1459,7 @@ def _main(argv=None):
         "target": args.batch,
         "receipt_id": attempt_id,
         "receipt_path": args.receipts,
+        "audit_receipt_path": runtime_paths.AUDIT_RECEIPT_REGISTER_PATH,
         "before_coverage_sha256": preflight.get("coverage_sha256"),
         "planned_after_coverage_sha256": preflight.get("coverage_sha256"),
         "before_queue_sha256": preflight.get("queue_sha256"),
@@ -1799,7 +1826,13 @@ def _main(argv=None):
                 _print_candidates(unaccepted or all_candidates)
                 return 1
 
-            records = []
+            # K12/09 raw producer evidence and the close aggregate belong to
+            # the batch-close register.  Completed AuditReceipts have their
+            # own canonical register.  Keep the groups separate from the
+            # moment of construction so no later writer has to rediscover
+            # ownership by inspecting record fields.
+            close_records = []
+            audit_records = []
             evidence = {}
             producer_evidence = {}
             final_evidence_records = {}
@@ -1812,7 +1845,7 @@ def _main(argv=None):
                     if not isinstance(receipt, dict):
                         raise ValueError(
                             "%s has no real Gate evidence" % field)
-                    records.append(receipt)
+                    close_records.append(receipt)
                     producer_evidence[field] = receipt["receipt_id"]
                     final_evidence_records[field] = receipt
                 else:
@@ -1823,7 +1856,8 @@ def _main(argv=None):
                     full_receipt = \
                         batch_close_audit.build_full_audit_receipt(
                             stage_plan, pair, raw_receipt)
-                    records.extend((raw_receipt, full_receipt))
+                    close_records.append(raw_receipt)
+                    audit_records.append(full_receipt)
                     producer_evidence[field] = raw_receipt["receipt_id"]
                     final_evidence_records[field] = full_receipt
                 evidence[field] = \
@@ -1910,7 +1944,7 @@ def _main(argv=None):
             })
             attestation.update(plan_binding)
             attestation.update(evidence_binding)
-            records.append(attestation)
+            close_records.append(attestation)
 
             profile_bindings = {
                 field: profile_view[field]
@@ -1954,7 +1988,7 @@ def _main(argv=None):
                     "merged_snapshot_sha256": snapshot,
                     **profile_bindings,
                 })
-                records.append(page_review)
+                close_records.append(page_review)
                 page_review_receipts.append(page_review["receipt_id"])
             page_review_receipts = sorted(page_review_receipts)
 
@@ -1977,7 +2011,7 @@ def _main(argv=None):
                 "closed_list_producer_evidence": producer_evidence,
             })
             global_review.update(plan_binding)
-            records.append(global_review)
+            close_records.append(global_review)
 
             queue_details = "errors=0 candidates=0 remaining=%s ready=%s" % (
                 runtime.get("remaining"),
@@ -1988,11 +2022,11 @@ def _main(argv=None):
                 raise ValueError(
                     "canonical Queue receipt observed a different "
                     "repository snapshot")
-            records.append(consistency)
+            close_records.append(consistency)
 
             corpus_plan_receipt = corpus_plan_check.get("receipt")
             if corpus_plan_receipt is not None:
-                records.append(corpus_plan_receipt)
+                close_records.append(corpus_plan_receipt)
 
             aggregator = _make_receipt(
                 TOOL, TOOL_VERSION, GATE_CHECK, args.batch, "pass",
@@ -2044,7 +2078,7 @@ def _main(argv=None):
             aggregator.update(plan_binding)
             aggregator.update(batch_settlement.close_binding(
                 locked_settlement))
-            records.append(aggregator)
+            commit_records = [aggregator]
 
             _assert_authoritative_state_unchanged(root, state_anchor)
             _assert_work_spec_unchanged(root, item)
@@ -2053,8 +2087,14 @@ def _main(argv=None):
                 raise ValueError(
                     "repository content changed before evidence publication")
             relative_receipt = os.path.relpath(receipt_path, root)
+            relative_audit_receipt = os.path.relpath(
+                audit_receipt_path, root)
             catalog = _receipt_catalog_with(
-                runtime, relative_receipt, records)
+                runtime, (
+                    (relative_receipt, close_records),
+                    (relative_audit_receipt, audit_records),
+                    (relative_receipt, commit_records),
+                ))
             pre_errors = close_gate.close_gate_receipt_errors(
                 catalog, attempt_id,
                 item_id=args.batch,
@@ -2117,7 +2157,14 @@ def _main(argv=None):
                 _append_receipts(receipt_path, [failure])
                 print("[FAIL] %s" % exc)
                 return 1
-            _append_receipts(receipt_path, records)
+            # Publish the aggregate last.  It is the only operation receipt
+            # recognized by recovery and therefore the commit edge for this
+            # multi-register bundle.  Any interruption before it leaves the
+            # writer lock plus an absent operation receipt, which fails closed;
+            # any escaping append/read-back error also preserves that lock.
+            _publish_close_bundle(
+                receipt_path, audit_receipt_path, close_records,
+                audit_records, aggregator)
             _assert_manifest_pages_unchanged(
                 root, frozen_pages, uncertain=True)
             _assert_authoritative_state_unchanged(root, state_anchor)

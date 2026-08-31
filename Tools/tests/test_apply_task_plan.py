@@ -27,6 +27,8 @@ for path in (str(TOOLS), str(TESTS)):
     if path not in sys.path:
         sys.path.insert(0, path)
 
+import Tools.execution.audit.check_proof as check_proof  # noqa: E402
+from Tools.execution.audit import terminal_proof_contract  # noqa: E402
 import Tools.execution.planning.apply_task_plan as apply_task_plan  # noqa: E402
 from Tools.execution.task_runtime import queue_runtime  # noqa: E402
 import Tools.execution.task_runtime.runtime_validation as runtime_validation  # noqa: E402
@@ -49,6 +51,24 @@ R02_CARD = "Card/R02 Fixture Card.md"
 R01_READ_SET = "Read Set/R01 Core Bootstrap Read Set.md"
 R02_READ_SET = "Read Set/R02 Fixture Read Set.md"
 LOADED_MODULE = "kernel/K03 Fixture/01 Conditional Review.md"
+TERMINAL_REQUIRED_ROUTE_IDS = frozenset(
+    terminal_proof_contract.contract_values()["required_route_ids"])
+
+
+def _fixture_card(route_id):
+    if route_id == "R01":
+        return R01_CARD
+    if route_id == "R02":
+        return R02_CARD
+    return "Card/%s Fixture Card.md" % route_id
+
+
+def _fixture_read_set(route_id):
+    if route_id == "R01":
+        return R01_READ_SET
+    if route_id == "R02":
+        return R02_READ_SET
+    return "Read Set/%s Fixture Read Set.md" % route_id
 
 
 def _current_plan(**overrides):
@@ -188,45 +208,82 @@ class TaskPlanBindingContractTests(unittest.TestCase):
 class TaskPlanLoadSetContractTests(unittest.TestCase):
 
     @staticmethod
-    def _registry_patches():
+    def _registry_patches(*, omit=()):
+        route_ids = (TERMINAL_REQUIRED_ROUTE_IDS | {"R01", "R02", "R03"}) - \
+            set(omit)
         cards = {
-            "R01": {"path": R01_CARD},
-            "R02": {"path": R02_CARD},
-            "R03": {"path": "Card/R03 Fixture Card.md"},
+            route_id: {"path": _fixture_card(route_id)}
+            for route_id in route_ids
         }
         read_sets = {
-            "R01": {"path": R01_READ_SET},
-            "R02": {"path": R02_READ_SET},
-            "R03": {"path": "Read Set/R03 Fixture Read Set.md"},
+            route_id: {"path": _fixture_read_set(route_id)}
+            for route_id in route_ids
         }
+
+        def load_closure(_root, seeds, _manifest, _profile_routes):
+            return set(seeds), {LOADED_MODULE}, [], []
+
         return (
             mock.patch.object(
                 apply_task_plan.stamp_cards, "discover_cards",
                 return_value=(cards, read_sets)),
             mock.patch.object(
                 apply_task_plan.queue_runtime, "read_set_load_closure",
-                return_value=(
-                    {R01_READ_SET, R02_READ_SET},
-                    {LOADED_MODULE}, [], [],
-                )),
+                side_effect=load_closure),
         )
 
-    def test_routes_are_the_only_owner_of_derived_cards_and_read_sets(self):
+    def test_build_closes_routes_before_freezing_the_task_contract(self):
         discover, closure = self._registry_patches()
         with discover, closure:
             contract = copy.deepcopy(_current_plan()["contract_after"])
             derived = apply_task_plan._derive_load_sets(".", contract)
-            self.assertEqual(["R01", "R02"],
-                             contract["selected_route_ids"])
-            self.assertEqual([R01_CARD, R02_CARD],
-                             contract["selected_card_paths"])
-            self.assertEqual([R01_READ_SET, R02_READ_SET],
-                             contract["selected_read_sets"])
+            expected_routes = sorted(
+                TERMINAL_REQUIRED_ROUTE_IDS | {"R01", "R02"})
+            self.assertEqual(expected_routes, contract["selected_route_ids"])
+            self.assertEqual(
+                sorted(_fixture_card(route) for route in expected_routes),
+                contract["selected_card_paths"])
+            self.assertEqual(
+                sorted(_fixture_read_set(route) for route in expected_routes),
+                contract["selected_read_sets"])
             self.assertEqual([LOADED_MODULE],
                              contract["loaded_module_paths"])
             self.assertEqual(
+                {"routes": len(expected_routes),
+                 "read_sets": len(expected_routes), "modules": 1}, derived)
+
+    def test_missing_terminal_route_registry_fails_during_task_planning(self):
+        terminal_only = sorted(
+            TERMINAL_REQUIRED_ROUTE_IDS - {"R01", "R02"})
+        self.assertTrue(terminal_only)
+        missing = terminal_only[0]
+        discover, closure = self._registry_patches(omit={missing})
+        with discover, closure, self.assertRaisesRegex(
+                apply_task_plan.Refusal,
+                "selected_route_ids names unregistered route.*%s" % missing):
+            contract = copy.deepcopy(_current_plan()["contract_after"])
+            apply_task_plan._derive_load_sets(".", contract)
+
+    def test_maintenance_does_not_inherit_terminal_proof_routes(self):
+        discover, closure = self._registry_patches()
+        with discover, closure, mock.patch.object(
+                apply_task_plan.terminal_proof_contract, "load_contract",
+                side_effect=AssertionError(
+                    "maintenance must not load Terminal Proof contract")):
+            contract = copy.deepcopy(_current_plan()["contract_after"])
+            contract["completion_semantics"] = "maintenance"
+            derived = apply_task_plan._derive_load_sets(".", contract)
+            self.assertEqual(["R01", "R02"],
+                             contract["selected_route_ids"])
+            self.assertFalse(
+                (TERMINAL_REQUIRED_ROUTE_IDS - {"R01"}) &
+                set(contract["selected_route_ids"]))
+            self.assertEqual(
                 {"routes": 2, "read_sets": 2, "modules": 1}, derived)
 
+    def test_declared_route_errors_remain_fail_closed(self):
+        discover, closure = self._registry_patches()
+        with discover, closure:
             unknown = copy.deepcopy(_current_plan()["contract_after"])
             unknown["selected_route_ids"] = ["R99"]
             with self.assertRaisesRegex(
@@ -250,7 +307,7 @@ def _write_plan(root, plan):
 
 class TaskPlanPublicationIntegrationTests(unittest.TestCase):
 
-    def test_cli_json_publishes_one_planning_state_and_receipt(self):
+    def test_cli_publication_closes_terminal_routes_before_late_proof(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = (Path(temporary) / "repo").resolve()
             install_loadable_profile(root, profile_id="sample")
@@ -288,11 +345,20 @@ class TaskPlanPublicationIntegrationTests(unittest.TestCase):
             self.assertEqual(
                 plan["planned_work"]["pages"], result["coverage"]["pages"])
             contract = result["progress"]["contract"]
-            self.assertEqual(["R01", "R02"], contract["selected_route_ids"])
-            self.assertEqual([R01_CARD, R02_CARD],
-                             contract["selected_card_paths"])
-            self.assertEqual([R01_READ_SET, R02_READ_SET],
-                             contract["selected_read_sets"])
+            expected_routes = sorted(
+                TERMINAL_REQUIRED_ROUTE_IDS | {"R01", "R02"})
+            self.assertEqual(expected_routes, contract["selected_route_ids"])
+            self.assertFalse(
+                check_proof.TERMINAL_REQUIRED_ROUTE_IDS -
+                set(contract["selected_route_ids"]))
+            card_map, read_map = apply_task_plan.stamp_cards.discover_cards(
+                str(root))
+            self.assertTrue(
+                {card_map[route]["path"] for route in expected_routes} <=
+                set(contract["selected_card_paths"]))
+            self.assertTrue(
+                {read_map[route]["path"] for route in expected_routes} <=
+                set(contract["selected_read_sets"]))
             self.assertEqual([LOADED_MODULE], contract["loaded_module_paths"])
             persisted = [json.loads(line) for line in (
                 root / apply_task_plan.RECEIPT_PATH

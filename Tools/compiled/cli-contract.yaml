@@ -148,7 +148,7 @@ source_files:
   - Tools/stamp_cards.py
   - Tools/update_queue.py
   - Tools/update_task.py
-source_hash: sha256:3ceed7c4fe3edd4a566fc949b385d7d14c018e9d319c6e83d56c01bfaa6cbe34
+source_hash: sha256:185d518d1cb90445faf431db4dafcec26e9f4c7fd47cc39a13ba79667f31df34
 agent_interface_policy:
   path: Tools/agent-interface-policy.yaml
   sha256: sha256:26afb19c445def06866398b3019e8043ef4d4548f793e9eafb7a6d3a67d4ca32
@@ -1276,7 +1276,7 @@ tools:
     source_hash: sha256:3ca2bc71fe11e490e074c1f0b10d7be4bade74ab0d1483ceb788aaa939bf0374
     implementation_module: Tools.execution.audit.assemble_terminal_proof
     implementation_path: Tools/execution/audit/assemble_terminal_proof.py
-    implementation_source_hash: sha256:69f449509a6480dd2d20f533a9e3dbf90313e64e14903e8909ff60bd715deb3c
+    implementation_source_hash: sha256:d4ab0d1c545d7443383ee7d3c7087d6cda5708fb9a637e3404ddadb49e018081
     description: Assemble one current K12/16 Terminal Proof
     arguments:
       - dest: root
@@ -1393,7 +1393,7 @@ tools:
     receipt_extensions_extraction: complete
     receipt_extension_sources:
       - path: Tools/execution/audit/assemble_terminal_proof.py
-        sha256: sha256:69f449509a6480dd2d20f533a9e3dbf90313e64e14903e8909ff60bd715deb3c
+        sha256: sha256:d4ab0d1c545d7443383ee7d3c7087d6cda5708fb9a637e3404ddadb49e018081
     agent_interface:
       exposure: mcp
       workspace_argument: root
@@ -1459,7 +1459,7 @@ tools:
     source_hash: sha256:e96843bfa7534219f9589f8c54e9924f0e8ab47af058031091fc67d096fd247c
     implementation_module: Tools.execution.audit.check_batch_close
     implementation_path: Tools/execution/audit/check_batch_close.py
-    implementation_source_hash: sha256:32a5583cf917f74d6bf2126e14294681e56c5eac9c0a7f5751b677af85dea734
+    implementation_source_hash: sha256:5e95c6de76ad87cf4d00bbbcb148e0b5d0e95bcbd062d2f809aa5241bf2649f9
     description: Run and publish the K12/09 batch-close evidence bundle
     arguments:
       - dest: root
@@ -1675,9 +1675,9 @@ tools:
     receipt_extensions_extraction: partial
     receipt_extension_sources:
       - path: Tools/execution/audit/check_batch_close.py
-        sha256: sha256:32a5583cf917f74d6bf2126e14294681e56c5eac9c0a7f5751b677af85dea734
+        sha256: sha256:5e95c6de76ad87cf4d00bbbcb148e0b5d0e95bcbd062d2f809aa5241bf2649f9
       - path: Tools/execution/planning/check_corpus_plan.py
-        sha256: sha256:30343195d3c9c1401fd2ec7bdd7ca9c59b1c60d13915fa4ee108cb21b56db67c
+        sha256: sha256:cd3306f74db28553fd255952fd8ac4fb07cec2dfcdc9ba3db48face9c15bcdce
       - path: Tools/execution/task_runtime/queue_check_receipt.py
         sha256: sha256:0cbe8593fa3e1fbaf38b76a34f4f84f283a7ed5c70db0052d4db838a3f8f002f
       - path: Tools/platform/common/kblib.py
@@ -1871,7 +1871,7 @@ tools:
     source_hash: sha256:b9b4e26d2da393302c327ec70940c502de5c4e4d5b356d177347037f13ce7f8c
     implementation_module: Tools.execution.planning.check_corpus_plan
     implementation_path: Tools/execution/planning/check_corpus_plan.py
-    implementation_source_hash: sha256:30343195d3c9c1401fd2ec7bdd7ca9c59b1c60d13915fa4ee108cb21b56db67c
+    implementation_source_hash: sha256:cd3306f74db28553fd255952fd8ac4fb07cec2dfcdc9ba3db48face9c15bcdce
     description: Validate explicit Corpus Planning artifacts
     arguments:
       - dest: root
@@ -1926,7 +1926,7 @@ tools:
     receipt_extensions_extraction: partial
     receipt_extension_sources:
       - path: Tools/execution/planning/check_corpus_plan.py
-        sha256: sha256:30343195d3c9c1401fd2ec7bdd7ca9c59b1c60d13915fa4ee108cb21b56db67c
+        sha256: sha256:cd3306f74db28553fd255952fd8ac4fb07cec2dfcdc9ba3db48face9c15bcdce
       - path: Tools/platform/common/kblib.py
         sha256: sha256:e3c4768907708d817747072c0b797c7bd0e4ce2c7b5005292bee6624c1febd70
     agent_interface:
@@ -2610,7 +2610,7 @@ tools:
     source_hash: sha256:2955a05d3c37a62d239025e7ae0cd06e100d55760c6dcea1a9e2b4b90cd26567
     implementation_module: Tools.execution.audit.check_proof
     implementation_path: Tools/execution/audit/check_proof.py
-    implementation_source_hash: sha256:0cccdec5f62dd9f1b12d205e85af08dcc46ca98258b34dc5ab522c2ee512d1fa
+    implementation_source_hash: sha256:10d25bcb82a1a0aba00d1add8313baceed8fa0f5ad69bd1089d7c890f982f85c
     description: Terminal Proof completeness and zero-condition check
     arguments:
       - dest: proof
@@ -2691,7 +2691,7 @@ tools:
     receipt_extensions_extraction: partial
     receipt_extension_sources:
       - path: Tools/execution/audit/check_proof.py
-        sha256: sha256:0cccdec5f62dd9f1b12d205e85af08dcc46ca98258b34dc5ab522c2ee512d1fa
+        sha256: sha256:10d25bcb82a1a0aba00d1add8313baceed8fa0f5ad69bd1089d7c890f982f85c
       - path: Tools/platform/common/kblib.py
         sha256: sha256:e3c4768907708d817747072c0b797c7bd0e4ce2c7b5005292bee6624c1febd70
     agent_interface:
@@ -5768,7 +5768,7 @@ tools:
     source_hash: sha256:ed60ef89cfe764ad3467e569402a1ff556897c6ec3b931d5dcf52363e927ee39
     implementation_module: Tools.execution.planning.record_corpus_acceptance
     implementation_path: Tools/execution/planning/record_corpus_acceptance.py
-    implementation_source_hash: sha256:c060a906e6ece0e2b3ff53ff5bf7441567f7de2cfc6339021331ee4b3b28608d
+    implementation_source_hash: sha256:314bed485acf10019b0db5dc21854f7ef95c33cb0bafda11882cc9f90e1ed683
     description: Record a Profile-authorized Corpus Planning semantic decision as machine-readable JSONL
     arguments:
       - dest: root
@@ -5842,9 +5842,9 @@ tools:
     receipt_extensions_extraction: partial
     receipt_extension_sources:
       - path: Tools/execution/planning/check_corpus_plan.py
-        sha256: sha256:30343195d3c9c1401fd2ec7bdd7ca9c59b1c60d13915fa4ee108cb21b56db67c
+        sha256: sha256:cd3306f74db28553fd255952fd8ac4fb07cec2dfcdc9ba3db48face9c15bcdce
       - path: Tools/execution/planning/record_corpus_acceptance.py
-        sha256: sha256:c060a906e6ece0e2b3ff53ff5bf7441567f7de2cfc6339021331ee4b3b28608d
+        sha256: sha256:314bed485acf10019b0db5dc21854f7ef95c33cb0bafda11882cc9f90e1ed683
       - path: Tools/platform/common/kblib.py
         sha256: sha256:e3c4768907708d817747072c0b797c7bd0e4ce2c7b5005292bee6624c1febd70
     agent_interface:

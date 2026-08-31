@@ -18,7 +18,7 @@ The registered terminal-proof machine contract is the sole normative source for 
 - Coverage reconciliation and zero Required authoring gaps;
 - the complete deterministic result set and current Queue, Corpus Planning,
   Profile-load, and Terminal Proof Gate evidence;
-- manual review, rendering evidence, AuditReceipt dimension coverage, reuse,
+- manual review, rendering evidence, plan-bound dimension evidence coverage, reuse,
   supersession, invalidation, sampling, and systemic-expansion results;
 - unresolved-invalidation and unverified-batch counts;
 - the deferred external-evidence backlog, time-contract result, and Final
@@ -30,11 +30,11 @@ The Proof copies the resolved loading selection frozen by the Task Contract; it 
 
 `full_deterministic_results` references the complete deterministic set run against the final frozen snapshot. `unverified_batches = 0` requires the Queue-derived merge view to be empty; it cannot be satisfied by a separate manually maintained list.
 
-Every build Proof consumes one current `required-queue-completion` receipt and one current `corpus-plan-structure` receipt, including when the selected Profile declares Corpus Planning not applicable. When it is configured, the Proof also consumes one current `corpus-plan-semantic-acceptance` receipt covering every current Capability ID under the Profile-authorized role and decision scope. The Proof binds these terminal Gate records through the canonical Terminal Audit receipt register; the separate AuditReceipt register supplies dimension evidence. Both registers and every cited record must bind the same Profile, planning artifacts, task state, Queue revisions, and frozen repository snapshot as the Proof. Missing, duplicate, rejected, malformed, aliased, or stale evidence blocks completion.
+Every build Proof consumes one current `required-queue-completion` receipt and one current `corpus-plan-structure` receipt, including when the selected Profile declares Corpus Planning not applicable. When it is configured, the Proof also consumes one current `corpus-plan-semantic-acceptance` receipt covering every current Capability ID under the Profile-authorized role and decision scope. The Proof binds these terminal Gate records through the canonical Terminal Audit receipt register. Dimension evidence is derived only from the complete AuditPlan and close reconciliation of admitted `closed` batches: every cited ref is the current selected evidence of one non-dimensionless obligation and remains subject to its registered evidence-kind owner. Full AuditReceipts additionally remain byte-identical members of the separate AuditReceipt register; other admitted evidence kinds are not converted into AuditReceipts merely for Terminal accounting. Every cited record must bind the same Profile, planning artifacts, task state, and frozen evidence context accepted by its closed batch. Missing, duplicate, rejected, malformed, aliased, foreign, or stale evidence blocks completion.
 
 Rendering evidence states the highest level actually used and the verification result. Where no visual exception trigger exists, an explicit not-applicable result is sufficient; absence of UI, screenshots, or recordings does not block completion.
 
-Dimension coverage accounts for every base dimension in K12/07 and every applicable registered extension dimension. A dimension that ran cites the current receipts carrying its verdict; one with no in-scope object carries an explicit reasoned not-applicable decision. Omission, an empty receipt set, an unresolvable registry, duplicate use across dimensions, or a stale or invalidated receipt is not a pass. Whether a not-applicable rationale is true remains a semantic review item.
+Dimension coverage accounts for every base dimension in K12/07 and every applicable registered extension dimension. A dimension that ran cites the exact current selected evidence refs of its applicable AuditPlan obligations, as frozen by the corresponding close reconciliation. Dimensionless Gate evidence never enters this map. A dimension may carry an explicit reasoned not-applicable decision only when the complete closed-plan set contains no applicable obligation in that dimension; the absence of an AuditReceipt is not evidence of non-applicability. Omission, an empty evidence set, an unresolvable plan or registry, a ref outside the close reconciliation, duplicate use across dimensions, or stale or invalidated evidence is not a pass. Whether a not-applicable rationale is true remains a semantic review item.
 
 ## Terminal Completion Gate
 

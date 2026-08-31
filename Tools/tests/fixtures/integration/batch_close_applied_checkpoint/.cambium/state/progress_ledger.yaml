@@ -1,0 +1,70 @@
+schema_version: 2
+task_id: fixture-task
+task_state: active
+task_transition_receipts:
+  - audit-update_task-20260831T221046Z-d3f6fa9d09694155a3fcd9b75bb71c0b-0001
+required_queue_path: .cambium/state/required_queue.yaml
+queue_revision: 2
+queue_state_revision: 2
+required_queue_sha256: sha256:9e300f5f6ef33e0cf014a18bb737f7b226cc5ebe8d2974f2fba345da8207f333
+initial_queue_receipt: audit-fixture-initial-queue
+contract:
+  contract_version: c1
+  completion_semantics: build
+  objective: Complete fixture Required Queue batches with durable evidence.
+  exclusions:
+    - Do not modify profile policy.
+  scope_version: s1
+  concurrency_cap: 2
+  upstream_revision_id: 0123456789abcdef0123456789abcdef01234567
+  selected_profile_manifest: profiles/test-profile/profile.md
+  selected_route_ids:
+    - R01
+    - R03
+    - R07
+  selected_card_paths:
+    - Card/R01 Core Bootstrap Card.md
+    - Card/R03 Module Build Card.md
+    - Card/R07 Long-running Execution Card.md
+  selected_profile_route_ids: []
+  selected_read_sets:
+    - Read Set/R01 Core Bootstrap Read Set.md
+    - Read Set/R03 Module Build Read Set.md
+    - Read Set/R07 Long-running Execution Read Set.md
+  loaded_module_paths:
+    - kernel/K03 Fixture/01 Conditional Review.md
+  minimum_run_until: ""
+  checkpoint_at: ""
+  hard_stop_at: ""
+  completion_gate: remaining_required_work_units=0
+  policy_exceptions: []
+  amendment_authority:
+    schema_version: 1
+    authority_id: AUTH-FIXTURE
+    mode: user-only
+    allowed_change_classes: []
+checkpoint:
+  recorded_at: 2026-08-31T22:10:46Z
+  summary: first Required Queue batch B1 opened
+  task_state: active
+  task_transition_receipt: audit-update_task-20260831T221046Z-d3f6fa9d09694155a3fcd9b75bb71c0b-0001
+  coverage_sha256: sha256:f7cfec39b0c7e6f5bc8dd90b52d3620a13d20f5fbf6072557f515c8d07940954
+  required_queue_sha256: sha256:06a356cb9a0729f6cd2cdf5bf40f47eb098b2fc9f18543102a5a5b1426c516a5
+  queue_revision: 2
+  queue_state_revision: 1
+terminal_audit:
+  state: not-started
+  terminal_proof_path: null
+  terminal_proof_sha256: null
+  terminal_proof_receipt: null
+  queue_check_receipt: null
+maintenance_completion:
+  state: not-applicable
+  completion_gate_receipt: null
+  budget_manifest_receipt: null
+  ledger_advance_receipt: null
+  watermark_advance_receipt: null
+amendments: []
+standards_adoptions: []
+guidance_queue: []
+initial_task_plan_receipt: audit-fixture-initial-task-plan

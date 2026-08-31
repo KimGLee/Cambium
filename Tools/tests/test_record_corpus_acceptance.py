@@ -255,7 +255,9 @@ class RecordCorpusAcceptanceIntegrationTests(unittest.TestCase):
             return_code, payload = self.invoke("stopper")
         self.assertEqual(0, return_code)
         self.assertTrue(payload["applied"])
-        self.assertEqual("current", payload["status"]["status"])
+        self.assertEqual("applied", payload["status"])
+        self.assertEqual(
+            "current", payload["semantic_acceptance"]["status"])
 
         rows = [
             json.loads(line)

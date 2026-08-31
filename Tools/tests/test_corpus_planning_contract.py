@@ -288,7 +288,7 @@ class CorpusPlanningSingleOwnerTests(unittest.TestCase):
             "Tools/execution/audit/check_batch_close.py": (
                 "PASS_RECEIPT_BINDING_FIELDS",),
             "Tools/execution/audit/check_proof.py": (
-                "PASS_RECEIPT_BINDING_FIELDS",),
+                "check_corpus_plan.semantic_acceptance_status",),
         }
         for relative, symbols in required_symbols.items():
             source = (REPOSITORY / relative).read_text(encoding="utf-8")

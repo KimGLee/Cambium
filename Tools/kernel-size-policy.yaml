@@ -69,7 +69,7 @@ exceptions:
     growth_cap_bytes: 7168
     record_id: EXC-014
   - path: kernel/K12 Quality Assurance/16 Terminal Proof Contract.md
-    measured_bytes: 5974
+    measured_bytes: 6702
     growth_cap_bytes: 11264
     record_id: EXC-015
   - path: kernel/K12 Quality Assurance/17 Gate Receipt Payload Contract.md

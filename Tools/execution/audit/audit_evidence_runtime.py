@@ -28,6 +28,7 @@ import Tools.platform.common.kblib as kblib
 import Tools.execution.evidence.metadata_gate_runtime as metadata_gate_runtime
 import Tools.knowledge.metadata.metadata_property_state as metadata_property_state
 import Tools.governance.profile.profile_batch_judgment_contract as profile_batch_judgment_contract
+import Tools.governance.profile.profile_contract as profile_contract
 import Tools.knowledge.rendering.rendering_verification_contract as rendering_verification_contract
 import Tools.execution.task_runtime.runtime_paths as runtime_paths
 import Tools.execution.audit.substantive_review_contract as substantive_review_contract
@@ -514,46 +515,6 @@ def _producer_evidence_errors(root, catalog, plan, plan_sha256,
         errors.append(
             "AuditReceipt producer chain has unsupported execution route")
     return sorted(set(errors))
-
-
-def validate_audit_receipt_for_obligation(
-        root, catalog, plan, plan_sha256, obligation, receipt, *,
-        result=None, item=None, require_current=False):
-    """Validate one full AuditReceipt through the sole runtime consumer.
-
-    Callers that need a dimension-specific AuditReceipt must use this boundary
-    instead of reimplementing a weaker subset of the Kernel contract.  The
-    function proves both the receipt's closed machine shape and the referenced
-    producer evidence, including the original plan, obligation, current
-    authority, and evidence-time fingerprints.
-    """
-    if not isinstance(obligation, dict) or \
-            obligation.get("evidence_kind") != "audit-receipt":
-        raise AuditEvidenceError(
-            "AuditReceipt validation requires one audit-receipt obligation")
-    if not isinstance(receipt, dict):
-        raise AuditEvidenceError("AuditReceipt must be a mapping")
-    try:
-        contract = audit_receipt_contract.load_contract(root)
-        audit_receipt_contract.validate_audit_receipt(
-            receipt, contract=contract)
-    except (OSError, TypeError, UnicodeError, ValueError,
-            kblib.YamlSubsetError) as exc:
-        raise AuditEvidenceError(
-            "invalid full AuditReceipt %r: %s" %
-            (receipt.get("receipt_id"), exc)) from exc
-    errors = _receipt_plan_binding_errors(
-        receipt, plan, plan_sha256, obligation)
-    errors.extend(_producer_evidence_errors(
-        root, catalog, plan, plan_sha256, obligation, receipt,
-        require_current=require_current, result=result, item=item))
-    errors = sorted(set(errors))
-    if errors:
-        raise AuditEvidenceError(
-            "AuditReceipt %s does not discharge obligation %s in: %s" %
-            (receipt.get("receipt_id"), obligation.get("obligation_id"),
-             ", ".join(errors)))
-    return receipt
 
 
 def _record_sha256(record):
@@ -1662,6 +1623,350 @@ def terminal_plan_reconciliation(result):
     }
 
 
+_TERMINAL_DIMENSION_EVIDENCE_FIELDS = (
+    "batch_id", "plan_id", "obligation_id", "dimension",
+    "evidence_kind", "evidence_ref",
+)
+
+
+def _dimension_evidence_is_applicable(obligation, record):
+    """Return whether one selected dimension row actually ran.
+
+    M-tier conditional atoms remain frozen in every AuditPlan.  Their
+    producer record is also the owner of the applicable/not-applicable
+    disposition, so a reasoned not-applicable atom must not make the whole
+    dimension look as though it ran.  Other admitted dimension evidence kinds
+    are projected only when their obligation exists and has already passed
+    its own final-evidence validator.
+    """
+    if obligation.get("dimension") is None:
+        return False
+    if record.get("record_kind") == "batch-page-review-record" and \
+            record.get("review_variant") == "m-atomic-item":
+        disposition = record.get("applicability_disposition")
+        if disposition == "not-applicable":
+            return False
+        if disposition != "applicable":
+            raise AuditEvidenceError(
+                "M-tier dimension evidence has no valid applicability "
+                "disposition")
+    return True
+
+
+def _post_delta_evidence_closure(
+        result, item, close_receipt, *, required_state):
+    """Resolve and validate the one K12/09 after-image closure.
+
+    ``check_batch_close`` produces the eight registry members as one atomic
+    post-Delta set.  Both the merge-ready close transition and the later
+    Terminal projection consume that same set through the K12/09 registry and
+    :mod:`batch_close_audit`; neither consumer may reinterpret a member as a
+    generic AuditReceipt attempt or discover a nearby record by scanning the
+    Receipt namespace.
+    """
+    if not isinstance(close_receipt, dict):
+        raise AuditEvidenceError(
+            "post-Delta closure requires one batch-close aggregate")
+    catalog = current_receipt_catalog(result)
+    stage_plan = resolve_stage_plan(
+        result, item, "post-delta-close", required_state=required_state)
+    profile_view = result.get("_profile_authorized_view") or {}
+    selected_profile = profile_view.get("_contract")
+    projection = batch_close_audit.resolve_post_delta_projection(
+        stage_plan,
+        batch_close_contract.closed_list_member_rows(result["root"]),
+        selected_profile)
+
+    bindings = close_receipt.get("post_delta_evidence_bindings")
+    if not isinstance(bindings, list):
+        raise AuditEvidenceError(
+            "batch-close aggregate has no post-Delta evidence bindings")
+    if len(bindings) != len(projection):
+        raise AuditEvidenceError(
+            "batch-close post-Delta binding count differs from the K12/09 "
+            "registry")
+
+    evidence_by_id = {}
+    for index, binding in enumerate(bindings):
+        if not isinstance(binding, dict):
+            raise AuditEvidenceError(
+                "post-Delta evidence binding %d must be a mapping" %
+                (index + 1))
+        evidence_ref = binding.get("evidence_ref")
+        if evidence_ref in evidence_by_id:
+            raise AuditEvidenceError(
+                "post-Delta evidence bindings repeat receipt %r" %
+                evidence_ref)
+        evidence_by_id[evidence_ref] = _current_record(
+            catalog, evidence_ref, "post-Delta evidence")
+
+    producer_refs = close_receipt.get("closed_list_producer_evidence")
+    if not isinstance(producer_refs, dict):
+        raise AuditEvidenceError(
+            "batch-close aggregate has no producer-evidence mapping")
+    expected_members = {
+        pair["member"]["member_id"] for pair in projection
+    }
+    if set(producer_refs) != expected_members:
+        raise AuditEvidenceError(
+            "batch-close producer-evidence members do not equal the "
+            "post-Delta registry")
+
+    producer_records = {}
+    final_by_obligation = {}
+    producer_by_obligation = {}
+    for pair, binding in zip(projection, bindings):
+        member = pair["member"]
+        obligation = pair["obligation"]
+        member_id = member["member_id"]
+        final_ref = binding.get("evidence_ref")
+        final_record = evidence_by_id.get(final_ref)
+        if not isinstance(final_record, dict):
+            raise AuditEvidenceError(
+                "%s post-Delta final evidence is unavailable" % member_id)
+        precursor_ref = producer_refs.get(member_id)
+        if member["evidence_kind"] == "gate-receipt":
+            if precursor_ref != final_ref:
+                raise AuditEvidenceError(
+                    "%s producer evidence must be the original Gate record" %
+                    member_id)
+            precursor = final_record
+        else:
+            if final_record.get("evidence_ref") != precursor_ref:
+                raise AuditEvidenceError(
+                    "%s AuditReceipt does not cite its declared producer "
+                    "evidence" % member_id)
+            precursor = _current_record(
+                catalog, precursor_ref,
+                "%s post-Delta producer evidence" % member_id)
+        producer_records[member_id] = precursor
+        obligation_id = obligation["obligation_id"]
+        final_by_obligation[obligation_id] = final_record
+        producer_by_obligation[obligation_id] = precursor
+
+    closure = batch_close_audit.validate_post_delta_evidence_set(
+        stage_plan, projection, bindings, evidence_by_id,
+        close_receipt.get("merged_snapshot_sha256"),
+        producer_evidence_by_member=producer_records,
+        producer_tool=close_receipt.get("tool"),
+        producer_tool_version=close_receipt.get("tool_version"))
+    reconciliation = reconciliation_from_bindings(
+        closure["bindings"], {
+            obligation_id: record["receipt_id"]
+            for obligation_id, record in producer_by_obligation.items()
+        })
+    return {
+        "stage_plan": stage_plan,
+        "projection": projection,
+        "bindings": closure["bindings"],
+        "evidence_set_sha256": closure["evidence_set_sha256"],
+        "final_by_obligation": final_by_obligation,
+        "producer_by_obligation": producer_by_obligation,
+        "reconciliation": reconciliation,
+    }
+
+
+def _reconciled_current_catalog(catalog, reconciliation, *, batch_id,
+                                obligation_id):
+    """Materialize only the current records selected by one close row."""
+    selected = reconciliation.get("selected_evidence_ref")
+    produced = reconciliation.get("produced_evidence_refs")
+    if (reconciliation.get("selected_disposition") != "produced" or
+            not isinstance(selected, str) or not selected or
+            not isinstance(produced, list) or selected not in produced):
+        raise AuditEvidenceError(
+            "closed batch %s obligation %s has no produced reconciliation "
+            "selection" % (batch_id, obligation_id))
+    scoped = {}
+    for receipt_id in produced:
+        if not isinstance(receipt_id, str) or not receipt_id:
+            raise AuditEvidenceError(
+                "closed batch %s obligation %s has an invalid produced "
+                "evidence reference" % (batch_id, obligation_id))
+        scoped[receipt_id] = _current_record(
+            catalog, receipt_id,
+            "closed reconciliation evidence for %s" % obligation_id)
+    return scoped
+
+
+def _closed_batch_dimension_evidence(
+        result, item, catalog, terminal_dimensions):
+    """Resolve one closed batch's exact plan-bound dimension evidence.
+
+    The close reconciliation is the immutable selection made by the guarded
+    close.  The AuditPlan supplies dimension and evidence-kind identity, and
+    the existing final-evidence handlers revalidate every selected record
+    through its own owner contract.  Neither the close receipt nor Terminal
+    Proof may infer a dimension from an arbitrary current record.
+    """
+    batch_id = item.get("id")
+    close_id = item.get("close_gate_receipt")
+    close = _current_record(catalog, close_id, "closed batch receipt")
+    invalidated = set(result.get("invalidated_evidence_receipt_ids") or ())
+    if close_id in invalidated or close.get("invalidated_by") is not None:
+        raise AuditEvidenceError(
+            "closed batch %s close receipt is invalidated" % batch_id)
+    if close.get("result") != "pass":
+        raise AuditEvidenceError(
+            "closed batch %s close receipt did not pass" % batch_id)
+
+    projection = validate_plan_reconciliation({
+        field: close.get(field)
+        for field in audit_reconciliation_contract.projection_fields()
+    })
+    reconciliation = {
+        row["obligation_id"]: row
+        for row in projection["audit_evidence_reconciliation"]
+    }
+    postdelta = _post_delta_evidence_closure(
+        result, item, close, required_state="closed")
+    relative = postdelta["stage_plan"]["audit_plan_path"]
+    plan = postdelta["stage_plan"]["plan"]
+    plan_sha256 = postdelta["stage_plan"]["audit_plan_sha256"]
+    expected_close = {
+        "audit_plan_id": plan["plan_id"],
+        "audit_plan_path": relative,
+        "audit_plan_sha256": plan_sha256,
+    }
+    drift = sorted(
+        field for field, value in expected_close.items()
+        if close.get(field) != value)
+    if drift:
+        raise AuditEvidenceError(
+            "closed batch %s close receipt differs from its AuditPlan in: %s"
+            % (batch_id, ", ".join(drift)))
+
+    obligations = {
+        row["obligation_id"]: row for row in plan["obligations"]
+    }
+    if set(obligations) != set(reconciliation):
+        raise AuditEvidenceError(
+            "closed batch %s reconciliation does not cover its complete "
+            "AuditPlan" % batch_id)
+
+    rows = []
+    selected_refs = set()
+    postdelta_rows = {
+        row["obligation_id"]: row for row in
+        postdelta["reconciliation"]["audit_evidence_reconciliation"]
+    }
+    for obligation_id in sorted(obligations):
+        obligation = obligations[obligation_id]
+        reconciled = reconciliation[obligation_id]
+        if obligation.get("due_stage") == "post-delta-close":
+            expected_row = postdelta_rows.get(obligation_id)
+            record = postdelta["final_by_obligation"].get(obligation_id)
+            resolution_status = "satisfied" if (
+                isinstance(record, dict) and expected_row == reconciled
+            ) else "invalid"
+        else:
+            scoped_catalog = _reconciled_current_catalog(
+                catalog, reconciled, batch_id=batch_id,
+                obligation_id=obligation_id)
+            resolution = _required_obligation_resolution(
+                result, item, plan, plan_sha256, scoped_catalog, obligation,
+                require_current=False)
+            record = resolution.get("record")
+            resolution_status = resolution.get("status")
+        selected = (record.get("receipt_id")
+                    if isinstance(record, dict) else None)
+        if (resolution_status != "satisfied" or
+                not isinstance(selected, str) or not selected or
+                reconciled.get("unresolved") or
+                reconciled.get("selected_evidence_ref") != selected or
+                reconciled.get("selected_disposition") != "produced" or
+                reconciled.get("due_stage") != obligation.get("due_stage")):
+            raise AuditEvidenceError(
+                "closed batch %s obligation %s has no current selected "
+                "evidence matching its close reconciliation" %
+                (batch_id, obligation_id))
+        if selected in invalidated:
+            raise AuditEvidenceError(
+                "closed batch %s obligation %s selects invalidated evidence "
+                "%s" % (batch_id, obligation_id, selected))
+        if selected in selected_refs:
+            raise AuditEvidenceError(
+                "closed batch %s selects evidence %s for more than one "
+                "AuditPlan obligation" % (batch_id, selected))
+        selected_refs.add(selected)
+        if not _dimension_evidence_is_applicable(obligation, record):
+            continue
+        dimension = obligation.get("dimension")
+        if not isinstance(dimension, str) or not dimension:
+            raise AuditEvidenceError(
+                "applicable dimension evidence has no registered dimension")
+        if dimension not in terminal_dimensions:
+            # A review-only Profile extension is still a required AuditPlan
+            # obligation and has already passed its owner and close
+            # reconciliation above.  It is not a Terminal receipt dimension.
+            continue
+        row = {
+            "batch_id": batch_id,
+            "plan_id": plan["plan_id"],
+            "obligation_id": obligation_id,
+            "dimension": dimension,
+            "evidence_kind": obligation["evidence_kind"],
+            "evidence_ref": selected,
+        }
+        if tuple(row) != _TERMINAL_DIMENSION_EVIDENCE_FIELDS:
+            raise AssertionError(
+                "Terminal dimension evidence fields drifted")
+        rows.append(row)
+    return rows
+
+
+def terminal_dimension_evidence(result):
+    """Project current plan-bound dimension evidence for Terminal Proof.
+
+    Only evidence selected by the complete reconciliation of a currently
+    admitted closed batch can enter this projection.  Each selected record is
+    first resolved by the evidence-kind-specific final handler.  Records that
+    merely happen to be current, dimensionless Gate evidence, and conditional
+    M atoms with a proved not-applicable disposition are deliberately absent.
+    """
+    if not isinstance(result, dict):
+        raise AuditEvidenceError(
+            "Terminal dimension evidence needs runtime state")
+    errors = result.get("errors")
+    if errors:
+        raise AuditEvidenceError(
+            "Terminal dimension evidence requires an admitted runtime: %s" %
+            "; ".join(str(value) for value in errors))
+    items = result.get("items_by_id")
+    if not isinstance(items, dict):
+        raise AuditEvidenceError(
+            "Terminal dimension evidence has no canonical Queue item view")
+    catalog = current_receipt_catalog(result)
+    profile_view = result.get("_profile_authorized_view")
+    contract = profile_view.get("_contract") \
+        if isinstance(profile_view, dict) else None
+    try:
+        terminal_dimensions = frozenset(
+            profile_contract.terminal_receipt_dimensions_projection(
+                contract))
+    except (TypeError, ValueError) as exc:
+        raise AuditEvidenceError(
+            "Terminal dimension evidence has no authorized Profile "
+            "dimension projection: %s" % exc) from exc
+    rows = []
+    for batch_id, item in sorted(items.items()):
+        if not isinstance(item, dict):
+            raise AuditEvidenceError(
+                "Queue item %s is not a mapping" % batch_id)
+        if item.get("state") != "closed":
+            continue
+        rows.extend(_closed_batch_dimension_evidence(
+            result, item, catalog, terminal_dimensions))
+    rows.sort(key=lambda row: (
+        row["batch_id"], row["plan_id"], row["obligation_id"],
+        row["evidence_ref"]))
+    refs = [row["evidence_ref"] for row in rows]
+    if len(refs) != len(set(refs)):
+        raise AuditEvidenceError(
+            "Terminal dimension evidence repeats a selected evidence ref")
+    return tuple(rows)
+
+
 def _stage_reconciliation(result, item, plan, plan_sha256, catalog,
                           obligations, *, require_current):
     rows = []
@@ -1911,74 +2216,10 @@ def closed_plan_closure_errors(result, item, close_receipt):
             result, item, wrapper, required_state="merge-ready"))
         premerge = batch_review_evidence(
             result, item, required_state="merge-ready")
-        stage_plan = resolve_stage_plan(
-            result, item, "post-delta-close",
-            required_state="merge-ready")
-        profile_view = result.get("_profile_authorized_view") or {}
-        profile_contract = profile_view.get("_contract")
-        projection = batch_close_audit.resolve_post_delta_projection(
-            stage_plan,
-            batch_close_contract.closed_list_member_rows(result["root"]),
-            profile_contract)
-        raw_bindings = close_receipt.get("post_delta_evidence_bindings")
-        if not isinstance(raw_bindings, list):
-            raise AuditEvidenceError(
-                "batch-close aggregate has no post-Delta evidence bindings")
-        evidence_by_id = {}
-        for binding in raw_bindings:
-            if not isinstance(binding, dict):
-                raise AuditEvidenceError(
-                    "post-Delta evidence binding must be a mapping")
-            evidence_ref = binding.get("evidence_ref")
-            evidence_by_id[evidence_ref] = _current_record(
-                catalog, evidence_ref, "post-Delta evidence")
-        producer_evidence = close_receipt.get(
-            "closed_list_producer_evidence")
-        if not isinstance(producer_evidence, dict):
-            raise AuditEvidenceError(
-                "batch-close aggregate has no producer-evidence mapping")
-        expected_members = {
-            pair["member"]["member_id"] for pair in projection
-        }
-        if set(producer_evidence) != expected_members:
-            raise AuditEvidenceError(
-                "batch-close producer-evidence members do not equal the "
-                "post-Delta registry")
-        producer_records = {}
-        for pair, binding in zip(projection, raw_bindings):
-            member = pair["member"]
-            member_id = member["member_id"]
-            final_ref = binding["evidence_ref"]
-            final_record = evidence_by_id[final_ref]
-            precursor_ref = producer_evidence[member_id]
-            if member["evidence_kind"] == "gate-receipt":
-                if precursor_ref != final_ref:
-                    raise AuditEvidenceError(
-                        "%s producer evidence must be the original Gate "
-                        "record" % member_id)
-                producer_records[member_id] = final_record
-                continue
-            if final_record.get("evidence_ref") != precursor_ref:
-                raise AuditEvidenceError(
-                    "%s AuditReceipt does not cite its declared producer "
-                    "evidence" % member_id)
-            precursor = _current_record(
-                catalog, precursor_ref,
-                "%s post-Delta producer evidence" % member_id)
-            producer_records[member_id] = precursor
-        postdelta = batch_close_audit.validate_post_delta_evidence_set(
-            stage_plan, projection, raw_bindings, evidence_by_id,
-            close_receipt.get("merged_snapshot_sha256"),
-            producer_evidence_by_member=producer_records,
-            producer_tool=close_receipt.get("tool"),
-            producer_tool_version=close_receipt.get("tool_version"))
-        producer_refs_by_obligation = {
-            pair["obligation"]["obligation_id"]:
-                producer_evidence.get(pair["member"]["member_id"])
-            for pair in projection
-        }
-        postdelta_reconciliation = reconciliation_from_bindings(
-            postdelta["bindings"], producer_refs_by_obligation)
+        postdelta = _post_delta_evidence_closure(
+            result, item, close_receipt, required_state="merge-ready")
+        stage_plan = postdelta["stage_plan"]
+        postdelta_reconciliation = postdelta["reconciliation"]
         premerge_reconciliation = {
             field: premerge[field]
             for field in audit_reconciliation_contract.projection_fields()
@@ -2033,9 +2274,9 @@ __all__ = [
     'current_consumption_evidence_ids',
     'reconciliation_from_bindings',
     'resolve_stage_plan',
+    'terminal_dimension_evidence',
     'terminal_plan_reconciliation',
     'stage_evidence_closure',
     'stage_evidence_status',
-    'validate_audit_receipt_for_obligation',
     'wrapper_binding_errors',
 ]

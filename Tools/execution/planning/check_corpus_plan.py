@@ -1932,23 +1932,25 @@ def semantic_acceptance_status(result, *, repository_snapshot_sha256=None):
             corpus_planning_contract.SEMANTIC_ACCEPTANCE_SCOPE,
         "capability_decisions": [],
     }
+    if result.get("errors") or result.get("applicability") != \
+            corpus_planning_contract.CONFIGURED_STATE and \
+            result.get("applicability") != \
+            corpus_planning_contract.INACTIVE_STATE:
+        base["status"] = "unavailable"
+        return base
+    runtime = result.get("runtime")
+    if (not isinstance(runtime, dict) or runtime.get("errors") or
+            not isinstance(runtime.get("current_receipt_catalog"), dict)):
+        base["status"] = "unavailable"
+        return base
     if result.get("applicability") == \
             corpus_planning_contract.INACTIVE_STATE:
         base["status"] = corpus_planning_contract.INACTIVE_STATE
         return base
-    if result.get("errors") or result.get("applicability") != \
-            corpus_planning_contract.CONFIGURED_STATE:
-        base["status"] = "unavailable"
-        return base
     authorities = (result.get("slot") or {}).get("authorities") or []
     if len(authorities) == 1:
         base["authority_role_id"] = authorities[0].get("role_id")
-    runtime = result.get("runtime")
-    if not isinstance(runtime, dict) or runtime.get("errors"):
-        return base
     catalog = runtime.get("current_receipt_catalog")
-    if not isinstance(catalog, dict):
-        catalog = runtime.get("receipt_catalog") or {}
     candidates = []
     for receipt_id, entry in catalog.items():
         receipt = catalog_receipt(catalog, receipt_id)
@@ -1968,8 +1970,10 @@ def semantic_acceptance_status(result, *, repository_snapshot_sha256=None):
         item[0].get("receipt_id") if isinstance(
             item[0].get("receipt_id"), str) else "",
     )
-    if current:
-        receipt, _ = max(current, key=key)
+    if len(current) > 1:
+        base["status"] = "ambiguous"
+    elif current:
+        receipt, _ = current[0]
         base.update({
             "status": ("current" if receipt.get("result") == "pass"
                        else "rejected"),

@@ -198,5 +198,25 @@ class CurrentProfileContractFixture:
         self.slots.write_text(
             text[:start] + section + text[end:], encoding="utf-8")
 
+    def configure_extension_dimensions(self, rows):
+        """Replace the synthetic Profile's typed extension-dimension rows."""
+        text = self.slots.read_text(encoding="utf-8")
+        start = text.index("## Extension Dimensions")
+        end = text.index("\n## ", start + 4)
+        section = text[start:end]
+        registration = "Configured" if rows else "None"
+        section = section.replace(
+            "- Registration: None", "- Registration: %s" % registration, 1)
+        section = section.replace(
+            "- Registration: Configured",
+            "- Registration: %s" % registration, 1)
+        separator = "|---|---|---|"
+        boundary = section.index(separator) + len(separator)
+        body = "".join(
+            "\n| `%s` | `%s` | %s |" % row for row in rows)
+        section = section[:boundary] + body + "\n"
+        self.slots.write_text(
+            text[:start] + section + text[end:], encoding="utf-8")
+
 
 __all__ = ["CurrentProfileContractFixture"]

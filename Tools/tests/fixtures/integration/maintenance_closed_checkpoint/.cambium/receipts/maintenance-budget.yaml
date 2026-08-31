@@ -1,0 +1,47 @@
+task_id: fixture-task
+scope_version: s1
+upstream_revision_id: 0123456789abcdef0123456789abcdef01234567
+selected_profile_manifest: profiles/test-profile/profile.md
+schema_version: 3
+run_id: fixture-maintenance-run-1
+previous_maintenance_completion_receipt: null
+budget_unit: pages
+budget_limit: 2
+consumed_hours: null
+candidates:
+  - candidate_id: candidate-sha256:2b78a390f2ff8ff4e3d942e214ff1ab92c74b7d9ced70bb437fb7ba2b2b4a642
+    object_path: Topics/A.md
+    source_kinds:
+      - freshness
+    priority: P2
+    previous_deferred_runs: 0
+    consecutive_deferred_runs: 0
+    reentered_after_terminal: false
+    selection: selected
+    disposition: null
+    disposition_reason: null
+  - candidate_id: candidate-sha256:ca25dade76d58c12ad945e5b04ffb29d41df53c3d60d35175ebafc3dd6880692
+    object_path: Topics/B.md
+    source_kinds:
+      - freshness
+    priority: P2
+    previous_deferred_runs: 0
+    consecutive_deferred_runs: 0
+    reentered_after_terminal: false
+    selection: selected
+    disposition: null
+    disposition_reason: null
+selected_candidate_ids:
+  - candidate-sha256:2b78a390f2ff8ff4e3d942e214ff1ab92c74b7d9ced70bb437fb7ba2b2b4a642
+  - candidate-sha256:ca25dade76d58c12ad945e5b04ffb29d41df53c3d60d35175ebafc3dd6880692
+deferred_candidate_ids: []
+selected_objects:
+  - Topics/A.md
+  - Topics/B.md
+required_batch_ids:
+  - B1
+  - B2
+deferred_count: 0
+open_items: 0
+state: closed
+closed_at: 2026-08-31T22:12:22Z

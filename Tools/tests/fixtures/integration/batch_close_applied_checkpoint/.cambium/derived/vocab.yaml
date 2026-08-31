@@ -1,0 +1,122 @@
+# Generated artifact -- do not edit directly.
+# Inputs:
+#   base:       kernel/K08 Metadata and Status/vocabulary-base.yaml (sha256: a06ae7ff3c76c6e78c954f0345010cdc1fd1054b8667bd21cd5cc2c0d7b80f4c)
+#   extensions: profiles/test-profile/vocabulary-extensions.yaml (sha256: 041e5c1266422cb35e546942edb93b9b812dbc5e1392e7fb2e46e85b076685af)
+# Merge rule: root keys follow the fixed base key order; for each
+#   field, kernel values come first and profile additions are
+#   appended in source order, deduplicated; extensions must not
+#   remove, rename, or redefine base values.
+# regenerate with: python3 Tools/compose_vocab.py
+# The extensions path above is compilation provenance only; K00/03
+# active Standards state selects the profile for every run.
+
+schema_version: 1
+profile_id: "test-profile"
+composition_policy: "append-only-profile-extensions"
+compiled_from:
+  kernel: "kernel/K08 Metadata and Status/vocabulary-base.yaml"
+  profile: "profiles/test-profile/vocabulary-extensions.yaml"
+frontmatter_extensions:
+  fields: []
+fields:
+  type:
+    owner: "kernel/K08 Metadata and Status/01 Frontmatter and Core Vocabularies.md#Type Vocabulary"
+    values:
+      - "term"
+      - "concept"
+      - "process-flow"
+      - "algorithm"
+      - "metric"
+      - "system-component"
+      - "system-design"
+      - "comparison"
+      - "risk-control"
+      - "source-note"
+      - "research-synthesis"
+      - "case-study"
+      - "cheat-sheet"
+      - "overview"
+      - "standard"
+      - "management"
+      - "read-set"
+      - "route-index"
+      - "runtime-card"
+      - "card-index"
+  domain:
+    owner: "kernel/K08 Metadata and Status/01 Frontmatter and Core Vocabularies.md#Domain Vocabulary"
+    extension_owner: "profiles/test-profile/vocabulary-extensions.yaml"
+    values:
+      - "fixture"
+  scope:
+    owner: "kernel/K08 Metadata and Status/02 Scope Level Depth and Priority.md#Scope"
+    values:
+      - "shared"
+      - "domain-specific"
+      - "case-specific"
+      - "source-specific"
+  level:
+    owner: "kernel/K08 Metadata and Status/02 Scope Level Depth and Priority.md#Level"
+    values:
+      - "basic"
+      - "intermediate"
+      - "advanced"
+  depth:
+    owner: "kernel/K08 Metadata and Status/02 Scope Level Depth and Priority.md#Depth"
+    values:
+      - "atomic"
+      - "core"
+      - "system"
+  priority:
+    owner: "kernel/K08 Metadata and Status/02 Scope Level Depth and Priority.md#Priority"
+    values:
+      - "P0"
+      - "P1"
+      - "P2"
+  authoring_status:
+    owner: "kernel/K08 Metadata and Status/03 Status Axes.md#Authoring Status"
+    values:
+      - "unassessed"
+      - "outline"
+      - "drafted"
+      - "reviewed"
+  learning_status:
+    owner: "kernel/K08 Metadata and Status/03 Status Axes.md#Learning Status"
+    values:
+      - "not-started"
+      - "learning"
+      - "self-tested"
+      - "mastered"
+  coverage_disposition:
+    owner: "kernel/K08 Metadata and Status/03 Status Axes.md#Coverage Disposition"
+    values:
+      - "required"
+      - "optional"
+      - "deferred"
+      - "excluded"
+  evidence_maturity:
+    owner: "kernel/K08 Metadata and Status/04 Evidence and Relationship Metadata.md#Evidence Maturity"
+    values:
+      - "signal"
+      - "single-source"
+      - "corroborated"
+      - "validated"
+      - "contested"
+      - "superseded"
+  volatility:
+    owner: "kernel/K08 Metadata and Status/05 Review Source and Migration Metadata.md#Freshness And Review Due"
+    values:
+      - "fast"
+      - "slow"
+      - "stable"
+  lifecycle:
+    owner: "kernel/K03 Note Types and Ownership/03 Split and Duplication Policy.md#Retirement"
+    values:
+      - "active"
+      - "retired"
+      - "merged"
+review_intervals_days:
+  fast: 120
+  slow: 365
+  stable:
+volatility_defaults:
+  fixture: "stable"

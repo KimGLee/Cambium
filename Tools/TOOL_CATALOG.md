@@ -10,7 +10,7 @@ Regenerate with `python3 Tools/generate_tool_catalog.py .`. Verify without writi
 | Source | Exact-byte SHA-256 |
 |---|---|
 | `Tools/tool-taxonomy.yaml` | `sha256:44c6a46acf604ab28023a4028fb026bf11b01582093450bd113ff3527c95998f` |
-| `Tools/module-boundaries.yaml` | `sha256:337ccab5aaa2b0b4867e4cd497b40140512a9881c168f0935b38e6681a8e7d30` |
+| `Tools/module-boundaries.yaml` | `sha256:5f61064b1c90e129fff1ddffd28388d54ed362ab080ccb78a2089848fc3312f6` |
 | `Tools/agent-interface-policy.yaml` | `sha256:26afb19c445def06866398b3019e8043ef4d4548f793e9eafb7a6d3a67d4ca32` |
 | `Tools/operation-capabilities.yaml` | `sha256:1be81780f43dcaa39b34c09fce02fe66586bc4145487dbc0e0e78fc1e991fb64` |
 
@@ -25,12 +25,12 @@ Static consumption, private access, and dependency facts come from `Tools/platfo
 | declared cli tools | 62 |
 | mcp tools | 46 |
 | host transports | 1 |
-| static public api symbols | 1370 |
+| static public api symbols | 1371 |
 | declared unused static public apis | 40 |
 | declared public apis without observed consumers | 0 |
 | registered capability relationships | 135 |
 | registered symbol relationships | 73 |
-| source public exports | 308 |
+| source public exports | 309 |
 | source public exports undeclared | 0 |
 | declared transport consumptions | 46 |
 | static private consumptions | 0 |
@@ -110,7 +110,7 @@ Machine-contract loading, closed validation, pure projection, and stable predica
 | `execution.audit.changed_scope_evidence_contract` | `Tools/execution/audit/changed_scope_evidence_contract.py` | python-module | `execution / audit / contract` | static Python (34 symbols / 5 consumers), registered Python symbol (1 consumers) |
 | `execution.audit.changed_scope_runtime_checks` | `Tools/execution/audit/changed_scope_runtime_checks.py` | python-module | `execution / audit / contract` | static Python (6 symbols / 2 consumers) |
 | `execution.audit.substantive_review_contract` | `Tools/execution/audit/substantive_review_contract.py` | python-module | `execution / audit / contract` | static Python (8 symbols / 5 consumers), registered Python symbol (1 consumers) |
-| `execution.audit.terminal_proof_contract` | `Tools/execution/audit/terminal_proof_contract.py` | python-module | `execution / audit / contract` | static Python (13 symbols / 3 consumers), registered Python symbol (1 consumers) |
+| `execution.audit.terminal_proof_contract` | `Tools/execution/audit/terminal_proof_contract.py` | python-module | `execution / audit / contract` | static Python (13 symbols / 4 consumers), registered Python symbol (1 consumers) |
 
 ##### Layer: `entrypoint`
 
@@ -202,7 +202,7 @@ Machine-contract loading, closed validation, pure projection, and stable predica
 
 | Module | Path | Type | Responsibility class | Interface exposure |
 |---|---|---|---|---|
-| `execution.planning.corpus_planning_contract` | `Tools/execution/planning/corpus_planning_contract.py` | python-module | `execution / planning / contract` | static Python (19 symbols / 9 consumers) |
+| `execution.planning.corpus_planning_contract` | `Tools/execution/planning/corpus_planning_contract.py` | python-module | `execution / planning / contract` | static Python (19 symbols / 10 consumers) |
 | `execution.planning.coverage_contract` | `Tools/execution/planning/coverage_contract.py` | python-module | `execution / planning / contract` | static Python (12 symbols / 11 consumers) |
 | `execution.planning.coverage_delta` | `Tools/execution/planning/coverage_delta.py` | python-module | `execution / planning / contract` | static Python (6 symbols / 4 consumers) |
 | `execution.planning.queue_replan` | `Tools/execution/planning/queue_replan.py` | python-module | `execution / planning / contract` | static Python (5 symbols / 4 consumers), registered capability (1 capabilities / 6 consumers) |
@@ -315,7 +315,7 @@ Repository IO, serialization, locking, transport, generation, and other Tool-own
 | `execution.task_runtime.queue_runtime.primitives` | `Tools/execution/task_runtime/queue_runtime/primitives.py` | python-module | `execution / task-runtime / infrastructure` | static Python (7 symbols / 28 consumers) |
 | `execution.task_runtime.queue_runtime.receipts` | `Tools/execution/task_runtime/queue_runtime/receipts.py` | python-module | `execution / task-runtime / infrastructure` | static Python (14 symbols / 24 consumers), registered Python symbol (1 consumers) |
 | `execution.task_runtime.queue_runtime.repofs` | `Tools/execution/task_runtime/queue_runtime/repofs.py` | python-module | `execution / task-runtime / infrastructure` | static Python (4 symbols / 5 consumers) |
-| `execution.task_runtime.runtime_paths` | `Tools/execution/task_runtime/runtime_paths.py` | python-module | `execution / task-runtime / infrastructure` | static Python (71 symbols / 76 consumers) |
+| `execution.task_runtime.runtime_paths` | `Tools/execution/task_runtime/runtime_paths.py` | python-module | `execution / task-runtime / infrastructure` | static Python (71 symbols / 77 consumers) |
 | `execution.task_runtime.runtime_state_io` | `Tools/execution/task_runtime/runtime_state_io.py` | python-module | `execution / task-runtime / infrastructure` | static Python (3 symbols / 2 consumers) |
 
 ### Area: `governance`
@@ -372,7 +372,7 @@ Machine-contract loading, closed validation, pure projection, and stable predica
 | Module | Path | Type | Responsibility class | Interface exposure |
 |---|---|---|---|---|
 | `governance.profile.profile_batch_judgment_contract` | `Tools/governance/profile/profile_batch_judgment_contract.py` | python-module | `governance / profile / contract` | static Python (18 symbols / 8 consumers), registered Python symbol (1 consumers) |
-| `governance.profile.profile_contract` | `Tools/governance/profile/profile_contract.py` | python-module | `governance / profile / contract` | static Python (28 symbols / 23 consumers) |
+| `governance.profile.profile_contract` | `Tools/governance/profile/profile_contract.py` | python-module | `governance / profile / contract` | static Python (29 symbols / 26 consumers) |
 | `governance.profile.profile_layout_contract` | `Tools/governance/profile/profile_layout_contract.py` | python-module | `governance / profile / contract` | static Python (8 symbols / 14 consumers) |
 
 ##### Layer: `entrypoint`
@@ -682,7 +682,7 @@ Repository IO, serialization, locking, transport, generation, and other Tool-own
 | `execution.audit.assemble_terminal_proof.DEFAULT_PROOF_PATH` | `execution.task_runtime.task_runtime_runner` | declared |
 | `execution.audit.assemble_terminal_proof.main` | `assemble_terminal_proof` | declared |
 | `execution.audit.audit_dimension_contract.AUDIT_DIMENSION_BASE_PATH` | `execution.audit.audit_obligation_projection`, `execution.audit.audit_plan_contract`, `governance.control.control_registry_contract`, `governance.profile.profile_contract` | declared |
-| `execution.audit.audit_dimension_contract.BASE_RECEIPT_DIMENSIONS` | `governance.control.control_registry_contract` | declared |
+| `execution.audit.audit_dimension_contract.BASE_RECEIPT_DIMENSIONS` | `execution.audit.assemble_terminal_proof`, `governance.control.control_registry_contract` | declared |
 | `execution.audit.audit_dimension_contract.BASE_RECEIPT_DIMENSION_ORDER` | `execution.audit.assemble_terminal_proof`, `execution.audit.check_proof`, `governance.control.control_registry_contract`, `governance.profile.profile_contract` | declared |
 | `execution.audit.audit_dimension_contract.EVIDENCE_ROLES` | `execution.audit.audit_plan_contract`, `governance.profile.profile_contract` | declared |
 | `execution.audit.audit_dimension_contract.EXTENSION_TARGET_MAPPINGS` | `governance.profile.profile_contract` | declared |
@@ -695,11 +695,11 @@ Repository IO, serialization, locking, transport, generation, and other Tool-own
 | `execution.audit.audit_evidence_runtime.combine_plan_reconciliations` | `execution.audit.check_batch_close` | declared |
 | `execution.audit.audit_evidence_runtime.current_consumption_evidence_ids` | `execution.audit.record_batch_page_review` | declared |
 | `execution.audit.audit_evidence_runtime.reconciliation_from_bindings` | `execution.audit.check_batch_close` | declared |
-| `execution.audit.audit_evidence_runtime.resolve_stage_plan` | `execution.audit.check_batch_close`, `execution.audit.check_proof`, `execution.audit.complete_audit_receipt`, `execution.audit.record_batch_judgment`, `execution.audit.record_batch_page_review`, `execution.audit.record_changed_scope_evidence`, `execution.audit.record_substantive_review`, `knowledge.rendering.record_rendering_verification` | declared |
+| `execution.audit.audit_evidence_runtime.resolve_stage_plan` | `execution.audit.check_batch_close`, `execution.audit.complete_audit_receipt`, `execution.audit.record_batch_judgment`, `execution.audit.record_batch_page_review`, `execution.audit.record_changed_scope_evidence`, `execution.audit.record_substantive_review`, `knowledge.rendering.record_rendering_verification` | declared |
 | `execution.audit.audit_evidence_runtime.stage_evidence_closure` | `execution.audit.audit_execution_runtime` | declared |
 | `execution.audit.audit_evidence_runtime.stage_evidence_status` | `execution.audit.audit_execution_runtime` | declared |
+| `execution.audit.audit_evidence_runtime.terminal_dimension_evidence` | `execution.audit.assemble_terminal_proof`, `execution.audit.check_proof` | declared |
 | `execution.audit.audit_evidence_runtime.terminal_plan_reconciliation` | `execution.audit.assemble_terminal_proof`, `execution.audit.check_proof` | declared |
-| `execution.audit.audit_evidence_runtime.validate_audit_receipt_for_obligation` | `execution.audit.check_proof` | declared |
 | `execution.audit.audit_evidence_runtime.wrapper_binding_errors` | `execution.audit.record_batch_review`, `execution.task_runtime.task_runtime_runner`, `execution.task_runtime.update_queue` | declared |
 | `execution.audit.audit_execution_runtime.next_stage_step` | `execution.task_runtime.task_runtime_runner` | declared |
 | `execution.audit.audit_fingerprint.obligation_contract_fingerprint` | `execution.audit.audit_evidence_runtime`, `execution.audit.audit_producer_runtime`, `execution.audit.changed_scope_evidence_contract`, `governance.profile.profile_batch_judgment_contract`, `knowledge.rendering.rendering_verification_contract` | declared |
@@ -885,9 +885,9 @@ Repository IO, serialization, locking, transport, generation, and other Tool-own
 | `execution.audit.terminal_proof_contract.NOT_APPLICABLE_PREFIX` | `execution.audit.check_proof` | declared |
 | `execution.audit.terminal_proof_contract.PRODUCER_TOOL` | `execution.audit.check_proof`, `execution.task_runtime.update_task` | declared |
 | `execution.audit.terminal_proof_contract.PRODUCER_TOOL_VERSION` | `execution.audit.check_proof`, `execution.task_runtime.update_task` | declared |
-| `execution.audit.terminal_proof_contract.contract_values` | `execution.audit.check_proof` | declared |
+| `execution.audit.terminal_proof_contract.contract_values` | `execution.audit.check_proof`, `execution.planning.apply_task_plan` | declared |
 | `execution.audit.terminal_proof_contract.current_receipt_errors` | `execution.audit.check_proof` | declared |
-| `execution.audit.terminal_proof_contract.load_contract` | `execution.audit.check_proof` | declared |
+| `execution.audit.terminal_proof_contract.load_contract` | `execution.audit.check_proof`, `execution.planning.apply_task_plan` | declared |
 | `execution.audit.terminal_proof_contract.validate_proof` | `execution.audit.assemble_terminal_proof` | declared |
 | `execution.audit.terminal_proof_contract.validate_terminal_audit_input` | `execution.audit.assemble_terminal_proof` | declared |
 | `execution.context_delivery.card_activation.ACTIVATION_PROTOCOL` | `execution.audit.record_batch_judgment`, `execution.audit.record_batch_review`, `execution.task_runtime.queue_runtime.review` | declared |
@@ -1001,7 +1001,7 @@ Repository IO, serialization, locking, transport, generation, and other Tool-own
 | `execution.planning.check_corpus_plan.SEMANTIC_ACCEPTANCE_CHECK` | `execution.planning.record_corpus_acceptance` | declared |
 | `execution.planning.check_corpus_plan.SEMANTIC_ACCEPTANCE_PLAN_PREFIX` | `execution.planning.record_corpus_acceptance` | declared |
 | `execution.planning.check_corpus_plan.SEMANTIC_ACCEPTANCE_TOOL` | `execution.planning.record_corpus_acceptance` | declared |
-| `execution.planning.check_corpus_plan.SEMANTIC_ACCEPTANCE_TOOL_VERSION` | `execution.audit.check_proof`, `execution.planning.record_corpus_acceptance` | declared |
+| `execution.planning.check_corpus_plan.SEMANTIC_ACCEPTANCE_TOOL_VERSION` | `execution.planning.record_corpus_acceptance` | declared |
 | `execution.planning.check_corpus_plan.acceptance_plan_errors` | `execution.planning.record_corpus_acceptance` | declared |
 | `execution.planning.check_corpus_plan.close_requirement` | `execution.audit.check_batch_close`, `execution.task_runtime.update_queue` | declared |
 | `execution.planning.check_corpus_plan.current_freshness_binding` | `execution.audit.check_proof` | declared |
@@ -1010,8 +1010,8 @@ Repository IO, serialization, locking, transport, generation, and other Tool-own
 | `execution.planning.check_corpus_plan.pass_receipt_errors` | `execution.audit.check_batch_close`, `execution.audit.check_proof` | declared |
 | `execution.planning.check_corpus_plan.receipt_binding` | `execution.planning.record_corpus_acceptance`, `execution.task_runtime.update_queue` | declared |
 | `execution.planning.check_corpus_plan.semantic_acceptance_receipt_errors` | `execution.planning.record_corpus_acceptance` | declared |
-| `execution.planning.check_corpus_plan.semantic_acceptance_status` | `execution.audit.assemble_terminal_proof`, `execution.planning.record_corpus_acceptance` | declared |
-| `execution.planning.check_corpus_plan.validate_corpus_plan` | `execution.audit.assemble_terminal_proof`, `execution.audit.check_batch_close`, `execution.planning.record_corpus_acceptance`, `execution.task_runtime.update_queue` | declared |
+| `execution.planning.check_corpus_plan.semantic_acceptance_status` | `execution.audit.assemble_terminal_proof`, `execution.audit.check_proof`, `execution.planning.record_corpus_acceptance` | declared |
+| `execution.planning.check_corpus_plan.validate_corpus_plan` | `execution.audit.assemble_terminal_proof`, `execution.audit.check_batch_close`, `execution.audit.check_proof`, `execution.planning.record_corpus_acceptance`, `execution.task_runtime.update_queue` | declared |
 | `execution.planning.compile_queue.compile_document` | `execution.planning.apply_task_plan`, `execution.task_runtime.apply_amendment`, `execution.task_runtime.register_amendment` | declared |
 | `execution.planning.compile_queue.main` | `compile_queue` | declared |
 | `execution.planning.compile_queue.replan_diff` | `execution.task_runtime.apply_amendment`, `execution.task_runtime.register_amendment` | declared |
@@ -1023,9 +1023,9 @@ Repository IO, serialization, locking, transport, generation, and other Tool-own
 | `execution.planning.corpus_planning_contract.CLOSE_ROUTE_TRIGGER` | `execution.audit.check_batch_close`, `execution.task_runtime.queue_runtime.close_gate`, `execution.task_runtime.update_queue` | declared |
 | `execution.planning.corpus_planning_contract.CONFIGURED_STATE` | `execution.audit.check_batch_close`, `execution.audit.check_proof`, `execution.planning.check_corpus_plan`, `execution.task_runtime.queue_runtime.close_gate`, `execution.task_runtime.update_queue` | declared |
 | `execution.planning.corpus_planning_contract.CORPUS_PLANNING_CONTRACT_PATH` | `governance.profile.check_profile`, `governance.profile.profile_contract` | declared |
-| `execution.planning.corpus_planning_contract.INACTIVE_STATE` | `execution.audit.check_proof`, `execution.planning.check_corpus_plan` | declared |
-| `execution.planning.corpus_planning_contract.PASS_RECEIPT_BINDING_FIELDS` | `execution.audit.check_batch_close`, `execution.audit.check_proof` | declared |
-| `execution.planning.corpus_planning_contract.SEMANTIC_ACCEPTANCE_SCOPE` | `execution.audit.check_proof`, `execution.planning.check_corpus_plan`, `execution.planning.record_corpus_acceptance`, `governance.profile.check_profile` | declared |
+| `execution.planning.corpus_planning_contract.INACTIVE_STATE` | `execution.audit.assemble_terminal_proof`, `execution.audit.check_proof`, `execution.planning.check_corpus_plan` | declared |
+| `execution.planning.corpus_planning_contract.PASS_RECEIPT_BINDING_FIELDS` | `execution.audit.check_batch_close` | declared |
+| `execution.planning.corpus_planning_contract.SEMANTIC_ACCEPTANCE_SCOPE` | `execution.planning.check_corpus_plan`, `execution.planning.record_corpus_acceptance`, `governance.profile.check_profile` | declared |
 | `execution.planning.corpus_planning_contract.SLOT_NAME` | `execution.planning.check_corpus_plan`, `governance.profile.check_profile`, `governance.profile.profile_onboarding_status` | declared |
 | `execution.planning.corpus_planning_contract.artifact_contract` | `execution.planning.check_corpus_plan` | declared |
 | `execution.planning.corpus_planning_contract.close_trigger_issues` | `execution.task_runtime.queue_runtime.close_gate` | declared |
@@ -1396,8 +1396,8 @@ Repository IO, serialization, locking, transport, generation, and other Tool-own
 | `execution.task_runtime.runtime_paths.AMENDMENT_DELTA_ROOT` | `execution.task_runtime.amendment_plan`, `execution.task_runtime.apply_amendment`, `execution.task_runtime.queue_runtime.amendments`, `execution.task_runtime.register_amendment` | declared |
 | `execution.task_runtime.runtime_paths.AMENDMENT_RECEIPT_PATH` | `execution.task_runtime.apply_amendment`, `execution.task_runtime.register_amendment` | declared |
 | `execution.task_runtime.runtime_paths.AUDIT_PLAN_ROOT` | `execution.audit.audit_evidence_runtime`, `execution.audit.audit_producer_runtime`, `execution.audit.prepare_audit_plan`, `governance.profile.profile_batch_judgment_contract` | declared |
-| `execution.task_runtime.runtime_paths.AUDIT_RECEIPT_REGISTER_PATH` | `execution.audit.assemble_terminal_proof`, `execution.audit.complete_audit_receipt`, `execution.task_runtime.task_runtime_runner` | declared |
-| `execution.task_runtime.runtime_paths.BATCH_CLOSE_RECEIPT_PATH` | `execution.audit.check_batch_close` | declared |
+| `execution.task_runtime.runtime_paths.AUDIT_RECEIPT_REGISTER_PATH` | `execution.audit.assemble_terminal_proof`, `execution.audit.check_batch_close`, `execution.audit.complete_audit_receipt`, `execution.task_runtime.queue_runtime.close_gate`, `execution.task_runtime.task_runtime_runner` | declared |
+| `execution.task_runtime.runtime_paths.BATCH_CLOSE_RECEIPT_PATH` | `execution.audit.check_batch_close`, `execution.task_runtime.queue_runtime.close_gate` | declared |
 | `execution.task_runtime.runtime_paths.BATCH_JUDGMENT_RECEIPT_PATH` | `execution.audit.record_batch_judgment` | declared |
 | `execution.task_runtime.runtime_paths.BATCH_PAGE_REVIEW_RECEIPT_PATH` | `execution.audit.record_batch_page_review` | declared |
 | `execution.task_runtime.runtime_paths.CANONICAL_STATE` | `execution.task_runtime.init_state` | declared |
@@ -1633,6 +1633,7 @@ Repository IO, serialization, locking, transport, generation, and other Tool-own
 | `governance.profile.profile_contract.profile_interface_slots` | `governance.profile.check_profile` | declared |
 | `governance.profile.profile_contract.registered_scan_entrypoint` | `execution.audit.changed_scope_evidence_contract`, `execution.audit.record_changed_scope_evidence`, `execution.evidence.metadata_gate_runtime` | declared |
 | `governance.profile.profile_contract.scan_capability_implementation_paths` | `governance.profile.check_profile` | declared |
+| `governance.profile.profile_contract.terminal_receipt_dimensions_projection` | `execution.audit.assemble_terminal_proof`, `execution.audit.audit_evidence_runtime`, `execution.audit.check_proof` | declared |
 | `governance.profile.profile_contract.volatility_defaults_projection` | `execution.audit.prepare_audit_plan`, `knowledge.metadata.compose_vocab` | declared |
 | `governance.profile.profile_layout_contract.PROFILES_DIRECTORY` | `execution.audit.check_batch_close`, `execution.audit.check_proof`, `execution.context_delivery.card_activation`, `execution.task_runtime.queue_runtime.control_plane`, `execution.task_runtime.queue_runtime.profile_view`, `governance.profile.apply_profile_adoption`, `governance.profile.profile_onboarding_status`, `governance.profile.scaffold_profile`, `knowledge.metadata.compose_vocab` | declared |
 | `governance.profile.profile_layout_contract.PROFILE_MANIFEST_NAME` | `execution.task_runtime.queue_runtime.profile_view`, `governance.control.run_gates`, `governance.profile.apply_profile_adoption`, `governance.profile.check_profile`, `governance.profile.profile_contract`, `governance.profile.profile_onboarding_status`, `governance.profile.scaffold_profile`, `knowledge.metadata.compose_vocab` | declared |
@@ -2094,7 +2095,7 @@ Repository IO, serialization, locking, transport, generation, and other Tool-own
 |---|---|---|
 | `execution.audit.audit_dimension_contract.AUDIT_DIMENSION_BASE_PATH` | yes | `execution.audit.audit_obligation_projection`, `execution.audit.audit_plan_contract`, `governance.control.control_registry_contract`, `governance.profile.profile_contract` |
 | `execution.audit.audit_dimension_contract.BASE_RECEIPT_DIMENSION_ORDER` | yes | `execution.audit.assemble_terminal_proof`, `execution.audit.check_proof`, `governance.control.control_registry_contract`, `governance.profile.profile_contract` |
-| `execution.audit.audit_dimension_contract.BASE_RECEIPT_DIMENSIONS` | yes | `governance.control.control_registry_contract` |
+| `execution.audit.audit_dimension_contract.BASE_RECEIPT_DIMENSIONS` | yes | `execution.audit.assemble_terminal_proof`, `governance.control.control_registry_contract` |
 | `execution.audit.audit_dimension_contract.EVIDENCE_ROLES` | yes | `execution.audit.audit_plan_contract`, `governance.profile.profile_contract` |
 | `execution.audit.audit_dimension_contract.EXTENSION_TARGET_MAPPINGS` | yes | `governance.profile.profile_contract` |
 | `execution.audit.audit_dimension_contract.current_audit_dimension_values` | yes | `execution.audit.audit_plan_contract`, `governance.control.control_registry_contract`, `governance.profile.profile_contract` |
@@ -2106,11 +2107,11 @@ Repository IO, serialization, locking, transport, generation, and other Tool-own
 | `execution.audit.audit_evidence_runtime.combine_plan_reconciliations` | yes | `execution.audit.check_batch_close` |
 | `execution.audit.audit_evidence_runtime.current_consumption_evidence_ids` | yes | `execution.audit.record_batch_page_review` |
 | `execution.audit.audit_evidence_runtime.reconciliation_from_bindings` | yes | `execution.audit.check_batch_close` |
-| `execution.audit.audit_evidence_runtime.resolve_stage_plan` | yes | `execution.audit.check_batch_close`, `execution.audit.check_proof`, `execution.audit.complete_audit_receipt`, `execution.audit.record_batch_judgment`, `execution.audit.record_batch_page_review`, `execution.audit.record_changed_scope_evidence`, `execution.audit.record_substantive_review`, `knowledge.rendering.record_rendering_verification` |
+| `execution.audit.audit_evidence_runtime.resolve_stage_plan` | yes | `execution.audit.check_batch_close`, `execution.audit.complete_audit_receipt`, `execution.audit.record_batch_judgment`, `execution.audit.record_batch_page_review`, `execution.audit.record_changed_scope_evidence`, `execution.audit.record_substantive_review`, `knowledge.rendering.record_rendering_verification` |
+| `execution.audit.audit_evidence_runtime.terminal_dimension_evidence` | yes | `execution.audit.assemble_terminal_proof`, `execution.audit.check_proof` |
 | `execution.audit.audit_evidence_runtime.terminal_plan_reconciliation` | yes | `execution.audit.assemble_terminal_proof`, `execution.audit.check_proof` |
 | `execution.audit.audit_evidence_runtime.stage_evidence_closure` | yes | `execution.audit.audit_execution_runtime` |
 | `execution.audit.audit_evidence_runtime.stage_evidence_status` | yes | `execution.audit.audit_execution_runtime` |
-| `execution.audit.audit_evidence_runtime.validate_audit_receipt_for_obligation` | yes | `execution.audit.check_proof` |
 | `execution.audit.audit_evidence_runtime.wrapper_binding_errors` | yes | `execution.audit.record_batch_review`, `execution.task_runtime.task_runtime_runner`, `execution.task_runtime.update_queue` |
 | `execution.audit.audit_fingerprint.obligation_contract_fingerprint` | yes | `execution.audit.audit_evidence_runtime`, `execution.audit.audit_producer_runtime`, `execution.audit.changed_scope_evidence_contract`, `governance.profile.profile_batch_judgment_contract`, `knowledge.rendering.rendering_verification_contract` |
 | `execution.audit.audit_fingerprint.page_artifact_fingerprint` | yes | `execution.audit.audit_evidence_runtime`, `execution.audit.audit_producer_runtime`, `execution.audit.batch_review_obligation_contract`, `governance.profile.profile_batch_judgment_contract` |
@@ -2284,9 +2285,9 @@ Repository IO, serialization, locking, transport, generation, and other Tool-own
 | `execution.planning.corpus_planning_contract.CLOSE_ROUTE_TRIGGER` | yes | `execution.audit.check_batch_close`, `execution.task_runtime.queue_runtime.close_gate`, `execution.task_runtime.update_queue` |
 | `execution.planning.corpus_planning_contract.CONFIGURED_STATE` | yes | `execution.audit.check_batch_close`, `execution.audit.check_proof`, `execution.planning.check_corpus_plan`, `execution.task_runtime.queue_runtime.close_gate`, `execution.task_runtime.update_queue` |
 | `execution.planning.corpus_planning_contract.CORPUS_PLANNING_CONTRACT_PATH` | yes | `governance.profile.check_profile`, `governance.profile.profile_contract` |
-| `execution.planning.corpus_planning_contract.INACTIVE_STATE` | yes | `execution.audit.check_proof`, `execution.planning.check_corpus_plan` |
-| `execution.planning.corpus_planning_contract.PASS_RECEIPT_BINDING_FIELDS` | yes | `execution.audit.check_batch_close`, `execution.audit.check_proof` |
-| `execution.planning.corpus_planning_contract.SEMANTIC_ACCEPTANCE_SCOPE` | yes | `execution.audit.check_proof`, `execution.planning.check_corpus_plan`, `execution.planning.record_corpus_acceptance`, `governance.profile.check_profile` |
+| `execution.planning.corpus_planning_contract.INACTIVE_STATE` | yes | `execution.audit.assemble_terminal_proof`, `execution.audit.check_proof`, `execution.planning.check_corpus_plan` |
+| `execution.planning.corpus_planning_contract.PASS_RECEIPT_BINDING_FIELDS` | yes | `execution.audit.check_batch_close` |
+| `execution.planning.corpus_planning_contract.SEMANTIC_ACCEPTANCE_SCOPE` | yes | `execution.planning.check_corpus_plan`, `execution.planning.record_corpus_acceptance`, `governance.profile.check_profile` |
 | `execution.planning.corpus_planning_contract.SLOT_NAME` | yes | `execution.planning.check_corpus_plan`, `governance.profile.check_profile`, `governance.profile.profile_onboarding_status` |
 | `execution.planning.corpus_planning_contract.artifact_contract` | yes | `execution.planning.check_corpus_plan` |
 | `execution.planning.corpus_planning_contract.close_trigger_issues` | yes | `execution.task_runtime.queue_runtime.close_gate` |
@@ -2345,6 +2346,7 @@ Repository IO, serialization, locking, transport, generation, and other Tool-own
 | `governance.profile.profile_contract.load_profile_contract` | yes | `execution.audit.changed_scope_evidence_contract`, `governance.control.run_gates`, `governance.profile.check_profile` |
 | `governance.profile.profile_contract.registered_scan_entrypoint` | yes | `execution.audit.changed_scope_evidence_contract`, `execution.audit.record_changed_scope_evidence`, `execution.evidence.metadata_gate_runtime` |
 | `governance.profile.profile_contract.scan_capability_implementation_paths` | yes | `governance.profile.check_profile` |
+| `governance.profile.profile_contract.terminal_receipt_dimensions_projection` | yes | `execution.audit.assemble_terminal_proof`, `execution.audit.audit_evidence_runtime`, `execution.audit.check_proof` |
 | `governance.profile.profile_contract.volatility_defaults_projection` | yes | `execution.audit.prepare_audit_plan`, `knowledge.metadata.compose_vocab` |
 | `governance.standards.adoption_lineage_contract.ADOPTION_RECEIPT_PATH` | yes | `governance.standards.adopt_standards` |
 | `governance.standards.adoption_lineage_contract.PROFILE_ADOPTION_TOOL` | yes | `governance.profile.apply_profile_adoption` |

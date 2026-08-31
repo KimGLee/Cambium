@@ -17,6 +17,7 @@ import Tools.execution.audit.batch_close_audit as batch_close_audit
 import Tools.execution.audit.batch_close_contract as batch_close_contract
 import Tools.execution.evidence.candidate_lifecycle as candidate_lifecycle
 import Tools.execution.planning.corpus_planning_contract as corpus_planning_contract
+import Tools.execution.task_runtime.runtime_paths as runtime_paths
 import Tools.platform.common.kblib as kblib
 import Tools.governance.control.metadata_execution_contract as metadata_execution_contract
 import Tools.knowledge.metadata.metadata_property_state as metadata_property_state
@@ -529,7 +530,7 @@ def _profile_registered_close_dimension(contract):
     return dimension
 
 
-def _catalog_record(catalog, receipt_id, label, errors):
+def _catalog_record(catalog, receipt_id, label, errors, *, expected_path=None):
     """Return one hot record without imposing Gate-style result vocabulary."""
     if not nonempty_string(receipt_id):
         errors.append("%s must identify a receipt" % label)
@@ -540,6 +541,10 @@ def _catalog_record(catalog, receipt_id, label, errors):
         errors.append("%s references missing receipt %s" % (label, receipt_id))
         return None
     record = entry[1]
+    if expected_path is not None and entry[0] != expected_path:
+        errors.append(
+            "%s must be stored in %s, found %s" %
+            (label, expected_path, entry[0]))
     if record.get("receipt_id") != receipt_id:
         errors.append("%s catalog key differs from its receipt_id" % label)
         return None
@@ -618,16 +623,23 @@ def _post_delta_close_evidence_errors(
     for row in rows:
         member_id = row["member_id"]
         evidence_id = evidence.get(member_id)
+        final_path = None if historical else (
+            runtime_paths.BATCH_CLOSE_RECEIPT_PATH
+            if row["evidence_kind"] == "gate-receipt" else
+            runtime_paths.AUDIT_RECEIPT_REGISTER_PATH)
         record = _catalog_record(
             catalog, evidence_id,
-            "%s Closed List member %s" % (item_id, member_id), errors)
+            "%s Closed List member %s" % (item_id, member_id), errors,
+            expected_path=final_path)
         if record is not None:
             evidence_by_id[evidence_id] = record
             evidence_ids.append(evidence_id)
         producer_id = producer_evidence.get(member_id)
         producer_records[member_id] = _catalog_record(
             catalog, producer_id,
-            "%s producer evidence %s" % (item_id, member_id), errors)
+            "%s producer evidence %s" % (item_id, member_id), errors,
+            expected_path=(None if historical else
+                           runtime_paths.BATCH_CLOSE_RECEIPT_PATH))
 
     stage = {
         "audit_plan_id": plan_id,

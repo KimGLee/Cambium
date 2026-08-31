@@ -428,6 +428,11 @@ tests:
         semantics: audit_evidence_stage_to_batch_review_checkpoint
         owner_contract_symbol: audit_evidence_runtime.stage_evidence_closure
         parallel_safe: true
+      - selector: TerminalDimensionEvidenceProjectionTests.*
+        level: contract
+        semantics: terminal_plan_bound_dimension_evidence_projection
+        owner_contract_symbol: audit_evidence_runtime.terminal_dimension_evidence
+        parallel_safe: true
   - path: Tools/tests/test_audit_execution_runtime.py
     owner: Tools/execution/audit/audit_execution_runtime.py
     level: unit
@@ -687,9 +692,9 @@ tests:
         semantics: batch_close_current_bundle_recovery_projection
         owner_contract_symbol: resume.batch_close_recovery_inventory
         parallel_safe: true
-      - selector: AppliedBatchCloseTests.test_crashed_bundle_recovery_rejects_changed_content
+      - selector: AppliedBatchCloseTests.test_partial_multi_register_publication_retains_fail_closed_lock
         level: slow
-        semantics: batch_close_interrupted_publication_recovery
+        semantics: batch_close_interrupted_publication_fail_closed
         owner_contract_symbol: check_batch_close._append_receipts
         parallel_safe: false
       - selector: StateMutatingVerifierSlowTests.*
@@ -884,7 +889,7 @@ tests:
     overrides:
       - selector: TerminalProofAuditReceiptConsumerIntegrationTests.*
         level: integration
-        semantics: terminal_proof_current_audit_receipt_consumer
+        semantics: terminal_proof_plan_bound_dimension_evidence_consumer
         owner_contract_symbol: check_proof._validate_dimension_coverage_evidence
         parallel_safe: false
       - selector: TerminalProofContractTests.*

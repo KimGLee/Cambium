@@ -5,12 +5,12 @@
   "files": [
     {
       "path": ".cambium/deltas/B1.yaml",
-      "sha256": "sha256:fdc1fee6e53bd1c8818a605efc540d77941663e45b1ddc034ae8fd84ba69e395",
+      "sha256": "sha256:3194f08f9af669f203fba5fa92135607f5552dd3e7f78c154cbf73d79e93a8dc",
       "size": 305
     },
     {
       "path": ".cambium/deltas/B2.yaml",
-      "sha256": "sha256:04f721f64caf6345e224400f6f123cb81ea7e8a4389d2666f4d09b371c24ef9f",
+      "sha256": "sha256:3a7b68163884cc3fda6172b87c5c834298325a11b54964a143baf9e5ff34933d",
       "size": 305
     },
     {
@@ -35,107 +35,107 @@
     },
     {
       "path": ".cambium/receipts/audit-receipts.jsonl",
-      "sha256": "sha256:28cc20b8d59f0f43b7d8cbaa93d2b844f6cf2ca054c35ec1361a35aef7da793c",
-      "size": 22338
+      "sha256": "sha256:d882ba49981fb5d77f0ad50bbd58782b7cd73351a25a751647f30082394b5307",
+      "size": 52794
     },
     {
       "path": ".cambium/receipts/batch-close.jsonl",
-      "sha256": "sha256:b3b0e31eebd0cb652a1bf43f193d3dc05ea0af481f9efa143ef14b3da656d90c",
-      "size": 183658
+      "sha256": "sha256:48d7fe114a0a19146eab1076a53c820aebb26929889af8314da7923ebecf43f7",
+      "size": 153202
     },
     {
       "path": ".cambium/receipts/batch-page-reviews.jsonl",
-      "sha256": "sha256:ecfdad0b69fffb0922f8ade45237ed8cd577598545b53c08b28563bf8217d2bb",
+      "sha256": "sha256:d46d2f2cabca4a35f3137c1f7e78cf516e262d3df7b6746fd92da1d0b1b21340",
       "size": 5704
     },
     {
       "path": ".cambium/receipts/changed-scope-evidence.jsonl",
-      "sha256": "sha256:0e967a08babbf343eee6716f1680d7d1028e6ee86dcd253b81dfc3c4d85a4fa1",
+      "sha256": "sha256:d0690646a46cb1d8d1d06e64a8f9a52a51aaba9991ee1d71a7f1fd583b2bd359",
       "size": 48062
     },
     {
-      "path": ".cambium/receipts/cold/close-evidence/B1-881b89e96ee949cda697cccf29cf4532.jsonl",
+      "path": ".cambium/receipts/cold/close-evidence/B1-0399f995853c442e89029c97bb251dd5.jsonl",
       "sha256": "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
       "size": 0
     },
     {
-      "path": ".cambium/receipts/cold/close-evidence/B2-aa831cfa9ca44c6b857df0c3e1618229.jsonl",
+      "path": ".cambium/receipts/cold/close-evidence/B2-6e94671d664e47b7913f0b23144bc790.jsonl",
       "sha256": "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
       "size": 0
     },
     {
       "path": ".cambium/receipts/delta-B1.jsonl",
-      "sha256": "sha256:d11171d5a13dab73b07437c4f053c2e69dac936a4ae53e7f988aa3b7480bb008",
+      "sha256": "sha256:ad29c2473e7fdb144e602e6517fabcbcdd79c7dc2e52702009891d1c43a9d89c",
       "size": 2921
     },
     {
       "path": ".cambium/receipts/delta-B2.jsonl",
-      "sha256": "sha256:0f4d41d236216cb41494c665a1b688ed713f429641c28c2a39ca629fa2f3d045",
+      "sha256": "sha256:f1b93f108bc45aeeba21de1ae6dc042c5519bc0b9c7d1829b4caa59362714b8d",
       "size": 2921
     },
     {
       "path": ".cambium/receipts/gate-attestations.jsonl",
-      "sha256": "sha256:eae4e469ceded0971c87fe5eac081eb9b8e55d68bd50c1dadc09a343669ae168",
+      "sha256": "sha256:0d9bde7a509d747063506877b9da291d1586e249399f09841bb0b25226198fff",
       "size": 29140
     },
     {
       "path": ".cambium/receipts/pre-apply-coverage/B1-r2.yaml",
-      "sha256": "sha256:f1e6ebe0e13a12d07b196eb44fa4c14555ec94196e658404d69bf7aeaff90301",
+      "sha256": "sha256:ccd0e603f6bffb197ec0494e264e5dca1dbe8a8ac33df07c0b4c22275553b147",
       "size": 1290
     },
     {
       "path": ".cambium/receipts/pre-apply-coverage/B2-r5.yaml",
-      "sha256": "sha256:3ac8501036e499e957309f4264be498edbd2038ee41ddb1b61357e772ed282b4",
+      "sha256": "sha256:5d388a3796756e4d4f34fbc62fd01226f29f570446da3a43faa7d138ae69bf59",
       "size": 1796
     },
     {
       "path": ".cambium/receipts/queue-transitions.jsonl",
-      "sha256": "sha256:3020501032a97cd07e6b9fe8ceb698485bb8f9e0baf5f8aadd99f2967209c62f",
+      "sha256": "sha256:a05b63dbdbd019759ba9bdb9ba0c74af63242b51be37e6e3456b06d6eda7edb5",
       "size": 13686
     },
     {
       "path": ".cambium/receipts/ready-B1.jsonl",
-      "sha256": "sha256:67fded7ffd86af13aeef34fe75c8664f82d8dfaf5a9beeee3183c491d2ff8a78",
+      "sha256": "sha256:ae4ce232ce9ce06395fca8b6ca3bbf3ddf09b9a22ab35ac70c01caddb7336d6f",
       "size": 8668
     },
     {
       "path": ".cambium/receipts/ready-B2.jsonl",
-      "sha256": "sha256:05e4ea962f71e6f58418d1d55188692751bb0d93461f7dd195d3c61b13f75b2b",
+      "sha256": "sha256:1b8fd3ca6d4d11b49c0cef15f90bbc787101a51bfb7fdd28cf2b2e1cfb3d3142",
       "size": 8668
     },
     {
       "path": ".cambium/receipts/rendering-verification.jsonl",
-      "sha256": "sha256:5c723ccb72cae875fc37d890387fbd20543d7a2aaabd813d8d04412e38516b49",
+      "sha256": "sha256:2aef4d7db8761eddff055d121313723dcd3f440d6dd251a9211e57f7759a4493",
       "size": 4006
     },
     {
       "path": ".cambium/receipts/standards-adoptions.jsonl",
-      "sha256": "sha256:4e4e1487298aa543f1710d0d893a11cfb0586ac3d31553edb7b188ee434797a4",
+      "sha256": "sha256:0b9b2ad8c5e23033c3a00878d218f743c17ff600e2729c4f96101c1439729471",
       "size": 2414
     },
     {
       "path": ".cambium/receipts/task-plans.jsonl",
-      "sha256": "sha256:2d3a984e7f5b8651a76cef6eb78718af3864daf8a396175f301e27e7cea2c971",
+      "sha256": "sha256:29e72e060e3c033f988dee72c15459e8ec677fc249330b3e860882544b0a96f5",
       "size": 1738
     },
     {
       "path": ".cambium/receipts/task-transitions.jsonl",
-      "sha256": "sha256:53f46a11703762c290e34b44b1f67e9a70087b2c8897570de1c56624ea3add3d",
+      "sha256": "sha256:19223488f01d13e38ce24c98f9647a68107dfe4495a7d5589dbebdbf2fc77c5b",
       "size": 2892
     },
     {
       "path": ".cambium/state/coverage_ledger.yaml",
-      "sha256": "sha256:9efdd28bcc9d33a4726fe8694bb9b6991fa0c8376c51a9907ff57aeb93f100dc",
+      "sha256": "sha256:9b7d7252bdfe87d5dbd0741ecd5cbbbf8655ecc2c7214a0b18013e491ed74cc0",
       "size": 2224
     },
     {
       "path": ".cambium/state/progress_ledger.yaml",
-      "sha256": "sha256:7fc0b7721d1f537d64a663000b43e9c62646788001314a46dadfa114946834b0",
+      "sha256": "sha256:8c9ae8adf718d022cb8bf0b5e2a22107582cd46a07f636f2f74ac5c023741427",
       "size": 2325
     },
     {
       "path": ".cambium/state/required_queue.yaml",
-      "sha256": "sha256:121b426665b123c569356c40188328c74ccd38bbdd52e90619135c1bf81d8812",
+      "sha256": "sha256:45e1c96f39312c7f4fcdbdd0acb397679e20bf44edf92b4cd00075f92d451a5f",
       "size": 2885
     },
     {
@@ -145,17 +145,17 @@
     },
     {
       "path": ".cambium/tmp/receipt-append.free",
-      "sha256": "sha256:a39008f0dff38decfd583367f8f8b49b75ddbbb16f47f9b30018b72213d3f30e",
-      "size": 103
+      "sha256": "sha256:c6d3f4b0dfb53fa498d48ac25d7b8b026f6c1fbb60672dbfdf3105c5e05a02d0",
+      "size": 102
     },
     {
-      "path": ".cambium/work_specs/audit-plans/audit-plan-B1-3ce862f5a3f2d343.yaml",
-      "sha256": "sha256:31192cdb1bb0c1ed03508508d682be2dff415d2a6e7f46d95f91b202134e7340",
+      "path": ".cambium/work_specs/audit-plans/audit-plan-B1-35a3f1b50ea1d4c4.yaml",
+      "sha256": "sha256:acc887a067256861ff068e47fb9ca1dcc4f76683d282dc2ba92a47d6f23a3d6e",
       "size": 14282
     },
     {
-      "path": ".cambium/work_specs/audit-plans/audit-plan-B2-0c0a6c23ebb66c0a.yaml",
-      "sha256": "sha256:3a9acb6b173d13bbd21ed87c12505b510c41647095051119d4ebe1d57c56c8b9",
+      "path": ".cambium/work_specs/audit-plans/audit-plan-B2-ee244879117cf719.yaml",
+      "sha256": "sha256:ac8a31199f0d9cc759f3ac82e5db09be9d0deff7f985f73e938b88f0dcb3a94f",
       "size": 14282
     },
     {
@@ -177,6 +177,6 @@
   ],
   "scenario": "terminal-closed",
   "schema_version": 1,
-  "tree_sha256": "sha256:3c665e464b0916265d08164068ed2aad265af0565cf22d91ca4722d7197dfdf5",
-  "validated_tree_sha256": "sha256:be8f4a479223edefc91cde55a46b34c87541129d4559b9ee68e5f88e183d64c9"
+  "tree_sha256": "sha256:19c48b2bf72231d0d9a75d1d60962d3400c46a64e43c66a95644150c21a2f659",
+  "validated_tree_sha256": "sha256:ca3c57870e083721d553285c7a4897f01ead843b5064558baf87e6ab5b50d58d"
 }

@@ -97,6 +97,7 @@ class MinimalCorpusPlanFixture:
 
         self.runtime = {
             "errors": [],
+            "current_receipt_catalog": {},
             "coverage": {"pages": [{
                 "path": "Topics/B.md",
                 "coverage_disposition": "required",
@@ -355,6 +356,69 @@ class CorpusAcceptancePlanContractTests(unittest.TestCase):
                     ".", plan, result)
                 self.assertTrue(
                     any(expected in error for error in errors), errors)
+
+    def test_semantic_acceptance_status_closed_current_only_table(self):
+        def result(applicability="configured", *, runtime=None, errors=None):
+            return {
+                "root": ".",
+                "errors": list(errors or []),
+                "applicability": applicability,
+                "slot": {"authorities": [{"role_id": "stopper"}]},
+                "runtime": runtime,
+            }
+
+        def receipt(receipt_id, outcome="pass", *, stale=False):
+            return {
+                "receipt_id": receipt_id,
+                "tool": check_corpus_plan.SEMANTIC_ACCEPTANCE_TOOL,
+                "check": check_corpus_plan.SEMANTIC_ACCEPTANCE_CHECK,
+                "result": outcome,
+                "checked_at": "2026-09-01T00:00:00Z",
+                "_stale": stale,
+            }
+
+        def status(value):
+            with mock.patch.object(
+                    check_corpus_plan,
+                    "semantic_acceptance_receipt_errors",
+                    side_effect=lambda _root, row, **_kwargs: (
+                        ["stale"] if row.get("_stale") else [])):
+                return check_corpus_plan.semantic_acceptance_status(value)[
+                    "status"]
+
+        self.assertEqual("unavailable", status(result(runtime=None)))
+        self.assertEqual("unavailable", status(result(runtime={
+            "errors": ["invalid"], "current_receipt_catalog": {},
+        })))
+        self.assertEqual("unavailable", status(result(runtime={"errors": []})))
+        self.assertEqual("not-applicable", status(result(
+            applicability="not-applicable", runtime={
+                "errors": [], "current_receipt_catalog": {},
+            })))
+        self.assertEqual("not-recorded", status(result(runtime={
+            "errors": [], "current_receipt_catalog": {},
+            "receipt_catalog": {"historical": receipt("historical")},
+        })))
+        self.assertEqual("current", status(result(runtime={
+            "errors": [], "current_receipt_catalog": {
+                "accepted": receipt("accepted"),
+            },
+        })))
+        self.assertEqual("rejected", status(result(runtime={
+            "errors": [], "current_receipt_catalog": {
+                "rejected": receipt("rejected", "fail"),
+            },
+        })))
+        self.assertEqual("stale", status(result(runtime={
+            "errors": [], "current_receipt_catalog": {
+                "stale": receipt("stale", stale=True),
+            },
+        })))
+        self.assertEqual("ambiguous", status(result(runtime={
+            "errors": [], "current_receipt_catalog": {
+                "one": receipt("one"), "two": receipt("two"),
+            },
+        })))
 
 
 class CorpusPlanPipelineIntegrationTests(

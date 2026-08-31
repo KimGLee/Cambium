@@ -6,6 +6,7 @@ exercise isolated slow paths.
 """
 
 import io
+import json
 from contextlib import redirect_stderr, redirect_stdout
 from pathlib import Path
 import subprocess
@@ -94,6 +95,45 @@ class WorkSpecStabilityContractTests(unittest.TestCase):
                     check_batch_close.ReceiptPublicationUncertain,
                     "Batch Work Spec changed"):
                 check_batch_close._assert_work_spec_unchanged(root, item)
+
+
+class MultiRegisterPublicationContractTests(unittest.TestCase):
+    """Own the mechanical publication order and catalog path topology."""
+
+    def test_preflight_catalog_uses_each_machine_owned_register(self):
+        close = {"receipt_id": "raw-1"}
+        audit = {"receipt_id": "audit-1", "record_kind": "audit-receipt"}
+        commit = {"receipt_id": "close-1"}
+        catalog = check_batch_close._receipt_catalog_with(
+            {"receipt_catalog": {}, "current_receipt_catalog": {}}, (
+                (".cambium/receipts/batch-close.jsonl", [close]),
+                (".cambium/receipts/audit-receipts.jsonl", [audit]),
+                (".cambium/receipts/batch-close.jsonl", [commit]),
+            ))
+        self.assertEqual(
+            ".cambium/receipts/batch-close.jsonl", catalog["raw-1"][0])
+        self.assertEqual(
+            ".cambium/receipts/audit-receipts.jsonl", catalog["audit-1"][0])
+        self.assertEqual(
+            ".cambium/receipts/batch-close.jsonl", catalog["close-1"][0])
+
+    def test_aggregate_is_the_last_publication_edge(self):
+        calls = []
+        with mock.patch.object(
+                check_batch_close, "_append_receipts",
+                side_effect=lambda path, records: calls.append(
+                    (path, [record["receipt_id"] for record in records]))):
+            check_batch_close._publish_close_bundle(
+                "/runtime/batch-close.jsonl",
+                "/runtime/audit-receipts.jsonl",
+                [{"receipt_id": "raw-1"}],
+                [{"receipt_id": "audit-1"}],
+                {"receipt_id": "close-1"})
+        self.assertEqual([
+            ("/runtime/batch-close.jsonl", ["raw-1"]),
+            ("/runtime/audit-receipts.jsonl", ["audit-1"]),
+            ("/runtime/batch-close.jsonl", ["close-1"]),
+        ], calls)
 
 
 class ManifestPageCasSlowTests(unittest.TestCase):
@@ -251,6 +291,25 @@ class AppliedBatchCloseTests(BatchCloseCheckpointCase):
             output, "queue_consistency_receipt")
         close_gate = self.output_value(
             output, "close_gate_receipt")
+        batch_records = [json.loads(line) for line in (
+            self.root / ".cambium/receipts/batch-close.jsonl"
+        ).read_text(encoding="utf-8").splitlines()]
+        audit_records = [json.loads(line) for line in (
+            self.root / ".cambium/receipts/audit-receipts.jsonl"
+        ).read_text(encoding="utf-8").splitlines()]
+        self.assertTrue(audit_records)
+        self.assertTrue(all(
+            record.get("record_kind") == "audit-receipt"
+            for record in audit_records))
+        batch_ids = {record["receipt_id"] for record in batch_records}
+        audit_ids = {record["receipt_id"] for record in audit_records}
+        self.assertTrue(batch_ids.isdisjoint(audit_ids))
+        self.assertIn(close_gate, batch_ids)
+        close_record = next(
+            record for record in batch_records
+            if record["receipt_id"] == close_gate)
+        self.assertTrue(
+            set(close_record["closed_list_evidence"].values()) & audit_ids)
         runtime = runtime_validation.validate_runtime(self.root)
         self.assertEqual([], runtime["errors"])
         errors = queue_runtime.close_gate_receipt_errors(
@@ -273,7 +332,7 @@ class AppliedBatchCloseTests(BatchCloseCheckpointCase):
         self.assertEqual([], closed["errors"])
         self.assertEqual("closed", closed["items_by_id"]["B1"]["state"])
 
-    def test_crashed_bundle_recovery_rejects_changed_content(self):
+    def test_partial_multi_register_publication_retains_fail_closed_lock(self):
         program = r'''
 import os
 import sys
@@ -282,10 +341,13 @@ sys.path.insert(0, sys.argv[1])
 import Tools.execution.audit.check_batch_close as check_batch_close
 
 real_append = check_batch_close._append_receipts
+append_count = 0
 
 def append_then_crash(path, receipts):
+    global append_count
     real_append(path, receipts)
-    if len(receipts) > 1:
+    append_count += 1
+    if append_count == 2:
         os._exit(23)
 
 check_batch_close._append_receipts = append_then_crash
@@ -312,23 +374,18 @@ raise SystemExit(check_batch_close.main([
             resume.resume_next_action(unchanged, unchanged["errors"]),
         )
         operation = unchanged["_writer_locks"][0]["operation_receipt"]
-        self.assertTrue(operation["matching_receipt"])
-        self.assertEqual("matching", operation["status"])
-
-        topic = self.root / "Topics/A.md"
-        topic.write_text(
-            topic.read_text(encoding="utf-8") +
-            "\nchanged after interrupted close evidence\n",
-            encoding="utf-8",
-        )
-        changed = runtime_validation.validate_runtime(self.root)
-        operation = changed["_writer_locks"][0]["operation_receipt"]
         self.assertFalse(operation["matching_receipt"])
-        self.assertEqual("semantic-mismatch", operation["status"])
-        self.assertEqual(
-            ["current_repository_snapshot_sha256"],
-            operation["mismatched_fields"],
-        )
+        self.assertEqual("absent", operation["status"])
+        self.assertTrue(
+            (self.root / ".cambium/receipts/batch-close.jsonl").is_file())
+        self.assertTrue(
+            (self.root / ".cambium/receipts/audit-receipts.jsonl").is_file())
+        batch_records = [json.loads(line) for line in (
+            self.root / ".cambium/receipts/batch-close.jsonl"
+        ).read_text(encoding="utf-8").splitlines()]
+        self.assertNotIn(
+            operation["receipt_id"],
+            {record["receipt_id"] for record in batch_records})
 
 
 class StateMutatingVerifierSlowTests(

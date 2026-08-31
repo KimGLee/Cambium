@@ -47,8 +47,10 @@ approval_reference: TODO(plan)
 # Three fields are RESOLVED, not typed. Leave `selected_card_paths`,
 # `selected_read_sets`, and `loaded_module_paths` empty: the transaction fills
 # them from `selected_route_ids` through the canonical Card and Read Set
-# indexes and the transitive loading-boundary closure. Selecting R01 alone
-# reaches every other route and well over a hundred modules, so typing them by
+# indexes and the transitive loading-boundary closure. For build completion,
+# the transaction also reads the Kernel-owned Terminal Proof contract and
+# includes its required routes before the Task Contract is frozen; maintenance
+# completion does not. Typing the resulting Cards, Read Sets, or modules by
 # hand produces a declaration nobody checked. Anything listed here is kept and
 # closed over, which is how a profile supplemental Read Set is selected -- it
 # has no machine-readable registry.

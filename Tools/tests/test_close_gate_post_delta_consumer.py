@@ -347,7 +347,11 @@ class PostDeltaCloseConsumerTests(unittest.TestCase):
 
     def catalog(self):
         return {
-            receipt_id: (".cambium/receipts/batch-close.jsonl", record)
+            receipt_id: (
+                ".cambium/receipts/audit-receipts.jsonl"
+                if record.get("record_kind") == "audit-receipt" else
+                ".cambium/receipts/batch-close.jsonl",
+                record)
             for receipt_id, record in self.records.items()
         }
 
@@ -416,6 +420,18 @@ class PostDeltaCloseConsumerTests(unittest.TestCase):
         errors, evidence_ids = self.errors()
         self.assertEqual([], errors)
         self.assertEqual(8, len(evidence_ids))
+
+    def test_current_full_audit_receipt_must_use_its_canonical_register(self):
+        catalog = self.catalog()
+        member = "structural_validity"
+        receipt_id = self.aggregate["closed_list_evidence"][member]
+        record = catalog[receipt_id][1]
+        catalog[receipt_id] = (
+            ".cambium/receipts/batch-close.jsonl", record)
+        errors, _ids = self.errors(catalog=catalog)
+        self.assertTrue(any(
+            "must be stored in .cambium/receipts/audit-receipts.jsonl"
+            in error for error in errors), errors)
 
     def test_manifest_page_contract_must_remain_original_gate_evidence(self):
         catalog = self.catalog()

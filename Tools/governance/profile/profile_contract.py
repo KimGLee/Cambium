@@ -2785,6 +2785,33 @@ def expression_status_target_projection(contract):
     ),)
 
 
+def terminal_receipt_dimensions_projection(contract):
+    """Return the exact dimension namespace Terminal Proof must account for.
+
+    The Kernel-owned base order is always present.  The selected Profile may
+    extend that namespace only through authorized Extension Dimension rows
+    whose typed target set includes ``receipt``.  Review-only registrations
+    remain valid Profile review obligations, but they never become Terminal
+    receipt dimensions merely because an AuditPlan records their judgment.
+    """
+    if not isinstance(contract, ProfileContract):
+        raise TypeError("contract must be a ProfileContract")
+    if not contract.authorized:
+        raise ProfileContractError(
+            "Profile contract is not authorized: %s" %
+            format_diagnostics(contract.diagnostics))
+    extensions = tuple(sorted(
+        dimension.dimension_id
+        for dimension in contract.extension_dimensions
+        if "receipt" in dimension.targets
+    ))
+    dimensions = tuple(BASE_DIMENSION_ORDER) + extensions
+    if len(dimensions) != len(set(dimensions)):
+        raise ProfileContractError(
+            "Terminal receipt dimension projection is not unique")
+    return dimensions
+
+
 def volatility_defaults_projection(contract):
     """Project the authorized Profile's domain-to-volatility policy.
 
@@ -2879,5 +2906,6 @@ __all__ = [
     'load_profile_contract',
     'registered_scan_entrypoint',
     'scan_capability_implementation_paths',
+    'terminal_receipt_dimensions_projection',
     'volatility_defaults_projection',
 ]

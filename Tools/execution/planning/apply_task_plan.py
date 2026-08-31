@@ -16,6 +16,7 @@ lock; it delegates every planning decision and validation here.
 import copy
 import os
 
+import Tools.execution.audit.terminal_proof_contract as terminal_proof_contract
 import Tools.execution.context_delivery.card_contract as card_contract
 import Tools.execution.context_delivery.read_set_contract as read_set_contract
 import Tools.execution.planning.compile_queue as compile_queue
@@ -206,6 +207,26 @@ def _strings(values):
             if isinstance(value, str) and value}
 
 
+def _completion_required_routes(root, completion_semantics):
+    """Return routes required by the selected completion contract.
+
+    A build task will eventually produce a Terminal Proof, so its frozen Task
+    Contract must already include every route required by the Kernel-owned
+    Terminal Proof machine contract.  Maintenance tasks do not use Terminal
+    Proof and therefore must not inherit those routes.
+    """
+    if completion_semantics != "build":
+        return set()
+    try:
+        contract = terminal_proof_contract.load_contract(root)
+        values = terminal_proof_contract.contract_values(contract)
+    except (OSError, UnicodeError, ValueError, kblib.YamlSubsetError) as exc:
+        raise Refusal(
+            "the Kernel Terminal Proof route contract is unavailable: %s" %
+            exc) from exc
+    return set(values["required_route_ids"])
+
+
 def _derive_load_sets(root, contract):
     """Resolve the confirmed route selection through canonical registries."""
     try:
@@ -215,7 +236,11 @@ def _derive_load_sets(root, contract):
         raise Refusal(
             "the Card/Read Set registry is not sound: %s" %
             exc) from exc
-    routes = sorted(_strings(contract.get("selected_route_ids")) | {"R01"})
+    routes = sorted(
+        _strings(contract.get("selected_route_ids")) |
+        {"R01"} |
+        _completion_required_routes(
+            root, contract.get("completion_semantics")))
     contract["selected_route_ids"] = routes
     unknown = [route for route in routes if route not in read_map]
     if unknown:

@@ -462,6 +462,20 @@ class ProfileExtensionDimensionContractTests(unittest.TestCase):
             "extension-dimension-target-invalid",
             self.fixture.checks(contract))
 
+    def test_terminal_receipt_projection_excludes_review_only_dimensions(self):
+        self.fixture.configure_extension_dimensions((
+            ("review_only", "review", "Review-only judgment."),
+            ("terminal_receipt", "receipt", "Terminal receipt judgment."),
+        ))
+        contract = self.fixture.load()
+
+        self.assertTrue(contract.authorized, contract.diagnostics)
+        self.assertEqual(
+            tuple(profile_contract.BASE_DIMENSION_ORDER) +
+            ("terminal_receipt",),
+            profile_contract.terminal_receipt_dimensions_projection(
+                contract))
+
 
 if __name__ == "__main__":
     unittest.main()

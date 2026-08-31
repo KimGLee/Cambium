@@ -33,18 +33,16 @@ Method:
 - dimension_coverage must carry one entry for every base receipt dimension
   K12/07 fixes; each entry is either a non-empty list of receipt IDs or an
   explicit "not-applicable: <reason>" string. A missing dimension, an empty
-  list, a reasonless declaration, or a receipt cited under two dimensions ->
-  fail; with --root every cited receipt must resolve to exactly one
-  uninvalidated, full `record_kind: audit-receipt` record in
-  audit_receipt_register. The record must pass the Kernel-owned AuditReceipt
-  contract, carry the cited dimension and `passed` verdict, remain byte-for-byte
-  identical in the Standards-adoption-filtered current receipt catalog, and
-  discharge its exact current AuditPlan obligation through the registered
-  owner, due stage, producer, consumer, and evidence-time fingerprints. A Gate
-  record, a non-AuditReceipt record with an ad-hoc dimension field, or any other generic
-  successful Receipt is not an AuditReceipt. Immutable history is not a
-  fallback for a new Terminal Proof. Zero receipts is never read as "nothing
-  was in scope";
+  list, a reasonless declaration, or an evidence ref cited under two
+  dimensions -> fail; with --root every cited ref must be the exact current
+  selected evidence of a non-dimensionless obligation in a closed batch's
+  complete AuditPlan reconciliation. Each evidence kind remains governed by
+  its own owner contract. The `audit-receipt` subset must additionally occur
+  exactly once, byte-for-byte, in audit_receipt_register and pass the full
+  Kernel-owned AuditReceipt contract. A current record outside the close
+  reconciliation, historical/stale evidence, or a dimensionless Gate cannot
+  enter coverage. A dimension may use reasoned not-applicable only when the
+  complete closed plans contain no applicable obligation in that dimension;
 - with --root, dimension_coverage must additionally carry one entry, on those
   same terms, for every dimension the selected Profile's authorized typed
   contract registers with a `receipt` target. It must not invent an
@@ -127,6 +125,7 @@ import Tools.execution.task_runtime.queue_runtime.receipts as receipt_catalogs
 import Tools.execution.task_runtime.queue_runtime.runtime as queue_state
 import Tools.execution.task_runtime.runtime_validation as runtime_validation
 import Tools.governance.profile.profile_layout_contract as profile_layout_contract
+import Tools.governance.profile.profile_contract as profile_contract
 import Tools.execution.context_delivery.read_set_contract as read_set_contract
 import Tools.execution.task_runtime.runtime_paths as runtime_paths
 import Tools.execution.task_runtime.runtime_state_contract as runtime_state_contract
@@ -424,9 +423,11 @@ def _registered_receipt_dimensions(profile_evaluation):
         return (), (), False, failures
 
     contract = profile_evaluation.contract
+    terminal_dimensions = \
+        profile_contract.terminal_receipt_dimensions_projection(contract)
     return (
-        tuple(sorted(row.dimension_id for row in contract.extension_dimensions
-                     if "receipt" in row.targets)),
+        tuple(dimension for dimension in terminal_dimensions
+              if dimension not in BASE_RECEIPT_DIMENSIONS),
         tuple(sorted(row.dimension_id
                      for row in contract.extension_dimensions)),
         True,
@@ -585,25 +586,24 @@ def _dimension_coverage_failures(proof, registered_dimensions=(),
         target = "dimension_coverage#%s" % dimension
         if (registry_authoritative and
                 dimension not in BASE_RECEIPT_DIMENSIONS and
-                dimension not in all_registered_dimensions):
-            failures.append((
-                "proof-dimension-unregistered", target,
-                "%s is not a base dimension or an extension in the selected "
-                "profile's Audit Dimension Registry; the registry is the "
-                "sole extension authority" % dimension,
-            ))
-            # Do not promote an unauthorized key into the cited receipt map.
-            continue
-        if (registry_authoritative and
-                dimension in all_registered_dimensions and
-                dimension not in registered_dimensions and
-                isinstance(value, list)):
-            failures.append((
-                "proof-dimension-review-only", target,
-                "%s is registered for review only; it emits no receipt and "
-                "cannot supply receipt IDs to Terminal Proof "
-                "dimension_coverage" % dimension,
-            ))
+                dimension not in registered_dimensions):
+            if dimension in all_registered_dimensions:
+                failures.append((
+                    "proof-dimension-review-only", target,
+                    "%s is registered for review only and is not a Terminal "
+                    "receipt dimension; it cannot appear in "
+                    "dimension_coverage" % dimension,
+                ))
+            else:
+                failures.append((
+                    "proof-dimension-unregistered", target,
+                    "%s is not a base dimension or a receipt-target "
+                    "extension in the selected profile's Audit Dimension "
+                    "Registry; that projection is the sole Terminal "
+                    "dimension authority" % dimension,
+                ))
+            # Neither a review-only key nor an unauthorized key becomes
+            # Terminal coverage, regardless of its value representation.
             continue
         if isinstance(value, str):
             if not value.startswith(NOT_APPLICABLE_PREFIX):
@@ -641,8 +641,8 @@ def _dimension_coverage_failures(proof, registered_dimensions=(),
             if receipt_id in cited:
                 failures.append((
                     "proof-dimension-receipt-duplicate", entry_target,
-                    "receipt %r is already cited under %s; an AuditReceipt "
-                    "carries one dimension and cannot cover two"
+                    "evidence ref %r is already cited under %s; one "
+                    "plan-bound evidence record cannot cover two dimensions"
                     % (receipt_id, cited[receipt_id]),
                 ))
                 continue
@@ -652,16 +652,71 @@ def _dimension_coverage_failures(proof, registered_dimensions=(),
 
 def _validate_dimension_coverage_evidence(
         root, proof, cited, runtime, registered_dimensions=()):
-    """Resolve dimension coverage only through full current AuditReceipts.
+    """Match Proof coverage to the closed AuditPlan evidence projection.
 
-    The append-only register remains the byte-level source named by Terminal
-    Proof, while the adoption-filtered catalog decides whether those same bytes
-    are current. Shape, plan, obligation, producer, consumer, and fingerprint
-    semantics are delegated to the shared AuditPlan evidence consumer; this
-    Terminal consumer does not reconstruct a weaker receipt interpretation.
+    The shared audit runtime resolves each selected record through its own
+    evidence-kind owner and the immutable close reconciliation.  This consumer
+    only compares that projection with the Proof.  Full AuditReceipts retain
+    their additional byte-level membership requirement in the canonical
+    AuditReceipt register; heterogeneous evidence is never made to impersonate
+    that contract.
     """
     failures = []
-    if not cited:
+    try:
+        evidence_rows = audit_evidence_runtime.terminal_dimension_evidence(
+            runtime)
+    except (OSError, TypeError, UnicodeError, ValueError,
+            kblib.YamlSubsetError) as exc:
+        return [_queue_linkage_failure(
+            "proof-dimension-evidence-closure-invalid",
+            "Terminal Proof#dimension_coverage",
+            "cannot derive current plan-bound dimension evidence from the "
+            "closed AuditPlan reconciliation: %s" % exc,
+        )]
+
+    expected = {
+        row["evidence_ref"]: row for row in evidence_rows
+    }
+    if len(expected) != len(evidence_rows):
+        return [_queue_linkage_failure(
+            "proof-dimension-evidence-closure-invalid",
+            "Terminal Proof#dimension_coverage",
+            "closed AuditPlans select one evidence ref more than once",
+        )]
+    for receipt_id, row in sorted(expected.items()):
+        dimension = row["dimension"]
+        if cited.get(receipt_id) == dimension:
+            continue
+        failures.append(_queue_linkage_failure(
+            "proof-dimension-evidence-missing",
+            "Terminal Proof#dimension_coverage#%s" % dimension,
+            "closed AuditPlan obligation %s selects current %s evidence %r "
+            "under %s, but the Proof does not cite that exact binding" % (
+                row["obligation_id"], row["evidence_kind"], receipt_id,
+                dimension),
+        ))
+    for receipt_id, dimension in sorted(cited.items()):
+        row = expected.get(receipt_id)
+        if row is None:
+            failures.append(_queue_linkage_failure(
+                "proof-dimension-evidence-foreign",
+                "Terminal Proof#dimension_coverage#%s" % dimension,
+                "evidence %r is not selected by any current closed "
+                "AuditPlan reconciliation" % receipt_id,
+            ))
+        elif row["dimension"] != dimension:
+            failures.append(_queue_linkage_failure(
+                "proof-dimension-evidence-mismatch",
+                "Terminal Proof#dimension_coverage#%s" % dimension,
+                "evidence %r is selected under %s, not %s" % (
+                    receipt_id, row["dimension"], dimension),
+            ))
+
+    audit_rows = {
+        receipt_id: row for receipt_id, row in expected.items()
+        if row["evidence_kind"] == "audit-receipt"
+    }
+    if not audit_rows:
         return failures
     receipt_path_raw = proof.get("audit_receipt_register")
     try:
@@ -690,8 +745,8 @@ def _validate_dimension_coverage_evidence(
         if not isinstance(record, dict):
             continue
         records.setdefault(record.get("receipt_id"), []).append(record)
-    for receipt_id in sorted(cited):
-        dimension = cited[receipt_id]
+    for receipt_id, row in sorted(audit_rows.items()):
+        dimension = row["dimension"]
         target = "Terminal Proof#dimension_coverage#%s" % dimension
         current, membership_failures = _current_receipt_evidence(
             root, receipt_id,
@@ -738,96 +793,6 @@ def _validate_dimension_coverage_evidence(
                 (dimension, receipt_id, exc),
             ))
             continue
-        if record.get("invalidated_by") is not None:
-            failures.append(_queue_linkage_failure(
-                "proof-dimension-receipt-invalidated", target,
-                "%s cites receipt %r, which records invalidated_by=%r and "
-                "cannot carry a current verdict" %
-                (dimension, receipt_id, record.get("invalidated_by")),
-            ))
-        recorded = record.get("dimension")
-        if recorded != dimension:
-            failures.append(_queue_linkage_failure(
-                "proof-dimension-receipt-mismatch", target,
-                "%s cites receipt %r, whose own dimension field is %r; an "
-                "AuditReceipt files its verdict under one dimension, and a "
-                "record carrying no dimension is not a record of this one" %
-                (dimension, receipt_id, recorded),
-            ))
-        result = record.get("result")
-        if result != "passed":
-            failures.append(_queue_linkage_failure(
-                "proof-dimension-receipt-not-passed", target,
-                "%s cites AuditReceipt %r, which records result=%r; the full "
-                "AuditReceipt contract uses only `passed` as completion "
-                "evidence. Gate-style `pass` is not an AuditReceipt verdict" %
-                (dimension, receipt_id, result),
-            ))
-        if (recorded != dimension or result != "passed" or
-                record.get("invalidated_by") is not None):
-            continue
-
-        items = runtime.get("items_by_id") if isinstance(runtime, dict) else None
-        item = items.get(record["batch_id"]) if isinstance(items, dict) else None
-        if not isinstance(item, dict):
-            failures.append(_queue_linkage_failure(
-                "proof-dimension-receipt-plan-invalid", target,
-                "AuditReceipt %r names batch %r, which is not a current "
-                "admitted Queue item" % (receipt_id, record["batch_id"]),
-            ))
-            continue
-        try:
-            resolved = audit_evidence_runtime.resolve_stage_plan(
-                runtime, item, record["due_stage"])
-        except (OSError, TypeError, UnicodeError, ValueError,
-                kblib.YamlSubsetError) as exc:
-            failures.append(_queue_linkage_failure(
-                "proof-dimension-receipt-plan-invalid", target,
-                "AuditReceipt %r cannot resolve one current immutable "
-                "AuditPlan at due stage %r: %s" %
-                (receipt_id, record["due_stage"], exc),
-            ))
-            continue
-        if (record["plan_id"] != resolved["audit_plan_id"] or
-                record["audit_plan_sha256"] !=
-                resolved["audit_plan_sha256"]):
-            failures.append(_queue_linkage_failure(
-                "proof-dimension-receipt-plan-mismatch", target,
-                "AuditReceipt %r binds plan %r at %s, but the current plan for "
-                "batch %r is %r at %s" % (
-                    receipt_id, record["plan_id"],
-                    record["audit_plan_sha256"], record["batch_id"],
-                    resolved["audit_plan_id"],
-                    resolved["audit_plan_sha256"]),
-            ))
-            continue
-        obligations = [
-            obligation for obligation in resolved["obligations"]
-            if obligation.get("obligation_id") == record["obligation_id"]
-        ]
-        if len(obligations) != 1:
-            failures.append(_queue_linkage_failure(
-                "proof-dimension-receipt-obligation-mismatch", target,
-                "AuditReceipt %r names obligation %r, which must occur exactly "
-                "once in current plan %r at due stage %r; found %d" % (
-                    receipt_id, record["obligation_id"], record["plan_id"],
-                    record["due_stage"], len(obligations)),
-            ))
-            continue
-        try:
-            audit_evidence_runtime.validate_audit_receipt_for_obligation(
-                root, receipt_catalogs.current_receipt_catalog(runtime),
-                resolved["plan"], resolved["audit_plan_sha256"],
-                obligations[0], record, result=runtime, item=item)
-        except (OSError, TypeError, UnicodeError, ValueError,
-                kblib.YamlSubsetError) as exc:
-            failures.append(_queue_linkage_failure(
-                "proof-dimension-receipt-obligation-mismatch", target,
-                "AuditReceipt %r does not bind its exact plan obligation, "
-                "owner, due stage, registered producer and consumer, and "
-                "three evidence-time fingerprints: %s" %
-                (receipt_id, exc),
-            ))
     return failures
 
 
@@ -1198,8 +1163,36 @@ def _validate_corpus_plan_linkage(
             "proof-corpus-plan-receipt-stale",
             "%s#%s" % (receipt_path_raw, receipt_id), detail))
 
+    try:
+        corpus = check_corpus_plan.validate_corpus_plan(
+            str(root), authorized_profile_view=authorized_profile_view,
+            authorized_active_standards_view=(runtime or {}).get(
+                "_active_standards_authorized_view"))
+    except (OSError, TypeError, UnicodeError, ValueError,
+            kblib.YamlSubsetError) as exc:
+        failures.append(_queue_linkage_failure(
+            "proof-corpus-plan-semantic-status-unavailable",
+            "Terminal Proof#corpus_plan_semantic_acceptance_receipt",
+            "cannot resolve the current semantic-acceptance owner: %s" % exc))
+        return failures, False
+    if corpus.get("errors"):
+        failures.append(_queue_linkage_failure(
+            "proof-corpus-plan-semantic-status-unavailable",
+            "Terminal Proof#corpus_plan_semantic_acceptance_receipt",
+            "current Corpus Planning validation fails: %s" % "; ".join(
+                "%s: %s" % (row.get("check"), row.get("details"))
+                for row in corpus["errors"])))
+        return failures, False
+    status = check_corpus_plan.semantic_acceptance_status(
+        corpus, repository_snapshot_sha256=repository_snapshot_sha256)
     applicability = expected_binding.get("corpus_plan_applicability")
     if applicability == corpus_planning_contract.INACTIVE_STATE:
+        if status.get("status") != corpus_planning_contract.INACTIVE_STATE:
+            failures.append(_queue_linkage_failure(
+                "proof-corpus-plan-semantic-status-unavailable",
+                "Terminal Proof#corpus_plan_semantic_acceptance_receipt",
+                "not-applicable Corpus Planning resolved semantic status %r" %
+                status.get("status")))
         if semantic_id is not None:
             failures.append(_queue_linkage_failure(
                 "proof-corpus-plan-semantic-receipt-not-applicable",
@@ -1207,12 +1200,18 @@ def _validate_corpus_plan_linkage(
                 "semantic acceptance receipt must be null when the current "
                 "Corpus Planning applicability.state is not-applicable"))
     elif applicability == corpus_planning_contract.CONFIGURED_STATE:
-        if not isinstance(semantic_id, str) or not semantic_id.strip():
+        if status.get("status") != "current":
             failures.append(_queue_linkage_failure(
-                "proof-corpus-plan-semantic-receipt-required",
+                "proof-corpus-plan-semantic-status-not-current",
                 "Terminal Proof#corpus_plan_semantic_acceptance_receipt",
-                "a configured Corpus Planning slot requires one current "
-                "semantic-acceptance receipt"))
+                "configured Corpus Planning semantic acceptance is %r" %
+                status.get("status")))
+        elif semantic_id != status.get("receipt_id"):
+            failures.append(_queue_linkage_failure(
+                "proof-corpus-plan-semantic-receipt-not-selected",
+                "Terminal Proof#corpus_plan_semantic_acceptance_receipt",
+                "proof cites %r, but the current semantic owner selects %r" %
+                (semantic_id, status.get("receipt_id"))))
         else:
             current_semantic, semantic_membership_failures = \
                 _current_receipt_evidence(
@@ -1237,41 +1236,14 @@ def _validate_corpus_plan_linkage(
                         "%s#%s" % (receipt_path_raw, semantic_id),
                         "the named register record differs from the same "
                         "receipt_id in the current receipt catalog"))
-                for field, expected in (
-                        ("tool", "record_corpus_acceptance"),
-                        ("tool_version",
-                         check_corpus_plan.SEMANTIC_ACCEPTANCE_TOOL_VERSION),
-                        ("gate_id", corpus_planning_contract.
-                         SEMANTIC_ACCEPTANCE_SCOPE),
-                        ("check", "corpus_plan_semantic_acceptance"),
-                        ("result", "pass"),
-                        ("invalidated_by", None),
-                        ("structural_check_receipt", receipt_id)):
-                    if semantic.get(field) != expected:
-                        failures.append(_queue_linkage_failure(
-                            "proof-corpus-plan-semantic-receipt-stale",
-                            "%s#%s" % (receipt_path_raw, semantic_id),
-                            "semantic receipt %s=%r, expected %r" %
-                            (field, semantic.get(field), expected)))
-                for field in corpus_planning_contract.\
-                        PASS_RECEIPT_BINDING_FIELDS:
-                    expected = expected_binding.get(field)
-                    if semantic.get(field) != expected:
-                        failures.append(_queue_linkage_failure(
-                            "proof-corpus-plan-semantic-receipt-stale",
-                            "%s#%s" % (receipt_path_raw, semantic_id),
-                            "semantic receipt %s=%r, expected %r" %
-                            (field, semantic.get(field), expected)))
-                decisions = semantic.get("capability_decisions")
-                if (not isinstance(decisions, list) or not decisions or
-                        any(not isinstance(row, dict) or
-                            row.get("decision") != "accepted"
-                            for row in decisions)):
+                if semantic.get("structural_check_receipt") != receipt_id:
                     failures.append(_queue_linkage_failure(
-                        "proof-corpus-plan-semantic-receipt-rejected",
+                        "proof-corpus-plan-semantic-structural-mismatch",
                         "%s#%s" % (receipt_path_raw, semantic_id),
-                        "semantic receipt must contain a non-empty all-accepted "
-                        "capability_decisions list"))
+                        "semantic receipt links structural receipt %r, not "
+                        "this Proof's %r" % (
+                            semantic.get("structural_check_receipt"),
+                            receipt_id)))
     return failures, not failures
 
 
@@ -2601,8 +2573,7 @@ def _main():
             queue_live_check_passed and not queue_failures
         )
 
-    if (args.root and root is not None and root.is_dir() and
-            cited_dimension_receipts):
+    if args.root and root is not None and root.is_dir():
         dimension_evidence_failures = _validate_dimension_coverage_evidence(
             root, proof, cited_dimension_receipts, runtime=current_runtime,
             registered_dimensions=registered_dimensions)

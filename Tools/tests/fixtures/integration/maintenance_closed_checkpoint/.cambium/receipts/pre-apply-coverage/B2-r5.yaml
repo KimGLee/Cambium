@@ -1,0 +1,86 @@
+schema_version: 2
+task_id: fixture-task
+updated_at: 2026-08-31T22:11:38Z
+scope_version: s1
+upstream_revision_id: 0123456789abcdef0123456789abcdef01234567
+selected_profile_manifest: profiles/test-profile/profile.md
+batch_specs:
+  - id: B1
+    family: Core
+    order_hint: 1
+    source_route: R03
+    execution_mode: concurrent-worker
+    depends_on: []
+    confirmation_required: false
+    work_spec_path: null
+    work_spec_sha256: null
+  - id: B2
+    family: Core
+    order_hint: 2
+    source_route: R03
+    execution_mode: concurrent-worker
+    depends_on:
+      - B1
+    confirmation_required: false
+    work_spec_path: null
+    work_spec_sha256: null
+maintenance_candidates:
+  - candidate_id: candidate-sha256:2b78a390f2ff8ff4e3d942e214ff1ab92c74b7d9ced70bb437fb7ba2b2b4a642
+    object_path: Topics/A.md
+    source_kinds:
+      - freshness
+    priority: P2
+    previous_deferred_runs: 0
+    consecutive_deferred_runs: 0
+    reentered_after_terminal: false
+    selection: selected
+    disposition: null
+    disposition_reason: null
+  - candidate_id: candidate-sha256:ca25dade76d58c12ad945e5b04ffb29d41df53c3d60d35175ebafc3dd6880692
+    object_path: Topics/B.md
+    source_kinds:
+      - freshness
+    priority: P2
+    previous_deferred_runs: 0
+    consecutive_deferred_runs: 0
+    reentered_after_terminal: false
+    selection: selected
+    disposition: null
+    disposition_reason: null
+pages:
+  - path: Topics/A.md
+    coverage_disposition: required
+    canonical_owner: Topics/A.md
+    type: concept
+    priority: P2
+    tier: S
+    prerequisites: []
+    batch: B1
+    next_batch: null
+    deferred_reason: null
+    reentry_condition: null
+    authoring_status: reviewed
+    gate_receipts:
+      - audit-record_batch_page_review-20260831T221108Z-6c3321528e9f481bb299ad512a79f4be-0001
+      - audit-check_batch_close-20260831T221133Z-33dc69a070274b82a0847ef041253f6f-0010
+    property_state:
+      last_reviewed:
+        value: 2026-08-31
+        evidence_receipt: audit-check_batch_close-20260831T221133Z-33dc69a070274b82a0847ef041253f6f-0010
+        content_fingerprint: sha256:bbff007034a2d19522a357b835a062f22948721d86bb2cc2f8997f18510e365f
+  - path: Topics/B.md
+    coverage_disposition: required
+    canonical_owner: Topics/B.md
+    type: concept
+    priority: P2
+    tier: S
+    prerequisites:
+      - Topics/A.md
+    batch: B2
+    next_batch: B2
+    deferred_reason: null
+    reentry_condition: null
+    authoring_status: unassessed
+    gate_receipts: []
+    property_state: {}
+open_gaps: []

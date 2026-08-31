@@ -222,8 +222,8 @@ modules:
       - resolve_stage_plan
       - stage_evidence_closure
       - stage_evidence_status
+      - terminal_dimension_evidence
       - terminal_plan_reconciliation
-      - validate_audit_receipt_for_obligation
       - wrapper_binding_errors
   - module: execution.audit.audit_execution_runtime
     path: Tools/execution/audit/audit_execution_runtime.py
@@ -1851,6 +1851,7 @@ modules:
       - profile_interface_slots
       - registered_scan_entrypoint
       - scan_capability_implementation_paths
+      - terminal_receipt_dimensions_projection
       - volatility_defaults_projection
   - module: governance.profile.profile_layout_contract
     path: Tools/governance/profile/profile_layout_contract.py

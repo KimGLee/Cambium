@@ -184,11 +184,19 @@ def main(argv=None):
 
     prospective_status = (
         "current" if semantic["result"] == "pass" else "rejected")
+    prospective = {
+        "status": prospective_status,
+        "receipt_id": semantic["receipt_id"],
+        "authority_role_id": semantic.get("authority_role_id"),
+        "decision_scope_id": semantic.get("decision_scope_id"),
+        "capability_decisions": semantic.get("capability_decisions") or [],
+    }
     if not args.apply:
         _output({
             "applied": False,
             "errors": [],
-            "status": prospective_status,
+            "status": "validated",
+            "semantic_acceptance": prospective,
             "structural_check_receipt": structural["receipt_id"],
             "semantic_acceptance_receipt": semantic["receipt_id"],
             "receipt_path": args.receipts,
@@ -205,6 +213,7 @@ def main(argv=None):
             "applied": outcome == "present",
             "errors": [details],
             "status": "uncertain" if outcome == "uncertain" else "invalid",
+            "semantic_acceptance": None,
             "structural_check_receipt": structural["receipt_id"],
             "semantic_acceptance_receipt": semantic["receipt_id"],
             "receipt_path": args.receipts,
@@ -223,7 +232,8 @@ def main(argv=None):
             "errors": [
                 "receipt persisted but current bytes no longer match the "
                 "recorded acceptance"],
-            "status": status,
+            "status": "uncertain",
+            "semantic_acceptance": status,
             "structural_check_receipt": structural["receipt_id"],
             "semantic_acceptance_receipt": semantic["receipt_id"],
             "receipt_path": args.receipts,
@@ -232,7 +242,8 @@ def main(argv=None):
     _output({
         "applied": True,
         "errors": [],
-        "status": status,
+        "status": "applied",
+        "semantic_acceptance": status,
         "structural_check_receipt": structural["receipt_id"],
         "semantic_acceptance_receipt": semantic["receipt_id"],
         "receipt_path": args.receipts,

@@ -176,6 +176,10 @@ fields:
     type: dimension-coverage
     nullable: false
     source: derived
+    # Derived only from non-dimensionless obligations selected by each
+    # admitted closed batch's complete AuditPlan reconciliation. Every ref
+    # keeps its registered evidence kind; the audit-receipt subset must also
+    # remain an exact member of audit_receipt_register.
     example:
       structure_and_links:
         - audit-fixture-structure-and-links
@@ -191,6 +195,8 @@ fields:
     type: repository-path
     nullable: false
     source: derived
+    # This register owns only the full AuditReceipt subset of the heterogeneous
+    # plan-bound evidence cited by dimension_coverage.
     example: .cambium/receipts/audit-receipts.jsonl
   - field: terminal_audit_receipt_register
     type: repository-path

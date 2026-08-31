@@ -28,6 +28,9 @@ import Tools.platform.common.kblib as kblib  # noqa: E402
 from Tools.tests.support.profile_fixture import (  # noqa: E402
     FIXTURE_UPSTREAM_REVISION,
 )
+from Tools.tests.support.profile_contract_fixture import (  # noqa: E402
+    CurrentProfileContractFixture,
+)
 
 
 def digest(label):
@@ -300,6 +303,313 @@ class AuditEvidenceCheckpointIntegrationTests(CurrentEvidenceCheckpoint,
         self.assertEqual(
             self.full["receipt_id"],
             closure["audit_evidence_bindings"][0]["evidence_ref"])
+
+
+class TerminalDimensionEvidenceProjectionTests(unittest.TestCase):
+    """Own the closed-plan to Terminal dimension-evidence projection."""
+
+    def setUp(self):
+        self.profile_fixture = CurrentProfileContractFixture(self)
+        self.profile_fixture.configure_extension_dimensions((
+            ("language_quality", "receipt", "Language quality receipt."),
+        ))
+        self.profile_contract = self.profile_fixture.load()
+        self.assertTrue(
+            self.profile_contract.authorized,
+            self.profile_contract.diagnostics)
+        self.plan_sha256 = digest("terminal-plan")
+        self.plan_path = \
+            ".cambium/work_specs/audit-plans/audit-plan-B001.yaml"
+        self.obligations = [
+            {
+                "obligation_id": "m-content",
+                "due_stage": "pre-merge",
+                "dimension": "content_and_depth",
+                "evidence_kind": "batch-page-review-record",
+            },
+            {
+                "obligation_id": "profile-language",
+                "due_stage": "pre-merge",
+                "dimension": "language_quality",
+                "evidence_kind": "page-batch-judgment-v2",
+            },
+            {
+                "obligation_id": "page-contract",
+                "due_stage": "post-delta-close",
+                "dimension": None,
+                "evidence_kind": "gate-receipt",
+            },
+            {
+                "obligation_id": "m-source-not-applicable",
+                "due_stage": "pre-merge",
+                "dimension": "source_and_currentness",
+                "evidence_kind": "batch-page-review-record",
+            },
+        ]
+        self.records = {
+            "evidence-m-content": {
+                "receipt_id": "evidence-m-content",
+                "record_kind": "batch-page-review-record",
+                "review_variant": "m-atomic-item",
+                "applicability_disposition": "applicable",
+            },
+            "evidence-profile-language": {
+                "receipt_id": "evidence-profile-language",
+                "record_kind": "page-batch-judgment-v2",
+            },
+            "evidence-page-contract": {
+                "receipt_id": "evidence-page-contract",
+                "record_kind": "gate-receipt",
+            },
+            "evidence-m-source-na": {
+                "receipt_id": "evidence-m-source-na",
+                "record_kind": "batch-page-review-record",
+                "review_variant": "m-atomic-item",
+                "applicability_disposition": "not-applicable",
+                "applicability_reason": "no source claim is present",
+            },
+        }
+        self.refs = dict(zip(
+            (row["obligation_id"] for row in self.obligations),
+            self.records,
+        ))
+        reconciliation = runtime._reconciliation_projection([{
+            "obligation_id": row["obligation_id"],
+            "due_stage": row["due_stage"],
+            "selected_evidence_ref": self.refs[row["obligation_id"]],
+            "selected_disposition": "produced",
+            "produced_evidence_refs": [self.refs[row["obligation_id"]]],
+            "reused_reserved_evidence_ref": None,
+            "superseded_evidence_refs": [],
+            "invalidated_evidence_refs": [],
+            "unresolved": False,
+            "unresolved_reason": None,
+        } for row in self.obligations])
+        self.close = {
+            "receipt_id": "close-B001",
+            "result": "pass",
+            "invalidated_by": None,
+            "audit_plan_id": "audit-plan-B001",
+            "audit_plan_path": self.plan_path,
+            "audit_plan_sha256": self.plan_sha256,
+            **reconciliation,
+        }
+        self.item = {
+            "id": "B001",
+            "state": "closed",
+            "close_gate_receipt": self.close["receipt_id"],
+        }
+        self.plan = {
+            "plan_id": "audit-plan-B001",
+            "obligations": copy.deepcopy(self.obligations),
+        }
+        self.result = {
+            "root": str(REPOSITORY),
+            "errors": [],
+            "items_by_id": {"B001": self.item},
+            "current_receipt_catalog": {
+                self.close["receipt_id"]: self.close,
+                **self.records,
+            },
+            "invalidated_evidence_receipt_ids": [],
+            "_profile_authorized_view": {
+                "_contract": self.profile_contract,
+            },
+        }
+
+    def _resolution(self, obligation):
+        record = self.records[self.refs[obligation["obligation_id"]]]
+        return {
+            "status": "satisfied",
+            "record": record,
+            "reused": False,
+            "reason": None,
+            "attempts": [],
+        }
+
+    def _postdelta_closure(self):
+        obligations = [
+            row for row in self.obligations
+            if row["due_stage"] == "post-delta-close"
+        ]
+        reconciliation = runtime._reconciliation_projection([{
+            "obligation_id": row["obligation_id"],
+            "due_stage": row["due_stage"],
+            "selected_evidence_ref": self.refs[row["obligation_id"]],
+            "selected_disposition": "produced",
+            "produced_evidence_refs": [self.refs[row["obligation_id"]]],
+            "reused_reserved_evidence_ref": None,
+            "superseded_evidence_refs": [],
+            "invalidated_evidence_refs": [],
+            "unresolved": False,
+            "unresolved_reason": None,
+        } for row in obligations])
+        return {
+            "stage_plan": {
+                "audit_plan_path": self.plan_path,
+                "audit_plan_sha256": self.plan_sha256,
+                "plan": self.plan,
+            },
+            "final_by_obligation": {
+                row["obligation_id"]:
+                    self.records[self.refs[row["obligation_id"]]]
+                for row in obligations
+            },
+            "reconciliation": reconciliation,
+        }
+
+    def project(self):
+        with mock.patch.object(
+                runtime, "_post_delta_evidence_closure",
+                return_value=self._postdelta_closure()), mock.patch.object(
+                runtime, "_required_obligation_resolution",
+                side_effect=lambda _result, _item, _plan, _sha, _catalog,
+                obligation, require_current: self._resolution(obligation)):
+            return runtime.terminal_dimension_evidence(self.result)
+
+    def test_m_and_profile_evidence_project_but_dimensionless_and_na_do_not(self):
+        rows = self.project()
+        self.assertEqual(
+            [
+                ("content_and_depth", "batch-page-review-record",
+                 "evidence-m-content"),
+                ("language_quality", "page-batch-judgment-v2",
+                 "evidence-profile-language"),
+            ],
+            [(row["dimension"], row["evidence_kind"], row["evidence_ref"])
+             for row in rows],
+        )
+
+        self.result["current_receipt_catalog"]["foreign-current"] = {
+            "receipt_id": "foreign-current",
+            "record_kind": "batch-page-review-record",
+            "dimension": "content_and_depth",
+        }
+        self.assertEqual(rows, self.project())
+
+    def test_invalidated_or_owner_rejected_selected_evidence_fails_closed(self):
+        self.result["invalidated_evidence_receipt_ids"] = [
+            "evidence-m-content"]
+        with self.assertRaisesRegex(
+                runtime.AuditEvidenceError, "invalidated evidence"):
+            self.project()
+
+        self.result["invalidated_evidence_receipt_ids"] = []
+        original = self._resolution
+
+        def stale(obligation):
+            value = original(obligation)
+            if obligation["obligation_id"] == "m-content":
+                value.update({
+                    "status": "missing", "record": None,
+                    "reason": "owner rejected stale input",
+                })
+            return value
+
+        with mock.patch.object(self, "_resolution", side_effect=stale):
+            with self.assertRaisesRegex(
+                runtime.AuditEvidenceError,
+                "no current selected evidence"):
+                self.project()
+
+    def test_close_reconciliation_scopes_current_records_and_rejects_history(self):
+        reconciliation = {
+            "selected_evidence_ref": "selected-final",
+            "selected_disposition": "produced",
+            "produced_evidence_refs": ["selected-final", "selected-raw"],
+        }
+        current = {
+            "selected-final": {"receipt_id": "selected-final"},
+            "selected-raw": {"receipt_id": "selected-raw"},
+            "foreign-final": {"receipt_id": "foreign-final"},
+            "foreign-raw": {"receipt_id": "foreign-raw"},
+        }
+        scoped = runtime._reconciled_current_catalog(
+            current, reconciliation, batch_id="B001",
+            obligation_id="m-content")
+        self.assertEqual(
+            {"selected-final", "selected-raw"}, set(scoped))
+
+        historical_only = {
+            "foreign-final": current["foreign-final"],
+            "foreign-raw": current["foreign-raw"],
+        }
+        with self.assertRaisesRegex(
+                runtime.AuditEvidenceError,
+                "absent from the current receipt catalog"):
+            runtime._reconciled_current_catalog(
+                historical_only, reconciliation, batch_id="B001",
+                obligation_id="m-content")
+
+    def test_post_delta_reconciliation_must_equal_owner_closure(self):
+        rows = copy.deepcopy(
+            self.close["audit_evidence_reconciliation"])
+        target = next(row for row in rows
+                      if row["obligation_id"] == "page-contract")
+        target["selected_evidence_ref"] = "foreign-page-contract"
+        target["produced_evidence_refs"] = ["foreign-page-contract"]
+        self.close.update(runtime._reconciliation_projection(rows))
+        self.result["current_receipt_catalog"]["foreign-page-contract"] = {
+            "receipt_id": "foreign-page-contract",
+            "record_kind": "gate-receipt",
+        }
+
+        with self.assertRaisesRegex(
+                runtime.AuditEvidenceError,
+                "no current selected evidence matching"):
+            self.project()
+
+    def test_typed_profile_receipt_target_enters_but_review_only_stays_out(self):
+        self.profile_fixture.configure_extension_dimensions((
+            ("language_quality", "receipt", "Language quality receipt."),
+            ("review_only", "review", "Review-only judgment."),
+            ("terminal_receipt", "receipt", "Terminal receipt judgment."),
+        ))
+        contract = self.profile_fixture.load()
+        self.assertTrue(contract.authorized, contract.diagnostics)
+        self.result["_profile_authorized_view"] = {"_contract": contract}
+
+        additions = (
+            ("profile-review-only", "review_only",
+             "evidence-profile-review-only"),
+            ("profile-terminal-receipt", "terminal_receipt",
+             "evidence-profile-terminal-receipt"),
+        )
+        for obligation_id, dimension, evidence_ref in additions:
+            self.obligations.append({
+                "obligation_id": obligation_id,
+                "due_stage": "pre-merge",
+                "dimension": dimension,
+                "evidence_kind": "page-batch-judgment-v2",
+            })
+            self.records[evidence_ref] = {
+                "receipt_id": evidence_ref,
+                "record_kind": "page-batch-judgment-v2",
+            }
+            self.refs[obligation_id] = evidence_ref
+            self.result["current_receipt_catalog"][evidence_ref] = \
+                self.records[evidence_ref]
+        self.plan["obligations"] = copy.deepcopy(self.obligations)
+        self.close.update(runtime._reconciliation_projection([{
+            "obligation_id": row["obligation_id"],
+            "due_stage": row["due_stage"],
+            "selected_evidence_ref": self.refs[row["obligation_id"]],
+            "selected_disposition": "produced",
+            "produced_evidence_refs": [self.refs[row["obligation_id"]]],
+            "reused_reserved_evidence_ref": None,
+            "superseded_evidence_refs": [],
+            "invalidated_evidence_refs": [],
+            "unresolved": False,
+            "unresolved_reason": None,
+        } for row in self.obligations]))
+
+        rows = self.project()
+        projected = {
+            row["obligation_id"]: row["dimension"] for row in rows
+        }
+        self.assertEqual(
+            "terminal_receipt", projected["profile-terminal-receipt"])
+        self.assertNotIn("profile-review-only", projected)
 
 
 if __name__ == "__main__":
