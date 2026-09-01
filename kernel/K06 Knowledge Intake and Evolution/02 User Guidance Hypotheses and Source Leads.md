@@ -17,7 +17,7 @@ The following MUST be distinguished:
 | Official articles, papers, links, or documentation leads | The user decides that source needs to be checked | The actual document is the Source; identity, date, claim, and scope still require verification |
 | The user's project experience, metrics, or incident descriptions | The user is a party to that context | Treated as bounded first-party context; MUST NOT be generalized into an industry law without other evidence |
 | Corrections to existing knowledge | Triggers a targeted audit | Change the canonical note only after confirmation against formulas, specifications, original sources, or implementation evidence |
-| Reusable build rules | The user can authorize a governance change | Standards adoption resolves the selected upstream Git commit; `standards_version` is only its compatibility alias, while a Profile-only change is bound by Profile snapshot evidence |
+| Reusable build rules | The user can authorize a governance change | Standards adoption resolves the selected upstream Git commit and records its full SHA as `upstream_revision_id`; a Profile-only change is bound by Profile snapshot evidence while retaining that identity |
 
 A user stating "Topic X is a recent hot topic" can raise research priority and trigger environmental scanning, but until sources are found and compared it MAY only be written as a signal. A user stating "add a Topic X section" is at the same time a scope amendment; whether to create a new page, expand an existing page, or form a system vertical slice is still decided by gap analysis and canonical ownership.
 

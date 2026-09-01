@@ -6,7 +6,7 @@ import unittest
 
 TOOLS = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(TOOLS))
-import freshness_engine as engine
+import Tools.knowledge.metadata.freshness_engine as engine
 
 
 AS_OF = datetime.date(2026, 8, 14)

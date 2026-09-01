@@ -5,14 +5,14 @@ every implementation module. These tests therefore check only properties that
 can be derived from repository bytes: local link targets, named machine
 contracts, and copyable ``python3 Tools/...`` command shapes.
 
-The command scan reads each script's ``argparse`` declarations with ``ast``.
-It never imports a Cambium module and does not depend on ``stamp_cards`` or any
-other runtime parser.
+The command scan captures each public adapter's real ``argparse`` declaration
+through its registered implementation edge. Capture stops at ``parse_args``;
+it does not execute Tool behaviour or maintain a second option inventory.
 """
 
-import ast
 import re
 import shlex
+import sys
 import unittest
 from pathlib import Path
 from urllib.parse import unquote
@@ -21,6 +21,9 @@ from urllib.parse import unquote
 TOOLS_DIR = Path(__file__).resolve().parents[1]
 REPO_ROOT = TOOLS_DIR.parent
 README = TOOLS_DIR / "README.md"
+
+sys.path.insert(0, str(REPO_ROOT))
+import Tools.platform.agent_interface.entrypoint_loader as entrypoint_loader  # noqa: E402
 
 COMMAND_PREFIX = "python3"
 TOOL_PREFIX = "Tools/"
@@ -38,22 +41,23 @@ schemas/card.schema.yaml
 operation-capabilities.yaml
 scan-capabilities.yaml
 agent-interface-policy.yaml
-runtime_paths.py
-corpus_planning_contract.py
-read_set_contract.py
-profile_contract.py
-profile_admission.py
+execution/task_runtime/runtime_paths.py
+execution/planning/corpus_planning_contract.py
+execution/context_delivery/read_set_contract.py
+governance/profile/profile_contract.py
+governance/profile/profile_admission.py
 check_profile.py
-batch_close_contract.py
+execution/audit/batch_close_contract.py
 module-boundaries.yaml
-module_boundary_facts.py
+tool-taxonomy.yaml
+platform/distribution/module_boundary_facts.py
 module_boundary_report.py
 kernel-size-policy.yaml
 kernel-size-exceptions.md
 check_kernel_size.py
 check_upstream_components.py
-upstream_component_boundary.py
-upstream_identity.py
+platform/distribution/upstream_component_boundary.py
+platform/distribution/upstream_identity.py
 schemas/
 compiled/""".splitlines()
 }
@@ -67,7 +71,6 @@ check_profile.py
 apply_profile_adoption.py
 adopt_standards.py
 init_state.py
-apply_task_plan.py
 check_queue.py
 metadata_execution_contract.py
 compile_cli_contract.py
@@ -154,22 +157,15 @@ def command_tokens(command):
         raise AssertionError("documented command cannot be parsed: %s" % command) from exc
 
 
-def tool_option_names(source_text):
-    """Return literal option strings declared through ``add_argument``."""
-    options = {"-h", "--help"}  # argparse supplies these by default.
-    for node in ast.walk(ast.parse(source_text)):
-        if not isinstance(node, ast.Call):
-            continue
-        func = node.func
-        if not isinstance(func, ast.Attribute) or func.attr != "add_argument":
-            continue
-        for argument in node.args:
-            if not isinstance(argument, ast.Constant):
-                continue
-            value = argument.value
-            if isinstance(value, str) and value.startswith("-"):
-                options.add(value)
-    return options
+def tool_option_names(script_path):
+    """Return options from the public adapter's unique real parser."""
+    parser = entrypoint_loader.capture_argument_parser(
+        script_path.stem, TOOLS_DIR)
+    return {
+        option
+        for action in parser._actions  # argparse has no public action iterator
+        for option in action.option_strings
+    }
 
 
 def command_failures(label, text):
@@ -188,7 +184,7 @@ def command_failures(label, text):
                 % (label, number, script)
             )
             continue
-        defined = tool_option_names(path.read_text(encoding="utf-8"))
+        defined = tool_option_names(path)
         after_double_dash = False
         for token in tokens[2:]:
             if token == "--":

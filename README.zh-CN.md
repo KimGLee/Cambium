@@ -45,7 +45,7 @@ Cambium 的有效治理由三部分组成：
 | `Read Set/` | 声明已经选定的路线或阶段必须加载哪些权威内容的机器可解析边界 |
 | 已选定的 Profile | 一个仓库自己的范围、语言、架构、来源、优先级、角色、扫描规则和允许的扩展 |
 | `.cambium/` | 采用方当前的治理身份、任务状态、Queue、计划、变更、receipt 和恢复证据 |
-| `Tools/` | 确定性检查、受控写入器、schema 和生成产物 |
+| `Tools/` | 为确定性检查、受控写入、schema 和生成产物提供稳定公开命令与 Area/Domain 实现 |
 
 内核是规范性来源。Profile 可以填写或收紧内核预留的扩展点，但不能关闭内核规则。工具按照已声明的规则执行检查和写入，但不替操作者做最终的语义判断。
 
@@ -64,9 +64,10 @@ Cambium 当前提供：
 - 对 Global Map、Capability Matrix 和 Gap Register 的显式校验；
 - 确定性的页面、结构、词汇、链接、边界、新鲜度和残留内容检查；
 - 宿主无关的生成接口：每个工具自己的 CLI 声明会编译成面向 Agent 的 MCP 接口，并生成各宿主所需的配置；每一个实际生效、由调用者可见的路径都会以文件描述符能力一直保留到子进程真正消费；
+- 一个类型化的 Task Runtime Runner，能够把已注册的确定性工具连续推进到下一个 Agent、用户、宿主、修复或终止边界；
 - Card-first activation，以及逐步交付 Read Set 的基础能力。
 
-生成的 MCP 接口只是调用入口，不是任务编排器。一次操作是否有效、它的证据是否成立，仍由工具判断。对每一个经编译后的操作模式谓词判定为生效的类型化路径（包括 CLI 默认值），传输层会保留准入时的文件或父目录对象，工具共享 I/O 层再以 snapshot、append、replace 或 transaction 模式消费同一个对象；嵌套的 Cambium 子进程也会继承这份能力。两个不同的活动参数不得以同一种消费模式指向同一路径，因为那会混淆“哪个参数已被消费”的身份。不支持这种无跟随描述符边界的平台会拒绝启动，而不是降级后仍宣称已经提供该保证。
+生成的 MCP 接口同时暴露单项工具和有界 Runner。Runner 不是调度器或治理判断器：它只根据当前运行状态导出一个绑定身份的下一步，调用已注册能力，回读结果，并在每个语义边界停止。具体操作是否合法、证据是否成立，仍由对应工具判断。对每个实际生效的类型化路径，传输层会保留准入时的文件或父目录对象，直到子进程完成消费；不支持这种边界的平台会拒绝启动，而不是降级后继续宣称已经提供保证。
 
 ## 目前还没有提供的能力
 
@@ -108,7 +109,7 @@ Cambium 当前不包含：
 └── <派生投影>
 ```
 
-不要手工修改权威状态。应使用拥有该状态的写入器，让 revision、hash、receipt 和恢复证据一起更新。当前物理路径与对象分类只由 [`Tools/runtime_paths.py`](Tools/runtime_paths.py) 这一份机器合同维护；README 不再保留第二份目录结构定义。
+不要手工修改权威状态。应使用拥有该状态的写入器，让 revision、hash、receipt 和恢复证据一起更新。当前物理路径与对象分类只由 [`Tools/execution/task_runtime/runtime_paths.py`](Tools/execution/task_runtime/runtime_paths.py) 这一份机器合同维护；README 不再保留第二份目录结构定义。
 
 ## 采用 Cambium
 
@@ -145,7 +146,7 @@ python3 Tools/apply_profile_adoption.py . --plan <plan>.yaml \
   --upstream-root <本地-Cambium-仓库> --upstream-ref <git-ref> --apply
 ```
 
-这个事务会把上游 ref 解析为完整 Git commit SHA，并绑定所选 Profile、采用者自己的生成合同和证据；任何一步失败，工具都会恢复之前的控制面。它不会重新 stamp 或改写采用者持有的上游 Card 字节；`standards_version` 只保留为该 commit 的兼容字段。采用仍是明确的 CLI 维护操作：其外部上游仓库输入不会作为不受约束的 MCP 参数暴露给 Agent。
+这个事务会把上游 ref 解析为完整 Git commit SHA，并将该 SHA 以 `upstream_revision_id` 作为唯一 Standards 身份。它还会绑定所选 Profile、采用者自己的生成合同和证据；任何一步失败，工具都会恢复之前的控制面。它不会重新 stamp 或改写采用者持有的上游 Card 字节。采用仍是明确的 CLI 维护操作：其外部上游仓库输入不会作为不受约束的 MCP 参数暴露给 Agent。
 
 空语料库也使用同一份采用合同。先进行有界的 founding 工作，创建真实的 canonical owner 和残留扫描见证——语义自然时一页可以同时充当 owner 和见证，但绝不为了少建文件而强行合并；随后由第二次 R09 修订配置 Corpus Planning，之后才能开始大规模工作。候选 Profile 与采用边界见 [profiles/README.md](profiles/README.md#mechanical-validation-and-adoption)。
 
@@ -159,36 +160,19 @@ python3 Tools/check_queue.py . --resume-status
 
 如果 `.cambium/state/` 已经存在，这条命令会报告已记录的任务、锁、hold、正在执行的批次、恢复状态和准确的 `next_action`。不要在已有状态之上重新初始化。
 
-有界工作不要求创建空的持久状态。长期、可恢复或多批次任务，应在 Profile 采用后只初始化一次：
-
-```text
-python3 Tools/init_state.py . \
-  --task-id YOUR_TASK \
-  --objective "写明要得到的具体结果" \
-  --exclude "写明至少一项明确边界" \
-  --completion-semantics build \
-  --scope-version s1 \
-  --standards-version APPROVED_UPSTREAM_COMMIT_SHA \
-  --profile-manifest profiles/my-profile/profile.md
-```
-
-`APPROVED_UPSTREAM_COMMIT_SHA` 应读取当前 `.cambium/governance/standards_state.yaml` 中的完整上游 commit SHA，而不是 `X.Y.Z` 之类的发布标签。
-
-先检查预览结果，再加上 `--apply` 重复运行。
-
-`init_state.py` 不会替你选择工作。把已确认的 Task Contract 和 Coverage 选择写入同一份任务计划，再生成 Queue：
+有界工作不要求持久状态。长期、可恢复或多批次任务，应先复制并完成唯一的 Task Plan：
 
 ```text
 cp Tools/schemas/task_plan.template.yaml \
   .cambium/deltas/task-plans/TP-001.yaml
 
-python3 Tools/apply_task_plan.py . \
+python3 Tools/init_state.py . \
   --plan .cambium/deltas/task-plans/TP-001.yaml
 
-python3 Tools/apply_task_plan.py . \
+python3 Tools/init_state.py . \
   --plan .cambium/deltas/task-plans/TP-001.yaml --apply
 
-# 使用 apply_task_plan.py 输出的 revision 和 SHA。
+# 直接运行 init_state.py 输出的完整 compile_queue 命令；其中已经包含与已发布 Task Plan 绑定的 Queue revision 和 SHA。
 python3 Tools/compile_queue.py . --apply --actor-role integrator \
   --expected-queue-revision REVISION \
   --expected-sha256 SHA256
@@ -197,7 +181,7 @@ python3 Tools/check_queue.py .
 python3 Tools/render_queue.py .
 ```
 
-需要 Terminal Proof 才能关闭的任务使用 `build`；通过有界 maintenance 门禁关闭的任务使用 `maintenance`。这个选择会冻结在 Task Contract 中。
+`init_state.py` 不再接受 task identity、objective、scope、Standards、Profile、completion model 或 concurrency 的第二套参数；这些已确认值只有 Task Plan 一个 owner。命令把空 Queue、完整 Task Contract、planning-only Coverage 和由 Progress 保留引用的 Receipt 一起原子发布；`compile_queue.py` 仍是 Queue 的唯一物化者。
 
 ## 受控变更
 
@@ -263,10 +247,13 @@ SHA-256 绑定可以在采用方的本地信任域中发现漂移和不一致历
 | [`Card/`](Card/) | 经过人工策划的非权威行动检查单 |
 | [`Read Set/`](Read%20Set/) | 权威静态加载声明与生成导航 |
 | [`profiles/`](profiles/) | 候选模板、访谈、采用说明与非权威示例 |
-| [`Tools/`](Tools/) | 检查、写入器、schema、receipt 和生成器 |
-| [`Tools/compiled/`](Tools/compiled/) | 生成的 CLI、MCP、元数据和宿主投影 |
+| [`Tools/`](Tools/) | 稳定的 `Tools/<tool>.py` 公开命令、Tool 合同、schema 和操作说明 |
+| [`Tools/governance/`](Tools/governance/)、[`Tools/knowledge/`](Tools/knowledge/)、[`Tools/execution/`](Tools/execution/)、[`Tools/platform/`](Tools/platform/) | 按机器校验的 Area/Domain 层级组织实现 |
+| [`Tools/TOOL_CATALOG.md`](Tools/TOOL_CATALOG.md) | 生成的 Tool 层级、接口与依赖导航 |
+| [`Tools/compiled/`](Tools/compiled/) | 生成的 CLI、MCP、元数据、宿主和 Tool 目录投影 |
 | [`assets/readme/`](assets/readme/) | 根目录双语 README 使用的公共结构图 |
 | [`ROADMAP.zh-CN.md`](ROADMAP.zh-CN.md) | 按状态组织的实现路线图 |
+| [`CONTRIBUTING.md`](CONTRIBUTING.md) | Issue 归属、缺陷提升和 Pull Request 合同 |
 
 Kernel 模块编号是稳定身份，不是必须连续的展示序号。模块迁出或退役后，其编号不再复用；当前阅读顺序以各标准入口页列出的 Module Index 为准。
 

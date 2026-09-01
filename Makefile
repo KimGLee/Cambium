@@ -2,7 +2,7 @@
 #
 # `make ci` is the full verification entry point for humans.  Pull-request CI
 # uses .github/scripts/ci_impact.py to select the smallest fail-closed proof
-# set. Pushes to main and manual runs retain the complete compatibility suite.
+# set. Pushes to main and manual runs retain the complete verification suite.
 # `make ci-exhaustive` retains the slower historical cache-state sweep for
 # explicit deep verification.
 #
@@ -12,22 +12,27 @@
 
 PYTHON ?= python3
 PROFILE ?= profiles/examples/agent-atlas
-TEST_PATTERN ?= test_*.py
 TEST_FILES ?=
+TEST_JOBS ?= 4
 
-.PHONY: help check test test-selected test-cache-contract clean-cache test-cache-states ci ci-exhaustive
+.PHONY: help check test test-selected fast integration e2e slow full test-cache-contract clean-cache test-cache-states ci ci-exhaustive
 
 help:
 	@echo "make check              deterministic checks only (seconds)"
-	@echo "make test               unit tests selected by TEST_PATTERN (default: full suite)"
+	@echo "make test               alias of the catalog-owned full suite"
 	@echo "make test-selected      exact TEST_FILES selected by the CI impact plan"
+	@echo "make fast               catalog-owned unit + contract tests"
+	@echo "make integration        adjacent Tool/runtime integration tests"
+	@echo "make e2e                representative complete lifecycle tests"
+	@echo "make slow               security, concurrency, and recovery tests"
+	@echo "make full               all current catalog-owned test levels"
 	@echo "make test-cache-contract focused cache/snapshot contract test"
-	@echo "make ci                 required checks + full unit test suite"
+	@echo "make ci                 required checks + full catalog-owned suite"
 	@echo "make ci-exhaustive      check + cold/warm/post-touch full suites"
 	@echo "make test-cache-states  cold/warm/post-touch full suites"
 	@echo "make clean-cache        remove __pycache__ trees"
 	@echo ""
-	@echo "PYTHON=$(PYTHON)  PROFILE=$(PROFILE)  TEST_PATTERN=$(TEST_PATTERN)"
+	@echo "PYTHON=$(PYTHON)  PROFILE=$(PROFILE)  TEST_JOBS=$(TEST_JOBS)"
 
 # Distribution verification runs repository-engineering preflights alongside
 # adopter Gate producers. stamp_cards --check covers curated Card currentness
@@ -68,14 +73,30 @@ check:
 	PYTHONDONTWRITEBYTECODE=1 $(PYTHON) Tools/render_host_configs.py . --check
 	PYTHONDONTWRITEBYTECODE=1 $(PYTHON) Tools/check_moc.py .
 	PYTHONDONTWRITEBYTECODE=1 $(PYTHON) Tools/check_profile.py $(PROFILE)
-	PYTHONDONTWRITEBYTECODE=1 $(PYTHON) -c "import sys; sys.path.insert(0, 'Tools'); import check_batch_close as c; r = c._structural_check('.', {'queue': {'selected_profile_manifest': '$(PROFILE)/profile.md'}}); print('structural_errors =', len(r['errors'])); sys.exit(1 if r['errors'] else 0)"
+	PYTHONDONTWRITEBYTECODE=1 $(PYTHON) Tools/check_repository_structure.py . --profile-manifest "$(PROFILE)/profile.md"
+	PYTHONDONTWRITEBYTECODE=1 $(PYTHON) Tools/generate_tool_catalog.py . --check
+	PYTHONDONTWRITEBYTECODE=1 $(PYTHON) Tools/generate_test_catalog.py . --check
 
-test:
-	PYTHONDONTWRITEBYTECODE=1 $(PYTHON) -m unittest discover -s Tools/tests -p "$(TEST_PATTERN)"
+test: full
 
 test-selected:
 	@test -n "$(TEST_FILES)" || (echo "TEST_FILES is required" && exit 1)
 	PYTHONDONTWRITEBYTECODE=1 $(PYTHON) .github/scripts/ci_impact.py run-tests --root . --tests "$(TEST_FILES)"
+
+fast:
+	PYTHONDONTWRITEBYTECODE=1 $(PYTHON) Tools/run_tests.py fast --root . --python "$(PYTHON)" --jobs "$(TEST_JOBS)"
+
+integration:
+	PYTHONDONTWRITEBYTECODE=1 $(PYTHON) Tools/run_tests.py integration --root . --python "$(PYTHON)" --jobs "$(TEST_JOBS)"
+
+e2e:
+	PYTHONDONTWRITEBYTECODE=1 $(PYTHON) Tools/run_tests.py e2e --root . --python "$(PYTHON)" --jobs "$(TEST_JOBS)"
+
+slow:
+	PYTHONDONTWRITEBYTECODE=1 $(PYTHON) Tools/run_tests.py slow --root . --python "$(PYTHON)" --jobs "$(TEST_JOBS)"
+
+full:
+	PYTHONDONTWRITEBYTECODE=1 $(PYTHON) Tools/run_tests.py full --root . --python "$(PYTHON)" --jobs "$(TEST_JOBS)"
 
 test-cache-contract:
 	PYTHONDONTWRITEBYTECODE=1 $(PYTHON) -m unittest discover -s Tools/tests -p "test_runtime_safety.py" -k test_snapshot_excludes_import_cache_but_tracks_source_bytes
@@ -94,6 +115,6 @@ test-cache-states: clean-cache
 	@echo "--- after touching the tools ---"
 	touch Tools/*.py && $(PYTHON) -m unittest discover -s Tools/tests -p "test_*.py"
 
-ci: check test
+ci: check full
 
 ci-exhaustive: check test-cache-states

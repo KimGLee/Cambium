@@ -1,51 +1,45 @@
 # =============================================================================
-# Initial Task Plan template (the one operator-confirmed input that materializes
-# a task's runtime; the template is the schema doc)
+# Initial Task Plan template (the one operator-confirmed input that declares a
+# task and its Queue structure; the template is the schema doc)
 # Owner standard: "kernel/K13 Task Runtime and Execution Control/18 Initial Task Planning Transaction.md"
 # Location: .cambium/deltas/task-plans/<plan-id>.yaml
 #
 # Named by plan ID, not task ID: a task may have a withdrawn draft and an
 # applied plan, and the transaction receipt binds the exact plan bytes.
 #
-# Only the restricted YAML subset is allowed (parseable by Tools/kblib.py
-# parse_yaml_subset): `key: value` scalars, `- item` lists indented under a
+# Only the restricted YAML subset is allowed (parseable by
+# Tools/platform/common/kblib.py parse_yaml_subset): `key: value` scalars,
+# `- item` lists indented under a
 # key, and nested mappings. Unknown top-level fields fail closed.
 #
 # What this file is NOT:
-#   - It carries no Required Queue body. The Queue is compiled deterministically
-#     from `coverage_after` by the same compiler that owns it; a Queue written
-#     here would be a second Queue authority.
+#   - It carries no Required Queue lifecycle body. The Queue is compiled
+#     deterministically from `planned_work` by the same compiler that owns it;
+#     a Queue state written here would be a second Queue authority.
+#   - It carries no page authoring status, property state, Gate evidence or
+#     Receipt. Those become current runtime state only when the corresponding
+#     queued batch is actually opened.
 #   - It is not a place to record decisions. Every value here is one the
 #     operator already confirmed; `approval_reference` names where.
 #   - It never authorizes inference. Which pages are Required, who owns them,
 #     their priority, their dependencies, and their batch assignment are
-#     answers, not derivations. `init_state.py` reports `no work inferred` for
-#     the same reason, and this transaction does not weaken it.
+#     answers, not derivations. `init_state.py --plan` consumes exactly those
+#     confirmed answers and does not accept parallel semantic flags.
 # =============================================================================
 
-schema_version: 1
+schema_version: 4
 
 # Stable identity of this plan document. Lowercase/uppercase alphanumerics,
 # hyphen and underscore; unique within the task-plans directory.
 plan_id: TP-001
 
-# The task this plan materializes. MUST equal the task_id already recorded by
-# init_state.py in all three state documents.
+# The task this plan creates. The task state namespace MUST still be absent;
+# this value is stamped into all three state documents by one transaction.
 task_id: TODO(plan)
 
 # Where the operator's confirmation of these exact answers is recorded. Free
 # text; it is evidence for a reader, not a machine reference.
 approval_reference: TODO(plan)
-
-# Compare-and-swap. Each value is the SHA-256 of the current state file's exact
-# bytes, spelled `sha256:<64 hex digits>`. Read the three current values with
-# `python3 Tools/check_queue.py . --resume-status`. A mismatch means the runtime
-# moved after this plan was prepared, and the transaction refuses rather than
-# merging.
-before:
-  coverage_sha256: TODO(plan)
-  queue_sha256: TODO(plan)
-  progress_sha256: TODO(plan)
 
 # The complete Task Contract this transaction freezes. Field set and meanings
 # are owned by K13/02; this document supplies values, never new fields.
@@ -53,8 +47,10 @@ before:
 # Three fields are RESOLVED, not typed. Leave `selected_card_paths`,
 # `selected_read_sets`, and `loaded_module_paths` empty: the transaction fills
 # them from `selected_route_ids` through the canonical Card and Read Set
-# indexes and the transitive loading-boundary closure. Selecting R01 alone
-# reaches every other route and well over a hundred modules, so typing them by
+# indexes and the transitive loading-boundary closure. For build completion,
+# the transaction also reads the Kernel-owned Terminal Proof contract and
+# includes its required routes before the Task Contract is frozen; maintenance
+# completion does not. Typing the resulting Cards, Read Sets, or modules by
 # hand produces a declaration nobody checked. Anything listed here is kept and
 # closed over, which is how a profile supplemental Read Set is selected -- it
 # has no machine-readable registry.
@@ -65,7 +61,7 @@ contract_after:
   exclusions: []
   scope_version: TODO(plan)
   concurrency_cap: 1
-  standards_version: TODO(plan)
+  upstream_revision_id: TODO(plan)
   selected_profile_manifest: TODO(plan)
   selected_route_ids: []
   selected_profile_route_ids: []
@@ -90,11 +86,12 @@ contract_after:
     mode: user-only
     allowed_change_classes: []
 
-# The complete initial Coverage inventory and the compiler's batch inputs.
-# Record shapes are owned by K02/01; `batch_specs` shape by K13/08.
-# A record for an object that does not exist yet is normal and expected --
-# K02/01 requires one for every Required object, created or not.
-coverage_after:
+# The complete initial work declaration and the Queue compiler's inputs.
+# These rows establish only scope, ownership and task assignment. They do not
+# claim a current page status and therefore deliberately omit
+# `authoring_status`, `gate_receipts` and `property_state`. The queued -> open
+# transaction materializes those fields for that batch alone.
+planned_work:
   pages:
     - path: TODO(plan)
       canonical_owner: TODO(plan)
@@ -102,13 +99,9 @@ coverage_after:
       tier: TODO(plan)
       priority: TODO(plan)
       coverage_disposition: required
-      authoring_status: TODO(plan)
       prerequisites: []
       batch: null
       next_batch: TODO(plan)
-      gate_receipts: []
-      # Explicit even when empty: apply_task_plan fails closed on omission.
-      property_state: {}
       deferred_reason: null
       reentry_condition: null
   batch_specs:

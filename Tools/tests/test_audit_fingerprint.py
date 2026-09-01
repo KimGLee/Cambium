@@ -9,8 +9,8 @@ REPOSITORY = Path(__file__).resolve().parents[2]
 TOOLS = REPOSITORY / "Tools"
 sys.path.insert(0, str(TOOLS))
 
-import audit_fingerprint  # noqa: E402
-import kblib  # noqa: E402
+import Tools.execution.audit.audit_fingerprint as audit_fingerprint  # noqa: E402
+import Tools.platform.common.kblib as kblib  # noqa: E402
 
 
 BASE = """---

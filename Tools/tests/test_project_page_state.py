@@ -1,1141 +1,344 @@
-"""Tests for the K08/07 page-state projector."""
+"""Owned tests for the K08/07 page-state projection consumer.
 
+Metadata value shapes, property-event production, and repository path
+primitives have their own test owners.  This module tests only the page
+projector's deterministic projection, planning connection, publication
+transaction, and current machine-contract connection.
+"""
+
+import functools
 import io
 import json
 import os
 import pathlib
 import shutil
-import subprocess
 import sys
 import tempfile
 import unittest
-import uuid
 from contextlib import contextmanager, redirect_stdout
 from unittest import mock
 
 REPO = pathlib.Path(__file__).resolve().parents[2]
-TOOL = REPO / "Tools" / "project_page_state.py"
 sys.path.insert(0, str(REPO / "Tools"))
 
-import project_page_state
-import kblib
-import metadata_execution_contract
-
-LEGACY_RULES = (
-    {
-        "field": "coverage_disposition",
-        "value_shape": "scalar-string-or-null",
-        "source_adapter": "coverage-row-value-v1",
-        "writer_capability": "project-page-state-v2",
-        "reconcile_policy": "existing-copy-exact-or-remove-v1",
-    },
-    {
-        "field": "authoring_status",
-        "value_shape": "scalar-string-or-null",
-        "source_adapter": "coverage-row-value-v1",
-        "writer_capability": "project-page-state-v2",
-        "reconcile_policy": "existing-copy-exact-or-remove-v1",
-    },
-    {
-        "field": "next_batch",
-        "value_shape": "scalar-string-or-null",
-        "source_adapter": "coverage-row-value-v1",
-        "writer_capability": "project-page-state-v2",
-        "reconcile_policy": "existing-copy-exact-or-remove-v1",
-    },
-)
+import Tools.governance.control.metadata_execution_contract as metadata_contract
+import Tools.knowledge.metadata.project_page_state as project_page_state
 
 
-def property_rule(field, adapter="coverage-property-state-v1",
-                  invalidation_rule=None, value_shape="date",
-                  allowed_values=None):
-    rule = {
-        "field": field,
-        "value_shape": value_shape,
-        "source_adapter": adapter,
-        "writer_capability": "project-page-state-v2",
-        "reconcile_policy": "upsert-exact-or-remove-v1",
-    }
-    if invalidation_rule is not None:
-        rule["invalidation_rule"] = invalidation_rule
-    if allowed_values is not None:
-        rule["allowed_values"] = allowed_values
-    return rule
+PROFILE_RULE = metadata_contract.profile_extension_enum_projection_rule(
+    "review_state", ("ready",),
+    writer_capability=project_page_state.WRITER_CAPABILITY)
+PROJECTOR_CONTRACT_RULES = metadata_contract.AuthorizedProjectionRules(
+    (PROFILE_RULE,), "sha256:" + "1" * 64,
+    "sha256:" + "2" * 64)
 
-LEDGER = """schema_version: 1
-pages:
-  - path: "Domain/Closed.md"
-    coverage_disposition: required
-    authoring_status: reviewed
-    next_batch:
-  - path: "Domain/Routed.md"
-    coverage_disposition: required
-    authoring_status: drafted
-    next_batch: T-002
-  - path: "Domain/Bare.md"
-    coverage_disposition: required
-    authoring_status: drafted
-    next_batch: T-003
-"""
 
-CLOSED = """---
+@functools.lru_cache(maxsize=1)
+def _current_profile_rules():
+    """Compile the live owner only for integration and slow boundaries."""
+    contract = metadata_contract.compile_metadata_execution_contract(REPO)
+    core = tuple(metadata_contract.rules_for_capability(
+        contract, project_page_state.WRITER_CAPABILITY))
+    return metadata_contract.AuthorizedProjectionRules(
+        core + (PROFILE_RULE,), contract.contract_fingerprint,
+        "sha256:" + "2" * 64)
+
+PAGE = """---
 type: concept
 authoring_status: drafted
-next_batch: T-001
 ---
-# Closed
-"""
-
-ROUTED = """---
-type: concept
-authoring_status: drafted
-next_batch: T-001
----
-# Routed
-"""
-
-BARE = """---
-type: concept
----
-# Bare
+# Page
 """
 
 
-class ProjectPageStateTests(unittest.TestCase):
-    def build(self):
-        root = tempfile.mkdtemp()
-        self.addCleanup(shutil.rmtree, root, True)
-        os.makedirs(os.path.join(root, ".cambium/tmp"), exist_ok=True)
-        files = {
-            ".cambium/state/coverage_ledger.yaml": LEDGER,
-            "Domain/Closed.md": CLOSED,
-            "Domain/Routed.md": ROUTED,
-            "Domain/Bare.md": BARE,
-        }
-        for rel, body in files.items():
-            path = os.path.join(root, rel)
-            os.makedirs(os.path.dirname(path), exist_ok=True)
-            with open(path, "w", encoding="utf-8") as handle:
-                handle.write(body)
-        # The runtime never falls back to a source-code field list.  Even a
-        # minimal adopting repository therefore carries the canonical
-        # authority/capability inputs and their generated artifact.
-        for relative in (
-                "kernel/K08 Metadata and Status/metadata-authority-base.yaml",
-                "Tools/operation-capabilities.yaml",
-                "Tools/compiled/metadata-execution-contract.json"):
-            source = REPO / relative
-            target = pathlib.Path(root, relative)
-            target.parent.mkdir(parents=True, exist_ok=True)
-            shutil.copy2(source, target)
-        capabilities = kblib.parse_yaml_subset(
-            (REPO / "Tools/operation-capabilities.yaml").read_text(
-                encoding="utf-8"))
-        for relative in metadata_execution_contract.\
-                capability_implementation_paths(capabilities):
-            source = REPO / relative
-            target = pathlib.Path(root, relative)
-            target.parent.mkdir(parents=True, exist_ok=True)
-            shutil.copy2(source, target)
-        return root
+def _write(path, body):
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(body, encoding="utf-8")
 
-    def run_tool(self, root, *argv):
-        return subprocess.run(
-            [sys.executable, str(TOOL), root, *argv],
-            capture_output=True, text=True)
 
-    def run_main(self, root, *argv):
-        output = io.StringIO()
-        with redirect_stdout(output):
-            code = project_page_state.main([root, *argv])
-        return code, output.getvalue()
+def _checkpoint(root, pages=("Domain/A.md",), statuses=None):
+    """Create the smallest locally valid page-projection checkpoint."""
+    root = pathlib.Path(root)
+    pathlib.Path(root, ".cambium/tmp").mkdir(parents=True, exist_ok=True)
+    statuses = statuses or {}
+    rows = []
+    for relative in pages:
+        rows.extend((
+            "  - path: %s" % relative,
+            "    coverage_disposition: required",
+            "    authoring_status: %s" % statuses.get(relative, "reviewed"),
+            "    next_batch:",
+        ))
+        _write(root / relative, PAGE)
+    _write(
+        root / ".cambium/state/coverage_ledger.yaml",
+        "schema_version: 1\npages:\n" + "\n".join(rows) + "\n")
+    return root
 
-    def read(self, root, rel):
-        with open(os.path.join(root, rel), encoding="utf-8") as handle:
-            return handle.read()
 
-    def test_dry_run_plans_but_writes_nothing(self):
-        root = self.build()
-        result = self.run_tool(root)
-        self.assertEqual(0, result.returncode, result.stdout)
-        self.assertIn("PLAN", result.stdout)
-        self.assertIn("dry run", result.stdout)
-        self.assertEqual(CLOSED, self.read(root, "Domain/Closed.md"))
+def _plan(root, *, rules, pages=None, ledger_override=None):
+    return project_page_state.build_projection_plan(
+        os.fspath(root), selected_pages=pages,
+        ledger_override=ledger_override, rules=rules)
 
-    def test_apply_updates_removes_and_never_adds(self):
-        root = self.build()
-        result = self.run_tool(root, "--apply")
-        self.assertEqual(0, result.returncode, result.stdout)
-        closed = self.read(root, "Domain/Closed.md")
-        # updated to the owner value
-        self.assertIn("authoring_status: reviewed", closed)
-        # removed: owner next_batch is empty (the closed-batch stale copy)
-        self.assertNotIn("next_batch", closed)
-        routed = self.read(root, "Domain/Routed.md")
-        self.assertIn("next_batch: T-002", routed)
-        # a page that never carried a projection field does not gain one
-        bare = self.read(root, "Domain/Bare.md")
-        self.assertNotIn("authoring_status", bare)
-        self.assertNotIn("next_batch", bare)
-        # idempotent: a second run plans zero changes
-        again = self.run_tool(root, "--apply")
-        self.assertIn("field_changes=0", again.stdout)
 
-    def test_contract_rule_projects_an_unlisted_field(self):
-        """The executable contract, not a source allowlist, grants writes."""
-        text = """---
-type: concept
-profile_readiness: pending
----
-# Profile page
-"""
-        rules = ({
-            "field": "profile_readiness",
-            "value_shape": "enum",
-            "allowed_values": ["pending", "accepted"],
-            "source_adapter": "coverage-row-value-v1",
-            "writer_capability": "project-page-state-v2",
-            "reconcile_policy": "existing-copy-exact-or-remove-v1",
-        },)
+def _run_main(root, *arguments):
+    output = io.StringIO()
+    with redirect_stdout(output):
+        code = project_page_state.main([os.fspath(root), *arguments])
+    return code, output.getvalue()
 
-        projected, changes = project_page_state.project_page(
-            text, {"path": "Domain/Profile.md",
-                   "profile_readiness": "accepted"}, rules)
 
-        self.assertIn("profile_readiness: accepted", projected)
+@contextmanager
+def _temporary_root():
+    root = pathlib.Path(tempfile.mkdtemp())
+    try:
+        yield root
+    finally:
+        shutil.rmtree(root, ignore_errors=True)
+
+
+class ProjectPageStateUnitTests(unittest.TestCase):
+    """Pure projector behavior; no filesystem, subprocess, or runtime."""
+
+    def test_semantic_fingerprint_excludes_only_contract_managed_copies(self):
+        original = project_page_state.semantic_content_fingerprint(
+            "Domain/A.md", PAGE, PROJECTOR_CONTRACT_RULES)
+        projected = PAGE.replace(
+            "authoring_status: drafted",
+            "authoring_status: drafted\nreview_state: ready")
         self.assertEqual(
-            [("profile_readiness", "pending", "accepted")], changes)
+            original,
+            project_page_state.semantic_content_fingerprint(
+                "Domain/A.md", projected, PROJECTOR_CONTRACT_RULES))
+        self.assertNotEqual(
+            original,
+            project_page_state.semantic_content_fingerprint(
+                "Domain/A.md", projected.replace("# Page", "# Changed"),
+                PROJECTOR_CONTRACT_RULES))
 
-    def test_property_projection_uses_contract_enum_not_field_logic(self):
-        rules = (property_rule(
-            "profile_gate_state", value_shape="enum",
-            allowed_values=["pending", "accepted"]),)
-        relative = "Domain/Profile.md"
+
+class ProjectPageStateContractTests(unittest.TestCase):
+    """The writer's projection contract over already-authorized rules."""
+
+    def test_property_owner_value_projects_without_changing_page_semantics(self):
         fingerprint = project_page_state.semantic_content_fingerprint(
-            relative, BARE, rules)
-        record = {
-            "value": "accepted",
-            "evidence_receipt": "audit-profile-gate-1",
-            "content_fingerprint": fingerprint,
-        }
-
-        projected, _changes = project_page_state.project_page(
-            BARE,
-            {"path": relative,
-             "property_state": {"profile_gate_state": record}},
-            rules)
-        self.assertIn("profile_gate_state: accepted", projected)
-
-        record["value"] = "invented"
-        with self.assertRaisesRegex(ValueError, "must be one of"):
-            project_page_state.project_page(
-                BARE,
-                {"path": relative,
-                 "property_state": {"profile_gate_state": record}},
-                rules)
-
-    def test_current_property_state_upserts_both_evidence_dates(self):
-        """Exact owner state adds missing page copies and remains self-stable."""
-        rules = (
-            property_rule("last_reviewed"),
-            property_rule("last_content_modified"),
-        )
-        relative = "Domain/Reviewed.md"
-        fingerprint = project_page_state.semantic_content_fingerprint(
-            relative, CLOSED, rules)
+            "Domain/A.md", PAGE, PROJECTOR_CONTRACT_RULES)
         row = {
-            "path": relative,
+            "path": "Domain/A.md",
             "property_state": {
-                "last_reviewed": {
-                    "value": "2026-08-19",
-                    "evidence_receipt": "audit-substantive-review-1",
-                    "content_fingerprint": fingerprint,
-                },
-                "last_content_modified": {
-                    "value": "2026-08-18",
-                    "evidence_receipt": "audit-content-change-1",
+                "review_state": {
+                    "value": "ready",
+                    "evidence_receipt": "audit-review-current",
                     "content_fingerprint": fingerprint,
                 },
             },
         }
 
         projected, changes = project_page_state.project_page(
-            CLOSED, row, rules)
+            PAGE, row, PROJECTOR_CONTRACT_RULES)
 
-        self.assertIn("last_reviewed: 2026-08-19", projected)
-        self.assertIn("last_content_modified: 2026-08-18", projected)
-        self.assertEqual(2, len(changes))
+        self.assertIn("authoring_status: drafted", projected)
+        self.assertIn("review_state: ready", projected)
+        self.assertEqual(
+            [("review_state", None, "ready")], changes)
         self.assertEqual(
             fingerprint,
             project_page_state.semantic_content_fingerprint(
-                relative, projected, rules))
+                "Domain/A.md", projected, PROJECTOR_CONTRACT_RULES))
 
-    def test_property_upsert_materializes_frontmatter_without_legacy_fields(self):
-        """Evidence-backed properties may create the first frontmatter block."""
-        rules = (property_rule("last_reviewed"),) + LEGACY_RULES
-        relative = "Domain/Reviewed.md"
-        text = "# Reviewed\n"
-        fingerprint = project_page_state.semantic_content_fingerprint(
-            relative, text, rules)
-        row = {
-            "path": relative,
-            "coverage_disposition": "required",
-            "authoring_status": "reviewed",
-            "next_batch": None,
-            "property_state": {
-                "last_reviewed": {
-                    "value": "2026-08-20",
-                    "evidence_receipt": "audit-substantive-review-1",
-                    "content_fingerprint": fingerprint,
-                },
-            },
-        }
-
-        projected, changes = project_page_state.project_page(
-            text, row, rules)
-
-        self.assertEqual(
-            "---\nlast_reviewed: 2026-08-20\n---\n# Reviewed\n",
-            projected)
-        self.assertEqual(
-            [("last_reviewed", None, "2026-08-20")], changes)
-        self.assertNotIn("authoring_status:", projected)
-        self.assertNotIn("coverage_disposition:", projected)
-        self.assertNotIn("next_batch:", projected)
-        self.assertEqual(
-            fingerprint,
-            project_page_state.semantic_content_fingerprint(
-                relative, projected, rules))
-
-    def test_stale_review_content_fingerprint_fails_closed(self):
-        rules = metadata_execution_contract.AuthorizedProjectionRules(
-            (property_rule("last_reviewed"),), "sha256:" + "1" * 64)
-        relative = "Domain/Reviewed.md"
-        fingerprint = project_page_state.semantic_content_fingerprint(
-            relative, CLOSED, rules)
-        row = {
-            "path": relative,
-            "property_state": {
-                "last_reviewed": {
-                    "value": "2026-08-19",
-                    "evidence_receipt": "audit-substantive-review-1",
-                    "content_fingerprint": fingerprint,
-                },
-            },
-        }
-        changed = CLOSED.replace("# Closed", "# Semantically changed")
-
-        with self.assertRaisesRegex(ValueError, "stale content"):
-            project_page_state.project_page(changed, row, rules)
-
-    def test_content_change_event_tombstones_review_and_advances_modified(self):
-        """A current event removes stale review authority without mtime."""
-        rules = (
-            property_rule(
-                "last_reviewed",
-                invalidation_rule="semantic-content-change-tombstone-v1"),
-            property_rule("last_content_modified"),
-        )
-        relative = "Domain/Reviewed.md"
-        changed = CLOSED.replace(
-            "authoring_status: drafted\n",
-            "authoring_status: needs_rereview\n"
-            "last_reviewed: 2026-08-10\n").replace(
-                "# Closed", "# Revised semantics")
-        current = project_page_state.semantic_content_fingerprint(
-            relative, changed, rules)
-        row = {
-            "path": relative,
-            "property_state": {
-                "last_reviewed": {
-                    "value": None,
-                    "evidence_receipt": "audit-content-change-2",
-                    "content_fingerprint": current,
-                },
-                "last_content_modified": {
-                    "value": "2026-08-20",
-                    "evidence_receipt": "audit-content-change-2",
-                    "content_fingerprint": current,
-                },
-            },
-        }
-
-        projected, changes = project_page_state.project_page(
-            changed, row, rules)
-
-        self.assertNotIn("last_reviewed:", projected)
-        self.assertIn("last_content_modified: 2026-08-20", projected)
-        self.assertIn(
-            ("last_reviewed", "2026-08-10", None), changes)
-        self.assertEqual(
-            current,
-            project_page_state.semantic_content_fingerprint(
-                relative, projected, rules))
-        again, second_changes = project_page_state.project_page(
-            projected, row, rules)
-        self.assertEqual(projected, again)
-        self.assertEqual([], second_changes)
-
-    def test_null_property_value_requires_contract_invalidation_rule(self):
-        rules = metadata_execution_contract.AuthorizedProjectionRules(
-            (property_rule("last_reviewed"),),
-            "sha256:" + "1" * 64,
-            "sha256:" + "2" * 64,
-        )
-        relative = "Domain/Reviewed.md"
-        fingerprint = project_page_state.semantic_content_fingerprint(
-            relative, CLOSED, rules)
-        row = {
-            "path": relative,
-            "property_state": {
-                "last_reviewed": {
-                    "value": None,
-                    "evidence_receipt": "audit-content-change-2",
-                    "content_fingerprint": fingerprint,
-                },
-            },
-        }
-
-        with self.assertRaisesRegex(ValueError, "unauthorized null tombstone"):
-            project_page_state.project_page(CLOSED, row, rules)
-
-    def test_persisted_review_date_without_owner_evidence_fails_closed(self):
-        rules = metadata_execution_contract.AuthorizedProjectionRules(
-            (property_rule("last_reviewed"),),
-            "sha256:" + "1" * 64)
-        text = CLOSED.replace(
-            "authoring_status: drafted\n",
-            "authoring_status: drafted\nlast_reviewed: 2026-08-01\n")
+    def test_ownerless_copy_requires_explicit_contract_authorized_removal(self):
+        text = PAGE.replace(
+            "authoring_status: drafted",
+            "authoring_status: drafted\nreview_state: ready")
+        row = {"path": "Domain/A.md"}
 
         with self.assertRaisesRegex(ValueError, "no evidence-backed owner"):
             project_page_state.project_page(
-                text, {"path": "Domain/Legacy.md"}, rules)
+                text, row, PROJECTOR_CONTRACT_RULES)
 
-    def test_property_state_record_is_closed_and_requires_evidence(self):
-        rules = (property_rule("last_reviewed"),)
-        relative = "Domain/Reviewed.md"
-        fingerprint = project_page_state.semantic_content_fingerprint(
-            relative, CLOSED, rules)
-        base = {
-            "value": "2026-08-19",
-            "content_fingerprint": fingerprint,
-        }
-        for record, pattern in (
-                (base, "missing evidence_receipt"),
-                (dict(base, evidence_receipt="audit-review-1", extra="x"),
-                 "undeclared extra")):
-            with self.subTest(record=record):
-                with self.assertRaisesRegex(ValueError, pattern):
-                    project_page_state.project_page(
-                        CLOSED,
-                        {"path": relative,
-                         "property_state": {"last_reviewed": record}},
-                        rules)
+        projected, changes = project_page_state.project_page(
+            text, row, PROJECTOR_CONTRACT_RULES,
+            authorized_owner_removals=("review_state",))
+        self.assertNotIn("review_state:", projected)
+        self.assertEqual(
+            [("review_state", "ready", None)], changes)
 
-    def test_integrator_can_plan_pages_from_proposed_coverage(self):
-        """Coverage need not be published before deriving page after-images."""
-        root = tempfile.mkdtemp()
-        self.addCleanup(shutil.rmtree, root, True)
-        ledger_path = pathlib.Path(
-            root, ".cambium/state/coverage_ledger.yaml")
-        page_path = pathlib.Path(root, "Domain/Closed.md")
-        ledger_path.parent.mkdir(parents=True)
-        page_path.parent.mkdir(parents=True)
-        ledger_path.write_text(
-            "schema_version: 1\npages:\n"
-            "  - path: Domain/Closed.md\n",
-            encoding="utf-8")
-        page_path.write_text(CLOSED, encoding="utf-8")
-        rules = metadata_execution_contract.AuthorizedProjectionRules(
-            (property_rule("last_reviewed"),),
-            "sha256:" + "1" * 64,
-            "sha256:" + "2" * 64,
-        )
-        fingerprint = project_page_state.semantic_content_fingerprint(
-            "Domain/Closed.md", CLOSED, rules)
-        proposed = {
-            "schema_version": 1,
-            "pages": [{
-                "path": "Domain/Closed.md",
-                "property_state": {
-                    "last_reviewed": {
-                        "value": "2026-08-20",
-                        "evidence_receipt": "audit-review-current",
-                        "content_fingerprint": fingerprint,
-                    },
-                },
-            }],
-        }
 
-        plan = project_page_state.build_projection_plan(
-            root, ledger_override=proposed, rules=rules)
+class ProjectPageStateIntegrationTests(unittest.TestCase):
+    """Local planning and transaction seams from legal checkpoints."""
 
-        self.assertEqual(1, len(plan.pages))
-        self.assertIn(
-            b"last_reviewed: 2026-08-20", plan.pages[0].after_data)
-        self.assertFalse(plan.revalidate_contract)
-        self.assertNotIn(
-            "last_reviewed", ledger_path.read_text(encoding="utf-8"))
+    @classmethod
+    def setUpClass(cls):
+        cls.rules = _current_profile_rules()
 
-    def build_composite_plan(self):
-        root = tempfile.mkdtemp()
-        self.addCleanup(shutil.rmtree, root, True)
-        pathlib.Path(root, ".cambium/tmp").mkdir(parents=True)
-        ledger = pathlib.Path(root, ".cambium/state/coverage_ledger.yaml")
-        page = pathlib.Path(root, "Domain/Closed.md")
-        ledger.parent.mkdir(parents=True, exist_ok=True)
-        page.parent.mkdir(parents=True)
-        ledger.write_text(
-            "schema_version: 1\npages:\n"
-            "  - path: Domain/Closed.md\n"
-            "    authoring_status: reviewed\n",
-            encoding="utf-8")
-        page.write_text(CLOSED, encoding="utf-8")
-        rule = metadata_execution_contract.AuthorizedProjectionRules(({
-            "field": "authoring_status",
-            "value_shape": "scalar-string-or-null",
-            "source_adapter": "coverage-row-value-v1",
-            "writer_capability": "project-page-state-v2",
-            "reconcile_policy": "existing-copy-exact-or-remove-v1",
-        },), "sha256:" + "1" * 64)
-        plan = project_page_state.build_projection_plan(
-            root, rules=rule)
-        return root, ledger, page, plan
+    def test_proposed_coverage_builds_after_image_without_writing_owner(self):
+        with _temporary_root() as root:
+            _checkpoint(root)
+            ledger = root / ".cambium/state/coverage_ledger.yaml"
+            before = ledger.read_bytes()
+            proposed = {
+                "schema_version": 1,
+                "pages": [{
+                    "path": "Domain/A.md",
+                    "coverage_disposition": "required",
+                    "authoring_status": "needs_rereview",
+                    "next_batch": None,
+                }],
+            }
 
-    def test_composite_transaction_defers_cleanup_until_outer_commit(self):
-        root, _ledger, page, plan = self.build_composite_plan()
-        with project_page_state.kblib.runtime_write_lock(
-                root, owner_metadata={"tool": "outer-integrator"}) as lease:
-            transaction = project_page_state.stage_projection_plan(
-                root, plan, lease, "outer-page-commit")
-            self.assertEqual(CLOSED, page.read_text(encoding="utf-8"))
-            transaction.publish()
+            plan = _plan(
+                root, rules=self.rules, ledger_override=proposed)
+
+            self.assertEqual(before, ledger.read_bytes())
+            self.assertEqual(1, len(plan.pages))
+            self.assertIn(
+                b"authoring_status: needs_rereview",
+                plan.pages[0].after_data)
+            self.assertFalse(plan.revalidate_contract)
+
+    def test_current_contract_main_apply_is_idempotent(self):
+        with _temporary_root() as root:
+            _checkpoint(root)
+            page = root / "Domain/A.md"
+            with mock.patch.object(
+                    project_page_state, "_projection_rules",
+                    return_value=self.rules):
+                first_code, first_output = _run_main(root, "--apply")
+                second_code, second_output = _run_main(root, "--apply")
+
+            self.assertEqual(0, first_code, first_output)
+            self.assertEqual(0, second_code, second_output)
             self.assertIn(
                 "authoring_status: reviewed",
                 page.read_text(encoding="utf-8"))
-            self.assertTrue(any(page.parent.glob(
-                project_page_state.TEMP_PREFIX + "before-*")))
-            transaction.commit()
+            self.assertIn(
+                "coverage_disposition: required",
+                page.read_text(encoding="utf-8"))
+            self.assertIn("field_changes=0", second_output)
             self.assertFalse(pathlib.Path(
-                os.fspath(lease),
-                project_page_state.JOURNAL_NAME).exists())
-            self.assertEqual([], list(page.parent.glob(
-                project_page_state.TEMP_PREFIX + "*")))
+                root, ".cambium/tmp/state-writer.lock").exists())
 
-    def test_composite_transaction_can_rollback_after_page_publication(self):
-        root, _ledger, page, plan = self.build_composite_plan()
-        with project_page_state.kblib.runtime_write_lock(
-                root, owner_metadata={"tool": "outer-integrator"}) as lease:
-            transaction = project_page_state.stage_projection_plan(
-                root, plan, lease, "outer-page-rollback")
-            transaction.publish()
-            transaction.rollback()
-            self.assertEqual(CLOSED, page.read_text(encoding="utf-8"))
-            self.assertFalse(pathlib.Path(
-                os.fspath(lease),
-                project_page_state.JOURNAL_NAME).exists())
-            self.assertEqual([], list(page.parent.glob(
-                project_page_state.TEMP_PREFIX + "*")))
-
-    def test_composite_publish_accepts_outer_coverage_after_image(self):
-        root, ledger, page, plan = self.build_composite_plan()
-        with project_page_state.kblib.runtime_write_lock(
-                root, owner_metadata={"tool": "outer-integrator"}) as lease:
-            transaction = project_page_state.stage_projection_plan(
-                root, plan, lease, "outer-coverage-first")
-            # The outer transaction owns this canonical-state publication and
-            # its rollback.  Page publication must not demand the pre-state
-            # Ledger after that deliberate write.
-            ledger.write_text(
-                ledger.read_text(encoding="utf-8") +
-                "updated_at: 2026-08-20T00:00:00Z\n",
-                encoding="utf-8")
-            transaction.publish()
-            transaction.commit()
-
-        self.assertIn(
-            "authoring_status: reviewed", page.read_text(encoding="utf-8"))
-
-    def test_composite_rollback_never_deletes_foreign_same_inode_edit(self):
-        root, _ledger, page, plan = self.build_composite_plan()
-        concurrent = CLOSED.replace("# Closed", "# Concurrent after publish")
-        lock_path = pathlib.Path(root, ".cambium/tmp/state-writer.lock")
-
-        with self.assertRaisesRegex(ValueError, "rollback is incomplete"):
+    def test_outer_transaction_can_rollback_one_staged_plan(self):
+        with _temporary_root() as root:
+            _checkpoint(root)
+            page = root / "Domain/A.md"
+            plan = _plan(root, rules=self.rules)
             with project_page_state.kblib.runtime_write_lock(
-                    root,
-                    owner_metadata={"tool": "outer-integrator"}) as lease:
+                    os.fspath(root),
+                    owner_metadata={"tool": "test-integrator"}) as lease:
                 transaction = project_page_state.stage_projection_plan(
-                    root, plan, lease, "outer-page-drift")
+                    os.fspath(root), plan, lease, "page-projection-rollback")
                 transaction.publish()
-                published_inode = page.stat().st_ino
-                page.write_text(concurrent, encoding="utf-8")
-                self.assertEqual(published_inode, page.stat().st_ino)
                 transaction.rollback()
-
-        self.assertEqual(concurrent, page.read_text(encoding="utf-8"))
-        self.assertTrue(lock_path.is_dir())
-        journal = json.loads(pathlib.Path(
-            lock_path, project_page_state.JOURNAL_NAME
-        ).read_text(encoding="utf-8"))
-        self.assertEqual("rollback-required", journal.get("status"))
-
-    def test_page_scope_and_unknown_page(self):
-        root = self.build()
-        result = self.run_tool(root, "--page", "Domain/Routed.md", "--apply")
-        self.assertEqual(0, result.returncode, result.stdout)
-        # only the scoped page was touched
-        self.assertIn("next_batch: T-001", self.read(root, "Domain/Closed.md"))
-        self.assertIn("next_batch: T-002", self.read(root, "Domain/Routed.md"))
-        unknown = self.run_tool(root, "--page", "Domain/Absent.md")
-        self.assertEqual(1, unknown.returncode, unknown.stdout)
-        self.assertIn("not in the Coverage Ledger", unknown.stdout)
-
-    def replace_ledger(self, root, paths):
-        rows = []
-        for path in paths:
-            rows.append(
-                "  - path: %s\n"
-                "    coverage_disposition: required\n"
-                "    authoring_status: reviewed\n"
-                "    next_batch: null\n" % repr(path)
-            )
-        pathlib.Path(
-            root, ".cambium/state/coverage_ledger.yaml"
-        ).write_text("schema_version: 1\npages:\n" + "".join(rows),
-                     encoding="utf-8")
-
-    def test_parent_escape_is_rejected_without_writing_any_page(self):
-        root = self.build()
-        outside = pathlib.Path(root).parent / "outside.md"
-        outside.write_text(CLOSED, encoding="utf-8")
-        self.replace_ledger(root, ["Domain/Closed.md", "../outside.md"])
-
-        result = self.run_tool(
-            root, "--page", "Domain/Closed.md", "--page", "../outside.md",
-            "--apply")
-
-        self.assertEqual(1, result.returncode, result.stdout)
-        self.assertIn("unsafe or invalid", result.stdout)
-        self.assertEqual(CLOSED, self.read(root, "Domain/Closed.md"))
-        self.assertEqual(CLOSED, outside.read_text(encoding="utf-8"))
-        outside.unlink()
-
-    def test_absolute_page_path_is_rejected(self):
-        root = self.build()
-        outside = pathlib.Path(root).parent / "absolute.md"
-        outside.write_text(CLOSED, encoding="utf-8")
-        self.replace_ledger(root, [str(outside)])
-
-        result = self.run_tool(root, "--apply")
-
-        self.assertEqual(1, result.returncode, result.stdout)
-        self.assertIn("repository-relative", result.stdout)
-        self.assertEqual(CLOSED, outside.read_text(encoding="utf-8"))
-        outside.unlink()
-
-    def test_symlinked_page_and_parent_are_rejected(self):
-        for parent_link in (False, True):
-            with self.subTest(parent_link=parent_link):
-                root = self.build()
-                outside_dir = pathlib.Path(root).parent / (
-                    "outside-parent" if parent_link else "outside-page")
-                outside_dir.mkdir(exist_ok=True)
-                outside = outside_dir / "Page.md"
-                outside.write_text(CLOSED, encoding="utf-8")
-                if parent_link:
-                    shutil.rmtree(pathlib.Path(root, "Domain"))
-                    pathlib.Path(root, "Domain").symlink_to(
-                        outside_dir, target_is_directory=True)
-                    relative = "Domain/Page.md"
-                else:
-                    relative = "Domain/Linked.md"
-                    pathlib.Path(root, relative).symlink_to(outside)
-                self.replace_ledger(root, [relative])
-
-                result = self.run_tool(root, "--apply")
-
-                self.assertEqual(1, result.returncode, result.stdout)
-                self.assertRegex(
-                    result.stdout, "symlink|outside the repository root")
-                self.assertEqual(CLOSED, outside.read_text(encoding="utf-8"))
-                shutil.rmtree(outside_dir)
-
-    def test_hard_linked_page_is_rejected(self):
-        root = self.build()
-        original = pathlib.Path(root, "Domain/Closed.md")
-        linked = pathlib.Path(root, "Domain/Linked.md")
-        os.link(original, linked)
-        self.replace_ledger(root, ["Domain/Linked.md"])
-        before = original.read_text(encoding="utf-8")
-
-        result = self.run_tool(root, "--apply")
-
-        self.assertEqual(1, result.returncode, result.stdout)
-        self.assertIn("singly-linked", result.stdout)
-        self.assertEqual(before, original.read_text(encoding="utf-8"))
-
-    def test_unmaterialized_contained_page_remains_a_noop(self):
-        root = self.build()
-        self.replace_ledger(root, ["Domain/Missing.md"])
-
-        result = self.run_tool(root, "--apply")
-
-        self.assertEqual(0, result.returncode, result.stdout)
-        self.assertIn("pages=0 field_changes=0", result.stdout)
-
-    def test_unmaterialized_page_created_after_plan_is_rejected(self):
-        """A typed missing target remains part of the final CAS set."""
-        root = self.build()
-        self.replace_ledger(root, ["Domain/Missing.md"])
-        original_snapshot = project_page_state._page_snapshot
-        materialized = False
-
-        def materialize_after_first_missing_snapshot(root_path, relative):
-            nonlocal materialized
-            snapshot = original_snapshot(root_path, relative)
-            if relative == "Domain/Missing.md" and not materialized:
-                pathlib.Path(root, "Domain/Missing.md").write_text(
-                    CLOSED, encoding="utf-8")
-                materialized = True
-            return snapshot
-
-        with mock.patch.object(
-                project_page_state, "_page_snapshot",
-                side_effect=materialize_after_first_missing_snapshot):
-            code, output = self.run_main(root, "--apply")
-
-        self.assertTrue(materialized)
-        self.assertEqual(1, code, output)
-        self.assertEqual(CLOSED, self.read(root, "Domain/Missing.md"))
-        self.assertFalse(pathlib.Path(
-            root, ".cambium/tmp/state-writer.lock").exists())
-
-    def test_unmaterialized_page_through_symlink_parent_is_rejected(self):
-        """A missing leaf does not excuse a symlink in its parent chain."""
-        for external in (False, True):
-            with self.subTest(external=external):
-                root = self.build()
-                if external:
-                    outside = pathlib.Path(tempfile.mkdtemp())
-                    target = outside
-                else:
-                    outside = None
-                    target = pathlib.Path(root, "Domain")
-                pathlib.Path(root, "Alias").symlink_to(
-                    target, target_is_directory=True)
-                self.replace_ledger(root, ["Alias/Missing.md"])
-
-                result = self.run_tool(root, "--apply")
-
-                self.assertEqual(1, result.returncode, result.stdout)
-                self.assertRegex(
-                    result.stdout, "symlink|outside the repository root")
-                self.assertFalse(pathlib.Path(target, "Missing.md").exists())
-                if outside is not None:
-                    shutil.rmtree(outside)
-
-    def test_internal_symlink_components_are_rejected(self):
-        for parent_link in (False, True):
-            with self.subTest(parent_link=parent_link):
-                root = self.build()
-                if parent_link:
-                    pathlib.Path(root, "Alias").symlink_to(
-                        pathlib.Path(root, "Domain"), target_is_directory=True)
-                    relative = "Alias/Closed.md"
-                else:
-                    relative = "Domain/Linked.md"
-                    pathlib.Path(root, relative).symlink_to(
-                        pathlib.Path(root, "Domain/Closed.md"))
-                self.replace_ledger(root, [relative])
-
-                result = self.run_tool(root, "--apply")
-
-                self.assertEqual(1, result.returncode, result.stdout)
-                self.assertIn("symlink", result.stdout)
-                self.assertEqual(CLOSED, self.read(root, "Domain/Closed.md"))
-
-    def test_symlinked_coverage_ledger_is_rejected(self):
-        root = self.build()
-        ledger = pathlib.Path(root, ".cambium/state/coverage_ledger.yaml")
-        outside = pathlib.Path(root).parent / "outside-ledger.yaml"
-        outside.write_bytes(ledger.read_bytes())
-        ledger.unlink()
-        ledger.symlink_to(outside)
-
-        result = self.run_tool(root, "--apply")
-
-        self.assertEqual(1, result.returncode, result.stdout)
-        self.assertRegex(result.stdout, "symlink|outside the repository root")
-        self.assertEqual(CLOSED, self.read(root, "Domain/Closed.md"))
-        outside.unlink()
-
-    def test_last_moment_target_swap_is_rejected_without_touching_outside(self):
-        root = self.build()
-        page = pathlib.Path(root, "Domain/Closed.md")
-        snapshot = project_page_state._page_snapshot(
-            root, "Domain/Closed.md")
-        new_text, _changes = project_page_state.project_page(
-            snapshot.read_text(), {
-                "path": "Domain/Closed.md",
-                "coverage_disposition": "required",
-                "authoring_status": "reviewed",
-                "next_batch": None,
-            }, LEGACY_RULES)
-        outside = pathlib.Path(root).parent / "swap-outside.md"
-        outside.write_text(CLOSED, encoding="utf-8")
-        original_open = project_page_state.os.open
-        swapped = False
-
-        def swap_before_target_open(path, flags, *args, **kwargs):
-            nonlocal swapped
-            if (path == "Closed.md" and kwargs.get("dir_fd") is not None and
-                    not swapped):
-                page.unlink()
-                page.symlink_to(outside)
-                swapped = True
-            return original_open(path, flags, *args, **kwargs)
-
-        with mock.patch.object(
-                project_page_state.os, "open",
-                side_effect=swap_before_target_open):
-            with self.assertRaises(OSError):
-                project_page_state._publish_page(
-                    root, "Domain/Closed.md", snapshot, new_text)
-
-        self.assertTrue(swapped)
-        self.assertEqual(CLOSED, outside.read_text(encoding="utf-8"))
-        outside.unlink()
-
-    def test_same_bytes_different_inode_swap_rejects_stale_plan(self):
-        """A replacement inode is drift even when it carries equal bytes."""
-        root = self.build()
-        page = pathlib.Path(root, "Domain/Closed.md")
-        replacement = pathlib.Path(root, "Domain/Closed.replacement")
-        replacement.write_bytes(page.read_bytes())
-        original_snapshot = project_page_state._page_snapshot
-        page_snapshots = 0
-        swapped = False
-
-        def swap_after_planning(root_path, relative):
-            nonlocal page_snapshots, swapped
-            snapshot = original_snapshot(root_path, relative)
-            if relative == "Domain/Closed.md":
-                page_snapshots += 1
-                if page_snapshots == 1:
-                    os.replace(replacement, page)
-                    swapped = True
-            return snapshot
-
-        with mock.patch.object(
-                project_page_state, "_page_snapshot",
-                side_effect=swap_after_planning):
-            code, output = self.run_main(
-                root, "--page", "Domain/Closed.md", "--apply")
-
-        self.assertTrue(swapped)
-        self.assertEqual(1, code, output)
-        self.assertEqual(CLOSED, page.read_text(encoding="utf-8"))
-
-    def test_same_inode_change_after_staging_is_not_overwritten(self):
-        """The final CAS must compare bytes after the staged file is durable."""
-        root = self.build()
-        page = pathlib.Path(root, "Domain/Closed.md")
-        concurrent = CLOSED.replace("# Closed", "# Concurrent edit")
-        original_stage = project_page_state._stage_page
-        changed = False
-
-        def change_after_stage(root_path, projection):
-            nonlocal changed
-            staged = original_stage(root_path, projection)
-            if projection.relative == "Domain/Closed.md" and not changed:
-                inode = page.stat().st_ino
-                page.write_text(concurrent, encoding="utf-8")
-                self.assertEqual(inode, page.stat().st_ino)
-                changed = True
-            return staged
-
-        with mock.patch.object(
-                project_page_state, "_stage_page",
-                side_effect=change_after_stage):
-            code, output = self.run_main(
-                root, "--page", "Domain/Closed.md", "--apply")
-
-        self.assertTrue(changed)
-        self.assertEqual(1, code, output)
-        self.assertEqual(concurrent, page.read_text(encoding="utf-8"))
-
-    def test_staged_after_image_swap_is_rejected(self):
-        """A staged name cannot be replaced by bytes or a symlink."""
-        for replacement in ("bytes", "symlink"):
-            with self.subTest(replacement=replacement):
-                root = self.build()
-                original_stage = project_page_state._stage_page
-                outside = pathlib.Path(root).parent / (
-                    "stage-outside-%s" % uuid.uuid4().hex)
-                outside.write_text("outside\n", encoding="utf-8")
-
-                def replace_staged_name(root_path, projection):
-                    staged = original_stage(root_path, projection)
-                    path = pathlib.Path(
-                        root, "Domain", staged.temporary_name)
-                    path.unlink()
-                    if replacement == "bytes":
-                        path.write_text("corrupted stage\n", encoding="utf-8")
-                    else:
-                        path.symlink_to(outside)
-                    return staged
-
-                with mock.patch.object(
-                        project_page_state, "_stage_page",
-                        side_effect=replace_staged_name):
-                    code, output = self.run_main(
-                        root, "--page", "Domain/Closed.md", "--apply")
-
-                self.assertEqual(1, code, output)
-                self.assertEqual(CLOSED,
-                                 self.read(root, "Domain/Closed.md"))
-                self.assertEqual("outside\n",
-                                 outside.read_text(encoding="utf-8"))
-                outside.unlink()
-
-    def test_staged_bytes_changed_during_install_are_rejected(self):
-        """Unknown after-image bytes are preserved for reconciliation."""
-        root = self.build()
-        original_link = project_page_state.os.link
-        changed = False
-
-        def corrupt_before_install_link(source, destination, *args, **kwargs):
-            nonlocal changed
-            if (str(source).startswith(
-                    project_page_state.TEMP_PREFIX + "after-") and
-                    destination == "Closed.md" and not changed):
-                parent_fd = kwargs["src_dir_fd"]
-                fd = os.open(source, os.O_WRONLY | os.O_TRUNC,
-                             dir_fd=parent_fd)
-                try:
-                    os.write(fd, b"corrupted during install\n")
-                    os.fsync(fd)
-                finally:
-                    os.close(fd)
-                changed = True
-            return original_link(source, destination, *args, **kwargs)
-
-        with mock.patch.object(
-                project_page_state.os, "link",
-                side_effect=corrupt_before_install_link):
-            code, output = self.run_main(
-                root, "--page", "Domain/Closed.md", "--apply")
-
-        self.assertTrue(changed)
-        self.assertEqual(1, code, output)
-        self.assertEqual(
-            "corrupted during install\n",
-            self.read(root, "Domain/Closed.md"))
-        journal = json.loads(pathlib.Path(
-            root, ".cambium/tmp/state-writer.lock",
-            project_page_state.JOURNAL_NAME
-        ).read_text(encoding="utf-8"))
-        self.assertEqual("rollback-required", journal.get("status"))
-
-    def test_later_publication_failure_restores_earlier_page(self):
-        """A multi-page failure must not leave an earlier projection behind."""
-        root = self.build()
-        original_link = project_page_state.os.link
-        routed_install_attempted = False
-
-        def fail_second_after_claim(source, destination, *args, **kwargs):
-            nonlocal routed_install_attempted
-            if (str(source).startswith(
-                    project_page_state.TEMP_PREFIX + "after-") and
-                    destination == "Routed.md"):
-                routed_install_attempted = True
-                raise OSError("injected second-page publication failure")
-            return original_link(source, destination, *args, **kwargs)
-
-        with mock.patch.object(
-                project_page_state.os, "link",
-                side_effect=fail_second_after_claim):
-            code, output = self.run_main(root, "--apply")
-
-        self.assertEqual(1, code, output)
-        self.assertTrue(routed_install_attempted)
-        self.assertEqual(CLOSED, self.read(root, "Domain/Closed.md"))
-        self.assertEqual(ROUTED, self.read(root, "Domain/Routed.md"))
-        self.assertFalse(pathlib.Path(
-            root, ".cambium/tmp/state-writer.lock").exists())
-        self.assertEqual([], list(pathlib.Path(root).rglob(
-            ".cambium-page-state-*")))
-
-    def test_late_coverage_change_rolls_back_all_pages(self):
-        """A stale Ledger owner cannot leave a successful projection."""
-        root = self.build()
-        original_publish = project_page_state._publish_staged
-        changed = False
-
-        def change_ledger_after_first_publish(root_path, staged):
-            nonlocal changed
-            result = original_publish(root_path, staged)
-            if not changed:
-                pathlib.Path(
-                    root, ".cambium/state/coverage_ledger.yaml"
-                ).write_text(
-                    LEDGER.replace("authoring_status: reviewed",
-                                   "authoring_status: drafted", 1),
-                    encoding="utf-8")
-                changed = True
-            return result
-
-        with mock.patch.object(
-                project_page_state, "_publish_staged",
-                side_effect=change_ledger_after_first_publish):
-            code, output = self.run_main(root, "--apply")
-
-        self.assertTrue(changed)
-        self.assertEqual(1, code, output)
-        self.assertEqual(CLOSED, self.read(root, "Domain/Closed.md"))
-        self.assertEqual(ROUTED, self.read(root, "Domain/Routed.md"))
-        self.assertFalse(pathlib.Path(
-            root, ".cambium/tmp/state-writer.lock").exists())
-
-    def test_failed_rollback_retains_lock_and_recovery_evidence(self):
-        """An unproven rollback leaves exact transaction intent fail-closed."""
-        root = self.build()
-        original_publish = project_page_state._publish_staged
-        original_restore = project_page_state._restore_staged
-        publications = 0
-        restorations = 0
-
-        def fail_second_publication(root_path, staged):
-            nonlocal publications
-            publications += 1
-            if publications == 2:
-                raise OSError("injected second-page publication failure")
-            return original_publish(root_path, staged)
-
-        def fail_first_restore(root_path, staged):
-            nonlocal restorations
-            restorations += 1
-            if restorations == 1:
-                raise OSError("injected rollback failure")
-            return original_restore(root_path, staged)
-
-        with mock.patch.object(project_page_state, "_publish_staged",
-                               side_effect=fail_second_publication), \
-                mock.patch.object(project_page_state, "_restore_staged",
-                                  side_effect=fail_first_restore):
-            code, output = self.run_main(root, "--apply")
-
-        self.assertEqual(1, code, output)
-        self.assertGreaterEqual(publications, 2)
-        self.assertGreaterEqual(restorations, 1)
-        self.assertIn("rollback", output.lower())
-        owner_path = pathlib.Path(
-            root, ".cambium/tmp/state-writer.lock/owner.json")
-        self.assertTrue(owner_path.is_file())
-        owner = json.loads(owner_path.read_text(encoding="utf-8"))
-        operation = owner.get("operation", {})
-        self.assertEqual("project_page_state", operation.get("tool"))
-        evidence = json.dumps(operation, sort_keys=True)
-        self.assertIn("Domain/Closed.md", evidence)
-        self.assertIn("Domain/Routed.md", evidence)
-        self.assertIn("before", evidence)
-        self.assertIn("after", evidence)
-        self.assertEqual("rollback-required", operation.get("status"))
-        journal_path = owner_path.with_name(
-            project_page_state.JOURNAL_NAME)
-        journal = json.loads(journal_path.read_text(encoding="utf-8"))
-        self.assertEqual("rollback-required", journal.get("status"))
-        closed_artifact = next(
-            artifact for artifact in journal.get("artifacts", [])
-            if artifact.get("path") == "Domain/Closed.md")
-        backup_name = closed_artifact.get("rollback_image")
-        self.assertIsInstance(backup_name, str)
-        backup = pathlib.Path(root, "Domain", backup_name)
-        self.assertTrue(backup.is_file())
-        self.assertEqual(CLOSED.encode("utf-8"), backup.read_bytes())
-
-    def test_success_uses_one_writer_lock_and_cleans_transaction_files(self):
-        root = self.build()
-        real_lock = project_page_state.kblib.runtime_write_lock
-        observed = []
-
-        @contextmanager
-        def observing_lock(*args, **kwargs):
-            observed.append(kwargs.get("owner_metadata"))
-            with real_lock(*args, **kwargs) as lease:
-                yield lease
-
-        with mock.patch.object(
-                project_page_state.kblib, "runtime_write_lock",
-                side_effect=observing_lock):
-            code, output = self.run_main(root, "--apply")
-
-        self.assertEqual(0, code, output)
-        self.assertEqual(1, len(observed))
-        self.assertEqual("project_page_state", observed[0].get("tool"))
-        self.assertFalse(pathlib.Path(
-            root, ".cambium/tmp/state-writer.lock").exists())
-        self.assertEqual([], list(pathlib.Path(root).rglob(
-            ".cambium-page-state-*")))
-
-    def test_artifact_names_are_journaled_before_first_claim(self):
-        root = self.build()
-        real_publish = project_page_state._publish_staged
-        observed = []
-
-        def inspect_journal_before_claim(root_path, staged):
-            journal = json.loads(pathlib.Path(
-                root, ".cambium/tmp/state-writer.lock",
-                project_page_state.JOURNAL_NAME
-            ).read_text(encoding="utf-8"))
-            self.assertEqual("staged" if not observed else "publishing",
-                             journal.get("status"))
-            artifacts = {
-                artifact["path"]: artifact
-                for artifact in journal.get("artifacts", [])
-            }
-            self.assertEqual({"Domain/Closed.md", "Domain/Routed.md"},
-                             set(artifacts))
-            for artifact in artifacts.values():
-                self.assertIsInstance(artifact.get("staged_after_image"), str)
-                self.assertIsInstance(artifact.get("rollback_image"), str)
-                self.assertIsInstance(artifact.get("staged_after_inode"), int)
-            observed.append(staged.projection.relative)
-            return real_publish(root_path, staged)
-
-        with mock.patch.object(
-                project_page_state, "_publish_staged",
-                side_effect=inspect_journal_before_claim):
-            code, output = self.run_main(root, "--apply")
-
-        self.assertEqual(0, code, output)
-        self.assertEqual(["Domain/Closed.md", "Domain/Routed.md"], observed)
-
-    def test_changed_page_has_only_plan_and_final_cas_descriptor_opens(self):
-        """One changed page descriptor is opened once per logical phase."""
-        root = self.build()
-        original_open = project_page_state.os.open
-        page_opens = 0
-
-        def count_page_opens(path, flags, *args, **kwargs):
-            nonlocal page_opens
-            basename = os.path.basename(os.fspath(path))
-            is_directory = bool(flags & getattr(os, "O_DIRECTORY", 0))
-            access = flags & getattr(os, "O_ACCMODE", 3)
-            if (basename == "Closed.md" and not is_directory and
-                    access == os.O_RDONLY):
-                page_opens += 1
-            return original_open(path, flags, *args, **kwargs)
-
-        with mock.patch.object(
-                project_page_state.os, "open",
-                side_effect=count_page_opens):
-            code, output = self.run_main(
-                root, "--page", "Domain/Closed.md", "--apply")
-
-        self.assertEqual(0, code, output)
-        self.assertEqual(2, page_opens)
+                lease.mark_reconciled()
+
+            self.assertEqual(PAGE, page.read_text(encoding="utf-8"))
+            self.assertFalse(pathlib.Path(
+                root, ".cambium/tmp/state-writer.lock").exists())
+
+    def test_missing_target_materialized_after_plan_is_rejected(self):
+        with _temporary_root() as root:
+            _checkpoint(root)
+            ledger = root / ".cambium/state/coverage_ledger.yaml"
+            ledger.write_text(
+                "schema_version: 1\npages:\n"
+                "  - path: Domain/Missing.md\n"
+                "    authoring_status: reviewed\n",
+                encoding="utf-8")
+            plan = _plan(root, rules=self.rules)
+            _write(root / "Domain/Missing.md", PAGE)
+
+            with self.assertRaisesRegex(OSError, "unmaterialized page changed"):
+                project_page_state._revalidate_plan_inputs(
+                    os.fspath(root), plan)
+            self.assertEqual(PAGE, (root / "Domain/Missing.md").read_text(
+                encoding="utf-8"))
+
+
+class ProjectPageStateSlowTests(unittest.TestCase):
+    """Projection-specific currentness and recovery boundaries."""
+
+    def test_staged_after_image_name_drift_is_rejected_before_publication(self):
+        with _temporary_root() as root:
+            _checkpoint(root)
+            page = root / "Domain/A.md"
+            original_stage = project_page_state._stage_page
+            rules = _current_profile_rules()
+
+            def replace_stage(root_path, projection):
+                staged = original_stage(root_path, projection)
+                staged_path = page.parent / staged.temporary_name
+                staged_path.unlink()
+                staged_path.write_text("foreign staged bytes\n", encoding="utf-8")
+                return staged
+
+            with mock.patch.object(
+                    project_page_state, "_stage_page",
+                    side_effect=replace_stage), \
+                    mock.patch.object(
+                        project_page_state, "_projection_rules",
+                        return_value=rules):
+                code, output = _run_main(root, "--apply")
+
+            self.assertEqual(1, code, output)
+            self.assertEqual(PAGE, page.read_text(encoding="utf-8"))
+
+    def test_later_page_failure_rolls_back_earlier_publication(self):
+        with _temporary_root() as root:
+            _checkpoint(root, pages=("Domain/A.md", "Domain/B.md"))
+            original_publish = project_page_state._publish_staged
+            publications = 0
+            rules = _current_profile_rules()
+
+            def fail_second(root_path, staged):
+                nonlocal publications
+                publications += 1
+                if publications == 2:
+                    raise OSError("injected second-page failure")
+                return original_publish(root_path, staged)
+
+            with mock.patch.object(
+                    project_page_state, "_publish_staged",
+                    side_effect=fail_second), \
+                    mock.patch.object(
+                        project_page_state, "_projection_rules",
+                        return_value=rules):
+                code, output = _run_main(root, "--apply")
+
+            self.assertEqual(1, code, output)
+            self.assertEqual(2, publications)
+            self.assertEqual(PAGE, (root / "Domain/A.md").read_text(
+                encoding="utf-8"))
+            self.assertEqual(PAGE, (root / "Domain/B.md").read_text(
+                encoding="utf-8"))
+            self.assertFalse(pathlib.Path(
+                root, ".cambium/tmp/state-writer.lock").exists())
+
+    def test_foreign_published_edit_is_preserved_with_recovery_evidence(self):
+        with _temporary_root() as root:
+            _checkpoint(root)
+            page = root / "Domain/A.md"
+            concurrent = PAGE.replace("# Page", "# Concurrent")
+            plan = _plan(root, rules=_current_profile_rules())
+
+            with self.assertRaisesRegex(ValueError, "rollback is incomplete"):
+                with project_page_state.kblib.runtime_write_lock(
+                        os.fspath(root),
+                        owner_metadata={"tool": "test-integrator"}) as lease:
+                    transaction = project_page_state.stage_projection_plan(
+                        os.fspath(root), plan, lease, "foreign-edit")
+                    transaction.publish()
+                    page.write_text(concurrent, encoding="utf-8")
+                    transaction.rollback()
+
+            self.assertEqual(concurrent, page.read_text(encoding="utf-8"))
+            lock = root / ".cambium/tmp/state-writer.lock"
+            self.assertTrue(lock.is_dir())
+            journal = json.loads((
+                lock / project_page_state.JOURNAL_NAME).read_text(
+                    encoding="utf-8"))
+            self.assertEqual("rollback-required", journal["status"])
 
 
 if __name__ == "__main__":

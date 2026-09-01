@@ -13,10 +13,20 @@ REPOSITORY = Path(__file__).resolve().parents[2]
 TOOLS = REPOSITORY / "Tools"
 sys.path.insert(0, str(TOOLS))
 
-import audit_dimension_contract
-import control_registry_contract
-import kblib
-from queue_runtime import gate_registry
+import Tools.execution.audit.audit_dimension_contract as audit_dimension_contract
+import Tools.governance.control.control_registry_contract as control_registry_contract
+import Tools.platform.common.kblib as kblib
+import Tools.execution.task_runtime.queue_runtime.gate_registry as gate_registry
+
+
+def imported_modules(source):
+    modules = set()
+    for node in ast.walk(ast.parse(source)):
+        if isinstance(node, ast.Import):
+            modules.update(alias.name for alias in node.names)
+        elif isinstance(node, ast.ImportFrom) and node.module:
+            modules.add(node.module)
+    return modules
 
 
 class ControlRegistryContractTests(unittest.TestCase):
@@ -30,20 +40,34 @@ class ControlRegistryContractTests(unittest.TestCase):
             document)
 
     def test_profile_and_runtime_share_one_independent_parser(self):
-        self.assertIs(
-            gate_registry.parse_control_registry_document,
-            control_registry_contract.parse_control_registry_document)
-        self.assertIs(
-            gate_registry.parse_standards_gate_registry,
-            control_registry_contract.parse_standards_gate_registry)
-        profile_source = (TOOLS / "profile_contract.py").read_text(
-            encoding="utf-8")
-        self.assertIn("import control_registry_contract", profile_source)
-        self.assertNotIn("queue_runtime", profile_source)
-        contract_source = (TOOLS / "control_registry_contract.py").read_text(
-            encoding="utf-8")
-        self.assertNotIn("import check_profile", contract_source)
-        self.assertNotIn("from queue_runtime", contract_source)
+        self.assertFalse(hasattr(
+            gate_registry, "parse_control_registry_document"))
+        self.assertFalse(hasattr(
+            gate_registry, "parse_standards_gate_registry"))
+        runtime_source = (TOOLS /
+            "execution/task_runtime/queue_runtime/gate_registry.py").read_text(
+                encoding="utf-8")
+        self.assertIn(
+            "Tools.governance.control.control_registry_contract",
+            imported_modules(runtime_source))
+        profile_source = (TOOLS /
+            "governance/profile/profile_contract.py").read_text(
+                encoding="utf-8")
+        self.assertIn(
+            "Tools.governance.control.control_registry_contract",
+            imported_modules(profile_source))
+        self.assertFalse(any(
+            module.startswith("Tools.execution.task_runtime.queue_runtime")
+            for module in imported_modules(profile_source)))
+        contract_source = (TOOLS /
+            "governance/control/control_registry_contract.py").read_text(
+                encoding="utf-8")
+        contract_imports = imported_modules(contract_source)
+        self.assertNotIn(
+            "Tools.governance.profile.check_profile", contract_imports)
+        self.assertFalse(any(
+            module.startswith("Tools.execution.task_runtime.queue_runtime")
+            for module in contract_imports))
 
     def gate(self, document, gate_id="wiki-link-integrity"):
         return next(row for row in document["gates"]
@@ -60,8 +84,7 @@ class ControlRegistryContractTests(unittest.TestCase):
         registry, _capabilities, _metadata, errors = self.parse(
             self.document())
         self.assertEqual([], errors)
-        prose_path = control_registry_contract.\
-            LEGACY_STANDARDS_GATE_REGISTRY_PATH
+        prose_path = control_registry_contract.CONTROL_REGISTRY_PROSE_PATH
         prose = (REPOSITORY / prose_path).read_text(encoding="utf-8")
         section = prose.split("## Control Registry", 1)[1].split(
             "## Verification Set Contract", 1)[0]
@@ -150,42 +173,6 @@ class ControlRegistryContractTests(unittest.TestCase):
                 self.assertTrue(any(expected in item for item in errors),
                                 errors)
 
-    def test_current_yaml_parser_never_falls_back_to_legacy_markdown(self):
-        legacy = (
-            "# Archived Control Registry\n\n"
-            "## Stable Gate ID Registry\n\n"
-            "| Gate ID | Tool | Tool version | Check | Mode | Dimension | Lifecycle |\n"
-            "|---|---|---|---|---|---|---|\n"
-            "| `legacy-gate` | `legacy_tool` | `1.0.0` | `legacy-check` | `*` | `*` | `not-batch-scoped` |\n"
-        )
-        legacy_registry, legacy_errors = \
-            control_registry_contract.\
-            parse_legacy_standards_gate_registry_markdown(legacy)
-        self.assertEqual([], legacy_errors)
-        self.assertIn("legacy-gate", legacy_registry)
-        current_registry, current_errors = \
-            control_registry_contract.parse_standards_gate_registry(legacy)
-        self.assertEqual({}, current_registry)
-        self.assertTrue(current_errors)
-
-        with tempfile.TemporaryDirectory() as temporary:
-            root = Path(temporary)
-            audit_target = root / audit_dimension_contract.AUDIT_DIMENSION_BASE_PATH
-            audit_target.parent.mkdir(parents=True)
-            shutil.copy2(
-                REPOSITORY /
-                audit_dimension_contract.AUDIT_DIMENSION_BASE_PATH,
-                audit_target)
-            legacy_target = root / control_registry_contract.\
-                LEGACY_STANDARDS_GATE_REGISTRY_PATH
-            legacy_target.parent.mkdir(parents=True, exist_ok=True)
-            legacy_target.write_text(legacy, encoding="utf-8")
-            loaded, _capabilities, _metadata, errors = \
-                control_registry_contract.load_current_control_contract(root)
-        self.assertEqual({}, loaded)
-        self.assertTrue(any("control-registry.yaml" in item
-                            for item in errors), errors)
-
     def test_production_python_does_not_redeclare_closed_vocabularies(self):
         closed_sets = (
             set(audit_dimension_contract.BASE_RECEIPT_DIMENSIONS),
@@ -235,13 +222,13 @@ class ControlRegistryContractTests(unittest.TestCase):
                     if isinstance(target, ast.Name) and target.id in names:
                         owners[target.id].append(
                             str(path.relative_to(REPOSITORY)))
-        expected = ["Tools/control_registry_contract.py"]
+        expected = [
+            "Tools/governance/control/control_registry_contract.py"]
         self.assertEqual(
             {name: expected for name in names}, owners)
 
     def test_k00_prose_no_longer_contains_machine_tables(self):
-        prose_path = control_registry_contract.\
-            LEGACY_STANDARDS_GATE_REGISTRY_PATH
+        prose_path = control_registry_contract.CONTROL_REGISTRY_PROSE_PATH
         text = (REPOSITORY / prose_path).read_text(encoding="utf-8")
         self.assertNotIn("| Gate ID | Tool | Tool version | Check | Mode |",
                          text)

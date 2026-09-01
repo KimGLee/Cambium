@@ -1,4 +1,4 @@
-schema_version: 1
+schema_version: 2
 task_id: fixture-task
 task_state: planned
 task_transition_receipts: []
@@ -15,7 +15,7 @@ contract:
     - Do not modify profile policy.
   scope_version: s1
   concurrency_cap: 2
-  standards_version: 0123456789abcdef0123456789abcdef01234567
+  upstream_revision_id: 0123456789abcdef0123456789abcdef01234567
   selected_profile_manifest: profiles/test-profile/profile.md
   selected_route_ids: []
   selected_card_paths: []
@@ -26,6 +26,12 @@ contract:
   checkpoint_at: ""
   hard_stop_at: ""
   completion_gate: remaining_required_work_units=0
+  policy_exceptions: []
+  amendment_authority:
+    schema_version: 1
+    authority_id: AUTH-FIXTURE
+    mode: user-only
+    allowed_change_classes: []
 checkpoint:
   recorded_at: null
   summary: null

@@ -11,14 +11,14 @@ REPOSITORY = Path(__file__).resolve().parents[2]
 TOOLS = REPOSITORY / "Tools"
 sys.path.insert(0, str(TOOLS))
 
-import audit_plan_contract
-import audit_producer_runtime
-import audit_receipt_contract
-import batch_review_obligation_contract
-import complete_audit_receipt
-import prepare_audit_plan
-import record_substantive_review
-import substantive_review_contract
+import Tools.execution.audit.audit_plan_contract as audit_plan_contract
+import Tools.execution.audit.audit_producer_runtime as audit_producer_runtime
+import Tools.execution.audit.audit_receipt_contract as audit_receipt_contract
+import Tools.execution.audit.batch_review_obligation_contract as batch_review_obligation_contract
+import Tools.execution.audit.complete_audit_receipt as complete_audit_receipt
+import Tools.execution.audit.prepare_audit_plan as prepare_audit_plan
+import Tools.execution.audit.record_substantive_review as record_substantive_review
+import Tools.execution.audit.substantive_review_contract as substantive_review_contract
 
 
 SHA_A = "sha256:" + "a" * 64
@@ -36,7 +36,8 @@ class AuditProducerTests(unittest.TestCase):
 
     def plan(self, obligation):
         plan = {
-            "schema_version": 1,
+            "schema_version": audit_plan_contract.load_contract(
+                str(REPOSITORY))["schema_version"],
             "plan_id": "audit-plan-test",
             "task_id": "task-test",
             "batch_id": "B001",
@@ -44,7 +45,7 @@ class AuditProducerTests(unittest.TestCase):
             "queue_revision": 1,
             "queue_state_revision": 2,
             "required_queue_sha256": SHA_A,
-            "standards_version": "standards-test",
+            "upstream_revision_id": "standards-test",
             "active_standards_sha256": SHA_A,
             "selected_profile_manifest": "profiles/test/profile.md",
             "profile_snapshot_sha256": SHA_A,
@@ -140,7 +141,7 @@ class AuditProducerTests(unittest.TestCase):
             "profile_contract_fingerprint": SHA_A,
         }
         standards = {
-            "standards_version": "standards-test",
+            "upstream_revision_id": "standards-test",
             "active_standards_sha256": SHA_A,
         }
         opening = {

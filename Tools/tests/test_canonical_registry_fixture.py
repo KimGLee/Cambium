@@ -7,8 +7,8 @@ import sys
 import tempfile
 import unittest
 
-from Tools import module_boundary_facts
-from Tools.tests.canonical_registry_fixture import (
+from Tools.platform.distribution import module_boundary_facts
+from Tools.tests.support.canonical_registry_fixture import (
     COMPONENT_MACHINE_REGISTRY_PATHS,
     ISOLATED_TOOL_REGISTRY_PATHS,
     KERNEL_MACHINE_REGISTRY_PATHS,
@@ -65,7 +65,7 @@ class CanonicalRegistryFixtureTests(unittest.TestCase):
                     "check_profile",       # Profile/control/audit/corpus/policy
                     "check_batch_close",   # batch-close/policy/corpus/runtime
                     "check_queue",         # control/runtime
-                    "apply_task_plan",     # runtime-state writer
+                    "execution.planning.apply_task_plan",  # Task Plan owner
                 ])
             install_isolated_tool_registry_bundle(root)
             environment = dict(os.environ)
@@ -73,7 +73,7 @@ class CanonicalRegistryFixtureTests(unittest.TestCase):
             completed = subprocess.run(
                 [sys.executable, "-c",
                  "import check_profile, check_batch_close, check_queue, "
-                 "apply_task_plan"],
+                 "execution.planning.apply_task_plan"],
                 cwd=str(root), env=environment, capture_output=True,
                 text=True, check=False)
             self.assertEqual(

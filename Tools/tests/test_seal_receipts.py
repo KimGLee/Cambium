@@ -1,1137 +1,389 @@
-"""The cold chain keeps every byte and drops the parse cost, fail-closed.
+"""Owned tests for the current hot -> cold Receipt seal lifecycle.
 
-The incident: an adopter's shared close register reached 63MB because every
-close attempt appended full candidate detail three times over, and the
-close transition re-deserialized all of it on every run.  The close
-transition did not complete through the active execution channel.  Sealing
-is the structural answer: verified frozen rows move verbatim into cold
-segments, thin projections keep every ID resolvable, and the hot path
-never parses the archive again.
-
-The near-miss these tests exist for is the first version of that answer,
-which checked only that each segment was present at its recorded byte
-size.  A same-length edit to a sealed verdict passed silently, and the
-projections consumers actually read -- ordinary lines in an ordinary
-editable file -- were checked against nothing at all.  So these tests pin
-the integrity edges as hard as the behaviour: content drift at constant
-size fails closed, an edited or forged projection fails closed, a
-manifest row deleted from under its seal receipt fails closed, an
-unreferenced segment fails closed, an interrupted seal fails closed and
-finishes deterministically, and a seal planned on bytes that changed
-before the writer lock writes nothing at all.
-
-Nearly every test here needs the same prologue -- close B1, often seal it
--- and replaying that prologue through the CLI for each test cost more
-than every assertion combined.  The prologue is therefore walked once per
-distinct scenario and kept as a template tree: tests that only read a
-scenario share one tree, and tests that injure it each start from a
-fresh copy.  A copy is honest because every path the chain records is
-root-relative; the probe for that claim is the whole suite passing from
-copied roots.
+The Receipt graph owns projection fields, the typed Receipt registry owns
+producer admission, and ``queue_runtime.receipts`` owns cold-catalog
+validation. This suite keeps only the seal-specific contracts plus one
+adjacent writer-to-catalog lifecycle. It deliberately starts from one legal
+current-format historical Receipt instead of replaying Task, Queue, Batch,
+Audit, and Delta lifecycles merely to manufacture a sealing input.
 """
 
+import contextlib
 import json
 import os
-import shutil
-import subprocess
-import sys
-import tempfile
-import time
-import unittest
 from pathlib import Path
+import tempfile
+import unittest
+from unittest import mock
 
-TESTS = Path(__file__).resolve().parent
-TOOLS = TESTS.parent
-for path in (str(TOOLS), str(TESTS)):
-    if path not in sys.path:
-        sys.path.insert(0, path)
-
-import kblib  # noqa: E402
-import check_queue  # noqa: E402
-import runtime_paths  # noqa: E402
-import seal_receipts  # noqa: E402
-from test_required_queue_e2e import RequiredQueueFixture  # noqa: E402
-from test_update_queue import UpdateQueueTests  # noqa: E402
+from Tools.execution.evidence import receipt_reference_contract
+from Tools.execution.evidence import receipt_type_contract
+from Tools.execution.evidence import seal_receipts
+from Tools.execution.task_runtime import runtime_validation
+from Tools.execution.task_runtime.queue_runtime import receipts as receipt_store
+from Tools.knowledge.metadata import check_page_contract
+from Tools.platform.common import kblib
 
 
-# A seal that dies mid-publication must leave a state the tool can finish,
-# not one an operator has to reason about.  Proving that needs a writer that
-# really stops -- an exception unwinds the interpreter and runs cleanup, and
-# the recovery path deliberately refuses to adopt a lock whose owner process
-# is still alive -- so each boundary is injured in a child that calls
-# ``os._exit`` with the lock and journal exactly as a power cut would leave
-# them.
-CRASH_SCRIPT = r'''
-import os, sys
-sys.path.insert(0, %(tools)r)
-sys.path.insert(0, %(tests)r)
-import kblib, check_queue, seal_receipts
-
-root, point = sys.argv[1], sys.argv[2]
+REPOSITORY = Path(__file__).resolve().parents[2]
+PAGE_RECEIPTS_PATH = ".cambium/receipts/page-contract.jsonl"
 
 
-def die():
-    sys.stdout.flush()
-    os._exit(97)
+def _registry():
+    return receipt_type_contract.load_receipt_type_registry(REPOSITORY)
 
 
-manifest = kblib.RECEIPT_COLD_MANIFEST_PATH
-index = kblib.RECEIPT_COLD_INDEX_PATH
-journal = kblib.RECEIPT_COLD_JOURNAL_PATH
-
-real_publish = seal_receipts._publish
-real_append = seal_receipts._append_lines
-real_atomic = seal_receipts._write_atomic
-real_receipts = kblib.write_receipts_observed
-real_complete = seal_receipts._require_publication_complete
-state = {"segments": 0, "rewrites": 0}
-
-
-def publish(root_, pending):
-    if point == "journal-begin":
-        die()
-    if point == "segments":
-        for row in pending["manifest_rows"]:
-            if row["kind"] != "sealed-receipts":
-                continue
-            full = os.path.join(root_, row["segment"])
-            os.makedirs(os.path.dirname(full), mode=0o700, exist_ok=True)
-            payload = seal_receipts._segment_payload_from_source(
-                root_, row, pending["index_lines"])
-            with open(full, "xb") as handle:
-                handle.write(payload)
-            die()
-    return real_publish(root_, pending)
+def _page_receipt(sequence=1):
+    receipt = kblib.make_receipt(
+        check_page_contract.TOOL,
+        check_page_contract.TOOL_VERSION,
+        "page-contract-content",
+        "Topics/A.md",
+        "pass",
+        "current-format page-contract history used by the seal fixture",
+        sequence,
+        receipt_type_id=check_page_contract.RECEIPT_TYPE_ID,
+    )
+    receipt["gate_id"] = check_page_contract.GATE_ID
+    receipt["invalidated_by"] = "content-fingerprint-change"
+    return receipt
 
 
-def receipts(path, records, **kwargs):
-    if point == "seal-receipt":
-        die()
-    return real_receipts(path, records, **kwargs)
-
-
-def append(path, lines):
-    if point == "manifest" and path.endswith(os.path.basename(manifest)):
-        die()
-    if point == "torn-index-line" and path.endswith(os.path.basename(index)):
-        with open(path, "a", encoding="utf-8") as handle:
-            handle.write(lines[0][:20] if lines else "{")
-            handle.flush()
-        die()
-    real_append(path, lines)
-    if point == "index" and path.endswith(os.path.basename(index)):
-        die()
-    if point == "complete" and path.endswith(os.path.basename(journal)):
-        if any('"complete"' in line for line in lines):
-            die()
-
-
-def atomic(path, text):
-    if point == "registers":
-        die()
-    if point == "torn-rewrite":
-        temporary = path + ".seal-rewrite"
-        with open(temporary, "w", encoding="utf-8") as handle:
-            handle.write(text)
-            handle.flush()
-            os.fsync(handle.fileno())
-        with open(path, "w", encoding="utf-8") as handle:
-            handle.write(text[:len(text) // 3])
-            handle.flush()
-        die()
-    real_atomic(path, text)
-    state["rewrites"] += 1
-    if point == "rewrite":
-        die()
-
-
-seal_receipts._publish = publish
-seal_receipts._append_lines = append
-seal_receipts._write_atomic = atomic
-seal_receipts._require_publication_complete = real_complete
-kblib.write_receipts_observed = receipts
-
-result = check_queue.validate_runtime(root)
-by_file = seal_receipts.plan_seal(root, result)
-seal_receipts.apply_seal(root, result, by_file,
-                         seal_receipts.SEAL_RECEIPTS_PATH)
-die()
-'''
-
-
-def _run_seal(root, *arguments):
-    return subprocess.run(
-        [sys.executable, str(TOOLS / "seal_receipts.py"),
-         str(root), *arguments],
-        text=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
-        check=False)
-
-
-class SealFixture(UpdateQueueTests):
-    """Runs against the same live-writer fixture the queue suite uses."""
-
-    def setUp(self):
-        """Install a current, dischargeable audit lifecycle fixture.
-
-        A seal scenario needs one fully valid closed batch before it can test
-        reachability and cold storage.  Build that shared prologue with the
-        same plain S-tier pages and compiled Profile contracts as the
-        production lifecycle E2E fixture; legacy hand-written evidence must
-        not bypass the AuditPlan merely to manufacture sealable history.
-        """
-        super().setUp()
-        for name in ("deltas", "receipts", "reports"):
-            (self.root / ".cambium" / name).mkdir(exist_ok=True)
-        RequiredQueueFixture.install_plain_s_audit_fixture(self)
-
-    def runTest(self):  # pragma: no cover - harness artifact
-        pass
-
-    def seal(self, *arguments):
-        return _run_seal(self.root, *arguments)
-
-    def run_tool(self, name, *arguments):
-        return RequiredQueueFixture.run_tool(self, name, *arguments)
-
-    def prepare_premerge_audit_evidence(self, batch_id):
-        return RequiredQueueFixture.prepare_premerge_audit_evidence(
-            self, batch_id)
-
-    def record_batch_review_wrapper(self, batch_id):
-        return RequiredQueueFixture.record_batch_review_wrapper(
-            self, batch_id)
-
-    def write_delta(self, batch_id, object_path, receipt_id):
-        return RequiredQueueFixture.write_delta(
-            self, batch_id, object_path, receipt_id)
-
-    def merge_b1(self):
-        """Reach merge-ready through the real pre-merge AuditPlan closure."""
-        self.open_b1()
-        _plan_path, page_receipt_id = \
-            self.prepare_premerge_audit_evidence("B1")
-        delta = self.write_delta("B1", "Topics/A.md", page_receipt_id)
-        batch_receipt = self.record_batch_review_wrapper("B1")
-        revision, fingerprint = self.expected()
-        completed = self.command(
-            "--id", "B1", "--transition", "merge-ready",
-            "--delta-path", delta,
-            "--batch-receipt", batch_receipt,
-            "--expected-state-revision", revision,
-            "--expected-sha256", fingerprint,
-            "--actor-role", "integrator", "--apply",
-        )
-        self.assertEqual(0, completed.returncode, completed.stdout)
-        return completed
-
-    def close_b1(self):
-        """Close B1 and leave one genuinely superseded B1 row to archive.
-
-        The current Coverage owner now points at B1's Delta and page-review
-        receipts.  Those receipts, and the complete close replay they need,
-        must therefore remain hot until a later owner transition supersedes
-        them.  Most tests in this class exercise the archive machinery rather
-        than owner reachability, so give them an unrelated historical B1 row
-        that is already unreferenced and may legitimately become cold.
-        """
-        self.merge_b1()
-        delta_apply_receipt = self.apply_b1()
-        previous_batch = self.load(
-            check_queue.COVERAGE_PATH)["pages"][0]["batch"]
-
-        closed = self.run_tool(
-            "check_batch_close.py", "--batch", "B1",
-            "--integrator", "fixture-integrator",
-            "--reviewer", "fixture-reviewer",
-            "--review-attestation",
-            "fixture reviewer independently confirms the merged batch",
-            "--json",
-        )
-        self.assertEqual(0, closed.returncode, closed.stdout)
-        json_lines = [
-            line for line in closed.stdout.splitlines()
-            if line.startswith("[{")
-        ]
-        self.assertEqual(1, len(json_lines), closed.stdout)
-        close_rows = json.loads(json_lines[0])
-        close_gate_rows = [
-            receipt for receipt in close_rows
-            if receipt.get("check") == "batch_close_gate"
-        ]
-        self.assertEqual(1, len(close_gate_rows), close_rows)
-        close_gate = close_gate_rows[0]
-
-        revision, fingerprint = self.expected()
-        completed = self.command(
-            "--id", "B1", "--transition", "closed",
-            "--gate-receipt", close_gate["queue_consistency_receipt"],
-            "--close-gate-receipt", close_gate["receipt_id"],
-            "--delta-apply-receipt", delta_apply_receipt,
-            "--expected-state-revision", revision,
-            "--expected-sha256", fingerprint,
-            "--actor-role", "integrator", "--apply",
-        )
-        self.assertEqual(0, completed.returncode, completed.stdout)
-        coverage = self.load(check_queue.COVERAGE_PATH)
-        self.assertEqual(previous_batch, coverage["pages"][0]["batch"])
-        self.append_receipt(
-            "audit-superseded-b1-history", check="fixture_history",
-            target="B1", batch_id="B1", tool="fixture",
-            tool_version="1.0.0", checked_at="2026-08-04T03:01:00Z",
-            details="superseded unreferenced fixture history")
-        return completed
-
-    def sealed_ids(self):
-        index_path = self.root / kblib.RECEIPT_COLD_INDEX_PATH
-        if not index_path.exists():
-            return set()
-        return {
-            json.loads(line)["receipt_id"]
-            for line in index_path.read_text(encoding="utf-8").splitlines()
-            if line.strip()
-        }
-
-    def manifest_rows(self):
-        return [json.loads(line) for line in
-                (self.root / kblib.RECEIPT_COLD_MANIFEST_PATH)
-                .read_text(encoding="utf-8").splitlines() if line.strip()]
-
-    def sealed_segment(self):
-        return next(row["segment"] for row in self.manifest_rows()
-                    if row["kind"] == "sealed-receipts")
-
-    def rewrite(self, relative, lines):
-        (self.root / relative).write_text(
-            "".join(line + "\n" for line in lines), encoding="utf-8")
-
-    def source_ids(self, relative):
-        path = self.root / relative
-        if not path.exists():
-            return set()
-        return {json.loads(line)["receipt_id"]
-                for line in path.read_text(encoding="utf-8").splitlines()
-                if line.strip()}
-
-    def intruder_row(self, suffix="a"):
-        return json.dumps({
-            "receipt_id": "audit-intruder-20260814T000000Z-%s-0001" % suffix,
-            "check": "probe", "target": ".", "result": "pass",
-            "details": "a cooperating writer appended here",
-            "checked_at": "2026-08-14T00:00:00Z", "tool": "probe",
-            "tool_version": "1.0.0", "invalidated_by": None,
-        }, ensure_ascii=False, sort_keys=True)
-
-    CRASH_POINTS = (
-        "journal-begin", "segments", "seal-receipt", "manifest", "index",
-        "torn-index-line", "registers", "torn-rewrite", "rewrite", "complete",
+def _write_rows(path, rows):
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(
+        "".join(json.dumps(row, sort_keys=True) + "\n" for row in rows),
+        encoding="utf-8",
     )
 
-    def crash_child(self, point):
-        """Seal in a child process that dies at one durable boundary."""
-        script = CRASH_SCRIPT % {"tools": str(TOOLS), "tests": str(TESTS)}
-        completed = subprocess.run(
-            [sys.executable, "-c", script, str(self.root), point],
-            text=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
-            check=False)
-        self.assertNotEqual(0, completed.returncode, completed.stdout)
-        return completed
 
-    def assert_recovers(self, point):
-        interrupted = check_queue.validate_runtime(self.root)
-        if point != "complete":
-            self.assertTrue(
-                any("never completed" in error or "interrupted seal" in error
-                    for error in interrupted["errors"]),
-                "%s: %r" % (point, interrupted["errors"]))
-        completed = seal_receipts.main(
-            [str(self.root), "--reconcile", "--apply"])
-        self.assertEqual(0, completed, point)
-        finished = check_queue.validate_runtime(self.root)
-        self.assertEqual([], finished["errors"], point)
-        self.assertTrue(self.sealed_ids(), point)
-        self.assertEqual(0, self.seal("--verify").returncode, point)
+@contextlib.contextmanager
+def _current_checkpoint():
+    """Yield one current-format historical Receipt and its planner view."""
+    with tempfile.TemporaryDirectory() as workspace:
+        root = Path(workspace) / "repo"
+        (root / ".cambium/tmp").mkdir(parents=True)
+        (root / ".cambium/state").mkdir(parents=True)
+        receipt = _page_receipt()
+        _write_rows(root / PAGE_RECEIPTS_PATH, [receipt])
 
-    ATTESTATION_REGISTER = runtime_paths.BATCH_CLOSE_RECEIPT_PATH
-    CRAFTED_EVIDENCE = "%s/crafted-B1.jsonl" % kblib.RECEIPT_COLD_EVIDENCE_PREFIX
-
-    def stock_evidence(self, payload):
-        """Bind the real attestation to evidence with bytes worth tampering.
-
-        The fixture's close accepts nothing, so its evidence file is empty
-        and a same-length edit has nothing to edit.  The payload here holds
-        no newline, so the attestation's record count stays the zero its
-        accepted-candidate count already declares and only the two fields
-        under test -- byte length and content hash -- change.
-        """
-        target = self.root / self.CRAFTED_EVIDENCE
-        target.parent.mkdir(parents=True, exist_ok=True)
-        target.write_bytes(payload)
-        register = self.root / self.ATTESTATION_REGISTER
-        records = [json.loads(line) for line in
-                   register.read_text(encoding="utf-8").splitlines()
-                   if line.strip()]
-        bound = 0
-        for record in records:
-            if "candidate_evidence_path" not in record:
-                continue
-            record["candidate_evidence_path"] = self.CRAFTED_EVIDENCE
-            record["candidate_evidence_sha256"] = kblib.sha256_bytes(payload)
-            record["candidate_evidence_bytes"] = len(payload)
-            record["candidate_evidence_records"] = payload.count(b"\n")
-            bound += 1
-        self.assertTrue(bound, "the close bundle binds candidate evidence")
-        self.rewrite(self.ATTESTATION_REGISTER,
-                     [json.dumps(record, ensure_ascii=False)
-                      for record in records])
-        return target
-
-
-# ---------------------------------------------------------------------------
-# Scenario templates.  Each distinct lifecycle prologue is walked once, into
-# a frozen tree held for the whole run; tests take copies, never the tree.
-# ---------------------------------------------------------------------------
-
-_TEMPLATE_DIRS = []  # TemporaryDirectory handles, alive for the run
-_CLOSED_ROOT = None
-_SEALED_WALK = None
-
-
-def _template_root():
-    holder = tempfile.TemporaryDirectory(prefix="seal-template-")
-    _TEMPLATE_DIRS.append(holder)
-    return Path(holder.name) / "repo"
-
-
-def closed_template_root():
-    """Close B1 once -- open, merge, apply, gate, close -- and freeze it.
-
-    This is the prologue every test below shares.  It is walked through the
-    same helpers the queue suite uses, so its assertions run here too, once.
-    """
-    global _CLOSED_ROOT
-    if _CLOSED_ROOT is None:
-        builder = SealFixture("runTest")
-        builder.setUp()
-        try:
-            builder.close_b1()
-            root = _template_root()
-            shutil.copytree(builder.root, root, symlinks=True)
-        finally:
-            builder.tearDown()
-        _CLOSED_ROOT = root
-    return _CLOSED_ROOT
-
-
-class _SealedWalk(object):
-    """One real seal of the closed tree, with every artifact of the walk.
-
-    ``before`` is the full runtime validation of the closed tree the moment
-    before the seal; ``applied``, ``verified`` and ``reapplied`` are the
-    complete CLI results of the seal, its verification, and the idempotent
-    second attempt.  The second attempt plans zero rows and writes nothing,
-    so the tree after this walk is byte-for-byte the tree after ``applied``
-    and copies taken from it are copies of a just-sealed archive.
-    """
-
-    def __init__(self):
-        self.root = _template_root()
-        shutil.copytree(closed_template_root(), self.root, symlinks=True)
-        self.before = check_queue.validate_runtime(self.root)
-        self.applied = _run_seal(self.root, "--apply")
-        self.verified = _run_seal(self.root, "--verify")
-        self.reapplied = _run_seal(self.root, "--apply")
-
-
-def sealed_walk():
-    global _SEALED_WALK
-    if _SEALED_WALK is None:
-        _SEALED_WALK = _SealedWalk()
-    return _SEALED_WALK
-
-
-class UnsealedFixtureTests(SealFixture):
-    """Tests that need the live-writer fixture before any close.
-
-    Nothing here is sealable yet, so each test builds the plain fixture
-    tree the queue suite builds and shares no scenario with the classes
-    below.
-    """
-
-    def test_current_coverage_property_evidence_stays_hot_after_batch_close(self):
-        """A closed producer batch does not make current owner evidence cold."""
-        current_id = "audit-page-review-current-owner"
-        delta_id = "audit-delta-apply-current-owner"
-        close_id = "audit-batch-close-b1"
-        consistency_id = "audit-queue-consistency-b1"
-        superseded_id = "audit-page-review-superseded"
-        attestation_id = "audit-reviewer-attestation-b1"
-        global_review_id = "audit-global-review-b1"
-        closed_list_id = "audit-closed-list-b1"
-        full_audit_id = "audit-full-k1209-b1"
-        raw_producer_id = "audit-raw-k1209-b1"
-        transition_id = "audit-close-transition-b1"
-        relative = ".cambium/receipts/close-gates.jsonl"
-        result = {
-            "coverage": {
-                "pages": [{
-                    "path": "Topics/A.md",
-                    "property_state": {
-                        "last_reviewed": {
-                            "value": "2026-08-20",
-                            "evidence_receipt": current_id,
-                            "content_fingerprint": "sha256:" + "a" * 64,
-                        },
-                    },
-                }],
-            },
-            "items_by_id": {
-                "B1": {
-                    "id": "B1",
-                    "state": "closed",
-                    "transition_receipts": [transition_id],
-                    "close_gate_receipt": close_id,
-                    "queue_consistency_receipt": consistency_id,
-                    "delta_apply_receipt": delta_id,
-                },
-            },
+        catalog = receipt_store.HistoricalReceiptCatalog({
+            receipt["receipt_id"]: (PAGE_RECEIPTS_PATH, receipt),
+        })
+        catalog.root = str(root)
+        catalog._type_registry = _registry()
+        current_catalog = receipt_store.CurrentReceiptCatalog()
+        current_catalog.root = str(root)
+        current_catalog._type_registry = catalog._type_registry
+        runtime = {
+            "errors": [],
+            "receipt_catalog": catalog,
+            "current_receipt_catalog": current_catalog,
+            "items_by_id": {},
+            "coverage": {},
             "progress": {},
-            "receipt_catalog": {
-                current_id: (relative, {
-                    "receipt_id": current_id,
-                    "batch_id": "B1",
-                    "check": "page_review_acceptance",
-                    "reviewer_attestation_receipt": attestation_id,
-                }),
-                superseded_id: (relative, {
-                    "receipt_id": superseded_id,
-                    "batch_id": "B1",
-                    "check": "page_review_acceptance",
-                }),
-                delta_id: (relative, {
-                    "receipt_id": delta_id,
-                    "batch_id": "B1",
-                    "check": "delta_apply",
-                }),
-                close_id: (relative, {
-                    "receipt_id": close_id,
-                    "batch_id": "B1",
-                    "check": "batch_close_gate",
-                    "global_review_receipt": global_review_id,
-                    "reviewer_attestation_receipt": attestation_id,
-                    "page_review_receipts": [current_id],
-                    "closed_list_evidence": {
-                        "links": closed_list_id,
-                        "structural_validity": full_audit_id,
-                    },
-                    "closed_list_producer_evidence": {
-                        "links": closed_list_id,
-                        "structural_validity": raw_producer_id,
-                    },
-                }),
-                attestation_id: (relative, {
-                    "receipt_id": attestation_id,
-                    "check": "batch_global_review_attestation",
-                }),
-                global_review_id: (relative, {
-                    "receipt_id": global_review_id,
-                    "check": "batch_global_review",
-                }),
-                closed_list_id: (relative, {
-                    "receipt_id": closed_list_id,
-                    "check": "closed_list_links",
-                }),
-                full_audit_id: (relative, {
-                    "receipt_id": full_audit_id,
-                    "record_kind": "audit-receipt",
-                    "evidence_ref": raw_producer_id,
-                }),
-                raw_producer_id: (relative, {
-                    "receipt_id": raw_producer_id,
-                    "batch_id": "B1",
-                    "check": "closed_list_structural_validity",
-                }),
-                consistency_id: (relative, {
-                    "receipt_id": consistency_id,
-                    "check": "required_queue",
-                }),
-                transition_id: (
-                    ".cambium/receipts/queue-transitions.jsonl",
-                    {
-                        "receipt_id": transition_id,
-                        "after_state": "closed",
-                    },
-                ),
+            "queue": {
+                "task_id": "T-SEAL-CURRENT",
+                "state_revision": 1,
+                "queue_revision": 1,
             },
+            "_active_standards_authorized_view": {},
+            "_writer_locks": [],
+            "pending_delta_applies": {},
+            "cold_receipts": {},
         }
+        yield root, runtime, receipt
 
-        self.assertIn(current_id, seal_receipts._hot_reference_ids(result))
-        self.assertNotIn(delta_id, seal_receipts._hot_reference_ids(result))
-        self.assertIn(attestation_id,
-                      seal_receipts._hot_reference_ids(result))
-        planned = seal_receipts.plan_seal(str(self.root), result)
-        planned_ids = {
-            receipt_id for rows in planned.values()
-            for receipt_id, _receipt in rows
-        }
-        self.assertNotIn(current_id, planned_ids)
-        self.assertFalse(
-            {close_id, consistency_id, delta_id, attestation_id,
-             global_review_id, closed_list_id, full_audit_id,
-             raw_producer_id}.intersection(planned_ids),
-            "a current owner reference keeps the hot close replay whole")
-        self.assertIn(superseded_id, planned_ids)
 
-    def test_hot_close_replay_follows_both_raw_producer_reference_edges(self):
-        """Both the aggregate map and AuditReceipt ref enter the closure."""
-        full_id = "audit-full-k1209-b1"
-        mapped_raw_id = "audit-raw-mapped-k1209-b1"
-        wrapped_raw_id = "audit-raw-wrapped-k1209-b1"
-        close = {
-            "closed_list_evidence": {"structural_validity": full_id},
-            # Probe the two declared edges independently.  Whole-close
-            # validation separately requires them to agree for a real member.
-            "closed_list_producer_evidence": {
-                "controlled_vocabulary": mapped_raw_id,
-            },
-        }
-        catalog = {
-            full_id: (".cambium/receipts/audit.jsonl", {
-                "receipt_id": full_id,
-                "record_kind": "audit-receipt",
-                "evidence_ref": wrapped_raw_id,
-            }),
-            mapped_raw_id: (".cambium/receipts/audit.jsonl", {
-                "receipt_id": mapped_raw_id,
-                "check": "closed_list_controlled_vocabulary",
-            }),
-            wrapped_raw_id: (".cambium/receipts/audit.jsonl", {
-                "receipt_id": wrapped_raw_id,
-                "check": "closed_list_structural_validity",
-            }),
-        }
+def _plan(root, runtime):
+    plan = seal_receipts.plan_seal(str(root), runtime)
+    if set(plan) != {PAGE_RECEIPTS_PATH}:
+        raise AssertionError("minimal current Receipt did not produce one plan")
+    return plan
+
+
+def _apply(root, runtime):
+    """Exercise the real writer from one already-validated local checkpoint."""
+    plan = _plan(root, runtime)
+    before = seal_receipts._receipt_tree_fingerprint(str(root))
+    # Full runtime validation has its own owner. This Integration supplies its
+    # already-validated result and keeps the seal's CAS, locks, journal, and
+    # publication real.
+    with mock.patch.object(
+            runtime_validation, "validate_runtime", return_value=runtime):
+        receipt = seal_receipts.apply_seal(
+            str(root), runtime, plan, seal_receipts.SEAL_RECEIPTS_PATH,
+            before,
+        )
+    if receipt is None:
+        raise AssertionError("minimal current Receipt produced no seal")
+    return receipt
+
+
+def _cold_result(root, seal_receipt, *, include_seal=True):
+    hot = ({seal_receipt["receipt_id"]: (
+        seal_receipts.SEAL_RECEIPTS_PATH, seal_receipt,
+    )} if include_seal else {})
+    catalog = receipt_store.HistoricalReceiptCatalog(hot)
+    catalog.root = str(root)
+    catalog._type_registry = _registry()
+    errors = []
+    cold = receipt_store.cold_receipt_store(str(root), errors, catalog)
+    return catalog, cold, errors
+
+
+def _pending(root, runtime):
+    manifest, index, edits = seal_receipts._plan_payload(
+        str(root), runtime, _plan(root, runtime), "20260831T000000Z")
+    return seal_receipts._pending_record(
+        str(root), runtime, seal_receipts.SEAL_RECEIPTS_PATH,
+        manifest, index, edits,
+    )
+
+
+def _begin(root, pending):
+    """Persist the exact current pending/journal binding used by recovery."""
+    payload = json.dumps(pending, ensure_ascii=False, sort_keys=True)
+    digest = kblib.sha256_bytes(payload.encode("utf-8"))
+    pending["pending_sha256"] = digest
+    relative = "%s/%s.json" % (
+        seal_receipts.COLD_PENDING_PREFIX, pending["seal_receipt"])
+    full = root / relative
+    full.parent.mkdir(parents=True, exist_ok=True)
+    full.write_text(payload, encoding="utf-8")
+    entry = {
+        "phase": "begin",
+        "seal_receipt": pending["seal_receipt"],
+        "pending_path": relative,
+        "pending_sha256": digest,
+    }
+    seal_receipts._append_lines(
+        root / kblib.RECEIPT_COLD_JOURNAL_PATH,
+        [json.dumps(entry, ensure_ascii=False, sort_keys=True)],
+    )
+    return entry, full
+
+
+def _sealed_segment(root):
+    rows = [json.loads(line) for line in (
+        root / kblib.RECEIPT_COLD_MANIFEST_PATH
+    ).read_text(encoding="utf-8").splitlines() if line]
+    return root / next(
+        row["segment"] for row in rows
+        if row["kind"] == "sealed-receipts")
+
+
+class SealContractTests(unittest.TestCase):
+    def test_projection_consumes_the_graph_owned_field_set(self):
+        with mock.patch.object(
+                receipt_reference_contract,
+                "RECEIPT_COLD_PROJECTION_FIELDS", ("tool",)):
+            row = seal_receipts._projection(
+                "audit-projection-probe", "segment.jsonl", 1,
+                '{"result":"pass","tool":"probe"}',
+                {"tool": "probe", "result": "pass"},
+            )
 
         self.assertEqual(
-            {full_id, mapped_raw_id, wrapped_raw_id},
-            seal_receipts._hot_close_replay_receipts(catalog, close))
-
-    def test_open_batches_never_seal(self):
-        self.open_b1()
-        completed = self.seal()
-        self.assertEqual(0, completed.returncode, completed.stdout)
-        self.assertIn("nothing sealable", completed.stdout)
-
-
-class SealedChainTests(SealFixture):
-    """Asserts, many ways, against one shared walk of the whole chain.
-
-    The walk -- close B1, seal the superseded history, verify the cold
-    chain, then attempt a second seal -- ran once in ``sealed_walk()`` and
-    kept its tree, exit codes and stdout.  Every test here reads that walk
-    and writes nothing, so they may share it; anything that injures the
-    sealed tree lives in ``SealedTreeTests`` and gets a private copy.
-    """
-
-    @classmethod
-    def setUpClass(cls):
-        super().setUpClass()
-        cls.walk = sealed_walk()
-
-    def setUp(self):
-        self.root = self.walk.root
-
-    def tearDown(self):
-        pass
-
-    def test_sealing_keeps_current_owner_evidence_hot_and_runtime_clean(self):
-        """Every live Coverage owner pointer survives a real seal run."""
-        before = self.walk.before
-        self.assertEqual([], before["errors"])
-        current_property_evidence = {
-            record.get("evidence_receipt")
-            for page in before["coverage"].get("pages") or []
-            for record in (page.get("property_state") or {}).values()
-            if isinstance(record, dict)
-        }
-        self.assertTrue(current_property_evidence)
-        current_attestations = {
-            before["receipt_catalog"][receipt_id][1].get(
-                "reviewer_attestation_receipt")
-            for receipt_id in current_property_evidence
-            if (receipt_id in before["receipt_catalog"] and
-                before["receipt_catalog"][receipt_id][1].get("check") ==
-                "page_review_acceptance")
-        }
-        current_attestations.discard(None)
-        completed = self.walk.applied
-        self.assertEqual(0, completed.returncode, completed.stdout)
-        sealed = self.sealed_ids()
-        self.assertFalse(current_property_evidence.intersection(sealed))
-        self.assertFalse(current_attestations.intersection(sealed))
-        after = check_queue.validate_runtime(self.root)
-        self.assertEqual([], after["errors"])
-        for receipt_id in current_property_evidence | current_attestations:
-            self.assertIn(receipt_id, after["receipt_catalog"])
-
-    def test_verify_proves_sealed_bytes_against_the_manifest(self):
-        self.assertEqual(0, self.walk.applied.returncode)
-        completed = self.walk.verified
-        self.assertEqual(0, completed.returncode, completed.stdout)
-        self.assertIn("match their manifest hashes", completed.stdout)
-
-    def test_a_sealed_receipt_refuses_live_field_revalidation(self):
-        """The fail-closed rule for consumers without a sealed branch."""
-        self.assertEqual(0, self.walk.applied.returncode)
-        result = check_queue.validate_runtime(self.root)
-        errors = []
-        receipt = check_queue.require_receipt(
-            result["receipt_catalog"], "audit-superseded-b1-history",
-            "sealed-consumer probe", errors,
-            expected={"merged_snapshot_sha256": "sha256:" + "0" * 64})
-        self.assertIsNone(receipt)
-        self.assertTrue(any("sealed" in error for error in errors), errors)
-
-    def test_transition_history_and_activation_stay_hot(self):
-        """The never-seal set holds the global state spine."""
-        self.assertEqual(0, self.walk.applied.returncode)
-        result = check_queue.validate_runtime(self.root)
-        item = result["items_by_id"]["B1"]
-        for receipt_id in item.get("transition_receipts") or []:
-            self.assertIn(receipt_id, result["receipt_catalog"])
-        self.assertIn(item["activation_receipt"],
-                      result["receipt_catalog"])
-
-    def test_sealing_is_idempotent_when_nothing_new_is_sealable(self):
-        self.assertEqual(0, self.walk.applied.returncode)
-        completed = self.walk.reapplied
-        self.assertEqual(0, completed.returncode, completed.stdout)
-        self.assertIn("nothing seal", completed.stdout.lower())
-
-
-class ClosedTreeTests(SealFixture):
-    """Injures the moment between the close and the seal.
-
-    Every test here mutates a closed-but-unsealed tree -- corrupting the
-    queue, racing the lock window, crashing the writer, tampering with
-    close evidence -- so none may share one.  Each starts from a fresh
-    copy of the closed-B1 template instead of replaying the close.
-    """
-
-    def setUp(self):
-        self.tmp = tempfile.TemporaryDirectory()
-        self.root = Path(self.tmp.name) / "repo"
-        shutil.copytree(closed_template_root(), self.root, symlinks=True)
-
-    def test_sealing_refuses_a_runtime_with_errors(self):
-        """A bundle that cannot replay hot cannot claim the shortcut."""
-        queue_path = self.root / check_queue.QUEUE_PATH
-        text = queue_path.read_text(encoding="utf-8")
-        queue_path.write_text(
-            text.replace("state_revision: ", "state_revision: 9",
-                         1), encoding="utf-8")
-        completed = self.seal("--apply")
-        self.assertEqual(1, completed.returncode, completed.stdout)
-        self.assertIn("pre-seal runtime validation", completed.stdout)
-        self.assertEqual(set(), self.sealed_ids())
-
-    # -- the lock window --------------------------------------------------
-
-    def test_a_concurrent_append_between_plan_and_lock_writes_nothing(self):
-        """The plan is compared byte for byte before the swap."""
-        result = check_queue.validate_runtime(self.root)
-        self.assertEqual([], result["errors"])
-        by_file = seal_receipts.plan_seal(self.root, result)
-        self.assertTrue(by_file)
-        before_tree = seal_receipts._receipt_tree_fingerprint(self.root)
-        intruder = self.root / ".cambium/receipts/concurrent.jsonl"
-        intruder.write_text(json.dumps({
-            "receipt_id": "audit-intruder-20260814T000000Z-abcd-0001",
-            "check": "probe", "target": ".", "result": "pass",
-            "details": "a cooperating writer appended here",
-            "checked_at": "2026-08-14T00:00:00Z", "tool": "probe",
-            "tool_version": "1.0.0", "invalidated_by": None,
-        }, ensure_ascii=False, sort_keys=True) + "\n", encoding="utf-8")
-        with self.assertRaises(ValueError) as caught:
-            seal_receipts.apply_seal(
-                self.root, result, by_file,
-                seal_receipts.SEAL_RECEIPTS_PATH, before_tree)
-        self.assertIn("receipt tree changed", str(caught.exception))
-        self.assertEqual(set(), self.sealed_ids())
-        self.assertFalse(
-            (self.root / kblib.RECEIPT_COLD_MANIFEST_PATH).exists())
-        self.assertEqual([], check_queue.validate_runtime(
-            self.root)["_writer_locks"])
-
-    # -- the append that a rewrite must never swallow ---------------------
-
-    def test_an_append_landing_inside_the_rewrite_window_survives(self):
-        """The reproduction: append after the hash check, before the swap.
-
-        A writer that bypasses the append mutex still must not lose its
-        row.  The rewrite carries the unplanned tail across instead of
-        installing an image computed before it existed.
-        """
-        result = check_queue.validate_runtime(self.root)
-        by_file = seal_receipts.plan_seal(self.root, result)
-        target = sorted(by_file)[0]
-        row = self.intruder_row()
-        original_plan = seal_receipts._plan_payload
-
-        def plan_then_intrude(root, res, files, stamp):
-            planned = original_plan(root, res, files, stamp)
-            with open(self.root / target, "a", encoding="utf-8") as handle:
-                handle.write(row + "\n")
-            return planned
-
-        seal_receipts._plan_payload = plan_then_intrude
-        try:
-            receipt = seal_receipts.apply_seal(
-                self.root, result, by_file,
-                seal_receipts.SEAL_RECEIPTS_PATH)
-        finally:
-            seal_receipts._plan_payload = original_plan
-        self.assertIsNotNone(receipt)
-        self.assertIn(json.loads(row)["receipt_id"], self.source_ids(target),
-                      "a seal may remove only the rows it sealed")
-
-    def test_an_append_cannot_start_while_a_seal_holds_the_mutex(self):
-        """The protocol itself: both sides take one exclusive marker."""
-        register = ".cambium/receipts/concurrent.jsonl"
-        row = self.intruder_row("b")
-        script = (
-            "import json, sys; sys.path.insert(0, %r)\n"
-            "import kblib\n"
-            "kblib.write_receipts(%r, [json.loads(%r)])\n"
-            % (str(TOOLS), str(self.root / register), row))
-        started = []
-
-        def plan_then_race(root, res, files, stamp):
-            planned = seal_receipts._plan_payload_original(
-                root, res, files, stamp)
-            started.append(subprocess.Popen(
-                [sys.executable, "-c", script],
-                stdout=subprocess.PIPE, stderr=subprocess.STDOUT))
-            time.sleep(0.4)
-            self.assertIsNone(started[0].poll(),
-                              "an appender must wait for the seal, not race it")
-            return planned
-
-        seal_receipts._plan_payload_original = seal_receipts._plan_payload
-        seal_receipts._plan_payload = plan_then_race
-        try:
-            result = check_queue.validate_runtime(self.root)
-            by_file = seal_receipts.plan_seal(self.root, result)
-            self.assertIsNotNone(seal_receipts.apply_seal(
-                self.root, result, by_file,
-                seal_receipts.SEAL_RECEIPTS_PATH))
-        finally:
-            seal_receipts._plan_payload = \
-                seal_receipts._plan_payload_original
-        self.assertEqual(0, started[0].wait(timeout=30))
-        self.assertIn(json.loads(row)["receipt_id"],
-                      self.source_ids(register))
-        self.assertEqual("free", kblib.receipt_append_mutex_state(self.root))
-
-    # -- interruption: one crash per durable boundary ----------------------
-
-    def test_every_durable_boundary_recovers(self):
-        """One crash per publication step; each must reconcile to clean."""
-        for point in self.CRASH_POINTS:
-            with self.subTest(point=point):
-                self.setUp()
-                self.crash_child(point)
-                self.assert_recovers(point)
-
-    def test_reconcile_refuses_while_the_writer_is_alive(self):
-        """A live seal is not a corpse; --reconcile will not rob it."""
-        result = check_queue.validate_runtime(self.root)
-        by_file = seal_receipts.plan_seal(self.root, result)
-        original = seal_receipts._publish
-
-        def explode(root, pending):
-            raise RuntimeError("stop after the journal begin")
-
-        seal_receipts._publish = explode
-        try:
-            with self.assertRaises(RuntimeError):
-                seal_receipts.apply_seal(
-                    self.root, result, by_file,
-                    seal_receipts.SEAL_RECEIPTS_PATH)
-        finally:
-            seal_receipts._publish = original
-        self.assertEqual(1, seal_receipts.main(
-            [str(self.root), "--reconcile", "--apply"]),
-            "the owner pid is this still-running process")
-
-    def test_a_tampered_pending_record_fails_before_the_first_write(self):
-        self.crash_child("journal-begin")
-        pending_dir = self.root / seal_receipts.COLD_PENDING_PREFIX
-        record = sorted(pending_dir.glob("*.json"))[0]
-        data = json.loads(record.read_text(encoding="utf-8"))
-        data["edits"] = []
-        record.write_text(json.dumps(data, ensure_ascii=False,
-                                     sort_keys=True), encoding="utf-8")
-        self.assertEqual(1, seal_receipts.main(
-            [str(self.root), "--reconcile", "--apply"]))
-        self.assertEqual(set(), self.sealed_ids())
-
-    # -- born-cold evidence ------------------------------------------------
-
-    def test_a_same_length_edit_to_close_evidence_fails_closed(self):
-        """Externalized detail is bound by hash, not by length."""
-        evidence = self.stock_evidence(b'{"acceptance":"accepted"}')
-        self.assertEqual([], check_queue.validate_runtime(
-            self.root)["errors"], "the rebound attestation starts clean")
-        before = evidence.read_bytes()
-        edited = b'{"acceptance":"rejectd"}!'
-        self.assertEqual(len(edited), len(before), "the edit keeps the length")
-        evidence.write_bytes(edited)
-        result = check_queue.validate_runtime(self.root)
-        self.assertTrue(any("candidate evidence file" in error and
-                            "hashes to" in error
-                            for error in result["errors"]), result["errors"])
-
-    def test_tampered_close_evidence_cannot_be_sealed(self):
-        """A seal must not mint a manifest hash for laundered bytes."""
-        evidence = self.stock_evidence(b'{"acceptance":"accepted"}')
-        evidence.write_bytes(b'{"acceptance":"rejectd"}!')
-        completed = self.seal("--apply")
-        self.assertEqual(1, completed.returncode, completed.stdout)
-        self.assertEqual(set(), self.sealed_ids())
-
-    def test_a_seal_of_only_born_cold_evidence_writes_a_valid_namespace(self):
-        """Manifest rows with no projections still need an index file."""
-        original = seal_receipts.plan_seal
-        seal_receipts.plan_seal = lambda root, result: {}
-        try:
-            result = check_queue.validate_runtime(self.root)
-            self.assertEqual([], result["errors"])
-            receipt = seal_receipts.apply_seal(
-                self.root, result, {}, seal_receipts.SEAL_RECEIPTS_PATH)
-        finally:
-            seal_receipts.plan_seal = original
-        self.assertIsNotNone(receipt)
-        self.assertEqual(0, receipt["index_rows"])
-        self.assertTrue((self.root / kblib.RECEIPT_COLD_INDEX_PATH).exists())
-        self.assertEqual([], check_queue.validate_runtime(
-            self.root)["errors"])
-        self.assertEqual(0, self.seal("--verify").returncode)
-
-    def test_verify_fails_while_a_seal_is_only_begun(self):
-        """Manifest-absent is innocent only when the journal is balanced."""
-        self.crash_child("journal-begin")
-        self.assertFalse(
-            (self.root / kblib.RECEIPT_COLD_MANIFEST_PATH).exists())
-        completed = self.seal("--verify")
-        self.assertEqual(1, completed.returncode, completed.stdout)
-        self.assertIn("never completed", completed.stdout)
-
-
-class SealedTreeTests(SealFixture):
-    """Injures a just-sealed archive; every test gets a private copy.
-
-    Each test here edits, deletes, forges or re-links some piece of the
-    sealed cold chain and proves the runtime fails closed, so none may
-    share a tree.  Each starts from a fresh copy of the sealed-walk
-    template; ``seal_apply`` is that walk's recorded CLI result, standing
-    where each test used to run the identical seal itself.
-    """
-
-    def setUp(self):
-        walk = sealed_walk()
-        self.seal_apply = walk.applied
-        self.tmp = tempfile.TemporaryDirectory()
-        self.root = Path(self.tmp.name) / "repo"
-        shutil.copytree(walk.root, self.root, symlinks=True)
-
-    def test_a_missing_cold_segment_fails_every_run_closed(self):
-        self.assertEqual(0, self.seal_apply.returncode)
-        segment = self.sealed_segment()
-        os.rename(self.root / segment,
-                  self.root / (segment + ".misplaced"))
-        result = check_queue.validate_runtime(self.root)
-        self.assertTrue(any("is missing" in error and "fail-closed" in error
-                            for error in result["errors"]),
-                        result["errors"])
-
-    def test_a_size_drifted_segment_fails_closed(self):
-        self.assertEqual(0, self.seal_apply.returncode)
-        segment = self.sealed_segment()
-        with open(self.root / segment, "a", encoding="utf-8") as handle:
-            handle.write("\n")
-        result = check_queue.validate_runtime(self.root)
-        self.assertTrue(any("may not drift" in error
-                            for error in result["errors"]),
-                        result["errors"])
-        completed = self.seal("--verify")
-        self.assertEqual(1, completed.returncode, completed.stdout)
-
-    # -- the fail-open that shipped first --------------------------------
-
-    def test_a_same_length_edit_to_a_sealed_record_fails_closed(self):
-        """Presence and size prove nothing about content."""
-        self.assertEqual(0, self.seal_apply.returncode)
-        segment = self.root / self.sealed_segment()
-        text = segment.read_text(encoding="utf-8")
-        replacements = (
-            ('"result": "passed"', '"result": "failed"'),
-            ('"result": "pass"', '"result": "fail"'),
+            {"receipt_id", "segment", "line", "record_sha256", "tool"},
+            set(row),
         )
-        source, target = next(
-            ((source, target) for source, target in replacements
-             if source in text),
-            (None, None),
+
+    def test_seal_receipt_validator_owns_current_identity_and_payload(self):
+        receipt = kblib.make_receipt(
+            seal_receipts.TOOL,
+            seal_receipts.TOOL_VERSION,
+            "receipt_seal",
+            seal_receipts.SEAL_RECEIPTS_PATH,
+            "pass",
+            "current seal receipt fixture",
+            1,
+            receipt_type_id=seal_receipts.RECEIPT_TYPE_ID,
         )
-        self.assertIsNotNone(source, "sealed segment has no verdict to edit")
-        edited = text.replace(source, target, 1)
-        self.assertEqual(len(edited), len(text), "the edit keeps the length")
-        segment.write_text(edited, encoding="utf-8")
-        result = check_queue.validate_runtime(self.root)
-        self.assertTrue(
-            any("does not match the hash the manifest sealed" in error
-                for error in result["errors"]), result["errors"])
-        self.assertEqual(1, self.seal("--verify").returncode)
+        receipt.update({
+            "manifest_rows_sha256": "sha256:" + "1" * 64,
+            "index_rows_sha256": "sha256:" + "2" * 64,
+            "sealed_segments": ["segment.jsonl"],
+            "sealed_records": 1,
+        })
+        self.assertEqual([], seal_receipts.current_receipt_errors(receipt))
 
-    def test_an_edited_projection_fails_closed(self):
-        """The index is an ordinary editable file, so it is proved too."""
-        self.assertEqual(0, self.seal_apply.returncode)
-        index = kblib.RECEIPT_COLD_INDEX_PATH
-        lines = (self.root / index).read_text(
-            encoding="utf-8").splitlines()
-        rows = [json.loads(line) for line in lines]
-        target = next(row for row in rows if row.get("result") == "pass")
-        target["result"] = "fail"
-        self.rewrite(index, [
-            json.dumps(row, ensure_ascii=False, sort_keys=True)
-            for row in rows])
-        result = check_queue.validate_runtime(self.root)
-        self.assertTrue(
-            any("index rows attributed to seal" in error
-                for error in result["errors"]), result["errors"])
-
-    def test_a_forged_projection_cannot_manufacture_a_receipt(self):
-        """Appending a row nobody sealed does not create evidence."""
-        self.assertEqual(0, self.seal_apply.returncode)
-        index = self.root / kblib.RECEIPT_COLD_INDEX_PATH
-        rows = [json.loads(line) for line in
-                index.read_text(encoding="utf-8").splitlines()
-                if line.strip()]
-        forged = dict(rows[0])
-        forged["receipt_id"] = "audit-forged-00000000T000000Z-dead-0001"
-        with open(index, "a", encoding="utf-8") as handle:
-            handle.write(json.dumps(forged, ensure_ascii=False,
-                                    sort_keys=True) + "\n")
-        result = check_queue.validate_runtime(self.root)
-        self.assertNotIn(forged["receipt_id"],
-                         result["receipt_catalog"].cold)
-        self.assertTrue(
-            any("index rows attributed to seal" in error
-                for error in result["errors"]), result["errors"])
-
-    def test_a_deleted_manifest_row_fails_closed(self):
-        self.assertEqual(0, self.seal_apply.returncode)
-        manifest = kblib.RECEIPT_COLD_MANIFEST_PATH
-        lines = (self.root / manifest).read_text(
-            encoding="utf-8").splitlines()
-        self.rewrite(manifest, lines[1:])
-        result = check_queue.validate_runtime(self.root)
-        self.assertTrue(
-            any("manifest rows attributed to seal" in error
-                for error in result["errors"]), result["errors"])
-
-    def test_a_segment_no_manifest_row_names_fails_closed(self):
-        """An unreferenced segment is an interrupted seal, not spare bytes."""
-        self.assertEqual(0, self.seal_apply.returncode)
-        orphan = (self.root / kblib.RECEIPT_COLD_SEGMENT_PREFIX /
-                  "batch-close-19700101T000000Z.jsonl")
-        orphan.write_text("{}\n", encoding="utf-8")
-        result = check_queue.validate_runtime(self.root)
-        self.assertTrue(any("is in no manifest row" in error
-                            for error in result["errors"]),
-                        result["errors"])
-
-    def test_a_seal_receipt_removed_from_the_hot_register_fails_closed(self):
-        """The chain's root of trust is a receipt, and it never seals."""
-        self.assertEqual(0, self.seal_apply.returncode)
-        receipts = self.root / ".cambium/receipts/seal-receipts.jsonl"
-        receipts.write_text("", encoding="utf-8")
-        result = check_queue.validate_runtime(self.root)
-        self.assertTrue(
-            any("absent from the hot catalog" in error
-                for error in result["errors"]), result["errors"])
-
-    # -- the archive must stay inside the repository -----------------------
-
-    def test_a_symlinked_cold_directory_fails_closed(self):
-        self.assertEqual(0, self.seal_apply.returncode)
-        cold = self.root / kblib.RECEIPT_COLD_PREFIX
-        elsewhere = Path(str(self.root) + "-cold-elsewhere")
-        os.rename(cold, elsewhere)
-        os.symlink(elsewhere, cold)
-        result = check_queue.validate_runtime(self.root)
-        self.assertTrue(any("symlink" in error for error in result["errors"]),
-                        result["errors"])
-
-    def test_a_symlinked_segments_directory_fails_closed(self):
-        """An intermediate component is checked, not just the leaf."""
-        self.assertEqual(0, self.seal_apply.returncode)
-        segments = self.root / kblib.RECEIPT_COLD_SEGMENT_PREFIX
-        elsewhere = Path(str(self.root) + "-segments-elsewhere")
-        os.rename(segments, elsewhere)
-        os.symlink(elsewhere, segments)
-        result = check_queue.validate_runtime(self.root)
-        self.assertTrue(any("symlink" in error for error in result["errors"]),
-                        result["errors"])
-
-    def test_a_hard_linked_cold_segment_fails_closed(self):
-        """A second name for sealed bytes is a second writer for them."""
-        self.assertEqual(0, self.seal_apply.returncode)
-        segment = self.root / self.sealed_segment()
-        os.link(segment, str(segment) + ".twin")
-        result = check_queue.validate_runtime(self.root)
-        self.assertTrue(any("hard link" in error
-                            for error in result["errors"]), result["errors"])
-
-    # -- the writer behind the archive -------------------------------------
-
-    def test_an_unsupported_seal_producer_fails_closed(self):
-        self.assertEqual(0, self.seal_apply.returncode)
-        register = self.root / ".cambium/receipts/seal-receipts.jsonl"
-        rows = [json.loads(line) for line in
-                register.read_text(encoding="utf-8").splitlines()
-                if line.strip()]
-        rows[0]["tool_version"] = "0.9.0"
-        self.rewrite(".cambium/receipts/seal-receipts.jsonl",
-                     [json.dumps(row, ensure_ascii=False) for row in rows])
-        result = check_queue.validate_runtime(self.root)
-        self.assertTrue(any("not a supported sealing protocol" in error
-                            for error in result["errors"]), result["errors"])
-        self.assertEqual({}, result["receipt_catalog"].cold)
+        mutations = {
+            "missing-producer-version": {"tool_version": None},
+            "missing-receipt-type": {"receipt_type_id": None},
+            "missing-payload": {"manifest_rows_sha256": None},
+        }
+        for label, fields in mutations.items():
+            with self.subTest(label=label):
+                candidate = dict(receipt)
+                for field, value in fields.items():
+                    if value is None:
+                        candidate.pop(field)
+                    else:
+                        candidate[field] = value
+                errors = seal_receipts.current_receipt_errors(candidate)
+                self.assertTrue(errors)
 
 
-SEAL_TEST_CLASSES = (
-    UnsealedFixtureTests,
-    SealedChainTests,
-    ClosedTreeTests,
-    SealedTreeTests,
-)
+class SealLifecycleIntegrationTests(unittest.TestCase):
+    def test_current_format_history_is_sealed_and_remains_read_only_cold(self):
+        with _current_checkpoint() as (root, runtime, history_receipt):
+            self.assertIn(
+                history_receipt["receipt_id"], runtime["receipt_catalog"])
+            self.assertNotIn(
+                history_receipt["receipt_id"],
+                runtime["current_receipt_catalog"],
+            )
+            seal_receipt = _apply(root, runtime)
+            self.assertEqual("", (root / PAGE_RECEIPTS_PATH).read_text(
+                encoding="utf-8"))
+            self.assertEqual(
+                [], seal_receipts.current_receipt_errors(seal_receipt))
+
+            catalog, cold, errors = _cold_result(root, seal_receipt)
+            self.assertEqual([], errors)
+            self.assertEqual(
+                {history_receipt["receipt_id"]}, set(cold["index"]))
+            self.assertEqual(
+                [seal_receipt["receipt_id"]], cold["seals"])
+            self.assertIn(seal_receipt["receipt_id"], catalog)
+            self.assertNotIn(seal_receipt["receipt_id"], catalog.cold)
+            historical = catalog.resolve_sealed(history_receipt["receipt_id"])
+            self.assertEqual(
+                (_sealed_segment(root).relative_to(root).as_posix(),
+                 history_receipt),
+                historical,
+            )
+            self.assertEqual(
+                "content-fingerprint-change",
+                cold["index"][history_receipt["receipt_id"]]["invalidated_by"],
+            )
+            self.assertNotIn(history_receipt["receipt_id"], catalog)
+
+    def test_writer_rejects_a_stale_plan_and_preserves_an_unplanned_append(self):
+        with _current_checkpoint() as (root, runtime, _receipt):
+            plan = _plan(root, runtime)
+            before = seal_receipts._receipt_tree_fingerprint(str(root))
+            appended = _page_receipt(2)
+            with (root / PAGE_RECEIPTS_PATH).open("a", encoding="utf-8") \
+                    as handle:
+                handle.write(json.dumps(appended, sort_keys=True) + "\n")
+            with mock.patch.object(
+                    runtime_validation, "validate_runtime",
+                    return_value=runtime):
+                with self.assertRaisesRegex(ValueError, "receipt tree changed"):
+                    seal_receipts.apply_seal(
+                        str(root), runtime, plan,
+                        seal_receipts.SEAL_RECEIPTS_PATH, before)
+            self.assertFalse(
+                (root / kblib.RECEIPT_COLD_MANIFEST_PATH).exists())
+
+        with _current_checkpoint() as (root, runtime, planned):
+            pending = _pending(root, runtime)
+            appended = _page_receipt(2)
+            with (root / PAGE_RECEIPTS_PATH).open("a", encoding="utf-8") \
+                    as handle:
+                handle.write(json.dumps(appended, sort_keys=True) + "\n")
+            _begin(root, pending)
+            seal_receipts._publish(str(root), pending)
+            live_ids = {
+                json.loads(line)["receipt_id"]
+                for line in (root / PAGE_RECEIPTS_PATH).read_text(
+                    encoding="utf-8").splitlines() if line
+            }
+            self.assertEqual({appended["receipt_id"]}, live_ids)
+            _catalog, cold, errors = _cold_result(root, pending["receipt"])
+            self.assertEqual([], errors)
+            self.assertEqual({planned["receipt_id"]}, set(cold["index"]))
 
 
-def load_tests(loader, standard_tests, pattern):
-    """Collect this module's seal tests without replaying its fixture tests.
+class SealRecoverySlowTests(unittest.TestCase):
+    def test_hash_bound_pending_replays_idempotently_and_tamper_fails_closed(self):
+        with _current_checkpoint() as (root, runtime, history_receipt):
+            pending = _pending(root, runtime)
+            entry, _pending_path = _begin(root, pending)
+            index_path = root / kblib.RECEIPT_COLD_INDEX_PATH
+            index_path.parent.mkdir(parents=True, exist_ok=True)
+            index_path.write_text('{"torn":', encoding="utf-8")
 
-    Every class here inherits ``UpdateQueueTests`` for its transaction
-    fixture and helpers.  Default discovery also collects the imported base
-    class and every inherited ``test_*`` method, so the update-queue suite ran
-    twice here in addition to its canonical run in ``test_update_queue.py``.
-    Only methods declared by these subclasses are seal-specific coverage.
-    """
-    suite = loader.suiteClass()
-    for test_class in SEAL_TEST_CLASSES:
-        names = [
-            name for name in loader.getTestCaseNames(test_class)
-            if name in test_class.__dict__]
-        suite.addTests(test_class(name) for name in names)
-    return suite
+            errors = []
+            loaded = seal_receipts._load_pending(str(root), entry, errors)
+            self.assertEqual([], errors)
+            self.assertIsNotNone(loaded)
+            seal_receipts._publish(str(root), loaded)
+            seal_receipts._publish(str(root), loaded)
+            _catalog, cold, errors = _cold_result(
+                root, loaded["receipt"])
+            self.assertEqual([], errors)
+            self.assertEqual(
+                {history_receipt["receipt_id"]}, set(cold["index"]))
+
+        with _current_checkpoint() as (root, runtime, _receipt):
+            pending = _pending(root, runtime)
+            entry, pending_path = _begin(root, pending)
+            body = json.loads(pending_path.read_text(encoding="utf-8"))
+            body["edits"] = []
+            pending_path.write_text(
+                json.dumps(body, ensure_ascii=False, sort_keys=True),
+                encoding="utf-8",
+            )
+            errors = []
+            self.assertIsNone(
+                seal_receipts._load_pending(str(root), entry, errors))
+            self.assertTrue(any("hashes to" in error for error in errors))
+
+
+class ColdReceiptStoreIntegrationTests(unittest.TestCase):
+    """One consumer-owned mutation matrix at the adjacent seal handoff."""
+
+    def test_current_cold_chain_rejects_integrity_and_path_mutations(self):
+        mutations = (
+            "segment-byte-drift",
+            "forged-index-row",
+            "missing-seal-root",
+            "cold-directory-symlink",
+            "segment-hardlink",
+        )
+        for mutation in mutations:
+            with self.subTest(mutation=mutation):
+                with _current_checkpoint() as (root, runtime, _receipt):
+                    seal_receipt = _apply(root, runtime)
+                    include_seal = mutation != "missing-seal-root"
+                    if mutation == "segment-byte-drift":
+                        segment = _sealed_segment(root)
+                        text = segment.read_text(encoding="utf-8")
+                        edited = text.replace(
+                            '"result": "pass"', '"result": "fail"', 1)
+                        self.assertEqual(len(text), len(edited))
+                        segment.write_text(edited, encoding="utf-8")
+                        expected = "manifest sealed"
+                    elif mutation == "forged-index-row":
+                        index_path = root / kblib.RECEIPT_COLD_INDEX_PATH
+                        row = json.loads(index_path.read_text(
+                            encoding="utf-8").splitlines()[0])
+                        row["receipt_id"] = "audit-forged-current-probe"
+                        with index_path.open("a", encoding="utf-8") as handle:
+                            handle.write(json.dumps(
+                                row, ensure_ascii=False,
+                                sort_keys=True) + "\n")
+                        expected = "index rows attributed"
+                    elif mutation == "missing-seal-root":
+                        expected = "absent from the hot catalog"
+                    elif mutation == "cold-directory-symlink":
+                        cold = root / kblib.RECEIPT_COLD_PREFIX
+                        elsewhere = root / ".cambium/receipts/cold-aside"
+                        cold.rename(elsewhere)
+                        cold.symlink_to(elsewhere, target_is_directory=True)
+                        expected = "symlink"
+                    else:
+                        segment = _sealed_segment(root)
+                        os.link(segment, str(segment) + ".twin")
+                        expected = "hard links"
+
+                    _catalog, _cold, errors = _cold_result(
+                        root, seal_receipt, include_seal=include_seal)
+                    self.assertTrue(
+                        any(expected in error for error in errors), errors)
 
 
 if __name__ == "__main__":

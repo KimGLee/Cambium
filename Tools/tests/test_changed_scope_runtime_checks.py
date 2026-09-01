@@ -1,28 +1,34 @@
-import copy
+"""Owner-focused tests for K12 changed-scope runtime predicates.
+
+The Kernel registry owns rule/check identities and applicability. This file
+owns only the three pure runtime predicates and their closed result shape.
+AuditPlan selection, evidence/Receipt binding, rendering predicates, and batch
+close are exercised by their own primary suites. Card and Read Set parsers
+also have their own contract/integration owners; the frozen-reference test
+below verifies only how their already-owned findings are projected into this
+producer's result.
+"""
+
 from pathlib import Path
-import shutil
 import sys
-import tempfile
 import unittest
+from unittest import mock
 
 
 TOOLS = Path(__file__).resolve().parents[1]
 ROOT = TOOLS.parent
-FIXTURE = TOOLS / "tests" / "fixtures" / "runtime_state" / "valid"
-sys.path.insert(0, str(TOOLS / "tests"))
-sys.path.insert(0, str(TOOLS))
+sys.path.insert(0, str(ROOT))
 
-import audit_obligation_projection
-import changed_scope_runtime_checks as checks
-import check_queue
-import kblib
-import runtime_state_contract
-from profile_fixture import install_loadable_profile
+import Tools.execution.audit.audit_obligation_projection as audit_obligation_projection
+import Tools.execution.audit.changed_scope_evidence_contract as changed_scope_evidence_contract
+import Tools.execution.audit.changed_scope_runtime_checks as checks
+import Tools.execution.task_runtime.runtime_state_contract as runtime_state_contract
 
 
-class KernelIdentityTests(unittest.TestCase):
-    def test_implemented_check_ids_are_derived_from_kernel_registry(self):
-        registry = audit_obligation_projection.load_changed_scope_registry(ROOT)
+class KernelRegistryBindingContractTests(unittest.TestCase):
+    def test_runtime_check_ids_are_an_exact_projection_of_owned_rows(self):
+        registry = audit_obligation_projection.load_changed_scope_registry(
+            ROOT)
         rows = audit_obligation_projection.validate_changed_scope_registry(
             registry)["base_rules"]
         expected = {
@@ -37,20 +43,22 @@ class KernelIdentityTests(unittest.TestCase):
             if row["rule_id"] not in expected:
                 continue
             self.assertEqual("audit-receipt", row["evidence_kind"])
-            self.assertEqual("audit-receipt-producer-v1",
-                             row["producer_capability"])
+            self.assertEqual(
+                changed_scope_evidence_contract.ADAPTER_CAPABILITY_ID,
+                row["producer_capability"])
             self.assertEqual("pre-merge", row["due_stage"])
 
 
 class GuidanceStateCheckTests(unittest.TestCase):
-    def record(self, guidance_id, status):
+    @staticmethod
+    def record(guidance_id, status):
         return {
             "guidance_id": guidance_id,
             "disposition": "apply-to-current-batch",
             "status": status,
         }
 
-    def test_three_kernel_counters_follow_registered_lifecycle_statuses(self):
+    def test_open_lifecycle_positions_map_to_the_three_owned_counters(self):
         progress = {"guidance_queue": [
             self.record("G-001", "received"),
             self.record("G-002", "classified"),
@@ -72,7 +80,7 @@ class GuidanceStateCheckTests(unittest.TestCase):
              "guidance-implemented-unverified"},
             {row["diagnostic_id"] for row in result["diagnostics"]})
 
-    def test_mapped_and_machine_registered_final_statuses_are_zero(self):
+    def test_mapped_and_machine_owned_final_statuses_clear_all_counters(self):
         statuses = ["mapped", *sorted(
             runtime_state_contract.FINAL_GUIDANCE_STATUSES)]
         progress = {"guidance_queue": [
@@ -90,27 +98,22 @@ class GuidanceStateCheckTests(unittest.TestCase):
             "implemented_unverified_guidance": 0,
         }, result["metrics"])
 
-    def test_unknown_status_fails_against_machine_owned_closed_set(self):
-        result = checks.guidance_state_zero_counts({
-            "guidance_queue": [self.record("G-001", "almost-verified")],
-        })
+    def test_invalid_status_and_missing_explicit_target_fail_closed(self):
+        progress = {"guidance_queue": [
+            self.record("G-001", "almost-verified"),
+        ]}
 
-        self.assertEqual("fail", result["result"])
-        diagnostic = result["diagnostics"][0]
+        invalid = checks.guidance_state_zero_counts(progress)
+        missing = checks.guidance_state_zero_counts(progress, ["G-002"])
+
+        diagnostic = invalid["diagnostics"][0]
         self.assertEqual("guidance-status-invalid",
                          diagnostic["diagnostic_id"])
         self.assertEqual(sorted(runtime_state_contract.GUIDANCE_STATUSES),
                          diagnostic["expected"])
-
-    def test_explicit_incremental_scope_reports_missing_identity(self):
-        result = checks.guidance_state_zero_counts(
-            {"guidance_queue": [self.record("G-001", "verified")]},
-            ["G-002"])
-
-        self.assertEqual("fail", result["result"])
-        self.assertEqual(["G-002"], result["scope"]["targets"])
+        self.assertEqual(["G-002"], missing["scope"]["targets"])
         self.assertEqual("guidance-target-missing",
-                         result["diagnostics"][0]["diagnostic_id"])
+                         missing["diagnostics"][0]["diagnostic_id"])
 
 
 class CoverageRoutingCheckTests(unittest.TestCase):
@@ -132,145 +135,130 @@ class CoverageRoutingCheckTests(unittest.TestCase):
             {"id": item_id, "state": state} for item_id, state in items
         ]}
 
-    def test_exact_three_coverage_findings_are_structured(self):
+    def test_routing_failures_are_structured_and_selector_scoped(self):
         coverage = {"pages": [
-            self.page("Topics/Unassessed.md", authoring_status="unassessed"),
-            self.page("Topics/Unrouted.md", next_batch=None),
+            self.page("Topics/Changed.md", next_batch=None),
             self.page("Topics/Deferred.md", disposition="deferred",
                       batch=None, next_batch=None, reason=None),
-            self.page("Topics/Excluded.md", disposition="excluded",
+            self.page("Topics/Elsewhere.md", disposition="excluded",
                       batch=None, next_batch=None, reason=None),
         ]}
 
-        result = checks.coverage_routing_state(
+        complete = checks.coverage_routing_state(
             coverage, self.queue(("B1", "open")))
-
-        self.assertEqual("fail", result["result"])
-        self.assertEqual({
-            "unassessed": 1,
-            "required_without_current_next_batch": 1,
-            "deferred_or_excluded_without_reason": 2,
-        }, result["metrics"])
-        self.assertEqual(
-            {"coverage-unassessed",
-             "required-next-batch-missing-or-terminal",
-             "coverage-disposition-reason-missing"},
-            {row["diagnostic_id"] for row in result["diagnostics"]})
-
-    def test_closed_historical_required_assignment_needs_no_next_batch(self):
-        coverage = {"pages": [
-            self.page("Topics/Done.md", authoring_status="reviewed",
-                      batch="B1", next_batch=None),
-            self.page("Topics/Deferred.md", disposition="deferred",
-                      batch=None, next_batch=None, reason="await source"),
-            self.page("Topics/Excluded.md", disposition="excluded",
-                      batch=None, next_batch=None, reason="outside scope"),
-        ]}
-
-        result = checks.coverage_routing_state(
-            coverage, self.queue(("B1", "closed")))
-
-        self.assertEqual("pass", result["result"])
-        self.assertEqual([], result["diagnostics"])
-
-    def test_target_scope_does_not_scan_unchanged_records(self):
-        coverage = {"pages": [
-            self.page("Topics/Changed.md", authoring_status="reviewed"),
-            self.page("Topics/Elsewhere.md", authoring_status="unassessed"),
-        ]}
-
-        result = checks.coverage_routing_state(
+        selected = checks.coverage_routing_state(
             coverage, self.queue(("B1", "open")), ["Topics/Changed.md"])
 
-        self.assertEqual("pass", result["result"])
-        self.assertEqual(["Topics/Changed.md"], result["scope"]["targets"])
+        self.assertEqual("fail", complete["result"])
+        self.assertEqual({
+            "required_without_current_next_batch": 1,
+            "deferred_or_excluded_without_reason": 2,
+        }, complete["metrics"])
+        self.assertEqual(
+            {"required-next-batch-missing-or-terminal",
+             "coverage-disposition-reason-missing"},
+            {row["diagnostic_id"] for row in complete["diagnostics"]})
+        self.assertEqual(["Topics/Changed.md"], selected["scope"]["targets"])
+        self.assertEqual(
+            {"required-next-batch-missing-or-terminal"},
+            {row["diagnostic_id"] for row in selected["diagnostics"]})
 
-    def test_terminal_or_unknown_next_batch_is_not_current_routing(self):
-        for queue, expected_state in (
-                (self.queue(("B1", "closed")), "closed"),
-                (self.queue(), None)):
-            with self.subTest(expected_state=expected_state):
+    def test_opening_and_closed_historical_assignments_are_legal(self):
+        opening = checks.coverage_routing_state(
+            {"pages": [self.page(
+                "Topics/Opening.md", authoring_status="unassessed")]},
+            self.queue(("B1", "open")))
+        historical = checks.coverage_routing_state(
+            {"pages": [
+                self.page("Topics/Done.md", authoring_status="reviewed",
+                          batch="B1", next_batch=None),
+                self.page("Topics/Deferred.md", disposition="deferred",
+                          batch=None, next_batch=None,
+                          reason="await source"),
+                self.page("Topics/Excluded.md", disposition="excluded",
+                          batch=None, next_batch=None,
+                          reason="outside scope"),
+            ]},
+            self.queue(("B1", "closed")))
+
+        self.assertEqual("pass", opening["result"])
+        self.assertEqual([], opening["diagnostics"])
+        self.assertEqual("pass", historical["result"])
+        self.assertEqual([], historical["diagnostics"])
+
+    def test_terminal_unknown_and_unregistered_routes_are_not_current(self):
+        cases = (
+            (self.page("Topics/A.md"), self.queue(("B1", "closed")),
+             "closed"),
+            (self.page("Topics/A.md"), self.queue(), None),
+            (self.page("Topics/A.md", batch="B-UNKNOWN", next_batch=None),
+             self.queue(), "B-UNKNOWN"),
+        )
+        for page, queue, expected in cases:
+            with self.subTest(expected=expected):
                 result = checks.coverage_routing_state(
-                    {"pages": [self.page("Topics/A.md")]}, queue)
+                    {"pages": [page]}, queue)
                 self.assertEqual("fail", result["result"])
                 actual = result["diagnostics"][0]["actual"]
-                self.assertEqual(expected_state, actual["state"])
-
-    def test_unknown_historical_batch_cannot_excuse_missing_next_batch(self):
-        coverage = {"pages": [
-            self.page("Topics/A.md", batch="B-UNKNOWN", next_batch=None),
-        ]}
-
-        result = checks.coverage_routing_state(coverage, self.queue())
-
-        self.assertEqual("fail", result["result"])
-        actual = result["diagnostics"][0]["actual"]
-        self.assertEqual("B-UNKNOWN", actual["batch"])
-        self.assertIsNone(actual["batch_state"])
+                if expected == "B-UNKNOWN":
+                    self.assertEqual(expected, actual["batch"])
+                    self.assertIsNone(actual["batch_state"])
+                else:
+                    self.assertEqual(expected, actual["state"])
 
 
 class FrozenTaskContractReferenceTests(unittest.TestCase):
-    def setUp(self):
-        self.temporary = tempfile.TemporaryDirectory()
-        self.addCleanup(self.temporary.cleanup)
-        self.root = Path(self.temporary.name).resolve() / "repo"
-        shutil.copytree(FIXTURE, self.root)
-        install_loadable_profile(self.root)
-        self.runtime = check_queue.validate_runtime(self.root)
-        self.assertEqual([], self.runtime["errors"], self.runtime["errors"])
+    def test_owned_consumer_findings_map_to_one_closed_producer_result(self):
+        progress = {"contract": {}}
+        item = {"id": "B1"}
+        runtime = {"queue": {"task_id": "T1"}}
 
-    def run_check(self, progress=None, runtime=None):
-        runtime = runtime or self.runtime
-        progress = progress or runtime["progress"]
-        return checks.frozen_task_contract_references(
-            self.root, progress, runtime["items_by_id"]["B1"], runtime)
+        with mock.patch.object(
+                checks.card_activation, "build_activation_context",
+                return_value={"activation_protocol": "current"}) as build, \
+                mock.patch.object(
+                    checks.card_activation, "activation_context_errors",
+                    return_value=[]), \
+                mock.patch.object(
+                    checks, "live_read_set_load_findings",
+                    return_value=([], [])) as read_set_findings:
+            passed = checks.frozen_task_contract_references(
+                ROOT, progress, item, runtime)
 
-    def runtime_with_progress(self, progress):
-        # The authorized Profile view deliberately contains immutable
-        # mappingproxy contracts, so preserve the admitted opaque authority
-        # objects and replace only the two values this test changes.
-        runtime = dict(self.runtime)
-        runtime["progress"] = progress
-        runtime["progress_sha256"] = kblib.sha256_bytes(
-            kblib.canonical_yaml(progress))
-        return runtime
+        build.assert_called_once_with(
+            ROOT, progress, item, runtime_state=runtime,
+            profile_contract=None)
+        read_set_findings.assert_called_once_with(ROOT, progress["contract"])
+        self.assertEqual("pass", passed["result"])
+        self.assertEqual(["B1", "T1"], passed["scope"]["targets"])
+        self.assertEqual({
+            "activation_context_valid": True,
+            "read_set_reference_error_count": 0,
+            "read_set_load_closure_gap_count": 0,
+        }, passed["metrics"])
 
-    def test_valid_frozen_references_pass_both_canonical_consumers(self):
-        result = self.run_check()
+        with mock.patch.object(
+                checks.card_activation, "build_activation_context",
+                return_value={"activation_protocol": "current"}), \
+                mock.patch.object(
+                    checks.card_activation, "activation_context_errors",
+                    return_value=["foreign Card route"]), \
+                mock.patch.object(
+                    checks, "live_read_set_load_findings",
+                    return_value=(["invalid Read Set"], ["missing target"])):
+            failed = checks.frozen_task_contract_references(
+                ROOT, progress, item, runtime)
 
-        self.assertEqual("pass", result["result"], result["diagnostics"])
-        self.assertTrue(result["metrics"]["activation_context_valid"])
-        self.assertEqual(0,
-                         result["metrics"]["read_set_reference_error_count"])
-        self.assertEqual(0,
-                         result["metrics"]["read_set_load_closure_gap_count"])
-
-    def test_route_card_reference_uses_activation_contract(self):
-        progress = copy.deepcopy(self.runtime["progress"])
-        progress["contract"]["selected_card_paths"].append(
-            "Card/Unregistered.md")
-        runtime = self.runtime_with_progress(progress)
-
-        result = self.run_check(progress, runtime)
-
-        self.assertEqual("fail", result["result"])
-        self.assertIn("activation-reference-invalid",
-                      {row["diagnostic_id"]
-                       for row in result["diagnostics"]})
-
-    def test_read_set_closure_omission_uses_task_contract_resolver(self):
-        progress = copy.deepcopy(self.runtime["progress"])
-        progress["contract"]["loaded_module_paths"] = []
-        runtime = self.runtime_with_progress(progress)
-
-        result = self.run_check(progress, runtime)
-
-        self.assertEqual("fail", result["result"])
-        self.assertIn("read-set-load-closure-omission",
-                      {row["diagnostic_id"]
-                       for row in result["diagnostics"]})
-        self.assertGreater(
-            result["metrics"]["read_set_load_closure_gap_count"], 0)
+        self.assertEqual("fail", failed["result"])
+        self.assertEqual(
+            {"activation-reference-invalid", "read-set-reference-invalid",
+             "read-set-load-closure-omission"},
+            {row["diagnostic_id"] for row in failed["diagnostics"]})
+        self.assertEqual({
+            "activation_context_valid": False,
+            "read_set_reference_error_count": 1,
+            "read_set_load_closure_gap_count": 1,
+        }, failed["metrics"])
 
 
 class ResultContractTests(unittest.TestCase):

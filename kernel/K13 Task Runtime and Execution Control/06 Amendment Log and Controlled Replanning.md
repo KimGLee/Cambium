@@ -23,7 +23,7 @@ Guidance IDs are task-local, monotonic, and never reused. Status records the pro
 - `queue_revision` advances for Queue structural or verification-contract
   change under K13/08.
 - `queue_state_revision` advances only for Queue lifecycle or hold change.
-- `standards_version` changes only when Standards adoption selects a different
+- `upstream_revision_id` changes only when Standards adoption selects a different
   upstream Git commit. A Profile-only revision retains it and binds the new
   Profile snapshot and typed contract fingerprint in adoption evidence.
 

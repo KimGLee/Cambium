@@ -6,7 +6,7 @@
 
 ## Purpose And Ownership
 
-The Required Queue owns batch manifests, order, dependencies, lifecycle, holds, and transition evidence. Coverage owns object disposition, semantic owner, and batch projection. Progress owns task state and Contract, Amendments, checkpoints, completion binding, and the accepted Queue reference. Reports and executor-local lists are never authority.
+The Required Queue owns batch manifests, order, dependencies, lifecycle, holds, and transition evidence. Coverage owns object disposition, semantic owner, batch projection, and—after a batch opens—current page state. A planning-only Coverage row supports Queue materialization but claims no current page state. Progress owns task state and Contract, Amendments, checkpoints, completion binding, and the accepted Queue reference. Reports and executor-local lists are never authority.
 
 ## Queue Document Contract
 
@@ -34,9 +34,9 @@ The Work Spec binding is structural state. A queued batch changes it only throug
 
 ## Batch Lifecycle
 
-[`runtime-state-model.json`](runtime-state-model.json) is the sole machine owner of batch-state identities, active and terminal classes, and legal edge membership. Its current authorization is split by writer capability: the ordinary Queue writer cannot cancel, while the Amendment cancellation writer cannot perform an ordinary lifecycle edge. The historical replay catalog is a separate, fixed composition of the producer-era edge catalogs and does not authorize a current write.
+[`runtime-state-model.json`](runtime-state-model.json) is the sole machine owner of batch-state identities, active and terminal classes, and legal edge membership. Its current authorization is split by writer capability: the ordinary Queue writer cannot cancel, while the Amendment cancellation writer cannot perform an ordinary lifecycle edge. Its historical catalog validates only receipts produced by these current transition contracts and never authorizes a current write; retired receipt formats are not members of the runtime model.
 
-`queued` means admitted but not opened. `open` freezes the batch partition while permitting its owned work to advance. `merge-ready` means the exact Delta, review, and QA evidence exists; invalidated evidence can return that same batch to `open` through the registered ordinary writer. `closed` means serial integration and global Gates passed. `cancelled` means an authorized scope or disposition Amendment retired an actionable batch. `closed` and `cancelled` are terminal: their history is immutable and later work uses a successor.
+`queued` means admitted but not opened; its not-yet-materialized manifest members may remain planning-only in Coverage. The first `queued -> open` transition atomically materializes current Coverage state for the complete manifest and leaves all other queued manifests untouched. `open` freezes the batch partition while permitting its owned work to advance. `merge-ready` means the exact Delta, review, and QA evidence exists; invalidated evidence can return that same batch to `open` through the registered ordinary writer. `closed` means serial integration and global Gates passed. `cancelled` means an authorized scope or disposition Amendment retired an actionable batch. `closed` and `cancelled` are terminal: their history is immutable and later work uses a successor.
 
 `hold_state` is independent of lifecycle and task state. The machine model owns its closed values. `none` means no hold; `confirmation-required` awaits the registered confirmation; `blocked` records an external impediment; `revalidation-required` prevents further use of invalidated evidence; and `paused` records an intentional stop. Every lifecycle or hold transition binds the exact before and after state, revision edge, Queue identity, actor role, time, and required evidence. Referenced evidence must exist, pass, remain current for that edge, and match its declared scope.
 

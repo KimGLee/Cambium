@@ -1,0 +1,70 @@
+schema_version: 2
+task_id: fixture-task
+updated_at: 2026-08-04T00:00:00Z
+scope_version: s1
+upstream_revision_id: 0123456789abcdef0123456789abcdef01234567
+selected_profile_manifest: profiles/test-profile/profile.md
+batch_specs:
+  - id: B1
+    family: Core
+    order_hint: 1
+    source_route: R03
+    execution_mode: concurrent-worker
+    depends_on: []
+    confirmation_required: false
+    work_spec_path: null
+    work_spec_sha256: null
+  - id: B2
+    family: Core
+    order_hint: 2
+    source_route: R03
+    execution_mode: concurrent-worker
+    depends_on:
+      - B1
+    confirmation_required: false
+    work_spec_path: null
+    work_spec_sha256: null
+maintenance_candidates: []
+pages:
+  - path: Topics/A.md
+    coverage_disposition: required
+    canonical_owner: Topics/A.md
+    type: concept
+    priority: P2
+    tier: S
+    prerequisites: []
+    batch: B1
+    next_batch: null
+    deferred_reason: null
+    reentry_condition: null
+    authoring_status: reviewed
+    gate_receipts:
+      - audit-record_batch_page_review-20260831T221114Z-9453d964343b41c3b01309c09295e817-0001
+      - audit-check_batch_close-20260831T221139Z-0399f995853c442e89029c97bb251dd5-0010
+    property_state:
+      last_reviewed:
+        value: 2026-08-31
+        evidence_receipt: audit-check_batch_close-20260831T221139Z-0399f995853c442e89029c97bb251dd5-0010
+        content_fingerprint: sha256:bbff007034a2d19522a357b835a062f22948721d86bb2cc2f8997f18510e365f
+  - path: Topics/B.md
+    coverage_disposition: required
+    canonical_owner: Topics/B.md
+    type: concept
+    priority: P2
+    tier: S
+    prerequisites:
+      - Topics/A.md
+    batch: B2
+    next_batch: null
+    deferred_reason: null
+    reentry_condition: null
+    authoring_status: reviewed
+    gate_receipts:
+      - audit-record_batch_page_review-20260831T221148Z-e6d190d7b05248a78444cf8f9a85feca-0001
+      - audit-check_batch_close-20260831T221223Z-6e94671d664e47b7913f0b23144bc790-0010
+    property_state:
+      last_reviewed:
+        value: 2026-08-31
+        evidence_receipt: audit-check_batch_close-20260831T221223Z-6e94671d664e47b7913f0b23144bc790-0010
+        content_fingerprint: sha256:bd95631b283d1c1d77897215514b20d468fdd5da02003716994af13c2dca471c
+open_gaps: []

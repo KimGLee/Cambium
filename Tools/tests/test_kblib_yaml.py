@@ -14,7 +14,7 @@ import unittest
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-import kblib  # noqa: E402
+import Tools.platform.common.kblib as kblib  # noqa: E402
 
 
 # YAML 1.2 `c-indicator`. A plain scalar may not begin with any of them,
@@ -91,6 +91,26 @@ class DocumentRoundTripTests(unittest.TestCase):
                 # what must never appear is a *plain* scalar opening with
                 # an indicator.
                 self.assertTrue(quoted or value[:1] not in ALWAYS)
+
+    def test_repeated_parse_results_are_independent_objects(self):
+        text = "root:\n  values: [one, two]\n"
+
+        first = kblib.parse_yaml_subset(text)
+        second = kblib.parse_yaml_subset(text)
+        first["root"]["values"].append("mutated")
+
+        self.assertEqual(["one", "two"], second["root"]["values"])
+        self.assertEqual(
+            ["one", "two"],
+            kblib.parse_yaml_subset(text)["root"]["values"],
+        )
+
+    def test_parse_cache_identity_is_the_complete_source_text(self):
+        before = kblib.parse_yaml_subset("value: before\n")
+        after = kblib.parse_yaml_subset("value: after\n")
+
+        self.assertEqual({"value": "before"}, before)
+        self.assertEqual({"value": "after"}, after)
 
 
 if __name__ == "__main__":

@@ -1,4 +1,4 @@
-schema_version: 1
+schema_version: 3
 registry_id: cambium-batch-review-obligations
 semantic_owner: K12/01-K12/14
 machine_projection_owner: K12/14
@@ -865,6 +865,8 @@ producer_evidence_contract:
       type: integer
     - field: record_kind
       type: string
+    - field: receipt_type_id
+      type: string
     - field: receipt_id
       type: string
     - field: review_variant
@@ -897,7 +899,7 @@ producer_evidence_contract:
       type: string
     - field: opening_transition_receipt
       type: string
-    - field: standards_version
+    - field: upstream_revision_id
       type: string
     - field: active_standards_sha256
       type: sha256
@@ -976,6 +978,7 @@ producer_evidence_contract:
   required_common_fields:
     - schema_version
     - record_kind
+    - receipt_type_id
     - receipt_id
     - review_variant
     - tool
@@ -992,7 +995,7 @@ producer_evidence_contract:
     - task_id
     - batch_id
     - opening_transition_receipt
-    - standards_version
+    - upstream_revision_id
     - active_standards_sha256
     - selected_profile_manifest
     - profile_snapshot_sha256

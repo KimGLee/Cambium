@@ -1,15 +1,12 @@
-"""Two Amendment-log defects that lived between tools, not inside one.
+"""Adjacent Progress-control contracts share their machine owners.
 
 Each fix pins an agreement between two readers of the same Progress row.
 
-First: K13/06 withdrawal is final -- "a withdrawn operational Amendment ...
-authorizes nothing" -- and `check_queue` validates it as a terminal state.
-`update_task._pending_controls` counted the same row as pending, because
-`withdrawn` was absent from its final-status vocabulary. One withdrawn
-registration therefore blocked every later task transition forever: the exact
-wedge the withdrawal action was added to prevent, reintroduced one tool over.
+First, the task-record projection consumes the runtime-state finality
+predicate. Writers consume that projection instead of maintaining another
+status list.
 
-Second: `check_queue.operational_amendment_registration_errors` returned no
+Second: `queue_runtime.operational_amendment_registration_errors` returned no
 errors for a row whose `operation` it did not recognize. The registration
 binding below that guard is the entire evidence chain -- plan bytes, receipt,
 three-state fingerprints -- so an unknown operation name was a way to hold an
@@ -21,7 +18,6 @@ These are regression tests against the two-reader disagreements; neither adds
 a rule of its own.
 """
 
-import importlib.util
 import sys
 import unittest
 from pathlib import Path
@@ -32,18 +28,7 @@ TOOLS = TESTS.parent
 if str(TOOLS) not in sys.path:
     sys.path.insert(0, str(TOOLS))
 
-import check_queue  # noqa: E402
-
-
-def _load(name):
-    spec = importlib.util.spec_from_file_location(
-        "_%s_under_test" % name, TOOLS / ("%s.py" % name))
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    return module
-
-
-update_task = _load("update_task")
+from Tools.execution.task_runtime import queue_runtime  # noqa: E402
 
 
 def progress_with(amendments):
@@ -62,7 +47,7 @@ WITHDRAWN_ROW = {
 
 class WithdrawnIsFinalInBothReaders(unittest.TestCase):
     def test_a_withdrawn_amendment_does_not_block_task_transitions(self):
-        _guidance, pending = update_task._pending_controls(
+        _guidance, pending = queue_runtime.pending_control_ids(
             progress_with([dict(WITHDRAWN_ROW)]))
         self.assertEqual(
             [], pending,
@@ -74,7 +59,7 @@ class WithdrawnIsFinalInBothReaders(unittest.TestCase):
         row = dict(WITHDRAWN_ROW)
         row.update({"status": "approved", "writeback_done": False})
         del row["withdrawal_reason"]
-        _guidance, pending = update_task._pending_controls(
+        _guidance, pending = queue_runtime.pending_control_ids(
             progress_with([row]))
         self.assertEqual(["AM-001"], pending)
 
@@ -82,7 +67,7 @@ class WithdrawnIsFinalInBothReaders(unittest.TestCase):
         """The malformed shape stays visible rather than gaining finality."""
         row = dict(WITHDRAWN_ROW)
         row["writeback_done"] = True
-        _guidance, pending = update_task._pending_controls(
+        _guidance, pending = queue_runtime.pending_control_ids(
             progress_with([row]))
         self.assertEqual(
             ["AM-001"], pending,
@@ -92,7 +77,7 @@ class WithdrawnIsFinalInBothReaders(unittest.TestCase):
 
 class UnknownOperationFailsClosed(unittest.TestCase):
     def run_validator(self, amendment):
-        return check_queue.operational_amendment_registration_errors(
+        return queue_runtime.operational_amendment_registration_errors(
             {}, amendment, "Progress amendments[0]", {}, {}, {},
             "sha256:" + "0" * 64, "sha256:" + "0" * 64, "sha256:" + "0" * 64)
 

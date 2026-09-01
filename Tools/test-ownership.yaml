@@ -1,0 +1,3081 @@
+# Test ownership contract -- machine owner: Tools/test-ownership.yaml
+# Generated projections must not be edited as a second classification source.
+# `owner_contract_symbol`, `primary_owner_test`, `consumer_only`, and
+# `duplicate_group` are reviewed ownership classifications. Execution scopes,
+# fixture entrypoints, and effects are always derived from Python sources.
+
+schema_version: 1
+level_policy:
+  unit: In-process deterministic computation owned by one module.
+  contract: Schema, registry, owner, closed-set, or producer-consumer contract.
+  integration: Adjacent production modules joined in an isolated temporary runtime.
+  e2e: One representative complete current-contract lifecycle.
+  slow: Real security, concurrency, crash, recovery, or host-isolation behavior.
+  historical-read-only: Current-contract sealed history that cannot regain current authority.
+baseline:
+  captured_at: 2026-08-31
+  test_modules: 129
+  test_cases: 2543
+  process_calls: 192
+  temp_resources: 233
+  shutil_copy_calls: 137
+  full_repository_copies: 86
+  cross_test_import_sites: 22
+  observed_runs:
+    - label: full-shard-0
+      completed_cases: 633
+      elapsed_seconds: 3154.752
+      status: complete
+    - label: full-shard-1
+      completed_cases: 633
+      elapsed_seconds: 506.868
+      status: complete
+    - label: full-shard-2
+      completed_cases: 449
+      elapsed_seconds: 8400
+      status: stopped-after-more-than
+    - label: full-shard-3
+      completed_cases: 634
+      elapsed_seconds: 2433.880
+      status: complete
+    - label: terminal-proof-slice
+      completed_cases: 3
+      elapsed_seconds: 428.809
+      status: complete
+tests:
+  - path: Tools/tests/test_adopt_standards.py
+    owner: Tools/governance/standards/adopt_standards.py
+    level: unit
+    lifecycle: current
+    disposition: keep
+    semantics: adopt_standards_writer_projection
+    owner_contract_symbol: adopt_standards._assert_only_permitted_changes
+    parallel_safe: true
+    overrides:
+      - selector: WriterProjectionUnitTests.test_plan_identity_contains_only_current_non_version_identity
+        level: unit
+        semantics: adopt_standards_current_plan_identity
+        owner_contract_symbol: adopt_standards._plan_identity
+        parallel_safe: true
+      - selector: AdoptionPlanContractTests.*
+        owner: Tools/execution/task_runtime/queue_runtime/adoption.py
+        level: contract
+        semantics: current_standards_adoption_plan_contract
+        owner_contract_symbol: adoption.standards_adoption_plan_errors
+        parallel_safe: true
+      - selector: RevalidationSelectionContractTests.*
+        owner: Tools/execution/task_runtime/queue_runtime/resume.py
+        level: contract
+        semantics: adoption_resume_names_only_producer_admitted_batch
+        owner_contract_symbol: resume.actionable_revalidation_batches
+        parallel_safe: true
+      - selector: BaseReadSetCheckpointTests.*
+        owner: Tools/execution/task_runtime/queue_runtime/adoption.py
+        level: integration
+        semantics: adoption_plan_read_set_closure_checkpoint
+        owner_contract_symbol: adoption.standards_adoption_plan_errors
+        parallel_safe: false
+      - selector: AdoptionTransactionE2ETests.*
+        level: e2e
+        semantics: adopt_standards_current_transaction_and_history_boundary
+        owner_contract_symbol: adopt_standards._commit_transaction
+        parallel_safe: false
+      - selector: AdoptionTransactionSafetyTests.*
+        level: slow
+        semantics: adopt_standards_transaction_cas_rollback_recovery_lock
+        owner_contract_symbol: adopt_standards._commit_transaction
+        parallel_safe: false
+  - path: Tools/tests/test_adoption_lineage_contract.py
+    owner: Tools/governance/standards/adoption_lineage_contract.py
+    level: contract
+    lifecycle: current
+    disposition: keep
+    semantics: adoption_lineage_contract
+    parallel_safe: true
+  - path: Tools/tests/test_agent_interface_path_policy.py
+    owner: Tools/platform/common/kblib.py
+    level: unit
+    lifecycle: current
+    disposition: keep
+    semantics: registered_repository_artifact_path_rejection
+    owner_contract_symbol: kblib.registered_repository_artifact_path
+    parallel_safe: true
+    overrides:
+      - selector: CurrentFixedOutputOwnerContractTests.*
+        owner: Tools/platform/agent_interface/compile_cli_contract.py
+        level: contract
+        semantics: current_cli_fixed_output_owner_closure
+        owner_contract_symbol: compile_cli_contract.compile_contract
+        parallel_safe: true
+      - selector: FixedOutputCliTransportTests.*
+        owner: Tools/governance/control/metadata_execution_contract.py
+        level: integration
+        semantics: fixed_output_public_cli_transport
+        owner_contract_symbol: metadata_execution_contract.main
+        parallel_safe: false
+  - path: Tools/tests/test_amendment_control_consistency.py
+    owner: Tools/execution/task_runtime/queue_runtime/task_record.py
+    level: contract
+    lifecycle: current
+    disposition: keep
+    semantics: pending_control_projection_consistency
+    owner_contract_symbol: task_record.pending_control_ids
+    parallel_safe: true
+    overrides:
+      - selector: UnknownOperationFailsClosed.*
+        owner: Tools/execution/task_runtime/queue_runtime/amendments.py
+        level: contract
+        semantics: operational_amendment_unknown_operation_boundary
+        owner_contract_symbol: amendments.operational_amendment_registration_errors
+        parallel_safe: true
+  - path: Tools/tests/test_amendment_policy.py
+    owner: Tools/execution/task_runtime/amendment_policy.py
+    level: unit
+    lifecycle: current
+    disposition: keep
+    semantics: amendment_policy
+    parallel_safe: true
+  - path: Tools/tests/test_apply_amendment.py
+    owner: Tools/execution/task_runtime/apply_amendment.py
+    level: unit
+    lifecycle: current
+    disposition: keep
+    semantics: apply_amendment_transaction_projection
+    owner_contract_symbol: apply_amendment._sync_progress
+    parallel_safe: true
+    overrides:
+      - selector: AmendmentTransactionProjectionUnitTests.test_transaction_chain_head_is_monotonic_and_exact_linked
+        level: unit
+        semantics: amendment_transaction_chain_head
+        owner_contract_symbol: apply_amendment._transaction_chain_head
+        parallel_safe: true
+      - selector: AmendmentPlanContractTests.*
+        owner: Tools/execution/task_runtime/amendment_plan.py
+        level: contract
+        semantics: current_cross_ledger_amendment_plan
+        owner_contract_symbol: amendment_plan.validate_plan
+        parallel_safe: true
+      - selector: AmendmentRegistrationBindingContractTests.*
+        level: contract
+        semantics: apply_amendment_exact_registration_binding
+        owner_contract_symbol: apply_amendment._find_amendment
+        parallel_safe: true
+      - selector: AmendmentLockContractTests.*
+        level: contract
+        semantics: apply_amendment_recovery_cas_envelope
+        owner_contract_symbol: apply_amendment._lock_operation
+        parallel_safe: true
+      - selector: AmendmentCancellationReceiptContractTests.*
+        level: contract
+        semantics: current_amendment_cancellation_receipt
+        owner_contract_symbol: apply_amendment.current_queue_cancellation_receipt_errors
+        parallel_safe: true
+      - selector: AmendmentScopeIntegrationTests.*
+        level: integration
+        semantics: apply_amendment_scope_cli_json_transaction
+        owner_contract_symbol: apply_amendment.main
+        parallel_safe: false
+      - selector: AmendmentCancellationIntegrationTests.*
+        level: integration
+        semantics: apply_amendment_cancellation_transaction
+        owner_contract_symbol: apply_amendment._commit_transaction
+        parallel_safe: false
+      - selector: AmendmentCommitIntegrationTests.*
+        level: integration
+        semantics: apply_amendment_partial_write_rollback
+        owner_contract_symbol: apply_amendment._commit_transaction
+        parallel_safe: false
+      - selector: AmendmentRecoverySlowTests.*
+        level: slow
+        semantics: apply_amendment_durable_receipt_recovery
+        owner_contract_symbol: apply_amendment._commit_transaction
+        parallel_safe: false
+  - path: Tools/tests/test_apply_contract_amendment.py
+    owner: Tools/execution/task_runtime/apply_contract_amendment.py
+    level: unit
+    lifecycle: current
+    disposition: keep
+    semantics: apply_contract_amendment_projection
+    owner_contract_symbol: apply_contract_amendment._build_after
+    parallel_safe: true
+    overrides:
+      - selector: ContractAmendmentPlanContractTests.*
+        level: contract
+        semantics: current_contract_amendment_plan
+        owner_contract_symbol: apply_contract_amendment._validate_plan_shape
+        parallel_safe: true
+      - selector: ContractAmendmentRuntimeContractTests.*
+        level: contract
+        semantics: contract_amendment_admissible_runtime_edge
+        owner_contract_symbol: apply_contract_amendment._require_amendable_runtime
+        parallel_safe: true
+      - selector: ContractAmendmentPolicyConnectionTests.*
+        level: contract
+        semantics: contract_amendment_current_policy_fingerprint_connection
+        owner_contract_symbol: apply_contract_amendment._require_policy_authorization
+        parallel_safe: true
+        consumer_only: true
+        primary_owner_test: test_contract_exception_policy_registry.FingerprintCurrentnessTests.test_effective_policy_fingerprint_is_stable
+      - selector: ContractAmendmentReceiptContractTests.*
+        level: contract
+        semantics: current_contract_amendment_receipt_selector
+        owner_contract_symbol: apply_contract_amendment.current_receipt_errors
+        parallel_safe: true
+      - selector: ContractAmendmentPredicateUnitTests.*
+        level: unit
+        semantics: contract_amendment_exact_state_image_predicate
+        owner_contract_symbol: apply_contract_amendment._state_image_errors
+        parallel_safe: true
+      - selector: ContractAmendmentCliIntegrationTests.*
+        level: integration
+        semantics: contract_amendment_cli_json_anchor_transaction
+        owner_contract_symbol: apply_contract_amendment.main
+        parallel_safe: false
+      - selector: ContractAmendmentCommitIntegrationTests.*
+        level: integration
+        semantics: contract_amendment_current_commit_cas_and_rollback
+        owner_contract_symbol: apply_contract_amendment.commit
+        parallel_safe: false
+      - selector: ContractAmendmentRecoverySlowTests.*
+        level: slow
+        semantics: contract_amendment_durable_receipt_recovery_boundary
+        owner_contract_symbol: apply_contract_amendment.commit
+        parallel_safe: false
+  - path: Tools/tests/test_apply_delta_runtime.py
+    owner: Tools/execution/task_runtime/apply_delta.py
+    level: integration
+    lifecycle: current
+    disposition: keep
+    semantics: apply_delta_current_writer_transaction
+    owner_contract_symbol: apply_delta._canonical_apply
+    parallel_safe: false
+    overrides:
+      - selector: ApplyDeltaCliContractTests.test_invalid_invocations_never_reach_the_writer
+        level: contract
+        semantics: apply_delta:current_cli_parser_contract
+        owner_contract_symbol: apply_delta.main
+        parallel_safe: true
+      - selector: ApplyDeltaProducerContractTests.test_delta_path_is_derived_from_batch
+        level: unit
+        semantics: apply_delta_canonical_delta_path_projection
+        owner_contract_symbol: apply_delta._canonical_delta_path
+        parallel_safe: true
+      - selector: ApplyDeltaProducerContractTests.test_pre_apply_archive_path_is_derived_from_queue_revision
+        level: unit
+        semantics: apply_delta_pre_apply_archive_path_projection
+        owner_contract_symbol: apply_delta.pre_apply_coverage_archive_path
+        parallel_safe: true
+      - selector: ApplyDeltaProducerContractTests.test_receipt_binds_delta_after_image_and_unchanged_queue_state
+        level: contract
+        semantics: apply_delta_current_receipt_after_image_binding
+        owner_contract_symbol: apply_delta._prepare_receipt
+        parallel_safe: true
+      - selector: ApplyDeltaRunContractTests.test_unsafe_input_path_stops_before_the_writer
+        level: contract
+        semantics: apply_delta_repository_input_path_boundary
+        owner_contract_symbol: apply_delta._run
+        parallel_safe: true
+      - selector: ApplyDeltaRunContractTests.test_delta_policy_rejection_stops_before_the_writer
+        owner: Tools/execution/planning/coverage_delta.py
+        level: contract
+        semantics: apply_delta_consumes_current_delta_policy_rejection
+        owner_contract_symbol: coverage_delta.delta_policy_errors
+        parallel_safe: true
+        consumer_only: true
+        primary_owner_test: test_coverage_delta.CoverageDeltaPublicApiTests.test_every_declared_control_field_is_forbidden
+      - selector: CanonicalApplyDeltaTests.test_stale_coverage_or_queue_sha_fails_before_lock_and_write
+        level: integration
+        semantics: apply_delta_expected_input_cas_rejection
+        owner_contract_symbol: apply_delta._canonical_apply
+        parallel_safe: false
+      - selector: CanonicalApplyDeltaTests.test_locked_cas_rejection_does_not_leave_false_recovery_lock
+        level: integration
+        semantics: apply_delta_locked_compare_and_swap_rejection
+        owner_contract_symbol: apply_delta._canonical_apply
+        parallel_safe: false
+      - selector: CanonicalApplyDeltaTests.test_hard_exit_records_three_ledger_recovery_state
+        level: slow
+        semantics: apply_delta_hard_exit_three_ledger_recovery
+        owner_contract_symbol: apply_delta._canonical_apply
+        parallel_safe: false
+      - selector: CanonicalApplyDeltaTests.test_external_receipt_race_rolls_back_without_deleting_winner
+        level: integration
+        semantics: apply_delta_external_receipt_race_full_rollback
+        owner_contract_symbol: apply_delta._canonical_apply
+        parallel_safe: false
+      - selector: CanonicalApplyDeltaTests.test_failure_after_own_receipt_preserves_both_records_and_lock
+        level: slow
+        semantics: apply_delta_durable_receipt_failure_recovery_lock
+        owner_contract_symbol: apply_delta._canonical_apply
+        parallel_safe: false
+  - path: Tools/tests/test_apply_profile_adoption.py
+    owner: Tools/governance/profile/apply_profile_adoption.py
+    level: integration
+    lifecycle: current
+    disposition: keep
+    semantics: apply_profile_adoption
+    owner_contract_symbol: apply_profile_adoption.main
+    parallel_safe: false
+    overrides:
+      - selector: ProfileAdoptionContractTests.test_plan_contract_separates_no_runtime_adoption_from_active_tasks
+        level: contract
+        semantics: profile_adoption_plan_contract
+        owner_contract_symbol: apply_profile_adoption.validate_plan_values
+        parallel_safe: true
+      - selector: ProfileAdoptionContractTests.test_branch_state_requires_the_exact_absent_or_present_identity
+        level: contract
+        semantics: profile_adoption_branch_state
+        owner_contract_symbol: apply_profile_adoption.check_branch_state
+        parallel_safe: true
+      - selector: ProfileAdoptionContractTests.test_task_runtime_namespace_routes_to_the_active_task_writer
+        level: contract
+        semantics: profile_adoption_runtime_routing
+        owner_contract_symbol: apply_profile_adoption.find_runtime_namespace
+        parallel_safe: true
+      - selector: ProfileAdoptionWriterTests.test_initial_dry_run_then_commit_publishes_one_current_after_image
+        level: integration
+        semantics: profile_adoption_initial_dry_run_and_after_image
+        owner_contract_symbol: apply_profile_adoption.commit_transaction
+        parallel_safe: false
+      - selector: ProfileAdoptionWriterTests.test_profile_revision_appends_current_history_without_rewriting_profile
+        level: integration
+        semantics: profile_adoption_revision_after_image
+        owner_contract_symbol: apply_profile_adoption.commit_transaction
+        parallel_safe: false
+      - selector: ProfileAdoptionWriterTests.test_prewrite_currentness_rejects_governance_or_candidate_drift
+        level: slow
+        semantics: profile_adoption_prewrite_currentness
+        owner_contract_symbol: apply_profile_adoption.prepare
+        parallel_safe: false
+      - selector: ProfileAdoptionWriterTests.test_uncertain_receipt_publication_rolls_back_without_success
+        level: slow
+        semantics: profile_adoption_receipt_publication_recovery
+        owner_contract_symbol: apply_profile_adoption.commit_transaction
+        parallel_safe: false
+      - selector: ProfileAdoptionWriterTests.test_result_readback_interruption_recovers_by_current_revalidation
+        level: slow
+        semantics: profile_adoption_result_readback_recovery
+        owner_contract_symbol: apply_profile_adoption.recover_staging
+        parallel_safe: false
+      - selector: ProfileAdoptionWriterTests.test_projection_failure_restores_every_authoritative_byte
+        level: slow
+        semantics: profile_adoption_projection_rollback
+        owner_contract_symbol: apply_profile_adoption.commit_transaction
+        parallel_safe: false
+      - selector: ProfileAdoptionWriterTests.test_interrupted_write_accepts_only_the_same_current_plan_on_retry
+        level: slow
+        semantics: profile_adoption_interrupted_write_recovery
+        owner_contract_symbol: apply_profile_adoption.recover_staging
+        parallel_safe: false
+  - path: Tools/tests/test_apply_task_plan.py
+    owner: Tools/execution/planning/apply_task_plan.py
+    level: unit
+    lifecycle: current
+    disposition: keep
+    semantics: task_plan_planning_state_projection
+    owner_contract_symbol: apply_task_plan._progress
+    parallel_safe: true
+    overrides:
+      - selector: TaskPlanSchemaContractTests.*
+        level: contract
+        semantics: current_initial_task_plan_schema
+        owner_contract_symbol: apply_task_plan._validate_plan_shape
+        parallel_safe: true
+      - selector: TaskPlanProfileOverrideContractTests.*
+        level: contract
+        semantics: task_plan_profile_override_acceptance
+        owner_contract_symbol: apply_task_plan._resolve_concurrency_cap_overrides
+        parallel_safe: true
+      - selector: TaskPlanBindingContractTests.*
+        level: contract
+        semantics: task_plan_receipt_and_queue_handoff_binding
+        owner_contract_symbol: apply_task_plan.compile_command
+        parallel_safe: true
+      - selector: TaskPlanLoadSetContractTests.*
+        level: contract
+        semantics: task_plan_route_derived_loading_boundary
+        owner_contract_symbol: apply_task_plan._derive_load_sets
+        parallel_safe: true
+      - selector: TaskPlanPublicationIntegrationTests.*
+        owner: Tools/execution/task_runtime/init_state.py
+        level: integration
+        semantics: task_plan_cli_json_publication_readback
+        owner_contract_symbol: init_state.main
+        parallel_safe: false
+      - selector: TaskPlanCurrentnessIntegrationTests.*
+        level: integration
+        semantics: task_plan_prepublication_byte_currentness
+        owner_contract_symbol: apply_task_plan.require_current
+        parallel_safe: true
+  - path: Tools/tests/test_audit_dimension_contract.py
+    owner: Tools/execution/audit/audit_dimension_contract.py
+    level: contract
+    lifecycle: current
+    disposition: keep
+    semantics: audit_dimension_contract
+    parallel_safe: true
+  - path: Tools/tests/test_audit_evidence_runtime.py
+    owner: Tools/execution/audit/audit_evidence_runtime.py
+    level: contract
+    lifecycle: current
+    disposition: keep
+    semantics: audit_evidence_reconciliation_current_owner
+    owner_contract_symbol: audit_evidence_runtime._required_obligation_resolution
+    parallel_safe: true
+    overrides:
+      - selector: AuditEvidenceCheckpointIntegrationTests.*
+        level: integration
+        semantics: audit_evidence_stage_to_batch_review_checkpoint
+        owner_contract_symbol: audit_evidence_runtime.stage_evidence_closure
+        parallel_safe: true
+      - selector: TerminalDimensionEvidenceProjectionTests.*
+        level: contract
+        semantics: terminal_plan_bound_dimension_evidence_projection
+        owner_contract_symbol: audit_evidence_runtime.terminal_dimension_evidence
+        parallel_safe: true
+  - path: Tools/tests/test_audit_execution_runtime.py
+    owner: Tools/execution/audit/audit_execution_runtime.py
+    level: unit
+    lifecycle: current
+    disposition: keep
+    semantics: audit_execution_runtime
+    parallel_safe: true
+  - path: Tools/tests/test_audit_fingerprint.py
+    owner: Tools/execution/audit/audit_fingerprint.py
+    level: unit
+    lifecycle: current
+    disposition: keep
+    semantics: audit_fingerprint
+    parallel_safe: true
+  - path: Tools/tests/test_audit_lifecycle_closure.py
+    owner: kernel/K12 Quality Assurance/audit-plan-contract.yaml
+    level: contract
+    lifecycle: current
+    disposition: keep
+    semantics: audit_lifecycle_closure
+    parallel_safe: true
+    overrides:
+      - selector: AuditLifecycleClosureTests.test_chain_and_runtime_route_use_the_same_explicit_authority_root
+        level: integration
+        semantics: audit_lifecycle_current_repository_route_seam
+        parallel_safe: false
+  - path: Tools/tests/test_audit_obligation_projection.py
+    owner: Tools/execution/audit/audit_obligation_projection.py
+    level: contract
+    lifecycle: current
+    disposition: keep
+    semantics: audit_obligation_projection
+    parallel_safe: true
+  - path: Tools/tests/test_audit_plan_contract.py
+    owner: Tools/execution/audit/audit_plan_contract.py
+    level: contract
+    lifecycle: current
+    disposition: keep
+    semantics: audit_plan_contract
+    parallel_safe: true
+  - path: Tools/tests/test_audit_plan_loader_unification.py
+    owner: Tools/execution/audit/audit_plan_contract.py
+    level: unit
+    lifecycle: current
+    disposition: keep
+    semantics: audit_plan_loader_unification
+    parallel_safe: true
+  - path: Tools/tests/test_audit_producers.py
+    owner: Tools/operation-capabilities.yaml
+    level: unit
+    lifecycle: current
+    disposition: keep
+    semantics: audit_producers
+    parallel_safe: true
+  - path: Tools/tests/test_audit_receipt_contract.py
+    owner: Tools/execution/audit/audit_receipt_contract.py
+    level: contract
+    lifecycle: current
+    disposition: keep
+    semantics: current_full_audit_receipt_contract
+    owner_contract_symbol: audit_receipt_contract.validate_audit_receipt
+    parallel_safe: true
+    overrides:
+      - selector: AuditReceiptSchemaContractTests.*
+        semantics: audit_receipt_closed_schema_and_identity
+        owner_contract_symbol: audit_receipt_contract.validate_contract
+        parallel_safe: true
+      - selector: AuditReceiptAfterImageContractTests.*
+        semantics: audit_receipt_page_after_image_contract
+        owner_contract_symbol: audit_receipt_contract.page_artifact_fingerprint_contract
+        parallel_safe: true
+      - selector: AuditReceiptTypedDispatchIntegrationTests.*
+        owner: Tools/execution/evidence/receipt_type_contract.py
+        level: integration
+        semantics: audit_receipt_typed_registry_dispatch
+        owner_contract_symbol: receipt_type_contract.current_receipt_errors
+        parallel_safe: true
+  - path: Tools/tests/test_batch_close_audit.py
+    owner: Tools/execution/audit/batch_close_audit.py
+    level: unit
+    lifecycle: current
+    disposition: keep
+    semantics: batch_close_audit
+    parallel_safe: true
+  - path: Tools/tests/test_batch_close_contract.py
+    owner: Tools/execution/audit/batch_close_contract.py
+    level: contract
+    lifecycle: current
+    disposition: keep
+    semantics: batch_close_contract
+    parallel_safe: true
+    overrides:
+      - selector: BatchCloseToolPureChecks.*
+        owner: Tools/execution/audit/check_batch_close.py
+        level: unit
+        semantics: check_batch_close:pure_closed_list_projection
+        parallel_safe: true
+  - path: Tools/tests/test_batch_page_review_producer.py
+    owner: Tools/execution/audit/record_batch_page_review.py
+    level: unit
+    lifecycle: current
+    disposition: keep
+    semantics: batch_page_review_producer
+    parallel_safe: true
+  - path: Tools/tests/test_batch_settlement.py
+    owner: Tools/execution/task_runtime/batch_settlement.py
+    level: unit
+    lifecycle: current
+    disposition: keep
+    semantics: batch_settlement
+    parallel_safe: true
+  - path: Tools/tests/test_boundary_contract.py
+    owner: Tools/knowledge/structure/check_boundary_contract.py
+    level: contract
+    lifecycle: current
+    disposition: keep
+    semantics: page_boundary_gate_machine_contract
+    owner_contract_symbol: check_boundary_contract.current_receipt_errors
+    parallel_safe: true
+    overrides:
+      - selector: BoundaryValueContractTests.*
+        owner: Tools/platform/common/kblib.py
+        level: contract
+        semantics: boundary_value_and_projection_contract
+        owner_contract_symbol: kblib.validate_boundary_shape
+        parallel_safe: true
+      - selector: BoundaryInterpretationContractTests.*
+        owner: Tools/knowledge/structure/boundary_contract.py
+        level: contract
+        semantics: boundary_shared_machine_interpretation
+        owner_contract_symbol: boundary_contract.projection_marker_pair
+        parallel_safe: true
+      - selector: BoundaryGateIntegrationTests.*
+        level: integration
+        semantics: boundary_renderer_to_gate_acceptance_seam
+        owner_contract_symbol: check_boundary_contract.run
+        parallel_safe: true
+  - path: Tools/tests/test_candidate_lifecycle.py
+    owner: Tools/execution/evidence/candidate_lifecycle.py
+    level: unit
+    lifecycle: current
+    disposition: keep
+    semantics: candidate_lifecycle
+    parallel_safe: true
+  - path: Tools/tests/test_canonical_registry_fixture.py
+    owner: Tools/tests/support/canonical_registry_fixture.py
+    level: integration
+    lifecycle: current
+    disposition: keep
+    semantics: canonical_registry_fixture
+    parallel_safe: false
+  - path: Tools/tests/test_card_activation.py
+    owner: Tools/execution/context_delivery/card_activation.py
+    level: contract
+    lifecycle: current
+    disposition: keep
+    semantics: card_activation_current_contract
+    owner_contract_symbol: card_activation.ACTIVATION_PROTOCOL
+    parallel_safe: true
+    overrides:
+      - selector: CardActivationUnitTests.*
+        level: unit
+        semantics: card_activation_transport_binding
+        owner_contract_symbol: card_activation._delivery_binding
+        parallel_safe: true
+      - selector: CardActivationContractTests.test_phase_projection_consumes_the_read_set_machine_contract
+        level: contract
+        semantics: card_activation_read_set_phase_projection
+        owner_contract_symbol: card_activation.PHASE_ORDER
+        parallel_safe: true
+      - selector: CardActivationContractTests.test_current_activation_context_is_closed_and_current
+        level: contract
+        semantics: card_activation_closed_context_predicate
+        owner_contract_symbol: card_activation.activation_context_errors
+        parallel_safe: true
+      - selector: CardActivationContractTests.test_receipt_and_exact_bundle_predicates_keep_one_current_boundary
+        level: contract
+        semantics: card_activation_receipt_and_exact_bundle_predicates
+        owner_contract_symbol: card_activation.exact_bundle_errors
+        parallel_safe: true
+      - selector: CardActivationIntegrationTests.*
+        level: integration
+        semantics: card_activation_runtime_to_gate_receipt_connection
+        owner_contract_symbol: card_activation.build_activation_context
+        parallel_safe: false
+  - path: Tools/tests/test_changed_scope_evidence.py
+    owner: Tools/execution/audit/changed_scope_evidence_contract.py
+    level: contract
+    lifecycle: current
+    disposition: keep
+    semantics: changed_scope_evidence_current_owner_contract
+    owner_contract_symbol: changed_scope_evidence_contract.validate_record_for_plan
+    parallel_safe: true
+    overrides:
+      - selector: ChangedScopeEvidenceIntegrationTests.*
+        level: integration
+        semantics: changed_scope_evidence_producer_consumer_seam
+        owner_contract_symbol: changed_scope_evidence_contract.validate_record_for_plan
+        parallel_safe: true
+  - path: Tools/tests/test_changed_scope_rendering_checks.py
+    owner: Tools/knowledge/rendering/changed_scope_rendering_checks.py
+    level: unit
+    lifecycle: current
+    disposition: keep
+    semantics: changed_scope_rendering_checks
+    parallel_safe: true
+  - path: Tools/tests/test_changed_scope_runtime_checks.py
+    owner: Tools/execution/audit/changed_scope_runtime_checks.py
+    level: unit
+    lifecycle: current
+    disposition: keep
+    semantics: changed_scope_runtime_checks
+    parallel_safe: true
+    overrides:
+      - selector: KernelRegistryBindingContractTests.*
+        level: contract
+        semantics: changed_scope_runtime_check_kernel_registry_binding
+        owner_contract_symbol: changed_scope_runtime_checks.CHECKS_BY_RULE_ID
+        parallel_safe: true
+      - selector: FrozenTaskContractReferenceTests.*
+        level: contract
+        semantics: changed_scope_owned_consumer_finding_projection
+        owner_contract_symbol: changed_scope_runtime_checks.frozen_task_contract_references
+        parallel_safe: true
+      - selector: ResultContractTests.*
+        level: contract
+        semantics: changed_scope_closed_result_contract
+        owner_contract_symbol: changed_scope_runtime_checks.validate_check_result
+        parallel_safe: true
+  - path: Tools/tests/test_check_batch_close.py
+    owner: Tools/execution/audit/check_batch_close.py
+    level: integration
+    lifecycle: current
+    disposition: keep
+    semantics: batch_close_producer_to_queue_close_writer_seam
+    owner_contract_symbol: check_batch_close.main
+    parallel_safe: false
+    overrides:
+      - selector: InvocationContractTests.*
+        level: contract
+        semantics: batch_close_invocation_contract
+        owner_contract_symbol: check_batch_close._main
+        parallel_safe: true
+      - selector: WorkSpecStabilityContractTests.*
+        level: contract
+        semantics: batch_close_bound_work_spec_byte_stability
+        owner_contract_symbol: check_batch_close._assert_work_spec_unchanged
+        parallel_safe: true
+      - selector: ManifestPageCasSlowTests.*
+        level: slow
+        semantics: batch_close_manifest_page_identity_and_byte_cas
+        owner_contract_symbol: check_batch_close._assert_manifest_pages_unchanged
+        parallel_safe: true
+      - selector: BatchCloseRecoveryProjectionTests.*
+        owner: Tools/execution/task_runtime/queue_runtime/resume.py
+        level: unit
+        semantics: batch_close_current_bundle_recovery_projection
+        owner_contract_symbol: resume.batch_close_recovery_inventory
+        parallel_safe: true
+      - selector: AppliedBatchCloseTests.test_partial_multi_register_publication_retains_fail_closed_lock
+        level: slow
+        semantics: batch_close_interrupted_publication_fail_closed
+        owner_contract_symbol: check_batch_close._append_receipts
+        parallel_safe: false
+      - selector: StateMutatingVerifierSlowTests.*
+        level: slow
+        semantics: check_batch_close:state_mutation_preserves_runtime_lock
+        owner_contract_symbol: check_batch_close.main
+        parallel_safe: false
+  - path: Tools/tests/test_check_corpus_plan.py
+    owner: Tools/execution/planning/check_corpus_plan.py
+    level: contract
+    lifecycle: current
+    disposition: keep
+    semantics: corpus_plan_checker_contract
+    owner_contract_symbol: check_corpus_plan.validate_corpus_plan
+    parallel_safe: true
+    overrides:
+      - selector: CorpusAcceptancePlanContractTests.*
+        level: contract
+        semantics: corpus_semantic_acceptance_plan_predicate
+        owner_contract_symbol: check_corpus_plan.acceptance_plan_errors
+        parallel_safe: true
+      - selector: CorpusPlanPipelineIntegrationTests.*
+        level: integration
+        semantics: corpus_plan_authorized_artifact_receipt_connection
+        owner_contract_symbol: check_corpus_plan.validate_corpus_plan
+        parallel_safe: false
+      - selector: CorpusPlanSlotAdapterContractTests.*
+        level: contract
+        semantics: corpus_plan_profile_slot_adapter
+        owner_contract_symbol: check_corpus_plan._validate_slot
+        parallel_safe: true
+      - selector: CorpusPlanProfileScopeContractTests.*
+        level: contract
+        semantics: corpus_plan_profile_scope_projection
+        owner_contract_symbol: check_corpus_plan._validate_profile_scope
+        parallel_safe: true
+      - selector: CheckCorpusPlanMapContractTests.*
+        level: contract
+        semantics: corpus_plan_global_map_contract
+        owner_contract_symbol: check_corpus_plan._validate_global_map
+        parallel_safe: true
+      - selector: CheckCorpusPlanMatrixGapContractTests.test_capability_matrix_closed_values_and_references
+        level: contract
+        semantics: corpus_plan_capability_matrix_contract
+        owner_contract_symbol: check_corpus_plan._validate_matrix
+        parallel_safe: true
+      - selector: CheckCorpusPlanMatrixGapContractTests.test_gap_register_closed_values_and_bidirectional_links
+        level: contract
+        semantics: corpus_plan_gap_register_contract
+        owner_contract_symbol: check_corpus_plan._validate_gap_register
+        parallel_safe: true
+      - selector: CheckCorpusPlanMatrixGapContractTests.test_runtime_namespace_cannot_supply_planning_evidence
+        level: contract
+        semantics: corpus_plan_artifact_evidence_namespace_contract
+        owner_contract_symbol: check_corpus_plan._reject_runtime_path
+        parallel_safe: true
+      - selector: PromotedGapConsumerUnitTests.*
+        level: unit
+        semantics: corpus_plan_promoted_gap_consumer
+        owner_contract_symbol: check_corpus_plan._reconcile_promotion
+        parallel_safe: true
+  - path: Tools/tests/test_check_freshness.py
+    owner: Tools/knowledge/metadata/check_freshness.py
+    level: unit
+    lifecycle: current
+    disposition: keep
+    semantics: freshness_scanner_filesystem_time_adapter
+    owner_contract_symbol: check_freshness._utc_modified_on
+    parallel_safe: true
+    overrides:
+      - selector: FreshnessReceiptProjectionContractTests.*
+        level: contract
+        semantics: typed_freshness_outcome_to_receipt_projection
+        owner_contract_symbol: check_freshness._scan_bridge
+        parallel_safe: true
+      - selector: FreshnessScannerAdapterUnitTests.test_standalone_defaults_adapter_accepts_only_flat_mappings
+        level: unit
+        semantics: freshness_standalone_flat_defaults_adapter
+        owner_contract_symbol: check_freshness._load_standalone_defaults
+        parallel_safe: true
+      - selector: FreshnessReceiptAcceptanceContractTests.*
+        owner: Tools/knowledge/metadata/freshness_receipt_contract.py
+        level: contract
+        semantics: freshness_receipt_payload_acceptance_closure
+        owner_contract_symbol: freshness_receipt_contract.current_receipt_errors
+        parallel_safe: true
+      - selector: FreshnessScannerIntegrationTests.*
+        level: integration
+        semantics: current_page_snapshot_to_freshness_receipt_seam
+        owner_contract_symbol: check_freshness._run
+        parallel_safe: true
+      - selector: FreshnessScannerSlowTests.test_scope_snapshot_admission_and_listing_fail_closed
+        level: slow
+        semantics: freshness_scope_snapshot_security_boundary
+        owner_contract_symbol: check_freshness._capture_scope
+        parallel_safe: false
+      - selector: FreshnessScannerSlowTests.test_currentness_detects_set_bytes_identity_mtime_and_scope_drift
+        level: slow
+        semantics: freshness_scope_currentness_boundary
+        owner_contract_symbol: check_freshness._scope_currency_errors
+        parallel_safe: false
+      - selector: FreshnessScannerSlowTests.test_interleaved_page_or_defaults_drift_blocks_receipt_publication
+        level: slow
+        semantics: freshness_receipt_publication_currentness_boundary
+        owner_contract_symbol: check_freshness._run
+        parallel_safe: false
+  - path: Tools/tests/test_check_kernel_size.py
+    owner: Tools/platform/distribution/check_kernel_size.py
+    level: contract
+    lifecycle: current
+    disposition: keep
+    semantics: kernel_size_policy_and_budget_acceptance
+    owner_contract_symbol: check_kernel_size.load_policy
+    parallel_safe: true
+    overrides:
+      - selector: KernelSizeBudgetPredicateTests.*
+        level: unit
+        semantics: kernel_leaf_size_budget_acceptance_predicate
+        owner_contract_symbol: check_kernel_size.evaluate
+        parallel_safe: true
+      - selector: KernelSizeCliIntegrationTests.*
+        level: integration
+        semantics: kernel_size_minimal_repository_cli
+        owner_contract_symbol: check_kernel_size.main
+        parallel_safe: true
+  - path: Tools/tests/test_check_links.py
+    owner: Tools/knowledge/content/check_links.py
+    level: unit
+    lifecycle: current
+    disposition: keep
+    semantics: active_wiki_link_resolution_index
+    owner_contract_symbol: check_links.resolve
+    parallel_safe: true
+    overrides:
+      - selector: ExcludedHistoryResolutionIntegrationTests.*
+        level: integration
+        semantics: excluded_history_exact_path_resolution_cli_seam
+        owner_contract_symbol: check_links.main
+        parallel_safe: true
+  - path: Tools/tests/test_check_profile.py
+    owner: Tools/governance/profile/check_profile.py
+    level: contract
+    lifecycle: current
+    disposition: keep
+    semantics: profile_load_checker_predicates
+    owner_contract_symbol: check_profile.main
+    parallel_safe: true
+    overrides:
+      - selector: ExecutionDefaultContractTests.*
+        level: contract
+        semantics: profile_execution_default_parser_and_value_domains
+        owner_contract_symbol: check_profile.VALUE_DOMAINS
+        parallel_safe: true
+      - selector: ProfileParserUnitTests.test_binding_section_obeys_markdown_authority_boundaries
+        level: unit
+        semantics: profile_manifest_binding_section_parser
+        owner_contract_symbol: check_profile.parse_bindings
+        parallel_safe: true
+      - selector: ProfileParserUnitTests.test_declarations_consume_only_supplied_snapshot_bytes
+        level: unit
+        semantics: profile_declaration_snapshot_parser
+        owner_contract_symbol: check_profile.profile_declarations
+        parallel_safe: true
+      - selector: ProfileParserUnitTests.test_sentinel_scan_reads_only_the_supplied_closure
+        level: unit
+        semantics: profile_sentinel_snapshot_scan
+        owner_contract_symbol: check_profile.scan_sentinel
+        parallel_safe: true
+      - selector: CorpusPlanningSlotContractTests.*
+        level: contract
+        semantics: configured_profile_slot_defers_corpus_artifact_resolution
+        owner_contract_symbol: check_profile.validate_corpus_planning_slot
+        parallel_safe: true
+      - selector: FindingClassificationContractTests.*
+        level: contract
+        semantics: check_profile_finding_classification
+        owner_contract_symbol: check_profile.FINDING_CATEGORIES
+        parallel_safe: true
+      - selector: ProfileCliTransportTests.*
+        level: integration
+        semantics: check_profile_typed_contract_json_cli_seam
+        owner_contract_symbol: check_profile.main
+        parallel_safe: true
+  - path: Tools/tests/test_check_proof_audit_receipts.py
+    owner: Tools/execution/audit/check_proof.py
+    level: unit
+    lifecycle: current
+    disposition: keep
+    semantics: terminal_proof_dimension_coverage_contract
+    owner_contract_symbol: check_proof._dimension_coverage_failures
+    parallel_safe: true
+    overrides:
+      - selector: TerminalProofAuditReceiptConsumerIntegrationTests.*
+        level: integration
+        semantics: terminal_proof_plan_bound_dimension_evidence_consumer
+        owner_contract_symbol: check_proof._validate_dimension_coverage_evidence
+        parallel_safe: false
+      - selector: TerminalProofContractTests.*
+        owner: Tools/execution/audit/terminal_proof_contract.py
+        level: contract
+        semantics: terminal_proof_machine_contract
+        owner_contract_symbol: terminal_proof_contract.validate_proof
+        parallel_safe: true
+      - selector: TerminalProofAssemblerUnitTests.*
+        owner: Tools/execution/audit/assemble_terminal_proof.py
+        level: unit
+        semantics: terminal_proof_assembler_projection
+        owner_contract_symbol: assemble_terminal_proof.assemble_terminal_proof
+        parallel_safe: true
+  - path: Tools/tests/test_check_queue.py
+    owner: Tools/execution/task_runtime/check_queue.py
+    level: unit
+    lifecycle: current
+    disposition: keep
+    semantics: check_queue
+    owner_contract_symbol: check_queue.main
+    parallel_safe: true
+    overrides:
+      - selector: CheckQueueUnitTests.test_json_mode_routes_human_output_and_one_canonical_receipt
+        level: contract
+        semantics: check_queue_json_transport_contract
+        owner_contract_symbol: check_queue.main
+        parallel_safe: true
+      - selector: CheckQueueContractTests.*
+        level: contract
+        semantics: check_queue_consumer_routing_contract
+        owner_contract_symbol: check_queue._run
+        parallel_safe: true
+      - selector: CheckQueueFileBoundaryTests.*
+        level: slow
+        semantics: check_queue_receipt_file_boundary_connection
+        owner_contract_symbol: check_queue._write_receipt
+        parallel_safe: false
+        consumer_only: true
+        primary_owner_test: test_runtime_safety.ReceiptSafetyTests.test_receipt_writer_rejects_aliases_and_authoritative_targets
+      - selector: TaskProgressTerminalStateUnitTests.*
+        owner: Tools/execution/task_runtime/queue_runtime/task_progress.py
+        level: unit
+        semantics: task_progress_terminal_state_contract
+        owner_contract_symbol: task_progress.task_transition_errors
+        parallel_safe: true
+      - selector: MaintenanceCompletionCheckpointIntegrationTests.test_gate_*
+        owner: Tools/execution/task_runtime/queue_runtime/maintenance.py
+        level: integration
+        semantics: maintenance_completion_gate_current_evidence_contract
+        owner_contract_symbol: maintenance.maintenance_completion_gate_errors
+        parallel_safe: false
+      - selector: MaintenanceCompletionCheckpointIntegrationTests.test_resume_*
+        owner: Tools/execution/task_runtime/queue_runtime/resume.py
+        level: integration
+        semantics: maintenance_gate_currentness_to_resume_selection
+        owner_contract_symbol: resume.maintenance_gate_inventory
+        parallel_safe: false
+  - path: Tools/tests/test_check_structure.py
+    owner: Tools/platform/common/kblib.py
+    level: contract
+    lifecycle: current
+    disposition: keep
+    semantics: structure_registry_machine_contract
+    owner_contract_symbol: kblib.validate_structure_registry_shape
+    parallel_safe: true
+    overrides:
+      - selector: StructureRegistryShapeContractTests.test_identity_graph_and_stable_references_fail_closed
+        level: contract
+        semantics: structure_registry_identity_graph_and_reference_contract
+        owner_contract_symbol: kblib.validate_structure_registry_references
+        parallel_safe: true
+      - selector: StructureRegistryFilesystemIntegrationTests.test_current_registry_cli_and_resolution_failures_share_one_checkpoint
+        owner: Tools/knowledge/structure/check_structure.py
+        level: integration
+        semantics: structure_registry_current_profile_resolution_and_cli_seam
+        owner_contract_symbol: check_structure.run
+        parallel_safe: false
+  - path: Tools/tests/test_ci_impact.py
+    owner: .github/scripts/ci_impact.py
+    level: contract
+    lifecycle: current
+    disposition: keep
+    semantics: changed_path_to_required_verification_impact
+    owner_contract_symbol: ci_impact.plan_changes
+    parallel_safe: true
+    overrides:
+      - selector: ToolDependencyImpactContractTests.*
+        level: contract
+        semantics: changed_tool_reverse_test_closure
+        owner_contract_symbol: ci_impact.impacted_tool_tests
+        parallel_safe: true
+  - path: Tools/tests/test_close_gate_post_delta_consumer.py
+    owner: kernel/K12 Quality Assurance/batch-close-closed-list.yaml
+    level: contract
+    lifecycle: current
+    disposition: keep
+    semantics: close_gate_post_delta_consumer
+    parallel_safe: true
+    overrides:
+      - selector: PostDeltaCloseConsumerTests.test_current_work_spec_binding_is_explicit_and_exact
+        owner: Tools/execution/task_runtime/queue_runtime/close_gate.py
+        level: contract
+        semantics: batch_close_current_work_spec_binding_consumer
+        owner_contract_symbol: close_gate.close_gate_receipt_errors
+        parallel_safe: true
+      - selector: PostDeltaCloseConsumerTests.test_adopter_registry_root_is_shared_by_plan_producer_and_consumer
+        level: integration
+        semantics: post_delta_current_repository_owner_seam
+        parallel_safe: false
+  - path: Tools/tests/test_compile_cli_contract.py
+    owner: Tools/platform/agent_interface/compile_cli_contract.py
+    level: contract
+    lifecycle: current
+    disposition: keep
+    semantics: compiled_cli_contract
+    owner_contract_symbol: compile_cli_contract.compile_contract
+    parallel_safe: true
+    overrides:
+      - selector: CurrentCliOwnerClosureTests.test_compiled_surface_is_the_exact_join_of_current_machine_owners
+        level: contract
+        semantics: cli_contract_current_parser_policy_and_source_closure
+        owner_contract_symbol: compile_cli_contract.compile_contract
+        parallel_safe: true
+      - selector: CliContractUnitTests.test_choice_sets_have_one_canonical_projection_order
+        level: unit
+        semantics: cli_contract_choice_normalization
+        owner_contract_symbol: compile_cli_contract.normalize_choices
+        parallel_safe: true
+      - selector: CompilerFixtureContractTests.test_argument_and_group_shape_are_derived_from_argparse
+        level: contract
+        semantics: cli_contract_argparse_shape_projection
+        owner_contract_symbol: compile_cli_contract.compile_contract
+        parallel_safe: true
+      - selector: AgentInterfaceJoinContractTests.test_apply_gated_writers_are_derived_from_compiled_path_effects
+        level: contract
+        semantics: cli_contract_apply_gated_writer_projection
+        owner_contract_symbol: compile_cli_contract.apply_gated_writer_tools
+        parallel_safe: true
+      - selector: CompilerFixtureContractTests.test_introspection_stops_before_behavior_and_ignores_libraries
+        level: contract
+        semantics: cli_compiler_entrypoint_loader_consumer_seam
+        owner_contract_symbol: compile_cli_contract.compile_contract
+        consumer_only: true
+        primary_owner_test: test_entrypoint_loader.EntrypointLoaderTests.test_parser_is_captured_from_the_unique_implementation_owner
+        parallel_safe: true
+      - selector: CompilerFixtureContractTests.test_receipt_source_closure_classifies_static_and_dynamic_fields
+        level: contract
+        semantics: cli_contract_receipt_extension_source_closure
+        owner_contract_symbol: compile_cli_contract.compile_contract
+        parallel_safe: true
+      - selector: CompilerFixtureContractTests.test_same_owner_inputs_render_identically_without_process_replay
+        level: contract
+        semantics: cli_contract_deterministic_projection
+        owner_contract_symbol: compile_cli_contract.compile_contract
+        parallel_safe: true
+      - selector: AgentInterfaceJoinContractTests.test_policy_identity_resolves_to_one_compiled_path_capability
+        level: contract
+        semantics: cli_contract_policy_runtime_path_join
+        owner_contract_symbol: compile_cli_contract.compile_contract
+        parallel_safe: true
+      - selector: AgentInterfaceJoinContractTests.test_policy_join_fails_closed_without_redeclaring_policy_shape
+        level: contract
+        semantics: cli_contract_policy_join_fail_closed
+        owner_contract_symbol: compile_cli_contract.compile_contract
+        parallel_safe: true
+      - selector: CompilerProjectionLifecycleTests.test_write_check_stale_and_unreliable_evidence_share_one_lifecycle
+        level: integration
+        semantics: source_cli_projection_write_check_hold_and_evidence_refusal
+        owner_contract_symbol: compile_cli_contract.main
+        parallel_safe: false
+      - selector: CompilerProjectionLifecycleTests.test_projection_identity_fixes_the_current_artifact_path
+        level: integration
+        semantics: cli_contract_projection_identity_and_registered_output
+        owner_contract_symbol: compile_cli_contract.main
+        parallel_safe: false
+      - selector: CompilerCliTransportTests.test_public_cli_transports_one_current_projection_check
+        level: integration
+        semantics: compile_cli_contract_public_transport
+        owner_contract_symbol: compile_cli_contract.main
+        parallel_safe: false
+  - path: Tools/tests/test_compile_queue.py
+    owner: Tools/execution/planning/compile_queue.py
+    level: unit
+    lifecycle: current
+    disposition: keep
+    semantics: compile_queue_materialization_and_replan_predicates
+    owner_contract_symbol: compile_queue.compile_document
+    parallel_safe: true
+    overrides:
+      - selector: CompileQueueContractTests.test_batch_spec_identity_is_unique_at_the_compiler_boundary
+        level: contract
+        semantics: compile_queue_batch_spec_identity_contract
+        owner_contract_symbol: compile_queue._batch_specs
+        parallel_safe: true
+      - selector: CompileQueueContractTests.test_compile_document_materializes_only_declared_structure
+        level: unit
+        semantics: compile_queue_declared_structure_materialization
+        owner_contract_symbol: compile_queue.compile_document
+        parallel_safe: true
+      - selector: CompileQueueContractTests.test_explicit_dependency_cycle_is_rejected
+        level: unit
+        semantics: compile_queue_dependency_cycle_contract
+        owner_contract_symbol: compile_queue.compile_document
+        parallel_safe: true
+      - selector: CompileQueueContractTests.test_same_scope_proposal_changes_only_registered_routing_fields
+        level: unit
+        semantics: compile_queue_same_scope_proposal_contract
+        owner_contract_symbol: compile_queue.validate_same_scope_proposal
+        parallel_safe: true
+      - selector: CompileQueueContractTests.test_open_work_spec_change_requires_revalidation_hold
+        level: unit
+        semantics: compile_queue_open_work_spec_revalidation_contract
+        owner_contract_symbol: compile_queue.replan_diff
+        parallel_safe: true
+      - selector: CompileQueueContractTests.test_replan_diff_preserves_terminal_history_and_reports_inflight_removal
+        level: unit
+        semantics: compile_queue_replan_history_contract
+        owner_contract_symbol: compile_queue.replan_diff
+        parallel_safe: true
+      - selector: CompileQueueContractTests.test_replan_order_fills_around_fixed_history
+        level: unit
+        semantics: compile_queue_replan_order_contract
+        owner_contract_symbol: compile_queue._assign_replan_orders
+        parallel_safe: true
+      - selector: CompileQueueCheckpointTests.test_cli_json_materializes_one_current_planning_checkpoint
+        level: integration
+        semantics: compile_queue_cli_json_initial_materialization_readback
+        owner_contract_symbol: compile_queue.main
+        parallel_safe: false
+      - selector: CompileQueueReplanCurrentnessIntegrationTests.*
+        level: integration
+        semantics: compile_queue_replan_diff_currentness
+        owner_contract_symbol: compile_queue.main
+        parallel_safe: false
+      - selector: CompileQueueTransactionRecoverySlowTests.*
+        level: slow
+        semantics: compile_queue_transaction_recovery_matrix
+        owner_contract_symbol: compile_queue._commit_state
+        parallel_safe: false
+  - path: Tools/tests/test_component_registry_projection.py
+    owner: Tools/module-boundaries.yaml
+    level: contract
+    lifecycle: current
+    disposition: keep
+    semantics: component_layout_single_owner_contract
+    parallel_safe: true
+    overrides:
+      - selector: LayoutProjectionIntegrationTests.test_changed_owner_layout_reaches_every_direct_projection
+        owner: Tools/platform/distribution/stamp_cards.py
+        level: integration
+        semantics: component_layout_generator_projection
+        owner_contract_symbol: stamp_cards.discover_cards
+        parallel_safe: true
+      - selector: ProfileLayoutContractTests.test_owner_classifies_candidate_template_and_example_manifests
+        owner: Tools/governance/profile/profile_layout_contract.py
+        level: contract
+        semantics: profile_layout_machine_owner
+        owner_contract_symbol: profile_layout_contract.parse_profile_manifest_path
+        parallel_safe: true
+      - selector: ProfileLayoutContractTests.test_direct_consumers_use_the_owner_reserved_namespace_set
+        owner: Tools/governance/profile/profile_layout_contract.py
+        level: contract
+        semantics: profile_reserved_namespace_consumer_closure
+        owner_contract_symbol: profile_layout_contract.RESERVED_PROFILE_IDS
+        parallel_safe: true
+      - selector: SingleOwnerContractTests.test_profile_manifest_filename_has_one_production_owner
+        owner: Tools/governance/profile/profile_layout_contract.py
+        level: contract
+        semantics: profile_manifest_filename_single_owner
+        owner_contract_symbol: profile_layout_contract.PROFILE_MANIFEST_NAME
+        parallel_safe: true
+      - selector: SingleOwnerContractTests.test_route_registry_consumers_share_the_current_projection
+        owner: Tools/platform/distribution/stamp_cards.py
+        level: contract
+        semantics: current_card_read_set_registry_consumer_closure
+        owner_contract_symbol: stamp_cards.discover_cards
+        parallel_safe: true
+      - selector: SingleOwnerContractTests.test_retired_layout_aliases_and_exports_cannot_reappear
+        owner: Tools/module-boundaries.yaml
+        level: contract
+        semantics: retired_component_layout_interface_absence
+        owner_contract_symbol: module-boundaries.yaml
+        parallel_safe: true
+  - path: Tools/tests/test_contract_exception_policy_registry.py
+    owner: kernel/K00 Standards Control/contract-exception-policy-base.yaml
+    level: contract
+    lifecycle: current
+    disposition: keep
+    semantics: contract_exception_policy_registry
+    parallel_safe: true
+  - path: Tools/tests/test_control_registry_contract.py
+    owner: Tools/governance/control/control_registry_contract.py
+    level: contract
+    lifecycle: current
+    disposition: keep
+    semantics: control_registry_contract
+    parallel_safe: true
+  - path: Tools/tests/test_corpus_planning_contract.py
+    owner: Tools/execution/planning/corpus_planning_contract.py
+    level: contract
+    lifecycle: current
+    disposition: keep
+    semantics: corpus_planning_contract
+    owner_contract_symbol: corpus_planning_contract.validate_corpus_planning_contract
+    parallel_safe: true
+    overrides:
+      - selector: CorpusPlanningRegistryTests.test_adopting_registry_cannot_drift_from_the_deployed_contract
+        level: integration
+        semantics: corpus_planning_deployed_contract_currentness
+        owner_contract_symbol: corpus_planning_contract.current_corpus_planning_contract_values
+        parallel_safe: false
+  - path: Tools/tests/test_coverage_contract.py
+    owner: Tools/execution/planning/coverage_contract.py
+    level: contract
+    lifecycle: current
+    disposition: keep
+    semantics: coverage_contract
+    parallel_safe: true
+  - path: Tools/tests/test_coverage_delta.py
+    owner: Tools/execution/planning/coverage_delta.py
+    level: unit
+    lifecycle: current
+    disposition: keep
+    semantics: coverage_delta
+    parallel_safe: true
+  - path: Tools/tests/test_deterministic_rendering_contract.py
+    owner: Tools/knowledge/rendering/deterministic_rendering_contract.py
+    level: contract
+    lifecycle: current
+    disposition: keep
+    semantics: deterministic_rendering_contract
+    parallel_safe: true
+  - path: Tools/tests/test_duplicate_check.py
+    owner: Tools/knowledge/content/duplicate_check.py
+    level: unit
+    lifecycle: current
+    disposition: keep
+    semantics: duplicate_candidate_algorithm_and_managed_scope
+    owner_contract_symbol: duplicate_check.find_duplicates
+    parallel_safe: true
+    overrides:
+      - selector: DuplicateCandidateContractTests.*
+        level: contract
+        semantics: duplicate_scan_explicit_scope_and_producer_contract
+        owner_contract_symbol: duplicate_check._parser
+        parallel_safe: true
+  - path: Tools/tests/test_entrypoint_loader.py
+    owner: Tools/platform/agent_interface/entrypoint_loader.py
+    level: unit
+    lifecycle: current
+    disposition: keep
+    semantics: entrypoint_loader
+    parallel_safe: true
+    overrides:
+      - selector: EntrypointLoaderTests.test_adoption_wrappers_isolate_bytecode_before_owner_import
+        level: contract
+        semantics: adoption_entrypoint_external_bytecode_boundary
+        owner_contract_symbol: entrypoint_loader.describe_entrypoint
+        parallel_safe: true
+  - path: Tools/tests/test_evidence_attempt_runtime.py
+    owner: Tools/execution/evidence/evidence_attempt_runtime.py
+    level: unit
+    lifecycle: current
+    disposition: keep
+    semantics: evidence_attempt_runtime
+    parallel_safe: true
+  - path: Tools/tests/test_freshness_engine.py
+    owner: Tools/knowledge/metadata/freshness_engine.py
+    level: unit
+    lifecycle: current
+    disposition: keep
+    semantics: freshness_engine
+    parallel_safe: true
+    overrides:
+      - selector: FreshnessEngineTests.test_pending_due_date_beyond_calendar_is_explicit_not_a_crash
+        level: slow
+        semantics: freshness_engine:test_pending_due_date_beyond_calendar_is_explicit_not_a_crash
+        parallel_safe: false
+  - path: Tools/tests/test_gate_receipt_identity.py
+    owner: kernel/K00 Standards Control/control-registry.yaml
+    level: contract
+    lifecycle: current
+    disposition: keep
+    semantics: current_gate_receipt_identity_contract
+    owner_contract_symbol: control-registry.gates
+    parallel_safe: true
+    overrides:
+      - selector: GateReceiptSelectorTests.*
+        owner: Tools/execution/task_runtime/queue_runtime/gate_registry.py
+        level: contract
+        semantics: registered_gate_receipt_selector
+        owner_contract_symbol: gate_registry.receipt_matches_gate_id
+        parallel_safe: true
+      - selector: GateProducerClosureTests.*
+        owner: Tools/execution/task_runtime/queue_runtime/gate_registry.py
+        level: contract
+        semantics: registered_gate_installed_producer_closure
+        owner_contract_symbol: gate_registry.gate_registry_producer_errors
+        parallel_safe: true
+      - selector: GateLifecycleProjectionTests.*
+        owner: Tools/execution/task_runtime/queue_runtime/gate_registry.py
+        level: contract
+        semantics: registered_gate_lifecycle_partition
+        owner_contract_symbol: gate_registry.partition_boundary_gates_by_lifecycle
+        parallel_safe: true
+      - selector: RuntimeReceiptIdentityTests.*
+        owner: Tools/platform/common/kblib.py
+        level: contract
+        semantics: current_queue_receipt_identity_projection
+        owner_contract_symbol: kblib.runtime_receipt_identity
+        parallel_safe: true
+      - selector: RuntimeReceiptIdentitySlowTests.*
+        owner: Tools/platform/common/kblib.py
+        level: slow
+        semantics: runtime_receipt_identity_path_security
+        owner_contract_symbol: kblib.runtime_receipt_identity
+        parallel_safe: false
+      - selector: GateReceiptProducerConsumerTests.*
+        owner: Tools/knowledge/content/check_links.py
+        level: integration
+        semantics: gate_producer_receipt_queue_identity_seam
+        owner_contract_symbol: check_links._make_receipt
+        parallel_safe: false
+  - path: Tools/tests/test_host_conformance.py
+    owner: Tools/host-conformance.yaml
+    level: contract
+    lifecycle: current
+    disposition: keep
+    semantics: host_conformance
+    parallel_safe: true
+    overrides:
+      - selector: ConformanceRegistryTests.test_only_measured_delivery_channels_claim_transport_assurance
+        semantics: host_channel_assurance_boundary
+        owner_contract_symbol: channels
+        parallel_safe: true
+  - path: Tools/tests/test_implementation_marker.py
+    owner: Tools/platform/common/implementation_marker.py
+    level: contract
+    lifecycle: current
+    disposition: keep
+    semantics: implementation_marker
+    parallel_safe: true
+  - path: Tools/tests/test_initial_task_plan_fixture.py
+    owner: Tools/tests/support/initial_task_plan_fixture.py
+    level: integration
+    lifecycle: current
+    disposition: keep
+    semantics: initial_task_plan_current_checkpoint_integrity
+    owner_contract_symbol: initial_task_plan_fixture.install_initial_task_plan_fixture
+    parallel_safe: false
+    overrides:
+      - selector: InitialTaskPlanReferenceContractTests.*
+        owner: Tools/execution/task_runtime/queue_runtime/task_contract.py
+        level: contract
+        semantics: initial_task_plan_receipt_reference_required
+        owner_contract_symbol: task_contract.initial_task_plan_receipt_errors
+        parallel_safe: true
+  - path: Tools/tests/test_issue_owner.py
+    owner: Tools/module-boundaries.yaml
+    level: unit
+    lifecycle: current
+    disposition: keep
+    semantics: issue_owner
+    parallel_safe: true
+  - path: Tools/tests/test_kblib_yaml.py
+    owner: Tools/platform/common/kblib.py
+    level: contract
+    lifecycle: current
+    disposition: keep
+    semantics: kblib_yaml
+    parallel_safe: true
+  - path: Tools/tests/test_maintenance_candidates.py
+    owner: Tools/knowledge/content/maintenance_candidates.py
+    level: unit
+    lifecycle: current
+    disposition: keep
+    semantics: maintenance_candidates
+    parallel_safe: true
+  - path: Tools/tests/test_managed_content_scope.py
+    owner: Tools/platform/common/kblib.py
+    level: contract
+    lifecycle: current
+    disposition: keep
+    semantics: repository_managed_content_set
+    owner_contract_symbol: kblib.repository_content_files
+    parallel_safe: true
+    overrides:
+      - selector: RepositoryContentFilesContractTests.test_managed_markdown_scope_filters_hidden_directories_and_escapes
+        level: contract
+        semantics: managed_markdown_scope
+        owner_contract_symbol: kblib.iter_managed_md_files
+        parallel_safe: true
+      - selector: RepositoryContentFilesGitIntegrationTests.*
+        level: integration
+        semantics: live_git_managed_content_seam
+        owner_contract_symbol: kblib.repository_content_files
+        parallel_safe: true
+      - selector: RepositoryStructureUnitTests.test_repository_files_filters_control_state_and_suffixes
+        owner: Tools/knowledge/structure/repository_structure.py
+        level: unit
+        semantics: repository_structure_content_filter
+        owner_contract_symbol: repository_structure.repository_files
+        parallel_safe: true
+      - selector: RepositoryStructureUnitTests.test_yaml_scope_is_the_selected_profile_plus_kernel
+        owner: Tools/knowledge/structure/repository_structure.py
+        level: unit
+        semantics: repository_structure_yaml_scope
+        owner_contract_symbol: repository_structure.check_repository_structure
+        parallel_safe: true
+      - selector: MocDiscoveryUnitTests.*
+        owner: Tools/knowledge/structure/check_moc.py
+        level: unit
+        semantics: managed_moc_discovery
+        owner_contract_symbol: check_moc.find_mocs
+        parallel_safe: true
+      - selector: RepositoryStructureCliIntegrationTests.*
+        owner: Tools/knowledge/structure/repository_structure.py
+        level: integration
+        semantics: repository_structure_public_cli_seam
+        owner_contract_symbol: repository_structure.main
+        parallel_safe: true
+  - path: Tools/tests/test_mcp_server.py
+    owner: Tools/platform/agent_interface/mcp_server.py
+    level: integration
+    lifecycle: current
+    disposition: keep
+    semantics: mcp_server
+    parallel_safe: false
+    overrides:
+      - selector: LayerBoundaryTests.*
+        level: contract
+        semantics: mcp_server_layer_contract
+        parallel_safe: true
+      - selector: WrapperBoundaryTests.*
+        owner: Tools/mcp_server.py
+        level: contract
+        semantics: mcp_server_wrapper_contract
+        parallel_safe: true
+      - selector: InitializeTests.*
+        level: contract
+        semantics: mcp_initialize_protocol_contract
+        parallel_safe: true
+      - selector: BindingTests.test_invalid_workspace_bindings_fail_closed_without_cwd_fallback
+        level: contract
+        semantics: mcp_workspace_binding_contract
+        parallel_safe: true
+      - selector: BindingTests.test_a_platform_without_no_follow_descriptors_refuses_initialize
+        level: contract
+        semantics: mcp_workspace_descriptor_contract
+        parallel_safe: true
+      - selector: BindingTests.test_a_session_refuses_a_replaced_workspace_directory
+        level: slow
+        semantics: mcp_workspace_replacement_isolation
+        parallel_safe: false
+      - selector: BindingTests.test_one_call_cannot_race_into_a_replacement_workspace
+        level: slow
+        semantics: mcp_workspace_replacement_race_isolation
+        parallel_safe: false
+      - selector: ProjectionLoadTests.*
+        level: contract
+        semantics: mcp_projection_load_contract
+        parallel_safe: true
+      - selector: ToolsListTests.*
+        level: contract
+        semantics: mcp_tool_list_projection_contract
+        parallel_safe: true
+      - selector: ArgvRenderingContractTests.*
+        owner: Tools/platform/agent_interface/cli_argv_renderer.py
+        level: contract
+        semantics: cli_argv_rendering_contract
+        parallel_safe: true
+      - selector: PathActivationContractTests.*
+        level: contract
+        semantics: mcp_path_capability_activation_contract
+        parallel_safe: true
+      - selector: PathCapabilityUnitTests.*
+        owner: Tools/platform/repository/path_capability.py
+        level: unit
+        semantics: path_capability_machine_owner
+        parallel_safe: true
+      - selector: PathCapabilityIsolationTests.*
+        owner: Tools/platform/repository/path_capability.py
+        level: slow
+        semantics: path_capability_security_recovery_isolation
+        parallel_safe: false
+      - selector: PathCapabilityAdmissionContractTests.*
+        level: contract
+        semantics: mcp_path_capability_admission_contract
+        parallel_safe: false
+      - selector: SeamTests.*
+        level: contract
+        semantics: mcp_completed_process_result_contract
+        parallel_safe: true
+      - selector: ProtocolTests.*
+        level: contract
+        semantics: mcp_jsonrpc_protocol_contract
+        parallel_safe: true
+      - selector: LiveStdioTests.*
+        level: integration
+        semantics: mcp_live_stdio_transport
+        parallel_safe: false
+  - path: Tools/tests/test_metadata_contract_projections.py
+    owner: Tools/governance/control/metadata_execution_contract.py
+    level: contract
+    lifecycle: current
+    disposition: keep
+    semantics: metadata_contract_projections
+    parallel_safe: true
+  - path: Tools/tests/test_metadata_execution_contract.py
+    owner: Tools/governance/control/metadata_execution_contract.py
+    level: contract
+    lifecycle: current
+    disposition: keep
+    semantics: metadata_execution_source_and_registry_closure
+    owner_contract_symbol: metadata_execution_contract.compile_metadata_execution_document
+    parallel_safe: true
+    overrides:
+      - selector: MetadataExecutionProjectionIntegrationTests.test_compile_check_and_runtime_load_reject_stale_projection
+        level: integration
+        semantics: metadata_execution_projection_compile_check_currentness
+        owner_contract_symbol: metadata_execution_contract.main
+        parallel_safe: false
+  - path: Tools/tests/test_metadata_gate_runtime.py
+    owner: Tools/execution/evidence/metadata_gate_runtime.py
+    level: contract
+    lifecycle: current
+    disposition: keep
+    semantics: current_typed_metadata_gate_evidence_contract
+    owner_contract_symbol: metadata_gate_runtime.validate_gate_receipt
+    parallel_safe: true
+    overrides:
+      - selector: MetadataGateEvidenceContractTests.test_manual_producer_cannot_override_profile_role_or_value
+        owner: Tools/execution/evidence/record_gate_attestation.py
+        semantics: manual_metadata_gate_producer_authority
+        owner_contract_symbol: record_gate_attestation.build_attestation_receipt
+        parallel_safe: true
+      - selector: MetadataGateLifecycleIntegrationTests.test_registered_scan_produces_one_bound_gate_receipt
+        owner: Tools/execution/evidence/record_gate_result.py
+        level: integration
+        semantics: registered_scan_to_typed_metadata_gate_receipt
+        owner_contract_symbol: record_gate_result.build_gate_result_receipt
+        parallel_safe: false
+      - selector: MetadataGateLifecycleIntegrationTests.test_transition_atomically_updates_owner_and_page
+        owner: Tools/knowledge/metadata/apply_metadata_transition.py
+        level: integration
+        semantics: typed_metadata_transition_atomic_publication
+        owner_contract_symbol: apply_metadata_transition.main
+        parallel_safe: false
+      - selector: MetadataGateLifecycleIntegrationTests.test_transition_receipt_failure_rolls_back_owner_and_page
+        owner: Tools/knowledge/metadata/apply_metadata_transition.py
+        level: integration
+        semantics: typed_metadata_transition_receipt_failure_rollback
+        owner_contract_symbol: apply_metadata_transition.main
+        parallel_safe: false
+  - path: Tools/tests/test_metadata_property_state.py
+    owner: Tools/knowledge/metadata/metadata_property_state.py
+    level: unit
+    lifecycle: current
+    disposition: keep
+    semantics: metadata_property_state
+    parallel_safe: true
+    owner_contract_symbol: metadata_property_state.apply_content_change
+    overrides:
+      - selector: MetadataPropertyStateContractTests.test_page_review_requires_current_content_and_updates_owner_state
+        level: contract
+        semantics: page_review_receipt_to_current_property_owner
+        owner_contract_symbol: metadata_property_state.apply_review_acceptance
+        parallel_safe: true
+      - selector: MetadataPropertyStateContractTests.test_profile_gate_owner_domain_is_the_declared_enum
+        owner: Tools/knowledge/metadata/metadata_page_state_contract.py
+        level: contract
+        semantics: profile_gate_typed_owner_domain
+        owner_contract_symbol: metadata_page_state_contract.typed_owner_value
+        parallel_safe: true
+      - selector: MetadataPropertyStateIntegrationTests.*
+        level: integration
+        semantics: metadata_property_owner_to_page_projection
+        owner_contract_symbol: metadata_property_state.build_projection_plan
+        parallel_safe: true
+  - path: Tools/tests/test_module_boundaries.py
+    owner: Tools/module-boundaries.yaml
+    level: unit
+    lifecycle: current
+    disposition: keep
+    semantics: module_boundaries
+    parallel_safe: true
+  - path: Tools/tests/test_page_contract.py
+    owner: Tools/knowledge/metadata/check_page_contract.py
+    level: contract
+    lifecycle: current
+    disposition: keep
+    semantics: page_contract_acceptance
+    owner_contract_symbol: check_page_contract.run
+    parallel_safe: true
+    overrides:
+      - selector: PageContractUnitTests.test_condition_predicate_handles_all_any_and_absence
+        level: unit
+        semantics: page_contract_condition_predicate
+        owner_contract_symbol: check_page_contract.condition_holds
+        parallel_safe: true
+      - selector: PageContractAcceptanceTests.*
+        level: contract
+        semantics: page_contract_field_mode_and_unknown_acceptance
+        owner_contract_symbol: check_page_contract.run
+        parallel_safe: true
+      - selector: PageContractContractTests.test_compiled_contract_requires_a_nonempty_field_mapping
+        level: contract
+        semantics: page_contract_nonempty_compiled_input
+        owner_contract_symbol: check_page_contract.load_contract
+        parallel_safe: true
+      - selector: PageContractContractTests.test_shape_registry_enforces_scalars_and_reference_targets
+        level: contract
+        semantics: page_contract_shape_and_reference_contract
+        owner_contract_symbol: check_page_contract.check_shape
+        parallel_safe: true
+      - selector: PageContractContractTests.test_sources_role_has_one_acceptance_matrix
+        level: contract
+        semantics: page_contract_sources_role_contract
+        owner_contract_symbol: check_page_contract.check_sources_role
+        parallel_safe: true
+      - selector: PageContractContractTests.test_compiler_composes_kernel_profile_and_role_closure
+        owner: Tools/knowledge/metadata/compose_page_contract.py
+        level: contract
+        semantics: page_contract_compiler_owner_closure
+        owner_contract_symbol: compose_page_contract.compiled_artifact
+        parallel_safe: true
+      - selector: PageContractContractTests.test_compiler_rejects_non_tightening_unknown_and_duplicate_fields
+        owner: Tools/knowledge/metadata/compose_page_contract.py
+        level: contract
+        semantics: page_contract_compiler_conflict_contract
+        owner_contract_symbol: compose_page_contract.compose
+        parallel_safe: true
+      - selector: PageContractIntegrationTests.*
+        level: integration
+        semantics: page_contract_compiler_to_checker_seam
+        owner_contract_symbol: check_page_contract.run
+        parallel_safe: true
+  - path: Tools/tests/test_page_frontmatter_contract.py
+    owner: Tools/knowledge/metadata/page_frontmatter_contract.py
+    level: contract
+    lifecycle: current
+    disposition: keep
+    semantics: page_frontmatter_contract
+    parallel_safe: true
+  - path: Tools/tests/test_phased_readback.py
+    owner: Tools/execution/context_delivery/card_activation.py
+    level: contract
+    lifecycle: current
+    disposition: keep
+    semantics: current_phased_delivery_contract
+    owner_contract_symbol: card_activation.PHASE_DELIVERY_PROTOCOL
+    parallel_safe: true
+    overrides:
+      - selector: PhasedReadbackUnitTests.test_attempt_identity_changes_with_bundle_or_context
+        level: unit
+        semantics: phased_delivery_attempt_identity
+        owner_contract_symbol: card_activation.expected_delivery_attempt_id
+        parallel_safe: true
+      - selector: PhasedReadbackUnitTests.test_control_plane_predicate_reads_only_the_manifest
+        owner: Tools/execution/task_runtime/queue_runtime/control_plane.py
+        level: unit
+        semantics: control_plane_manifest_predicate
+        owner_contract_symbol: control_plane.batch_touches_control_plane
+        parallel_safe: true
+      - selector: PhasedReadbackContractTests.test_route_narrowing_consumes_current_read_set_declarations
+        level: contract
+        semantics: phased_route_narrowing_from_read_set_declarations
+        owner_contract_symbol: card_activation.resolve_route_phases
+        parallel_safe: true
+      - selector: PhasedReadbackContractTests.test_ack_binds_exact_delivery_nonce_context_and_parent
+        level: contract
+        semantics: current_phase_ack_binding
+        owner_contract_symbol: card_activation.build_phase_ack
+        parallel_safe: true
+      - selector: PhasedReadbackContractTests.test_queue_consumer_progresses_deliver_acknowledge_complete
+        owner: Tools/execution/task_runtime/queue_runtime/review.py
+        level: contract
+        semantics: current_phase_delivery_status_lifecycle
+        owner_contract_symbol: review.activation_phase_delivery_status
+        parallel_safe: true
+      - selector: PhasedReadbackContractTests.test_queue_consumer_rejects_foreign_or_broken_ack_chains
+        owner: Tools/execution/task_runtime/queue_runtime/review.py
+        level: contract
+        semantics: current_phase_ack_exact_consumer
+        owner_contract_symbol: review.resolve_activation_phase_receipt
+        parallel_safe: true
+      - selector: PhasedReadbackContractTests.test_prepared_activation_cannot_claim_machine_delivery
+        owner: Tools/execution/task_runtime/queue_runtime/review.py
+        level: contract
+        semantics: prepared_activation_delivery_not_applicable
+        owner_contract_symbol: review.activation_phase_delivery_errors
+        parallel_safe: true
+      - selector: PhasedReadbackIntegrationTests.*
+        level: integration
+        semantics: phased_delivery_frozen_source_currentness
+        owner_contract_symbol: card_activation.build_phase_delivery
+        parallel_safe: true
+  - path: Tools/tests/test_prepare_audit_plan.py
+    owner: Tools/execution/audit/prepare_audit_plan.py
+    level: unit
+    lifecycle: current
+    disposition: keep
+    semantics: prepare_audit_plan
+    parallel_safe: true
+  - path: Tools/tests/test_profile_admission.py
+    owner: Tools/governance/profile/profile_admission.py
+    level: contract
+    lifecycle: current
+    disposition: keep
+    semantics: profile_admission_snapshot_adapter
+    owner_contract_symbol: profile_admission.admission_from_evaluation
+    parallel_safe: true
+    overrides:
+      - selector: ProfileSelectionIntegrationTests.*
+        level: integration
+        semantics: profile_admission_active_selection_currentness
+        owner_contract_symbol: profile_admission.admit_profile
+        parallel_safe: true
+  - path: Tools/tests/test_profile_batch_judgment_contract.py
+    owner: Tools/governance/profile/profile_batch_judgment_contract.py
+    level: contract
+    lifecycle: current
+    disposition: keep
+    semantics: profile_batch_judgment_contract
+    parallel_safe: true
+  - path: Tools/tests/test_profile_contract.py
+    owner: Tools/governance/profile/profile_contract.py
+    level: contract
+    lifecycle: current
+    disposition: keep
+    semantics: current_profile_typed_machine_contract
+    owner_contract_symbol: profile_contract.load_profile_contract
+    parallel_safe: true
+    overrides:
+      - selector: ProfileMachineOwnerUnitTests.test_interface_slots_and_scan_capabilities_derive_from_current_owners
+        level: unit
+        semantics: profile_interface_and_scan_registry_owner_projection
+        owner_contract_symbol: profile_contract.profile_interface_slots
+        parallel_safe: true
+      - selector: ProfileMachineOwnerUnitTests.test_unknown_machine_fields_are_rejected_by_their_closed_parsers
+        level: unit
+        semantics: profile_machine_closed_field_predicates
+        owner_contract_symbol: profile_contract.profile_interface_slots
+        parallel_safe: true
+      - selector: ExpressionStatusProjectionContractTests.*
+        level: contract
+        semantics: profile_expression_status_target_projection
+        owner_contract_symbol: profile_contract.expression_status_target_projection
+        parallel_safe: true
+      - selector: ProfileVolatilityDefaultsContractTests.*
+        level: contract
+        semantics: profile_volatility_defaults_typed_projection
+        owner_contract_symbol: profile_contract.volatility_defaults_projection
+        parallel_safe: true
+      - selector: ProfileExtensionDimensionContractTests.*
+        level: contract
+        semantics: profile_extension_dimension_kernel_projection
+        owner_contract_symbol: profile_contract.EXTENSION_TARGETS
+        parallel_safe: true
+      - selector: ProfileExtensionGateContractTests.*
+        level: contract
+        semantics: profile_extension_gate_typed_closure
+        owner_contract_symbol: profile_contract.load_profile_contract
+        parallel_safe: true
+      - selector: ProfileTypedClosureContractTests.*
+        level: contract
+        semantics: profile_slot_and_dependency_typed_closure
+        owner_contract_symbol: profile_contract.load_profile_contract
+        parallel_safe: true
+  - path: Tools/tests/test_profile_evidence_projection.py
+    owner: Tools/governance/profile/profile_contract.py
+    level: contract
+    lifecycle: current
+    disposition: keep
+    semantics: profile_evidence_projection
+    parallel_safe: true
+  - path: Tools/tests/test_profile_examples.py
+    owner: profiles/examples
+    level: integration
+    lifecycle: current
+    disposition: keep
+    semantics: profile_examples
+    parallel_safe: false
+  - path: Tools/tests/test_profile_flow_e2e.py
+    owner: Tools/governance/profile/apply_profile_adoption.py
+    level: e2e
+    lifecycle: current
+    disposition: keep
+    semantics: current_template_to_initial_profile_adoption_e2e
+    owner_contract_symbol: apply_profile_adoption.main
+    parallel_safe: false
+  - path: Tools/tests/test_profile_onboarding_status.py
+    owner: Tools/governance/profile/profile_onboarding_status.py
+    level: contract
+    lifecycle: current
+    disposition: keep
+    semantics: profile_onboarding_status
+    owner_contract_symbol: profile_onboarding_status.derive_status
+    parallel_safe: true
+    overrides:
+      - selector: OnboardingProfileDirectoryIntegrationTests.*
+        level: integration
+        semantics: onboarding_profile_directory_projection
+        owner_contract_symbol: profile_onboarding_status.main
+        parallel_safe: false
+  - path: Tools/tests/test_project_page_state.py
+    owner: Tools/knowledge/metadata/project_page_state.py
+    level: unit
+    lifecycle: current
+    disposition: keep
+    semantics: project_page_state_projection
+    owner_contract_symbol: project_page_state.semantic_content_fingerprint
+    parallel_safe: true
+    overrides:
+      - selector: ProjectPageStateContractTests.*
+        level: contract
+        semantics: project_page_state_owner_projection_contract
+        owner_contract_symbol: project_page_state.project_page
+        parallel_safe: true
+      - selector: ProjectPageStateIntegrationTests.test_proposed_coverage_builds_after_image_without_writing_owner
+        level: integration
+        semantics: project_page_state_planning_connection
+        owner_contract_symbol: project_page_state.build_projection_plan
+        parallel_safe: false
+      - selector: ProjectPageStateIntegrationTests.test_current_contract_main_apply_is_idempotent
+        level: integration
+        semantics: project_page_state_current_contract_main_connection
+        owner_contract_symbol: project_page_state.main
+        parallel_safe: false
+      - selector: ProjectPageStateIntegrationTests.test_outer_transaction_can_rollback_one_staged_plan
+        level: integration
+        semantics: project_page_state_outer_transaction_connection
+        owner_contract_symbol: project_page_state.stage_projection_plan
+        parallel_safe: false
+      - selector: ProjectPageStateIntegrationTests.test_missing_target_materialized_after_plan_is_rejected
+        level: integration
+        semantics: project_page_state_plan_currentness_connection
+        owner_contract_symbol: project_page_state.build_projection_plan
+        parallel_safe: false
+      - selector: ProjectPageStateSlowTests.*
+        level: slow
+        semantics: project_page_state_publication_recovery_boundary
+        owner_contract_symbol: project_page_state.stage_projection_plan
+        parallel_safe: false
+  - path: Tools/tests/test_publish_delta.py
+    owner: Tools/execution/task_runtime/candidate_delta_runtime.py
+    level: contract
+    lifecycle: current
+    disposition: keep
+    semantics: candidate_delta_identity_and_handoff_contract
+    owner_contract_symbol: candidate_delta_runtime.main
+    parallel_safe: true
+    overrides:
+      - selector: CandidateDeltaPublicationIntegrationTests.*
+        level: integration
+        semantics: current_candidate_delta_publication_writer_seam
+        owner_contract_symbol: candidate_delta_runtime.publish_candidate_delta
+        parallel_safe: false
+      - selector: CandidateDeltaFilesystemSafetyTests.*
+        level: slow
+        semantics: candidate_delta_filesystem_and_rollback_boundary
+        owner_contract_symbol: candidate_delta_runtime._rollback
+        parallel_safe: false
+  - path: Tools/tests/test_queue_proof.py
+    owner: Tools/execution/audit/check_proof.py
+    level: contract
+    lifecycle: current
+    disposition: keep
+    semantics: terminal_proof_consumer_contract
+    owner_contract_symbol: check_proof._terminal_reconciliation_failures
+    parallel_safe: true
+    overrides:
+      - selector: TerminalProofCliBoundaryTests.test_receipt_output_cannot_overwrite_runtime_state
+        level: slow
+        semantics: terminal_proof_receipt_target_security
+        owner_contract_symbol: check_proof.main
+        parallel_safe: false
+      - selector: CanonicalStateArgumentTests.test_only_exact_relative_or_absolute_canonical_path_is_accepted
+        level: unit
+        semantics: terminal_proof_canonical_state_argument
+        owner_contract_symbol: check_proof._canonical_state_argument
+        parallel_safe: true
+      - selector: CanonicalStateArgumentTests.test_canonical_symlink_is_rejected_even_when_target_stays_in_root
+        level: slow
+        semantics: terminal_proof_canonical_state_symlink_boundary
+        owner_contract_symbol: check_proof._canonical_state_argument
+        parallel_safe: false
+      - selector: TerminalRuntimeClosureTests.test_terminal_candidate_with_reconciled_controls_and_no_gaps_passes
+        level: contract
+        semantics: terminal_proof_progress_and_coverage_consumer
+        owner_contract_symbol: check_proof._validate_terminal_progress_state
+        parallel_safe: true
+      - selector: TerminalRuntimeClosureTests.test_terminal_eligibility_rejects_noncandidate_and_maintenance
+        level: contract
+        semantics: terminal_proof_build_candidate_eligibility_consumer
+        owner_contract_symbol: check_proof._validate_terminal_progress_state
+        parallel_safe: true
+      - selector: TerminalRuntimeClosureTests.test_pending_guidance_and_amendment_block_terminal
+        level: contract
+        semantics: terminal_proof_control_finality_consumer
+        owner_contract_symbol: check_proof._validate_terminal_progress_state
+        consumer_only: true
+        primary_owner_test: test_runtime_state_contract.RuntimeStateProjectionContractTests.test_current_control_finality_and_amendment_operations_project
+        parallel_safe: true
+      - selector: TerminalRuntimeClosureTests.test_frozen_contract_identity_and_load_must_match_proof
+        level: contract
+        semantics: terminal_proof_frozen_contract_consumer
+        owner_contract_symbol: check_proof._validate_terminal_progress_state
+        parallel_safe: true
+      - selector: TerminalRuntimeClosureTests.test_runtime_fingerprints_and_coverage_closure_must_match_proof
+        level: contract
+        semantics: terminal_proof_runtime_fingerprint_and_coverage_consumer
+        owner_contract_symbol: check_proof._validate_terminal_coverage_state
+        parallel_safe: true
+      - selector: QueueProofLiveLinkageTests.test_valid_queue_proof_linkage_passes
+        level: integration
+        semantics: terminal_queue_current_linkage
+        owner_contract_symbol: check_proof._validate_required_queue_linkage
+        parallel_safe: true
+      - selector: QueueProofLiveLinkageTests.test_queue_state_and_current_receipt_bindings_are_exact
+        level: integration
+        semantics: terminal_queue_state_and_receipt_binding
+        owner_contract_symbol: check_proof._validate_required_queue_linkage
+        parallel_safe: true
+      - selector: QueueProofLiveLinkageTests.test_shared_runtime_is_required_and_live_errors_fail_closed
+        level: integration
+        semantics: terminal_queue_shared_runtime_consumer
+        owner_contract_symbol: check_proof._validate_required_queue_linkage
+        parallel_safe: true
+      - selector: QueueProofLiveLinkageTests.test_receipt_register_rejects_outside_symlink_and_hardlink
+        level: slow
+        semantics: terminal_queue_receipt_register_path_security
+        owner_contract_symbol: check_proof._validate_required_queue_linkage
+        parallel_safe: false
+  - path: Tools/tests/test_quota_exception_lifecycle.py
+    owner: Tools/execution/audit/check_batch_close.py
+    level: contract
+    lifecycle: current
+    disposition: keep
+    semantics: quota_exception_producer_consumer_closure
+    owner_contract_symbol: check_batch_close._quota_candidate_dispositions
+    parallel_safe: true
+    overrides:
+      - selector: QuotaExceptionSelectionContractTests.*
+        owner: Tools/execution/audit/check_batch_close.py
+        level: contract
+        semantics: current_quota_exception_scope_and_policy_selection
+        owner_contract_symbol: check_batch_close._quota_exceptions
+        parallel_safe: true
+      - selector: QuotaDispositionContractTests.test_current_sealed_decision_replays_and_rejects_tamper
+        owner: Tools/execution/task_runtime/queue_runtime/policy_exceptions.py
+        level: contract
+        semantics: current_sealed_quota_exception_replay
+        owner_contract_symbol: policy_exceptions.sealed_policy_exception_errors
+        parallel_safe: true
+      - selector: QuotaDistributionProducerIntegrationTests.*
+        owner: Tools/knowledge/metadata/check_vocab.py
+        level: integration
+        semantics: priority_quota_distribution_receipt_producer
+        owner_contract_symbol: check_vocab._run
+        parallel_safe: true
+  - path: Tools/tests/test_receipt_reference_contract.py
+    owner: Tools/execution/evidence/receipt_reference_contract.py
+    level: contract
+    lifecycle: current
+    disposition: keep
+    semantics: current_receipt_reference_graph_contract
+    owner_contract_symbol: receipt_reference_contract.RECEIPT_REFERENCE_SPECS
+    parallel_safe: true
+    overrides:
+      - selector: ReceiptReferenceExtractionContractTests.*
+        semantics: current_receipt_reference_extraction_policy
+        owner_contract_symbol: receipt_reference_contract.iter_receipt_references
+        parallel_safe: true
+      - selector: ReceiptReferenceClosureContractTests.*
+        semantics: current_receipt_body_closure
+        owner_contract_symbol: receipt_reference_contract.walk_receipt_closure
+        parallel_safe: true
+      - selector: CurrentReceiptAuthorityHistoryTests.*
+        owner: Tools/execution/task_runtime/queue_runtime/receipts.py
+        level: historical-read-only
+        semantics: current_history_catalog_authority_split
+        owner_contract_symbol: receipts.adoption_filtered_catalog
+        parallel_safe: true
+  - path: Tools/tests/test_record_batch_review.py
+    owner: Tools/execution/audit/record_batch_review.py
+    level: unit
+    lifecycle: current
+    disposition: keep
+    semantics: record_batch_review
+    parallel_safe: true
+  - path: Tools/tests/test_record_corpus_acceptance.py
+    owner: Tools/execution/planning/record_corpus_acceptance.py
+    level: integration
+    lifecycle: current
+    disposition: keep
+    semantics: confirmed_corpus_acceptance_transaction
+    owner_contract_symbol: record_corpus_acceptance.main
+    parallel_safe: true
+    overrides:
+      - selector: CorpusAcceptanceProjectionContractTests.*
+        level: contract
+        semantics: corpus_acceptance_receipt_projection
+        owner_contract_symbol: record_corpus_acceptance._make_receipts
+        parallel_safe: true
+      - selector: RecordCorpusAcceptanceIntegrationTests.*
+        level: integration
+        semantics: corpus_acceptance_append_and_readback
+        owner_contract_symbol: record_corpus_acceptance.main
+        parallel_safe: true
+  - path: Tools/tests/test_read_set_contract.py
+    owner: Tools/execution/context_delivery/read_set_contract.py
+    level: contract
+    lifecycle: current
+    disposition: keep
+    semantics: read_set_machine_declaration_contract
+    owner_contract_symbol: read_set_contract.parse_declaration
+    parallel_safe: true
+    overrides:
+      - selector: ReadSetLoadClosureIntegrationTests.*
+        owner: Tools/execution/task_runtime/queue_runtime/task_contract.py
+        level: integration
+        semantics: read_set_machine_load_closure
+        owner_contract_symbol: task_contract.read_set_load_closure
+        parallel_safe: true
+  - path: Tools/tests/test_register_amendment.py
+    owner: Tools/execution/task_runtime/register_amendment.py
+    level: integration
+    lifecycle: current
+    disposition: keep
+    semantics: amendment_registration_writer
+    owner_contract_symbol: register_amendment._apply
+    parallel_safe: false
+    overrides:
+      - selector: AmendmentRegistrationContractTests.test_receipt_predicate_accepts_only_current_registration_checks
+        level: contract
+        semantics: amendment_registration_receipt_contract
+        owner_contract_symbol: register_amendment.current_receipt_errors
+        parallel_safe: true
+      - selector: AmendmentRegistrationContractTests.test_invocation_cross_fields_refuse_before_runtime_access
+        level: contract
+        semantics: amendment_registration_invocation_contract
+        owner_contract_symbol: register_amendment._run
+        parallel_safe: true
+      - selector: AmendmentRegistrationIntegrationTests.test_cli_registration_and_withdrawal_publish_current_receipts
+        level: integration
+        semantics: amendment_registration_withdrawal_writer_transport
+        owner_contract_symbol: register_amendment.main
+        parallel_safe: false
+      - selector: AmendmentRegistrationSlowTests.test_locked_publication_revalidates_staged_plan_bytes
+        level: slow
+        semantics: amendment_registration_staged_input_currentness
+        owner_contract_symbol: register_amendment._apply
+        parallel_safe: false
+      - selector: AmendmentRegistrationSlowTests.test_receipt_first_interruption_retains_recovery_evidence
+        level: slow
+        semantics: amendment_registration_receipt_first_recovery
+        owner_contract_symbol: register_amendment._apply
+        parallel_safe: false
+  - path: Tools/tests/test_render_host_configs.py
+    owner: Tools/platform/agent_interface/render_host_configs.py
+    level: integration
+    lifecycle: current
+    disposition: keep
+    semantics: host_product_lifecycle
+    owner_contract_symbol: render_host_configs.main
+    parallel_safe: false
+    overrides:
+      - selector: HostProductContractTests.test_registry_builds_unique_parseable_products
+        level: contract
+        semantics: host_product_registry_membership_and_format_contract
+        owner_contract_symbol: render_host_configs.HOSTS
+        parallel_safe: true
+      - selector: HostProductContractTests.test_registration_and_binding_are_projected_once_then_partitioned
+        level: contract
+        semantics: shared_host_transport_registration_binding_projection
+        owner_contract_symbol: render_host_configs.server_body
+        parallel_safe: true
+      - selector: HostProductContractTests.test_field_sources_and_packaging_rules_close_over_every_product
+        level: contract
+        semantics: host_product_field_source_and_packaging_closure
+        owner_contract_symbol: render_host_configs.FIELD_SOURCES
+        parallel_safe: true
+      - selector: HostSerializerTests.*
+        level: unit
+        semantics: host_product_serializer_acceptance
+        owner_contract_symbol: render_host_configs.SERIALIZERS
+        parallel_safe: true
+      - selector: HostProductContractTests.test_invalid_projection_contract_matrix
+        level: contract
+        semantics: host_product_upstream_projection_acceptance_contract
+        owner_contract_symbol: render_host_configs.read_projection
+        parallel_safe: true
+      - selector: HostProductLifecycleTests.test_write_check_and_one_upstream_invalidates_every_product
+        level: integration
+        semantics: host_product_write_check_currentness_lifecycle
+        owner_contract_symbol: render_host_configs.main
+        parallel_safe: false
+      - selector: HostProductLifecycleTests.test_carried_target_has_one_registered_input_and_external_staging
+        level: integration
+        semantics: carried_host_product_target_and_staging_boundary
+        owner_contract_symbol: render_host_configs.main
+        parallel_safe: false
+      - selector: HostProductLifecycleTests.test_bound_header_replays_the_exact_render_context
+        level: integration
+        semantics: host_product_bound_render_context_replay
+        owner_contract_symbol: render_host_configs.main
+        parallel_safe: false
+      - selector: HostProductSlowTests.*
+        level: slow
+        semantics: host_product_path_identity_and_currentness
+        owner_contract_symbol: render_host_configs.main
+        parallel_safe: false
+      - selector: HostProductTransportTests.*
+        level: integration
+        semantics: host_product_public_cli_transport
+        owner_contract_symbol: render_host_configs.main
+        parallel_safe: false
+  - path: Tools/tests/test_render_interface_projection.py
+    owner: Tools/platform/agent_interface/render_interface_projection.py
+    level: integration
+    lifecycle: current
+    disposition: keep
+    semantics: agent_interface_projection_lifecycle
+    owner_contract_symbol: render_interface_projection.main
+    parallel_safe: false
+    overrides:
+      - selector: CurrentContractProjectionTests.*
+        level: contract
+        semantics: current_cli_contract_projection_closure
+        owner_contract_symbol: render_interface_projection.build_mcp
+        parallel_safe: true
+      - selector: ArgumentProjectionTests.test_argument_shape_matrix
+        level: unit
+        semantics: argparse_json_schema_projection
+        owner_contract_symbol: render_interface_projection.property_schema
+        parallel_safe: true
+      - selector: ArgumentProjectionTests.test_record_schema_preserves_closed_classification_not_owner_ids
+        level: unit
+        semantics: mcp_input_path_and_exclusivity_projection
+        owner_contract_symbol: render_interface_projection.mcp_tool
+        parallel_safe: true
+      - selector: InterfaceProjectionContractInputTests.*
+        level: contract
+        semantics: compiled_cli_contract_projection_admission
+        owner_contract_symbol: render_interface_projection.read_contract
+        parallel_safe: true
+      - selector: InterfaceProjectionLifecycleTests.test_write_check_and_stale_classification
+        level: integration
+        semantics: interface_projection_write_check_currentness_lifecycle
+        owner_contract_symbol: render_interface_projection.main
+        parallel_safe: false
+      - selector: InterfaceProjectionLifecycleTests.test_projection_target_registry_controls_input_and_output
+        level: integration
+        semantics: interface_projection_target_path_registry_boundary
+        owner_contract_symbol: render_interface_projection.main
+        parallel_safe: false
+      - selector: InterfaceProjectionLifecycleTests.test_registered_forms_are_the_complete_default_and_selection_boundary
+        level: integration
+        semantics: interface_projection_form_registry_boundary
+        owner_contract_symbol: render_interface_projection.main
+        parallel_safe: false
+      - selector: InterfaceProjectionSlowTests.*
+        level: slow
+        semantics: interface_projection_currentness_race
+        owner_contract_symbol: render_interface_projection.main
+        parallel_safe: false
+      - selector: InterfaceProjectionTransportTests.*
+        level: integration
+        semantics: interface_projection_public_cli_transport
+        owner_contract_symbol: render_interface_projection.main
+        parallel_safe: false
+  - path: Tools/tests/test_render_queue.py
+    owner: Tools/execution/task_runtime/render_queue.py
+    level: contract
+    lifecycle: current
+    disposition: keep
+    semantics: required_queue_report_projection
+    owner_contract_symbol: render_queue.render
+    parallel_safe: true
+    overrides:
+      - selector: RenderQueueWriterIntegrationTests.*
+        level: integration
+        semantics: required_queue_report_publication_and_currentness
+        owner_contract_symbol: render_queue.main
+        parallel_safe: true
+  - path: Tools/tests/test_render_structure_projection.py
+    owner: Tools/knowledge/structure/render_structure_projection.py
+    level: contract
+    lifecycle: current
+    disposition: keep
+    semantics: structure_coverage_projection_bytes_and_section_boundary
+    owner_contract_symbol: render_structure_projection.render_block
+    parallel_safe: true
+    overrides:
+      - selector: StructureProjectionContractTests.test_section_replacement_is_bounded_idempotent_and_requires_heading
+        level: unit
+        semantics: structure_projection_marker_section_replacement
+        owner_contract_symbol: render_structure_projection.replace_section_block
+        parallel_safe: true
+      - selector: StructureProjectionWriterIntegrationTests.*
+        level: integration
+        semantics: structure_projection_apply_check_currentness_seam
+        owner_contract_symbol: render_structure_projection.main
+        parallel_safe: true
+  - path: Tools/tests/test_rendering_verification_contract.py
+    owner: Tools/knowledge/rendering/rendering_verification_contract.py
+    level: contract
+    lifecycle: current
+    disposition: keep
+    semantics: rendering_verification_contract
+    parallel_safe: true
+  - path: Tools/tests/test_required_queue_e2e.py
+    owner: kernel/K13 Task Runtime and Execution Control/runtime-state-model.json
+    level: e2e
+    lifecycle: current
+    disposition: keep
+    semantics: required_queue_current_build_and_maintenance_e2e
+    parallel_safe: false
+  - path: Tools/tests/test_residual_mandated_headings.py
+    owner: Tools/knowledge/content/check_residual_content.py
+    level: unit
+    lifecycle: current
+    disposition: keep
+    semantics: residual_positive_control_acceptance_predicate
+    owner_contract_symbol: check_residual_content.check_mandated_coverage
+    parallel_safe: true
+    overrides:
+      - selector: ResidualControlSchemaContractTests.*
+        level: contract
+        semantics: residual_positive_control_config_shape
+        owner_contract_symbol: check_residual_content.load_config
+        parallel_safe: true
+  - path: Tools/tests/test_residual_scan_semantics.py
+    owner: Tools/knowledge/content/check_residual_content.py
+    level: integration
+    lifecycle: current
+    disposition: keep
+    semantics: residual_scan_producer_controls_liveness_candidate_lifecycle
+    owner_contract_symbol: check_residual_content._run
+    parallel_safe: false
+  - path: Tools/tests/test_run_gates.py
+    owner: Tools/governance/control/run_gates.py
+    level: contract
+    lifecycle: current
+    disposition: keep
+    semantics: gate_registry_to_unique_dispatch_projection
+    owner_contract_symbol: run_gates.derive_verification_set
+    parallel_safe: true
+    overrides:
+      - selector: RunGatesDispatchIntegrationTests.*
+        level: integration
+        semantics: multi_gate_unique_producer_dispatch_and_diagnostic_outcome
+        owner_contract_symbol: run_gates.main
+        parallel_safe: true
+  - path: Tools/tests/test_runtime_paths.py
+    owner: Tools/execution/task_runtime/runtime_paths.py
+    level: contract
+    lifecycle: current
+    disposition: keep
+    semantics: current_runtime_path_registry_closure
+    owner_contract_symbol: runtime_paths.RUNTIME_OBJECTS
+    parallel_safe: true
+    overrides:
+      - selector: RuntimePathRegistryContractTests.test_dynamic_children_require_a_registered_namespace_and_safe_leaf
+        level: unit
+        semantics: current_runtime_child_path_safety
+        owner_contract_symbol: runtime_paths.child_path
+        parallel_safe: true
+      - selector: RuntimeDirectoryIntegrationTests.test_directory_materialization_requires_existing_safe_runtime
+        level: integration
+        semantics: current_runtime_directory_materialization_safety
+        owner_contract_symbol: runtime_paths.ensure_directory
+        parallel_safe: false
+  - path: Tools/tests/test_runtime_safety.py
+    owner: Tools/platform/common/kblib.py
+    level: integration
+    lifecycle: current
+    disposition: keep
+    semantics: current_receipt_append_publication
+    owner_contract_symbol: kblib.write_receipts
+    parallel_safe: true
+    overrides:
+      - selector: ReceiptSafetyTests.test_receipt_append_outcome_is_one_three_state_contract
+        level: unit
+        semantics: receipt_append_outcome
+        owner_contract_symbol: kblib.receipt_append_outcome
+        parallel_safe: true
+      - selector: ReceiptSafetyTests.test_receipt_writer_publishes_complete_jsonl_and_preserves_creator
+        level: integration
+        semantics: current_receipt_append_publication
+        owner_contract_symbol: kblib.write_receipts
+        parallel_safe: true
+      - selector: ReceiptSafetyTests.test_receipt_writer_rejects_aliases_and_authoritative_targets
+        level: slow
+        semantics: current_receipt_path_safety
+        owner_contract_symbol: kblib.write_receipts
+        parallel_safe: false
+      - selector: ReceiptSafetyTests.test_concurrent_process_appenders_preserve_every_record
+        level: slow
+        semantics: current_receipt_append_concurrency
+        owner_contract_symbol: kblib.write_receipts
+        parallel_safe: false
+      - selector: DurableReplaceContractTests.*
+        level: contract
+        semantics: durable_replace_namespace_contract
+        owner_contract_symbol: kblib.durable_replace
+        parallel_safe: true
+      - selector: RuntimeWriteLockTests.test_lock_lifecycle_distinguishes_success_error_and_reconciliation
+        level: integration
+        semantics: runtime_write_lock_lifecycle
+        owner_contract_symbol: kblib.runtime_write_lock
+        parallel_safe: false
+      - selector: RuntimeWriteLockTests.test_hard_process_exit_preserves_current_restart_evidence
+        level: slow
+        semantics: runtime_write_lock_hard_exit
+        owner_contract_symbol: kblib.runtime_write_lock
+        parallel_safe: false
+      - selector: InitNamespaceContractTests.test_governance_namespace_accepts_only_plan_and_free_append_marker
+        level: contract
+        owner: Tools/execution/task_runtime/init_state.py
+        semantics: pre_task_governance_namespace
+        owner_contract_symbol: init_state._governance_only_namespace_errors
+        parallel_safe: true
+      - selector: InitPublicationTests.test_failed_postpublication_rollback_preserves_recovery_lock
+        level: slow
+        owner: Tools/execution/task_runtime/init_state.py
+        semantics: init_state_failed_rollback_recovery
+        owner_contract_symbol: init_state.publish_runtime
+        parallel_safe: false
+      - selector: InitPublicationTests.test_empty_runtime_winning_publication_race_is_not_replaced
+        level: slow
+        owner: Tools/execution/task_runtime/init_state.py
+        semantics: init_state_no_replace_race
+        owner_contract_symbol: init_state._rename_noreplace
+        parallel_safe: false
+      - selector: RepositoryTargetSnapshotTests.test_target_snapshot_rejects_namespace_aliases
+        level: slow
+        semantics: repository_target_snapshot_path_safety
+        owner_contract_symbol: kblib.repository_target_snapshot
+        parallel_safe: false
+      - selector: RepositorySnapshotTests.test_snapshot_tracks_repository_bytes_but_excludes_control_and_cache
+        level: integration
+        semantics: repository_snapshot_projection
+        owner_contract_symbol: kblib.repository_snapshot_sha256
+        parallel_safe: false
+      - selector: RepositorySnapshotTests.test_snapshot_rejects_symlink_hardlink_and_special_files
+        level: slow
+        semantics: repository_snapshot_path_safety
+        owner_contract_symbol: kblib.repository_snapshot_sha256
+        parallel_safe: false
+      - selector: DirectoryListingScopeUnitTests.*
+        level: unit
+        semantics: directory_listing_scope_lifecycle
+        owner_contract_symbol: kblib.directory_listing_scope
+        parallel_safe: true
+      - selector: CanonicalRepositoryFileSlowTests.*
+        level: slow
+        semantics: canonical_repository_file_path_safety
+        owner_contract_symbol: kblib.canonical_repository_file
+        parallel_safe: false
+  - path: Tools/tests/test_runtime_state_contract.py
+    owner: Tools/execution/task_runtime/runtime_state_contract.py
+    level: contract
+    lifecycle: current
+    disposition: keep
+    semantics: current_runtime_state_machine_contract
+    owner_contract_symbol: runtime_state_contract.validate_model
+    parallel_safe: true
+    overrides:
+      - selector: RuntimeStateModelIntegrationTests.*
+        level: integration
+        semantics: shipped_runtime_state_model_load
+        owner_contract_symbol: runtime_state_contract.load_model
+        parallel_safe: true
+      - selector: RuntimeStateProjectionContractTests.test_current_queue_authorization_and_classifier_matrix
+        semantics: current_queue_transition_authorization_matrix
+        owner_contract_symbol: runtime_state_contract.classify_queue_transition
+      - selector: RuntimeStateProjectionContractTests.test_current_queue_reachability_is_derived_from_ordinary_edges
+        semantics: current_queue_transition_reachability
+        owner_contract_symbol: runtime_state_contract.reachable_batch_states
+      - selector: RuntimeStateProjectionContractTests.test_current_task_authorization_matrix
+        semantics: current_task_transition_authorization_matrix
+        owner_contract_symbol: runtime_state_contract.task_transition_is_authorized
+      - selector: RuntimeStateProjectionContractTests.test_current_control_finality_and_amendment_operations_project
+        semantics: current_runtime_control_finality_projection
+        owner_contract_symbol: runtime_state_contract.amendment_is_final
+  - path: Tools/tests/test_runtime_validation.py
+    owner: Tools/execution/task_runtime/runtime_validation.py
+    level: unit
+    lifecycle: current
+    disposition: keep
+    semantics: current_runtime_validation_composition
+    owner_contract_symbol: runtime_validation.validate_runtime
+    parallel_safe: true
+    overrides:
+      - selector: RuntimeValidationCompositionTests.test_gate_context_current_composes_both_currentness_owners
+        semantics: runtime_and_metadata_gate_currentness_composition
+        owner_contract_symbol: runtime_validation.require_gate_context_current
+  - path: Tools/tests/test_scaffold_profile.py
+    owner: Tools/governance/profile/scaffold_profile.py
+    level: integration
+    lifecycle: current
+    disposition: keep
+    semantics: current_template_to_candidate_mechanical_projection
+    owner_contract_symbol: scaffold_profile.build_plan
+    parallel_safe: true
+    overrides:
+      - selector: ScaffoldPredicateUnitTests.test_profile_id_acceptance_reuses_the_current_namespace_boundary
+        owner: Tools/governance/profile/profile_layout_contract.py
+        level: unit
+        semantics: scaffold_candidate_profile_id_boundary
+        owner_contract_symbol: profile_layout_contract.RESERVED_PROFILE_IDS
+        consumer_only: true
+        primary_owner_test: test_component_registry_projection.ProfileLayoutContractTests.test_direct_consumers_use_the_owner_reserved_namespace_set
+        parallel_safe: true
+      - selector: ScaffoldPredicateUnitTests.test_manifest_entries_accept_only_canonical_relative_paths
+        level: unit
+        semantics: scaffold_manifest_relative_path_predicate
+        owner_contract_symbol: scaffold_profile._canonical_manifest_entry
+        parallel_safe: true
+      - selector: ScaffoldManifestContractTests.*
+        level: contract
+        semantics: scaffold_manifest_plan_and_conflict_contract
+        owner_contract_symbol: scaffold_profile.build_plan
+        parallel_safe: true
+      - selector: ScaffoldWriterSlowTests.*
+        level: slow
+        semantics: scaffold_writer_security_race_and_cleanup
+        owner_contract_symbol: scaffold_profile.apply_plan
+        parallel_safe: false
+      - selector: ScaffoldCliTransportTests.*
+        level: integration
+        semantics: scaffold_profile_json_cli_transport
+        owner_contract_symbol: scaffold_profile.main
+        consumer_only: true
+        primary_owner_test: test_scaffold_profile.ScaffoldWriterIntegrationTests.test_apply_publishes_exactly_one_mechanical_candidate
+        parallel_safe: true
+  - path: Tools/tests/test_seal_receipts.py
+    owner: Tools/execution/evidence/seal_receipts.py
+    level: integration
+    lifecycle: current
+    disposition: keep
+    semantics: current_hot_to_cold_receipt_seal
+    owner_contract_symbol: seal_receipts.apply_seal
+    parallel_safe: true
+    overrides:
+      - selector: SealContractTests.test_projection_consumes_the_graph_owned_field_set
+        level: contract
+        semantics: seal_projection_graph_owner_connection
+        owner_contract_symbol: seal_receipts._projection
+        consumer_only: true
+        primary_owner_test: test_receipt_reference_contract.ReceiptReferenceRegistryContractTests.test_cold_projection_is_the_stable_union_of_graph_consumers
+        parallel_safe: true
+      - selector: SealContractTests.test_seal_receipt_validator_owns_current_identity_and_payload
+        level: contract
+        semantics: seal_receipts_current_receipt_contract
+        owner_contract_symbol: seal_receipts.current_receipt_errors
+        parallel_safe: true
+      - selector: SealLifecycleIntegrationTests.test_current_format_history_is_sealed_and_remains_read_only_cold
+        level: integration
+        semantics: current_format_history_to_cold_catalog_handoff
+        owner_contract_symbol: seal_receipts.apply_seal
+        parallel_safe: true
+      - selector: SealLifecycleIntegrationTests.test_writer_rejects_a_stale_plan_and_preserves_an_unplanned_append
+        level: integration
+        semantics: seal_writer_currentness_and_append_preservation
+        owner_contract_symbol: seal_receipts.apply_seal
+        parallel_safe: true
+      - selector: SealRecoverySlowTests.test_hash_bound_pending_replays_idempotently_and_tamper_fails_closed
+        level: slow
+        semantics: current_seal_pending_recovery_contract
+        owner_contract_symbol: seal_receipts._load_pending
+        parallel_safe: true
+      - selector: ColdReceiptStoreIntegrationTests.test_current_cold_chain_rejects_integrity_and_path_mutations
+        level: integration
+        owner: Tools/execution/task_runtime/queue_runtime/receipts.py
+        semantics: current_cold_receipt_integrity_and_path_contract
+        owner_contract_symbol: receipts.cold_receipt_store
+        parallel_safe: true
+  - path: Tools/tests/test_stamp_cards_budget.py
+    owner: Card/card-budget.yaml
+    level: contract
+    lifecycle: current
+    disposition: keep
+    semantics: card_budget_machine_contract
+    owner_contract_symbol: stamp_cards._load_budget
+    parallel_safe: true
+    overrides:
+      - selector: CardBudgetContractTests.test_body_and_action_limits_are_independent_boundary_predicates
+        level: contract
+        semantics: card_budget_acceptance_predicate
+        owner_contract_symbol: stamp_cards.discover_cards
+        parallel_safe: true
+      - selector: ShippedCardBudgetProjectionTests.*
+        level: integration
+        semantics: shipped_card_budget_projection
+        owner_contract_symbol: stamp_cards.discover_cards
+        parallel_safe: true
+  - path: Tools/tests/test_stamp_cards_commands.py
+    owner: Tools/platform/distribution/stamp_cards.py
+    level: contract
+    lifecycle: current
+    disposition: keep
+    semantics: stamp_cards_generated_index_rendering
+    owner_contract_symbol: stamp_cards.render_card_index
+    parallel_safe: true
+    overrides:
+      - selector: StampCardsCurrentnessIntegrationTests.*
+        level: integration
+        semantics: curated_card_review_currentness_transaction
+        owner_contract_symbol: stamp_cards.main
+        parallel_safe: true
+  - path: Tools/tests/test_stamp_cards_semantic_coverage.py
+    owner: Tools/platform/distribution/stamp_cards.py
+    level: unit
+    lifecycle: current
+    disposition: keep
+    semantics: stamp_cards_semantic_coverage
+    parallel_safe: true
+  - path: Tools/tests/test_standards_state.py
+    owner: Tools/governance/standards/standards_state.py
+    level: integration
+    lifecycle: current
+    disposition: keep
+    semantics: standards_state
+    parallel_safe: false
+  - path: Tools/tests/test_substantive_review_contract.py
+    owner: Tools/execution/audit/substantive_review_contract.py
+    level: contract
+    lifecycle: current
+    disposition: keep
+    semantics: substantive_review_contract
+    parallel_safe: true
+  - path: Tools/tests/test_task_runtime_action.py
+    owner: Tools/execution/task_runtime/task_runtime_action.py
+    level: unit
+    lifecycle: current
+    disposition: keep
+    semantics: task_runtime_action
+    parallel_safe: true
+  - path: Tools/tests/test_task_runtime_identity_field_contract.py
+    owner: kernel/K13 Task Runtime and Execution Control/runtime-state-model.json
+    level: contract
+    lifecycle: current
+    disposition: keep
+    semantics: task_runtime_identity_field_contract
+    parallel_safe: true
+  - path: Tools/tests/test_task_runtime_runner.py
+    owner: Tools/execution/task_runtime/task_runtime_runner.py
+    level: unit
+    lifecycle: current
+    disposition: keep
+    semantics: task_runtime_runner_decision_and_stop_loop
+    parallel_safe: true
+    owner_contract_symbol: task_runtime_runner.next_action
+    overrides:
+      - selector: TaskRuntimeRunnerContractTests.*
+        level: contract
+        semantics: task_runtime_runner_compiled_cli_consumption
+        owner_contract_symbol: task_runtime_runner._command
+        parallel_safe: true
+      - selector: TaskRuntimeRunnerCheckpointIntegrationTests.test_execute_dispatches_invoke_and_await_then_returns_readback
+        level: integration
+        semantics: task_runtime_runner_dispatch_readback_checkpoint
+        owner_contract_symbol: task_runtime_runner.execute
+        parallel_safe: true
+      - selector: TaskRuntimeRunnerCheckpointIntegrationTests.test_terminal_chain_orders_producers_consumer_and_closed_readback
+        level: integration
+        semantics: task_runtime_runner_terminal_chain_checkpoint
+        owner_contract_symbol: task_runtime_runner._await_terminal_audit
+        parallel_safe: true
+  - path: Tools/tests/test_template_parity.py
+    owner: profiles/template-files.yaml
+    level: integration
+    lifecycle: current
+    disposition: keep
+    semantics: template_parity
+    parallel_safe: false
+  - path: Tools/tests/test_test_catalog.py
+    owner: Tools/platform/distribution/test_catalog.py
+    level: contract
+    lifecycle: current
+    disposition: keep
+    semantics: test_catalog_discovery_classification_and_projection
+    owner_contract_symbol: test_catalog.build_catalog
+    parallel_safe: true
+    overrides:
+      - selector: TestCatalogProjectionIntegrationTests.*
+        level: integration
+        semantics: test_catalog_repository_projection_freshness
+        owner_contract_symbol: test_catalog.build_catalog
+        parallel_safe: false
+  - path: Tools/tests/test_tool_availability.py
+    owner: Tools/platform/agent_interface/tool_availability.py
+    level: contract
+    lifecycle: current
+    disposition: keep
+    semantics: source_distribution_and_carried_runtime_availability
+    owner_contract_symbol: tool_availability.resolve
+    parallel_safe: true
+    overrides:
+      - selector: BoundaryDeclarationContractTests.*
+        level: contract
+        semantics: distribution_boundary_top_level_tool_exclusions
+        owner_contract_symbol: tool_availability.excluded_tool_modules
+        parallel_safe: true
+      - selector: AvailabilityPartitionContractTests.*
+        level: contract
+        semantics: target_specific_missing_tool_partition
+        owner_contract_symbol: tool_availability.ToolAvailability.partition
+        parallel_safe: true
+      - selector: BoundaryResolutionIntegrationTests.*
+        level: integration
+        semantics: boundary_file_to_target_availability_resolution
+        owner_contract_symbol: tool_availability.resolve
+        parallel_safe: true
+  - path: Tools/tests/test_tool_catalog.py
+    owner: Tools/platform/distribution/tool_catalog.py
+    level: contract
+    lifecycle: current
+    disposition: keep
+    semantics: tool_catalog
+    parallel_safe: true
+  - path: Tools/tests/test_tool_runtime_primitives.py
+    owner: Tools/platform/common/primitives.py
+    level: unit
+    lifecycle: current
+    disposition: keep
+    semantics: tool_runtime_primitives
+    parallel_safe: true
+  - path: Tools/tests/test_tool_runtime_reporting.py
+    owner: Tools/platform/common/reporting.py
+    level: unit
+    lifecycle: current
+    disposition: keep
+    semantics: tool_runtime_reporting
+    parallel_safe: true
+  - path: Tools/tests/test_tool_runtime_repository.py
+    owner: Tools/platform/repository/repository.py
+    level: unit
+    lifecycle: current
+    disposition: keep
+    semantics: tool_runtime_repository
+    parallel_safe: true
+    overrides:
+      - selector: RepositoryMechanicsTests.test_canonical_relative_path_applies_shared_shape_and_constraints
+        owner: Tools/platform/repository/path_contract.py
+        level: unit
+        semantics: canonical_repository_relative_path_shape
+        owner_contract_symbol: path_contract.canonical_repository_relative_path
+        parallel_safe: true
+  - path: Tools/tests/test_tools_readme_inventory.py
+    owner: Tools/README.md
+    level: unit
+    lifecycle: current
+    disposition: keep
+    semantics: tools_readme_inventory
+    parallel_safe: true
+  - path: Tools/tests/test_update_queue.py
+    owner: Tools/execution/task_runtime/update_queue.py
+    level: integration
+    lifecycle: current
+    disposition: keep
+    semantics: queue_transition_writer
+    owner_contract_symbol: update_queue.main
+    parallel_safe: false
+    overrides:
+      - selector: UpdateQueueCliContractTests.*
+        level: contract
+        semantics: current_queue_writer_cli_contract
+        owner_contract_symbol: update_queue.main
+        parallel_safe: true
+      - selector: UpdateQueueProjectionUnitTests.*
+        level: unit
+        semantics: closed_coverage_projection
+        owner_contract_symbol: update_queue._project_closed_coverage
+        parallel_safe: true
+      - selector: OpenWriterIntegrationTests.*
+        level: integration
+        semantics: queue_open_cli_writer_receipt_readback
+        owner_contract_symbol: update_queue._run
+        parallel_safe: false
+      - selector: MergeAdmissionIntegrationTests.*
+        level: integration
+        semantics: queue_merge_admission_writer
+        owner_contract_symbol: update_queue._transition_item
+        parallel_safe: false
+      - selector: MergeRollbackIntegrationTests.*
+        level: integration
+        semantics: queue_preapply_rollback_writer
+        owner_contract_symbol: update_queue._transition_item
+        parallel_safe: false
+      - selector: AppliedRollbackIntegrationTests.*
+        level: integration
+        semantics: queue_applied_rollback_writer
+        owner_contract_symbol: update_queue._pre_apply_coverage_restore
+        parallel_safe: false
+      - selector: OpenWriterCasSlowTests.*
+        level: slow
+        semantics: queue_writer_semantic_cas_rollback
+        owner_contract_symbol: update_queue._run
+        parallel_safe: false
+      - selector: ReceiptAppendRecoverySlowTests.*
+        level: slow
+        semantics: queue_writer_receipt_append_recovery
+        owner_contract_symbol: update_queue._run
+        parallel_safe: false
+      - selector: ArchiveRecoverySlowTests.*
+        level: slow
+        semantics: queue_writer_delta_archive_crash_recovery
+        owner_contract_symbol: update_queue._run
+        parallel_safe: false
+      - selector: ClosePublicationRecoverySlowTests.*
+        level: slow
+        semantics: queue_close_state_receipt_publication_recovery
+        owner_contract_symbol: update_queue._run
+        parallel_safe: false
+  - path: Tools/tests/test_update_task.py
+    owner: Tools/execution/task_runtime/update_task.py
+    level: unit
+    lifecycle: current
+    disposition: keep
+    semantics: task_transition_projection
+    owner_contract_symbol: update_task.build_task_transition
+    parallel_safe: true
+    overrides:
+      - selector: TaskTransitionContractTests.test_writer_identity_and_receipt_envelope_are_canonical
+        level: contract
+        semantics: current_task_transition_receipt_contract
+        owner_contract_symbol: update_task.current_task_transition_receipt_errors
+        parallel_safe: true
+      - selector: TaskTransitionContractTests.test_produced_receipt_satisfies_task_progress_consumer_contract
+        owner: Tools/execution/task_runtime/queue_runtime/task_record.py
+        level: contract
+        semantics: task_transition_receipt_producer_consumer_connection
+        owner_contract_symbol: task_record.task_transition_receipt_record_errors
+        parallel_safe: true
+      - selector: TaskTransitionContractTests.test_public_writer_rejects_role_and_stale_cas_before_writing
+        level: contract
+        semantics: task_transition_writer_input_contract
+        owner_contract_symbol: update_task.main
+        parallel_safe: true
+      - selector: TaskTransitionIntegrationTests.*
+        level: integration
+        semantics: task_transition_progress_receipt_writer_readback
+        owner_contract_symbol: update_task.main
+        parallel_safe: false
+      - selector: OpenBatchCancellationIntegrationTests.*
+        level: integration
+        semantics: task_cancellation_preserves_incomplete_batch_history
+        owner_contract_symbol: update_task.main
+        parallel_safe: false
+      - selector: BuildCompletionPublicationRecoverySlowTests.test_profile_change_during_receipt_append_preserves_recovery_intent
+        level: slow
+        semantics: task_transition_receipt_append_currentness_recovery
+        owner_contract_symbol: update_task.main
+        parallel_safe: false
+      - selector: BuildCompletionPublicationRecoverySlowTests.test_repository_change_after_progress_write_rolls_back_before_receipt
+        level: slow
+        semantics: task_transition_post_state_snapshot_rollback
+        owner_contract_symbol: update_task.main
+        parallel_safe: false
+      - selector: TaskTransitionConcurrencySlowTests.*
+        level: slow
+        semantics: task_transition_writer_locked_cas_concurrency
+        owner_contract_symbol: update_task.main
+        parallel_safe: false
+  - path: Tools/tests/test_upstream_component_boundary.py
+    owner: Tools/platform/distribution/upstream_component_boundary.py
+    level: contract
+    lifecycle: current
+    disposition: keep
+    semantics: upstream_component_boundary
+    owner_contract_symbol: upstream_component_boundary.evaluate
+    parallel_safe: true
+    overrides:
+      - selector: DistributionBoundaryContractTests.test_distribution_only_contract_is_closed_and_cannot_omit_owners
+        owner: distribution-boundary.yaml
+        level: contract
+        semantics: distribution_only_closed_contract
+        owner_contract_symbol: upstream_component_boundary._distribution_only_paths
+        parallel_safe: true
+      - selector: DistributionBoundaryContractTests.test_manifest_projection_accepts_only_one_clean_report
+        semantics: upstream_component_manifest_projection
+        owner_contract_symbol: upstream_component_boundary.manifest_text
+      - selector: UpstreamComponentCliIntegrationTests.*
+        owner: Tools/platform/distribution/check_upstream_components.py
+        level: integration
+        semantics: upstream_boundary_cli_manifest_writer
+        owner_contract_symbol: check_upstream_components.main
+        parallel_safe: false
+  - path: Tools/tests/test_upstream_identity.py
+    owner: Tools/platform/distribution/upstream_identity.py
+    level: contract
+    lifecycle: current
+    disposition: keep
+    semantics: upstream_identity
+    owner_contract_symbol: upstream_identity.resolve_revision
+    parallel_safe: true
+    overrides:
+      - selector: UpstreamIdentityGitIntegrationTests.*
+        level: integration
+        semantics: upstream_ref_worktree_currentness
+        owner_contract_symbol: upstream_identity.resolve_revision
+        parallel_safe: false
+  - path: Tools/tests/test_vocab_artifact_integrity.py
+    owner: Tools/knowledge/metadata/compose_vocab.py
+    level: contract
+    lifecycle: current
+    disposition: keep
+    semantics: vocabulary_source_compiled_identity_currentness
+    owner_contract_symbol: compose_vocab.admitted_artifact
+    parallel_safe: true
+    overrides:
+      - selector: VocabularyComposeCheckIntegrationTests.*
+        level: integration
+        semantics: current_vocabulary_compose_to_check_seam
+        owner_contract_symbol: compose_vocab.main
+        parallel_safe: true
+  - path: Tools/tests/test_vocabulary_contract.py
+    owner: Tools/knowledge/metadata/vocabulary_contract.py
+    level: contract
+    lifecycle: current
+    disposition: keep
+    semantics: vocabulary_contract
+    parallel_safe: true
+  - path: Tools/tests/test_work_spec_contract.py
+    owner: Tools/execution/task_runtime/queue_runtime/work_spec.py
+    level: contract
+    lifecycle: current
+    disposition: keep
+    semantics: current_work_spec_document_grammar_and_binding
+    owner_contract_symbol: work_spec.work_spec_errors
+    parallel_safe: true
+    overrides:
+      - selector: WorkSpecSharedBindingOwnerTests.*
+        owner: Tools/execution/planning/work_spec_contract.py
+        level: contract
+        semantics: work_spec_shared_binding_field_owner
+        owner_contract_symbol: work_spec_contract.WORK_SPEC_BINDING_FIELDS
+        parallel_safe: true
+fixture_bundles:
+  - path: Tools/tests/fixtures/integration/batch_close_applied_checkpoint
+    manifest: Tools/tests/fixtures/integration/batch_close_applied_checkpoint.manifest.json
+    owner: Tools/tests/fixtures/e2e/batch_close_scenarios.py
+    purpose: Generated current-contract applied batch checkpoint for close producer integrations
+    lifecycle: current
+  - path: Tools/tests/fixtures/integration/batch_close_state_mutating_checkpoint
+    manifest: Tools/tests/fixtures/integration/batch_close_state_mutating_checkpoint.manifest.json
+    owner: Tools/tests/fixtures/e2e/batch_close_scenarios.py
+    purpose: Generated applied checkpoint for the hostile registered-verifier recovery path
+    lifecycle: current
+  - path: Tools/tests/fixtures/integration/terminal_closed_checkpoint
+    manifest: Tools/tests/fixtures/integration/terminal_closed_checkpoint.manifest.json
+    owner: Tools/tests/fixtures/e2e/required_queue_scenarios.py
+    purpose: Generated current-contract terminal-profile checkpoint with both batches closed
+    lifecycle: current
+  - path: Tools/tests/fixtures/integration/maintenance_closed_checkpoint
+    manifest: Tools/tests/fixtures/integration/maintenance_closed_checkpoint.manifest.json
+    owner: Tools/tests/fixtures/e2e/required_queue_scenarios.py
+    purpose: Generated and validated current-contract maintenance-closed integration checkpoint
+    lifecycle: current
+  - path: Tools/tests/fixtures/integration/update_queue_merge_admission_checkpoint
+    manifest: Tools/tests/fixtures/integration/update_queue_merge_admission_checkpoint.manifest.json
+    owner: Tools/tests/fixtures/e2e/update_queue_scenarios.py
+    purpose: Generated current-contract open Queue checkpoint with complete pre-merge evidence
+    lifecycle: current
+  - path: Tools/tests/fixtures/integration/update_queue_open_checkpoint
+    manifest: Tools/tests/fixtures/integration/update_queue_open_checkpoint.manifest.json
+    owner: Tools/tests/fixtures/e2e/update_queue_scenarios.py
+    purpose: Generated current-contract open Queue checkpoint before page work begins
+    lifecycle: current
+  - path: Tools/tests/fixtures/integration/update_queue_planning_ready_checkpoint
+    manifest: Tools/tests/fixtures/integration/update_queue_planning_ready_checkpoint.manifest.json
+    owner: Tools/tests/fixtures/e2e/update_queue_scenarios.py
+    purpose: Generated current-contract planning checkpoint with one current ready-gate Receipt
+    lifecycle: current
+  - path: Tools/tests/fixtures/integration/update_queue_merged_checkpoint
+    manifest: Tools/tests/fixtures/integration/update_queue_merged_checkpoint.manifest.json
+    owner: Tools/tests/fixtures/e2e/update_queue_scenarios.py
+    purpose: Generated and validated current-contract merge-ready Queue integration checkpoint
+    lifecycle: current
+fixtures:
+  - path: Tools/tests/fixtures/__init__.py
+    owner: Tools/platform/distribution/test_catalog.py
+    purpose: Test fixture package marker
+    lifecycle: current
+  - path: Tools/tests/fixtures/contract/__init__.py
+    owner: Tools/platform/distribution/test_catalog.py
+    purpose: Contract fixture package marker
+    lifecycle: current
+  - path: Tools/tests/fixtures/contract/card_activation_objects.py
+    owner: Tools/execution/context_delivery/card_activation.py
+    purpose: Minimal current activation and phase-delivery contract objects
+    lifecycle: current
+  - path: Tools/tests/fixtures/contract/corpus_plan_objects.py
+    owner: kernel/K02 Knowledge Work Construction/corpus-planning-contract.yaml
+    purpose: Minimal current Corpus Planning object values without runtime construction
+    lifecycle: current
+  - path: Tools/tests/fixtures/integration/card_activation_checkpoint.py
+    owner: Tools/execution/context_delivery/card_activation.py
+    purpose: Minimal current Card activation input checkpoint after runtime validation
+    lifecycle: current
+  - path: Tools/tests/fixtures/contract/task_progress_objects.py
+    owner: Tools/execution/task_runtime/queue_runtime/task_progress.py
+    purpose: Current Task Progress contract objects derived from the owner field set
+    lifecycle: current
+  - path: Tools/tests/fixtures/e2e/__init__.py
+    owner: Tools/platform/distribution/test_catalog.py
+    purpose: End-to-end scenario fixture package marker
+    lifecycle: current
+  - path: Tools/tests/fixtures/e2e/batch_close_scenarios.py
+    owner: kernel/K13 Task Runtime and Execution Control/runtime-state-model.json
+    purpose: One-time current batch-close prologue producer for static checkpoints
+    lifecycle: current
+  - path: Tools/tests/fixtures/e2e/generate_required_queue_checkpoint.py
+    owner: Tools/tests/fixtures/e2e/required_queue_scenarios.py
+    purpose: Deterministic generator for inspectable Required Queue checkpoints
+    lifecycle: current
+  - path: Tools/tests/fixtures/e2e/required_queue_scenarios.py
+    owner: kernel/K13 Task Runtime and Execution Control/runtime-state-model.json
+    purpose: Representative complete current Required Queue lifecycle scenarios
+    lifecycle: current
+  - path: Tools/tests/fixtures/e2e/update_queue_scenarios.py
+    owner: kernel/K13 Task Runtime and Execution Control/runtime-state-model.json
+    purpose: Current Queue lifecycle producer for validated local integration checkpoints
+    lifecycle: current
+  - path: Tools/tests/fixtures/integration/__init__.py
+    owner: Tools/platform/distribution/test_catalog.py
+    purpose: Integration checkpoint fixture package marker
+    lifecycle: current
+  - path: Tools/tests/fixtures/integration/batch_close_checkpoints.py
+    owner: Tools/execution/audit/check_batch_close.py
+    purpose: Validated applied checkpoints for batch-close Integration and Slow tests
+    lifecycle: current
+  - path: Tools/tests/fixtures/integration/checkpoint_contract.py
+    owner: Tools/execution/task_runtime/runtime_validation.py
+    purpose: Unique mechanical manifest and byte-fingerprint contract for current runtime checkpoints
+    lifecycle: current
+  - path: Tools/tests/fixtures/integration/required_queue_checkpoints.py
+    owner: kernel/K13 Task Runtime and Execution Control/runtime-state-model.json
+    purpose: Validated local Required Queue integration checkpoints
+    lifecycle: current
+  - path: Tools/tests/fixtures/integration/update_queue_checkpoints.py
+    owner: Tools/execution/task_runtime/update_queue.py
+    purpose: Unique validated loader for generated adjacent Queue checkpoints
+    lifecycle: current
+  - path: Tools/tests/support/batch_close_fixture.py
+    owner: Tools/execution/audit/check_batch_close.py
+    purpose: Lightweight current close actions plus the one-time E2E prologue builder
+    lifecycle: current
+  - path: Tools/tests/support/canonical_registry_fixture.py
+    owner: Tools/module-boundaries.yaml
+    purpose: Isolated-repository closure of shipped machine registries
+    lifecycle: current
+  - path: Tools/tests/support/cli_contract_fixture.py
+    owner: Tools/platform/agent_interface/compile_cli_contract.py
+    purpose: Minimal parser and policy checkpoint for compiled CLI contract tests
+    lifecycle: current
+  - path: Tools/tests/support/corpus_plan_fixture.py
+    owner: kernel/K02 Knowledge Work Construction/corpus-planning-contract.yaml
+    purpose: Current Profile/runtime integration checkpoint for semantic acceptance
+    lifecycle: current
+  - path: Tools/tests/support/coverage_delta_fixture.py
+    owner: Tools/execution/planning/coverage_delta.py
+    purpose: Current pre-merge drafted Coverage Delta contract object
+    lifecycle: current
+  - path: Tools/tests/fixtures/runtime_state/valid/.cambium/state/coverage_ledger.yaml
+    owner: kernel/K13 Task Runtime and Execution Control/runtime-state-model.json
+    purpose: Current Coverage state
+    lifecycle: current
+  - path: Tools/tests/fixtures/runtime_state/valid/.cambium/state/progress_ledger.yaml
+    owner: kernel/K13 Task Runtime and Execution Control/runtime-state-model.json
+    purpose: Current Progress state
+    lifecycle: current
+  - path: Tools/tests/fixtures/runtime_state/valid/.cambium/state/required_queue.yaml
+    owner: kernel/K13 Task Runtime and Execution Control/runtime-state-model.json
+    purpose: Current Required Queue state
+    lifecycle: current
+  - path: Tools/tests/fixtures/runtime_state/valid/.cambium/tmp/.gitkeep
+    owner: Tools/execution/task_runtime/runtime_paths.py
+    purpose: Empty current runtime temporary-state root
+    lifecycle: current
+  - path: Tools/tests/fixtures/runtime_state/valid/Topics/A.md
+    owner: Tools/knowledge/metadata/metadata_page_state_contract.py
+    purpose: Current governed page-state sample A
+    lifecycle: current
+  - path: Tools/tests/fixtures/runtime_state/valid/Topics/B.md
+    owner: Tools/knowledge/metadata/metadata_page_state_contract.py
+    purpose: Current governed page-state sample B
+    lifecycle: current
+  - path: Tools/tests/fixtures/runtime_state/valid/profiles/test-profile/profile.md
+    owner: Tools/governance/profile/profile_contract.py
+    purpose: Current selected Profile manifest
+    lifecycle: current
+  - path: Tools/tests/fixtures/synthetic_profile/corpus-planning.yaml
+    owner: kernel/K02 Knowledge Work Construction/corpus-planning-contract.yaml
+    purpose: Current synthetic Profile Corpus Planning binding
+    lifecycle: current
+  - path: Tools/tests/fixtures/synthetic_profile/metadata-contract.yaml
+    owner: Tools/governance/profile/profile_contract.py
+    purpose: Current synthetic Profile metadata binding
+    lifecycle: current
+  - path: Tools/tests/fixtures/synthetic_profile/profile.md
+    owner: Tools/governance/profile/profile_contract.py
+    purpose: Current synthetic Profile manifest
+    lifecycle: current
+  - path: Tools/tests/fixtures/synthetic_profile/scan-configs/residual-scan.yaml
+    owner: Tools/governance/profile/profile_contract.py
+    purpose: Current synthetic Profile scan binding
+    lifecycle: current
+  - path: Tools/tests/fixtures/synthetic_profile/slots.md
+    owner: Tools/governance/profile/profile_contract.py
+    purpose: Current synthetic Profile slot binding
+    lifecycle: current
+  - path: Tools/tests/fixtures/synthetic_profile/structure-registry.yaml
+    owner: Tools/governance/profile/profile_contract.py
+    purpose: Current synthetic Profile structure binding
+    lifecycle: current
+  - path: Tools/tests/fixtures/synthetic_profile/vocabulary-extensions.yaml
+    owner: Tools/governance/profile/profile_contract.py
+    purpose: Current synthetic Profile vocabulary binding
+    lifecycle: current
+  - path: Tools/tests/host_conformance_probe.py
+    owner: Tools/host-conformance.yaml
+    purpose: Live Host inline-delivery conformance probe
+    lifecycle: current
+  - path: Tools/tests/support/initial_task_plan_fixture.py
+    owner: Tools/execution/planning/apply_task_plan.py
+    purpose: Current initial Task Plan and Queue materialization history
+    lifecycle: current
+  - path: Tools/tests/inline_probe_server.py
+    owner: Tools/host-conformance.yaml
+    purpose: Host conformance MCP transport probe
+    lifecycle: current
+  - path: Tools/tests/support/profile_adoption_fixture.py
+    owner: Tools/governance/profile/apply_profile_adoption.py
+    purpose: Current Profile adoption transaction
+    lifecycle: current
+  - path: Tools/tests/support/profile_contract_fixture.py
+    owner: Tools/governance/profile/profile_contract.py
+    purpose: Isolated current Profile linker contract and mutation fixture
+    lifecycle: current
+  - path: Tools/tests/support/profile_fixture.py
+    owner: Tools/governance/profile/profile_contract.py
+    purpose: Current complete Profile and adoption identity
+    lifecycle: current
+  - path: Tools/tests/support/profile_load_fixture.py
+    owner: Tools/governance/profile/check_profile.py
+    purpose: Unique current Profile-load inputs, compiled projection, and filled candidate
+    lifecycle: current
+  - path: Tools/tests/support/profile_onboarding_status_fixture.py
+    owner: Tools/governance/profile/profile_onboarding_status.py
+    purpose: In-memory current producer outputs for onboarding status decisions
+    lifecycle: current
+  - path: Tools/tests/support/profile_template_fixture.py
+    owner: profiles/_template/profile.md
+    purpose: Filled candidate derived from the one canonical Profile template
+    lifecycle: current
+  - path: Tools/tests/support/scaffold_profile_fixture.py
+    owner: Tools/governance/profile/scaffold_profile.py
+    purpose: Minimal current-template checkpoint for candidate scaffolding
+    lifecycle: current
+  - path: Tools/tests/support/structure_registry_fixture.py
+    owner: Tools/knowledge/structure/check_structure.py
+    purpose: One current Profile and minimal path set for Structure Registry resolution
+    lifecycle: current
+  - path: Tools/tests/support/test_effects.py
+    owner: Tools/platform/distribution/test_catalog.py
+    purpose: Source-adjacent execution effects hidden behind production boundaries
+    lifecycle: current
+  - path: Tools/tests/support/upstream_component_boundary_fixture.py
+    owner: Tools/platform/distribution/upstream_component_boundary.py
+    purpose: Minimal current component snapshot and one real Git/CLI boundary checkpoint
+    lifecycle: current
+  - path: Tools/tests/support/required_queue_fixture.py
+    owner: kernel/K13 Task Runtime and Execution Control/runtime-state-model.json
+    purpose: Current Required Queue lifecycle scenarios
+    lifecycle: current
+  - path: Tools/tests/support/task_runtime_object_factory.py
+    owner: Tools/execution/task_runtime/task_runtime_runner.py
+    purpose: Minimal admitted Task Runtime objects for Runner decisions
+    lifecycle: current
+  - path: Tools/tests/support/update_queue_fixture.py
+    owner: Tools/execution/task_runtime/update_queue.py
+    purpose: E2E-only Queue producer actions used to generate static checkpoints
+    lifecycle: current

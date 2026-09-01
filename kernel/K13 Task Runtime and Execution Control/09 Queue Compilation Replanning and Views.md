@@ -12,7 +12,7 @@ Queue lifecycle transitions remain owned by K13/08 and K13/10. Amendment authori
 
 ## Queue Materialization
 
-Initial Queue materialization is a deterministic projection of the confirmed Coverage assignments and batch specifications. It must:
+Initial Queue materialization is a deterministic projection of the confirmed planning-only Coverage assignments and batch specifications. These inputs declare work structure, not current page state. Materialization must:
 
 - start from a valid empty Queue and leave immutable origin evidence;
 - preserve every explicitly declared item, dependency, order, and Work Spec

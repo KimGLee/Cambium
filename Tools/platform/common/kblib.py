@@ -1,0 +1,4038 @@
+#!/usr/bin/env python3
+"""Shared library for the kbstd check scripts (standard library only, no third-party dependencies).
+
+Provides:
+1. A restricted YAML subset parser, parse_yaml_subset -- only the following
+   grammar is supported (matching the subset declared in the header comments
+   of Tools/schemas/*.template.yaml):
+   - `key: value` scalars (string / int / float / bool / null);
+   - quoted strings, the exact inline empty containers `[]` and `{}`, and
+     simple inline lists `[a, b]`;
+   - `- item` lists indented under a `key:` line;
+   - a list item may be a one-level flat map (`- key: value` followed by key
+     lines at the same indentation);
+   - nested maps two or more levels deep (the parser is recursive and
+     naturally supports deeper nesting, but the standards convention only
+     uses two levels).
+   Not supported: duplicate mapping keys, anchors/aliases, multi-line strings
+   (| >), non-empty flow maps, tags, multiple documents.
+2. Markdown helpers: frontmatter extraction, code-block stripping (preserving
+   line numbers), heading extraction.
+3. Receipt helpers: construction and append-writing of machine-readable JSONL
+   receipts (field definitions in Tools/schemas/receipt.template.jsonl), plus
+   the shared exit-code convention:
+   0 = all pass; 1 = at least one fail; 2 = no fail but candidates.
+4. ArgumentParser: an argparse.ArgumentParser subclass that keeps a usage
+   error off the reserved HOLD code 2 by exiting 1 instead.
+"""
+
+import argparse
+import copy
+from contextlib import contextmanager
+import errno
+import functools
+import hashlib
+import json
+import os
+import re
+import stat
+import subprocess
+import sys
+import tempfile
+import time
+from types import MappingProxyType
+import uuid
+
+import Tools.platform.repository.path_capability as _pathcaps
+import Tools.execution.task_runtime.runtime_paths as runtime_paths
+
+LIB_VERSION = "1.12.0"
+
+def inherited_path_capability(path, consumptions=None):
+    return _pathcaps.inherited_capability(path, consumptions)
+
+
+def inherited_path_capability_subprocess():
+    return _pathcaps.subprocess_kwargs()
+
+
+def run_cambium_subprocess(*popenargs, **kwargs):
+    """Run one Cambium child without dropping inherited path authority.
+
+    Direct ``subprocess.run`` calls silently close the retained target,
+    parent, and acknowledgement descriptors.  Centralizing this boundary
+    makes capability propagation the default for every Cambium child while
+    remaining a no-op for ordinary CLI execution.
+    """
+    inherited = inherited_path_capability_subprocess()
+    caller_fds = kwargs.pop("pass_fds", ())
+    if caller_fds is None:
+        caller_fds = ()
+    if not isinstance(caller_fds, (tuple, list, set)):
+        raise TypeError("pass_fds must be a tuple, list, or set")
+    descriptors = set(caller_fds)
+    descriptors.update(inherited.get("pass_fds", ()))
+    if descriptors:
+        kwargs["pass_fds"] = tuple(sorted(descriptors))
+    inherited_env = inherited.get("env_overrides")
+    if inherited_env is not None:
+        caller_env = kwargs.pop("env", None)
+        environment = dict(os.environ if caller_env is None else caller_env)
+        environment.update(inherited_env)
+        kwargs["env"] = environment
+    return subprocess.run(*popenargs, **kwargs)
+
+
+def read_bytes(path, consumptions=("snapshot", "transaction")):
+    return _pathcaps.read_bytes(path, consumptions)
+
+
+def read_text(path, encoding="utf-8", errors="strict"):
+    return _pathcaps.read_text(path, encoding=encoding, errors=errors)
+
+
+def retained_tree_contains(path):
+    return _pathcaps.tree_contains(path)
+
+
+def retained_tree_is_bound(relative_directory):
+    return _pathcaps.tree_is_bound(relative_directory)
+
+
+def open_path_capability_parent(path, consumptions=("replace", "transaction")):
+    return _pathcaps.open_parent(path, consumptions)
+
+# ---------------------------------------------------------------------------
+# Restricted YAML subset parser
+# ---------------------------------------------------------------------------
+
+
+class YamlSubsetError(ValueError):
+    """Raised when the input goes beyond the restricted YAML subset grammar."""
+
+
+def strip_yaml_comment(line):
+    """Strip inline comments (# must be at start of line or preceded by whitespace; # inside quotes is kept)."""
+    out = []
+    quote = None
+    for idx, ch in enumerate(line):
+        if quote:
+            out.append(ch)
+            if ch == quote:
+                quote = None
+        else:
+            if ch in "\"'":
+                quote = ch
+                out.append(ch)
+            elif ch == "#" and (idx == 0 or line[idx - 1] in " \t"):
+                break
+            else:
+                out.append(ch)
+    return "".join(out).rstrip()
+
+
+def parse_scalar(text):
+    """Parse one restricted scalar or exact inline empty container."""
+    s = text.strip()
+    if s == "":
+        return None
+    if len(s) >= 2 and s[0] == s[-1] and s[0] in "\"'":
+        return s[1:-1]
+    if s == "[]":
+        return []
+    if s == "{}":
+        return {}
+    if s.startswith("[") and s.endswith("]"):
+        inner = s[1:-1].strip()
+        if not inner:
+            return []
+        return [parse_scalar(part) for part in inner.split(",")]
+    low = s.lower()
+    if low in ("true", "yes"):
+        return True
+    if low in ("false", "no"):
+        return False
+    if low in ("null", "~"):
+        return None
+    if re.fullmatch(r"-?\d+", s):
+        return int(s)
+    if re.fullmatch(r"-?\d+\.\d+", s):
+        return float(s)
+    return s
+
+
+def _prepare_lines(text):
+    """Preprocess: strip comments, blank lines and document fences; return [(indent, content), ...]."""
+    lines = []
+    document_started = False
+    document_ended = False
+    has_content = False
+    for raw in text.splitlines():
+        if "\t" in raw[: len(raw) - len(raw.lstrip())]:
+            raise YamlSubsetError("tabs are not allowed in indentation: %r" % raw)
+        line = strip_yaml_comment(raw)
+        stripped = line.strip()
+        if not stripped:
+            continue
+        indent = len(line) - len(line.lstrip(" "))
+        if stripped == "---":
+            if indent:
+                raise YamlSubsetError("YAML document markers must start at column 0")
+            if document_started or has_content or document_ended:
+                raise YamlSubsetError("multiple YAML documents are not supported")
+            document_started = True
+            continue
+        if stripped == "...":
+            if indent:
+                raise YamlSubsetError("YAML document markers must start at column 0")
+            if document_ended:
+                raise YamlSubsetError("multiple YAML document endings are not supported")
+            document_ended = True
+            continue
+        if document_ended:
+            raise YamlSubsetError("content after a YAML document ending is not supported")
+        has_content = True
+        lines.append([indent, stripped])
+    return lines
+
+
+def _looks_like_map_entry(content):
+    """`key: value` or `key:`; the key contains no whitespace-colon and is not a quoted plain scalar."""
+    if content[0] in "\"'":
+        # Starts with a quote: could be "key": value, but the subset does not
+        # use quoted keys, so treat it as a scalar
+        return False
+    return re.match(r"^[^:\s][^:]*:(\s|$)", content) is not None
+
+
+def _parse_map(lines, i, indent):
+    result = {}
+    while i < len(lines):
+        cur_indent, content = lines[i]
+        if cur_indent != indent or content.startswith("- ") or content == "-":
+            break
+        m = re.match(r"^([^:]+?)\s*:\s*(.*)$", content)
+        if not m:
+            raise YamlSubsetError("cannot parse mapping line: %r" % content)
+        key, rest = m.group(1).strip(), m.group(2)
+        if key in result:
+            raise YamlSubsetError("duplicate mapping key: %r" % key)
+        i += 1
+        if rest:
+            result[key] = parse_scalar(rest)
+            continue
+        # `key:` with no value -- the following lines decide: nested map / list / empty
+        if i < len(lines) and lines[i][0] > indent:
+            value, i = _parse_block(lines, i, lines[i][0])
+        elif i < len(lines) and lines[i][0] == indent and (
+            lines[i][1] == "-" or lines[i][1].startswith("- ")
+        ):
+            value, i = _parse_list(lines, i, indent)
+        else:
+            value = None
+        result[key] = value
+    return result, i
+
+
+def _parse_list(lines, i, indent):
+    result = []
+    while i < len(lines):
+        cur_indent, content = lines[i]
+        if cur_indent != indent or not (content == "-" or content.startswith("- ")):
+            break
+        rest = content[1:].strip()
+        if rest == "":
+            i += 1
+            if i < len(lines) and lines[i][0] > indent:
+                value, i = _parse_block(lines, i, lines[i][0])
+            else:
+                value = None
+            result.append(value)
+        elif _looks_like_map_entry(rest):
+            # List item is a one-level flat map: `- key: value` followed by
+            # key lines at the same virtual indentation
+            item_indent = cur_indent + (len(content) - len(rest))
+            lines[i] = [item_indent, rest]
+            value, i = _parse_map(lines, i, item_indent)
+            result.append(value)
+        else:
+            result.append(parse_scalar(rest))
+            i += 1
+    return result, i
+
+
+def _parse_block(lines, i, indent):
+    if lines[i][1] == "-" or lines[i][1].startswith("- "):
+        return _parse_list(lines, i, indent)
+    return _parse_map(lines, i, indent)
+
+
+@functools.lru_cache(maxsize=256)
+def _parse_yaml_subset_by_exact_text(text):
+    """Parse one exact byte-equivalent text value for mechanical reuse.
+
+    The cache key is the complete source text, never a path, timestamp, or
+    caller-selected version.  A changed contract therefore cannot reuse an
+    earlier parse.  The cached value stays private and callers receive a deep
+    copy through :func:`parse_yaml_subset`, so one consumer cannot mutate the
+    machine object later consumers validate.
+    """
+    lines = _prepare_lines(text)
+    if not lines:
+        return {}
+    value, i = _parse_block(lines, 0, lines[0][0])
+    if i != len(lines):
+        raise YamlSubsetError(
+            "unattachable line after block %d (bad indentation or beyond the subset grammar): %r"
+            % (i, lines[i][1])
+        )
+    return value
+
+
+def parse_yaml_subset(text):
+    """Parse the restricted YAML subset into one caller-owned object.
+
+    Repeated contract validation commonly reads identical source bytes many
+    times while checking a Receipt catalog.  Parsing those exact bytes is a
+    pure mechanical operation, so the immutable source text selects a bounded
+    process-local parse cache.  Returning a deep copy preserves the historical
+    API: every caller still owns an independent mutable result.
+    """
+    if not isinstance(text, str):
+        raise TypeError("restricted YAML input must be text")
+    return copy.deepcopy(_parse_yaml_subset_by_exact_text(text))
+
+
+def parse_vocabulary_artifact(text):
+    """Parse the composed vocabulary artifact and prove it is a composition.
+
+    ``kernel/K12 Quality Assurance/05 Automated and Manual Checks.md`` requires
+    that the input of the frontmatter vocabulary check "MUST be composed from
+    the kernel base vocabulary and the selected profile's `Vocabulary
+    Extensions`".  ``parse_yaml_subset`` maps empty input to ``{}``, so on its
+    own it cannot tell a composed artifact from a truncated or half-written
+    file; both yield an empty field set, and an empty field set makes every
+    controlled value legal.  This predicate is the deterministic reading of
+    that MUST: the bytes must parse, be a mapping, and carry a non-empty
+    ``fields`` mapping, because the kernel base contributes fields
+    unconditionally.  Whether the *values* are the right ones stays with the
+    rule owners and with ``compose_vocab.py --check``; this function only
+    separates "a vocabulary" from "a file".
+
+    Returns the parsed mapping. Raises ``YamlSubsetError`` when the bytes are
+    outside the subset grammar and ``ValueError`` when they parse but are not
+    a vocabulary artifact.
+    """
+    data = parse_yaml_subset(text)
+    if not isinstance(data, dict):
+        raise ValueError(
+            "composed vocabulary must be a mapping, found %s"
+            % type(data).__name__)
+    fields = data.get("fields")
+    if not isinstance(fields, dict) or not fields:
+        raise ValueError(
+            "composed vocabulary carries no `fields` mapping; an empty, "
+            "truncated, or half-written artifact is not the composition of "
+            "the kernel base and the selected profile's Vocabulary Extensions")
+    return data
+
+
+# ---------------------------------------------------------------------------
+# Markdown helpers
+# ---------------------------------------------------------------------------
+
+
+def extract_frontmatter(text):
+    """Extract the raw frontmatter inside the `---` fence; returns None when absent."""
+    lines = text.splitlines()
+    if not lines or lines[0].strip() != "---":
+        return None
+    for idx in range(1, len(lines)):
+        if lines[idx].strip() in ("---", "..."):
+            return "\n".join(lines[1:idx])
+    return None
+
+
+MARKDOWN_HTML_BLOCK_TAGS = frozenset((
+    "address", "article", "aside", "base", "basefont", "blockquote",
+    "body", "caption", "center", "col", "colgroup", "dd", "details",
+    "dialog", "dir", "div", "dl", "dt", "fieldset", "figcaption",
+    "figure", "footer", "form", "frame", "frameset", "h1", "h2", "h3",
+    "h4", "h5", "h6", "head", "header", "hr", "html", "iframe",
+    "legend", "li", "link", "main", "menu", "menuitem", "nav",
+    "noframes", "ol", "optgroup", "option", "p", "param", "search",
+    "section", "summary", "table", "tbody", "td", "tfoot", "th",
+    "thead", "title", "tr", "track", "ul",
+))
+
+
+def markdown_authority_lines(text):
+    """Return visible Markdown lines for a machine-authority parser.
+
+    Fenced code and HTML comments are not declarations.  Lines remain paired
+    with their original one-based numbers, and non-comment text on a line is
+    preserved (including inline code, which Profile manifests use for field
+    names and values).
+
+    Fence closing follows the CommonMark envelope that matters for authority:
+    the marker character must match, its run must be at least as long as the
+    opener, and only whitespace may follow it.  A string such as
+    `````not-a-closing-fence`` therefore remains fenced content instead of
+    exposing the prose below it as machine state.
+    """
+    result = []
+    fence_character = None
+    fence_length = 0
+    in_comment = False
+    html_end = None
+    html_until_blank = False
+
+    def visible_without_comments(line, inside):
+        visible = []
+        cursor = 0
+        while cursor < len(line):
+            if inside:
+                end = line.find("-->", cursor)
+                if end < 0:
+                    return "".join(visible), True
+                visible.append(" ")
+                cursor = end + 3
+                inside = False
+                continue
+            start = line.find("<!--", cursor)
+            if start < 0:
+                visible.append(line[cursor:])
+                break
+            visible.append(line[cursor:start])
+            # Removing a comment must not concatenate tokens on its two sides
+            # into a declaration that never existed in the source Markdown.
+            visible.append(" ")
+            cursor = start + 4
+            inside = True
+        return "".join(visible), inside
+
+    def raw_html_block_state(line):
+        """Return ``(starts, end_regex, until_blank)`` for one raw line."""
+        stripped = line.lstrip(" ")
+        indentation = len(line) - len(stripped)
+        if indentation > 3:
+            return False, None, False
+        if stripped.startswith("<!--"):
+            return (True,
+                    None if "-->" in stripped[4:] else r"-->",
+                    False)
+        special = re.match(
+            r"<(?P<tag>script|pre|style|textarea)(?:\s|>|$)",
+            stripped, re.IGNORECASE)
+        if special:
+            tag = special.group("tag")
+            closing = r"</%s\s*>" % re.escape(tag)
+            return (True,
+                    None if re.search(closing, stripped, re.IGNORECASE)
+                    else closing,
+                    False)
+        if stripped.startswith("<?"):
+            return True, (None if "?>" in stripped[2:] else r"\?>"), False
+        if stripped.startswith("<![CDATA["):
+            return (True,
+                    None if "]]>" in stripped[9:] else r"\]\]>",
+                    False)
+        if re.match(r"<![A-Z]", stripped):
+            return True, (None if ">" in stripped[2:] else r">"), False
+        block_tag = re.match(
+            r"</?([A-Za-z][A-Za-z0-9-]*)(?:\s|/?>)", stripped)
+        if (block_tag and
+                block_tag.group(1).lower() in MARKDOWN_HTML_BLOCK_TAGS):
+            return True, None, True
+        # CommonMark type-7 HTML blocks also begin with a complete generic
+        # open or closing tag on a line by itself.  Custom elements are not
+        # in the type-6 allowlist above, but Markdown inside their block is
+        # still raw HTML rather than declaration authority.
+        attribute_name = r"[^\s\"'=<>`]+"
+        attribute_value = (
+            r"(?:[^\s\"'=<>`]+|'[^']*'|\"[^\"]*\")")
+        complete_tag = (
+            r"</?[A-Za-z][A-Za-z0-9-]*"
+            r"(?:\s+%s(?:\s*=\s*%s)?)*\s*/?>[ \t]*$" %
+            (attribute_name, attribute_value))
+        if re.match(complete_tag, stripped):
+            return True, None, True
+        return False, None, False
+
+    for line_number, raw_line in enumerate((text or "").splitlines(), 1):
+        if fence_character is not None:
+            closing = re.match(
+                r"^ {0,3}%s{%d,}[ \t]*$" %
+                (re.escape(fence_character), fence_length), raw_line)
+            if closing:
+                fence_character = None
+                fence_length = 0
+            result.append((line_number, ""))
+            continue
+
+        if html_end is not None:
+            if re.search(html_end, raw_line, re.IGNORECASE):
+                html_end = None
+            result.append((line_number, ""))
+            continue
+        if html_until_blank:
+            if not raw_line.strip():
+                html_until_blank = False
+            result.append((line_number, ""))
+            continue
+
+        # Once an HTML comment block has begun, block constructs inside it are
+        # comment text.  The closing line is blanked in full so its two sides
+        # cannot synthesize a declaration.
+        if in_comment:
+            if "-->" in raw_line:
+                in_comment = False
+            result.append((line_number, ""))
+            continue
+
+        # Top-level machine declarations cannot be supplied by an indented
+        # code block.  Profile authority syntax is deliberately top-level, so
+        # a tab or four leading spaces is code, never a permissive indentation
+        # alias for an identity bullet, slot binding, heading, or table row.
+        if re.match(r"^(?: {0,3}\t| {4})", raw_line):
+            result.append((line_number, ""))
+            continue
+
+        # A valid fence opener owns its complete info string.  Parse it before
+        # HTML comment markers so `<!--` inside the info cannot leak comment
+        # state past the fence's real closing marker.
+        opening = re.match(r"^ {0,3}(`{3,}|~{3,})(.*)$", raw_line)
+        if opening:
+            marker = opening.group(1)
+            info = opening.group(2)
+            # A backtick occurs nowhere in a valid backtick-fence info string.
+            if marker[0] != "`" or "`" not in info:
+                fence_character = marker[0]
+                fence_length = len(marker)
+                result.append((line_number, ""))
+                continue
+
+        # Raw HTML blocks are rendered as HTML, not reparsed as Markdown.  A
+        # heading-shaped line inside one cannot satisfy a machine pointer.
+        starts_html, next_html_end, until_blank = raw_html_block_state(raw_line)
+        if starts_html:
+            html_end = next_html_end
+            html_until_blank = until_blank
+            result.append((line_number, ""))
+            continue
+
+        visible, in_comment = visible_without_comments(raw_line, False)
+        result.append((line_number, visible))
+    return tuple(result)
+
+
+def blank_markdown_authority(text):
+    """Blank non-authoritative Markdown while preserving the line count."""
+    return "\n".join(line for _line_number, line in
+                     markdown_authority_lines(text))
+
+
+def strip_code(text):
+    """Strip non-authoritative blocks and inline code, preserving line count."""
+    return "\n".join(
+        re.sub(r"`[^`]*`", "", line)
+        for _line_number, line in markdown_authority_lines(text)
+    )
+
+
+def repository_content_files(root):
+    """Return the deterministic content-working-set files below ``root``.
+
+    A Git worktree owns an explicit distinction between repository content
+    and ignored local material. In that case the content set is exactly the
+    union reported by ``git ls-files --cached --others --exclude-standard``:
+    tracked files remain included even when an ignore rule also matches, while
+    ignored untracked files never become Gate inputs. Exported distributions
+    without a ``.git`` control entry retain the prior deterministic filesystem
+    walk.
+
+    The function does not decide which hidden/control namespaces a consumer
+    audits; callers keep their existing policy and filter the returned
+    repository-relative paths.
+    """
+    root_real = os.path.realpath(os.path.abspath(root))
+    if not os.path.isdir(root_real):
+        raise ValueError("repository content root must be a directory")
+
+    rows = []
+    if os.path.lexists(os.path.join(root_real, ".git")):
+        try:
+            completed = subprocess.run(
+                ["git", "-C", root_real, "ls-files", "-z", "--cached",
+                 "--others", "--exclude-standard"],
+                stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=False,
+            )
+        except OSError as exc:
+            raise OSError(
+                exc.errno, "Git-managed content set cannot be enumerated",
+                root_real) from exc
+        if completed.returncode != 0:
+            detail = completed.stderr.decode("utf-8", errors="replace").strip()
+            raise ValueError(
+                "Git-managed content set cannot be enumerated: %s" %
+                (detail or "git ls-files failed"))
+        seen = set()
+        for encoded in completed.stdout.split(b"\0"):
+            if not encoded:
+                continue
+            try:
+                relative = encoded.decode("utf-8")
+            except UnicodeDecodeError as exc:
+                raise ValueError(
+                    "Git-managed content path is not strict UTF-8") from exc
+            if (not relative or relative.startswith("/") or
+                    "\\" in relative or
+                    any(part in ("", ".", "..")
+                        for part in relative.split("/")) or
+                    relative in seen):
+                raise ValueError(
+                    "Git returned a non-canonical or repeated content path: "
+                    "%s" % relative)
+            seen.add(relative)
+            absolute = os.path.join(root_real, *relative.split("/"))
+            # A tracked deletion is not present in the working snapshot.
+            # Broken symlinks remain visible so the consuming Gate can reject
+            # them rather than silently shrinking its input set.
+            if os.path.lexists(absolute):
+                rows.append((absolute, relative))
+        return sorted(rows, key=lambda row: row[1])
+
+    for dirpath, dirnames, filenames in os.walk(
+            root_real, topdown=True, followlinks=False):
+        dirnames[:] = sorted(dirnames)
+        for name in sorted(filenames):
+            absolute = os.path.join(dirpath, name)
+            relative = os.path.relpath(
+                absolute, root_real).replace(os.sep, "/")
+            rows.append((absolute, relative))
+    return rows
+
+
+def iter_managed_md_files(vault_root, scope=None):
+    """Return Markdown in the Git-managed content set or exported-tree fallback."""
+    root_real = os.path.realpath(os.path.abspath(vault_root))
+    target = os.path.normpath(
+        os.path.join(root_real, scope) if scope else root_real)
+    try:
+        inside = os.path.commonpath((root_real, os.path.abspath(target)))
+    except ValueError as exc:
+        raise ValueError("Markdown scope escapes the repository root") from exc
+    if inside != root_real:
+        raise ValueError("Markdown scope escapes the repository root")
+    scope_relative = os.path.relpath(target, root_real).replace(os.sep, "/")
+
+    capability = (inherited_path_capability(
+        scope, ("snapshot", "transaction"))
+                  if scope else None)
+    if capability is not None:
+        if capability["kind"] == "file":
+            snapshot = repository_file_snapshot(root_real, scope_relative)
+            return ([(snapshot.path, snapshot.repository_path)]
+                    if scope_relative.lower().endswith(".md") else [])
+        snapshot = repository_tree_snapshot(root_real, scope_relative)
+        managed = {relative for _absolute, relative in
+                   repository_content_files(root_real)}
+        prefix_length = 0 if scope_relative == "." else len(scope_relative)
+        return [
+            (os.path.join(root_real, *relative.split("/")), relative)
+            for relative in sorted(snapshot.files)
+            if relative in managed and relative.lower().endswith(".md") and
+            not any(part.startswith(".") for part in
+                    relative[prefix_length:].lstrip("/").split("/")[:-1])
+        ]
+
+    result = []
+    for absolute, relative in repository_content_files(root_real):
+        if scope_relative != ".":
+            prefix = scope_relative.rstrip("/") + "/"
+            if relative != scope_relative and not relative.startswith(prefix):
+                continue
+            nested = relative[len(scope_relative):].lstrip("/")
+        else:
+            nested = relative
+        components = nested.split("/") if nested else []
+        if any(part.startswith(".") for part in components[:-1]):
+            continue
+        if relative.lower().endswith(".md"):
+            result.append((absolute, relative))
+    return result
+
+
+def iter_md_files(vault_root, scope=None):
+    """Walk all .md files under the vault (sorted by relative path); scope is an optional subpath.
+
+    scope may also point at a single .md file (note-close self-check, K00/05);
+    in that case exactly that file is returned. A scope that exists as neither
+    a directory nor an .md file yields an empty list -- callers implementing a
+    gate MUST treat an empty scan set as a failure, not a pass.
+    """
+    capability = (inherited_path_capability(
+        scope, ("snapshot", "transaction"))
+                  if scope else None)
+    if capability is not None:
+        scope_relative = _pathcaps.logical_spelling(scope)
+        if capability["kind"] == "file":
+            snapshot = repository_file_snapshot(vault_root, scope_relative)
+            return ([(snapshot.path, snapshot.repository_path)]
+                    if scope_relative.lower().endswith(".md") else [])
+        snapshot = repository_tree_snapshot(vault_root, scope_relative)
+        prefix_length = 0 if scope_relative == "." else len(scope_relative)
+        return [
+            (os.path.join(os.path.abspath(vault_root), *relative.split("/")),
+             relative)
+            for relative in sorted(snapshot.files)
+            if relative.lower().endswith(".md") and
+            not any(part.startswith(".") for part in
+                    relative[prefix_length:].lstrip("/").split("/")[:-1])
+        ]
+    base = os.path.join(vault_root, scope) if scope else vault_root
+    base = os.path.normpath(base)
+    if os.path.isfile(base):
+        if base.lower().endswith(".md"):
+            return [(base, os.path.relpath(base, vault_root))]
+        return []
+    result = []
+    for dirpath, dirnames, filenames in os.walk(base):
+        dirnames[:] = sorted(d for d in dirnames if not d.startswith("."))
+        for name in sorted(filenames):
+            if name.lower().endswith(".md"):
+                full = os.path.join(dirpath, name)
+                result.append((full, os.path.relpath(full, vault_root)))
+    return result
+
+
+def markdown_atx_heading(line):
+    """Return ``(level, title)`` for one CommonMark ATX heading line.
+
+    Up to three leading spaces are permitted.  A closing hash run is removed
+    only when separated from content by whitespace; ``## Title#`` therefore
+    names ``Title#`` rather than the different heading ``Title``.
+    """
+    match = re.match(r"^ {0,3}(#{1,6})(?:[ \t]+|$)(.*)$", line)
+    if not match:
+        return None
+    content = match.group(2)
+    if re.fullmatch(r"#+[ \t]*", content):
+        content = ""
+    else:
+        content = re.sub(r"[ \t]+#+[ \t]*$", "", content)
+    return len(match.group(1)), content.strip(" \t")
+
+
+def headings_of(text):
+    """Return ``(line, level, title)`` for real CommonMark ATX headings."""
+    result = []
+    for lineno, line in enumerate(text.splitlines(), 1):
+        heading = markdown_atx_heading(line)
+        if heading is not None:
+            result.append((lineno, heading[0], heading[1]))
+    return result
+
+
+READ_SET_DOCUMENT_TYPES = frozenset(("read-set", "profile-read-set"))
+
+
+def parse_wiki_link(inner):
+    r"""Return one Wiki Link's normalized target and optional heading.
+
+    Markdown tables escape the alias separator as ``\|`` while ordinary prose
+    uses ``|``.  Both forms share one path rule, and an explicit ``.md`` suffix
+    is normalized away so callers can choose their own storage form without
+    ever producing ``.md.md``.
+    """
+    target_part = re.split(r"\\\||\|", inner, maxsplit=1)[0].strip()
+    target, _, heading = target_part.partition("#")
+    target = target.strip()
+    if target.lower().endswith(".md"):
+        target = target[:-3]
+    return target, heading.strip()
+
+
+def read_set_document_type(text):
+    """Return a recognized Read Set frontmatter type, otherwise ``None``.
+
+    Kernel routes use ``type: read-set`` and profile supplemental routes use
+    ``type: profile-read-set``.  A boundary target is traversed as a Read Set
+    only when its own bytes prove one of those types; directory names alone do
+    not turn an index or ordinary profile page into a Read Set.
+    """
+    frontmatter = extract_frontmatter(text or "")
+    if frontmatter is None:
+        return None
+    try:
+        fields = parse_yaml_subset(frontmatter)
+    except (ValueError, YamlSubsetError):
+        return None
+    if not isinstance(fields, dict):
+        return None
+    document_type = fields.get("type")
+    return (document_type if isinstance(document_type, str) and
+            document_type in READ_SET_DOCUMENT_TYPES else None)
+
+
+PROFILE_ID_LINE_RE = re.compile(
+    r"^\s*-\s+`profile_id`\s*:\s*`([^`]*)`\s*$"
+)
+PROFILE_ID_VALUE_RE = re.compile(r"^[a-z0-9][a-z0-9_-]*$")
+
+PROFILE_SLOT_BINDING_RE = re.compile(
+    r"^\s*-\s+`([^`]+)`\s*:\s*(.+?)\s*$"
+)
+PROFILE_WIKI_BINDING_RE = re.compile(r"\[\[([^\[\]]+?)\]\]")
+PROFILE_MARKDOWN_BINDING_RE = re.compile(r"\[[^\]]*\]\(([^)]+)\)")
+PROFILE_CODE_BINDING_RE = re.compile(r"`([^`]+)`")
+PROFILE_INLINE_BINDING_RE = re.compile(r"\binline\b", re.IGNORECASE)
+
+
+
+def profile_slot_bindings(manifest_text, include_duplicates=False):
+    """Return the Implemented Slots mapping and optionally duplicate names."""
+    bindings = {}
+    duplicates = []
+    inside = False
+    for _line_number, line in markdown_authority_lines(manifest_text):
+        heading = markdown_atx_heading(line)
+        if heading is not None and heading[0] <= 2:
+            inside = (
+                heading[0] == 2
+                and heading[1] == "Implemented Slots"
+            )
+            continue
+        if inside:
+            match = PROFILE_SLOT_BINDING_RE.match(line)
+            if match:
+                name = match.group(1).strip()
+                if name in bindings and name not in duplicates:
+                    duplicates.append(name)
+                bindings[name] = match.group(2).strip()
+    if include_duplicates:
+        return bindings, duplicates
+    return bindings
+
+
+def quota_share_within_limit(pages, total, limit):
+    """Decide ``pages/total <= limit%`` exactly, never through prose or floats.
+
+    The authorization comparison is cross-multiplied over exact rationals:
+    ``pages * 100 <= limit * total`` with ``limit`` read as a decimal string.
+    37/246 is 15.04065...%, renders as 15.0, and a limit of 15 must refuse
+    it; one display rounding must never become an authorization.
+    """
+    if (not isinstance(pages, int) or isinstance(pages, bool) or
+            not isinstance(total, int) or isinstance(total, bool) or
+            pages < 0 or total <= 0 or pages > total):
+        return False
+    if isinstance(limit, bool) or not isinstance(limit, (int, float)):
+        return False
+    from fractions import Fraction
+    return Fraction(pages * 100, 1) <= Fraction(str(limit)) * total
+
+
+def resolve_profile_binding(binding, root, profile_dir):
+    """Resolve one manifest slot binding with check_profile semantics.
+
+    Returns ``(kind, detail)`` where kind is path, outside-profile,
+    unresolved, invalid, inline, or unrecognized.  A file-bound slot uses one
+    exact profile-relative path.  There is no ``./``/``../`` normalization,
+    extension guessing, case alias, or repository-root fallback: those would
+    make a copied package's first-hop dependency graph platform-dependent.
+    """
+    value = binding.strip()
+    target = None
+    match = PROFILE_WIKI_BINDING_RE.fullmatch(value)
+    if match:
+        target = re.split(r"\\\||\|", match.group(1), maxsplit=1)[0]
+    if target is None:
+        match = PROFILE_MARKDOWN_BINDING_RE.fullmatch(value)
+        if match:
+            target = match.group(1)
+    if target is None and (
+            PROFILE_INLINE_BINDING_RE.fullmatch(value) or
+            (len(value) >= 2 and value[0] == value[-1] == "`" and
+             PROFILE_INLINE_BINDING_RE.fullmatch(value[1:-1]))):
+        return "inline", None
+    if target is None:
+        match = PROFILE_CODE_BINDING_RE.fullmatch(value)
+        if match:
+            target = match.group(1)
+    if target is None:
+        if (PROFILE_WIKI_BINDING_RE.search(value) or
+                PROFILE_MARKDOWN_BINDING_RE.search(value) or
+                PROFILE_CODE_BINDING_RE.search(value) or
+                PROFILE_INLINE_BINDING_RE.search(value)):
+            return "invalid", (
+                "slot value must be exactly one path binding; mixed, "
+                "multiple, or annotated binding constructs are ambiguous: "
+                "%r" % binding)
+        return "unrecognized", None
+    if target != target.strip():
+        return "invalid", "path has leading or trailing whitespace: %r" % target
+    if not target or "\x00" in target or "\\" in target or os.path.isabs(target):
+        return "invalid", "path is not a canonical profile-relative spelling: %r" % target
+    parts = target.split("/")
+    if any(part in ("", ".", "..") for part in parts):
+        return "invalid", "path contains an empty, `.` or `..` segment: %r" % target
+
+    root_real = os.path.realpath(os.path.abspath(root))
+    profile_absolute = os.path.abspath(profile_dir)
+    profile_real = os.path.realpath(profile_absolute)
+    try:
+        if os.path.commonpath((root_real, profile_real)) != root_real:
+            return "outside-profile", profile_dir
+    except ValueError:
+        return "outside-profile", profile_dir
+    profile_relative = os.path.relpath(
+        profile_absolute, root_real).replace(os.sep, "/")
+    repository_relative = profile_relative + "/" + target
+    candidate = os.path.join(root_real, *repository_relative.split("/"))
+    if not os.path.exists(candidate):
+        return "unresolved", target
+    try:
+        canonical_repository_file(
+            root_real, repository_relative, singly_linked=True)
+    except (OSError, ValueError) as exc:
+        return "invalid", "%s: %s" % (target, exc)
+    return "path", candidate
+
+
+def profile_identity(manifest_text, directory_name, reserved_ids=()):
+    """Return ``(profile_id, errors)`` for one profile manifest.
+
+    ``errors`` contains ``(check_id, details)`` pairs.  The manifest is the
+    sole profile-id source: exactly one ``profile_id`` bullet must occur under
+    the ``Profile Identity`` H2, it must be a lowercase path slug, must not be
+    reserved, and must equal the profile directory name.  Fenced examples are
+    ignored so documentation cannot accidentally become identity data.
+    """
+    profile_ids = []
+    inside_identity = False
+    for _line_number, line in markdown_authority_lines(manifest_text):
+        heading = markdown_atx_heading(line)
+        if heading is not None and heading[0] <= 2:
+            inside_identity = (
+                heading[0] == 2
+                and heading[1] == "Profile Identity"
+            )
+            continue
+        if inside_identity:
+            match = PROFILE_ID_LINE_RE.match(line)
+            if match:
+                profile_ids.append(match.group(1).strip())
+
+    profile_id = profile_ids[0] if profile_ids else None
+    errors = []
+    if not profile_ids:
+        errors.append((
+            "profile-id-missing",
+            "no `profile_id`: `<value>` bullet found under Profile Identity; "
+            "the manifest must name the profile it composes with the kernel",
+        ))
+    elif len(profile_ids) > 1:
+        errors.append((
+            "profile-id-duplicate",
+            "Profile Identity contains %d profile_id entries; exactly one "
+            "manifest identity is allowed" % len(profile_ids),
+        ))
+    elif profile_id in {str(value) for value in reserved_ids}:
+        errors.append((
+            "profile-id-placeholder",
+            "profile_id is still the reserved placeholder %r; replace it with "
+            "this profile's own id before the profile may be loaded" % profile_id,
+        ))
+    elif not PROFILE_ID_VALUE_RE.fullmatch(profile_id):
+        errors.append((
+            "profile-id-invalid",
+            "profile_id %r is not a lowercase path slug matching "
+            "[a-z0-9][a-z0-9_-]*" % profile_id,
+        ))
+    elif profile_id != directory_name:
+        errors.append((
+            "profile-id-directory-mismatch",
+            "profile_id %r must match the profile directory name %r; the "
+            "manifest is the single identity source" % (profile_id, directory_name),
+        ))
+    return profile_id, errors
+
+
+# ---------------------------------------------------------------------------
+# Structure Registry shape contract (semantic owner: K01/05 + K01/06; common
+# Profile interface: kernel/K00 Standards Control/profile-interface.yaml).
+# Shared by check_profile.py
+# (profile shape gate) and check_structure.py (vault resolution gate) so the
+# two cannot drift into parallel validators.
+# ---------------------------------------------------------------------------
+
+STRUCTURE_REGISTRY_TOP_FIELDS = frozenset((
+    "schema_version", "applicability", "units", "support_layers",
+))
+STRUCTURE_APPLICABILITY_FIELDS = frozenset(("state", "reason"))
+STRUCTURE_UNIT_FIELDS = frozenset((
+    "id", "kind", "parent", "root", "entry", "global_map_entry", "roles",
+))
+STRUCTURE_ENTRY_FIELDS = frozenset(("path", "expected_type"))
+STRUCTURE_UNIT_ROLES = ("sequence", "coverage", "quick_reference",
+                        "expression")
+STRUCTURE_STABLE_ID_RE = re.compile(
+    r"[a-z][a-z0-9]*(?:-[a-z0-9]+)*\Z")
+STRUCTURE_ROLE_MODE_FIELDS = {
+    "embedded": (frozenset(("mode", "path", "heading")), frozenset()),
+    "standalone": (frozenset(("mode", "path")), frozenset()),
+    "derived": (frozenset(("mode", "generator_capability", "inputs_owner")),
+                frozenset(("path", "heading"))),
+    "not-applicable": (frozenset(("mode", "reason")), frozenset()),
+}
+STRUCTURE_LAYER_FIELDS = frozenset((
+    "layer_id", "role", "root", "entry", "layout", "taxonomy", "coverage",
+    "global_map_entry", "bindings",
+))
+STRUCTURE_LAYER_ROLES = ("cases", "sources", "synthesis", "expression")
+STRUCTURE_TAXONOMY_FIELDS = frozenset(("axis", "page_field", "classes"))
+STRUCTURE_TAXONOMY_CLASS_FIELDS = frozenset(("class", "directory"))
+STRUCTURE_LAYER_BINDING_FIELDS = {
+    "cases": frozenset(("evidence_binding_owner",)),
+    "sources": frozenset(("authority_taxonomy_ref", "intake_policy_ref",
+                          "freshness_policy_ref", "index_mode")),
+    "synthesis": frozenset(("question_identity_field",
+                            "promotion_policy_ref")),
+    "expression": frozenset(("artifact_registry_ref",
+                             "preparation_route_ref",
+                             "readiness_projection")),
+}
+STRUCTURE_SOURCE_INDEX_MODES = frozenset(("derived", "none"))
+
+
+def _structure_nonempty(value):
+    return isinstance(value, str) and bool(value.strip())
+
+
+def structure_input_owner_reference_kind(value):
+    """Classify one derived-role input owner without resolving its value.
+
+    A stable runtime object is named by its object ID.  Every other accepted
+    value is a repository-relative corpus-artifact reference.  The caller
+    resolves either identity against the appropriate root-owned registry;
+    this pure classifier only prevents a Profile from carrying a Tool path or
+    the current physical spelling of adopter runtime state.
+    """
+    if not _structure_nonempty(value):
+        return None
+    value = value.strip()
+    if STRUCTURE_STABLE_ID_RE.fullmatch(value) is not None:
+        return "object-id"
+    return "corpus-artifact"
+
+
+def structure_derived_role_records(document, target="structure-registry"):
+    """Yield the canonical derived-role descriptors from one registry.
+
+    Shape validation, Profile admission, the structure Gate, and projection
+    writers all consume this one traversal.  A descriptor identifies the
+    owning structural object separately from its role so two derived roles on
+    the same support layer cannot be silently collapsed.
+    """
+    if not isinstance(document, dict):
+        return
+    units = document.get("units")
+    if isinstance(units, list):
+        for index, unit in enumerate(units):
+            if not isinstance(unit, dict):
+                continue
+            roles = unit.get("roles")
+            if not isinstance(roles, dict):
+                continue
+            for role_name, role in sorted(roles.items()):
+                if isinstance(role, dict) and role.get("mode") == "derived":
+                    yield {
+                        "label": "%s:units[%d]:roles:%s" %
+                                 (target, index, role_name),
+                        "container_kind": "unit",
+                        "object_id": unit.get("id"),
+                        "root": unit.get("root"),
+                        "role_name": role_name,
+                        "role": role,
+                    }
+    layers = document.get("support_layers")
+    if not isinstance(layers, list):
+        return
+    for index, layer in enumerate(layers):
+        if not isinstance(layer, dict):
+            continue
+        coverage = layer.get("coverage")
+        if isinstance(coverage, dict) and coverage.get("mode") == "derived":
+            yield {
+                "label": "%s:support_layers[%d]:coverage" %
+                         (target, index),
+                "container_kind": "support-layer",
+                "object_id": layer.get("layer_id"),
+                "root": layer.get("root"),
+                "role_name": "coverage",
+                "role": coverage,
+            }
+        bindings = layer.get("bindings")
+        readiness = bindings.get("readiness_projection") \
+            if isinstance(bindings, dict) else None
+        if isinstance(readiness, dict) and \
+                readiness.get("mode") == "derived":
+            yield {
+                "label": (
+                    "%s:support_layers[%d]:bindings:readiness_projection" %
+                    (target, index)
+                ),
+                "container_kind": "support-layer",
+                "object_id": layer.get("layer_id"),
+                "root": layer.get("root"),
+                "role_name": "readiness_projection",
+                "role": readiness,
+            }
+
+
+def validate_structure_registry_references(
+        document, projection_capabilities, target="structure-registry"):
+    """Validate stable capability and runtime-owner identities.
+
+    ``validate_structure_registry_shape`` owns the Profile representation.
+    This companion contract resolves every derived role against an already
+    validated, root-owned projection-capability mapping and the installed
+    runtime-object namespace.  It performs no corpus reads: a repository-
+    relative corpus artifact remains a stable Profile reference, while the
+    ``structure-registry`` Gate separately verifies its current path.
+    """
+    errors = []
+    if not isinstance(projection_capabilities, dict):
+        return [(
+            "structure-registry-capability", target,
+            "root-owned projection capability registry is unavailable")]
+    for record in structure_derived_role_records(document, target):
+        label = record["label"]
+        role = record["role"]
+        capability_id = role.get("generator_capability")
+        capability = projection_capabilities.get(capability_id)
+        if not isinstance(capability, dict) or \
+                capability.get("kind") != "projection":
+            errors.append((
+                "structure-registry-capability",
+                label + ":generator_capability",
+                "projection capability %r is not registered by the "
+                "root-owned Tool capability registry" % capability_id))
+            capability = None
+        input_owner = role.get("inputs_owner")
+        if structure_input_owner_reference_kind(input_owner) != "object-id":
+            continue
+        try:
+            runtime_paths.path_for(input_owner)
+        except KeyError:
+            errors.append((
+                "structure-registry-input-owner", label + ":inputs_owner",
+                "runtime input owner %r is not a registered stable object "
+                "ID" % input_owner))
+            continue
+        if capability is not None and input_owner not in \
+                capability.get("input_owners", ()):
+            errors.append((
+                "structure-registry-input-owner", label + ":inputs_owner",
+                "projection capability %r does not declare runtime input "
+                "owner %r" % (capability_id, input_owner)))
+    return errors
+
+
+def _structure_input_owner(errors, value, label):
+    """Validate the representation boundary of ``inputs_owner``."""
+    kind = structure_input_owner_reference_kind(value)
+    if kind is None:
+        return
+    value = value.strip()
+    if kind == "object-id":
+        return
+    if (value.startswith("/") or "\\" in value or
+            any(part in ("", ".", "..") for part in value.split("/"))):
+        errors.append((
+            "structure-registry-role", label,
+            "must be a canonical repository-relative corpus artifact path "
+            "or a stable runtime object ID"))
+        return
+    if value == "Tools" or value.startswith("Tools/"):
+        errors.append((
+            "structure-registry-role", label,
+            "must reference a stable generator capability, not a Tool "
+            "implementation path"))
+    if value == runtime_paths.RUNTIME_ROOT or value.startswith(
+            runtime_paths.RUNTIME_ROOT + "/"):
+        errors.append((
+            "structure-registry-role", label,
+            "must name adopter runtime state by stable object ID, not by its "
+            "current physical path"))
+
+
+def _structure_closed(errors, value, required, label, optional=frozenset()):
+    """Closed-mapping check; returns the mapping (or {}) for further reads."""
+    if not isinstance(value, dict):
+        errors.append(("structure-registry-schema", label,
+                       "must be a mapping"))
+        return {}
+    missing = sorted(required - set(value))
+    extra = sorted(set(value) - required - optional)
+    if missing:
+        errors.append(("structure-registry-schema", label,
+                       "missing field(s): %s" % ", ".join(missing)))
+    if extra:
+        errors.append(("structure-registry-schema", label,
+                       "unsupported field(s): %s" % ", ".join(extra)))
+    return value
+
+
+def _structure_role_mapping(errors, value, label):
+    """Validate one role declaration; returns the mapping (or {})."""
+    if not isinstance(value, dict):
+        errors.append(("structure-registry-role", label,
+                       "role must be a mapping declaring exactly one mode"))
+        return {}
+    mode = value.get("mode")
+    if mode not in STRUCTURE_ROLE_MODE_FIELDS:
+        errors.append((
+            "structure-registry-role", label,
+            "mode must be one of embedded, standalone, derived, "
+            "not-applicable; found %r — absence of a declaration must not "
+            "express not-applicable" % (mode,)))
+        return value
+    required, optional = STRUCTURE_ROLE_MODE_FIELDS[mode]
+    value = _structure_closed(errors, value, required, label, optional)
+    for field in sorted((required | optional) & set(value)):
+        if field == "mode":
+            continue
+        if not _structure_nonempty(value.get(field)):
+            errors.append(("structure-registry-role", "%s:%s" % (label, field),
+                           "must be a nonempty string"))
+    if mode == "derived":
+        generator = value.get("generator_capability")
+        if _structure_nonempty(generator) and \
+                STRUCTURE_STABLE_ID_RE.fullmatch(generator.strip()) is None:
+            errors.append((
+                "structure-registry-role",
+                label + ":generator_capability",
+                "must be a stable Tool capability ID, not an implementation "
+                "path"))
+        _structure_input_owner(
+            errors, value.get("inputs_owner"), label + ":inputs_owner")
+    if value.get("heading") is not None and mode == "derived" and \
+            value.get("path") is None:
+        errors.append(("structure-registry-role", label,
+                       "a derived rendering heading requires its path"))
+    return value
+
+
+def validate_structure_registry_shape(document, target="structure-registry"):
+    """Return [(check_id, label, details)] shape errors for one registry.
+
+    Pure byte-level contract: closed fields, applicability branches, per-mode
+    role declarations, ID uniqueness, and an existing acyclic parent graph.
+    Vault resolution (paths, headings, Profile Scope layers, Global Map and
+    Coverage references) belongs to check_structure.py.
+    """
+    errors = []
+    document = _structure_closed(
+        errors, document, STRUCTURE_REGISTRY_TOP_FIELDS, target)
+    if type(document.get("schema_version")) is not int or \
+            document.get("schema_version") != 2:
+        errors.append(("structure-registry-schema", target,
+                       "schema_version must be integer 2"))
+    applicability = _structure_closed(
+        errors, document.get("applicability"),
+        STRUCTURE_APPLICABILITY_FIELDS, target + ":applicability")
+    units = document.get("units")
+    layers = document.get("support_layers")
+    if not isinstance(units, list):
+        errors.append(("structure-registry-schema", target + ":units",
+                       "must be a list"))
+        units = []
+    if not isinstance(layers, list):
+        errors.append(("structure-registry-schema",
+                       target + ":support_layers", "must be a list"))
+        layers = []
+
+    state = applicability.get("state")
+    reason = applicability.get("reason")
+    if state == "configured":
+        if reason is not None:
+            errors.append(("structure-registry-applicability", target,
+                           "configured requires null reason"))
+        if not units:
+            errors.append((
+                "structure-registry-applicability", target,
+                "configured requires at least one unit; a corpus with no "
+                "registrable unit selects not-applicable instead"))
+    elif state == "not-applicable":
+        if not _structure_nonempty(reason):
+            errors.append(("structure-registry-applicability", target,
+                           "not-applicable requires a nonempty reason"))
+        if units or layers:
+            errors.append((
+                "structure-registry-applicability", target,
+                "not-applicable requires empty units and support_layers"))
+    else:
+        errors.append(("structure-registry-applicability", target,
+                       "state must be configured or not-applicable; found %r"
+                       % (state,)))
+
+    seen_ids = {}
+    parents = {}
+    kinds = {}
+    for index, unit in enumerate(units):
+        label = "%s:units[%d]" % (target, index)
+        unit = _structure_closed(errors, unit, STRUCTURE_UNIT_FIELDS, label)
+        unit_id = unit.get("id")
+        if not _structure_nonempty(unit_id):
+            errors.append(("structure-registry-unit", label + ":id",
+                           "must be a nonempty string"))
+        elif unit_id in seen_ids:
+            errors.append(("structure-registry-unit", label + ":id",
+                           "duplicate unit id %r; unit IDs are unique"
+                           % unit_id))
+        else:
+            seen_ids[unit_id] = index
+            parents[unit_id] = unit.get("parent")
+            kinds[unit_id] = unit.get("kind")
+        kind = unit.get("kind")
+        parent = unit.get("parent")
+        if kind not in ("domain", "module"):
+            errors.append(("structure-registry-unit", label + ":kind",
+                           "kind must be domain or module; found %r"
+                           % (kind,)))
+        elif kind == "domain" and parent is not None:
+            errors.append(("structure-registry-unit", label + ":parent",
+                           "a domain has no parent; found %r" % (parent,)))
+        elif kind == "module" and not _structure_nonempty(parent):
+            errors.append(("structure-registry-unit", label + ":parent",
+                           "a module requires exactly one existing parent "
+                           "unit id"))
+        root = unit.get("root")
+        if not _structure_nonempty(root):
+            errors.append(("structure-registry-unit", label + ":root",
+                           "must be a nonempty repository-relative directory"))
+        elif root.endswith("/"):
+            errors.append(("structure-registry-unit", label + ":root",
+                           "no trailing slash"))
+        entry = _structure_closed(errors, unit.get("entry"),
+                                  STRUCTURE_ENTRY_FIELDS, label + ":entry")
+        if not _structure_nonempty(entry.get("path")) or \
+                not str(entry.get("path", "")).lower().endswith(".md"):
+            errors.append(("structure-registry-unit", label + ":entry",
+                           "entry.path must be a nonempty .md path"))
+        expected = entry.get("expected_type")
+        if expected is not None and not _structure_nonempty(expected):
+            errors.append(("structure-registry-unit",
+                           label + ":entry:expected_type",
+                           "must be null or a nonempty type value"))
+        gm_entry = unit.get("global_map_entry")
+        if gm_entry is not None and not _structure_nonempty(gm_entry):
+            errors.append(("structure-registry-unit",
+                           label + ":global_map_entry",
+                           "must be null or a nonempty entry id"))
+        roles = _structure_closed(errors, unit.get("roles"),
+                                  frozenset(STRUCTURE_UNIT_ROLES),
+                                  label + ":roles")
+        for role in STRUCTURE_UNIT_ROLES:
+            if role in roles:
+                _structure_role_mapping(errors, roles.get(role),
+                                        "%s:roles:%s" % (label, role))
+
+    for unit_id, parent in parents.items():
+        if parent is None or not _structure_nonempty(parent):
+            continue
+        if parent not in parents:
+            errors.append(("structure-registry-parent",
+                           "%s:%s" % (target, unit_id),
+                           "parent %r is not a registered unit id" % parent))
+    for unit_id in parents:
+        seen = set()
+        current = unit_id
+        while current is not None and current in parents:
+            if current in seen:
+                errors.append(("structure-registry-parent",
+                               "%s:%s" % (target, unit_id),
+                               "parent graph contains a cycle through %r"
+                               % current))
+                break
+            seen.add(current)
+            current = parents.get(current) \
+                if _structure_nonempty(parents.get(current)) else None
+
+    seen_layers = set()
+    for index, layer in enumerate(layers):
+        label = "%s:support_layers[%d]" % (target, index)
+        layer = _structure_closed(errors, layer, STRUCTURE_LAYER_FIELDS,
+                                  label)
+        layer_id = layer.get("layer_id")
+        if not _structure_nonempty(layer_id):
+            errors.append(("structure-registry-layer", label + ":layer_id",
+                           "must be a nonempty Profile Scope Layer ID"))
+        elif layer_id in seen_layers:
+            errors.append(("structure-registry-layer", label + ":layer_id",
+                           "duplicate support layer %r" % layer_id))
+        else:
+            seen_layers.add(layer_id)
+        role = layer.get("role")
+        if role not in STRUCTURE_LAYER_ROLES:
+            errors.append(("structure-registry-layer", label + ":role",
+                           "role must be one of %s; found %r"
+                           % (", ".join(STRUCTURE_LAYER_ROLES), role)))
+        root = layer.get("root")
+        if not _structure_nonempty(root) or str(root).endswith("/"):
+            errors.append(("structure-registry-layer", label + ":root",
+                           "must be a nonempty directory with no trailing "
+                           "slash"))
+        entry = _structure_closed(errors, layer.get("entry"),
+                                  STRUCTURE_ENTRY_FIELDS, label + ":entry")
+        if not _structure_nonempty(entry.get("path")) or \
+                not str(entry.get("path", "")).lower().endswith(".md"):
+            errors.append(("structure-registry-layer", label + ":entry",
+                           "entry.path must be a nonempty .md path"))
+        layout = layer.get("layout")
+        taxonomy = layer.get("taxonomy")
+        if layout == "flat":
+            if taxonomy is not None:
+                errors.append(("structure-registry-layout", label,
+                               "flat layout requires null taxonomy"))
+        elif layout == "grouped":
+            taxonomy = _structure_closed(errors, taxonomy,
+                                         STRUCTURE_TAXONOMY_FIELDS,
+                                         label + ":taxonomy")
+            for field in ("axis", "page_field"):
+                if not _structure_nonempty(taxonomy.get(field)):
+                    errors.append(("structure-registry-layout",
+                                   "%s:taxonomy:%s" % (label, field),
+                                   "must be a nonempty string"))
+            classes = taxonomy.get("classes")
+            if not isinstance(classes, list) or not classes:
+                errors.append(("structure-registry-layout",
+                               label + ":taxonomy:classes",
+                               "grouped layout requires at least one class"))
+                classes = []
+            names = []
+            directories = []
+            for c_index, entry_row in enumerate(classes):
+                c_label = "%s:taxonomy:classes[%d]" % (label, c_index)
+                entry_row = _structure_closed(
+                    errors, entry_row, STRUCTURE_TAXONOMY_CLASS_FIELDS,
+                    c_label)
+                for field, bucket in (("class", names),
+                                      ("directory", directories)):
+                    value = entry_row.get(field)
+                    if not _structure_nonempty(value):
+                        errors.append(("structure-registry-layout",
+                                       "%s:%s" % (c_label, field),
+                                       "must be a nonempty string"))
+                    else:
+                        bucket.append(value)
+            for bucket, what in ((names, "class"), (directories,
+                                                    "directory")):
+                if len(set(bucket)) != len(bucket):
+                    errors.append((
+                        "structure-registry-layout",
+                        label + ":taxonomy:classes",
+                        "%s values must be unique; the class-to-directory "
+                        "mapping is one-to-one" % what))
+        else:
+            errors.append(("structure-registry-layout", label + ":layout",
+                           "layout must be flat or grouped; found %r"
+                           % (layout,)))
+        _structure_role_mapping(errors, layer.get("coverage"),
+                                label + ":coverage")
+        gm_entry = layer.get("global_map_entry")
+        if gm_entry is not None and not _structure_nonempty(gm_entry):
+            errors.append(("structure-registry-layer",
+                           label + ":global_map_entry",
+                           "must be null or a nonempty entry id"))
+        binding_fields = STRUCTURE_LAYER_BINDING_FIELDS.get(role)
+        if binding_fields is not None:
+            bindings = _structure_closed(errors, layer.get("bindings"),
+                                         binding_fields, label + ":bindings")
+            for field in sorted(binding_fields & set(bindings)):
+                value = bindings.get(field)
+                if field == "index_mode":
+                    if value not in STRUCTURE_SOURCE_INDEX_MODES:
+                        errors.append((
+                            "structure-registry-layer",
+                            "%s:bindings:index_mode" % label,
+                            "must be derived or none; a hand-maintained "
+                            "member index is not a registrable mode"))
+                elif field == "readiness_projection":
+                    _structure_role_mapping(
+                        errors, value, "%s:bindings:%s" % (label, field))
+                elif not _structure_nonempty(value):
+                    errors.append(("structure-registry-layer",
+                                   "%s:bindings:%s" % (label, field),
+                                   "must be a nonempty string"))
+    return errors
+
+
+PROFILE_SCOPE_ARCHITECTURE_HEADING = "Logical Architecture"
+
+
+def profile_scope_layers(scope_text):
+    """Return {layer_id: [directories]} from a Profile Scope's Logical
+    Architecture table (Profile Scope is the sole Layer ID owner)."""
+    layers = {}
+    in_section = False
+    for line in scope_text.splitlines():
+        stripped = line.strip()
+        if stripped.startswith("## "):
+            in_section = (stripped[3:].strip() ==
+                          PROFILE_SCOPE_ARCHITECTURE_HEADING)
+            continue
+        if not in_section or not stripped.startswith("|"):
+            continue
+        cells = [c.strip() for c in stripped.strip("|").split("|")]
+        if len(cells) < 2 or all(
+                c and set(c) <= set(":-") for c in cells if c):
+            continue
+        layer = cells[0].strip("`").strip()
+        if not layer or layer.lower().startswith("stable layer id"):
+            continue
+        directories = [d.strip().strip("`").strip()
+                       for d in cells[1].split(";")]
+        layers[layer] = [d for d in directories if d]
+    return layers
+
+
+# ---------------------------------------------------------------------------
+# Metadata Contract shape contract (semantic owner: K08/06 + K08/08; common
+# Profile interface: kernel/K00 Standards Control/profile-interface.yaml).
+# Shared by check_profile.py
+# (profile shape gate) and compose_page_contract.py (composition) so the two
+# cannot drift into parallel validators.
+# ---------------------------------------------------------------------------
+
+METADATA_CONTRACT_TOP_FIELDS = frozenset((
+    "schema_version", "applicability", "applicability_differences",
+    "extension_fields", "relationship_extensions", "section_roles",
+))
+# Optional top-level keys of the Metadata Contract slot (K08/09:
+# boundary projection display-label overrides).
+METADATA_CONTRACT_OPTIONAL_FIELDS = frozenset(("boundary_projection",))
+METADATA_APPLICABILITY_FIELDS = frozenset(("state",))
+METADATA_MODES = frozenset((
+    "required", "conditional", "optional", "derived", "projection",
+    "user-owned", "forbidden",
+))
+METADATA_SHAPES = frozenset((
+    "nonempty-string", "date", "url", "path", "list-of-strings",
+    "list-of-paths", "delegated",
+))
+METADATA_DIFFERENCE_FIELDS = frozenset(("field", "mode", "condition", "note"))
+METADATA_EXTENSION_FIELDS = frozenset((
+    "field", "mode", "shape", "condition", "owner",
+))
+METADATA_RELATIONSHIP_FIELDS = frozenset((
+    "field", "mode", "direction", "target", "shape", "owner",
+))
+METADATA_SECTION_ROLE_FIELDS = frozenset((
+    "role", "titles", "aliases", "owner",
+))
+METADATA_SECTION_ROLES = frozenset(("sources", "related"))
+# The only mode transitions a profile difference may declare (K08/06:
+# a profile only tightens).
+METADATA_TIGHTENING = frozenset((
+    ("optional", "required"), ("optional", "conditional"),
+    ("conditional", "required"),
+))
+
+
+def validate_condition_shape(condition, label, errors):
+    """Validate one K08/06 condition: {all|any: [{field, in|absent}]}."""
+    if not isinstance(condition, dict) or \
+            set(condition) - {"all", "any"} or not condition:
+        errors.append(("metadata-contract-condition", label,
+                       "condition must be a mapping with `all` and/or `any` "
+                       "clause lists"))
+        return
+    for group in ("all", "any"):
+        if group not in condition:
+            continue
+        clauses = condition[group]
+        if not isinstance(clauses, list) or not clauses:
+            errors.append(("metadata-contract-condition",
+                           "%s:%s" % (label, group),
+                           "must be a nonempty list of clauses"))
+            continue
+        for index, clause in enumerate(clauses):
+            c_label = "%s:%s[%d]" % (label, group, index)
+            if not isinstance(clause, dict) or \
+                    set(clause) - {"field", "in", "absent"} or \
+                    not _structure_nonempty(clause.get("field")):
+                errors.append(("metadata-contract-condition", c_label,
+                               "clause must carry a nonempty `field` plus "
+                               "`in` or `absent`"))
+                continue
+            has_in = "in" in clause
+            has_absent = "absent" in clause
+            if has_in == has_absent:
+                errors.append(("metadata-contract-condition", c_label,
+                               "exactly one of `in` / `absent` is required"))
+            elif has_in and (not isinstance(clause["in"], list)
+                             or not clause["in"]):
+                errors.append(("metadata-contract-condition", c_label,
+                               "`in` must be a nonempty value list"))
+            elif has_absent and clause["absent"] is not True:
+                errors.append(("metadata-contract-condition", c_label,
+                               "`absent` carries only the literal true"))
+
+
+def validate_metadata_contract_shape(document, target="metadata-contract"):
+    """Return [(check_id, label, details)] shape errors for one contract.
+
+    Pure byte-level: closed fields, the configured / kernel-defaults branch,
+    mode and shape vocabularies, and per-entry conditional coherence.
+    Whether a difference is a legal tightening of the kernel base belongs to
+    Tools/compose_page_contract.py, which owns the composition."""
+    errors = []
+    document = _structure_closed(
+        errors, document, METADATA_CONTRACT_TOP_FIELDS, target,
+        METADATA_CONTRACT_OPTIONAL_FIELDS)
+    if type(document.get("schema_version")) is not int or \
+            document.get("schema_version") != 1:
+        errors.append(("metadata-contract-schema", target,
+                       "schema_version must be integer 1"))
+    applicability = _structure_closed(
+        errors, document.get("applicability"),
+        METADATA_APPLICABILITY_FIELDS, target + ":applicability")
+    state = applicability.get("state")
+    lists = {}
+    for name in ("applicability_differences", "extension_fields",
+                 "relationship_extensions", "section_roles"):
+        value = document.get(name)
+        if not isinstance(value, list):
+            errors.append(("metadata-contract-schema",
+                           "%s:%s" % (target, name), "must be a list"))
+            value = []
+        lists[name] = value
+    total = sum(len(v) for v in lists.values())
+    if state == "kernel-defaults":
+        if total:
+            errors.append(("metadata-contract-applicability", target,
+                           "kernel-defaults requires all three lists empty"))
+    elif state == "configured":
+        if not total:
+            errors.append((
+                "metadata-contract-applicability", target,
+                "configured requires at least one difference, extension "
+                "field, or relationship extension; a profile with none "
+                "declares kernel-defaults instead"))
+    else:
+        errors.append(("metadata-contract-applicability", target,
+                       "state must be configured or kernel-defaults; "
+                       "found %r" % (state,)))
+
+    seen = set()
+
+    def check_entry(entry, allowed, label, requires_shape):
+        entry = _structure_closed(errors, entry, frozenset(("field", "mode")),
+                                  label, allowed - {"field", "mode"})
+        field = entry.get("field")
+        if not _structure_nonempty(field):
+            errors.append(("metadata-contract-entry", label + ":field",
+                           "must be a nonempty field name"))
+        elif field in seen:
+            errors.append(("metadata-contract-entry", label + ":field",
+                           "field %r is declared more than once across the "
+                           "contract" % field))
+        else:
+            seen.add(field)
+        mode = entry.get("mode")
+        if mode not in METADATA_MODES:
+            errors.append(("metadata-contract-entry", label + ":mode",
+                           "mode must be one of %s; found %r"
+                           % (", ".join(sorted(METADATA_MODES)), mode)))
+        condition = entry.get("condition")
+        if mode == "conditional" and condition is None:
+            errors.append(("metadata-contract-entry", label,
+                           "conditional mode requires a condition"))
+        if condition is not None:
+            if "condition" not in allowed:
+                errors.append(("metadata-contract-entry", label,
+                               "this entry kind carries no condition"))
+            else:
+                validate_condition_shape(condition, label + ":condition",
+                                         errors)
+        if requires_shape and entry.get("shape") not in METADATA_SHAPES:
+            errors.append(("metadata-contract-entry", label + ":shape",
+                           "shape must be one of %s; found %r"
+                           % (", ".join(sorted(METADATA_SHAPES)),
+                              entry.get("shape"))))
+        if "owner" in allowed and not _structure_nonempty(
+                entry.get("owner")):
+            errors.append(("metadata-contract-entry", label + ":owner",
+                           "must name a nonempty prose owner"))
+        return entry
+
+    for index, entry in enumerate(lists["applicability_differences"]):
+        label = "%s:applicability_differences[%d]" % (target, index)
+        entry = check_entry(entry, METADATA_DIFFERENCE_FIELDS, label, False)
+        mode = entry.get("mode")
+        if mode is not None and mode in METADATA_MODES and \
+                mode not in ("required", "conditional"):
+            errors.append((
+                "metadata-contract-entry", label + ":mode",
+                "a difference only tightens: the declared mode must be "
+                "required or conditional"))
+    for index, entry in enumerate(lists["extension_fields"]):
+        label = "%s:extension_fields[%d]" % (target, index)
+        check_entry(entry, METADATA_EXTENSION_FIELDS, label, True)
+
+    seen_roles = set()
+    for index, entry in enumerate(lists["section_roles"]):
+        label = "%s:section_roles[%d]" % (target, index)
+        entry = _structure_closed(errors, entry,
+                                  frozenset(("role", "titles", "owner")),
+                                  label, frozenset(("aliases",)))
+        role = entry.get("role")
+        if role not in METADATA_SECTION_ROLES:
+            errors.append(("metadata-contract-section-role",
+                           label + ":role",
+                           "role must be sources or related; found %r"
+                           % (role,)))
+        elif role in seen_roles:
+            errors.append(("metadata-contract-section-role",
+                           label + ":role",
+                           "role %r is bound more than once" % role))
+        else:
+            seen_roles.add(role)
+        titles = entry.get("titles")
+        if not isinstance(titles, list) or not titles or \
+                not all(_structure_nonempty(v) for v in titles):
+            errors.append(("metadata-contract-section-role",
+                           label + ":titles",
+                           "must be a nonempty list of nonempty display "
+                           "titles"))
+        aliases = entry.get("aliases")
+        if aliases is not None and (
+                not isinstance(aliases, list) or
+                not all(_structure_nonempty(v) for v in aliases)):
+            errors.append(("metadata-contract-section-role",
+                           label + ":aliases",
+                           "must be a list of nonempty migration aliases"))
+        if not _structure_nonempty(entry.get("owner")):
+            errors.append(("metadata-contract-section-role",
+                           label + ":owner",
+                           "must point at the Language Contract owner"))
+
+    for index, entry in enumerate(lists["relationship_extensions"]):
+        label = "%s:relationship_extensions[%d]" % (target, index)
+        entry = check_entry(entry, METADATA_RELATIONSHIP_FIELDS, label, True)
+        if not _structure_nonempty(entry.get("direction")):
+            errors.append(("metadata-contract-entry", label + ":direction",
+                           "must be a nonempty direction word"))
+        t = entry.get("target")
+        target_ok = _structure_nonempty(t) or (
+            isinstance(t, list) and t and
+            all(_structure_nonempty(item) for item in t))
+        if not target_ok:
+            errors.append(("metadata-contract-entry", label + ":target",
+                           "must be a nonempty target type or type list"))
+
+    projection = document.get("boundary_projection")
+    if projection is not None:
+        projection = _structure_closed(
+            errors, projection, frozenset(("labels",)),
+            target + ":boundary_projection")
+        labels = projection.get("labels")
+        if not isinstance(labels, dict) or not labels:
+            errors.append(("metadata-contract-boundary-projection",
+                           target + ":boundary_projection:labels",
+                           "must be a nonempty mapping of display labels"))
+        else:
+            for key, value in labels.items():
+                if key not in BOUNDARY_PROJECTION_LABEL_KEYS:
+                    errors.append((
+                        "metadata-contract-boundary-projection",
+                        "%s:boundary_projection:labels:%s" % (target, key),
+                        "label key must be one of %s"
+                        % ", ".join(sorted(BOUNDARY_PROJECTION_LABEL_KEYS))))
+                elif not _structure_nonempty(value):
+                    errors.append((
+                        "metadata-contract-boundary-projection",
+                        "%s:boundary_projection:labels:%s" % (target, key),
+                        "display label must be a nonempty string"))
+    return errors
+
+
+# ---------------------------------------------------------------------------
+# Page boundary contract (semantic owner: kernel/K08 Metadata and Status/
+# 09 Page Boundary Contract.md; gate: boundary-contract)
+# ---------------------------------------------------------------------------
+
+
+BOUNDARY_FIELD = "boundary"
+BOUNDARY_KEYS = frozenset(("owns", "excludes", "goals", "non_goals"))
+BOUNDARY_EXCLUDE_FIELDS = frozenset(("concern", "owner"))
+BOUNDARY_SLUG_RE = re.compile(r"^[a-z0-9]+(-[a-z0-9]+)*$")
+BOUNDARY_PROJECTION_BEGIN = "<!-- boundary-projection:begin -->"
+BOUNDARY_PROJECTION_END = "<!-- boundary-projection:end -->"
+# Kernel default display labels, owned by K08/09 Projection; the selected
+# profile MAY override any of them via `boundary_projection.labels` in its
+# Metadata Contract slot. Display text only — never schema or semantics.
+BOUNDARY_PROJECTION_LABELS = {
+    "preamble": "Generated by `Tools/render_boundary_projection.py` from "
+                "the `boundary` frontmatter block (K08/09); regenerate "
+                "instead of editing.",
+    "owns": "Owns",
+    "excludes": "Not owned here",
+    "owner": "Owner",
+    "goals": "Goals",
+    "non_goals": "Non-goals",
+}
+BOUNDARY_PROJECTION_LABEL_KEYS = frozenset(BOUNDARY_PROJECTION_LABELS)
+
+
+def _boundary_slug_ok(value):
+    return isinstance(value, str) and bool(BOUNDARY_SLUG_RE.match(value))
+
+
+def validate_boundary_shape(value, target="boundary"):
+    """Return [(check_id, label, details)] K08/09 shape errors for one block.
+
+    Pure byte-level: key closure, slug shape, entry shapes, in-block slug
+    uniqueness, and the owns/excludes overlap. Cross-page rules
+    (resolvability, reciprocity, corpus-wide uniqueness) belong to
+    Tools/check_boundary_contract.py, which owns the gate."""
+    errors = []
+    if not isinstance(value, dict) or not value:
+        errors.append(("boundary-shape", target,
+                       "the boundary block must be a nonempty mapping"))
+        return errors
+    for key in value:
+        if key not in BOUNDARY_KEYS:
+            errors.append(("boundary-shape", "%s:%s" % (target, key),
+                           "key must be one of %s"
+                           % ", ".join(sorted(BOUNDARY_KEYS))))
+    owns = value.get("owns")
+    owned = []
+    if not isinstance(owns, list) or not owns:
+        errors.append(("boundary-shape", target + ":owns",
+                       "owns must be a nonempty list"))
+    else:
+        for index, entry in enumerate(owns):
+            label = "%s:owns[%d]" % (target, index)
+            if isinstance(entry, str):
+                if not _boundary_slug_ok(entry):
+                    errors.append(("boundary-shape", label,
+                                   "concern must be a kebab-case slug; "
+                                   "found %r" % (entry,)))
+                else:
+                    owned.append(entry)
+            elif isinstance(entry, dict):
+                if len(entry) != 1:
+                    errors.append(("boundary-shape", label,
+                                   "a grouped entry maps exactly one slug "
+                                   "to its sub-slug list"))
+                    continue
+                slug, subs = next(iter(entry.items()))
+                if not _boundary_slug_ok(slug):
+                    errors.append(("boundary-shape", label,
+                                   "concern must be a kebab-case slug; "
+                                   "found %r" % (slug,)))
+                else:
+                    owned.append(slug)
+                if not isinstance(subs, list) or not subs:
+                    errors.append(("boundary-shape", label,
+                                   "sub-slugs must be a nonempty list"))
+                    continue
+                for sub in subs:
+                    if not _boundary_slug_ok(sub):
+                        errors.append(("boundary-shape", label,
+                                       "sub-slug must be a kebab-case "
+                                       "slug; found %r" % (sub,)))
+                    else:
+                        owned.append(sub)
+            else:
+                errors.append(("boundary-shape", label,
+                               "entry must be a slug or a one-key mapping "
+                               "from a slug to sub-slugs"))
+    duplicates = sorted({s for s in owned if owned.count(s) > 1})
+    for slug in duplicates:
+        errors.append(("boundary-shape", target + ":owns",
+                       "slug %r repeats inside owns" % slug))
+    excludes = value.get("excludes")
+    concerns = []
+    if excludes is not None:
+        if not isinstance(excludes, list) or not excludes:
+            errors.append(("boundary-shape", target + ":excludes",
+                           "excludes must be a nonempty list when present"))
+        else:
+            for index, entry in enumerate(excludes):
+                label = "%s:excludes[%d]" % (target, index)
+                if not isinstance(entry, dict) or \
+                        set(entry) != BOUNDARY_EXCLUDE_FIELDS:
+                    errors.append(("boundary-shape", label,
+                                   "entry carries exactly `concern` and "
+                                   "`owner`"))
+                    continue
+                if not _boundary_slug_ok(entry.get("concern")):
+                    errors.append(("boundary-shape", label + ":concern",
+                                   "concern must be a kebab-case slug; "
+                                   "found %r" % (entry.get("concern"),)))
+                else:
+                    concerns.append(entry["concern"])
+                owner = entry.get("owner")
+                if not isinstance(owner, str) or not owner.strip():
+                    errors.append(("boundary-shape", label + ":owner",
+                                   "owner must be a nonempty page "
+                                   "reference"))
+    overlap = sorted(set(owned) & set(concerns))
+    for slug in overlap:
+        errors.append(("boundary-consistency", target,
+                       "slug %r appears both in owns and as an excluded "
+                       "concern" % slug))
+    for key in ("goals", "non_goals"):
+        entries = value.get(key)
+        if entries is None:
+            continue
+        if not isinstance(entries, list) or not entries or \
+                not all(isinstance(v, str) and v.strip() for v in entries):
+            errors.append(("boundary-shape", "%s:%s" % (target, key),
+                           "must be a nonempty list of nonempty strings "
+                           "when present"))
+    return errors
+
+
+def boundary_owned_slugs(value):
+    """Every referenceable concern this block owns, in declaration order.
+
+    Top-level and sub-slugs are equally referenceable (K08/09). Assumes a
+    block that passed validate_boundary_shape; unparseable entries are
+    skipped."""
+    slugs = []
+    if not isinstance(value, dict):
+        return slugs
+    for entry in value.get("owns") or []:
+        if isinstance(entry, str):
+            slugs.append(entry)
+        elif isinstance(entry, dict) and len(entry) == 1:
+            slug, subs = next(iter(entry.items()))
+            slugs.append(slug)
+            if isinstance(subs, list):
+                slugs.extend(s for s in subs if isinstance(s, str))
+    return slugs
+
+
+def render_boundary_projection_lines(boundary, labels=None):
+    """Deterministic projection lines for one boundary block, markers
+    included. `labels` overlays BOUNDARY_PROJECTION_LABELS (K08/09
+    Projection); content order follows declaration order."""
+    effective = dict(BOUNDARY_PROJECTION_LABELS)
+    for key, value in (labels or {}).items():
+        if key in effective and isinstance(value, str) and value.strip():
+            effective[key] = value
+    lines = [BOUNDARY_PROJECTION_BEGIN, effective["preamble"]]
+    rendered_owns = []
+    for entry in boundary.get("owns") or []:
+        if isinstance(entry, str):
+            rendered_owns.append("`%s`" % entry)
+        elif isinstance(entry, dict) and len(entry) == 1:
+            slug, subs = next(iter(entry.items()))
+            rendered_owns.append("`%s` (%s)" % (
+                slug, ", ".join("`%s`" % s for s in subs
+                                if isinstance(s, str))))
+    if rendered_owns:
+        lines += ["", "**%s**: %s" % (effective["owns"],
+                                      "; ".join(rendered_owns))]
+    excludes = [e for e in boundary.get("excludes") or []
+                if isinstance(e, dict) and e.get("concern") and
+                e.get("owner")]
+    if excludes:
+        lines += ["", "| %s | %s |" % (effective["excludes"],
+                                       effective["owner"]),
+                  "|---|---|"]
+        for entry in excludes:
+            owner = str(entry["owner"])
+            link_target = owner[:-3] if owner.lower().endswith(".md") \
+                else owner
+            title = os.path.basename(link_target)
+            lines.append("| `%s` | [[%s\\|%s]] |"
+                         % (entry["concern"], link_target, title))
+    for key in ("goals", "non_goals"):
+        entries = [v for v in boundary.get(key) or []
+                   if isinstance(v, str) and v.strip()]
+        if entries:
+            lines += ["", "**%s**" % effective[key], ""]
+            lines += ["- %s" % v for v in entries]
+    lines.append(BOUNDARY_PROJECTION_END)
+    return lines
+
+
+# ---------------------------------------------------------------------------
+# Receipt helpers (field definitions in Tools/schemas/receipt.template.jsonl)
+# ---------------------------------------------------------------------------
+
+
+# One random token per process makes receipt IDs collision-resistant across
+# concurrent or same-second tool invocations; seq still preserves order within
+# one invocation.
+_RECEIPT_RUN_TOKEN = uuid.uuid4().hex
+
+# A Gate receipt is consumed against the canonical Required Queue identity:
+# check_queue's boundary-gate consumer requires exactly these three fields to
+# equal the live Queue values.  The canonical Queue is their sole owner, so a
+# producer binds them by reading that one file -- never by deriving them from
+# its own descriptive fields.
+RECEIPT_IDENTITY_FIELDS = ("task_id", "upstream_revision_id",
+                           "selected_profile_manifest")
+RUNTIME_STATE_PREFIX = runtime_paths.STATE_ROOT
+RUNTIME_QUEUE_PATH = runtime_paths.QUEUE_PATH
+
+# ---------------------------------------------------------------------------
+# Receipt cold chain (K12/07 Receipt Sealing).
+#
+# ``.cambium/receipts/cold/`` is the one namespace the hot receipt catalog
+# never deserializes.  It holds sealed segments (rows moved verbatim out of
+# hot registers by ``seal_receipts.py``), born-cold close evidence (full
+# candidate detail written once per ``check_batch_close`` run), and three
+# append-only registers that make the cold side resolvable and recoverable:
+# ``manifest.jsonl`` (one entry per segment, binding bytes, hash, record
+# count and seal identity), ``index.jsonl`` (one thin projection per sealed
+# receipt), and ``journal.jsonl`` (one ``begin`` and one ``complete`` row
+# per seal transaction).
+#
+# Sealing moves parse cost off the hot path.  It does NOT move integrity
+# off it: manifest, index and journal are ordinary editable files, so every
+# consistency run re-hashes every segment, proves each projection against
+# the exact sealed line it names, and proves both registers against the
+# seal receipt that produced them.  A projection nothing checks is an
+# assertion, not evidence.  What sealing retires is the re-deserialization
+# of sealed bodies -- measured on a 65 MB adopter archive, hashing costs
+# 0.42s per run and re-parsing the same records would cost a further 1.33s.
+#
+# A consumer that needs live field revalidation of a sealed body fails
+# closed instead of silently passing, because sealing records that exactly
+# that revalidation already ran clean at seal time.
+# ---------------------------------------------------------------------------
+RECEIPT_COLD_PREFIX = runtime_paths.RECEIPT_COLD_ROOT
+RECEIPT_COLD_SEGMENT_PREFIX = runtime_paths.RECEIPT_COLD_SEGMENT_ROOT
+RECEIPT_COLD_EVIDENCE_PREFIX = runtime_paths.RECEIPT_COLD_EVIDENCE_ROOT
+RECEIPT_COLD_MANIFEST_PATH = runtime_paths.RECEIPT_COLD_MANIFEST_PATH
+RECEIPT_COLD_INDEX_PATH = runtime_paths.RECEIPT_COLD_INDEX_PATH
+RECEIPT_COLD_JOURNAL_PATH = runtime_paths.RECEIPT_SEAL_JOURNAL_PATH
+
+# Receipts are produced one per finding, so a large scan may build thousands of
+# them from one unchanged Queue file.  The stat signature keys the cache, so an
+# in-process rewrite of the Queue is observed rather than served from cache.
+_RUNTIME_IDENTITY_CACHE = {}
+_RUNTIME_IDENTITY_CACHE_LIMIT = 64
+
+
+def runtime_receipt_identity(root):
+    """Return the Required Queue identity fields a receipt under ``root`` binds.
+
+    The values are read from the one canonical Queue file, exactly where
+    ``check_queue`` and ``check_proof`` read them, so a producer cannot drift
+    from its consumer.
+
+    A field this function cannot read is **omitted**, never written as
+    ``null``.  Absence is the fail-closed spelling:
+
+    * the boundary-gate consumer compares ``receipt.get(field)`` against the
+      live Queue value, where an omitted field already behaves as ``null``, so
+      omission introduces no new failure mode;
+    * consumers that demand an explicit binding spell it
+      ``field not in receipt or receipt.get(field) != expected``; an explicit
+      ``null`` satisfies the presence half of that test and could admit a
+      receipt those consumers reject today -- a loosening;
+    * receipts are append-only evidence.  ``task_id: null`` asserts an identity
+      the producer never observed, which is the inference
+      ``check_queue.receipt_matches_gate_id`` exists to forbid.
+
+    Returning ``{}`` therefore covers every case with no runtime to read: the
+    Standards repository itself, an adopter who has not run ``init_state``, and
+    a ``.cambium`` tree whose Queue is unreadable, unparseable, or reached
+    through a symlink.
+    """
+    if root is None:
+        return {}
+    try:
+        queue_path = managed_repository_path(
+            root, RUNTIME_QUEUE_PATH, RUNTIME_STATE_PREFIX,
+            suffixes=(".yaml",), must_exist=True)
+        descriptor = os.stat(queue_path)
+    except (OSError, TypeError, ValueError):
+        return {}
+    if not stat.S_ISREG(descriptor.st_mode):
+        return {}
+    key = (queue_path, descriptor.st_dev, descriptor.st_ino,
+           descriptor.st_mtime_ns, descriptor.st_size)
+    identity = _RUNTIME_IDENTITY_CACHE.get(key)
+    if identity is None:
+        try:
+            queue = load_yaml_file(queue_path)
+        except (OSError, UnicodeError, ValueError):
+            queue = {}
+        identity = {field: queue[field] for field in RECEIPT_IDENTITY_FIELDS
+                    if field in queue}
+        if len(_RUNTIME_IDENTITY_CACHE) >= _RUNTIME_IDENTITY_CACHE_LIMIT:
+            _RUNTIME_IDENTITY_CACHE.clear()
+        _RUNTIME_IDENTITY_CACHE[key] = identity
+    return dict(identity)
+
+
+def make_receipt(tool, tool_version, check, target, result, details, seq,
+                 *, receipt_type_id, root=None, identity=None):
+    """Build one typed Receipt; result is pass / fail / candidate.
+
+    ``root`` binds the Required Queue identity fields read from that
+    repository's runtime state; ``identity`` supplies them directly and wins,
+    for a producer whose receipt describes a state transition and must bind the
+    post-transaction identity rather than the bytes currently on disk.  Only
+    :data:`RECEIPT_IDENTITY_FIELDS` are taken from either source, and a field
+    absent there stays absent from the receipt. ``receipt_type_id`` is
+    mandatory: an untyped object cannot enter any current Cambium Receipt
+    catalog.
+    """
+    assert result in ("pass", "fail", "candidate"), result
+    if not isinstance(receipt_type_id, str) or not receipt_type_id:
+        raise ValueError("receipt_type_id must be non-empty text")
+    now = time.time()
+    checked_at = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(now))
+    stamp = time.strftime("%Y%m%dT%H%M%SZ", time.gmtime(now))
+    receipt = {
+        "receipt_id": "audit-%s-%s-%s-%04d" % (
+            tool, stamp, _RECEIPT_RUN_TOKEN, seq),
+        "receipt_type_id": receipt_type_id,
+        "check": check,
+        "target": target,
+        "result": result,
+        "details": details,
+        "checked_at": checked_at,
+        "tool": tool,
+        "tool_version": tool_version,
+        "invalidated_by": None,
+    }
+    if identity is None:
+        identity = runtime_receipt_identity(root)
+    for field in RECEIPT_IDENTITY_FIELDS:
+        if field in identity:
+            receipt[field] = identity[field]
+    return receipt
+
+
+def validate_receipt_output_path(path):
+    """Return an absolute receipt path without crossing runtime authority.
+
+    Generic checks may write receipts outside a Cambium runtime.  Once either
+    the lexical or resolved path enters a ``.cambium`` namespace, however,
+    the only legal destination is ``.cambium/receipts/**/*.jsonl``.  Keeping
+    this guard in the shared append primitive prevents any caller from
+    appending JSON to canonical state, delta, report, or lock files.
+    """
+    if not isinstance(path, (str, bytes, os.PathLike)):
+        raise ValueError("receipt target must be a filesystem path")
+    absolute = os.path.abspath(os.fspath(path))
+    resolved = os.path.realpath(absolute)
+    entered_runtime = False
+    runtime_name = os.path.basename(runtime_paths.RUNTIME_ROOT)
+    receipts_name = os.path.basename(runtime_paths.RECEIPT_ROOT)
+    for spelling in (absolute, resolved):
+        parts = os.path.normpath(spelling).split(os.sep)
+        for index, component in enumerate(parts):
+            if component != runtime_name:
+                continue
+            entered_runtime = True
+            if index + 1 >= len(parts) or parts[index + 1] != receipts_name:
+                raise ValueError(
+                    "receipt target inside %s must be under %s/" %
+                    (runtime_paths.RUNTIME_ROOT,
+                     runtime_paths.RECEIPT_ROOT))
+    if entered_runtime and not absolute.endswith(".jsonl"):
+        raise ValueError("managed Cambium receipts must use a .jsonl file")
+    return absolute
+
+
+# ---------------------------------------------------------------------------
+# Receipt append mutex (K12/07).
+#
+# Receipt registers are append-only, and for most of this runtime's life that
+# was enough: two appenders never conflict, so appends needed no lock at all.
+# Sealing broke that assumption.  A seal REWRITES a register -- it is the one
+# operation that removes bytes -- so an append landing between the moment the
+# seal reads a register and the moment it installs the rewritten image is
+# silently dropped, and the post-seal validation passes because the dropped
+# receipt is gone from the very evidence set being checked.  No number of
+# hash comparisons closes that window; only a lock both sides take does.
+#
+# The primitive is a rename, not a lock directory, because the mounts this
+# runtime has to survive refuse ``unlink``: a lock directory acquired there
+# can be created but never released.  Renaming one marker file between
+# ``.free`` and ``.held`` is atomic on every filesystem in play and needs no
+# deletion.
+#
+# WHAT THIS IS AND IS NOT.  Sealing is a maintenance-window operation
+# (``seal_receipts.py``), and this mutex is the guard that makes the common
+# accident -- running a checker or a writer beside a seal -- fail loudly
+# instead of silently dropping a receipt.  It is NOT a proof of mutual
+# exclusion under arbitrary concurrency, and nothing in this runtime should
+# be read as claiming one:
+#
+#   * acquisition is re-entrant through a module-level counter, so it does
+#     not separate threads or forked children of a single process;
+#   * it binds only appenders that go through :func:`write_receipts`;
+#   * the marker paths themselves are not defended against aliasing;
+#   * an abandoned mutex is reclaimed on proof that its recorded pid is
+#     gone, which is sound for a crashed local writer and says nothing
+#     about a writer on another host.
+#
+# The supported operating boundary is a declared quiet window with a single
+# writer.  Remaining hardening is registered in ROADMAP.md.
+#
+# Lock order is always runtime_write_lock -> receipt_append_mutex.  Nothing
+# acquires them the other way round, and re-entrant acquisition inside one
+# process is a no-op so a writer holding the mutex may still append its own
+# receipts through the ordinary primitive.
+# ---------------------------------------------------------------------------
+RECEIPT_APPEND_FREE_PATH = runtime_paths.RECEIPT_APPEND_FREE_PATH
+RECEIPT_APPEND_HELD_PATH = runtime_paths.RECEIPT_APPEND_HELD_PATH
+
+_RECEIPT_APPEND_DEPTH = 0
+
+
+class ReceiptAppendLockedError(RuntimeError):
+    """Another writer holds the receipt append mutex."""
+
+
+def receipt_runtime_root(path):
+    """Return the runtime root owning ``path``, or None outside a runtime."""
+    absolute = os.path.abspath(os.fspath(path))
+    parts = absolute.split(os.sep)
+    for index in range(len(parts) - 1, -1, -1):
+        if parts[index] == os.path.basename(runtime_paths.RUNTIME_ROOT):
+            return os.sep.join(parts[:index]) or os.sep
+    return None
+
+
+def _receipt_mutex_record(note):
+    return json.dumps({
+        "pid": os.getpid(),
+        "note": note,
+        "held_since": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+    }, sort_keys=True) + "\n"
+
+
+@contextmanager
+def receipt_append_mutex(root, note="receipt-append", timeout=60.0,
+                         poll_interval=0.02):
+    """Guard receipt appends against a maintenance-window seal.
+
+    A cooperating-writer seatbelt, not a concurrency protocol: see the
+    section comment above for exactly what it does and does not exclude.
+    """
+    global _RECEIPT_APPEND_DEPTH
+    if _RECEIPT_APPEND_DEPTH > 0:
+        _RECEIPT_APPEND_DEPTH += 1
+        try:
+            yield False
+        finally:
+            _RECEIPT_APPEND_DEPTH -= 1
+        return
+    root_real = os.path.realpath(os.path.abspath(root))
+    free_path = os.path.join(root_real, RECEIPT_APPEND_FREE_PATH)
+    held_path = os.path.join(root_real, RECEIPT_APPEND_HELD_PATH)
+    os.makedirs(os.path.dirname(free_path), mode=0o700, exist_ok=True)
+    if not os.path.exists(free_path) and not os.path.exists(held_path):
+        try:
+            with open(free_path, "x", encoding="utf-8") as handle:
+                handle.write(_receipt_mutex_record("initialized"))
+        except FileExistsError:
+            pass
+    deadline = time.monotonic() + (timeout if timeout is not None else 0.0)
+    record = _receipt_mutex_record(note)
+    while True:
+        try:
+            os.rename(free_path, held_path)
+        except OSError:
+            if _reclaim_dead_receipt_mutex(held_path, free_path):
+                continue
+            if timeout is not None and time.monotonic() >= deadline:
+                raise ReceiptAppendLockedError(
+                    "receipt append mutex %s is held by a live writer; a seal "
+                    "in progress removes bytes from a register, so no append "
+                    "may proceed beside it. If no writer remains and the "
+                    "record names no running process, reconcile by renaming "
+                    "%s back to %s" %
+                    (RECEIPT_APPEND_HELD_PATH, RECEIPT_APPEND_HELD_PATH,
+                     RECEIPT_APPEND_FREE_PATH))
+            time.sleep(poll_interval)
+            continue
+        # Claim, then publish identity, then confirm the claim survived.  A
+        # reclaimer that read the previous owner's dead record in the gap
+        # between the rename and this write would otherwise be able to free
+        # a mutex this process is legitimately holding.
+        try:
+            with open(held_path, "w", encoding="utf-8") as handle:
+                handle.write(record)
+                handle.flush()
+                os.fsync(handle.fileno())
+            with open(held_path, encoding="utf-8") as handle:
+                if handle.read() != record:
+                    continue
+        except OSError:
+            continue
+        break
+    _RECEIPT_APPEND_DEPTH += 1
+    try:
+        yield True
+    finally:
+        _RECEIPT_APPEND_DEPTH -= 1
+        os.rename(held_path, free_path)
+
+
+def process_is_alive(pid):
+    """True when ``pid`` still names a running process on this host.
+
+    An unknown or unreadable owner counts as alive: this answer is only ever
+    used to justify taking something away from another writer, so every
+    uncertain case must resolve against doing that.
+    """
+    if not isinstance(pid, int) or isinstance(pid, bool) or pid <= 0:
+        return True
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    except OSError:
+        return True
+    return True
+
+
+def _reclaim_dead_receipt_mutex(held_path, free_path):
+    """Free the mutex only when its recorded owner no longer exists.
+
+    A crashed appender would otherwise wedge every later append and every
+    seal, including the recovery that exists to clean up after it.  The one
+    safe basis for reclaiming is proof that the recorded process is gone --
+    never a timeout, which cannot tell a slow writer from a dead one.
+    """
+    try:
+        with open(held_path, encoding="utf-8") as handle:
+            owner = json.load(handle)
+    except (OSError, ValueError):
+        return False
+    if process_is_alive(owner.get("pid")):
+        return False
+    try:
+        os.rename(held_path, free_path)
+    except OSError:
+        return False
+    return True
+
+
+def _receipt_lines(receipts):
+    """Return the exact newline-terminated records used by receipt writers."""
+    lines = [
+        (json.dumps(receipt, ensure_ascii=False) + "\n").encode("utf-8")
+        for receipt in receipts
+    ]
+    if len(lines) != len(set(lines)):
+        raise ValueError("one append operation must not repeat a receipt record")
+    return lines
+
+
+def _read_receipt_bytes(path):
+    """Read one receipt file through no-follow descriptors.
+
+    A missing final component is represented by ``(False, b\"\")``.  The same
+    regular-file and single-link rules as the append path apply so an
+    after-error inspection cannot be redirected to authoritative state.
+    """
+    absolute = validate_receipt_output_path(path)
+    capability = inherited_path_capability(path, consumptions="append")
+    if capability is not None:
+        target_fd, target_dev, target_ino = \
+            _pathcaps.effective_target(capability)
+        if target_fd is None:
+            _pathcaps.acknowledge(capability)
+            return False, b""
+        if capability["exists"] and capability["kind"] != "file":
+            raise ValueError("receipt target must be a regular file")
+        content = _pathcaps.read_stable_descriptor(
+            target_fd, target_dev, target_ino, absolute)
+        _pathcaps.verify_named_target(capability, absolute)
+        _pathcaps.acknowledge(capability)
+        return True, content
+    parent = os.path.dirname(absolute)
+    basename = os.path.basename(absolute)
+    nofollow = getattr(os, "O_NOFOLLOW", None)
+    directory_only = getattr(os, "O_DIRECTORY", None)
+    if nofollow is None or directory_only is None:
+        raise OSError(errno.ENOTSUP,
+                      "safe receipt inspection requires O_NOFOLLOW and "
+                      "O_DIRECTORY", absolute)
+    directory_flags = os.O_RDONLY | directory_only | nofollow
+    directory_flags |= getattr(os, "O_CLOEXEC", 0)
+    parent_fd = os.open(parent, directory_flags)
+    try:
+        try:
+            fd = os.open(
+                basename,
+                os.O_RDONLY | nofollow | getattr(os, "O_CLOEXEC", 0),
+                dir_fd=parent_fd,
+            )
+        except FileNotFoundError:
+            return False, b""
+        try:
+            descriptor = os.fstat(fd)
+            if not stat.S_ISREG(descriptor.st_mode):
+                raise ValueError("receipt target must be a regular file")
+            if descriptor.st_nlink != 1:
+                raise ValueError(
+                    "receipt target must have exactly one hard link; found %d" %
+                    descriptor.st_nlink
+                )
+            chunks = []
+            while True:
+                chunk = os.read(fd, 1024 * 1024)
+                if not chunk:
+                    break
+                chunks.append(chunk)
+            return True, b"".join(chunks)
+        finally:
+            os.close(fd)
+    finally:
+        os.close(parent_fd)
+
+
+def receipt_append_observation(path, receipts):
+    """Observe exact own-record counts without treating other appends as ours.
+
+    The returned value is intentionally small and JSON-serializable.  A caller
+    takes one observation before publication and another after an exception;
+    :func:`receipt_append_outcome` then distinguishes a proven absence from a
+    durable exact append.  Invalid or partial JSONL is retained as an
+    ``uncertain`` condition rather than repaired destructively.
+    """
+    lines = _receipt_lines(receipts)
+    exists, content = _read_receipt_bytes(path)
+    counts = [content.splitlines(keepends=True).count(line) for line in lines]
+    structurally_valid = True
+    if content and not content.endswith(b"\n"):
+        structurally_valid = False
+    if structurally_valid:
+        try:
+            for line in content.splitlines():
+                value = json.loads(line.decode("utf-8"))
+                if not isinstance(value, dict):
+                    raise ValueError("receipt record is not an object")
+        except (UnicodeError, ValueError, json.JSONDecodeError):
+            structurally_valid = False
+    return {
+        "path": validate_receipt_output_path(path),
+        "exists": exists,
+        "counts": counts,
+        "structurally_valid": structurally_valid,
+    }
+
+
+def receipt_append_outcome(before, after):
+    """Classify an attempted append as ``present``, ``absent`` or uncertain."""
+    if (not isinstance(before, dict) or not isinstance(after, dict) or
+            before.get("path") != after.get("path") or
+            not isinstance(before.get("counts"), list) or
+            not isinstance(after.get("counts"), list) or
+            len(before["counts"]) != len(after["counts"])):
+        return "uncertain"
+    deltas = [new - old for old, new in
+              zip(before["counts"], after["counts"])]
+    if after.get("structurally_valid") is not True:
+        return "uncertain"
+    if deltas and all(delta == 1 for delta in deltas):
+        return "present"
+    if all(delta == 0 for delta in deltas):
+        return "absent"
+    return "uncertain"
+
+
+def receipt_outcome_from(path, receipts, before):
+    """Return the current exact-record outcome relative to ``before``.
+
+    Inspection errors are deliberately converted to ``uncertain``.  This is
+    the safe question for an exception handler deciding whether a canonical
+    writer lock may be cleared; it must never turn unreadable or partial
+    receipt evidence into a proven absence.
+    """
+    try:
+        after = receipt_append_observation(path, receipts)
+        return receipt_append_outcome(before, after)
+    except Exception:
+        return "uncertain"
+
+
+def write_receipts_observed(path, receipts, exclusive=False, before=None):
+    """Append receipts and report exact durable outcome plus any write error.
+
+    Returns ``(outcome, error, before_observation)`` and does not raise an
+    ordinary append/inspection exception.  A successful return is only one
+    whose outcome is ``present``; a writer error after durable bytes therefore
+    returns ``("present", error, before)`` while a partial/truncated record is
+    ``uncertain``.  Canonical transaction callers use this distinction to
+    decide whether rollback is fully closed or must retain its recovery lock.
+    """
+    try:
+        baseline = before or receipt_append_observation(path, receipts)
+    except Exception as exc:
+        return "uncertain", exc, before
+    write_error = None
+    try:
+        write_receipts(path, receipts, exclusive=exclusive)
+    except Exception as exc:
+        write_error = exc
+    outcome = receipt_outcome_from(path, receipts, baseline)
+    if write_error is not None:
+        return outcome, write_error, baseline
+    if outcome != "present":
+        return (outcome,
+                OSError(errno.EIO,
+                        "receipt append could not be proven durable: %s" %
+                        outcome, os.fspath(path)),
+                baseline)
+    return outcome, None, baseline
+
+
+def write_receipts(path, receipts, exclusive=False):
+    """Safely append receipts to one regular, singly-linked JSONL file.
+
+    Queue tools validate the managed namespace before calling this helper, but
+    the file can still be swapped between validation and append.  Opening with
+    ``O_NOFOLLOW`` closes the final-component symlink race; the descriptor
+    checks reject directories, devices, and hard links to authoritative state.
+    One ``O_APPEND`` syscall per JSONL record keeps concurrent writers from
+    sharing a file offset.  ``exclusive=True`` additionally requires this call
+    to create the final name, which is suitable for a one-receipt canonical
+    artifact.  Callers needing a state transaction must additionally hold
+    :func:`runtime_write_lock` for the full transaction.
+
+    Every managed append also takes :func:`receipt_append_mutex` for its
+    duration.  Two appends never needed to exclude each other, but a
+    maintenance-window seal rewrites a register, and an append landing
+    inside that rewrite's window is lost with no trace in the evidence set
+    the post-seal validation reads.  The mutex is the guard both sides
+    take against that accident; it is re-entrant, so a writer already
+    holding it appends normally.  It is not a general concurrency
+    protocol -- see its own section comment for the boundary.
+    """
+    if not path:
+        return
+    lines = _receipt_lines(receipts)
+    if not lines:
+        return
+    absolute = validate_receipt_output_path(path)
+    root = receipt_runtime_root(absolute)
+    if root is not None:
+        with receipt_append_mutex(root, note="write_receipts:%s" %
+                                  os.path.basename(absolute)):
+            return _append_receipt_lines(absolute, lines, exclusive)
+    return _append_receipt_lines(absolute, lines, exclusive)
+
+
+def _append_receipt_lines(absolute, lines, exclusive=False):
+    """Append exact receipt records through no-follow descriptors."""
+    parent = os.path.dirname(absolute)
+    basename = os.path.basename(absolute)
+    if not basename:
+        raise ValueError("receipt target must name a file")
+    capability, retained_parent_fd, retained_basename = _pathcaps.open_parent(
+        absolute, "append")
+    if capability is None:
+        os.makedirs(parent, exist_ok=True)
+    else:
+        basename = retained_basename
+    nofollow = getattr(os, "O_NOFOLLOW", None)
+    directory_only = getattr(os, "O_DIRECTORY", None)
+    if nofollow is None or directory_only is None:
+        raise OSError(errno.ENOTSUP,
+                      "safe receipt append requires O_NOFOLLOW and O_DIRECTORY",
+                      absolute)
+    directory_flags = os.O_RDONLY | directory_only | nofollow
+    directory_flags |= getattr(os, "O_CLOEXEC", 0)
+    parent_fd = (retained_parent_fd if retained_parent_fd is not None else
+                 os.open(parent, directory_flags))
+    flags = os.O_WRONLY | os.O_APPEND | os.O_CREAT | nofollow
+    if exclusive:
+        flags |= os.O_EXCL
+    flags |= getattr(os, "O_CLOEXEC", 0)
+    try:
+        if capability is not None and capability["exists"]:
+            if exclusive:
+                raise FileExistsError(errno.EEXIST,
+                                      "receipt target already exists",
+                                      absolute)
+            named = os.stat(basename, dir_fd=parent_fd,
+                            follow_symlinks=False)
+            if (stat.S_ISLNK(named.st_mode) or
+                    (named.st_dev, named.st_ino) !=
+                    (capability["target_dev"], capability["target_ino"])):
+                raise OSError(errno.EAGAIN,
+                              "receipt target changed after admission",
+                              absolute)
+            fd = os.dup(capability["target_fd"])
+        else:
+            # APFS can transiently surface ENOENT when several
+            # O_CREAT|O_APPEND opens race on one absent name. Retrying that
+            # result is safe; O_EXCL retains its winner semantics.
+            for attempt in range(5):
+                try:
+                    fd = os.open(basename, flags, 0o666, dir_fd=parent_fd)
+                    break
+                except FileNotFoundError:
+                    if attempt == 4:
+                        raise
+                    continue
+    except Exception:
+        os.close(parent_fd)
+        raise
+    try:
+        descriptor = os.fstat(fd)
+        if not stat.S_ISREG(descriptor.st_mode):
+            raise ValueError("receipt target must be a regular file")
+        if descriptor.st_nlink != 1:
+            raise ValueError(
+                "receipt target must have exactly one hard link; found %d" %
+                descriptor.st_nlink
+            )
+        if capability is not None and not capability["exists"]:
+            advanced_fd, advanced_dev, advanced_ino = \
+                _pathcaps.effective_target(capability)
+            if advanced_fd is not None and (
+                    descriptor.st_dev, descriptor.st_ino) != (
+                        advanced_dev, advanced_ino):
+                raise OSError(errno.EAGAIN,
+                              "receipt target changed after first append",
+                              absolute)
+            _pathcaps.record_append_target(
+                capability, parent_fd, basename, absolute, descriptor)
+        # Each JSONL record is one append syscall.  Retrying a short write
+        # would allow a concurrent writer to land between fragments and make
+        # both records ambiguous, so surface the partial append instead.  The
+        # caller's writer lock and exact-record observation then preserve a
+        # recovery boundary without deleting any concurrent record.
+        for line in lines:
+            written = os.write(fd, line)
+            if written != len(line):
+                raise OSError(errno.EIO, "receipt append was partial",
+                              absolute)
+        os.fsync(fd)
+        if capability is not None:
+            named_after = os.stat(basename, dir_fd=parent_fd,
+                                  follow_symlinks=False)
+            if ((named_after.st_dev, named_after.st_ino) !=
+                    (descriptor.st_dev, descriptor.st_ino)):
+                raise OSError(errno.EAGAIN,
+                              "receipt target changed during append",
+                              absolute)
+        # Persist a newly created receipt name as well as its contents.
+        os.fsync(parent_fd)
+    finally:
+        os.close(fd)
+        os.close(parent_fd)
+
+
+def exit_code(receipts):
+    """Shared exit codes: 1 = at least one fail; 2 = no fail but candidates; 0 = all pass."""
+    results = {r["result"] for r in receipts}
+    if "fail" in results:
+        return 1
+    if "candidate" in results:
+        return 2
+    return 0
+
+
+class ArgumentParser(argparse.ArgumentParser):
+    """An ``argparse.ArgumentParser`` whose usage errors exit 1, not 2.
+
+    Stock argparse spends code 2 on "you typed the command wrong", but this
+    distribution has already spent 2 on the HOLD verdict above: no failure,
+    yet candidates remain.  Sharing one code makes those two outcomes
+    indistinguishable to every consumer downstream of the process boundary --
+    a misspelled flag reads as a clean-but-not-quiet run, and a run_gates
+    registry row whose command no longer matches its tool is reported as an
+    empty HOLD instead of the wiring defect it is.
+
+    Overriding ``error`` is enough to move all five usage-error paths at once,
+    because argparse funnels every one of them through it: mutually exclusive
+    conflicts, a missing ``required=`` option, a value outside ``choices``, a
+    custom ``type`` callable that raises, and an unrecognized flag.  The
+    non-error exits argparse owns are untouched -- ``--help`` and ``--version``
+    still exit 0 through ``exit`` directly.
+
+    The message text and its destination are unchanged from the base class, so
+    a caller reading stderr sees exactly what it saw before; only the status
+    moves.  This class does not decide any tool's verdict: the exit it raises
+    is argparse's own, taken before a tool has looked at a single input, and
+    every verdict-bearing exit still happens in the tool, off ``exit_code``.
+    """
+
+    def error(self, message):
+        """Exit 1 (usage error) rather than argparse's default 2 (HOLD here)."""
+        self.print_usage(sys.stderr)
+        self.exit(1, "%s: error: %s\n" % (self.prog, message))
+
+
+# ---------------------------------------------------------------------------
+# Canonical runtime-state helpers
+# ---------------------------------------------------------------------------
+
+
+def repository_path(root, relative_path, must_exist=False, reject_symlink=False):
+    """Resolve one repository-relative path without permitting root escape.
+
+    ``relative_path`` must be a canonical, non-empty relative spelling: no
+    leading/trailing whitespace, absolute path, ``.``/``..`` segment, or NUL.
+    Resolution follows symlinks only to prove the resulting path remains under
+    ``root``.  Callers handling canonical state files may set
+    ``reject_symlink`` to reject a symlink at the final path as well.
+    """
+    # Import locally to keep this common mechanics module below the
+    # repository contract during module initialization. The spelling
+    # predicate itself has one owner and is not re-exported from kblib.
+    from Tools.platform.repository.path_contract import \
+        canonical_repository_relative_path
+    relative_path = canonical_repository_relative_path(relative_path, "path")
+    parts = relative_path.split("/")
+
+    capability = inherited_path_capability(relative_path)
+    ancestor = (_pathcaps.ancestor_directory_capability(
+        relative_path, ("snapshot", "transaction", "replace", "append"))
+                if capability is None else None)
+    if capability is not None:
+        if must_exist and not capability["exists"]:
+            raise ValueError("path does not exist: %s" % relative_path)
+        if reject_symlink and capability["kind"] not in (
+                "file", "directory", "missing"):
+            raise ValueError("canonical state path is not a retained object")
+        return os.path.join(os.path.abspath(root), *parts)
+    if ancestor is not None:
+        # Containment is already represented by the retained ancestor object.
+        # Actual reads/writes must still go through the matching snapshot or
+        # fd-relative shared primitive.
+        return os.path.join(os.path.abspath(root), *parts)
+
+    root_real = os.path.realpath(os.path.abspath(root))
+    candidate = os.path.join(root_real, *parts)
+    resolved = os.path.realpath(candidate)
+    try:
+        inside = os.path.commonpath((root_real, resolved)) == root_real
+    except ValueError:
+        inside = False
+    if not inside:
+        raise ValueError("path resolves outside the repository root")
+    if reject_symlink and os.path.lexists(candidate) and os.path.islink(candidate):
+        raise ValueError("canonical state path must not be a symlink")
+    if must_exist and not os.path.exists(candidate):
+        raise ValueError("path does not exist: %s" % relative_path)
+    return candidate
+
+
+_DIRECTORY_LISTING_SCOPE = []
+
+
+@contextmanager
+def directory_listing_scope():
+    """Read every path in this block against one directory listing.
+
+    ``canonical_repository_file`` compares each declared path segment with
+    the directory entry on disk, which costs one ``os.listdir`` per segment.
+    A caller resolving many paths under a few directories pays for the same
+    listing over and over: compiling the metadata execution contract lists
+    five directories 129 times, one of them 49 times, because 47 of its
+    inputs are siblings.
+
+    What this scope changes is only *when* a directory is enumerated, not
+    what is proven about a file.  Every read still opens with ``O_NOFOLLOW``
+    and still compares the stat identity before and after, so symlink
+    substitution and mid-read replacement are refused exactly as before; a
+    name that vanishes after being listed fails at ``open`` rather than at
+    the spelling comparison.  What the scope does assume is that the block
+    inside it wants one consistent view of the tree -- which is why it is
+    opened explicitly at the two readers that already mean that, and is not
+    a process-wide cache that every caller inherits without saying so.
+
+    Never hold this open across a write.  A block that mutates the tree and
+    then reads it back must see its own writes.
+    """
+    _DIRECTORY_LISTING_SCOPE.append({})
+    try:
+        yield
+    finally:
+        _DIRECTORY_LISTING_SCOPE.pop()
+
+
+def _listdir_in_scope(path):
+    if not _DIRECTORY_LISTING_SCOPE:
+        return os.listdir(path)
+    cache = _DIRECTORY_LISTING_SCOPE[-1]
+    try:
+        return cache[path]
+    except KeyError:
+        listed = frozenset(os.listdir(path))
+        cache[path] = listed
+        return listed
+
+
+def canonical_repository_file(root, relative_path, singly_linked=False):
+    """Resolve an exact-spelling, non-symlinked repository regular file.
+
+    ``repository_path`` establishes the lexical/root-containment envelope.
+    This stronger Profile-authority primitive additionally compares every
+    declared segment with the directory entry stored on disk (so case and
+    Unicode aliases fail consistently across filesystems), rejects every
+    symlink component, and optionally requires a single hard link.
+    """
+    cached = _pathcaps.cached_file(relative_path)
+    if cached is not None:
+        _data, descriptor = cached
+        if singly_linked and descriptor.st_nlink != 1:
+            raise ValueError("path must name a singly-linked regular file")
+        return os.path.join(os.path.abspath(root), *relative_path.split("/"))
+    capability = inherited_path_capability(
+        relative_path, consumptions=("snapshot", "transaction"))
+    if capability is None and _pathcaps.records():
+        _pathcaps.materialize_ancestor_tree(relative_path)
+        cached = _pathcaps.cached_file(relative_path)
+        if cached is not None:
+            _data, descriptor = cached
+            if singly_linked and descriptor.st_nlink != 1:
+                raise ValueError("path must name a singly-linked regular file")
+            return os.path.join(
+                os.path.abspath(root), *relative_path.split("/"))
+    candidate = repository_path(root, relative_path)
+    if capability is not None:
+        if not capability["exists"]:
+            raise ValueError("path does not exist: %s" % relative_path)
+        if capability["kind"] != "file":
+            raise ValueError("path must name a regular file")
+        target_fd, _target_dev, _target_ino = \
+            _pathcaps.effective_target(capability)
+        descriptor = os.fstat(target_fd)
+        if singly_linked and descriptor.st_nlink != 1:
+            raise ValueError("path must name a singly-linked regular file")
+        return candidate
+    root_real = os.path.realpath(os.path.abspath(root))
+    current = root_real
+    for part in relative_path.split("/"):
+        try:
+            entries = _listdir_in_scope(current)
+        except OSError as exc:
+            raise ValueError("cannot inspect repository path: %s" % exc)
+        if part not in entries:
+            raise ValueError(
+                "path spelling does not exactly match repository directory "
+                "entries")
+        current = os.path.join(current, part)
+        if os.path.islink(current):
+            raise ValueError("path must not contain a symlink component")
+    try:
+        descriptor = os.lstat(candidate)
+    except FileNotFoundError:
+        raise ValueError("path does not exist: %s" % relative_path)
+    if not stat.S_ISREG(descriptor.st_mode):
+        raise ValueError("path must name a regular file")
+    if singly_linked and descriptor.st_nlink != 1:
+        raise ValueError("path must name a singly-linked regular file")
+    return candidate
+
+
+def managed_repository_path(root, relative_path, managed_prefix,
+                            suffixes=None, must_exist=False):
+    """Resolve a file inside one fixed managed namespace without symlinks.
+
+    This is the write-path boundary for ``.cambium``: a receipt argument may
+    not name state, a report may not name a delta, and a symlinked component
+    may not redirect an apparently safe spelling elsewhere inside the repo.
+    """
+    candidate = repository_path(root, relative_path, must_exist=must_exist,
+                                reject_symlink=True)
+    normalized = relative_path.replace("\\", "/")
+    prefix = managed_prefix.strip("/")
+    if not normalized.startswith(prefix + "/"):
+        raise ValueError("path must be inside %s/" % prefix)
+    if suffixes and not normalized.endswith(tuple(suffixes)):
+        raise ValueError("path must end with %s" % " or ".join(suffixes))
+    capability = inherited_path_capability(relative_path)
+    if capability is not None:
+        if must_exist and not capability["exists"]:
+            raise ValueError("path does not exist: %s" % relative_path)
+        if capability["exists"] and capability["kind"] == "file":
+            descriptor = os.fstat(capability["target_fd"])
+            if descriptor.st_nlink != 1:
+                raise ValueError(
+                    "managed file must have exactly one hard link: %s" %
+                    relative_path)
+        return candidate
+    root_abs = os.path.realpath(os.path.abspath(root))
+    current = root_abs
+    for part in normalized.split("/"):
+        current = os.path.join(current, part)
+        if os.path.lexists(current) and os.path.islink(current):
+            raise ValueError("managed path must not traverse symlink: %s" %
+                             relative_path)
+    if os.path.lexists(candidate):
+        descriptor = os.lstat(candidate)
+        if stat.S_ISREG(descriptor.st_mode) and descriptor.st_nlink != 1:
+            raise ValueError(
+                "managed file must have exactly one hard link: %s" %
+                relative_path
+            )
+    return candidate
+
+
+def registered_repository_artifact_path(root, requested_path,
+                                        registered_relative_path):
+    """Resolve one producer output to its single registered artifact path.
+
+    Generated contracts and projections are named outputs, not general file
+    writers.  Accept either the exact repository-relative spelling registered
+    by the producer or that same path as an absolute spelling under ``root``;
+    reject every alias, alternate in-repository target, and repository escape.
+    The final path then passes through the shared managed-path boundary so a
+    symlink component or multiply-linked existing file cannot redirect an
+    otherwise correct spelling.
+    """
+    if not isinstance(requested_path, str) or not requested_path:
+        raise ValueError("artifact path must be a non-empty string")
+    root_real = os.path.realpath(os.path.abspath(root))
+    registered = repository_path(root_real, registered_relative_path)
+    if os.path.isabs(requested_path):
+        # macOS exposes system aliases such as /var -> /private/var.  Compare
+        # filesystem identity, then return the registered spelling below so
+        # an accepted alias never becomes the path used for publication.
+        if os.path.realpath(os.path.abspath(requested_path)) != registered:
+            raise ValueError(
+                "artifact path must be exactly %s under the repository root"
+                % registered_relative_path)
+    elif requested_path != registered_relative_path:
+        raise ValueError(
+            "artifact path must be exactly %s" % registered_relative_path)
+    namespace = registered_relative_path.rsplit("/", 1)[0]
+    return managed_repository_path(
+        root_real, registered_relative_path, namespace, must_exist=False)
+
+
+class RuntimeStateLockedError(RuntimeError):
+    """Raised when another cooperating process owns the runtime-state lock."""
+
+
+class RuntimeWriteLockLease(os.PathLike):
+    """Path-like lock lease whose owner may attest successful reconciliation.
+
+    A state writer that lets an exception escape must leave its lock behind so
+    the next process can inspect the recorded transaction.  If the writer has
+    *fully* restored every authoritative byte before re-raising, it may call
+    :meth:`mark_reconciled`; only then is cleanup on error safe.
+    """
+
+    def __init__(self, path):
+        self.path = path
+        self.reconciled = False
+
+    def __fspath__(self):
+        return self.path
+
+    def __str__(self):
+        return self.path
+
+    def mark_reconciled(self):
+        self.reconciled = True
+
+
+@contextmanager
+def no_authoritative_write_guard(lease):
+    """Clear a writer lock when a guarded preflight rejects before writing.
+
+    Wrap only operations that run before the first possible mutation of
+    canonical state, append-only receipts, managed deltas, or archives.  A
+    normal Python exception in that region proves that no authoritative write
+    was attempted, so retaining the lock would manufacture a false
+    interrupted-write state.  Hard process exits still preserve the lock,
+    because the context manager cannot attest what happened after the process
+    disappeared.
+
+    Once a writer crosses its first possible publication boundary it must
+    leave this guard and use its transaction-specific rollback/evidence logic.
+    """
+    if not isinstance(lease, RuntimeWriteLockLease):
+        raise TypeError("lease must be a RuntimeWriteLockLease")
+    try:
+        yield
+    except BaseException:
+        lease.mark_reconciled()
+        raise
+
+
+@contextmanager
+def runtime_write_lock(root, lock_name="state-writer", timeout=0.0,
+                       poll_interval=0.05, owner_metadata=None):
+    """Hold one cooperating-writer lock under ``.cambium/tmp``.
+
+    Directory creation is the atomic claim.  A process crash or any escaping
+    error intentionally leaves a stale lock that fails closed; an operator may
+    remove it only after proving that no writer remains and reconciling the
+    recorded before/planned-after fingerprints.  A caller that fully restores
+    all authoritative bytes may call ``lease.mark_reconciled()`` before
+    re-raising.  This primitive does not make a multi-file update atomic by
+    itself, but it removes concurrent cooperating writers from the
+    compare/write/rollback window and preserves recovery intent.
+    """
+    if (not isinstance(lock_name, str) or
+            not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]*", lock_name)):
+        raise ValueError("lock_name must be a simple path-safe identifier")
+    if timeout is not None and timeout < 0:
+        raise ValueError("timeout must be non-negative or None")
+    if poll_interval <= 0:
+        raise ValueError("poll_interval must be positive")
+    if owner_metadata is not None and not isinstance(owner_metadata, dict):
+        raise ValueError("owner_metadata must be a mapping or None")
+    try:
+        serialized_metadata = (json.loads(json.dumps(owner_metadata))
+                               if owner_metadata else None)
+    except (TypeError, ValueError) as exc:
+        raise ValueError("owner_metadata must be JSON-serializable: %s" % exc)
+
+    root_real = os.path.realpath(os.path.abspath(root))
+    tmp_path = managed_repository_path(
+        root_real, runtime_paths.TRANSIENT_ROOT, runtime_paths.RUNTIME_ROOT,
+        must_exist=True
+    )
+    if not os.path.isdir(tmp_path):
+        raise ValueError("%s must be a directory" %
+                         runtime_paths.TRANSIENT_ROOT)
+    relative_lock = "%s/%s.lock" % (
+        runtime_paths.TRANSIENT_ROOT, lock_name)
+    lock_path = managed_repository_path(
+        root_real, relative_lock, runtime_paths.TRANSIENT_ROOT,
+        must_exist=False
+    )
+    deadline = None if timeout is None else time.monotonic() + timeout
+    while True:
+        try:
+            os.mkdir(lock_path, 0o700)
+            parent_flags = os.O_RDONLY | getattr(os, "O_DIRECTORY", 0)
+            parent_fd = os.open(tmp_path, parent_flags)
+            try:
+                os.fsync(parent_fd)
+            finally:
+                os.close(parent_fd)
+            break
+        except FileExistsError:
+            if deadline is not None and time.monotonic() >= deadline:
+                raise RuntimeStateLockedError(
+                    "runtime state is locked by another writer: %s" %
+                    relative_lock
+                )
+            time.sleep(poll_interval)
+    owner_path = os.path.join(lock_path, "owner.json")
+    owner = {
+        "lock_name": lock_name,
+        "pid": os.getpid(),
+        "created_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+    }
+    if serialized_metadata:
+        # Keep caller-supplied transaction intent in one nested object so it
+        # cannot overwrite the lock identity.  The file is deliberately left
+        # behind with the lock directory after a process crash: a later
+        # ``check_queue --resume-status`` can then distinguish an ordinary
+        # hold from an interrupted canonical-state write and compare the
+        # recorded before/planned-after fingerprints with the live files.
+        owner["operation"] = serialized_metadata
+    with open(owner_path, "x", encoding="utf-8") as fh:
+        json.dump(owner, fh, sort_keys=True)
+        fh.write("\n")
+        fh.flush()
+        os.fsync(fh.fileno())
+    directory_flags = os.O_RDONLY | getattr(os, "O_DIRECTORY", 0)
+    lock_fd = os.open(lock_path, directory_flags)
+    try:
+        os.fsync(lock_fd)
+    finally:
+        os.close(lock_fd)
+    lease = RuntimeWriteLockLease(lock_path)
+    completed = False
+    try:
+        yield lease
+        completed = True
+    finally:
+        # An escaping exception may represent a partially published
+        # multi-file transaction.  Preserve the owner metadata unless the
+        # caller positively attests that rollback restored all authoritative
+        # bytes.  A later ``check_queue --resume-status`` can then reconcile
+        # the before/planned-after fingerprints instead of silently guessing.
+        if completed or lease.reconciled:
+            try:
+                os.unlink(owner_path)
+            except FileNotFoundError:
+                pass
+            try:
+                os.rmdir(lock_path)
+            except FileNotFoundError:
+                pass
+            else:
+                parent_flags = os.O_RDONLY | getattr(os, "O_DIRECTORY", 0)
+                parent_fd = os.open(tmp_path, parent_flags)
+                try:
+                    os.fsync(parent_fd)
+                finally:
+                    os.close(parent_fd)
+
+
+def load_yaml_file(path):
+    """Read and parse a UTF-8 restricted-subset YAML document."""
+    value = parse_yaml_subset(read_text(path))
+    if not isinstance(value, dict):
+        raise YamlSubsetError("top-level YAML value must be a mapping")
+    return value
+
+
+_YAML_RESERVED = frozenset(("true", "false", "yes", "no", "null", "~"))
+
+# YAML 1.2 `c-indicator`: a plain scalar may not begin with any of these.
+# Two groups, because the spec treats them differently.  The first group is
+# unconditional -- a plain scalar starting with one of these characters is
+# not a plain scalar at all, whatever follows.  The restricted parser here
+# is more forgiving than a conformant one, so a value like an npm scope
+# (`@scope/name`) round-trips internally while a real YAML reader rejects
+# the same bytes; quoting is decided against the stricter grammar, not
+# against what this parser happens to accept.
+_YAML_INDICATORS = frozenset(",[]{}#&*!|>'\"%@`")
+# The second group may begin a plain scalar as long as a non-space follows,
+# which is what keeps ordinary values like `--check` and `-1x` unquoted.
+_YAML_INDICATORS_IF_ALONE = frozenset("-?:")
+
+
+def _yaml_scalar(value):
+    if value is None:
+        return "null"
+    if value is True:
+        return "true"
+    if value is False:
+        return "false"
+    if isinstance(value, (int, float)) and not isinstance(value, bool):
+        return str(value)
+    if not isinstance(value, str):
+        raise TypeError("unsupported YAML scalar type: %s" % type(value).__name__)
+    # The restricted parser deliberately has no quoted-string escape grammar.
+    # Reject control characters and quote using the opposite quote when the
+    # value would otherwise be parsed as another scalar or a comment-bearing
+    # token.  This keeps canonical output round-trippable under that parser.
+    if any(ord(ch) < 32 for ch in value):
+        raise ValueError("YAML strings must not contain control characters")
+    head = value[:1]
+    safe_bare = (
+        value != "" and value == value.strip() and
+        value.lower() not in _YAML_RESERVED and
+        not re.fullmatch(r"-?\d+(?:\.\d+)?", value) and
+        head not in _YAML_INDICATORS and
+        not (head in _YAML_INDICATORS_IF_ALONE and
+             (len(value) == 1 or value[1].isspace())) and
+        ": " not in value and " #" not in value
+    )
+    if safe_bare:
+        return value
+    if '"' not in value:
+        return '"%s"' % value
+    if "'" not in value:
+        return "'%s'" % value
+    raise ValueError("YAML strings containing both quote characters are unsupported")
+
+
+def _render_yaml_node(value, indent):
+    prefix = " " * indent
+    if isinstance(value, dict):
+        lines = []
+        for key, child in value.items():
+            if not isinstance(key, str) or not re.fullmatch(r"[^:\s][^:]*", key):
+                raise ValueError("unsupported YAML mapping key: %r" % (key,))
+            if isinstance(child, dict):
+                if not child:
+                    lines.append("%s%s: {}" % (prefix, key))
+                else:
+                    lines.append("%s%s:" % (prefix, key))
+                    lines.extend(_render_yaml_node(child, indent + 2))
+            elif isinstance(child, list):
+                if not child:
+                    lines.append("%s%s: []" % (prefix, key))
+                else:
+                    lines.append("%s%s:" % (prefix, key))
+                    lines.extend(_render_yaml_node(child, indent + 2))
+            else:
+                lines.append("%s%s: %s" % (prefix, key, _yaml_scalar(child)))
+        return lines
+    if isinstance(value, list):
+        lines = []
+        for child in value:
+            if isinstance(child, dict):
+                if not child:
+                    lines.append("%s- {}" % prefix)
+                    continue
+                first = True
+                for key, grandchild in child.items():
+                    if not isinstance(key, str) or not re.fullmatch(r"[^:\s][^:]*", key):
+                        raise ValueError("unsupported YAML mapping key: %r" % (key,))
+                    marker = "- " if first else "  "
+                    line_prefix = prefix + marker
+                    if isinstance(grandchild, (dict, list)):
+                        if not grandchild:
+                            empty = "{}" if isinstance(grandchild, dict) else "[]"
+                            lines.append("%s%s: %s" %
+                                         (line_prefix, key, empty))
+                        else:
+                            lines.append("%s%s:" % (line_prefix, key))
+                            lines.extend(_render_yaml_node(grandchild, indent + 4))
+                    else:
+                        lines.append("%s%s: %s" %
+                                     (line_prefix, key, _yaml_scalar(grandchild)))
+                    first = False
+            elif isinstance(child, list):
+                raise ValueError("nested bare lists are outside the restricted YAML subset")
+            else:
+                lines.append("%s- %s" % (prefix, _yaml_scalar(child)))
+        return lines
+    return [prefix + _yaml_scalar(value)]
+
+
+def canonical_yaml(data):
+    """Render deterministic YAML accepted by :func:`parse_yaml_subset`."""
+    if not isinstance(data, dict):
+        raise TypeError("canonical runtime state must be a mapping")
+    text = "\n".join(_render_yaml_node(data, 0)) + "\n"
+    reparsed = parse_yaml_subset(text)
+    if reparsed != data:
+        raise YamlSubsetError("canonical YAML did not round-trip under the restricted parser")
+    return text
+
+
+def canonical_json_bytes(value):
+    """Return the one canonical JSON byte representation used by protocols.
+
+    This helper is deliberately small and shared.  Set commitments in the
+    amendment, close-candidate and routed-gap protocols must not grow local
+    near-equivalent serializers whose whitespace or Unicode choices drift.
+    Protocol values use string mapping keys and do not admit non-finite
+    floats; ``json.dumps`` enforces the latter through ``allow_nan=False``.
+    """
+    return json.dumps(
+        value,
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+        allow_nan=False,
+    ).encode("utf-8")
+
+
+def sha256_bytes(data):
+    """Return the canonical ``sha256:<hex>`` spelling for bytes or text."""
+    if isinstance(data, str):
+        data = data.encode("utf-8")
+    return "sha256:" + hashlib.sha256(data).hexdigest()
+
+
+def sha256_file(path):
+    return sha256_bytes(read_bytes(path))
+
+
+class RepositoryTargetSnapshot:
+    """One canonical repository target, including a safely missing tail.
+
+    Existing targets carry bytes and the complete identity observed through a
+    stable no-follow descriptor.  Missing targets retain the identity of the
+    deepest existing parent directory so a writer can later reject a stale
+    plan before materializing the target.
+    """
+
+    __slots__ = (
+        "path", "repository_path", "exists", "missing_components",
+        "parent_repository_path", "parent_dev", "parent_ino",
+        "dev", "ino", "mode", "nlink", "size", "mtime_ns", "ctime_ns",
+        "data", "sha256",
+    )
+
+    def __init__(self, path, repository_path, *, exists,
+                 missing_components=(), parent_repository_path="",
+                 parent_dev=None, parent_ino=None, descriptor=None,
+                 data=None):
+        self.path = path
+        self.repository_path = repository_path
+        self.exists = exists
+        self.missing_components = tuple(missing_components)
+        self.parent_repository_path = parent_repository_path
+        self.parent_dev = parent_dev
+        self.parent_ino = parent_ino
+        self.dev = descriptor.st_dev if descriptor is not None else None
+        self.ino = descriptor.st_ino if descriptor is not None else None
+        self.mode = descriptor.st_mode if descriptor is not None else None
+        self.nlink = descriptor.st_nlink if descriptor is not None else None
+        self.size = descriptor.st_size if descriptor is not None else None
+        self.mtime_ns = (
+            getattr(descriptor, "st_mtime_ns",
+                    int(descriptor.st_mtime * 1e9))
+            if descriptor is not None else None
+        )
+        self.ctime_ns = (
+            getattr(descriptor, "st_ctime_ns",
+                    int(descriptor.st_ctime * 1e9))
+            if descriptor is not None else None
+        )
+        self.data = data
+        self.sha256 = sha256_bytes(data) if data is not None else None
+
+    def read_text(self):
+        if not self.exists:
+            raise FileNotFoundError(
+                errno.ENOENT, "repository target is safely missing",
+                self.repository_path)
+        return self.data.decode("utf-8")
+
+
+def repository_target_snapshot(root, relative_path, suffixes=None,
+                               singly_linked=True):
+    """Resolve and snapshot one canonical file or safely missing target.
+
+    Every existing path segment must use the directory entry's exact spelling
+    and must not be a symlink.  A missing leaf or tail is represented
+    explicitly instead of being confused with an unchecked path.  Existing
+    targets must be regular files and are read from a stable ``O_NOFOLLOW``
+    descriptor.
+    """
+    cached = _pathcaps.cached_file(relative_path)
+    cached_data = cached[0] if cached is not None else None
+    cached_descriptor = cached[1] if cached is not None else None
+    capability = inherited_path_capability(
+        relative_path, consumptions=("snapshot", "transaction"))
+    absolute = (os.path.join(os.path.abspath(root), relative_path)
+                if capability is not None or cached_data is not None else
+                repository_path(root, relative_path))
+    if isinstance(suffixes, str):
+        suffixes = (suffixes,)
+    elif suffixes is not None:
+        suffixes = tuple(suffixes)
+    if suffixes is not None:
+        if not suffixes or any(
+                not isinstance(suffix, str) or not suffix
+                for suffix in suffixes):
+            raise ValueError("suffixes must contain non-empty strings")
+        if not relative_path.endswith(suffixes):
+            raise ValueError("path must end with %s" %
+                             " or ".join(suffixes))
+
+    if cached_data is not None:
+        if singly_linked and cached_descriptor.st_nlink != 1:
+            raise ValueError("path must name a singly-linked regular file")
+        return RepositoryTargetSnapshot(
+            absolute, relative_path, exists=True,
+            parent_repository_path="/".join(relative_path.split("/")[:-1]),
+            descriptor=cached_descriptor, data=cached_data)
+
+    if capability is not None:
+        parent_fd = capability.get("parent_fd")
+        if parent_fd is None:
+            parent_dev = parent_ino = None
+        else:
+            parent = os.fstat(parent_fd)
+            parent_dev, parent_ino = parent.st_dev, parent.st_ino
+        if not capability["exists"]:
+            missing = list(capability["missing_components"])
+            existing_count = len(relative_path.split("/")) - len(missing)
+            parent_repository_path = "/".join(
+                relative_path.split("/")[:existing_count])
+            snapshot = RepositoryTargetSnapshot(
+                absolute, relative_path, exists=False,
+                missing_components=missing,
+                parent_repository_path=parent_repository_path,
+                parent_dev=parent_dev, parent_ino=parent_ino)
+            _pathcaps.acknowledge(capability)
+            return snapshot
+        if capability["kind"] != "file":
+            raise ValueError("path must name a regular file")
+        target_fd, target_dev, target_ino = \
+            _pathcaps.effective_target(capability)
+        data = _pathcaps.read_stable_descriptor(
+            target_fd, target_dev, target_ino, relative_path)
+        descriptor = os.fstat(target_fd)
+        if singly_linked and descriptor.st_nlink != 1:
+            raise ValueError("path must name a singly-linked regular file")
+        snapshot = RepositoryTargetSnapshot(
+            absolute, relative_path, exists=True,
+            parent_repository_path="/".join(relative_path.split("/")[:-1]),
+            parent_dev=parent_dev, parent_ino=parent_ino,
+            descriptor=descriptor, data=data)
+        _pathcaps.acknowledge(capability)
+        return snapshot
+
+    nofollow = getattr(os, "O_NOFOLLOW", None)
+    directory_only = getattr(os, "O_DIRECTORY", None)
+    if nofollow is None or directory_only is None:
+        raise OSError(errno.ENOTSUP,
+                      "repository target snapshots require O_NOFOLLOW and "
+                      "O_DIRECTORY", absolute)
+    close_on_exec = getattr(os, "O_CLOEXEC", 0)
+    directory_flags = os.O_RDONLY | nofollow | directory_only | close_on_exec
+    root_real = os.path.realpath(os.path.abspath(root))
+    current_fd = os.open(root_real, directory_flags)
+    parts = relative_path.split("/")
+    existing_parts = []
+    try:
+        for index, part in enumerate(parts):
+            try:
+                entries = os.listdir(current_fd)
+            except OSError as exc:
+                raise ValueError("cannot inspect repository path: %s" % exc)
+            if part not in entries:
+                # On case-insensitive or Unicode-normalizing filesystems the
+                # declared spelling may still resolve even though no directory
+                # entry has that exact byte spelling.  Such an alias is not a
+                # safely missing tail: fail closed before a writer can treat an
+                # existing target as an absent no-op.
+                try:
+                    os.stat(part, dir_fd=current_fd, follow_symlinks=False)
+                except FileNotFoundError:
+                    pass
+                except OSError as exc:
+                    raise ValueError(
+                        "cannot prove repository target is missing: %s" % exc)
+                else:
+                    raise ValueError(
+                        "path spelling does not exactly match repository "
+                        "directory entries")
+                parent = os.fstat(current_fd)
+                if not stat.S_ISDIR(parent.st_mode):
+                    raise ValueError("repository target parent is not a directory")
+                return RepositoryTargetSnapshot(
+                    absolute, relative_path, exists=False,
+                    missing_components=parts[index:],
+                    parent_repository_path="/".join(existing_parts),
+                    parent_dev=parent.st_dev, parent_ino=parent.st_ino,
+                )
+
+            listed = os.stat(part, dir_fd=current_fd,
+                             follow_symlinks=False)
+            if stat.S_ISLNK(listed.st_mode):
+                raise ValueError("path must not contain a symlink component")
+
+            if index < len(parts) - 1:
+                if not stat.S_ISDIR(listed.st_mode):
+                    raise ValueError(
+                        "repository target parent is not a directory: %s" %
+                        "/".join(existing_parts + [part]))
+                child_fd = os.open(part, directory_flags, dir_fd=current_fd)
+                opened = os.fstat(child_fd)
+                if (not stat.S_ISDIR(opened.st_mode) or
+                        (listed.st_dev, listed.st_ino) !=
+                        (opened.st_dev, opened.st_ino)):
+                    os.close(child_fd)
+                    raise OSError(errno.EAGAIN,
+                                  "repository path identity changed",
+                                  relative_path)
+                os.close(current_fd)
+                current_fd = child_fd
+                existing_parts.append(part)
+                continue
+
+            if not stat.S_ISREG(listed.st_mode):
+                raise ValueError("path must name a regular file")
+            if singly_linked and listed.st_nlink != 1:
+                raise ValueError(
+                    "path must name a singly-linked regular file")
+            fd = os.open(part, os.O_RDONLY | nofollow | close_on_exec,
+                         dir_fd=current_fd)
+            try:
+                before = os.fstat(fd)
+                if (not stat.S_ISREG(before.st_mode) or
+                        (singly_linked and before.st_nlink != 1) or
+                        (listed.st_dev, listed.st_ino) !=
+                        (before.st_dev, before.st_ino)):
+                    raise OSError(errno.EAGAIN,
+                                  "repository target identity changed "
+                                  "before read", relative_path)
+                chunks = []
+                while True:
+                    chunk = os.read(fd, 1024 * 1024)
+                    if not chunk:
+                        break
+                    chunks.append(chunk)
+                after = os.fstat(fd)
+                named_after = os.stat(part, dir_fd=current_fd,
+                                      follow_symlinks=False)
+                if (_pathcaps.stat_identity(before) !=
+                        _pathcaps.stat_identity(after) or
+                        (after.st_dev, after.st_ino) !=
+                        (named_after.st_dev, named_after.st_ino)):
+                    raise OSError(errno.EAGAIN,
+                                  "repository target changed while reading",
+                                  relative_path)
+            finally:
+                os.close(fd)
+            parent = os.fstat(current_fd)
+            return RepositoryTargetSnapshot(
+                absolute, relative_path, exists=True,
+                parent_repository_path="/".join(existing_parts),
+                parent_dev=parent.st_dev, parent_ino=parent.st_ino,
+                descriptor=after, data=b"".join(chunks),
+            )
+    finally:
+        os.close(current_fd)
+
+
+class RepositoryFileSnapshot:
+    """Immutable bytes and digest from one stable canonical file descriptor."""
+
+    __slots__ = ("path", "repository_path", "sha256", "data")
+
+    def __init__(self, path, repository_path, data):
+        self.path = path
+        self.repository_path = repository_path
+        self.data = data
+        self.sha256 = sha256_bytes(data)
+
+    def read_text(self):
+        return self.data.decode("utf-8")
+
+
+def repository_file_snapshot(root, relative_path, singly_linked=True):
+    """Read one canonical repository file through a stable no-follow fd."""
+    cached = _pathcaps.cached_file(relative_path)
+    if cached is not None:
+        cached_data, descriptor = cached
+        if singly_linked and descriptor.st_nlink != 1:
+            raise ValueError("path must name a singly-linked regular file")
+        return RepositoryFileSnapshot(
+            os.path.join(os.path.abspath(root), relative_path), relative_path,
+            cached_data)
+    capability = inherited_path_capability(
+        relative_path, consumptions=("snapshot", "transaction"))
+    if capability is not None:
+        if not capability["exists"]:
+            raise ValueError("path does not exist: %s" % relative_path)
+        if capability["kind"] != "file":
+            raise ValueError("path must name a regular file")
+        target_fd, target_dev, target_ino = \
+            _pathcaps.effective_target(capability)
+        descriptor = os.fstat(target_fd)
+        if singly_linked and descriptor.st_nlink != 1:
+            raise ValueError("path must name a singly-linked regular file")
+        data = _pathcaps.read_stable_descriptor(
+            target_fd, target_dev, target_ino, relative_path)
+        snapshot = RepositoryFileSnapshot(
+            os.path.join(os.path.abspath(root), relative_path),
+            relative_path, data)
+        _pathcaps.acknowledge(capability)
+        return snapshot
+    absolute = canonical_repository_file(
+        root, relative_path, singly_linked=singly_linked)
+    listed = os.lstat(absolute)
+    nofollow = getattr(os, "O_NOFOLLOW", None)
+    if nofollow is None:
+        raise OSError(errno.ENOTSUP, "file snapshot requires O_NOFOLLOW",
+                      absolute)
+    fd = os.open(absolute, os.O_RDONLY | nofollow |
+                 getattr(os, "O_CLOEXEC", 0))
+    try:
+        before = os.fstat(fd)
+        if (not stat.S_ISREG(before.st_mode) or
+                (singly_linked and before.st_nlink != 1) or
+                (listed.st_dev, listed.st_ino) !=
+                (before.st_dev, before.st_ino)):
+            raise OSError(errno.EAGAIN,
+                          "repository file identity changed before read",
+                          relative_path)
+        chunks = []
+        while True:
+            chunk = os.read(fd, 1024 * 1024)
+            if not chunk:
+                break
+            chunks.append(chunk)
+        after = os.fstat(fd)
+        before_identity = (
+            before.st_dev, before.st_ino, before.st_size,
+            getattr(before, "st_mtime_ns", int(before.st_mtime * 1e9)),
+            getattr(before, "st_ctime_ns", int(before.st_ctime * 1e9)),
+        )
+        after_identity = (
+            after.st_dev, after.st_ino, after.st_size,
+            getattr(after, "st_mtime_ns", int(after.st_mtime * 1e9)),
+            getattr(after, "st_ctime_ns", int(after.st_ctime * 1e9)),
+        )
+        if before_identity != after_identity:
+            raise OSError(errno.EAGAIN,
+                          "repository file changed while reading",
+                          relative_path)
+    finally:
+        os.close(fd)
+    return RepositoryFileSnapshot(
+        absolute, relative_path, b"".join(chunks))
+
+
+class RepositoryTreeSnapshot:
+    """One immutable regular-file tree read from stable file descriptors."""
+
+    __slots__ = ("root", "relative_directory", "sha256", "files")
+
+    def __init__(self, root, relative_directory, sha256, files):
+        self.root = root
+        self.relative_directory = relative_directory
+        self.sha256 = sha256
+        self.files = MappingProxyType(dict(files))
+
+    def read_bytes(self, repository_relative_path):
+        try:
+            return self.files[repository_relative_path]
+        except KeyError as exc:
+            raise FileNotFoundError(
+                errno.ENOENT, "path is not present in bound tree snapshot",
+                repository_relative_path) from exc
+
+    def read_text(self, repository_relative_path):
+        return self.read_bytes(repository_relative_path).decode("utf-8")
+
+    def project(self, repository_relative_paths):
+        """Return the exact path-selected projection of this bound tree.
+
+        Projection never reopens the filesystem.  It therefore preserves the
+        immutable byte observation used by the caller while allowing a typed
+        contract to exclude unrelated package files from its public identity.
+        Every selected path must already be present in this snapshot; missing
+        or non-canonical spellings fail closed instead of being ignored.
+        """
+        selected = {}
+        for repository_path in sorted(set(repository_relative_paths)):
+            if (not isinstance(repository_path, str) or
+                    not repository_path or repository_path.startswith("/") or
+                    "\\" in repository_path or
+                    any(part in ("", ".", "..")
+                        for part in repository_path.split("/"))):
+                raise ValueError(
+                    "tree projection path must be canonical and repository-"
+                    "relative: %r" % repository_path)
+            try:
+                selected[repository_path] = self.files[repository_path]
+            except KeyError as exc:
+                raise FileNotFoundError(
+                    errno.ENOENT,
+                    "tree projection path is absent from bound snapshot",
+                    repository_path) from exc
+        if not selected:
+            raise ValueError("tree projection must select at least one file")
+        return RepositoryTreeSnapshot(
+            self.root, self.relative_directory,
+            _repository_tree_snapshot_sha256(selected), selected)
+
+
+def _repository_tree_snapshot_sha256(files):
+    """Hash one already-bound path-to-bytes tree with the v1 framing."""
+    digest = hashlib.sha256()
+    digest.update(b"cambium-repository-tree-snapshot-v1\0")
+    for relative, data in sorted(files.items()):
+        encoded = relative.encode("utf-8")
+        digest.update(len(encoded).to_bytes(8, "big"))
+        digest.update(encoded)
+        digest.update(len(data).to_bytes(8, "big"))
+        digest.update(hashlib.sha256(data).digest())
+    return "sha256:" + digest.hexdigest()
+
+
+_pathcaps.register_tree_snapshot_factory(RepositoryTreeSnapshot)
+
+
+def repository_tree_snapshot(root, relative_directory):
+    """Read and hash one repository-contained regular-file tree.
+
+    The digest binds repository-relative paths and bytes.  Symlinks, hard
+    links, special files, path escape, and a non-directory root fail closed.
+    Returned bytes are immutable and come from the same descriptor reads that
+    produced the digest.  Profile parsers use this object so an A-to-B-to-A
+    file swap cannot combine a digest of A with declarations parsed from B.
+    """
+    cached = _pathcaps.cached_tree(relative_directory)
+    if cached is not None:
+        return cached
+    capability = inherited_path_capability(
+        relative_directory, consumptions=("snapshot", "transaction"))
+    if capability is not None:
+        if not capability["exists"]:
+            raise ValueError("snapshot target does not exist: %s" %
+                             relative_directory)
+        if capability["kind"] != "directory":
+            raise ValueError("snapshot target must be a real directory: %s" %
+                             relative_directory)
+        snapshot = _pathcaps.materialize_tree(
+            root, relative_directory, capability)
+        if capability["consumption"] == "snapshot":
+            _pathcaps.cache_tree(relative_directory, snapshot)
+        return snapshot
+    directory = repository_path(
+        root, relative_directory, must_exist=True, reject_symlink=True)
+    if not os.path.isdir(directory) or os.path.islink(directory):
+        raise ValueError("snapshot target must be a real directory: %s" %
+                         relative_directory)
+    root_real = os.path.realpath(os.path.abspath(root))
+    digest = hashlib.sha256()
+    digest.update(b"cambium-repository-tree-snapshot-v1\0")
+    contents = {}
+    entries = []
+    for current, directories, files in os.walk(directory, topdown=True,
+                                               followlinks=False):
+        directories[:] = sorted(directories)
+        for name in directories:
+            candidate = os.path.join(current, name)
+            if os.path.islink(candidate):
+                raise ValueError("snapshot cannot traverse symlink: %s" %
+                                 os.path.relpath(candidate, root_real))
+        for name in sorted(files):
+            absolute = os.path.join(current, name)
+            relative = os.path.relpath(absolute, root_real).replace(os.sep, "/")
+            entries.append((relative, absolute))
+    nofollow = getattr(os, "O_NOFOLLOW", None)
+    if nofollow is None:
+        raise OSError(errno.ENOTSUP, "tree snapshot requires O_NOFOLLOW",
+                      directory)
+    for relative, absolute in sorted(entries):
+        listed = os.lstat(absolute)
+        if not stat.S_ISREG(listed.st_mode) or listed.st_nlink != 1:
+            raise ValueError("snapshot requires singly-linked regular file: %s" %
+                             relative)
+        fd = os.open(absolute, os.O_RDONLY | nofollow |
+                     getattr(os, "O_CLOEXEC", 0))
+        try:
+            before = os.fstat(fd)
+            if (not stat.S_ISREG(before.st_mode) or before.st_nlink != 1 or
+                    (listed.st_dev, listed.st_ino) !=
+                    (before.st_dev, before.st_ino)):
+                raise OSError(
+                    errno.EAGAIN,
+                    "repository file identity changed before snapshot read",
+                    relative)
+            file_digest = hashlib.sha256()
+            chunks = []
+            while True:
+                chunk = os.read(fd, 1024 * 1024)
+                if not chunk:
+                    break
+                file_digest.update(chunk)
+                chunks.append(chunk)
+            after = os.fstat(fd)
+            identity_before = (
+                before.st_dev, before.st_ino, before.st_size,
+                getattr(before, "st_mtime_ns", int(before.st_mtime * 1e9)),
+                getattr(before, "st_ctime_ns", int(before.st_ctime * 1e9)),
+            )
+            identity_after = (
+                after.st_dev, after.st_ino, after.st_size,
+                getattr(after, "st_mtime_ns", int(after.st_mtime * 1e9)),
+                getattr(after, "st_ctime_ns", int(after.st_ctime * 1e9)),
+            )
+            if identity_before != identity_after:
+                raise OSError(errno.EAGAIN,
+                              "repository file changed while hashing",
+                              relative)
+        finally:
+            os.close(fd)
+        encoded = relative.encode("utf-8")
+        digest.update(len(encoded).to_bytes(8, "big"))
+        digest.update(encoded)
+        digest.update(before.st_size.to_bytes(8, "big"))
+        digest.update(file_digest.digest())
+        contents[relative] = b"".join(chunks)
+    return RepositoryTreeSnapshot(
+        root_real, relative_directory,
+        "sha256:" + digest.hexdigest(), contents)
+
+
+def repository_parent_tree_snapshot(root, child_path):
+    """Bind the admitted parent package of one explicit file capability.
+
+    Some public arguments accept either a Profile directory or its
+    ``profile.md`` manifest.  The manifest form still denotes the Profile
+    package closure.  Its server-retained parent descriptor is therefore the
+    only safe way to materialize that closure after admission; reopening the
+    directory name would reintroduce the race this capability protocol closes.
+    """
+    return _pathcaps.parent_tree_snapshot(root, child_path)
+
+
+def repository_tree_sha256(root, relative_directory):
+    """Return only the digest from :func:`repository_tree_snapshot`."""
+    return repository_tree_snapshot(root, relative_directory).sha256
+
+
+def repository_snapshot_sha256(root, byte_overrides=None,
+                               excluded_paths=None):
+    """Hash the current repository content outside Git and Cambium state.
+
+    The digest is a deterministic, path-sensitive snapshot of every regular
+    file below ``root`` except the top-level ``.git`` and ``.cambium`` control
+    namespaces and every ``__pycache__`` directory at any depth.  Runtime state
+    is bound separately by Queue receipts, so excluding it avoids a
+    receipt/state hash cycle.  ``__pycache__`` is excluded because the gates
+    execute in-repository Python against the same tree they measure: importing
+    a Tools module writes bytecode into the snapshot, so a digest taken before
+    a check would no longer match the digest observed after it.  Symlinks and
+    special files fail closed because their target bytes are not a stable
+    repository snapshot.  Each file is checked before and after reading so an
+    in-place concurrent mutation cannot silently produce a mixed digest.
+
+    ``byte_overrides`` is a closed repository-path-to-bytes mapping used by a
+    composite writer to calculate the exact repository digest its already
+    staged after-images will produce.  Every named live path is still opened
+    and stability-checked; only the bytes fed into the final digest are
+    replaced.  Unknown, missing, non-canonical, or control-namespace paths
+    fail closed.  ``excluded_paths`` is an equally closed set for exact
+    transaction-artifact names that a caller already owns and validates; each
+    exclusion must exist in the enumerated repository view.
+    """
+    root_real = os.path.realpath(os.path.abspath(root))
+    if not os.path.isdir(root_real):
+        raise ValueError("repository snapshot root must be a directory")
+
+    if byte_overrides is None:
+        overrides = {}
+    elif not isinstance(byte_overrides, dict):
+        raise TypeError("repository snapshot byte_overrides must be a mapping")
+    else:
+        overrides = dict(byte_overrides)
+    for relative, data in overrides.items():
+        if (not isinstance(relative, str) or not relative or
+                relative.startswith("/") or "\\" in relative or
+                any(part in ("", ".", "..")
+                    for part in relative.split("/")) or
+                relative.split("/", 1)[0] in (
+                    ".git", runtime_paths.RUNTIME_ROOT) or
+                not isinstance(data, bytes)):
+            raise ValueError(
+                "repository snapshot override must bind canonical non-control "
+                "repository paths to bytes")
+    if excluded_paths is None:
+        exclusions = set()
+    elif (not isinstance(excluded_paths, (set, frozenset, tuple, list)) or
+          any(not isinstance(path, str) for path in excluded_paths)):
+        raise TypeError(
+            "repository snapshot excluded_paths must be a string collection")
+    else:
+        exclusions = set(excluded_paths)
+    for relative in exclusions:
+        if (not relative or relative.startswith("/") or "\\" in relative or
+                any(part in ("", ".", "..")
+                    for part in relative.split("/")) or
+                relative.split("/", 1)[0] in (
+                    ".git", runtime_paths.RUNTIME_ROOT) or
+                relative in overrides):
+            raise ValueError(
+                "repository snapshot exclusion must be a canonical, "
+                "non-overridden repository path")
+    unmatched_exclusions = set(exclusions)
+
+    digest = hashlib.sha256()
+    digest.update(b"cambium-repository-snapshot-v1\0")
+    paths = []
+    for current, directories, files in os.walk(root_real, topdown=True,
+                                               followlinks=False):
+        relative_dir = os.path.relpath(current, root_real)
+        if relative_dir == ".":
+            directories[:] = sorted(
+                name for name in directories
+                if name not in (
+                    ".git", runtime_paths.RUNTIME_ROOT, "__pycache__")
+            )
+        else:
+            directories[:] = sorted(
+                name for name in directories
+                if name != "__pycache__"
+            )
+        for name in directories:
+            candidate = os.path.join(current, name)
+            if os.path.islink(candidate):
+                raise ValueError(
+                    "repository snapshot cannot traverse symlink: %s" %
+                    os.path.relpath(candidate, root_real)
+                )
+        visible_files = files
+        if relative_dir == ".":
+            visible_files = [
+                name for name in files
+                if name not in (".git", runtime_paths.RUNTIME_ROOT)
+            ]
+        for name in sorted(visible_files):
+            absolute = os.path.join(current, name)
+            relative = os.path.relpath(absolute, root_real).replace(os.sep, "/")
+            if relative in exclusions:
+                unmatched_exclusions.discard(relative)
+                continue
+            paths.append((relative, absolute))
+
+    if unmatched_exclusions:
+        raise ValueError(
+            "repository snapshot exclusion path(s) are absent: %s" %
+            ", ".join(sorted(unmatched_exclusions)))
+
+    nofollow = getattr(os, "O_NOFOLLOW", None)
+    if nofollow is None:
+        raise OSError(errno.ENOTSUP,
+                      "repository snapshot requires O_NOFOLLOW", root_real)
+    for relative, absolute in sorted(paths):
+        listed = os.lstat(absolute)
+        if not stat.S_ISREG(listed.st_mode):
+            raise ValueError(
+                "repository snapshot requires a regular file: %s" % relative
+            )
+        if listed.st_nlink != 1:
+            raise ValueError(
+                "repository snapshot rejects hard-linked content: %s" %
+                relative
+            )
+        flags = (os.O_RDONLY | nofollow | getattr(os, "O_CLOEXEC", 0) |
+                 getattr(os, "O_NONBLOCK", 0))
+        fd = os.open(absolute, flags)
+        try:
+            before = os.fstat(fd)
+            if not stat.S_ISREG(before.st_mode):
+                raise ValueError(
+                    "repository snapshot requires a regular file: %s" %
+                    relative
+                )
+            if before.st_nlink != 1:
+                raise ValueError(
+                    "repository snapshot rejects hard-linked content: %s" %
+                    relative
+                )
+            if (listed.st_dev, listed.st_ino) != (before.st_dev, before.st_ino):
+                raise OSError(errno.EAGAIN,
+                              "repository file changed before hashing",
+                              relative)
+            file_digest = hashlib.sha256()
+            while True:
+                chunk = os.read(fd, 1024 * 1024)
+                if not chunk:
+                    break
+                file_digest.update(chunk)
+            after = os.fstat(fd)
+            before_identity = (
+                before.st_dev, before.st_ino, before.st_size,
+                getattr(before, "st_mtime_ns", int(before.st_mtime * 1e9)),
+                getattr(before, "st_ctime_ns", int(before.st_ctime * 1e9)),
+            )
+            after_identity = (
+                after.st_dev, after.st_ino, after.st_size,
+                getattr(after, "st_mtime_ns", int(after.st_mtime * 1e9)),
+                getattr(after, "st_ctime_ns", int(after.st_ctime * 1e9)),
+            )
+            if before_identity != after_identity:
+                raise OSError(errno.EAGAIN,
+                              "repository file changed while hashing",
+                              relative)
+        finally:
+            os.close(fd)
+        replacement = overrides.get(relative)
+        effective_size = (len(replacement)
+                          if replacement is not None else before.st_size)
+        effective_digest = (hashlib.sha256(replacement).digest()
+                            if replacement is not None
+                            else file_digest.digest())
+        encoded = relative.encode("utf-8")
+        digest.update(len(encoded).to_bytes(8, "big"))
+        digest.update(encoded)
+        digest.update(effective_size.to_bytes(8, "big"))
+        digest.update(effective_digest)
+        overrides.pop(relative, None)
+    if overrides:
+        raise ValueError(
+            "repository snapshot override path(s) are absent: %s" %
+            ", ".join(sorted(overrides)))
+    return "sha256:" + digest.hexdigest()
+
+
+def durable_replace(source, destination):
+    """Atomically rename one path and persist both directory-name changes.
+
+    ``os.replace`` provides namespace atomicity but does not by itself prove
+    that a cross-directory rename survives a crash.  After the rename this
+    helper fsyncs the destination parent (new name) and then the distinct
+    source parent (removed name).  An fsync failure is deliberately surfaced:
+    callers must inspect the two paths and retain their recovery lock.
+    """
+    source = os.path.abspath(os.fspath(source))
+    destination = os.path.abspath(os.fspath(destination))
+    source_parent = os.path.dirname(source)
+    destination_parent = os.path.dirname(destination)
+    capability, destination_fd, destination_name = _pathcaps.open_parent(
+        destination, consumptions=("replace", "transaction"))
+    if capability is None:
+        os.replace(source, destination)
+    else:
+        try:
+            os.replace(source, destination_name, dst_dir_fd=destination_fd)
+            _pathcaps.record_replacement(
+                capability, destination_fd, destination_name, destination)
+            os.fsync(destination_fd)
+        finally:
+            os.close(destination_fd)
+    flags = os.O_RDONLY | getattr(os, "O_DIRECTORY", 0)
+    parents = ([] if capability is not None else [destination_parent])
+    if os.path.realpath(source_parent) != os.path.realpath(destination_parent):
+        parents.append(source_parent)
+    for parent in parents:
+        directory_fd = os.open(parent, flags)
+        try:
+            os.fsync(directory_fd)
+        finally:
+            os.close(directory_fd)
+
+
+def atomic_write_text(path, text, validator=None):
+    """Validate and atomically replace one UTF-8 file in its own directory."""
+    if validator:
+        validator(text)
+    parent = os.path.dirname(os.path.abspath(path))
+    capability, parent_fd, basename = _pathcaps.open_parent(
+        path, consumptions=("replace", "transaction"))
+    if capability is None:
+        os.makedirs(parent, exist_ok=True)
+        fd, temporary = tempfile.mkstemp(
+            prefix=runtime_paths.RUNTIME_ROOT + "-write-", dir=parent)
+        temporary_name = None
+    else:
+        temporary_name = "%s-write-%s" % (
+            runtime_paths.RUNTIME_ROOT, uuid.uuid4().hex)
+        flags = (os.O_WRONLY | os.O_CREAT | os.O_EXCL |
+                 getattr(os, "O_NOFOLLOW", 0) |
+                 getattr(os, "O_CLOEXEC", 0))
+        fd = os.open(temporary_name, flags, 0o600, dir_fd=parent_fd)
+        temporary = None
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8", newline="\n") as fh:
+            fh.write(text)
+            fh.flush()
+            os.fsync(fh.fileno())
+        if capability is None:
+            os.replace(temporary, path)
+            directory_flags = os.O_RDONLY | getattr(os, "O_DIRECTORY", 0)
+            directory_fd = os.open(parent, directory_flags)
+            try:
+                os.fsync(directory_fd)
+            finally:
+                os.close(directory_fd)
+        else:
+            os.replace(temporary_name, basename,
+                       src_dir_fd=parent_fd, dst_dir_fd=parent_fd)
+            published = os.stat(
+                basename, dir_fd=parent_fd, follow_symlinks=False)
+            _pathcaps.cache_file(path, text.encode("utf-8"), published)
+            _pathcaps.record_replacement(
+                capability, parent_fd, basename, path)
+            os.fsync(parent_fd)
+    except Exception:
+        try:
+            if capability is None:
+                os.unlink(temporary)
+            else:
+                os.unlink(temporary_name, dir_fd=parent_fd)
+        except OSError:
+            pass
+        raise
+    finally:
+        if parent_fd is not None:
+            os.close(parent_fd)

@@ -24,19 +24,19 @@ The current user-facing capability summary lives in [README.md](README.md). This
 | Capability | State | Short version |
 |---|---|---|
 | Profile onboarding reform | Complete | One pre-closed template, scaffolder, interview contract, status view, checks, and end-to-end tests ship |
-| Component responsibility realignment | Complete | Kernel, Card, Read Set, Profile, Tool, and adopter runtime state have distinct owners; old nested Card/Read Set paths and duplicate authorities are removed |
+| Component responsibility realignment | Complete | Governance owners are distinct; stable Tool commands now front physically separated, checked Area/Domain implementations |
 | Persistent task and Queue runtime | Complete | Coverage, Required Queue, Progress, controlled writers, receipts, recovery, and closure paths ship |
 | Workflow progression MVP | Complete | Exact candidate carry, bounded delegated Amendments, and routed-gap settlement ship |
 | Host-neutral agent interface | Complete | CLI contract, MCP projection, stdio server, and four host renderers ship |
 | Activation transport and Assignment delivery | In progress | Replace an unprovable “server sent it” claim with budgeted delivery, host conformance, acknowledgements, and a delivery gate |
-| Reference execution runtime | Next | Extend the delivery-gated Assignment through execution and checkpoint lifecycle, add a single-writer integrator, then isolated workers and reviewers |
+| Reference execution runtime | In progress | A bounded serial Tool Runner now reaches each semantic boundary; Assignment execution/checkpoints, isolated workers, and reviewers remain |
 | Git-backed workspace and diff adapter | Next | Bind one Assignment to a batch-private Git workspace, reviewable diff, named sources, exact Git snapshots, and serial post-merge read-back without making Git a second Queue |
 | Governed retrieval adapter contract | Next | Export owner-derived eligible manifests, principal-scoped invalidation feeds, and attested-freshness citation envelopes without making Cambium a RAG engine or an index authoritative |
 | State-aware operation discovery | Next | Its scope has changed: the shipped MCP surface comes from tool CLIs, and any future discovery view must not become a second policy engine |
 | Typed dependency runtime | Next | Compile explicit corpus relationships and produce bounded change-impact plans |
 | Independent completeness and consistency evaluation | Next | Re-derive expected scope without trusting the executor's own Queue or Delta |
 | Machine-readable review rulings | Next | Make finding, confirmation, conditional fix, and close-gate evidence one load-bearing chain |
-| Receipt ledger integrity chain | Next | Add linked receipt history with an external tail anchor and era-aware replay |
+| Receipt ledger integrity chain | Next | Add linked current-contract receipt history with an external tail anchor |
 | Observability and broader Contract Amendments | Next | Runtime status and two amendment fields ship; orchestration views and additional contract fields remain |
 | OpenAI Plugin packaging | Conditional | Consider only after per-corpus binding and package lifecycle requirements are solved |
 | Detached state transactions | Conditional | Needed only when an authoritative writer cannot finish on its normal execution channel |
@@ -80,6 +80,8 @@ Cambium's existing capabilities now follow one explicit responsibility split:
 - a selected Profile owns only confirmed repository-specific values, while the common Profile interface is a Kernel-owned machine registry;
 - `Tools/` owns deterministic algorithms, capability implementations, engineering contracts, generators, and controlled writers; and
 - adopter-owned `.cambium/` holds current values, bound operational inputs, evidence, recovery state, transient work, and rebuildable projections.
+
+Tool implementation now follows the checked physical Areas under `Tools/governance/`, `Tools/knowledge/`, `Tools/execution/`, and `Tools/platform/`, with Domain directories beneath them. Public invocation remains at `Tools/<tool>.py`; those stable adapters do not become a compatibility ownership layer. `Tools/tool-taxonomy.yaml` and `Tools/module-boundaries.yaml` remain the machine owners of classification and dependency direction, while the generated Tool catalog is navigation only.
 
 Cards and Read Sets therefore live beside the Kernel rather than inside it. Consumers resolve their declarations from the owning machine contracts instead of reconstructing them from README prose, Markdown headings, or duplicated constants. Repository documentation and tests describe and verify this shipped structure.
 
@@ -183,11 +185,13 @@ This item is complete when:
 - unsupported hosts fall back to an explicit degraded state;
 - the generated CLI/MCP artifacts and negative fixtures agree with the new protocol.
 
-## Next Capabilities
+## Active And Next Capabilities
 
 ### Reference Execution Runtime
 
 Cambium defines batch lifecycle and serial integration, but does not yet run agents. The reference runtime will consume the existing Required Queue rather than inventing a scheduler-owned ledger.
+
+After a Task Plan has been applied, the shipped Task Runtime Runner connects Queue materialization, registered batch producers and writers, activation-phase delivery, and batch close. It advances deterministic actions only and stops for Agent, user, or Host input; it neither applies the Task Plan, executes Agent work, nor owns Assignment semantics. The remaining reference-runtime work therefore begins beyond that bounded serial control loop.
 
 The Activation item owns the durable delivery record and delivery gate. The reference runtime extends that same Assignment into execution and checkpoint lifecycle; it does not create another Assignment type or restate delivery as a `Next` capability.
 
@@ -411,10 +415,10 @@ Receipts are append-only JSONL and many authorizing fields are already cross-bou
 
 The planned integrity layer adds:
 
-- `prev_receipt_sha256` on each receipt in a chained producer era;
+- `prev_receipt_sha256` on each receipt in the current receipt chain;
 - a declared genesis value for the first line;
 - an external tail anchor written into the canonical state transaction that appended the receipt;
-- producer-era replay so pre-chain receipts remain valid under their original rules;
+- a hard-cut genesis boundary: retired receipt formats remain external archives and are never admitted to the chain;
 - fail-closed uncertain-tail and broken-suffix recovery.
 
 A chain without an external anchor is insufficient because a writer could rebuild the whole file. This feature adds forensic integrity; it does not grant new authority or defend against an adversary who can rewrite state, tools, plans, and evidence together.
@@ -432,7 +436,7 @@ Objective, exclusions, acceptance, timing, and pause policy still require a succ
 
 ### Adoption Recovery Hardening
 
-The supported Atlas hard-cut adoption path is a clean, single-process transaction; compatibility with legacy runtime state is not its prerequisite. A later Cambium task must separately test and close hard-interruption recovery, including exact planned-after read-back and selected-Profile CAS before a `committing` journal can publish or reconstruct its final Receipt. Concurrency, cold-state migration, and legacy-protocol repair remain outside that task unless they receive their own explicit scope.
+The supported Atlas hard-cut adoption path is a clean, single-process transaction. Retired runtime state and protocols are not inputs to Cambium and, if retained, exist only as external static archives. A later Cambium task must separately test and close hard-interruption recovery for current-contract transactions, including exact planned-after read-back and selected-Profile CAS before a `committing` journal can publish or reconstruct its final Receipt. Concurrency and current-format cold-state operations remain outside that task unless they receive their own explicit scope; legacy-protocol repair is not a supported runtime path.
 
 ### Python Entrypoint Packaging
 
@@ -541,7 +545,7 @@ governed corpus eligibility projection
 
 The governed retrieval line adds a downstream interface without changing the current execution-runtime critical path. Listing it as `Next` does not begin implementation or imply extra capacity; scheduling it requires an explicit priority and capacity decision against the other `Next` capabilities.
 
-Receipt-chain integrity, Contract Amendment expansion, and sealed-evidence hardening are independent control-plane improvements, but each must preserve producer-era replay and existing authority boundaries.
+Receipt-chain integrity, Contract Amendment expansion, and sealed-evidence hardening are independent control-plane improvements, but each must preserve current-contract history and existing authority boundaries without admitting retired formats.
 
 Plugin packaging, remote MCP, UI, and ecosystem distribution remain downstream choices. None is a prerequisite for completing the host-neutral Cambium runtime.
 

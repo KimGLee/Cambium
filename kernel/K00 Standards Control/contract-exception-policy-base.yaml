@@ -33,18 +33,3 @@ families:
         owner: kernel/K00 Standards Control/07 Effort Tiering and Priority Quota.md
         quota_class: P1
         kernel_default: 35.0
-
-  - family_id: coverage_reviewed_era
-    policy_kind: kernel-static
-    fingerprint_payload:
-      schema_version: 1
-      protocol_version: 1
-      source: kernel
-      rule: authoring_status reviewed names the receipt era that earned it
-    limit_domain:
-      domain_id: record-count-ceiling
-      value_type: integer
-      minimum_inclusive: 0
-    policies:
-      - policy_id: coverage.reviewed_era
-        owner: kernel/K02 Knowledge Work Construction/01 Inventory and Coverage Ledger.md

@@ -7,9 +7,9 @@ REPOSITORY = Path(__file__).resolve().parents[2]
 TOOLS = REPOSITORY / "Tools"
 sys.path.insert(0, str(TOOLS))
 
-import audit_obligation_projection
-import changed_scope_rendering_checks as checks
-import markdown_structure_checks
+import Tools.execution.audit.audit_obligation_projection as audit_obligation_projection
+import Tools.knowledge.rendering.changed_scope_rendering_checks as checks
+import Tools.knowledge.structure.markdown_structure_checks as markdown_structure_checks
 
 
 class KernelIdentityTests(unittest.TestCase):

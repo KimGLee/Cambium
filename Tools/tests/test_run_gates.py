@@ -1,316 +1,194 @@
-"""The adopter verification set is a derivation, not a checklist.
+"""Contract and one adjacent seam for the Gate sweep dispatcher.
 
-The incident this tool exists for: a prose list of nine commands, unranked,
-was executed selectively -- the executor supplied the ranking the list
-withheld, skipped two advisory checkers, and the list itself was wrong (it
-named a lint that is not a gate and omitted a registered producer).  The
-fix is structural: K00/12's Stable Gate ID Registry stays the ONE
-enumeration, the runner derives the set from it, and a row the runner
-cannot classify fails the run closed so the registry cannot grow past its
-executor silently.
-
-The full sweep's green path is exercised where a complete adopter runtime
-exists -- that is what an adoption runs it on; here the derivation, the
-boundary check, and the CLI's list mode are pinned.
+Gate identity, producer identity, Receipt shape, and Receipt consumption have
+their own machine owners and tests. This module therefore verifies only the
+additional responsibility of ``run_gates``: derive the unscoped sweep from
+the current Control registry, resolve each runnable producer to one command,
+and dispatch a shared command once while preserving every diagnostic outcome.
+The sweep does not create Gate evidence; typed Receipt production and
+consumption remain with their respective owners.
 """
 
-import os
-import subprocess
-import sys
-import tempfile
-import unittest
+from contextlib import redirect_stdout
+import io
 from pathlib import Path
+import unittest
+from unittest import mock
 
-TESTS = Path(__file__).resolve().parent
-TOOLS = TESTS.parent
-for path in (str(TOOLS), str(TESTS)):
-    if path not in sys.path:
-        sys.path.insert(0, path)
-
-import check_queue  # noqa: E402
-import run_gates  # noqa: E402
+from Tools.execution.task_runtime import queue_runtime
+from Tools.governance.control import run_gates
+from Tools.platform.agent_interface import compile_cli_contract
+from Tools.platform.agent_interface import tool_availability
 
 
-class DerivationTests(unittest.TestCase):
-    """The pure derivation, against the live registry of this repository."""
+REPOSITORY = Path(__file__).resolve().parents[2]
+EXAMPLE_PROFILE = "profiles/examples/agent-atlas/profile.md"
 
-    ROOT = str(TOOLS.parent)
 
-    def registry(self):
-        registry, errors = check_queue.standards_gate_registry(self.ROOT)
-        self.assertEqual([], errors)
-        return registry
+class RunGatesContractTests(unittest.TestCase):
+    """Registry-to-command projection without subprocess or runtime state."""
 
-    def recipes(self):
-        return run_gates._recipes(
-            self.ROOT, "profiles/examples/agent-atlas/profile.md", [])
+    @classmethod
+    def setUpClass(cls):
+        cls.registry, errors = queue_runtime.standards_gate_registry(
+            str(REPOSITORY))
+        if errors:
+            raise AssertionError("\n".join(errors))
+        cls.recipes = run_gates._recipes(
+            str(REPOSITORY), EXAMPLE_PROFILE, [])
+        cls.interface_contract = compile_cli_contract.compile_contract(
+            str(REPOSITORY), tool_availability.SOURCE_DISTRIBUTION)
+        cls.transaction_writers = \
+            compile_cli_contract.apply_gated_writer_tools(
+                cls.interface_contract)
 
-    def test_every_registry_row_is_classified_or_the_run_fails(self):
-        registry = self.registry()
+    def test_registry_projection_is_total_unique_and_position_bounded(self):
         derived, errors = run_gates.derive_verification_set(
-            self.ROOT, registry, self.recipes())
-        self.assertEqual([], errors)
-        classified = {gate_id for gate_id, _kind, _cmd in derived}
+            str(REPOSITORY), self.registry, self.recipes,
+            self.transaction_writers)
+
         expected = {
-            gate_id for gate_id, predicate in registry.items()
+            gate_id for gate_id, predicate in self.registry.items()
             if predicate["lifecycle_states"] == ("not-batch-scoped",)
         }
-        self.assertEqual(expected, classified,
-                         "every not-batch-scoped row is classified; a "
-                         "missing one would be a silent narrowing")
-
-    def test_batch_scoped_rows_are_not_in_the_sweep(self):
-        derived, _ = run_gates.derive_verification_set(
-            self.ROOT, self.registry(), self.recipes())
-        gate_ids = {gate_id for gate_id, _kind, _cmd in derived}
-        for batch_gate in ("batch-close", "batch-review",
-                           "required-queue-admission",
-                           "standards-revalidation"):
-            self.assertNotIn(batch_gate, gate_ids)
-
-    def test_transaction_writers_are_never_run(self):
-        derived, _ = run_gates.derive_verification_set(
-            self.ROOT, self.registry(), self.recipes())
-        kinds = {gate_id: kind for gate_id, kind, _cmd in derived}
-        self.assertEqual("transaction", kinds["standards-adoption"])
-        self.assertEqual("transaction",
-                         kinds["corpus-plan-semantic-acceptance"])
+        identities = [gate_id for gate_id, _kind, _command in derived]
+        self.assertEqual([], errors)
+        self.assertEqual(expected, set(identities))
+        self.assertEqual(len(identities), len(set(identities)))
+        expected_transactions = {
+            gate_id for gate_id, predicate in self.registry.items()
+            if predicate["lifecycle_states"] == ("not-batch-scoped",) and
+            predicate["tool"] in self.transaction_writers
+        }
+        self.assertEqual(
+            expected_transactions,
+            {gate_id for gate_id, kind, _command in derived
+             if kind == "transaction"},
+        )
         for _gate_id, kind, command in derived:
-            if kind == "transaction":
+            self.assertIn(kind, ("run", "manual", "transaction"))
+            if kind != "run":
                 self.assertIsNone(command)
 
-    def test_an_unrecognized_producer_fails_the_derivation_closed(self):
-        registry = self.registry()
-        registry["future-gate"] = {
-            "tool": "check_future", "tool_version": "1.0.0",
-            "check": "future-summary", "mode": "*",
-            "dimensions": ("*",),
-            "lifecycle_states": ("not-batch-scoped",),
+    def test_runnable_commands_follow_registry_tool_and_mode_groups(self):
+        derived, errors = run_gates.derive_verification_set(
+            str(REPOSITORY), self.registry, self.recipes,
+            self.transaction_writers)
+        self.assertEqual([], errors)
+
+        commands_by_selector = {}
+        for gate_id, kind, command in derived:
+            predicate = self.registry[gate_id]
+            if kind != "run" or command is None:
+                continue
+            self.assertGreaterEqual(len(command), 2)
+            self.assertNotIn(
+                "--receipts", command,
+                "run_gates is a diagnostic sweep, not a Receipt producer",
+            )
+            self.assertEqual(
+                predicate["tool"], Path(command[1]).stem,
+                "the dispatcher must invoke the producer named by the "
+                "registry, not a local Gate allowlist",
+            )
+            selector = (predicate["tool"], predicate["mode"])
+            previous = commands_by_selector.setdefault(
+                selector, tuple(command))
+            self.assertEqual(previous, tuple(command))
+
+    def test_missing_runnable_producer_recipe_fails_closed(self):
+        registry = {
+            "future-gate": {
+                "tool": "future_producer",
+                "mode": "*",
+                "lifecycle_states": ("not-batch-scoped",),
+            }
         }
-        _derived, errors = run_gates.derive_verification_set(
-            self.ROOT, registry, self.recipes())
-        self.assertTrue(errors)
-        self.assertIn("no recipe", errors[0])
 
-    def test_one_vocab_run_serves_both_registered_gates(self):
-        """check_vocab is a two-gate producer; the sweep runs it once."""
-        derived, _ = run_gates.derive_verification_set(
-            self.ROOT, self.registry(), self.recipes())
-        commands = [tuple(command) for _gate, kind, command in derived
-                    if kind == "run" and command and
-                    any("check_vocab" in part for part in command)]
-        self.assertEqual(2, len(commands))
-        self.assertEqual(1, len(set(commands)))
+        derived, errors = run_gates.derive_verification_set(
+            "/synthetic", registry, {}, frozenset())
 
-    def test_the_vocab_sweep_measures_against_the_resolved_policy(self):
-        """First-live-run defect, pinned: a sweep that hands check_vocab no
-        quotas measures a Configured profile against kernel defaults and
-        reports an excess nobody has.  The recipe must carry the resolver's
-        values and fingerprint -- the same ones batch-close consumes."""
-        import contract_exception_policy
-        recipes = self.recipes()
-        command = recipes[("check_vocab", "*")]
-        rubric = (TOOLS.parent /
-                  "profiles/examples/agent-atlas/priority-rubric.md")
-        policy, fingerprint, errors = (
-            contract_exception_policy.effective_priority_policy(
-                rubric.read_text(encoding="utf-8")))
-        self.assertEqual([], errors)
-        self.assertIn("--quota-p0", command)
-        self.assertIn(str(policy["resolved"]["priority_quota.P0"]),
-                      command)
-        self.assertIn("--policy-fingerprint", command)
-        self.assertIn(fingerprint, command)
+        self.assertEqual([], derived)
+        self.assertEqual(1, len(errors))
+        self.assertIn("future-gate", errors[0])
+        self.assertIn("future_producer", errors[0])
 
-    def test_the_vocab_sweep_excludes_the_card_control_plane(self):
-        """Card metadata has its own contract and stamp preflight."""
-        recipes = self.recipes()
-        vocab_command = recipes[("check_vocab", "*")]
-        links_command = recipes[("check_links", "*")]
-        self.assertIn("--exclude", vocab_command)
-        self.assertIn(run_gates.CARD_CONTROL_PLANE_PATH, vocab_command)
-        self.assertNotIn(run_gates.CARD_CONTROL_PLANE_PATH, links_command)
-
-    def test_manual_rows_remain_human_recorded_gates(self):
-        derived, _ = run_gates.derive_verification_set(
-            self.ROOT, self.registry(), self.recipes())
-        kinds = {gate_id: (kind, command)
-                 for gate_id, kind, command in derived}
-        for gate_id, predicate in self.registry().items():
-            if (predicate["lifecycle_states"] == ("not-batch-scoped",) and
-                    predicate["tool"] ==
-                    check_queue.MANUAL_ATTESTATION_TOOL):
-                self.assertEqual(("manual", None), kinds[gate_id])
-
-    def test_card_currentness_is_a_non_gate_tool_preflight(self):
-        registry = self.registry()
-        self.assertNotIn("runtime-card-synchronization", registry)
-
-        preflights = run_gates._preflight_commands(
-            self.ROOT, "profiles/examples/agent-atlas/profile.md")
-        rows = {capability: (label, command)
-                for capability, label, command in preflights}
-        label, command = rows[run_gates.CARD_CURRENTNESS_CAPABILITY]
-        self.assertEqual("stamp_cards --check", label)
-        self.assertTrue(any("stamp_cards" in part for part in command))
-        self.assertEqual("--check", command[-1])
-
-        interface_commands = [
-            command for capability, _label, command in preflights
-            if capability == "compiled-currentness" and
-            any("interface" in part or "cli_contract" in part
-                for part in command)
-        ]
-        self.assertEqual(2, len(interface_commands))
-        for interface_command in interface_commands:
-            self.assertIn("--projection-target", interface_command)
-            self.assertIn("source-distribution", interface_command)
-
-        derived, _ = run_gates.derive_verification_set(
-            self.ROOT, registry, self.recipes())
-        self.assertNotIn(
-            run_gates.CARD_CURRENTNESS_CAPABILITY,
-            {gate_id for gate_id, _kind, _command in derived})
-
-    def test_an_adopter_preflight_checks_carried_runtime_projections(self):
-        preflights = run_gates._preflight_commands(
-            self.ROOT, "profiles/selected/profile.md")
-        interface_commands = [
-            command for capability, _label, command in preflights
-            if capability == "compiled-currentness" and
-            any("interface" in part or "cli_contract" in part
-                for part in command)
-        ]
-        self.assertEqual(2, len(interface_commands))
-        for command in interface_commands:
-            self.assertIn("--projection-target", command)
-            self.assertIn("carried-runtime", command)
+    def test_preflight_projection_target_comes_from_profile_location(self):
+        cases = (
+            (EXAMPLE_PROFILE, tool_availability.SOURCE_DISTRIBUTION),
+            ("profiles/selected/profile.md",
+             tool_availability.CARRIED_RUNTIME),
+        )
+        for manifest, expected_target in cases:
+            with self.subTest(manifest=manifest):
+                rows = run_gates._preflight_commands(
+                    str(REPOSITORY), manifest)
+                interface_commands = [
+                    command for _capability, label, command in rows
+                    if label in (
+                        "compile_cli_contract --check",
+                        "render_interface_projection --check",
+                    )
+                ]
+                self.assertEqual(2, len(interface_commands))
+                for command in interface_commands:
+                    index = command.index("--projection-target")
+                    self.assertEqual(expected_target, command[index + 1])
 
 
-class BoundaryTests(unittest.TestCase):
-    """The distribution boundary speaks only to adopters, and out loud."""
+class RunGatesDispatchIntegrationTests(unittest.TestCase):
+    """One in-process registry -> dispatcher -> outcome-reporting seam."""
 
-    def setUp(self):
-        self.temporary = tempfile.TemporaryDirectory()
-        self.addCleanup(self.temporary.cleanup)
-        self.root = self.temporary.name
+    def test_shared_producer_command_runs_once_for_multiple_gate_outcomes(self):
+        command = ["python3", "/tools/shared_producer.py", "/repo"]
+        registry = {
+            gate_id: {
+                "tool": "shared_producer",
+                "mode": "*",
+                "lifecycle_states": ("not-batch-scoped",),
+            }
+            for gate_id in ("gate-alpha", "gate-beta")
+        }
+        calls = []
 
-    def install_declaration(self):
-        source = TOOLS.parent / run_gates.DISTRIBUTION_BOUNDARY_PATH
-        target = Path(self.root) / run_gates.DISTRIBUTION_BOUNDARY_PATH
-        target.write_text(source.read_text(encoding="utf-8"),
-                          encoding="utf-8")
+        def run_once(actual):
+            calls.append(tuple(actual))
+            return 0, "producer passed\n"
 
-    def test_a_selected_profile_selects_the_distribution_context(self):
-        self.install_declaration()
-        findings, errors = run_gates._boundary_findings(
-            self.root, "profiles/selected/profile.md")
-        self.assertEqual(([], []), (findings, errors))
+        output = io.StringIO()
+        with mock.patch.object(
+                run_gates.queue_runtime, "standards_gate_registry",
+                return_value=(registry, [])), mock.patch.object(
+                run_gates.queue_runtime, "gate_registry_producer_errors",
+                return_value=[]), mock.patch.object(
+                run_gates, "_selected_profile",
+                return_value="profiles/selected/profile.md"), \
+                mock.patch.object(
+                    run_gates, "_recipes",
+                    return_value={("shared_producer", "*"): command}), \
+                mock.patch.object(
+                    run_gates.compile_cli_contract, "compile_contract",
+                    return_value={"tools": []}), \
+                mock.patch.object(
+                    run_gates.compile_cli_contract,
+                    "apply_gated_writer_tools",
+                    return_value=frozenset()), \
+                mock.patch.object(
+                    run_gates, "_preflight_commands", return_value=[]), \
+                mock.patch.object(
+                    run_gates, "_boundary_findings",
+                    return_value=([], [])), mock.patch.object(
+                    run_gates, "_run", side_effect=run_once), \
+                redirect_stdout(output):
+            code = run_gates.main([
+                "/repo", "--profile", "profiles/selected"])
 
-    def test_a_missing_declaration_is_a_failure_not_a_shrug(self):
-        _findings, errors = run_gates._boundary_findings(
-            self.root, "profiles/mine/profile.md")
-        self.assertTrue(errors)
-        self.assertIn("missing", errors[0])
-
-    def test_a_carried_distribution_tree_is_a_candidate_with_its_reason(self):
-        self.install_declaration()
-        os.makedirs(os.path.join(self.root, "Tools", "tests"))
-        findings, errors = run_gates._boundary_findings(
-            self.root, "profiles/mine/profile.md")
-        self.assertEqual([], errors)
-        self.assertEqual(1, len(findings))
-        self.assertIn("Tools/tests", findings[0])
-        self.assertIn("distribution-only", findings[0])
-
-    def test_the_canonical_template_is_a_distribution_only_candidate(self):
-        self.install_declaration()
-        os.makedirs(os.path.join(
-            self.root, "profiles", "_template"))
-        findings, errors = run_gates._boundary_findings(
-            self.root, "profiles/mine/profile.md")
-        self.assertEqual([], errors)
-        self.assertEqual(1, len(findings))
-        self.assertIn("profiles/_template", findings[0])
-
-    def test_a_declared_single_file_is_a_candidate_like_a_tree(self):
-        """An entry may be one file, not only a directory.
-
-        A file is declared when its whole reason to exist is a declared
-        tree -- a manifest OF it, or a tool whose one job is to copy it --
-        because retiring the tree and keeping the file leaves executable
-        code that can never run.
-        """
-        self.install_declaration()
-        os.makedirs(os.path.join(self.root, "Tools"))
-        open(os.path.join(self.root, "Tools", "scaffold_profile.py"),
-             "w").write("x\n")
-        findings, errors = run_gates._boundary_findings(
-            self.root, "profiles/mine/profile.md")
-        self.assertEqual([], errors)
-        self.assertEqual(1, len(findings))
-        self.assertIn("Tools/scaffold_profile.py", findings[0])
-
-    def test_the_profile_creation_kit_is_declared_whole(self):
-        """The kit is one closure: template, whitelist, copier, guidance."""
-        declaration, errors = run_gates._boundary_declaration(
-            str(TOOLS.parent))
-        self.assertEqual([], errors)
-        declared = {entry["path"].rstrip("/") for entry in declaration}
-        for member in ("profiles/_template",
-                       "profiles/template-files.yaml",
-                       "Tools/scaffold_profile.py", "profiles/interview.yaml",
-                       "profiles/answer-patterns.md"):
-            self.assertIn(member, declared)
-
-    def test_onboarding_tools_that_survive_adoption_are_not_declared(self):
-        """The split the kit's closure stops at, pinned.
-
-        `profile_onboarding_status.py` speaks to a live runtime -- its own
-        precedence rule 2 is `resume-existing-task` -- and
-        `apply_profile_adoption.py` is the adopter's own no-runtime R09
-        writer, kept for the same reason an already-used `init_state.py` is.
-        Sweeping either into the kit would retire a tool an adopter still
-        reaches.
-        """
-        declaration, errors = run_gates._boundary_declaration(
-            str(TOOLS.parent))
-        self.assertEqual([], errors)
-        declared = {entry["path"].rstrip("/") for entry in declaration}
-        for survivor in ("Tools/profile_onboarding_status.py",
-                         "Tools/apply_profile_adoption.py",
-                         "Tools/init_state.py"):
-            self.assertNotIn(survivor, declared)
-
-    def test_an_adopter_without_the_trees_is_clean(self):
-        self.install_declaration()
-        findings, errors = run_gates._boundary_findings(
-            self.root, "profiles/mine/profile.md")
-        self.assertEqual(([], []), (findings, errors))
-
-
-class CliListTests(unittest.TestCase):
-    """--list derives and prints without running; the guard still runs."""
-
-    def test_list_mode_names_every_derived_gate(self):
-        completed = subprocess.run(
-            [sys.executable, str(TOOLS / "run_gates.py"),
-             str(TOOLS.parent), "--profile", "profiles/examples/agent-atlas",
-             "--list"],
-            text=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
-            check=False)
-        self.assertEqual(0, completed.returncode, completed.stdout)
-        registry, errors = check_queue.standards_gate_registry(
-            str(TOOLS.parent))
-        self.assertEqual([], errors)
-        for gate_id, predicate in registry.items():
-            if predicate["lifecycle_states"] == ("not-batch-scoped",):
-                self.assertIn(gate_id, completed.stdout)
-            else:
-                self.assertNotIn("%s " % gate_id, completed.stdout)
-
-        self.assertIn("preflight card-currentness-v1", completed.stdout)
-        self.assertIn("stamp_cards", completed.stdout)
+        self.assertEqual(0, code)
+        self.assertEqual([tuple(command)], calls)
+        text = output.getvalue()
+        self.assertIn("[PASS] gate-alpha", text)
+        self.assertIn("[PASS] gate-beta (same run as above)", text)
+        self.assertIn("gates=2 failures=0 holds=0", text)
 
 
 if __name__ == "__main__":

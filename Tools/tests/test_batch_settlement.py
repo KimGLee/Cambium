@@ -9,9 +9,9 @@ TOOLS = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if TOOLS not in sys.path:
     sys.path.insert(0, TOOLS)
 
-import batch_settlement
-import coverage_delta
-import kblib
+import Tools.execution.task_runtime.batch_settlement as batch_settlement
+import Tools.execution.planning.coverage_delta as coverage_delta
+import Tools.platform.common.kblib as kblib
 
 
 class BatchSettlementTests(unittest.TestCase):

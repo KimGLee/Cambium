@@ -5,20 +5,22 @@
 # The Queue owns ordered batch membership, explicit object manifests,
 # dependencies, execution mode, lifecycle, holds, and transition evidence.
 # Coverage owns each object's disposition and assignment; Progress owns the
-# whole task.  Tools/check_queue.py reconciles the three documents.
+# whole task. Tools/execution/task_runtime/check_queue.py reconciles the three
+# documents.
 #
-# Only the restricted YAML subset accepted by Tools/kblib.py is allowed.
+# Only the restricted YAML subset accepted by
+# Tools/platform/common/kblib.py is allowed.
 # A real adopting repository materializes an initially empty copy under
 # .cambium/state/ with Tools/init_state.py; this distribution template is not
 # adopter runtime state.
 # =============================================================================
 
-schema_version: 1
+schema_version: 2
 task_id: "kb-build-2026-xx"
 scope_version: "s1"
 queue_revision: 1
 state_revision: 0
-standards_version: ""
+upstream_revision_id: ""
 selected_profile_manifest: ""
 
 # Each item explicitly carries all fields below.  Its manifest is non-empty,

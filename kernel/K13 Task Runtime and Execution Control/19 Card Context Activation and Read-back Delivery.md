@@ -32,7 +32,7 @@ Delivery evidence does not transfer to a different context or attempt. A changed
 
 A Tool implementation may package or partition the frozen payload to fit its transport, provided that packaging does not change target membership, content identity, phase obligation, or the observable completeness of delivery. It must detect truncation, externalization, omission, duplication, foreign acknowledgement, and content drift whenever it claims machine-enforced delivery.
 
-Protocol names and versions, field names, serialization, byte budgets, chunking rules, command flags, session identifiers, environment variables, nonce and acknowledgement design, environment-conformance checks, and producer-era replay branches belong to the Tool engineering contract. Kernel requires only the externally observable result: exact current content is delivered completely to the bound context, or the claim fails closed.
+The current protocol identity, field names, serialization, byte budgets, chunking rules, command flags, session identifiers, environment variables, nonce and acknowledgement design, and environment-conformance checks belong to the Tool engineering contract. Retired activation protocols are not parsed or replayed. Kernel requires only the externally observable result: exact current content is delivered completely to the bound context, or the claim fails closed.
 
 ## Progressive Read-back
 

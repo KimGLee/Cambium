@@ -1,9 +1,9 @@
-schema_version: 1
+schema_version: 2
 task_id: fixture-task
 scope_version: s1
 queue_revision: 1
 state_revision: 0
-standards_version: 0123456789abcdef0123456789abcdef01234567
+upstream_revision_id: 0123456789abcdef0123456789abcdef01234567
 selected_profile_manifest: profiles/test-profile/profile.md
 required_queue:
   - id: B1

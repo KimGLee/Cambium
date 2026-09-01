@@ -9,7 +9,7 @@ from pathlib import Path
 TOOLS = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(TOOLS))
 
-import amendment_policy  # noqa: E402
+import Tools.execution.task_runtime.amendment_policy as amendment_policy  # noqa: E402
 
 
 def page(path="Topics/A.md", disposition="required", batch="B1"):
@@ -31,6 +31,13 @@ def page(path="Topics/A.md", disposition="required", batch="B1"):
     }
 
 
+def planned_page(path="Topics/A.md", disposition="required", batch="B1"):
+    result = page(path, disposition, batch)
+    for field in ("authoring_status", "gate_receipts", "property_state"):
+        result.pop(field)
+    return result
+
+
 def batch(batch_id="B1", execution_mode="serial-integrator"):
     return {
         "id": batch_id,
@@ -47,11 +54,11 @@ def batch(batch_id="B1", execution_mode="serial-integrator"):
 
 def coverage():
     return {
-        "schema_version": 1,
+        "schema_version": 2,
         "task_id": "task",
         "updated_at": "2026-08-15T00:00:00Z",
         "scope_version": "s1",
-        "standards_version": "3.9.2",
+        "upstream_revision_id": "a" * 40,
         "selected_profile_manifest": "profiles/p/profile.yaml",
         "batch_specs": [batch()],
         "maintenance_candidates": [],
@@ -78,35 +85,7 @@ def authority(*classes):
 
 
 class AmendmentPolicyTests(unittest.TestCase):
-    def test_property_state_adoption_is_coverage_only_and_user_decided(self):
-        before = coverage()
-        before["pages"][0].pop("property_state")
-        after = copy.deepcopy(before)
-        after["pages"][0].update({
-            "property_state": {},
-            "legacy_property_state": {
-                "last_reviewed": {
-                    "status": "legacy-unverified",
-                    "value": "2026-07-31",
-                },
-            },
-        })
-
-        impact = amendment_policy.derive_amendment_impact(
-            before, after, queue())
-
-        self.assertEqual([], impact["forbidden_reasons"])
-        self.assertEqual("property-state-migration",
-                         impact["writer_operation"])
-        self.assertEqual(["property-state-adoption"],
-                         impact["change_classes"])
-        self.assertEqual(["Topics/A.md"], impact["affected_pages"])
-        self.assertEqual([], impact["affected_batches"])
-        with self.assertRaises(amendment_policy.UserDecisionRequired):
-            amendment_policy.resolve_authority(
-                {"amendment_authority": authority()}, impact)
-
-    def test_property_state_adoption_cannot_rewrite_current_owner(self):
+    def test_amendment_cannot_rewrite_current_property_owner(self):
         before = coverage()
         after = copy.deepcopy(before)
         after["pages"][0]["property_state"] = {
@@ -117,14 +96,14 @@ class AmendmentPolicyTests(unittest.TestCase):
             before, after, queue())
 
         self.assertTrue(any(
-            "may only adopt one absent owner mapping" in reason
+            "outside queued routing: property_state" in reason
             for reason in impact["forbidden_reasons"]), impact)
 
     def test_required_growth_derives_one_closed_scope_replan(self):
         before = coverage()
         after = copy.deepcopy(before)
         after["scope_version"] = "s2"
-        after["pages"].append(page("Topics/B.md", batch="B2"))
+        after["pages"].append(planned_page("Topics/B.md", batch="B2"))
         after["batch_specs"].append(batch("B2"))
 
         impact = amendment_policy.derive_amendment_impact(
@@ -137,6 +116,33 @@ class AmendmentPolicyTests(unittest.TestCase):
             impact["change_classes"])
         self.assertEqual(["Topics/B.md"], impact["affected_pages"])
         self.assertEqual(["B2"], impact["affected_batches"])
+
+    def test_required_growth_cannot_preclaim_current_runtime_state(self):
+        before = coverage()
+        after = copy.deepcopy(before)
+        after["scope_version"] = "s2"
+        after["pages"].append(page("Topics/B.md", batch="B2"))
+        after["batch_specs"].append(batch("B2"))
+
+        impact = amendment_policy.derive_amendment_impact(
+            before, after, queue())
+
+        self.assertTrue(any(
+            "must use the complete planning-only form" in reason
+            for reason in impact["forbidden_reasons"]), impact)
+
+    def test_amendment_cannot_materialize_planning_runtime_state(self):
+        before = coverage()
+        before["pages"][0] = planned_page()
+        after = copy.deepcopy(before)
+        after["pages"][0]["property_state"] = {}
+
+        impact = amendment_policy.derive_amendment_impact(
+            before, after, queue())
+
+        self.assertTrue(any(
+            "outside queued routing: property_state" in reason
+            for reason in impact["forbidden_reasons"]), impact)
 
     def test_queued_reroute_and_batch_update_are_queue_replan(self):
         before = coverage()
@@ -180,7 +186,7 @@ class AmendmentPolicyTests(unittest.TestCase):
         before = coverage()
         after = copy.deepcopy(before)
         after["scope_version"] = "s2"
-        after["pages"].append(page("Topics/B.md", batch="B2"))
+        after["pages"].append(planned_page("Topics/B.md", batch="B2"))
         after["batch_specs"].append(batch("B2"))
         impact = amendment_policy.derive_amendment_impact(
             before, after, queue())

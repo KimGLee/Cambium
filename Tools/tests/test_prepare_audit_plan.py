@@ -16,11 +16,11 @@ TOOLS = REPOSITORY / "Tools"
 K12 = REPOSITORY / "kernel/K12 Quality Assurance"
 sys.path.insert(0, str(TOOLS))
 
-import audit_obligation_projection
-import audit_producer_runtime
-import batch_review_obligation_contract
-import kblib
-import prepare_audit_plan
+import Tools.execution.audit.audit_obligation_projection as audit_obligation_projection
+import Tools.execution.audit.audit_producer_runtime as audit_producer_runtime
+import Tools.execution.audit.batch_review_obligation_contract as batch_review_obligation_contract
+import Tools.platform.common.kblib as kblib
+import Tools.execution.audit.prepare_audit_plan as prepare_audit_plan
 
 
 SHA_A = "sha256:" + "a" * 64
@@ -91,7 +91,7 @@ class AuditPlanExporterTests(unittest.TestCase):
                 target_selector="each-manifest-page",
                 trigger="before-merge-ready",
                 producer_kind="manual-attestation",
-                receipt_schema="page-batch-judgment-v1",
+                receipt_schema="page-batch-judgment-v2",
                 pass_authority_role_id="executor",
             ))
         return SimpleNamespace(
@@ -134,7 +134,7 @@ class AuditPlanExporterTests(unittest.TestCase):
             "profile_contract_fingerprint": SHA_C,
         }
         standards = {
-            "standards_version": "fixture-standards",
+            "upstream_revision_id": "fixture-standards",
             "active_standards_sha256": SHA_D,
         }
         opening = {
@@ -483,20 +483,19 @@ type: concept
                     ValueError, "trigger HOLD.*unresolved_volatility"):
                 self.build_values(values)
 
-    def test_profile_volatility_defaults_come_from_authorized_snapshot(self):
-        path = "profiles/fixture/vocabulary-extensions.yaml"
-        snapshot = SimpleNamespace(read_text=lambda selected: (
-            "schema_version: 1\nvolatility_defaults:\n"
-            "  general: slow\n" if selected == path else None))
+    def test_profile_volatility_defaults_consume_the_typed_profile_view(self):
+        contract = object()
         result = {"_profile_authorized_view": {
-            "_manifest_slot_paths": (
-                ("Vocabulary Extensions", path),
-            ),
-            "_profile_snapshot": snapshot,
+            "_contract": contract,
         }}
-        self.assertEqual(
-            {"general": "slow"},
-            prepare_audit_plan._profile_volatility_defaults(result))
+        with mock.patch.object(
+                prepare_audit_plan.profile_contract,
+                "volatility_defaults_projection",
+                return_value={"general": "slow"}) as projection:
+            self.assertEqual(
+                {"general": "slow"},
+                prepare_audit_plan._profile_volatility_defaults(result))
+        projection.assert_called_once_with(contract)
 
     def test_s_selection_and_plan_ids_are_deterministic(self):
         tiers = {"L.md": "L", "M.md": "M"}
@@ -536,7 +535,7 @@ type: concept
         self.assertEqual(set(tiers), {row["target"] for row in review})
         self.assertTrue(all(
             row["partition"] == "profile-registered-review" and
-            row["evidence_kind"] == "page-batch-judgment-v1" and
+            row["evidence_kind"] == "page-batch-judgment-v2" and
             row["producer_check"] == "profile_batch_judgment" and
             row["consumer_gate_id"] == "batch-review"
             for row in review))

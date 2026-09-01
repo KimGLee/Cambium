@@ -134,7 +134,7 @@ closed_sets:
   batch_review_producer_kinds:
     - manual-attestation
   batch_review_receipt_schemas:
-    - page-batch-judgment-v1
+    - page-batch-judgment-v2
   kernel_role_ids:
     - proposer
     - gatekeeper

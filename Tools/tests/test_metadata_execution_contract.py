@@ -1,505 +1,289 @@
-"""Closed-schema and authority-coverage tests for metadata execution."""
+"""Owned tests for the current metadata execution machine contract."""
 
 import copy
-import json
+import io
 from pathlib import Path
-import sys
 import tempfile
 import unittest
+from contextlib import redirect_stderr, redirect_stdout
+
+import Tools.governance.control.metadata_execution_contract as contract
+import Tools.platform.common.kblib as kblib
 
 
 REPOSITORY = Path(__file__).resolve().parents[2]
-TOOLS = REPOSITORY / "Tools"
-sys.path.insert(0, str(TOOLS))
-
-import kblib
-import metadata_execution_contract as contract
 
 
-def source_documents():
+def _source_documents(root=REPOSITORY):
     authority = kblib.parse_yaml_subset(
-        (REPOSITORY / contract.DEFAULT_AUTHORITY_PATH).read_text(
-            encoding="utf-8"))
+        (root / contract.DEFAULT_AUTHORITY_PATH).read_text(encoding="utf-8"))
     capabilities = kblib.parse_yaml_subset(
-        (REPOSITORY / contract.DEFAULT_CAPABILITIES_PATH).read_text(
+        (root / contract.DEFAULT_CAPABILITIES_PATH).read_text(
             encoding="utf-8"))
     return authority, capabilities
 
 
-def compile_documents(authority, capabilities, root=REPOSITORY):
-    snapshots = {
-        path: kblib.repository_file_snapshot(
-            root, path, singly_linked=True)
-        for path in contract.capability_implementation_paths(capabilities)
+def _normalized_capability(entry):
+    """Independently normalize one registry row for semantic comparison."""
+    normalized = copy.deepcopy(entry)
+    for role in ("writers", "checkers", "consumers"):
+        normalized[role] = sorted(normalized[role])
+    normalized["operations"] = sorted(
+        normalized["operations"],
+        key=lambda operation: tuple(
+            str(operation[key]) for key in sorted(operation)))
+    return normalized
+
+
+def _metadata_capabilities(document):
+    """The metadata artifact consumes every current non-projection row."""
+    return [
+        entry for entry in document["capabilities"]
+        if entry["kind"] != "projection"
+    ]
+
+
+def _implementation_paths(entries):
+    paths = set()
+    for entry in entries:
+        paths.add(entry["implementation_owner"])
+        if "invocation_owner" in entry:
+            paths.add(entry["invocation_owner"])
+        for role in ("writers", "checkers", "consumers"):
+            paths.update(entry[role])
+    return tuple(sorted(paths))
+
+
+def _implementation_hashes(root, entries):
+    return {
+        path: kblib.sha256_file(root / path)
+        for path in _implementation_paths(entries)
     }
+
+
+def _compile(authority, capabilities, snapshots):
     return contract.compile_metadata_execution_document(
         authority, capabilities, implementation_snapshots=snapshots)
 
 
-def materialize_contract_root(destination):
+def _materialize_current_inputs(destination):
+    authority, capabilities = _source_documents()
     for relative in (
             contract.DEFAULT_AUTHORITY_PATH,
             contract.DEFAULT_CAPABILITIES_PATH):
         target = destination / relative
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_bytes((REPOSITORY / relative).read_bytes())
-    capabilities = kblib.parse_yaml_subset(
-        (destination / contract.DEFAULT_CAPABILITIES_PATH).read_text(
-            encoding="utf-8"))
-    for relative in contract.capability_implementation_paths(capabilities):
+    for relative in _implementation_paths(capabilities["capabilities"]):
         target = destination / relative
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_bytes((REPOSITORY / relative).read_bytes())
-    compiled = contract.compile_metadata_execution_contract(destination)
-    artifact = destination / contract.DEFAULT_COMPILED_PATH
-    artifact.parent.mkdir(parents=True, exist_ok=True)
-    artifact.write_bytes(compiled.canonical_bytes)
-    return artifact
+    (destination / "Tools/compiled").mkdir(parents=True, exist_ok=True)
+    return authority, capabilities
 
 
-class MetadataExecutionContractTests(unittest.TestCase):
-    def test_real_contract_compiles_and_loads_canonical_artifact(self):
-        compiled = contract.compile_metadata_execution_contract(REPOSITORY)
-        loaded = contract.load_metadata_execution_contract(REPOSITORY)
-        self.assertEqual(compiled.canonical_bytes, loaded.canonical_bytes)
-        self.assertEqual(8, len(loaded.field_rules))
-        self.assertEqual(contract.TEMPORAL_ORDER,
-                         tuple(loaded.artifact["temporal_order"]))
-        self.assertRegex(loaded.contract_fingerprint,
-                         r"\Asha256:[0-9a-f]{64}\Z")
+def _run_contract_cli(*arguments):
+    stdout = io.StringIO()
+    stderr = io.StringIO()
+    with redirect_stdout(stdout), redirect_stderr(stderr):
+        code = contract.main(list(arguments))
+    return code, stdout.getvalue(), stderr.getvalue()
 
-    def test_source_order_does_not_change_fingerprint(self):
-        authority, capabilities = source_documents()
-        first = compile_documents(authority, capabilities)
+
+class MetadataExecutionSourceContractTests(unittest.TestCase):
+    """Contract: source owners project exactly one executable authority."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.authority, cls.capabilities = _source_documents()
+        metadata_entries = _metadata_capabilities(cls.capabilities)
+        cls.snapshots = _implementation_hashes(REPOSITORY, metadata_entries)
+        cls.compiled = _compile(
+            cls.authority, cls.capabilities, cls.snapshots)
+
+    def test_compiler_projects_exact_kernel_and_registry_sources(self):
+        artifact = self.compiled.artifact
+
+        expected_rules = sorted(
+            copy.deepcopy(self.authority["field_rules"]),
+            key=lambda rule: (rule["field"], rule["transition"]))
+        self.assertEqual(expected_rules, artifact["field_rules"])
+        self.assertEqual(
+            self.authority["temporal_order"], artifact["temporal_order"])
+
+        expected_capabilities = sorted(
+            (_normalized_capability(entry)
+             for entry in _metadata_capabilities(self.capabilities)),
+            key=lambda entry: (
+                entry["kind"], entry["capability_id"],
+                entry["capability_version"]))
+        self.assertEqual(
+            expected_capabilities, artifact["operation_capabilities"])
+        self.assertEqual(
+            [entry for entry in expected_capabilities
+             if entry["kind"] == "writer"],
+            artifact["writer_capabilities"])
+
+        expected_implementations = [
+            {"path": path, "sha256": self.snapshots[path]}
+            for path in sorted(self.snapshots)
+        ]
+        self.assertEqual(
+            expected_implementations, artifact["capability_implementations"])
+
+        fingerprint_source = {
+            key: copy.deepcopy(value)
+            for key, value in artifact.items()
+            if key != "contract_fingerprint"
+        }
+        self.assertEqual(
+            kblib.sha256_bytes(
+                kblib.canonical_json_bytes(fingerprint_source)),
+            artifact["contract_fingerprint"])
+        self.assertEqual(
+            kblib.canonical_json_bytes(artifact) + b"\n",
+            self.compiled.canonical_bytes)
+
+    def test_declaration_order_does_not_change_contract_identity(self):
+        authority = copy.deepcopy(self.authority)
+        capabilities = copy.deepcopy(self.capabilities)
         authority["field_rules"].reverse()
         capabilities["capabilities"].reverse()
         for entry in capabilities["capabilities"]:
-            entry["operations"].reverse()
-            for role in contract.IMPLEMENTATION_ROLE_KEYS:
+            for role in ("writers", "checkers", "consumers"):
                 entry[role].reverse()
-        second = compile_documents(authority, capabilities)
-        self.assertEqual(first.contract_fingerprint,
-                         second.contract_fingerprint)
-        self.assertEqual(first.canonical_bytes, second.canonical_bytes)
+            entry["operations"].reverse()
 
-    def test_duplicate_field_transition_fails_closed(self):
-        authority, capabilities = source_documents()
-        authority["field_rules"].append(
-            copy.deepcopy(authority["field_rules"][0]))
-        with self.assertRaises(contract.MetadataExecutionContractError) as cm:
-            compile_documents(authority, capabilities)
-        self.assertIn("duplicate field transition rule", str(cm.exception))
+        reordered = _compile(authority, capabilities, self.snapshots)
 
-    def test_unknown_rule_key_fails_closed(self):
-        authority, capabilities = source_documents()
-        authority["field_rules"][0]["helpful_note"] = "not executable"
-        with self.assertRaises(contract.MetadataExecutionContractError) as cm:
-            compile_documents(authority, capabilities)
-        self.assertIn("unknown keys: helpful_note", str(cm.exception))
-
-    def test_missing_mandatory_writer_capability_fails_closed(self):
-        authority, capabilities = source_documents()
-        del authority["field_rules"][0]["writer_capability"]
-        with self.assertRaises(contract.MetadataExecutionContractError) as cm:
-            compile_documents(authority, capabilities)
-        self.assertIn("missing keys: writer_capability", str(cm.exception))
-
-    def test_rule_without_installed_writer_fails_closed(self):
-        authority, capabilities = source_documents()
-        target = authority["field_rules"][0]
-        writer = next(
-            entry for entry in capabilities["capabilities"]
-            if entry["kind"] == "writer" and
-            entry["capability_id"] == target["writer_capability"])
-        writer["operations"] = [
-            operation for operation in writer["operations"]
-            if (operation.get("field"), operation.get("transition")) !=
-            (target["field"], target["transition"])]
-        with self.assertRaises(contract.MetadataExecutionContractError) as cm:
-            compile_documents(authority, capabilities)
-        self.assertIn("has no installed writer", str(cm.exception))
-
-    def test_orphan_installed_writer_fails_closed(self):
-        authority, capabilities = source_documents()
-        writer = next(
-            entry for entry in capabilities["capabilities"]
-            if entry["kind"] == "writer")
-        writer["operations"].append({
-            "field": "orphan_field",
-            "transition": "owner-to-page-projection",
-            "source_adapter": "coverage-row-value-v1",
-        })
-        with self.assertRaises(contract.MetadataExecutionContractError) as cm:
-            compile_documents(authority, capabilities)
-        self.assertIn("is unauthorized", str(cm.exception))
-
-    def test_second_writer_for_same_transition_fails_closed(self):
-        authority, capabilities = source_documents()
-        original = next(
-            entry for entry in capabilities["capabilities"]
-            if entry["kind"] == "writer")
-        duplicate = copy.deepcopy(original)
-        duplicate["capability_id"] = "second-writer-v1"
-        duplicate["operations"] = [duplicate["operations"][0]]
-        capabilities["capabilities"].append(duplicate)
-        with self.assertRaises(contract.MetadataExecutionContractError) as cm:
-            compile_documents(authority, capabilities)
-        self.assertIn("implemented more than once", str(cm.exception))
-
-    def test_capability_id_is_unique_across_kinds(self):
-        authority, capabilities = source_documents()
-        writer = next(
-            entry for entry in capabilities["capabilities"]
-            if entry["kind"] == "writer")
-        consumer = next(
-            entry for entry in capabilities["capabilities"]
-            if entry["kind"] == "consumer")
-        consumer["capability_id"] = writer["capability_id"]
-
-        with self.assertRaises(contract.MetadataExecutionContractError) as cm:
-            compile_documents(authority, capabilities)
-
-        self.assertIn("duplicate capability_id", str(cm.exception))
-        self.assertIn("global, not kind-scoped", str(cm.exception))
-
-    def test_content_change_requires_exact_nonsemantic_exclusions(self):
-        authority, capabilities = source_documents()
-        rule = next(
-            item for item in authority["field_rules"]
-            if item["field"] == "last_content_modified" and
-            item["transition"] == "semantic-content-change")
-        rule["evidence_requirement"]["excluded_change_classes"] = [
-            "projection-only"]
-        with self.assertRaises(contract.MetadataExecutionContractError) as cm:
-            compile_documents(authority, capabilities)
-        self.assertIn("content-change exclusions", str(cm.exception))
-
-    def test_review_invalidation_is_explicit_tombstone_then_projection(self):
-        compiled = contract.compile_metadata_execution_contract(REPOSITORY)
-        rules = {(item["field"], item["transition"]): item
-                 for item in compiled.field_rules}
-        invalidation = rules[("last_reviewed", "semantic-content-change")]
-        projection = rules[("last_reviewed", "owner-to-page-projection")]
-        self.assertEqual("semantic-content-change-tombstone-v1",
-                         invalidation["invalidation_rule"])
-        self.assertEqual("tombstone-owner-property-state-v1",
-                         invalidation["reconcile_policy"])
-        self.assertEqual("coverage-property-state-v1",
-                         projection["source_adapter"])
-        self.assertEqual("upsert-exact-or-remove-v1",
-                         projection["reconcile_policy"])
-
-    def test_last_content_modified_only_accepts_semantic_change(self):
-        compiled = contract.compile_metadata_execution_contract(REPOSITORY)
-        rules = {(item["field"], item["transition"]): item
-                 for item in compiled.field_rules}
-        transition = rules[
-            ("last_content_modified", "semantic-content-change")]
-        evidence = transition["evidence_requirement"]
-        self.assertEqual("content-change-event-v1",
-                         transition["source_adapter"])
-        self.assertEqual("semantic-content", evidence["change_scope"])
         self.assertEqual(
-            {"projection-only", "tool-controlled-metadata-only"},
-            set(evidence["excluded_change_classes"]))
-        projection = rules[
-            ("last_content_modified", "owner-to-page-projection")]
-        self.assertEqual("coverage-property-state-v1",
-                         projection["source_adapter"])
-        self.assertEqual("date", transition["value_shape"])
-        self.assertEqual("date", projection["value_shape"])
-
-    def test_legacy_projection_value_shape_is_rule_driven(self):
-        compiled = contract.compile_metadata_execution_contract(REPOSITORY)
-        for field in ("authoring_status", "coverage_disposition", "next_batch"):
-            rule = next(item for item in compiled.field_rules
-                        if item["field"] == field)
-            self.assertEqual("scalar-string-or-null", rule["value_shape"])
-
-    def test_producer_era_gate_capabilities_remain_registered(self):
-        self.assertTrue(contract.capability_registered(
-            "manual-attestation-v1", "producer", root=REPOSITORY))
-        self.assertTrue(contract.capability_registered(
-            "registered-scan-v1", "producer", root=REPOSITORY))
-        self.assertTrue(contract.capability_registered(
-            "manual-gate-attestation-v1", "receipt-schema",
-            root=REPOSITORY))
-        self.assertTrue(contract.capability_supports(
-            "typed-metadata-transition-v1",
-            "typed-field-metadata-transition",
-            root=REPOSITORY))
-        self.assertTrue(contract.capability_supports(
-            "project-page-state-v2",
-            contract.PROFILE_EXTENSION_ENUM_PROJECTION_OPERATION,
-            root=REPOSITORY, kind="writer"))
-        self.assertTrue(contract.capability_supports(
-            "legacy-property-adoption-v1",
-            contract.LEGACY_PROPERTY_ADOPTION_OPERATION,
-            root=REPOSITORY, kind="writer"))
-        self.assertFalse(contract.capability_registered(
-            "unknown-producer-v1", "producer", root=REPOSITORY))
-
-    def test_audit_production_chain_has_one_registered_owner_per_step(self):
-        expected = {
-            "manual-attestation-v1": "Tools/manual_attestation.py",
-            "audit-plan-producer-v1": "Tools/prepare_audit_plan.py",
-            "batch-page-review-attestation-v1":
-                "Tools/record_batch_page_review.py",
-            "substantive-review-attestation-v1":
-                "Tools/record_substantive_review.py",
-            "changed-scope-evidence-adapter-v1":
-                "Tools/record_changed_scope_evidence.py",
-            "dedicated-rendering-verification-v1":
-                "Tools/record_rendering_verification.py",
-            "audit-receipt-producer-v1":
-                "Tools/complete_audit_receipt.py",
-            "batch-review-producer-v1": "Tools/record_batch_review.py",
-        }
-        for capability_id, owner in expected.items():
-            with self.subTest(capability_id=capability_id):
-                entry = contract.capability_entry(
-                    capability_id, "producer", root=REPOSITORY)
-                self.assertIsNotNone(entry)
-                self.assertEqual(owner, entry["implementation_owner"])
-
-    def test_audit_production_chain_names_its_direct_consumers(self):
-        expected = {
-            "audit-plan-producer-v1": {
-                "Tools/audit_evidence_runtime.py",
-                "Tools/complete_audit_receipt.py",
-                "Tools/record_batch_judgment.py",
-                "Tools/record_batch_page_review.py",
-                "Tools/record_batch_review.py",
-                "Tools/record_changed_scope_evidence.py",
-                "Tools/record_rendering_verification.py",
-                "Tools/record_substantive_review.py",
-            },
-            "batch-page-review-attestation-v1": {
-                "Tools/audit_evidence_runtime.py",
-                "Tools/record_batch_review.py",
-            },
-            "substantive-review-attestation-v1": {
-                "Tools/audit_evidence_runtime.py",
-                "Tools/complete_audit_receipt.py",
-            },
-            "changed-scope-evidence-adapter-v1": {
-                "Tools/audit_evidence_runtime.py",
-                "Tools/complete_audit_receipt.py",
-            },
-            "dedicated-rendering-verification-v1": {
-                "Tools/audit_evidence_runtime.py",
-                "Tools/complete_audit_receipt.py",
-            },
-            "audit-receipt-producer-v1": {
-                "Tools/audit_evidence_runtime.py",
-                "Tools/record_batch_review.py",
-                "Tools/update_queue.py",
-            },
-            "batch-review-producer-v1": {"Tools/update_queue.py"},
-        }
-        for capability_id, consumers in expected.items():
-            with self.subTest(capability_id=capability_id):
-                entry = contract.capability_entry(
-                    capability_id, "producer", root=REPOSITORY)
-                self.assertIsNotNone(entry)
-                self.assertEqual(consumers, set(entry["consumers"]))
-
-    def test_structure_projection_is_registered_outside_metadata_artifact(self):
-        entry = contract.capability_entry(
-            "structure-coverage-projection-v1", "projection",
-            root=REPOSITORY)
-        self.assertIsNotNone(entry)
+            self.compiled.contract_fingerprint,
+            reordered.contract_fingerprint)
         self.assertEqual(
-            "Tools/render_structure_projection.py",
-            entry["implementation_owner"])
-        self.assertEqual(["coverage-ledger"], entry["input_owners"])
-        compiled = contract.compile_metadata_execution_contract(REPOSITORY)
-        self.assertFalse(any(
-            item["capability_id"] == "structure-coverage-projection-v1"
-            for item in compiled.artifact["operation_capabilities"]
-        ))
+            self.compiled.canonical_bytes, reordered.canonical_bytes)
 
-    def test_projection_input_owner_must_be_registered_runtime_object(self):
-        authority, capabilities = source_documents()
-        projection = next(
-            item for item in capabilities["capabilities"]
-            if item["kind"] == "projection")
-        projection["input_owners"] = ["unregistered-runtime-object"]
-        with self.assertRaises(contract.MetadataExecutionContractError) as cm:
-            compile_documents(authority, capabilities)
-        self.assertIn("unknown runtime object", str(cm.exception))
-
-    def test_capability_implementations_are_closed_and_fingerprinted(self):
-        authority, capabilities = source_documents()
-        paths = contract.capability_implementation_paths(capabilities)
-        metadata_paths = \
-            contract.metadata_execution_capability_implementation_paths(
-                capabilities)
-        self.assertIn("Tools/apply_metadata_transition.py", paths)
-        self.assertIn("Tools/metadata_property_state.py", paths)
-        self.assertIn("Tools/render_structure_projection.py", paths)
-        self.assertNotIn("Tools/render_structure_projection.py",
-                         metadata_paths)
-        compiled = compile_documents(authority, capabilities)
-        records = {
-            item["path"]: item["sha256"]
-            for item in compiled.artifact["capability_implementations"]
-        }
-        self.assertEqual(set(metadata_paths), set(records))
-        self.assertEqual(
-            kblib.sha256_file(REPOSITORY / "Tools/record_gate_result.py"),
-            records["Tools/record_gate_result.py"])
-        self.assertEqual(
-            "Tools/apply_metadata_transition.py",
-            contract.capability_entry(
-                "typed-metadata-transition-v1", "consumer",
-                root=REPOSITORY)["implementation_owner"])
-        self.assertEqual(
-            "Tools/record_gate_result.py",
-            contract.capability_entry(
-                "registered-scan-v1", "producer",
-                root=REPOSITORY)["implementation_owner"])
-
-    def test_real_registry_separates_owner_writers_checkers_and_consumers(self):
-        _authority, capabilities = source_documents()
-        for entry in capabilities["capabilities"]:
-            role_sets = [set(entry[role])
-                         for role in contract.IMPLEMENTATION_ROLE_KEYS]
-            self.assertTrue(all(
-                entry["implementation_owner"] not in role_set
-                for role_set in role_sets
-            ), entry["capability_id"])
-            for index, left in enumerate(role_sets):
-                for right in role_sets[index + 1:]:
-                    self.assertFalse(left & right, entry["capability_id"])
-
-        projection = next(
-            entry for entry in capabilities["capabilities"]
-            if entry["capability_id"] == "project-page-state-v2")
-        self.assertEqual(
-            "Tools/project_page_state.py",
-            projection["implementation_owner"],
+    def test_kernel_authority_mutation_matrix_fails_closed(self):
+        cases = (
+            ("duplicate-rule", "duplicate field transition rule"),
+            ("unknown-key", "unknown keys: helpful_note"),
+            ("missing-writer", "missing keys: writer_capability"),
+            ("changed-temporal-order", "temporal_order"),
+            ("incomplete-content-exclusions", "content-change exclusions"),
+            ("unknown-reconcile-policy", "reconcile_policy is not registered"),
         )
-        self.assertEqual(
-            {"Tools/check_batch_close.py"}, set(projection["checkers"]))
-        self.assertNotIn("Tools/register_amendment.py", projection["writers"])
+        for case, expected in cases:
+            with self.subTest(case=case):
+                authority = copy.deepcopy(self.authority)
+                if case == "duplicate-rule":
+                    authority["field_rules"].append(
+                        copy.deepcopy(authority["field_rules"][0]))
+                elif case == "unknown-key":
+                    authority["field_rules"][0]["helpful_note"] = "prose"
+                elif case == "missing-writer":
+                    del authority["field_rules"][0]["writer_capability"]
+                elif case == "changed-temporal-order":
+                    authority["temporal_order"] = list(reversed(
+                        authority["temporal_order"]))
+                elif case == "incomplete-content-exclusions":
+                    rule = next(
+                        row for row in authority["field_rules"]
+                        if row["source_adapter"] ==
+                        "content-change-event-v1")
+                    rule["evidence_requirement"][
+                        "excluded_change_classes"] = ["projection-only"]
+                else:
+                    authority["field_rules"][0]["reconcile_policy"] = \
+                        "retired-copy-policy-v1"
 
-        card_currentness = next(
-            entry for entry in capabilities["capabilities"]
-            if entry["capability_id"] == "card-currentness-v1")
-        self.assertEqual(
-            "Tools/stamp_cards.py",
-            card_currentness["implementation_owner"],
+                with self.assertRaisesRegex(
+                        contract.MetadataExecutionContractError, expected):
+                    _compile(authority, self.capabilities, self.snapshots)
+
+    def test_capability_registry_mutation_matrix_fails_closed(self):
+        cases = (
+            ("retired-schema", "schema_version must be 3"),
+            ("duplicate-id", "duplicate capability_id"),
+            ("orphan-operation", "is unauthorized"),
+            ("second-writer", "implemented more than once"),
+            ("noncanonical-owner", "canonical Tools/\\*\\.py"),
+            ("overlapping-role", "more than once"),
+            ("unknown-projection-owner", "unknown runtime object"),
         )
-        self.assertEqual(set(), set(card_currentness["writers"]))
-        self.assertEqual(
-            {"Tools/run_gates.py"}, set(card_currentness["checkers"]))
-        self.assertEqual(
-            {"Tools/card_activation.py"},
-            set(card_currentness["consumers"]),
-        )
+        for case, expected in cases:
+            with self.subTest(case=case):
+                capabilities = copy.deepcopy(self.capabilities)
+                entries = capabilities["capabilities"]
+                writers = [entry for entry in entries
+                           if entry["kind"] == "writer"]
+                if case == "retired-schema":
+                    capabilities["schema_version"] = 1
+                elif case == "duplicate-id":
+                    other = next(entry for entry in entries
+                                 if entry["kind"] != "writer")
+                    other["capability_id"] = writers[0]["capability_id"]
+                elif case == "orphan-operation":
+                    writers[0]["operations"].append({
+                        "field": "orphan_field",
+                        "transition": "owner-to-page-projection",
+                        "source_adapter": "coverage-row-value-v1",
+                    })
+                elif case == "second-writer":
+                    duplicate = copy.deepcopy(writers[0])
+                    duplicate["capability_id"] = "second-writer-v1"
+                    duplicate["operations"] = [
+                        copy.deepcopy(writers[0]["operations"][0])]
+                    entries.append(duplicate)
+                elif case == "noncanonical-owner":
+                    entries[0]["implementation_owner"] = "../outside.py"
+                elif case == "overlapping-role":
+                    entries[0]["consumers"].append(
+                        entries[0]["implementation_owner"])
+                else:
+                    projection = next(
+                        entry for entry in entries
+                        if entry["kind"] == "projection")
+                    projection["input_owners"] = ["unknown-runtime-object"]
 
-    def test_missing_or_noncanonical_implementation_fails_closed(self):
-        authority, capabilities = source_documents()
-        capabilities["capabilities"][0]["implementation_owner"] = \
-            "../outside.py"
-        with self.assertRaises(contract.MetadataExecutionContractError) as cm:
-            compile_documents(authority, capabilities)
-        self.assertIn("canonical Tools/*.py", str(cm.exception))
+                with self.assertRaisesRegex(
+                        contract.MetadataExecutionContractError, expected):
+                    _compile(self.authority, capabilities, self.snapshots)
 
-        authority, capabilities = source_documents()
-        snapshots = {
-            path: kblib.repository_file_snapshot(
-                REPOSITORY, path, singly_linked=True)
-            for path in contract.capability_implementation_paths(capabilities)
-            if path != "Tools/record_gate_result.py"
-        }
-        with self.assertRaises(contract.MetadataExecutionContractError) as cm:
-            contract.compile_metadata_execution_document(
-                authority, capabilities,
-                implementation_snapshots=snapshots)
-        self.assertIn("snapshot is missing", str(cm.exception))
 
-    def test_compiled_artifact_fingerprint_tamper_fails_closed(self):
-        compiled = contract.compile_metadata_execution_contract(REPOSITORY)
-        artifact = copy.deepcopy(compiled.artifact)
-        artifact["field_rules"][0]["write_timing"] = "tampered-timing"
+class MetadataExecutionProjectionIntegrationTests(unittest.TestCase):
+    """Integration: one generated projection tracks all live source inputs."""
+
+    def test_compile_check_and_runtime_load_reject_stale_projection(self):
         with tempfile.TemporaryDirectory() as temporary:
-            path = Path(temporary) / "contract.json"
-            path.write_text(json.dumps(artifact), encoding="utf-8")
-            with self.assertRaises(
-                    contract.MetadataExecutionContractError) as cm:
-                contract.load_metadata_execution_contract(
-                    REPOSITORY, path=path)
-        self.assertIn("fingerprint mismatch", str(cm.exception))
-
-    def test_valid_old_artifact_is_rejected_after_authority_source_change(self):
-        with tempfile.TemporaryDirectory() as temporary:
-            root = Path(temporary) / "repo"
+            root = Path(temporary) / "repository"
             root.mkdir()
-            materialize_contract_root(root)
-            authority = root / contract.DEFAULT_AUTHORITY_PATH
-            text = authority.read_text(encoding="utf-8")
-            authority.write_text(text.replace(
-                "batch-close-after-owner-update",
-                "after-owner-state-transition", 1), encoding="utf-8")
-            with self.assertRaises(
-                    contract.MetadataExecutionContractError) as cm:
-                contract.load_metadata_execution_contract(root)
-        self.assertIn("stale relative to live authority", str(cm.exception))
+            _authority, capabilities = _materialize_current_inputs(root)
+            args = ("--root", str(root))
 
-    def test_valid_old_artifact_is_rejected_after_consumer_change(self):
-        with tempfile.TemporaryDirectory() as temporary:
-            root = Path(temporary) / "repo"
-            root.mkdir()
-            materialize_contract_root(root)
-            capabilities = root / contract.DEFAULT_CAPABILITIES_PATH
-            text = capabilities.read_text(encoding="utf-8")
-            capabilities.write_text(text.replace(
-                "      - operation: typed-field-metadata-transition\n",
-                "      - operation: metadata-reconciliation\n"),
-                encoding="utf-8")
-            with self.assertRaises(
-                    contract.MetadataExecutionContractError) as cm:
-                contract.load_metadata_execution_contract(root)
-        self.assertIn("stale relative to live authority", str(cm.exception))
+            code, _stdout, stderr = _run_contract_cli(*args)
+            self.assertEqual(0, code, stderr)
+            artifact_path = root / contract.DEFAULT_COMPILED_PATH
+            generated = artifact_path.read_bytes()
 
-    def test_valid_old_artifact_is_rejected_after_implementation_change(self):
-        with tempfile.TemporaryDirectory() as temporary:
-            root = Path(temporary) / "repo"
-            root.mkdir()
-            materialize_contract_root(root)
-            implementation = root / "Tools/record_gate_result.py"
-            implementation.write_text(
-                implementation.read_text(encoding="utf-8") + "\n# drift\n",
-                encoding="utf-8")
-            with self.assertRaises(
-                    contract.MetadataExecutionContractError) as cm:
-                contract.load_metadata_execution_contract(root)
-        self.assertIn("stale relative to live authority", str(cm.exception))
+            code, _stdout, stderr = _run_contract_cli(*args, "--check")
+            self.assertEqual(0, code, stderr)
+            loaded = contract.load_metadata_execution_contract(root)
+            self.assertEqual(generated, loaded.canonical_bytes)
 
-    def test_property_state_helper_drift_invalidates_compiled_contract(self):
-        with tempfile.TemporaryDirectory() as temporary:
-            root = Path(temporary) / "repo"
-            root.mkdir()
-            materialize_contract_root(root)
-            implementation = root / "Tools/metadata_property_state.py"
-            implementation.write_text(
-                implementation.read_text(encoding="utf-8") +
-                "\n# helper drift\n", encoding="utf-8")
-            with self.assertRaises(
-                    contract.MetadataExecutionContractError) as cm:
-                contract.load_metadata_execution_contract(root)
-        self.assertIn("stale relative to live authority", str(cm.exception))
+            artifact_path.write_bytes(generated + b"\n")
+            code, _stdout, _stderr = _run_contract_cli(*args, "--check")
+            self.assertEqual(1, code)
+            artifact_path.write_bytes(generated)
 
-    def test_coverage_property_adapter_record_shape_is_closed(self):
-        compiled = contract.compile_metadata_execution_contract(REPOSITORY)
-        adapter = next(
-            item for item in compiled.artifact["source_adapters"]
-            if item["adapter_id"] == "coverage-property-state-v1")
-        self.assertEqual(
-            ["content_fingerprint", "evidence_receipt", "value"],
-            adapter["owner_record_keys"])
+            implementation = root / _implementation_paths(
+                _metadata_capabilities(capabilities))[0]
+            implementation.write_bytes(
+                implementation.read_bytes() + b"\n# current-source-drift\n")
+            code, _stdout, _stderr = _run_contract_cli(*args, "--check")
+            self.assertEqual(1, code)
+            with self.assertRaisesRegex(
+                    contract.MetadataExecutionContractError,
+                    "stale relative to live authority"):
+                contract.load_metadata_execution_contract(root)
 
 
 if __name__ == "__main__":

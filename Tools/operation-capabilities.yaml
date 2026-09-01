@@ -1,6 +1,8 @@
 # Tool capability implementation registry.
 #
 # `implementation_owner` is the one module that defines the capability.
+# Optional `invocation_owner` names its public top-level CLI route; routing
+# does not transfer implementation or semantic ownership.
 # `writers` lists outer transactions that use it to change canonical adopter
 # state or governed pages; `checkers` lists read-only verdict/evidence
 # producers; `consumers` lists other callers. These roles do not grant
@@ -10,23 +12,22 @@
 # the capability and those object IDs, never these implementation paths or a
 # current `.cambium` spelling.
 
-schema_version: 2
+schema_version: 3
 
 capabilities:
   - capability_id: project-page-state-v2
     kind: writer
     capability_version: 2.0.0
-    implementation_owner: Tools/project_page_state.py
+    implementation_owner: Tools/knowledge/metadata/project_page_state.py
     writers:
-      - Tools/apply_amendment.py
-      - Tools/apply_delta.py
-      - Tools/apply_metadata_transition.py
-      - Tools/apply_task_plan.py
-      - Tools/update_queue.py
+      - Tools/execution/task_runtime/apply_amendment.py
+      - Tools/execution/task_runtime/apply_delta.py
+      - Tools/knowledge/metadata/apply_metadata_transition.py
+      - Tools/execution/task_runtime/update_queue.py
     checkers:
-      - Tools/check_batch_close.py
+      - Tools/execution/audit/check_batch_close.py
     consumers:
-      - Tools/metadata_property_state.py
+      - Tools/knowledge/metadata/metadata_property_state.py
     operations:
       - field: authoring_status
         transition: owner-to-page-projection
@@ -48,13 +49,13 @@ capabilities:
   - capability_id: metadata-transition-integrator-v1
     kind: writer
     capability_version: 1.0.0
-    implementation_owner: Tools/metadata_property_state.py
+    implementation_owner: Tools/knowledge/metadata/metadata_property_state.py
     writers:
-      - Tools/apply_delta.py
-      - Tools/apply_metadata_transition.py
-      - Tools/update_queue.py
+      - Tools/execution/task_runtime/apply_delta.py
+      - Tools/knowledge/metadata/apply_metadata_transition.py
+      - Tools/execution/task_runtime/update_queue.py
     checkers:
-      - Tools/check_batch_close.py
+      - Tools/execution/audit/check_batch_close.py
     consumers: []
     operations:
       - field: last_content_modified
@@ -70,258 +71,860 @@ capabilities:
   - capability_id: typed-metadata-transition-v1
     kind: consumer
     capability_version: 1.0.0
-    implementation_owner: Tools/apply_metadata_transition.py
+    implementation_owner: Tools/knowledge/metadata/apply_metadata_transition.py
     writers: []
     checkers: []
     consumers: []
     operations:
       - operation: typed-field-metadata-transition
 
-  - capability_id: legacy-property-adoption-v1
-    kind: writer
-    capability_version: 1.0.0
-    implementation_owner: Tools/metadata_property_state.py
-    writers:
-      - Tools/apply_amendment.py
-      - Tools/apply_task_plan.py
-    checkers: []
-    consumers: []
-    operations:
-      - operation: legacy-property-adoption-v1
-
   - capability_id: manual-attestation-v1
     kind: producer
     capability_version: 1.0.0
-    implementation_owner: Tools/manual_attestation.py
+    implementation_owner: Tools/execution/evidence/manual_attestation.py
     writers: []
     checkers:
-      - Tools/check_queue.py
+      - Tools/execution/task_runtime/check_queue.py
     consumers:
-      - Tools/apply_metadata_transition.py
-      - Tools/record_batch_judgment.py
-      - Tools/record_batch_review.py
-      - Tools/record_gate_attestation.py
+      - Tools/execution/audit/record_batch_judgment.py
+      - Tools/execution/audit/record_batch_review.py
+      - Tools/execution/evidence/record_gate_attestation.py
     operations: []
+    receipt_contracts:
+      - receipt_type_id: page-batch-judgment-v2
+        validator_owner: Tools.governance.profile.profile_batch_judgment_contract:current_receipt_errors
+        catalog_lifecycle: [hot, historical, cold]
+        reference_source_kind: none
 
   - capability_id: audit-plan-producer-v1
     kind: producer
     capability_version: 1.0.0
-    implementation_owner: Tools/prepare_audit_plan.py
+    implementation_owner: Tools/execution/audit/prepare_audit_plan.py
+    invocation_owner: Tools/prepare_audit_plan.py
     writers: []
     checkers:
-      - Tools/check_batch_close.py
-      - Tools/check_proof.py
+      - Tools/execution/audit/check_batch_close.py
+      - Tools/execution/audit/check_proof.py
     consumers:
-      - Tools/audit_evidence_runtime.py
-      - Tools/complete_audit_receipt.py
-      - Tools/record_batch_judgment.py
-      - Tools/record_batch_page_review.py
-      - Tools/record_batch_review.py
-      - Tools/record_changed_scope_evidence.py
-      - Tools/record_rendering_verification.py
-      - Tools/record_substantive_review.py
+      - Tools/execution/audit/audit_evidence_runtime.py
+      - Tools/execution/audit/audit_execution_runtime.py
+      - Tools/execution/audit/complete_audit_receipt.py
+      - Tools/execution/audit/record_batch_judgment.py
+      - Tools/execution/audit/record_batch_page_review.py
+      - Tools/execution/audit/record_batch_review.py
+      - Tools/execution/audit/record_changed_scope_evidence.py
+      - Tools/knowledge/rendering/record_rendering_verification.py
+      - Tools/execution/audit/record_substantive_review.py
+      - Tools/execution/task_runtime/task_runtime_runner.py
     operations: []
 
   - capability_id: batch-page-review-attestation-v1
     kind: producer
     capability_version: 1.0.0
-    implementation_owner: Tools/record_batch_page_review.py
+    implementation_owner: Tools/execution/audit/record_batch_page_review.py
+    invocation_owner: Tools/record_batch_page_review.py
     writers: []
     checkers: []
     consumers:
-      - Tools/audit_evidence_runtime.py
-      - Tools/record_batch_review.py
+      - Tools/execution/audit/audit_evidence_runtime.py
+      - Tools/execution/audit/audit_execution_runtime.py
+      - Tools/execution/audit/batch_close_audit.py
+      - Tools/execution/audit/record_batch_review.py
+      - Tools/execution/task_runtime/task_runtime_runner.py
     operations: []
+    receipt_contracts:
+      - receipt_type_id: batch-page-review-record-v3
+        validator_owner: Tools.execution.audit.batch_review_obligation_contract:current_receipt_errors
+        catalog_lifecycle: [hot, historical, cold]
+        reference_source_kind: none
 
   - capability_id: substantive-review-attestation-v1
     kind: producer
     capability_version: 1.0.0
-    implementation_owner: Tools/record_substantive_review.py
+    implementation_owner: Tools/execution/audit/record_substantive_review.py
+    invocation_owner: Tools/record_substantive_review.py
     writers: []
     checkers: []
     consumers:
-      - Tools/audit_evidence_runtime.py
-      - Tools/complete_audit_receipt.py
+      - Tools/execution/audit/audit_evidence_runtime.py
+      - Tools/execution/audit/audit_execution_runtime.py
+      - Tools/execution/audit/complete_audit_receipt.py
+      - Tools/execution/task_runtime/task_runtime_runner.py
     operations: []
+    receipt_contracts:
+      - receipt_type_id: substantive-review-evidence-v3
+        validator_owner: Tools.execution.audit.substantive_review_contract:current_receipt_errors
+        catalog_lifecycle: [hot, historical, cold]
+        reference_source_kind: none
 
   - capability_id: changed-scope-evidence-adapter-v1
     kind: producer
     capability_version: 1.0.0
-    implementation_owner: Tools/record_changed_scope_evidence.py
+    implementation_owner: Tools/execution/audit/record_changed_scope_evidence.py
+    invocation_owner: Tools/record_changed_scope_evidence.py
     writers: []
     checkers: []
     consumers:
-      - Tools/audit_evidence_runtime.py
-      - Tools/complete_audit_receipt.py
+      - Tools/execution/audit/audit_evidence_runtime.py
+      - Tools/execution/audit/audit_execution_runtime.py
+      - Tools/execution/audit/complete_audit_receipt.py
+      - Tools/execution/task_runtime/task_runtime_runner.py
     operations: []
+    receipt_contracts:
+      - receipt_type_id: changed-scope-gate-evidence-v2
+        validator_owner: Tools.execution.audit.changed_scope_evidence_contract:current_receipt_errors
+        catalog_lifecycle: [hot, historical, cold]
+        reference_source_kind: none
+      - receipt_type_id: changed-scope-candidate-set-v2
+        validator_owner: Tools.execution.audit.changed_scope_evidence_contract:current_receipt_errors
+        catalog_lifecycle: [hot, historical, cold]
+        reference_source_kind: none
+      - receipt_type_id: changed-scope-audit-precursor-v2
+        validator_owner: Tools.execution.audit.changed_scope_evidence_contract:current_receipt_errors
+        catalog_lifecycle: [hot, historical, cold]
+        reference_source_kind: none
 
   - capability_id: dedicated-rendering-verification-v1
     kind: producer
     capability_version: 1.0.0
-    implementation_owner: Tools/record_rendering_verification.py
+    implementation_owner: Tools/knowledge/rendering/record_rendering_verification.py
+    invocation_owner: Tools/record_rendering_verification.py
     writers: []
     checkers: []
     consumers:
-      - Tools/audit_evidence_runtime.py
-      - Tools/complete_audit_receipt.py
+      - Tools/execution/audit/audit_evidence_runtime.py
+      - Tools/execution/audit/audit_execution_runtime.py
+      - Tools/execution/audit/complete_audit_receipt.py
+      - Tools/execution/task_runtime/task_runtime_runner.py
     operations: []
+    receipt_contracts:
+      - receipt_type_id: rendering-verification-evidence-v3
+        validator_owner: Tools.knowledge.rendering.rendering_verification_contract:current_receipt_errors
+        catalog_lifecycle: [hot, historical, cold]
+        reference_source_kind: none
 
   - capability_id: audit-receipt-producer-v1
     kind: producer
     capability_version: 1.0.0
-    implementation_owner: Tools/complete_audit_receipt.py
+    implementation_owner: Tools/execution/audit/complete_audit_receipt.py
+    invocation_owner: Tools/complete_audit_receipt.py
     writers: []
     checkers:
-      - Tools/check_proof.py
+      - Tools/execution/audit/check_proof.py
     consumers:
-      - Tools/audit_evidence_runtime.py
-      - Tools/record_batch_review.py
-      - Tools/update_queue.py
+      - Tools/execution/audit/audit_evidence_runtime.py
+      - Tools/execution/audit/audit_execution_runtime.py
+      - Tools/execution/audit/record_batch_review.py
+      - Tools/execution/task_runtime/task_runtime_runner.py
+      - Tools/execution/task_runtime/update_queue.py
+    operations: []
+    receipt_contracts:
+      - receipt_type_id: audit-receipt-v3
+        validator_owner: Tools.execution.audit.audit_receipt_contract:current_receipt_errors
+        catalog_lifecycle: [hot, historical, cold]
+        reference_source_kind: audit-receipt
+
+  - capability_id: terminal-proof-producer-v1
+    kind: producer
+    capability_version: 1.0.0
+    implementation_owner: Tools/execution/audit/assemble_terminal_proof.py
+    invocation_owner: Tools/assemble_terminal_proof.py
+    writers: []
+    checkers:
+      - Tools/execution/audit/check_proof.py
+    consumers:
+      - Tools/execution/task_runtime/task_runtime_runner.py
+    operations: []
+
+  - capability_id: terminal-proof-gate-v1
+    kind: producer
+    capability_version: 1.0.0
+    implementation_owner: Tools/execution/audit/check_proof.py
+    invocation_owner: Tools/check_proof.py
+    writers:
+      - Tools/execution/task_runtime/update_task.py
+    checkers: []
+    consumers:
+      - Tools/execution/task_runtime/task_runtime_runner.py
+    operations: []
+    receipt_contracts:
+      - receipt_type_id: terminal-proof-gate-v2
+        validator_owner: Tools.execution.audit.terminal_proof_contract:current_receipt_errors
+        catalog_lifecycle: [hot, historical, cold]
+        reference_source_kind: none
+      - receipt_type_id: terminal-proof-diagnostic-v1
+        validator_owner: Tools.execution.audit.terminal_proof_contract:current_receipt_errors
+        catalog_lifecycle: [hot, historical, cold]
+        reference_source_kind: none
+
+  - capability_id: corpus-plan-structure-gate-v1
+    kind: producer
+    capability_version: 1.0.0
+    implementation_owner: Tools/execution/planning/check_corpus_plan.py
+    invocation_owner: Tools/check_corpus_plan.py
+    writers: []
+    checkers:
+      - Tools/execution/audit/check_proof.py
+    consumers:
+      - Tools/execution/audit/assemble_terminal_proof.py
+      - Tools/execution/task_runtime/task_runtime_runner.py
     operations: []
 
   - capability_id: batch-review-producer-v1
     kind: producer
     capability_version: 1.0.0
-    implementation_owner: Tools/record_batch_review.py
+    implementation_owner: Tools/execution/audit/record_batch_review.py
+    invocation_owner: Tools/record_batch_review.py
     writers: []
     checkers:
-      - Tools/check_queue.py
+      - Tools/execution/task_runtime/check_queue.py
     consumers:
-      - Tools/update_queue.py
+      - Tools/execution/task_runtime/task_runtime_runner.py
+      - Tools/execution/task_runtime/update_queue.py
+    operations: []
+    receipt_contracts:
+      - receipt_type_id: batch-review-wrapper-v1
+        validator_owner: Tools.execution.audit.batch_review_receipt_contract:current_receipt_errors
+        catalog_lifecycle: [hot, historical, cold]
+        reference_source_kind: batch-review-aggregate
+
+  - capability_id: candidate-delta-publication-v1
+    kind: producer
+    capability_version: 1.0.0
+    implementation_owner: Tools/execution/task_runtime/candidate_delta_runtime.py
+    invocation_owner: Tools/publish_delta.py
+    writers: []
+    checkers:
+      - Tools/execution/task_runtime/check_queue.py
+    consumers:
+      - Tools/execution/task_runtime/apply_delta.py
+      - Tools/execution/audit/record_batch_review.py
+      - Tools/execution/task_runtime/task_runtime_runner.py
+      - Tools/execution/task_runtime/update_queue.py
     operations: []
 
   - capability_id: registered-scan-v1
     kind: producer
     capability_version: 1.0.0
-    implementation_owner: Tools/record_gate_result.py
+    implementation_owner: Tools/execution/evidence/record_gate_result.py
+    invocation_owner: Tools/record_gate_result.py
     writers: []
     checkers:
-      - Tools/check_queue.py
+      - Tools/execution/task_runtime/check_queue.py
     consumers:
-      - Tools/apply_metadata_transition.py
+      - Tools/knowledge/metadata/apply_metadata_transition.py
+      - Tools/execution/audit/record_changed_scope_evidence.py
     operations: []
 
   - capability_id: manual-gate-attestation-v1
     kind: receipt-schema
     capability_version: 1.0.0
-    implementation_owner: Tools/metadata_gate_runtime.py
+    implementation_owner: Tools/execution/evidence/metadata_gate_runtime.py
     writers: []
     checkers:
-      - Tools/check_queue.py
+      - Tools/execution/task_runtime/check_queue.py
     consumers:
-      - Tools/apply_metadata_transition.py
-      - Tools/record_gate_attestation.py
+      - Tools/knowledge/metadata/apply_metadata_transition.py
+      - Tools/execution/evidence/record_gate_attestation.py
     operations: []
 
   - capability_id: deterministic-gate-result-v1
     kind: receipt-schema
     capability_version: 1.0.0
-    implementation_owner: Tools/metadata_gate_runtime.py
+    implementation_owner: Tools/execution/evidence/metadata_gate_runtime.py
     writers: []
     checkers:
-      - Tools/check_queue.py
+      - Tools/execution/task_runtime/check_queue.py
     consumers:
-      - Tools/apply_metadata_transition.py
-      - Tools/record_gate_result.py
+      - Tools/knowledge/metadata/apply_metadata_transition.py
+      - Tools/execution/evidence/record_gate_result.py
     operations: []
+
+  - capability_id: required-queue-gate-v1
+    kind: producer
+    capability_version: 1.0.0
+    implementation_owner: Tools/execution/task_runtime/check_queue.py
+    invocation_owner: Tools/check_queue.py
+    writers: []
+    checkers: []
+    consumers:
+      - Tools/execution/task_runtime/task_runtime_runner.py
+      - Tools/execution/task_runtime/update_queue.py
+      - Tools/execution/task_runtime/update_task.py
+    operations: []
+
+  - capability_id: maintenance-evidence-producer-v1
+    kind: producer
+    capability_version: 1.0.0
+    implementation_owner: Tools/execution/task_runtime/record_maintenance_evidence.py
+    invocation_owner: Tools/record_maintenance_evidence.py
+    writers: []
+    checkers:
+      - Tools/execution/task_runtime/check_queue.py
+    consumers:
+      - Tools/execution/task_runtime/queue_runtime/maintenance.py
+      - Tools/execution/task_runtime/task_runtime_runner.py
+    operations: []
+    receipt_contracts:
+      - receipt_type_id: maintenance-budget-manifest-receipt-v1
+        validator_owner: Tools.execution.task_runtime.record_maintenance_evidence:current_budget_receipt_errors
+        catalog_lifecycle: [hot, historical]
+        reference_source_kind: none
+      - receipt_type_id: maintenance-ledger-advance-receipt-v1
+        validator_owner: Tools.execution.task_runtime.record_maintenance_evidence:current_ledger_receipt_errors
+        catalog_lifecycle: [hot, historical]
+        reference_source_kind: none
+      - receipt_type_id: maintenance-watermark-advance-receipt-v1
+        validator_owner: Tools.execution.task_runtime.record_maintenance_evidence:current_watermark_receipt_errors
+        catalog_lifecycle: [hot, historical]
+        reference_source_kind: none
 
   - capability_id: card-context-delivery-v1
     kind: producer
     capability_version: 1.0.3
-    implementation_owner: Tools/card_activation.py
+    implementation_owner: Tools/execution/context_delivery/card_activation.py
+    invocation_owner: Tools/check_queue.py
     writers: []
     checkers: []
     consumers:
-      - Tools/check_queue.py
-      - Tools/mcp_server.py
-      - Tools/update_queue.py
+      - Tools/execution/task_runtime/check_queue.py
+      - Tools/platform/agent_interface/mcp_server.py
+      - Tools/execution/task_runtime/task_runtime_runner.py
+      - Tools/execution/task_runtime/update_queue.py
     operations: []
 
   - capability_id: card-currentness-v1
     kind: producer
     capability_version: 1.0.0
-    implementation_owner: Tools/stamp_cards.py
+    implementation_owner: Tools/platform/distribution/stamp_cards.py
     writers: []
     checkers:
-      - Tools/run_gates.py
+      - Tools/governance/control/run_gates.py
     consumers:
-      - Tools/card_activation.py
+      - Tools/execution/context_delivery/card_activation.py
     operations: []
 
   - capability_id: phase-delivery-consumer-v1
     kind: consumer
     capability_version: 1.0.0
-    implementation_owner: Tools/card_activation.py
+    implementation_owner: Tools/execution/context_delivery/card_activation.py
     writers: []
     checkers: []
     consumers:
-      - Tools/check_queue.py
-      - Tools/record_batch_judgment.py
-      - Tools/update_queue.py
-      - Tools/update_task.py
+      - Tools/execution/task_runtime/check_queue.py
+      - Tools/execution/task_runtime/queue_runtime/review.py
+      - Tools/execution/audit/record_batch_judgment.py
+      - Tools/execution/task_runtime/task_runtime_runner.py
+      - Tools/execution/task_runtime/update_queue.py
+      - Tools/execution/task_runtime/update_task.py
     operations: []
 
   - capability_id: ordinary-queue-transition-v1
     kind: writer
     capability_version: 1.0.0
-    implementation_owner: Tools/update_queue.py
+    implementation_owner: Tools/execution/task_runtime/update_queue.py
+    invocation_owner: Tools/update_queue.py
     writers: []
     checkers:
-      - Tools/check_queue.py
-    consumers: []
+      - Tools/execution/task_runtime/check_queue.py
+    consumers:
+      - Tools/execution/task_runtime/task_runtime_runner.py
     operations: []
 
   - capability_id: amendment-batch-cancellation-v1
     kind: writer
     capability_version: 1.0.0
-    implementation_owner: Tools/apply_amendment.py
+    implementation_owner: Tools/execution/task_runtime/apply_amendment.py
     writers: []
     checkers:
-      - Tools/check_queue.py
+      - Tools/execution/task_runtime/check_queue.py
     consumers: []
     operations: []
 
   - capability_id: task-state-transition-v1
     kind: writer
     capability_version: 1.0.0
-    implementation_owner: Tools/update_task.py
+    implementation_owner: Tools/execution/task_runtime/update_task.py
+    invocation_owner: Tools/update_task.py
     writers:
-      - Tools/update_queue.py
+      - Tools/execution/task_runtime/update_queue.py
     checkers:
-      - Tools/check_queue.py
-    consumers: []
+      - Tools/execution/task_runtime/check_queue.py
+    consumers:
+      - Tools/execution/task_runtime/task_runtime_runner.py
     operations: []
 
   - capability_id: cross-ledger-amendment-v1
     kind: writer
     capability_version: 1.0.0
-    implementation_owner: Tools/apply_amendment.py
+    implementation_owner: Tools/execution/task_runtime/apply_amendment.py
     writers: []
     checkers:
-      - Tools/check_queue.py
+      - Tools/execution/task_runtime/check_queue.py
     consumers:
-      - Tools/register_amendment.py
+      - Tools/execution/task_runtime/register_amendment.py
     operations: []
 
   - capability_id: same-scope-queue-replan-v1
     kind: writer
     capability_version: 1.0.0
-    implementation_owner: Tools/compile_queue.py
+    implementation_owner: Tools/execution/planning/queue_replan.py
+    invocation_owner: Tools/compile_queue.py
+    writers:
+      - Tools/execution/task_runtime/apply_amendment.py
+      - Tools/execution/planning/compile_queue.py
+    checkers:
+      - Tools/execution/task_runtime/check_queue.py
+    consumers:
+      - Tools/execution/task_runtime/amendment_plan.py
+      - Tools/execution/task_runtime/register_amendment.py
+    operations: []
+
+  - capability_id: required-queue-materialization-v1
+    kind: writer
+    capability_version: 1.0.0
+    implementation_owner: Tools/execution/planning/compile_queue.py
+    invocation_owner: Tools/compile_queue.py
     writers: []
     checkers:
-      - Tools/check_queue.py
+      - Tools/execution/task_runtime/check_queue.py
     consumers:
-      - Tools/register_amendment.py
+      - Tools/execution/task_runtime/task_runtime_runner.py
+    operations: []
+
+  - capability_id: coverage-delta-application-v1
+    kind: writer
+    capability_version: 1.0.0
+    implementation_owner: Tools/execution/task_runtime/apply_delta.py
+    invocation_owner: Tools/apply_delta.py
+    writers: []
+    checkers:
+      - Tools/execution/audit/check_batch_close.py
+      - Tools/execution/task_runtime/check_queue.py
+    consumers:
+      - Tools/execution/task_runtime/task_runtime_runner.py
+    operations: []
+
+  - capability_id: batch-close-producer-v1
+    kind: producer
+    capability_version: 2.0.0
+    implementation_owner: Tools/execution/audit/check_batch_close.py
+    invocation_owner: Tools/check_batch_close.py
+    writers: []
+    checkers:
+      - Tools/execution/task_runtime/check_queue.py
+    consumers:
+      - Tools/execution/task_runtime/task_runtime_runner.py
+      - Tools/execution/task_runtime/update_queue.py
+    operations: []
+    receipt_contracts:
+      - receipt_type_id: batch-close-gate-v1
+        validator_owner: Tools.execution.audit.batch_close_contract:current_receipt_errors
+        catalog_lifecycle: [hot, historical, cold]
+        reference_source_kind: close-aggregate
+      - receipt_type_id: batch-close-member-evidence-v1
+        validator_owner: Tools.execution.audit.batch_close_contract:current_receipt_errors
+        catalog_lifecycle: [hot, historical, cold]
+        reference_source_kind: none
+      - receipt_type_id: batch-close-review-attestation-v1
+        validator_owner: Tools.execution.audit.batch_close_contract:current_receipt_errors
+        catalog_lifecycle: [hot, historical, cold]
+        reference_source_kind: close-reviewer-attestation
+      - receipt_type_id: batch-close-page-review-v1
+        validator_owner: Tools.execution.audit.batch_close_contract:current_receipt_errors
+        catalog_lifecycle: [hot, historical, cold]
+        reference_source_kind: close-page-review
+      - receipt_type_id: batch-close-global-review-v1
+        validator_owner: Tools.execution.audit.batch_close_contract:current_receipt_errors
+        catalog_lifecycle: [hot, historical, cold]
+        reference_source_kind: close-global-review
+
+  - capability_id: task-runtime-runner-v1
+    kind: consumer
+    capability_version: 1.0.0
+    implementation_owner: Tools/execution/task_runtime/task_runtime_runner.py
+    invocation_owner: Tools/run_task.py
+    writers: []
+    checkers: []
+    consumers: []
     operations: []
 
   - capability_id: structure-coverage-projection-v1
     kind: projection
     capability_version: 1.0.0
-    implementation_owner: Tools/render_structure_projection.py
+    implementation_owner: Tools/knowledge/structure/render_structure_projection.py
     writers: []
     checkers:
-      - Tools/check_structure.py
+      - Tools/knowledge/structure/check_structure.py
     consumers: []
     input_owners:
       - coverage-ledger
     operations: []
+
+  - capability_id: current-profile-extension-evidence-v1
+    kind: producer
+    capability_version: 1.0.0
+    implementation_owner: Tools/execution/evidence/metadata_gate_runtime.py
+    writers: []
+    checkers: []
+    consumers: []
+    operations: []
+    receipt_contracts:
+      - receipt_type_id: profile-extension-manual-gate-receipt-v1
+        validator_owner: Tools.execution.evidence.metadata_gate_runtime:current_manual_gate_receipt_errors
+        catalog_lifecycle: [hot, historical, cold]
+        reference_source_kind: none
+      - receipt_type_id: profile-extension-deterministic-gate-receipt-v1
+        validator_owner: Tools.execution.evidence.metadata_gate_runtime:current_deterministic_gate_receipt_errors
+        catalog_lifecycle: [hot, historical, cold]
+        reference_source_kind: none
+      - receipt_type_id: metadata-transition-receipt-v1
+        validator_owner: Tools.execution.evidence.metadata_gate_runtime:current_metadata_transition_receipt_errors
+        catalog_lifecycle: [hot, historical, cold]
+        reference_source_kind: none
+
+  - capability_id: receipt-seal-evidence-v1
+    kind: producer
+    capability_version: 1.0.0
+    implementation_owner: Tools/execution/evidence/seal_receipts.py
+    writers: []
+    checkers: []
+    consumers: []
+    operations: []
+    receipt_contracts:
+      - receipt_type_id: receipt-seal-receipt-v1
+        validator_owner: Tools.execution.evidence.seal_receipts:current_receipt_errors
+        catalog_lifecycle: [hot, historical]
+        reference_source_kind: none
+
+  - capability_id: task-plan-publication-evidence-v1
+    kind: producer
+    capability_version: 1.0.0
+    implementation_owner: Tools/execution/planning/apply_task_plan.py
+    writers: []
+    checkers: []
+    consumers: []
+    operations: []
+    receipt_contracts:
+      - receipt_type_id: task-plan-publication-receipt-v1
+        validator_owner: Tools.execution.planning.apply_task_plan:current_receipt_errors
+        catalog_lifecycle: [hot, historical]
+        reference_source_kind: none
+
+  - capability_id: corpus-plan-evidence-v1
+    kind: producer
+    capability_version: 1.0.0
+    implementation_owner: Tools/execution/planning/check_corpus_plan.py
+    writers: []
+    checkers: []
+    consumers: []
+    operations: []
+    receipt_contracts:
+      - receipt_type_id: corpus-plan-gate-receipt-v1
+        validator_owner: Tools.execution.planning.check_corpus_plan:current_gate_receipt_errors
+        catalog_lifecycle: [hot, historical, cold]
+        reference_source_kind: none
+      - receipt_type_id: corpus-plan-diagnostic-receipt-v1
+        validator_owner: Tools.execution.planning.check_corpus_plan:current_diagnostic_receipt_errors
+        catalog_lifecycle: [hot, historical, cold]
+        reference_source_kind: none
+
+  - capability_id: corpus-plan-semantic-acceptance-evidence-v1
+    kind: producer
+    capability_version: 1.0.0
+    implementation_owner: Tools/execution/planning/record_corpus_acceptance.py
+    writers: []
+    checkers: []
+    consumers: []
+    operations: []
+    receipt_contracts:
+      - receipt_type_id: corpus-plan-semantic-acceptance-receipt-v1
+        validator_owner: Tools.execution.planning.record_corpus_acceptance:current_receipt_errors
+        catalog_lifecycle: [hot, historical, cold]
+        reference_source_kind: none
+
+  - capability_id: queue-materialization-evidence-v1
+    kind: producer
+    capability_version: 1.0.0
+    implementation_owner: Tools/execution/planning/compile_queue.py
+    writers: []
+    checkers: []
+    consumers: []
+    operations: []
+    receipt_contracts:
+      - receipt_type_id: queue-materialization-receipt-v1
+        validator_owner: Tools.execution.planning.compile_queue:current_receipt_errors
+        catalog_lifecycle: [hot, historical]
+        reference_source_kind: none
+
+  - capability_id: amendment-transaction-evidence-v1
+    kind: producer
+    capability_version: 1.0.0
+    implementation_owner: Tools/execution/task_runtime/apply_amendment.py
+    writers: []
+    checkers: []
+    consumers: []
+    operations: []
+    receipt_contracts:
+      - receipt_type_id: amendment-transaction-receipt-v1
+        validator_owner: Tools.execution.task_runtime.apply_amendment:current_receipt_errors
+        catalog_lifecycle: [hot, historical]
+        reference_source_kind: none
+      - receipt_type_id: amendment-queue-transition-receipt-v1
+        validator_owner: Tools.execution.task_runtime.apply_amendment:current_queue_cancellation_receipt_errors
+        catalog_lifecycle: [hot, historical]
+        reference_source_kind: queue-transition
+
+  - capability_id: contract-amendment-evidence-v1
+    kind: producer
+    capability_version: 1.0.0
+    implementation_owner: Tools/execution/task_runtime/apply_contract_amendment.py
+    writers: []
+    checkers: []
+    consumers: []
+    operations: []
+    receipt_contracts:
+      - receipt_type_id: contract-amendment-receipt-v1
+        validator_owner: Tools.execution.task_runtime.apply_contract_amendment:current_receipt_errors
+        catalog_lifecycle: [hot, historical]
+        reference_source_kind: none
+
+  - capability_id: delta-application-evidence-v1
+    kind: producer
+    capability_version: 1.0.0
+    implementation_owner: Tools/execution/task_runtime/apply_delta.py
+    writers: []
+    checkers: []
+    consumers: []
+    operations: []
+    receipt_contracts:
+      - receipt_type_id: delta-application-receipt-v1
+        validator_owner: Tools.execution.task_runtime.apply_delta:current_receipt_errors
+        catalog_lifecycle: [hot, historical, cold]
+        reference_source_kind: delta-apply
+
+  - capability_id: required-queue-gate-evidence-v1
+    kind: producer
+    capability_version: 1.0.0
+    implementation_owner: Tools/execution/task_runtime/queue_check_receipt.py
+    writers: []
+    checkers: []
+    consumers: []
+    operations: []
+    receipt_contracts:
+      - receipt_type_id: required-queue-gate-receipt-v1
+        validator_owner: Tools.execution.task_runtime.queue_check_receipt:current_receipt_errors
+        catalog_lifecycle: [hot, historical, cold]
+        reference_source_kind: none
+      - receipt_type_id: standards-revalidation-queue-gate-receipt-v1
+        validator_owner: Tools.execution.task_runtime.queue_check_receipt:current_standards_revalidation_receipt_errors
+        catalog_lifecycle: [hot, historical, cold]
+        reference_source_kind: standards-revalidation-aggregate
+
+  - capability_id: queue-transition-evidence-v1
+    kind: producer
+    capability_version: 1.0.0
+    implementation_owner: Tools/execution/task_runtime/queue_runtime/receipts.py
+    writers: []
+    checkers: []
+    consumers: []
+    operations: []
+    receipt_contracts:
+      - receipt_type_id: queue-transition-receipt-v1
+        validator_owner: Tools.execution.task_runtime.queue_runtime.receipts:current_queue_transition_receipt_errors
+        catalog_lifecycle: [hot, historical]
+        reference_source_kind: queue-transition
+
+  - capability_id: amendment-registration-evidence-v1
+    kind: producer
+    capability_version: 1.0.0
+    implementation_owner: Tools/execution/task_runtime/register_amendment.py
+    writers: []
+    checkers: []
+    consumers: []
+    operations: []
+    receipt_contracts:
+      - receipt_type_id: amendment-registration-receipt-v1
+        validator_owner: Tools.execution.task_runtime.register_amendment:current_receipt_errors
+        catalog_lifecycle: [hot, historical]
+        reference_source_kind: none
+
+  - capability_id: task-transition-evidence-v1
+    kind: producer
+    capability_version: 1.0.0
+    implementation_owner: Tools/execution/task_runtime/update_task.py
+    writers: []
+    checkers: []
+    consumers: []
+    operations: []
+    receipt_contracts:
+      - receipt_type_id: task-transition-receipt-v1
+        validator_owner: Tools.execution.task_runtime.update_task:current_task_transition_receipt_errors
+        catalog_lifecycle: [hot, historical]
+        reference_source_kind: task-transition
+      - receipt_type_id: task-transition-abort-receipt-v1
+        validator_owner: Tools.execution.task_runtime.update_task:current_task_transition_abort_receipt_errors
+        catalog_lifecycle: [hot, historical]
+        reference_source_kind: none
+
+  - capability_id: profile-load-evidence-v1
+    kind: producer
+    capability_version: 1.0.0
+    implementation_owner: Tools/governance/profile/check_profile.py
+    writers: []
+    checkers: []
+    consumers: []
+    operations: []
+    receipt_contracts:
+      - receipt_type_id: profile-load-gate-receipt-v1
+        validator_owner: Tools.governance.profile.check_profile:current_gate_receipt_errors
+        catalog_lifecycle: [hot, historical, cold]
+        reference_source_kind: none
+      - receipt_type_id: profile-load-diagnostic-receipt-v1
+        validator_owner: Tools.governance.profile.check_profile:current_diagnostic_receipt_errors
+        catalog_lifecycle: [hot, historical, cold]
+        reference_source_kind: none
+
+  - capability_id: adopter-lineage-evidence-v1
+    kind: producer
+    capability_version: 1.0.0
+    implementation_owner: Tools/governance/standards/adoption_lineage_contract.py
+    writers: []
+    checkers: []
+    consumers: []
+    operations: []
+    receipt_contracts:
+      - receipt_type_id: profile-adoption-receipt-v1
+        validator_owner: Tools.governance.standards.adoption_lineage_contract:current_profile_adoption_receipt_errors
+        catalog_lifecycle: [hot, historical]
+        reference_source_kind: profile-adoption-receipt
+      - receipt_type_id: standards-adoption-receipt-v1
+        validator_owner: Tools.governance.standards.adoption_lineage_contract:current_standards_adoption_receipt_errors
+        catalog_lifecycle: [hot, historical]
+        reference_source_kind: standards-adoption-receipt
+
+  - capability_id: wiki-link-integrity-evidence-v1
+    kind: producer
+    capability_version: 1.0.0
+    implementation_owner: Tools/knowledge/content/check_links.py
+    writers: []
+    checkers: []
+    consumers: []
+    operations: []
+    receipt_contracts:
+      - receipt_type_id: wiki-link-integrity-receipt-v1
+        validator_owner: Tools.knowledge.content.check_links:current_receipt_errors
+        catalog_lifecycle: [hot, historical, cold]
+        reference_source_kind: none
+
+  - capability_id: registered-residual-scan-evidence-v1
+    kind: producer
+    capability_version: 1.0.0
+    implementation_owner: Tools/knowledge/content/check_residual_content.py
+    writers: []
+    checkers: []
+    consumers: []
+    operations: []
+    receipt_contracts:
+      - receipt_type_id: registered-residual-scan-receipt-v1
+        validator_owner: Tools.knowledge.content.check_residual_content:current_receipt_errors
+        catalog_lifecycle: [hot, historical, cold]
+        reference_source_kind: none
+
+  - capability_id: duplicate-scan-evidence-v1
+    kind: producer
+    capability_version: 1.0.0
+    implementation_owner: Tools/knowledge/content/duplicate_check.py
+    writers: []
+    checkers: []
+    consumers: []
+    operations: []
+    receipt_contracts:
+      - receipt_type_id: duplicate-scan-receipt-v1
+        validator_owner: Tools.knowledge.content.duplicate_check:current_receipt_errors
+        catalog_lifecycle: [hot, historical, cold]
+        reference_source_kind: none
+
+  - capability_id: freshness-scan-evidence-v1
+    kind: producer
+    capability_version: 1.0.0
+    implementation_owner: Tools/knowledge/metadata/check_freshness.py
+    writers: []
+    checkers: []
+    consumers: []
+    operations: []
+    receipt_contracts:
+      - receipt_type_id: freshness-scan-receipt-v1
+        validator_owner: Tools.knowledge.metadata.check_freshness:current_receipt_errors
+        catalog_lifecycle: [hot, historical, cold]
+        reference_source_kind: none
+
+  - capability_id: page-contract-evidence-v1
+    kind: producer
+    capability_version: 1.0.0
+    implementation_owner: Tools/knowledge/metadata/check_page_contract.py
+    writers: []
+    checkers: []
+    consumers: []
+    operations: []
+    receipt_contracts:
+      - receipt_type_id: page-contract-gate-receipt-v1
+        validator_owner: Tools.knowledge.metadata.check_page_contract:current_receipt_errors
+        catalog_lifecycle: [hot, historical, cold]
+        reference_source_kind: none
+
+  - capability_id: vocabulary-gate-evidence-v1
+    kind: producer
+    capability_version: 1.0.0
+    implementation_owner: Tools/knowledge/metadata/check_vocab.py
+    writers: []
+    checkers: []
+    consumers: []
+    operations: []
+    receipt_contracts:
+      - receipt_type_id: vocabulary-gate-receipt-v1
+        validator_owner: Tools.knowledge.metadata.check_vocab:current_receipt_errors
+        catalog_lifecycle: [hot, historical, cold]
+        reference_source_kind: none
+
+  - capability_id: boundary-contract-evidence-v1
+    kind: producer
+    capability_version: 1.0.0
+    implementation_owner: Tools/knowledge/structure/check_boundary_contract.py
+    writers: []
+    checkers: []
+    consumers: []
+    operations: []
+    receipt_contracts:
+      - receipt_type_id: boundary-contract-gate-receipt-v1
+        validator_owner: Tools.knowledge.structure.check_boundary_contract:current_receipt_errors
+        catalog_lifecycle: [hot, historical, cold]
+        reference_source_kind: none
+
+  - capability_id: moc-drift-scan-evidence-v1
+    kind: producer
+    capability_version: 1.0.0
+    implementation_owner: Tools/knowledge/structure/check_moc.py
+    writers: []
+    checkers: []
+    consumers: []
+    operations: []
+    receipt_contracts:
+      - receipt_type_id: moc-drift-scan-receipt-v1
+        validator_owner: Tools.knowledge.structure.check_moc:current_receipt_errors
+        catalog_lifecycle: [hot, historical, cold]
+        reference_source_kind: none
+
+  - capability_id: structure-registry-evidence-v1
+    kind: producer
+    capability_version: 1.0.0
+    implementation_owner: Tools/knowledge/structure/check_structure.py
+    writers: []
+    checkers: []
+    consumers: []
+    operations: []
+    receipt_contracts:
+      - receipt_type_id: structure-registry-gate-receipt-v1
+        validator_owner: Tools.knowledge.structure.check_structure:current_receipt_errors
+        catalog_lifecycle: [hot, historical, cold]
+        reference_source_kind: none

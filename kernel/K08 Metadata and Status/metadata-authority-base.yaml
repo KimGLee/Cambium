@@ -15,8 +15,8 @@ field_rules:
     canonical_owner: coverage-ledger.pages[].coverage_disposition
     source_adapter: coverage-row-value-v1
     writer_capability: project-page-state-v2
-    write_timing: batch-close-after-owner-update
-    reconcile_policy: existing-copy-exact-or-remove-v1
+    write_timing: after-owner-state-transition
+    reconcile_policy: upsert-exact-or-remove-v1
     invalidation_rule: owner-value-change-v1
     evidence_requirement: null
 
@@ -27,8 +27,8 @@ field_rules:
     canonical_owner: coverage-ledger.pages[].authoring_status
     source_adapter: coverage-row-value-v1
     writer_capability: project-page-state-v2
-    write_timing: batch-close-after-owner-update
-    reconcile_policy: existing-copy-exact-or-remove-v1
+    write_timing: after-owner-state-transition
+    reconcile_policy: upsert-exact-or-remove-v1
     invalidation_rule: owner-value-change-v1
     evidence_requirement: null
 
@@ -39,8 +39,8 @@ field_rules:
     canonical_owner: coverage-ledger.pages[].next_batch
     source_adapter: coverage-row-value-v1
     writer_capability: project-page-state-v2
-    write_timing: batch-close-after-owner-update
-    reconcile_policy: existing-copy-exact-or-remove-v1
+    write_timing: after-owner-state-transition
+    reconcile_policy: upsert-exact-or-remove-v1
     invalidation_rule: owner-value-change-v1
     evidence_requirement: null
 

@@ -12,11 +12,11 @@ REPOSITORY = Path(__file__).resolve().parents[2]
 TOOLS = REPOSITORY / "Tools"
 sys.path.insert(0, str(TOOLS))
 
-import audit_dimension_contract
-import check_profile
-import kblib
-import metadata_execution_contract
-import profile_contract
+import Tools.execution.audit.audit_dimension_contract as audit_dimension_contract
+import Tools.governance.profile.check_profile as check_profile
+import Tools.platform.common.kblib as kblib
+import Tools.governance.control.metadata_execution_contract as metadata_execution_contract
+import Tools.governance.profile.profile_contract as profile_contract
 
 
 class AuditDimensionContractTests(unittest.TestCase):

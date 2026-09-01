@@ -1,6 +1,5 @@
 """Single-owner and unchanged-behaviour tests for K08 Tool projections."""
 
-import ast
 import datetime
 from pathlib import Path
 import sys
@@ -11,26 +10,10 @@ REPOSITORY = Path(__file__).resolve().parents[2]
 TOOLS = REPOSITORY / "Tools"
 sys.path.insert(0, str(TOOLS))
 
-import check_freshness
-import compile_queue
-import freshness_engine
-import kblib
-import vocabulary_contract
-
-
-def assignment_value(module, name):
-    tree = ast.parse(Path(module.__file__).read_text(encoding="utf-8"))
-    values = []
-    for node in tree.body:
-        if not isinstance(node, (ast.Assign, ast.AnnAssign)):
-            continue
-        targets = node.targets if isinstance(node, ast.Assign) else [node.target]
-        if any(isinstance(target, ast.Name) and target.id == name
-               for target in targets):
-            values.append(node.value)
-    if len(values) != 1:
-        raise AssertionError("expected one assignment for %s" % name)
-    return values[0]
+import Tools.execution.planning.compile_queue as compile_queue
+import Tools.knowledge.metadata.freshness_engine as freshness_engine
+import Tools.platform.common.kblib as kblib
+import Tools.knowledge.metadata.vocabulary_contract as vocabulary_contract
 
 
 class VocabularyContractTests(unittest.TestCase):
@@ -86,31 +69,6 @@ class VocabularyContractTests(unittest.TestCase):
                 with self.assertRaises(
                         vocabulary_contract.VocabularyContractError):
                     vocabulary_contract.validate_vocabulary_base(document)
-
-    def test_all_runtime_compatibility_names_share_owner_identity(self):
-        self.assertIs(
-            vocabulary_contract.PRIORITY_ORDER,
-            freshness_engine.PRIORITY_ORDER)
-        self.assertIs(
-            vocabulary_contract.PRIORITY_ORDER,
-            compile_queue.PRIORITY)
-        self.assertIs(
-            vocabulary_contract.REVIEW_INTERVALS_DAYS,
-            freshness_engine.INTERVAL_DAYS)
-        self.assertIs(
-            vocabulary_contract.REVIEW_INTERVALS_DAYS,
-            check_freshness.INTERVAL_DAYS)
-
-    def test_compatibility_assignments_are_projections_not_literals(self):
-        for module, name in (
-                (freshness_engine, "INTERVAL_DAYS"),
-                (freshness_engine, "PRIORITY_ORDER"),
-                (check_freshness, "INTERVAL_DAYS"),
-                (compile_queue, "PRIORITY")):
-            with self.subTest(module=module.__name__, name=name):
-                value = assignment_value(module, name)
-                self.assertIsInstance(value, ast.Attribute)
-                self.assertEqual("vocabulary_contract", value.value.id)
 
     def test_queue_priority_tiebreak_behaviour_is_unchanged(self):
         def batch_spec(batch_id):

@@ -18,23 +18,27 @@
 # The profile-creation kit is one such closure and is declared whole:
 # `profiles/_template/` (the candidate form),
 # `profiles/template-files.yaml` (the candidate template's whitelist),
-# `Tools/scaffold_profile.py` (the copier that reads that whitelist), and the
-# two fill-guidance documents the copy is answered with.
+# `Tools/scaffold_profile.py` (the public command), its
+# `Tools/governance/profile/scaffold_profile.py` implementation, and the two
+# fill-guidance documents the copy is answered with.
 # The onboarding tools that survive adoption are NOT here:
 # `profile_onboarding_status.py` speaks to a live runtime (its rule 2 is
 # `resume-existing-task`), and `apply_profile_adoption.py` is the adopter's
 # own no-runtime R09 writer -- a one-shot writer already used is kept for the
 # same reason `init_state.py` is.
 #
-# Consumers: `Tools/run_gates.py` reports a candidate for each declared entry
-# present in an adopter runtime (selected profile outside profiles/examples/).
-# `Tools/upstream_component_boundary.py` reads this declaration from the exact
-# upstream Git revision being adopted; it alone may excuse a missing component
-# file, so an adopter-edited copy cannot create a local omission whitelist.
+# Consumers: `Tools/governance/control/run_gates.py` reports a candidate for
+# each declared entry present in an adopter runtime (selected profile outside
+# profiles/examples/).
+# `Tools/platform/distribution/upstream_component_boundary.py` reads this
+# declaration from the exact upstream Git revision being adopted; it alone may
+# excuse a missing component file, so an adopter-edited copy cannot create a
+# local omission whitelist.
 # The declaration speaks only to adopters; the distribution repository and its
 # fixtures legitimately carry everything below.
 #
-# Only the restricted YAML subset (Tools/kblib.py parse_yaml_subset).
+# Only the restricted YAML subset
+# (Tools/platform/common/kblib.py parse_yaml_subset).
 # =============================================================================
 
 schema_version: 1
@@ -42,14 +46,38 @@ schema_version: 1
 distribution_only:
   - path: Tools/tests/
     reason: "the unit suite verifies tool behavior; its subject is the code and its owner is the distribution, which runs it in CI once for every adopter -- a carried mirror is an ungoverned obligation with no gate and no disposition when it turns red"
+  - path: Tools/test-ownership.yaml
+    reason: "machine owner of source-distribution test classification and execution tiers; the adopter runtime carries no test suite for this manifest to classify"
+  - path: Tools/generate_test_catalog.py
+    reason: "source-distribution entrypoint for generating the Test Catalog; it is unreachable after the test suite and ownership source are omitted"
+  - path: Tools/platform/distribution/test_catalog.py
+    reason: "implementation behind the source-distribution Test Catalog generator; it has no adopter consumer after tests, source manifest, and projections are omitted"
+  - path: Tools/platform/distribution/test_runner.py
+    reason: "implementation behind source-distribution test tiers; it has no adopter consumer after the classified test suite is omitted"
+  - path: Tools/run_tests.py
+    reason: "source-distribution entrypoint for catalog-owned test tiers; an adopter carries neither the classified suite nor its compiled selection catalog"
+  - path: Tools/TEST_CATALOG.md
+    reason: "generated navigation projection of the complete source-distribution test suite; it would be false and unusable in the reduced adopter runtime"
+  - path: Tools/compiled/test-catalog.json
+    reason: "generated runner projection of source-distribution test ownership; the adopter carries no tests selected by it"
   - path: Tools/compiled/cli-contract.yaml
     reason: "source-distribution CLI projection compiled from every shipped tool; a carried runtime derives its own target-bound projection under .cambium/derived instead of retaining this distribution view"
   - path: Tools/compiled/mcp-tools.json
     reason: "source-distribution agent interface projection; a carried runtime must pair a target-bound projection with its own consumer rather than carry this distribution artifact"
   - path: Tools/compiled/host-configs/
     reason: "source-distribution host templates contain placeholders rather than adopter bindings; an adopter materializes compatible host products only in workspace-contained staging outside .cambium, then installs them through the host's own mechanism"
+  - path: Tools/generate_tool_catalog.py
+    reason: "source-distribution navigation generator for the complete Cambium Tool source tree; an adopter carries a deliberately reduced runtime tree, so rerunning this command there would describe a different object"
+  - path: Tools/platform/distribution/tool_catalog.py
+    reason: "implementation behind the source-distribution Tool Catalog generator; it has no adopter runtime consumer once its public route and projections are omitted"
+  - path: Tools/TOOL_CATALOG.md
+    reason: "human navigation projection of the complete Cambium Tool source tree; copying it into a reduced adopter runtime would make the catalog false at the moment of adoption"
+  - path: Tools/compiled/tool-catalog.json
+    reason: "machine navigation projection paired with Tools/TOOL_CATALOG.md; it describes the complete distribution source tree rather than an adopter runtime"
   - path: Tools/check_kernel_size.py
-    reason: "repository-engineering checker for Cambium's own Kernel source-file budget; adopter knowledge governance does not consume this distribution-maintenance constraint"
+    reason: "stable public command for Cambium's repository-engineering Kernel budget checker; adopter knowledge governance does not consume this distribution-maintenance constraint"
+  - path: Tools/platform/distribution/check_kernel_size.py
+    reason: "implementation behind the distribution-only check_kernel_size command; carrying it without its public route leaves unreachable repository-maintenance code in an adopter runtime"
   - path: Tools/kernel-size-policy.yaml
     reason: "machine owner of Cambium distribution Kernel leaf measurements and growth caps; these are source-maintenance facts, not adopter governance semantics"
   - path: Tools/kernel-size-exceptions.md
@@ -61,7 +89,9 @@ distribution_only:
   - path: profiles/template-files.yaml
     reason: "the exact whitelist of profiles/_template contents that scaffold_profile.py copies; it is the machine companion to the sole candidate template and has no adopter-runtime role"
   - path: Tools/scaffold_profile.py
-    reason: "its whole job is copying profiles/_template through profiles/template-files.yaml; both are declared here, so in an adopter runtime it is code that cannot run rather than a tool held in reserve"
+    reason: "stable public command for the profile-creation kit; profiles/_template and profiles/template-files.yaml are both distribution-only, so the route cannot serve an adopted runtime"
+  - path: Tools/governance/profile/scaffold_profile.py
+    reason: "implementation behind the distribution-only scaffold_profile command; carrying it after its template and public route are omitted leaves unreachable profile-authoring code"
   - path: profiles/interview.yaml
     reason: "the fill contract for a scaffolded candidate profile; profile_onboarding_status.py reaches it only in its pre-adoption state 5, and its rule 2 gives an existing runtime precedence forever, so an adopted corpus cannot arrive at it -- a profile revision over a live runtime is a Standards revision under K12/10 and never re-enters the interview"
   - path: profiles/answer-patterns.md

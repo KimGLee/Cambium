@@ -14,8 +14,9 @@ TOOLS = TESTS.parent
 REPO = TOOLS.parent
 sys.path.insert(0, str(TOOLS))
 
-import contract_exception_policy as policy  # noqa: E402
-from queue_runtime import policy_exceptions  # noqa: E402
+import Tools.governance.control.contract_exception_policy as policy  # noqa: E402
+from Tools.execution.task_runtime.queue_runtime import policy_exceptions  # noqa: E402
+from Tools.platform.agent_interface import entrypoint_loader  # noqa: E402
 
 
 NONE_RUBRIC = "## Priority Quota\n\n- Registration: None\n"
@@ -30,8 +31,7 @@ class RegistryShapeTests(unittest.TestCase):
         document = policy.load_policy_registry()
         records = policy.policy_registry_records(document)
         self.assertEqual(
-            {"priority_quota.P0", "priority_quota.P1",
-             "coverage.reviewed_era"},
+            {"priority_quota.P0", "priority_quota.P1"},
             set(records))
         self.assertEqual(records, policy.POLICY_REGISTRY)
         self.assertEqual(
@@ -77,24 +77,18 @@ class RegistryShapeTests(unittest.TestCase):
             policy.policy_registry_records(absent)
 
 
-class FingerprintCompatibilityAndCurrentnessTests(unittest.TestCase):
+class FingerprintCurrentnessTests(unittest.TestCase):
 
     def document(self):
         return copy.deepcopy(policy.load_policy_registry())
 
-    def test_existing_effective_policy_fingerprints_are_byte_compatible(self):
+    def test_effective_policy_fingerprint_is_stable(self):
         _quota, quota_fingerprint, quota_errors = \
             policy.effective_priority_policy(NONE_RUBRIC)
-        _coverage, coverage_fingerprint, coverage_errors = \
-            policy.effective_coverage_policy()
         self.assertEqual([], quota_errors)
-        self.assertEqual([], coverage_errors)
         self.assertEqual(
             "sha256:0df9b16a8cbb04c17450a92b64d31b644f5c9ba8c5efd1308bcb006ce563f0c5",
             quota_fingerprint)
-        self.assertEqual(
-            "sha256:ac1fcfb8fae22e2f4308262e95ed671f6ead9fd664a52a4790084bc08be23c31",
-            coverage_fingerprint)
 
     def test_registry_policy_revision_moves_the_effective_fingerprint(self):
         document = self.document()
@@ -107,16 +101,6 @@ class FingerprintCompatibilityAndCurrentnessTests(unittest.TestCase):
             policy.effective_priority_policy(NONE_RUBRIC, registry=document)
         self.assertEqual([], errors)
         self.assertNotEqual(old_fingerprint, new_fingerprint)
-
-        coverage = self.document()
-        _old, old_coverage, _errors = policy.effective_coverage_policy()
-        coverage["families"][1]["fingerprint_payload"]["rule"] += \
-            " under the current Standards identity"
-        policy.policy_registry_records(coverage)
-        _new, new_coverage, errors = \
-            policy.effective_coverage_policy(registry=coverage)
-        self.assertEqual([], errors)
-        self.assertNotEqual(old_coverage, new_coverage)
 
     def test_kernel_defaults_resolve_from_the_registry_values(self):
         document = self.document()
@@ -136,7 +120,8 @@ class FingerprintCompatibilityAndCurrentnessTests(unittest.TestCase):
 class SingleNumericAuthorityTests(unittest.TestCase):
 
     def test_production_consumers_do_not_redeclare_the_default_numbers(self):
-        check_vocab = (TOOLS / "check_vocab.py").read_text(encoding="utf-8")
+        check_vocab = entrypoint_loader.describe_entrypoint(
+            "check_vocab", TOOLS).implementation_source
         self.assertNotRegex(check_vocab, r"default\s*=\s*(?:15|35)(?:\.0)?")
         self.assertIn(
             "contract_exception_policy.PRIORITY_QUOTA_KERNEL_DEFAULTS",
@@ -151,7 +136,7 @@ class SingleNumericAuthorityTests(unittest.TestCase):
     def test_exception_shape_validation_consumes_registry_bounds(self):
         records = copy.deepcopy(policy.POLICY_REGISTRY)
         for row in records.values():
-            if row.get("limit_domain") == "percent-share-under-100":
+            if row.get("domain_id") == "percent-share-under-100":
                 row["minimum_inclusive"] = 10
                 row["maximum_exclusive"] = 90
                 row["joint_maximum_exclusive"] = 90

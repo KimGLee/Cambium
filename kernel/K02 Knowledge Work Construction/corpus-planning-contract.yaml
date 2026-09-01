@@ -1,6 +1,6 @@
-schema_version: 1
+schema_version: 2
 contract_id: cambium-corpus-planning-contract
-semantic_owner: K02/03+K02/04
+semantic_owner: K02/03+K02/04+K02/05+K02/06+K02/07
 
 # K02/03 owns the Profile-slot envelope and its two applicability branches.
 # This document carries only the closed machine shape already defined there;
@@ -92,3 +92,135 @@ receipt_binding:
 close_triggers:
   selected_route: R13
   affected_manifest: manifest
+
+# K02/05, K02/06, and K02/07 already define these three registered machine
+# contracts as the sole normative source for field closure, cardinality, and
+# closed vocabularies.  Keeping the registrations in this one Kernel-owned
+# document prevents the checker and the candidate templates from becoming
+# additional owners.
+artifact_contracts:
+  global_map:
+    contract_id: global-map
+    semantic_owner: K02/05
+    document_schema_version: 1
+    document_fields:
+      - schema_version
+      - entries
+      - typed_dependencies
+    collections:
+      entries:
+        record_fields:
+          - entry_id
+          - layer_id
+          - canonical_markdown_path
+          - single_responsibility
+        minimum_items: 1
+        unique_fields:
+          - entry_id
+          - canonical_markdown_path
+        nonempty_list_fields: []
+      typed_dependencies:
+        record_fields:
+          - edge_id
+          - upstream_entry_id
+          - downstream_entry_id
+          - relation_type
+        minimum_items: 0
+        unique_fields:
+          - edge_id
+        nonempty_list_fields: []
+    relation_types:
+      - prerequisite-for
+      - capability-input-to
+      - realized-by
+      - evidence-input-to
+      - system-input-to
+      - control-input-to
+      - canonical-source-for
+      - expressed-by
+      - downstream-impact
+  capability_matrix:
+    contract_id: capability-matrix
+    semantic_owner: K02/06
+    document_schema_version: 1
+    document_fields:
+      - schema_version
+      - capabilities
+    collection:
+      name: capabilities
+      record_fields:
+        - capability_id
+        - capability
+        - priority
+        - map_entry_ids
+        - canonical_markdown_paths
+        - current_level
+        - target_level
+        - evidence_paths
+        - gap_ids
+      minimum_items: 1
+      unique_fields:
+        - capability_id
+      nonempty_list_fields:
+        - map_entry_ids
+        - canonical_markdown_paths
+      list_fields:
+        - map_entry_ids
+        - canonical_markdown_paths
+        - evidence_paths
+        - gap_ids
+    priority_values_owner: K08-vocabulary.priority
+    scale_owner: selected-profile.Corpus-Planning.capability_scale
+    conditional_rules:
+      target_requires_eligible_scale_row: true
+      rank_above_zero_requires_evidence: true
+      below_target_requires_gap: true
+      matrix_gap_links_bidirectional: true
+  gap_register:
+    contract_id: gap-register
+    semantic_owner: K02/07
+    document_schema_version: 1
+    document_fields:
+      - schema_version
+      - gaps
+    collection:
+      name: gaps
+      record_fields:
+        - gap_id
+        - gap_statement
+        - capability_ids
+        - candidate_owner_entry_id
+        - status
+        - close_condition
+        - evidence_paths
+        - promoted_coverage_path
+        - rationale
+      minimum_items: 0
+      unique_fields:
+        - gap_id
+      nonempty_list_fields:
+        - capability_ids
+      list_fields:
+        - capability_ids
+        - evidence_paths
+    statuses:
+      - candidate
+      - confirmed
+      - promoted
+      - resolved
+      - deferred
+      - rejected
+    promoted_statuses:
+      - promoted
+      - resolved
+    unpromoted_statuses:
+      - candidate
+      - confirmed
+      - deferred
+      - rejected
+    resolved_status: resolved
+    conditional_rules:
+      promoted_requires_coverage_path: true
+      unpromoted_forbids_coverage_path: true
+      resolved_requires_evidence: true
+      matrix_gap_links_bidirectional: true

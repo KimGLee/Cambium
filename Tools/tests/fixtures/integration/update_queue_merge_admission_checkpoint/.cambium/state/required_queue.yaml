@@ -1,0 +1,41 @@
+schema_version: 2
+task_id: fixture-task
+scope_version: s1
+queue_revision: 2
+state_revision: 1
+upstream_revision_id: 0123456789abcdef0123456789abcdef01234567
+selected_profile_manifest: profiles/test-profile/profile.md
+required_queue:
+  - id: B1
+    family: Core
+    order: 1
+    record_count: 1
+    manifest:
+      - Topics/A.md
+    source_route: R03
+    execution_mode: concurrent-worker
+    depends_on: []
+    confirmation_required: false
+    work_spec_path: null
+    work_spec_sha256: null
+    state: open
+    hold_state: none
+    opened_at: 2026-08-04T01:00:00Z
+    activation_receipt: audit-check_queue-20260831T221043Z-bbf69afec2eb41a49b12489fe72299b7-0001
+    transition_receipts:
+      - audit-update_queue-20260831T221043Z-b57adb25e4f94a928460af623af65ddf-0001
+  - id: B2
+    family: Core
+    order: 2
+    record_count: 1
+    manifest:
+      - Topics/B.md
+    source_route: R03
+    execution_mode: concurrent-worker
+    depends_on:
+      - B1
+    confirmation_required: false
+    work_spec_path: null
+    work_spec_sha256: null
+    state: queued
+    hold_state: none

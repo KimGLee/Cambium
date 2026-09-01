@@ -13,10 +13,13 @@ TOOLS = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(TOOLS / "tests"))
 sys.path.insert(0, str(TOOLS))
 
-import audit_evidence_runtime
-import profile_batch_judgment_contract as contract_module
-import record_batch_judgment
-from profile_fixture import FIXTURE_UPSTREAM_REVISION
+import Tools.execution.audit.audit_evidence_runtime as audit_evidence_runtime
+import Tools.execution.audit.audit_plan_contract as audit_plan_contract
+import Tools.execution.evidence.receipt_type_contract as receipt_type_contract
+import Tools.governance.profile.profile_batch_judgment_contract as contract_module
+import Tools.governance.profile.profile_contract as profile_contract
+import Tools.execution.audit.record_batch_judgment as record_batch_judgment
+from Tools.tests.support.profile_fixture import FIXTURE_UPSTREAM_REVISION
 
 
 SHA_A = "sha256:" + "a" * 64
@@ -28,13 +31,32 @@ SHA_E = "sha256:" + "e" * 64
 
 class ProfileBatchJudgmentContractTests(unittest.TestCase):
 
+    def test_profile_plan_and_receipt_registry_share_one_current_identity(self):
+        self.assertEqual(
+            frozenset((contract_module.RECORD_KIND,)),
+            profile_contract.BATCH_REVIEW_RECEIPT_SCHEMAS)
+        plan_contract = audit_plan_contract.load_contract(TOOLS.parent)
+        self.assertIn(
+            contract_module.RECORD_KIND,
+            plan_contract["evidence_kind_values"])
+        registrations = receipt_type_contract.load_receipt_type_registry(
+            TOOLS.parent)
+        registration = registrations[contract_module.RECEIPT_TYPE_ID]
+        self.assertEqual(
+            "manual-attestation-v1",
+            registration.producer_capability_id)
+        self.assertEqual(
+            "Tools.governance.profile.profile_batch_judgment_contract:"
+            "current_receipt_errors",
+            registration.validator_owner)
+
     def setUp(self):
         self.requirement = SimpleNamespace(
             judgment_item_id="fixture-depth",
             target_selector="each-manifest-page",
             trigger="before-merge-ready",
             producer_kind="manual-attestation",
-            receipt_schema="page-batch-judgment-v1",
+            receipt_schema=contract_module.RECORD_KIND,
             pass_authority_role_id="reviewer",
         )
         self.judgment = SimpleNamespace(
@@ -67,7 +89,7 @@ class ProfileBatchJudgmentContractTests(unittest.TestCase):
             "task_id": "task-1",
             "batch_id": "B1",
             "opening_transition_receipt": "opening-1",
-            "standards_version": FIXTURE_UPSTREAM_REVISION,
+            "upstream_revision_id": FIXTURE_UPSTREAM_REVISION,
             "active_standards_sha256": SHA_A,
             "selected_profile_manifest": "profiles/fixture/profile.md",
             "profile_snapshot_sha256": SHA_B,
@@ -95,6 +117,7 @@ class ProfileBatchJudgmentContractTests(unittest.TestCase):
     def _base_receipt(*_args, **_kwargs):
         return {
             "receipt_id": "judgment-1",
+            "receipt_type_id": contract_module.RECEIPT_TYPE_ID,
             "tool": contract_module.PRODUCER_TOOL,
             "tool_version": contract_module.PRODUCER_TOOL_VERSION,
             "check": contract_module.PRODUCER_CHECK,
@@ -110,7 +133,7 @@ class ProfileBatchJudgmentContractTests(unittest.TestCase):
         with mock.patch.object(
                 record_batch_judgment.kblib, "make_receipt",
                 side_effect=self._base_receipt), mock.patch.object(
-                    record_batch_judgment.check_queue,
+                    record_batch_judgment.queue_review,
                     "activation_phase_delivery_errors", return_value=[]), \
                 mock.patch.object(
                     contract_module, "artifact_fingerprint",
@@ -131,7 +154,7 @@ class ProfileBatchJudgmentContractTests(unittest.TestCase):
         self.assertEqual(
             contract_module.EXTENSION_POINT,
             receipt["kernel_extension_point"])
-        self.assertEqual("page-batch-judgment-v1", receipt["record_kind"])
+        self.assertEqual(contract_module.RECORD_KIND, receipt["record_kind"])
         self.assertEqual(SHA_E, receipt["artifact_fingerprint"])
         self.assertEqual(SHA_D, receipt["semantic_content_sha256"])
         self.assertNotEqual(
@@ -143,6 +166,16 @@ class ProfileBatchJudgmentContractTests(unittest.TestCase):
             receipt["contract_fingerprint"], r"^sha256:[0-9a-f]{64}$")
         self.assertEqual("opening-1", receipt["opening_transition_receipt"])
         self.assertEqual("activation-1", receipt["activation_receipt_id"])
+
+    def test_writer_never_reauthorizes_a_historical_activation(self):
+        self.runtime["receipt_catalog"] = {
+            "activation-1": ("receipts/history.jsonl", self.activation),
+        }
+        self.runtime["current_receipt_catalog"] = {}
+
+        with self.assertRaisesRegex(
+                ValueError, "no current activation receipt"):
+            self.build()
 
     def test_wrong_or_duplicate_plan_obligation_is_rejected(self):
         duplicate = copy.deepcopy(self.obligation)
@@ -166,9 +199,13 @@ class ProfileBatchJudgmentContractTests(unittest.TestCase):
                 contract_module, "artifact_fingerprint",
                 return_value=SHA_E), mock.patch.object(
                     contract_module, "semantic_content_fingerprint",
-                    return_value=SHA_D):
+                    return_value=SHA_D), mock.patch.object(
+                        audit_evidence_runtime,
+                        "_current_page_artifact_fingerprint",
+                        return_value=SHA_E):
             selected = audit_evidence_runtime._required_stage_records(
-                result, self.item, self.plan, SHA_A, catalog, "pre-merge")
+                result, self.item, self.plan, SHA_A, catalog, "pre-merge",
+                require_current=True)
         self.assertEqual("judgment-1", selected[0][1]["receipt_id"])
 
         drifted = copy.deepcopy(receipt)
@@ -178,12 +215,15 @@ class ProfileBatchJudgmentContractTests(unittest.TestCase):
                 contract_module, "artifact_fingerprint",
                 return_value=SHA_E), mock.patch.object(
                     contract_module, "semantic_content_fingerprint",
-                    return_value=SHA_D):
+                    return_value=SHA_D), mock.patch.object(
+                        audit_evidence_runtime,
+                        "_current_page_artifact_fingerprint",
+                        return_value=SHA_E):
             with self.assertRaisesRegex(
-                    ValueError, "artifact_fingerprint"):
+                    ValueError, "no current terminal"):
                 audit_evidence_runtime._required_stage_records(
                     result, self.item, self.plan, SHA_A, catalog,
-                    "pre-merge")
+                    "pre-merge", require_current=True)
 
         drifted = copy.deepcopy(receipt)
         drifted["semantic_content_sha256"] = SHA_C
@@ -192,12 +232,88 @@ class ProfileBatchJudgmentContractTests(unittest.TestCase):
                 contract_module, "artifact_fingerprint",
                 return_value=SHA_E), mock.patch.object(
                     contract_module, "semantic_content_fingerprint",
-                    return_value=SHA_D):
+                    return_value=SHA_D), mock.patch.object(
+                        audit_evidence_runtime,
+                        "_current_page_artifact_fingerprint",
+                        return_value=SHA_E):
             with self.assertRaisesRegex(
-                    ValueError, "semantic_content_sha256"):
+                    ValueError, "no current terminal"):
                 audit_evidence_runtime._required_stage_records(
                     result, self.item, self.plan, SHA_A, catalog,
-                    "pre-merge")
+                    "pre-merge", require_current=True)
+
+    def test_shared_attempt_resolver_allows_stale_successor(self):
+        predecessor = self.build()
+        successor = copy.deepcopy(predecessor)
+        successor["receipt_id"] = "judgment-successor"
+        successor["artifact_fingerprint"] = SHA_A
+        successor["semantic_content_sha256"] = SHA_B
+        catalog = {
+            predecessor["receipt_id"]: predecessor,
+            successor["receipt_id"]: successor,
+        }
+        with mock.patch.object(
+                contract_module, "artifact_fingerprint",
+                return_value=SHA_A), mock.patch.object(
+                    contract_module, "semantic_content_fingerprint",
+                    return_value=SHA_B):
+            selected = contract_module.current_judgment_attempt(
+                "/fixture", self.plan, SHA_A, self.contract, self.item,
+                self.runtime["_profile_authorized_view"], catalog,
+                "Topics/A.md", "fixture-depth")
+        self.assertIs(successor, selected)
+
+        result = {
+            "root": "/fixture",
+            "_profile_authorized_view": {"_contract": self.contract},
+        }
+        with mock.patch.object(
+                contract_module, "artifact_fingerprint",
+                return_value=SHA_A), mock.patch.object(
+                    contract_module, "semantic_content_fingerprint",
+                    return_value=SHA_B), mock.patch.object(
+                        audit_evidence_runtime,
+                        "_current_page_artifact_fingerprint",
+                        return_value=SHA_A):
+            terminal = audit_evidence_runtime._required_stage_records(
+                result, self.item, self.plan, SHA_A, catalog, "pre-merge",
+                require_current=True)
+        self.assertEqual("judgment-successor",
+                         terminal[0][1]["receipt_id"])
+
+    def test_shared_attempt_resolver_rejects_duplicate_current(self):
+        first = self.build()
+        second = copy.deepcopy(first)
+        second["receipt_id"] = "judgment-2"
+        catalog = {first["receipt_id"]: first,
+                   second["receipt_id"]: second}
+        with mock.patch.object(
+                contract_module, "artifact_fingerprint",
+                return_value=SHA_E), mock.patch.object(
+                    contract_module, "semantic_content_fingerprint",
+                    return_value=SHA_D):
+            with self.assertRaisesRegex(ValueError,
+                                        "multiple current attempts"):
+                contract_module.current_judgment_attempt(
+                    "/fixture", self.plan, SHA_A, self.contract, self.item,
+                    self.runtime["_profile_authorized_view"], catalog,
+                    "Topics/A.md", "fixture-depth")
+
+    def test_shared_attempt_resolver_rejects_invalid_stable_history(self):
+        invalid = self.build()
+        invalid["reviewer_role"] = "unauthorized-role"
+        catalog = {invalid["receipt_id"]: invalid}
+        with mock.patch.object(
+                contract_module, "artifact_fingerprint",
+                return_value=SHA_E), mock.patch.object(
+                    contract_module, "semantic_content_fingerprint",
+                    return_value=SHA_D):
+            with self.assertRaisesRegex(ValueError,
+                                        "invalid stable attempt"):
+                contract_module.current_judgment_attempt(
+                    "/fixture", self.plan, SHA_A, self.contract, self.item,
+                    self.runtime["_profile_authorized_view"], catalog,
+                    "Topics/A.md", "fixture-depth")
 
     def test_artifact_projection_delegates_to_shared_page_and_set_owner(self):
         with tempfile.TemporaryDirectory() as temp:

@@ -1,43 +1,23 @@
-"""The one writer that turns an empty runtime skeleton into a planned task.
+"""Ownership closure for the initial Task Plan producer boundary.
 
-`init_state.py` publishes a namespace and infers nothing: the Contract's five
-loaded-set fields are empty, Coverage holds no pages, the Queue is empty. No
-writer owned the edge that fills them, so the documented path was to hand-edit
-canonical runtime state, which R01 forbids and which records nothing about what
-was confirmed. This module pins the writer that closes that edge and, just as
-importantly, the refusals that keep it from becoming a way around governance.
-
-Where the transaction stops is as load-bearing as what it writes. It fills the
-two adopter inputs -- the Task Contract and the Coverage inventory -- and stops
-at the Queue. `check_queue.coverage_provenance_errors` treats both as adopter
-inputs until the first Queue materialization and demands a qualified writer
-receipt for every canonical write after it; materializing the Queue here would
-cross that line and force a new entry into that closed set for no gain, since
-`compile_queue --apply` already owns the edge and is already in the set. The
-state left in between is not an inconsistent window: it is the unmaterialized
-runtime, which `validate_runtime` names with `allow_unmaterialized_queue` and
-which `compile_queue.main` sets that same flag to read. Both halves are pinned
-below, in sequence, because the claim is about the handoff and not about either
-tool alone.
-
-The refusals matter more than the happy path. A tool that can write a Contract
-and a Coverage inventory can rewrite a task's scope; the only thing separating
-"materialize the plan once" from "change the scope whenever" is that it refuses
-a second, different plan. `check_queue.contract_sha256` already freezes the
-Contract fingerprint at Queue materialization, so the refusal here agrees with
-the machine rather than adding a policy on top of it.
+The semantic owner stops at planning-only Coverage, the frozen Task Contract,
+an empty Queue image, and its publication Receipt. Pure shape, projection,
+binding, override, and handoff predicates stay in memory. Repository-backed
+coverage is limited to one public writer transport and one exact
+plan-currentness boundary. The adjacent Queue materialization seam belongs to
+``test_compile_queue`` and is not replayed here.
 """
 
-import contextlib
 import copy
-import importlib.util
-import io
 import json
+from pathlib import Path
+import shlex
 import subprocess
 import sys
 import tempfile
 import unittest
-from pathlib import Path
+from unittest import mock
+
 
 TESTS = Path(__file__).resolve().parent
 TOOLS = TESTS.parent
@@ -47,534 +27,374 @@ for path in (str(TOOLS), str(TESTS)):
     if path not in sys.path:
         sys.path.insert(0, path)
 
-import check_queue  # noqa: E402
-import compile_queue  # noqa: E402
-import kblib  # noqa: E402
-from profile_fixture import (  # noqa: E402
+import Tools.execution.audit.check_proof as check_proof  # noqa: E402
+from Tools.execution.audit import terminal_proof_contract  # noqa: E402
+import Tools.execution.planning.apply_task_plan as apply_task_plan  # noqa: E402
+from Tools.execution.task_runtime import queue_runtime  # noqa: E402
+import Tools.execution.task_runtime.runtime_validation as runtime_validation  # noqa: E402
+import Tools.platform.common.kblib as kblib  # noqa: E402
+from Tools.tests.support.initial_task_plan_fixture import (  # noqa: E402
+    confirmed_initial_task_plan,
+)
+from Tools.tests.support.profile_fixture import (  # noqa: E402
     FIXTURE_UPSTREAM_REVISION,
     install_loadable_profile,
 )
 
 
-def _load_tool():
-    spec = importlib.util.spec_from_file_location(
-        "_apply_task_plan_under_test", TOOLS / "apply_task_plan.py")
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    return module
-
-
-apply_task_plan = _load_tool()
-
 TASK_ID = "new-task"
 PROFILE = "profiles/sample/profile.md"
 PLAN_RELATIVE = ".cambium/deltas/task-plans/TP-001.yaml"
-
-MODULE = "kernel/K03 Fixture/01 Conditional Review.md"
-READ_SET = "Read Set/R02 Fixture Read Set.md"
-CARD = "Card/R02 Fixture Card.md"
-OTHER_CARD = "Card/R03 Module Build Card.md"
+DIGEST = "sha256:" + "1" * 64
 R01_CARD = "Card/R01 Core Bootstrap Card.md"
+R02_CARD = "Card/R02 Fixture Card.md"
 R01_READ_SET = "Read Set/R01 Core Bootstrap Read Set.md"
-
-PAGE = {
-    "path": "Notes/First Owner.md",
-    "canonical_owner": "Notes/First Owner.md",
-    "type": "concept",
-    "tier": "M",
-    "priority": "P1",
-    "coverage_disposition": "required",
-    "authoring_status": "unassessed",
-    "prerequisites": [],
-    "batch": None,
-    "next_batch": "%s-B0" % TASK_ID,
-    "gate_receipts": [],
-    "property_state": {},
-    "deferred_reason": None,
-    "reentry_condition": None,
-}
-
-BATCH_SPEC = {
-    "id": "%s-B0" % TASK_ID,
-    "family": "founding",
-    "order_hint": 1,
-    "source_route": "R02",
-    "execution_mode": "serial-integrator",
-    "depends_on": [],
-    "confirmation_required": False,
-    "work_spec_path": None,
-    "work_spec_sha256": None,
-}
+R02_READ_SET = "Read Set/R02 Fixture Read Set.md"
+LOADED_MODULE = "kernel/K03 Fixture/01 Conditional Review.md"
+TERMINAL_REQUIRED_ROUTE_IDS = frozenset(
+    terminal_proof_contract.contract_values()["required_route_ids"])
 
 
-class TaskPlanTransactionTests(unittest.TestCase):
-    def setUp(self):
-        self.tmp = tempfile.TemporaryDirectory()
-        self.addCleanup(self.tmp.cleanup)
-        # macOS spells tempfile roots through /var while resolved children use
-        # /private/var.  Keep the fixture root in the same canonical namespace
-        # as the repository paths resolved by the production loaders.
-        self.root = Path(self.tmp.name).resolve() / "repo"
-        install_loadable_profile(self.root, profile_id="sample")
-        result = subprocess.run(
-            [sys.executable, str(TOOLS / "init_state.py"), str(self.root),
-             "--task-id", TASK_ID, "--objective", "Exercise task planning",
-             "--scope-version", "s1", "--completion-semantics", "build",
-             "--standards-version", FIXTURE_UPSTREAM_REVISION,
-             "--profile-manifest", PROFILE,
-             "--at", "2026-08-04T00:00:00Z", "--apply"],
-            text=True, capture_output=True, check=False)
-        self.assertEqual(0, result.returncode,
-                         result.stdout + result.stderr)
+def _fixture_card(route_id):
+    if route_id == "R01":
+        return R01_CARD
+    if route_id == "R02":
+        return R02_CARD
+    return "Card/%s Fixture Card.md" % route_id
 
-    # ---- helpers -------------------------------------------------------
 
-    def state_sha(self, relative):
-        return kblib.sha256_bytes((self.root / relative).read_bytes())
+def _fixture_read_set(route_id):
+    if route_id == "R01":
+        return R01_READ_SET
+    if route_id == "R02":
+        return R02_READ_SET
+    return "Read Set/%s Fixture Read Set.md" % route_id
 
-    def document(self, relative):
-        return kblib.parse_yaml_subset(
-            (self.root / relative).read_text(encoding="utf-8"))
 
-    def compile_the_queue(self, prepared):
-        """Run the compiler exactly as the transaction told the operator to."""
-        command = apply_task_plan._compile_command(prepared).split()
-        self.assertEqual(
-            ["python3", "Tools/compile_queue.py", "."], command[:3],
-            "the printed command is the handoff; if its shape drifts the "
-            "operator is following instructions the test never ran")
-        result = subprocess.run(
-            [sys.executable, str(TOOLS / "compile_queue.py"), str(self.root)]
-            + command[3:],
-            text=True, capture_output=True, check=False)
-        self.assertEqual(
-            0, result.returncode,
-            "the writer that owns the Queue must accept the state this "
-            "transaction leaves, using the compare-and-swap values it "
-            "printed; if it does not, the split between them is wrong:\n"
-            + result.stdout + result.stderr)
-        return result
+def _current_plan(**overrides):
+    plan = confirmed_initial_task_plan(
+        upstream_revision_id=FIXTURE_UPSTREAM_REVISION,
+        profile_manifest=PROFILE,
+        task_id=TASK_ID,
+        plan_id="TP-001",
+        objective="Exercise task planning",
+    )
+    plan["approval_reference"] = "operator confirmation 2026-08-31"
+    plan.update(overrides)
+    return plan
 
-    def plan(self, **overrides):
-        plan = {
-            "schema_version": 1,
-            "plan_id": "TP-001",
-            "task_id": TASK_ID,
-            "approval_reference": "operator confirmation 2026-08-04",
-            "before": {
-                "coverage_sha256": self.state_sha(check_queue.COVERAGE_PATH),
-                "queue_sha256": self.state_sha(check_queue.QUEUE_PATH),
-                "progress_sha256": self.state_sha(check_queue.PROGRESS_PATH),
-            },
-            "contract_after": {
-                "contract_version": "c1",
-                "completion_semantics": "build",
-                "objective": "Exercise task planning",
-                "exclusions": [],
-                "scope_version": "s1",
-                "concurrency_cap": 1,
-                "standards_version": FIXTURE_UPSTREAM_REVISION,
-                "selected_profile_manifest": PROFILE,
-                "selected_route_ids": ["R02"],
-                "selected_card_paths": [],
-                "selected_profile_route_ids": [],
-                "selected_read_sets": [],
-                "loaded_module_paths": [],
-                "minimum_run_until": "",
-                "checkpoint_at": "",
-                "hard_stop_at": "",
-                "completion_gate": "required-queue-complete",
-            },
-            "coverage_after": {
-                "pages": [copy.deepcopy(PAGE)],
-                "batch_specs": [copy.deepcopy(BATCH_SPEC)],
-            },
-        }
-        plan.update(overrides)
-        return plan
 
-    def write_plan(self, plan, relative=PLAN_RELATIVE):
-        path = self.root / relative
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(kblib.canonical_yaml(plan), encoding="utf-8")
-        return relative
+class TaskPlanSchemaContractTests(unittest.TestCase):
 
-    def run_tool(self, relative=PLAN_RELATIVE, apply=False):
-        command = [str(self.root), "--plan", relative]
-        if apply:
-            command.append("--apply")
-        buffer = io.StringIO()
-        with contextlib.redirect_stdout(buffer):
-            code = apply_task_plan.main(command)
-        self.printed = buffer.getvalue()
-        return code
+    def test_current_plan_and_shipped_template_share_one_closed_schema(self):
+        plan = _current_plan()
+        apply_task_plan._validate_plan_shape(plan)
 
-    def prepare_error(self, plan):
-        relative = self.write_plan(plan)
-        with self.assertRaises(apply_task_plan.Refusal) as caught:
-            apply_task_plan.prepare(str(self.root), relative)
-        return str(caught.exception)
-
-    def test_shipped_template_carries_the_required_page_shape(self):
         template = kblib.load_yaml_file(
             REPOSITORY / "Tools/schemas/task_plan.template.yaml")
-        page = template["coverage_after"]["pages"][0]
-        self.assertEqual({}, page["property_state"])
-        self.assertEqual([], sorted(set(PAGE) - set(page)))
+        self.assertEqual(plan["schema_version"], template["schema_version"])
+        self.assertEqual(apply_task_plan.PLAN_FIELDS, set(template))
+        self.assertEqual(apply_task_plan.PLANNED_WORK_FIELDS,
+                         set(template["planned_work"]))
+        for field in ("authoring_status", "gate_receipts", "property_state"):
+            self.assertNotIn(field, template["planned_work"]["pages"][0])
 
-    # ---- the edge it closes --------------------------------------------
+        cases = []
+        wrong_schema = _current_plan(schema_version=3)
+        cases.append((wrong_schema, "schema_version must be 4"))
+        unknown = _current_plan()
+        unknown["unexpected_field"] = "unsupported"
+        cases.append((unknown, "unsupported field.*unexpected_field"))
+        unanswered = _current_plan(
+            approval_reference=apply_task_plan.SENTINEL)
+        cases.append((unanswered, "template.*sentinel"))
+        current_page_state = _current_plan()
+        current_page_state["planned_work"]["pages"][0][
+            "authoring_status"] = "reviewed"
+        cases.append((current_page_state, "materializes runtime state"))
 
-    def test_a_dry_run_writes_nothing(self):
-        before = {name: self.state_sha(path) for name, path in (
-            ("coverage", check_queue.COVERAGE_PATH),
-            ("queue", check_queue.QUEUE_PATH),
-            ("progress", check_queue.PROGRESS_PATH))}
-        self.write_plan(self.plan())
-        self.assertEqual(0, self.run_tool())
-        for name, path in (("coverage", check_queue.COVERAGE_PATH),
-                           ("queue", check_queue.QUEUE_PATH),
-                           ("progress", check_queue.PROGRESS_PATH)):
-            self.assertEqual(before[name], self.state_sha(path), name)
+        for candidate, expected in cases:
+            with self.subTest(expected=expected), self.assertRaisesRegex(
+                    apply_task_plan.Refusal, expected):
+                apply_task_plan._validate_plan_shape(candidate)
 
-    def test_initial_plan_can_freeze_safe_amendment_authority(self):
-        plan = self.plan()
-        plan["contract_after"]["amendment_authority"] = {
-            "schema_version": 1,
-            "authority_id": "AUTH-INITIAL",
-            "mode": "user-only",
-            "allowed_change_classes": [],
+
+class TaskPlanProjectionUnitTests(unittest.TestCase):
+
+    def test_projection_stops_at_planning_coverage_and_an_empty_queue(self):
+        plan = _current_plan()
+        original = copy.deepcopy(plan)
+        queue = apply_task_plan._empty_queue(plan)
+        queue_text = kblib.canonical_yaml(queue)
+        coverage = apply_task_plan._coverage(
+            plan, "2026-08-31T00:00:00Z")
+        progress = apply_task_plan._progress(
+            plan, copy.deepcopy(plan["contract_after"]), queue_text,
+            "R-TASK-PLAN")
+
+        self.assertEqual(original, plan)
+        self.assertEqual([], queue["required_queue"])
+        self.assertEqual(1, queue["queue_revision"])
+        self.assertEqual(0, queue["state_revision"])
+        self.assertEqual(plan["planned_work"]["pages"], coverage["pages"])
+        self.assertEqual(plan["planned_work"]["batch_specs"],
+                         coverage["batch_specs"])
+        self.assertEqual("planned", progress["task_state"])
+        self.assertEqual("R-TASK-PLAN",
+                         progress["initial_task_plan_receipt"])
+        self.assertIsNone(progress["initial_queue_receipt"])
+        self.assertEqual(kblib.sha256_bytes(queue_text),
+                         progress["required_queue_sha256"])
+        self.assertEqual(plan["contract_after"], progress["contract"])
+
+
+class TaskPlanProfileOverrideContractTests(unittest.TestCase):
+
+    def test_concurrency_cap_acceptance_has_one_explicit_source_contract(self):
+        self.assertEqual(
+            (3, "task-plan"),
+            apply_task_plan._resolve_concurrency_cap_overrides({}, 3))
+        self.assertEqual(
+            (3, "task-plan+profile-manifest"),
+            apply_task_plan._resolve_concurrency_cap_overrides(
+                {"concurrency_cap": "3"}, 3))
+
+        for overrides, expected in (
+                ({"concurrency_cap": "4"}, "contradicts"),
+                ({"concurrency_cap": "0"}, "malformed"),
+                ({"concurrency_cap": "three"}, "malformed")):
+            with self.subTest(overrides=overrides), self.assertRaisesRegex(
+                    apply_task_plan.Refusal, expected):
+                apply_task_plan._resolve_concurrency_cap_overrides(
+                    overrides, 3)
+
+
+class TaskPlanBindingContractTests(unittest.TestCase):
+
+    def test_receipt_and_queue_handoff_bind_one_exact_plan_after_image(self):
+        plan = _current_plan()
+        evidence = {
+            "selected_profile_manifest": PROFILE,
+            "profile_snapshot_sha256": "sha256:" + "2" * 64,
+            "profile_contract_fingerprint": "sha256:" + "3" * 64,
+            "profile_load_inputs_sha256": "sha256:" + "4" * 64,
         }
-        self.write_plan(plan)
-
-        self.assertEqual(0, self.run_tool(apply=True), self.printed)
-
-        contract = self.document(check_queue.PROGRESS_PATH)["contract"]
-        self.assertEqual(plan["contract_after"]["amendment_authority"],
-                         contract["amendment_authority"])
-        self.assertEqual([], check_queue.validate_runtime(
-            str(self.root), allow_unmaterialized_queue=True)["errors"])
-
-    def test_initial_plan_rejects_malformed_amendment_authority(self):
-        plan = self.plan()
-        plan["contract_after"]["amendment_authority"] = {
-            "schema_version": 1,
-            "authority_id": "AUTH-INITIAL",
-            "mode": "delegated-integrator",
-            "allowed_change_classes": ["future-class"],
-        }
-
-        message = self.prepare_error(plan)
-
-        self.assertIn("amendment authority", message)
-        self.assertIn("future-class", message)
-
-    def test_apply_fills_what_init_state_left_empty(self):
-        self.write_plan(self.plan())
-        self.assertEqual(0, self.run_tool(apply=True))
-
-        contract = self.document(check_queue.PROGRESS_PATH)["contract"]
-        for field in ("selected_route_ids", "selected_card_paths",
-                      "selected_read_sets", "loaded_module_paths"):
-            with self.subTest(field=field):
-                self.assertTrue(
-                    contract[field],
-                    "%s is what init_state cannot fill and nothing else "
-                    "could; if it is still empty the edge is not closed"
-                    % field)
-
-        pages = self.document(check_queue.COVERAGE_PATH)["pages"]
-        self.assertEqual([PAGE["path"]], [page["path"] for page in pages])
-        self.assertFalse(
-            (self.root / PAGE["path"]).exists(),
-            "the object is Required and recorded before it exists; K02/01 "
-            "requires exactly that, and a writer that demanded the file first "
-            "could never plan work that has not been done")
-
-    def test_the_load_sets_are_resolved_from_the_routes_not_typed_by_hand(self):
-        """The plan answers 'which routes'; the machine answers 'so what loads'.
-
-        This is the derivation that makes the plan writable at all. On the real
-        kernel, selecting R01 alone closes over every other Read Set and well
-        past a hundred modules, so a transaction that demanded those lists by
-        hand would collect a declaration nobody had checked. The plan below
-        names one route and no paths.
-        """
-        plan = self.plan()
-        self.assertEqual([], plan["contract_after"]["selected_card_paths"])
-        self.assertEqual([], plan["contract_after"]["selected_read_sets"])
-        self.assertEqual([], plan["contract_after"]["loaded_module_paths"])
-
-        self.write_plan(plan)
-        self.assertEqual(0, self.run_tool(apply=True))
-        contract = self.document(check_queue.PROGRESS_PATH)["contract"]
-        self.assertEqual(sorted([R01_CARD, CARD]),
-                         contract["selected_card_paths"])
-        self.assertEqual(sorted([R01_READ_SET, READ_SET]),
-                         contract["selected_read_sets"])
-        self.assertEqual(
-            [MODULE], contract["loaded_module_paths"],
-            "the module comes from the Read Set's own loading boundary, so the "
-            "declaration is derived from repository bytes rather than asserted")
-
-    def test_a_card_belonging_to_an_unselected_route_is_refused(self):
-        plan = self.plan()
-        plan["contract_after"]["selected_card_paths"] = [OTHER_CARD]
-        message = self.prepare_error(plan)
-        self.assertIn("not in selected_route_ids", message)
-        self.assertIn(OTHER_CARD, message)
-
-    def test_an_unregistered_route_is_refused(self):
-        """A mistyped route names nothing, and says so instead of resolving."""
-        plan = self.plan()
-        plan["contract_after"]["selected_route_ids"] = ["R02", "R14"]
-        self.assertIn("unregistered route(s): R14", self.prepare_error(plan))
-
-    def test_the_recorded_coverage_is_the_plan_s_own(self):
-        self.write_plan(self.plan())
-        self.assertEqual(0, self.run_tool(apply=True))
-        pages = self.document(check_queue.COVERAGE_PATH)["pages"]
-        self.assertEqual([PAGE["path"]], [page["path"] for page in pages])
-        self.assertFalse(
-            (self.root / PAGE["path"]).exists(),
-            "the object is Required and recorded before it exists; K02/01 "
-            "requires exactly that, and a writer that demanded the file first "
-            "could never plan work that has not been done")
-
-    def test_the_queue_is_left_to_the_writer_that_owns_it(self):
-        before = self.state_sha(check_queue.QUEUE_PATH)
-        self.write_plan(self.plan())
-        prepared = apply_task_plan.prepare(str(self.root), PLAN_RELATIVE)
-        self.assertNotIn(
-            "queue", prepared["after_text"],
-            "the transaction stages no Queue bytes; staging them would put a "
-            "second writer on the far side of the materialization line that "
-            "coverage_provenance_errors draws")
-        self.assertEqual(0, self.run_tool(apply=True))
-        self.assertEqual(
-            before, self.state_sha(check_queue.QUEUE_PATH),
-            "the Queue file is byte-identical after the transaction")
-        self.assertEqual([], self.document(
-            check_queue.QUEUE_PATH)["required_queue"])
-
-    def test_what_it_compiles_in_memory_is_the_compiler_s_own_output(self):
-        """It proves a Queue is derivable without becoming a second compiler."""
-        self.write_plan(self.plan())
-        prepared = apply_task_plan.prepare(str(self.root), PLAN_RELATIVE)
-        expected, _changed = compile_queue.compile_document(
-            self.document(check_queue.QUEUE_PATH),
-            {**self.document(check_queue.COVERAGE_PATH),
-             "pages": [copy.deepcopy(PAGE)],
-             "batch_specs": [copy.deepcopy(BATCH_SPEC)]})
-        self.assertEqual(
-            kblib.canonical_yaml(expected),
-            kblib.canonical_yaml(prepared["queue"]),
-            "the plan carries no Queue body precisely so that the Queue has "
-            "one authority; the transaction compiles only to refuse a plan "
-            "that yields none, and must agree with the real compiler")
-
-    def test_the_state_it_leaves_is_the_unmaterialized_one(self):
-        """The whole claim of the split, in the order the two writers run."""
-        self.write_plan(self.plan())
-        prepared = apply_task_plan.prepare(str(self.root), PLAN_RELATIVE)
-        self.assertEqual(0, self.run_tool(apply=True))
-
-        self.assertEqual(
-            [], check_queue.validate_runtime(
-                str(self.root), allow_unmaterialized_queue=True)["errors"],
-            "Coverage naming a batch the Queue does not carry is the "
-            "unmaterialized runtime, not a broken one; this is the flag "
-            "compile_queue itself sets to read this state")
-
-        self.assertIn(
-            apply_task_plan._compile_command(prepared), self.printed,
-            "a transaction that stops halfway must say so and name the "
-            "command that finishes it; an operator who is not told will read "
-            "'committed' as 'done' and leave the Queue unmaterialized")
-
-        self.compile_the_queue(prepared)
-        self.assertEqual(
-            [BATCH_SPEC["id"]],
-            [item["id"] for item in
-             self.document(check_queue.QUEUE_PATH)["required_queue"]])
-        self.assertEqual(
-            [], check_queue.validate_runtime(str(self.root))["errors"],
-            "after the compiler runs the runtime validates with no allowance "
-            "at all; if it does not, the transaction left work undone")
-
-    def test_an_unschedulable_plan_is_refused_in_the_compiler_s_own_words(self):
-        """This tool states no Queue rule of its own, and needs none.
-
-        Both ways a plan can fail to yield a Queue -- a Required object with
-        no batch, and a Coverage inventory with no Required object at all --
-        are already refused by the compiler that owns the Queue. Surfacing its
-        message verbatim keeps one statement of the rule; adding a parallel
-        check here would be exactly the accretion K00/03 asks about.
-        """
-        no_batch = self.plan()
-        no_batch["coverage_after"]["pages"][0]["next_batch"] = None
-        message = self.prepare_error(no_batch)
-        self.assertIn("the Queue compiler rejects", message)
-        self.assertIn("no explicit batch/next_batch", message)
-
-        nothing_required = self.plan()
-        nothing_required["coverage_after"]["pages"][0].update(
-            {"coverage_disposition": "deferred",
-             "next_batch": None,
-             "deferred_reason": "not in this task",
-             "reentry_condition": "operator revisits scope"})
-        nothing_required["coverage_after"]["batch_specs"] = []
-        message = self.prepare_error(nothing_required)
-        self.assertIn("the Queue compiler rejects", message)
-        self.assertIn("no Required objects to compile", message)
-
-    def test_a_receipt_records_the_exact_plan_bytes(self):
-        self.write_plan(self.plan())
-        self.assertEqual(0, self.run_tool(apply=True))
-        receipts = (self.root / apply_task_plan.RECEIPT_PATH).read_text(
-            encoding="utf-8").strip().splitlines()
-        self.assertTrue(receipts)
-        import json
-        record = json.loads(receipts[-1])
-        self.assertEqual("pass", record["result"])
-        self.assertEqual("commit", record["transaction_phase"])
-        self.assertNotIn(
-            "gate_id", record,
-            "this proves a transaction happened, not that a lifecycle "
-            "boundary may be crossed; the state it writes is consumed by "
-            "gates that already exist")
-        self.assertEqual(TASK_ID, record["task_id"])
-
-    def test_existing_page_properties_are_derived_as_legacy_not_asserted(self):
-        page_path = self.root / PAGE["path"]
-        page_path.parent.mkdir(parents=True, exist_ok=True)
-        page_path.write_text(
-            "---\ntitle: First\nlast_reviewed: 2026-07-31\n---\nBody\n",
-            encoding="utf-8")
-        self.write_plan(self.plan())
-
-        prepared = apply_task_plan.prepare(str(self.root), PLAN_RELATIVE)
-        coverage = kblib.parse_yaml_subset(
-            prepared["after_text"]["coverage"])
-        row = coverage["pages"][0]
-        self.assertEqual({}, row["property_state"])
-        self.assertEqual({
-            "last_reviewed": {
-                "status": "legacy-unverified",
-                "value": "2026-07-31",
-            },
-        }, row["legacy_property_state"])
-        adoption = prepared["property_adoption"]
-        self.assertEqual(1, adoption["count"])
-        self.assertEqual(
-            kblib.sha256_file(page_path),
-            adoption["records"][0]["before_page_sha256"])
-
-        self.assertEqual(0, self.run_tool(apply=True), self.printed)
-        receipt = json.loads((
-            self.root / apply_task_plan.RECEIPT_PATH).read_text(
-                encoding="utf-8").splitlines()[-1])
-        self.assertEqual(
-            adoption["records"], receipt["property_state_adoption_records"])
-        self.assertEqual(
-            adoption["set_sha256"],
-            receipt["property_state_adoption_set_sha256"])
-        self.assertEqual(
-            adoption["metadata_execution_contract_fingerprint"],
-            receipt["metadata_execution_contract_fingerprint"])
-        self.assertNotIn(
-            "last_reviewed",
-            kblib.parse_yaml_subset(kblib.extract_frontmatter(
-                page_path.read_text(encoding="utf-8"))),
-            "initial adoption must retire the unowned page-side copy in the "
-            "same transaction that records the legacy observation")
-
-    def test_property_adoption_page_snapshot_is_rechecked_under_lock(self):
-        page_path = self.root / PAGE["path"]
-        page_path.parent.mkdir(parents=True, exist_ok=True)
-        page_path.write_text(
-            "---\nlast_reviewed: 2026-07-31\n---\nBody\n",
-            encoding="utf-8")
-        self.write_plan(self.plan())
-        prepared = apply_task_plan.prepare(str(self.root), PLAN_RELATIVE)
-        before = {
-            relative: self.state_sha(relative)
-            for relative in (
-                check_queue.COVERAGE_PATH, check_queue.PROGRESS_PATH)
-        }
-        page_path.write_text(
-            "---\nlast_reviewed: 2026-08-01\n---\nBody\n",
-            encoding="utf-8")
-
-        with self.assertRaisesRegex(
-                apply_task_plan.Refusal,
-                "changed between planning and commit"):
-            apply_task_plan.commit(
-                prepared, self.root / apply_task_plan.RECEIPT_PATH)
-        for relative, fingerprint in before.items():
-            self.assertEqual(fingerprint, self.state_sha(relative))
-
-    def test_plan_cannot_supply_its_own_legacy_marker(self):
-        plan = self.plan()
-        plan["coverage_after"]["pages"][0]["legacy_property_state"] = {
-            "last_reviewed": {
-                "status": "legacy-unverified",
-                "value": "2026-07-31",
-            },
-        }
-        self.assertIn(
-            "may not claim legacy property observations",
-            self.prepare_error(plan))
-
-    # ---- the refusals that keep it from becoming a back door ------------
-
-    def test_a_second_different_plan_is_refused_after_materialization(self):
-        self.write_plan(self.plan())
-        self.assertEqual(0, self.run_tool(apply=True))
-
-        second = self.plan()
-        second["plan_id"] = "TP-002"
-        second["coverage_after"]["pages"][0]["path"] = "Notes/Rewritten.md"
-        message = self.prepare_error(second)
+        receipt = apply_task_plan._receipt(
+            plan, PLAN_RELATIVE, DIGEST, evidence)
+        self.assertEqual([], apply_task_plan.current_receipt_errors(receipt))
+        wrong_selector = copy.deepcopy(receipt)
+        wrong_selector["check"] = "queue_structure"
         self.assertTrue(
-            "Coverage already holds page records" in message
-            or "already materialized" in message
-            or "prepared against" in message,
-            "re-applying a different plan over a materialized runtime would "
-            "route a scope change around replan and Amendment: " + message)
+            apply_task_plan.current_receipt_errors(wrong_selector))
+        self.assertEqual(PLAN_RELATIVE, receipt["plan_path"])
+        self.assertEqual(DIGEST, receipt["plan_sha256"])
+        self.assertEqual(1, receipt["planning_record_count"])
+        self.assertEqual(1, receipt["batch_spec_count"])
 
-    def test_a_moved_runtime_is_refused_rather_than_merged(self):
-        plan = self.plan()
-        plan["before"]["coverage_sha256"] = "sha256:" + "0" * 64
-        self.assertIn("prepared against", self.prepare_error(plan))
+        queue = apply_task_plan._empty_queue(plan)
+        command = shlex.split(apply_task_plan.compile_command({
+            "state_documents": {"queue": queue},
+            "state_sha": {"queue": DIGEST},
+        }))
+        self.assertEqual(
+            ["python3", "Tools/compile_queue.py", "."], command[:3])
+        self.assertEqual(
+            ["--apply", "--actor-role", "integrator",
+             "--expected-queue-revision", "1",
+             "--expected-sha256", DIGEST],
+            command[3:])
 
-    def test_an_unknown_plan_field_fails_closed(self):
-        plan = self.plan()
-        plan["queue_after"] = {"required_queue": []}
-        message = self.prepare_error(plan)
-        self.assertIn("unsupported field", message)
-        self.assertIn("queue_after", message)
 
-    def test_a_plan_with_no_required_object_is_refused(self):
-        plan = self.plan()
-        plan["coverage_after"]["pages"] = []
-        self.assertIn("pages is empty", self.prepare_error(plan))
+class TaskPlanLoadSetContractTests(unittest.TestCase):
 
-    def test_an_unfilled_template_sentinel_is_refused(self):
-        plan = self.plan()
-        plan["approval_reference"] = apply_task_plan.SENTINEL
-        self.assertIn("sentinel", self.prepare_error(plan))
+    @staticmethod
+    def _registry_patches(*, omit=()):
+        route_ids = (TERMINAL_REQUIRED_ROUTE_IDS | {"R01", "R02", "R03"}) - \
+            set(omit)
+        cards = {
+            route_id: {"path": _fixture_card(route_id)}
+            for route_id in route_ids
+        }
+        read_sets = {
+            route_id: {"path": _fixture_read_set(route_id)}
+            for route_id in route_ids
+        }
 
-    def test_a_plan_for_another_task_is_refused(self):
-        plan = self.plan()
-        plan["task_id"] = "some-other-task"
-        self.assertIn("records task_id", self.prepare_error(plan))
+        def load_closure(_root, seeds, _manifest, _profile_routes):
+            return set(seeds), {LOADED_MODULE}, [], []
 
-    def test_a_contract_missing_a_closed_field_is_refused(self):
-        plan = self.plan()
-        del plan["contract_after"]["selected_read_sets"]
-        message = self.prepare_error(plan)
-        self.assertIn("missing field", message)
-        self.assertIn("selected_read_sets", message)
+        return (
+            mock.patch.object(
+                apply_task_plan.stamp_cards, "discover_cards",
+                return_value=(cards, read_sets)),
+            mock.patch.object(
+                apply_task_plan.queue_runtime, "read_set_load_closure",
+                side_effect=load_closure),
+        )
+
+    def test_build_closes_routes_before_freezing_the_task_contract(self):
+        discover, closure = self._registry_patches()
+        with discover, closure:
+            contract = copy.deepcopy(_current_plan()["contract_after"])
+            derived = apply_task_plan._derive_load_sets(".", contract)
+            expected_routes = sorted(
+                TERMINAL_REQUIRED_ROUTE_IDS | {"R01", "R02"})
+            self.assertEqual(expected_routes, contract["selected_route_ids"])
+            self.assertEqual(
+                sorted(_fixture_card(route) for route in expected_routes),
+                contract["selected_card_paths"])
+            self.assertEqual(
+                sorted(_fixture_read_set(route) for route in expected_routes),
+                contract["selected_read_sets"])
+            self.assertEqual([LOADED_MODULE],
+                             contract["loaded_module_paths"])
+            self.assertEqual(
+                {"routes": len(expected_routes),
+                 "read_sets": len(expected_routes), "modules": 1}, derived)
+
+    def test_missing_terminal_route_registry_fails_during_task_planning(self):
+        terminal_only = sorted(
+            TERMINAL_REQUIRED_ROUTE_IDS - {"R01", "R02"})
+        self.assertTrue(terminal_only)
+        missing = terminal_only[0]
+        discover, closure = self._registry_patches(omit={missing})
+        with discover, closure, self.assertRaisesRegex(
+                apply_task_plan.Refusal,
+                "selected_route_ids names unregistered route.*%s" % missing):
+            contract = copy.deepcopy(_current_plan()["contract_after"])
+            apply_task_plan._derive_load_sets(".", contract)
+
+    def test_maintenance_does_not_inherit_terminal_proof_routes(self):
+        discover, closure = self._registry_patches()
+        with discover, closure, mock.patch.object(
+                apply_task_plan.terminal_proof_contract, "load_contract",
+                side_effect=AssertionError(
+                    "maintenance must not load Terminal Proof contract")):
+            contract = copy.deepcopy(_current_plan()["contract_after"])
+            contract["completion_semantics"] = "maintenance"
+            derived = apply_task_plan._derive_load_sets(".", contract)
+            self.assertEqual(["R01", "R02"],
+                             contract["selected_route_ids"])
+            self.assertFalse(
+                (TERMINAL_REQUIRED_ROUTE_IDS - {"R01"}) &
+                set(contract["selected_route_ids"]))
+            self.assertEqual(
+                {"routes": 2, "read_sets": 2, "modules": 1}, derived)
+
+    def test_declared_route_errors_remain_fail_closed(self):
+        discover, closure = self._registry_patches()
+        with discover, closure:
+            unknown = copy.deepcopy(_current_plan()["contract_after"])
+            unknown["selected_route_ids"] = ["R99"]
+            with self.assertRaisesRegex(
+                    apply_task_plan.Refusal, "unregistered route.*R99"):
+                apply_task_plan._derive_load_sets(".", unknown)
+
+            foreign = copy.deepcopy(_current_plan()["contract_after"])
+            foreign["selected_card_paths"] = [
+                "Card/R03 Fixture Card.md"]
+            with self.assertRaisesRegex(
+                    apply_task_plan.Refusal,
+                    "whose route is not in selected_route_ids"):
+                apply_task_plan._derive_load_sets(".", foreign)
+
+
+def _write_plan(root, plan):
+    path = root / PLAN_RELATIVE
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(kblib.canonical_yaml(plan), encoding="utf-8")
+
+
+class TaskPlanPublicationIntegrationTests(unittest.TestCase):
+
+    def test_cli_publication_closes_terminal_routes_before_late_proof(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = (Path(temporary) / "repo").resolve()
+            install_loadable_profile(root, profile_id="sample")
+            plan = _current_plan()
+            _write_plan(root, plan)
+
+            completed = subprocess.run(
+                [
+                    sys.executable,
+                    str(TOOLS / "init_state.py"),
+                    str(root),
+                    "--plan", PLAN_RELATIVE,
+                    "--apply",
+                    "--json",
+                ],
+                text=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                check=False,
+            )
+            self.assertEqual(0, completed.returncode, completed.stderr)
+            emitted = json.loads(completed.stdout)
+            self.assertEqual(1, len(emitted))
+            self.assertEqual([], apply_task_plan.current_receipt_errors(
+                emitted[0]))
+
+            result = runtime_validation.validate_runtime(
+                root, allow_unmaterialized_queue=True)
+            self.assertEqual([], result["errors"])
+            self.assertEqual([], result["queue"]["required_queue"])
+            self.assertIsNone(result["progress"]["initial_queue_receipt"])
+            self.assertEqual(
+                emitted[0]["receipt_id"],
+                result["progress"]["initial_task_plan_receipt"])
+            self.assertEqual(
+                plan["planned_work"]["pages"], result["coverage"]["pages"])
+            contract = result["progress"]["contract"]
+            expected_routes = sorted(
+                TERMINAL_REQUIRED_ROUTE_IDS | {"R01", "R02"})
+            self.assertEqual(expected_routes, contract["selected_route_ids"])
+            self.assertFalse(
+                check_proof.TERMINAL_REQUIRED_ROUTE_IDS -
+                set(contract["selected_route_ids"]))
+            card_map, read_map = apply_task_plan.stamp_cards.discover_cards(
+                str(root))
+            self.assertTrue(
+                {card_map[route]["path"] for route in expected_routes} <=
+                set(contract["selected_card_paths"]))
+            self.assertTrue(
+                {read_map[route]["path"] for route in expected_routes} <=
+                set(contract["selected_read_sets"]))
+            self.assertEqual([LOADED_MODULE], contract["loaded_module_paths"])
+            persisted = [json.loads(line) for line in (
+                root / apply_task_plan.RECEIPT_PATH
+            ).read_text(encoding="utf-8").splitlines() if line.strip()]
+            self.assertEqual([emitted[0]], persisted)
+            with self.assertRaisesRegex(
+                    apply_task_plan.Refusal, "already exists"):
+                apply_task_plan.prepare(str(root), PLAN_RELATIVE)
+
+
+class TaskPlanCurrentnessIntegrationTests(unittest.TestCase):
+
+    def test_changed_plan_bytes_fail_the_prepublication_cas(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary).resolve()
+            original = _current_plan()
+            _write_plan(root, original)
+            prepared = {
+                "root": str(root),
+                "plan_path": PLAN_RELATIVE,
+                "plan_sha": kblib.sha256_file(root / PLAN_RELATIVE),
+                "authority": {
+                    "active_standards_view": {},
+                    "profile_view": {},
+                },
+            }
+            changed = copy.deepcopy(original)
+            changed["approval_reference"] = "different confirmation"
+            _write_plan(root, changed)
+
+            with self.assertRaisesRegex(
+                    apply_task_plan.Refusal, "confirmed Task Plan changed"):
+                apply_task_plan.require_current(
+                    prepared, "pre-publication")
+            self.assertFalse((root / queue_runtime.COVERAGE_PATH).exists())
+            self.assertFalse((root / apply_task_plan.RECEIPT_PATH).exists())
 
 
 if __name__ == "__main__":

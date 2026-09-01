@@ -1,4 +1,3 @@
-import os
 from pathlib import Path
 import sys
 import unittest
@@ -8,10 +7,9 @@ ROOT = TOOLS.parent
 sys.path.insert(0, str(TOOLS / "tests"))
 sys.path.insert(0, str(TOOLS))
 
-import card_activation
+import Tools.execution.context_delivery.card_activation as card_activation
 import host_conformance_probe
 import inline_probe_server
-import kblib
 
 
 class InlineProbePayloadTests(unittest.TestCase):
@@ -38,6 +36,19 @@ class ConformanceRegistryTests(unittest.TestCase):
         # delivers would pass adapters that cannot carry a real piece.
         self.assertEqual(card_activation.MAX_ACTIVATION_PIECE_ENVELOPE_BYTES,
                          self.registry["minimum_bytes"])
+
+    def test_only_measured_delivery_channels_claim_transport_assurance(self):
+        channels = {
+            row["channel_id"]: row for row in self.registry["channels"]
+        }
+
+        self.assertFalse(
+            channels["agent-native-file-read"]["proves_transport"])
+        for channel_id in ("inline-mcp", "remote-bundle"):
+            self.assertTrue(channels[channel_id]["proves_transport"])
+            self.assertEqual(
+                card_activation.MAX_ACTIVATION_PIECE_ENVELOPE_BYTES,
+                channels[channel_id]["minimum_bytes"])
 
     def test_every_adapter_row_is_closed_and_measured(self):
         self.assertTrue(self.registry["adapters"])

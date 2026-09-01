@@ -3,7 +3,7 @@
 `profiles/examples/*` are non-normative reference cases, but nothing else in
 the distribution re-checks them: `check_profile.py` is not a registered gate,
 the examples are not in any Card's `source_files`, and the public repository is
-intentionally uninstantiated, so there is no `standards_version` for an example
+intentionally uninstantiated, so there is no `upstream_revision_id` for an example
 to bind to.  An interface, kernel, or tool change can therefore leave a
 published example stale while every deterministic check stays green.
 
@@ -19,7 +19,6 @@ ID.  It also judges no answer -- an example passing here is structurally valid,
 not necessarily well answered.
 """
 
-import importlib.util
 import re
 import subprocess
 import sys
@@ -32,6 +31,11 @@ EXAMPLES = REPOSITORY / "profiles" / "examples"
 TOOLS = REPOSITORY / "Tools"
 PROVENANCE_HEADING = "Validation Provenance"
 EXPECTED_COLUMNS = ("Validator", "Tool version", "Command", "Expected result")
+
+if str(REPOSITORY) not in sys.path:
+    sys.path.insert(0, str(REPOSITORY))
+
+import Tools.platform.agent_interface.entrypoint_loader as entrypoint_loader  # noqa: E402
 
 
 def example_directories():
@@ -69,10 +73,15 @@ def provenance_rows(readme_text):
 
 
 def tool_version(name):
-    """Read TOOL_VERSION out of Tools/<name>.py without importing its deps."""
-    source = (TOOLS / ("%s.py" % name)).read_text(encoding="utf-8")
-    match = re.search(r"^TOOL_VERSION = \"([^\"]+)\"$", source, re.M)
-    return match.group(1) if match else None
+    """Read the resolved version from the public Tool's implementation."""
+    implementation = entrypoint_loader.load_tool_implementation(name, TOOLS)
+    version = getattr(implementation, "TOOL_VERSION", None)
+    return version if isinstance(version, str) else None
+
+
+def load_residual_module():
+    return entrypoint_loader.load_tool_implementation(
+        "check_residual_content", TOOLS)
 
 
 class ProfileExampleProvenance(unittest.TestCase):
@@ -175,6 +184,42 @@ class ProfileExampleProvenance(unittest.TestCase):
                     )
 
 
+class ResidualPathSetContract(unittest.TestCase):
+    """The configured scan roots form one disjoint case-insensitive set."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.module = load_residual_module()
+
+    def test_nested_roots_are_rejected_within_and_across_sets(self):
+        cases = (
+            (["Accepted", "Accepted/Child"], []),
+            (["Accepted"], ["Archive", "Archive/Child"]),
+            (["Accepted"], ["Accepted/Archive"]),
+            (["Accepted/Current"], ["Accepted"]),
+        )
+        for allowed, excluded in cases:
+            with self.subTest(allowed=allowed, excluded=excluded):
+                with self.assertRaisesRegex(ValueError, "overlap"):
+                    self.module.validate_path_sets(allowed, excluded)
+
+    def test_disjoint_sibling_roots_are_accepted(self):
+        self.assertIsNone(self.module.validate_path_sets(
+            ["Notes/Accepted", "Published"],
+            ["Notes/Archive", "Scratch"],
+        ))
+
+    def test_containment_is_casefolded_before_comparison(self):
+        cases = (
+            (["Knowledge/Accepted"], ["knowledge/accepted/Archive"]),
+            (["Knowledge", "knowledge/Accepted"], []),
+        )
+        for allowed, excluded in cases:
+            with self.subTest(allowed=allowed, excluded=excluded):
+                with self.assertRaisesRegex(ValueError, "overlap"):
+                    self.module.validate_path_sets(allowed, excluded)
+
+
 class TemplateScaffold(unittest.TestCase):
     """The scaffolding an adopter copies must stay complete and unfilled."""
 
@@ -211,10 +256,7 @@ class TemplateScaffold(unittest.TestCase):
 
     def test_filled_scaffold_shape_survives_the_matcher_contract(self):
         """A faithfully filled scaffold must load and be able to fire."""
-        spec = importlib.util.spec_from_file_location(
-            "_residual_scan_under_test", TOOLS / "check_residual_content.py")
-        module = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(module)
+        module = load_residual_module()
 
         scaffold = (self.TEMPLATE / "scan-configs" / "residual-scan.yaml"
                     ).read_text(encoding="utf-8")

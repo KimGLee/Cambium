@@ -1,4 +1,4 @@
-schema_version: 1
+schema_version: 2
 contract_id: cambium-audit-plan
 semantic_owner: K12/19
 
@@ -37,7 +37,7 @@ fields:
   - field: required_queue_sha256
     type: sha256
     nullable: false
-  - field: standards_version
+  - field: upstream_revision_id
     type: string
     nullable: false
   - field: active_standards_sha256
@@ -155,8 +155,7 @@ evidence_kind_values:
   - gate-receipt
   - batch-page-review-record
   - candidate-set-receipt
-  - closed-list-member-receipt
-  - page-batch-judgment-v1
+  - page-batch-judgment-v2
 
 owner_kind_values:
   - kernel

@@ -6,11 +6,15 @@ import unittest
 
 
 TOOLS = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(TOOLS / "tests"))
 sys.path.insert(0, str(TOOLS))
 
-import audit_receipt_contract
-import batch_close_audit
-import batch_close_contract
+import Tools.execution.audit.audit_receipt_contract as audit_receipt_contract
+import Tools.execution.audit.batch_close_audit as batch_close_audit
+import Tools.execution.audit.batch_close_contract as batch_close_contract
+import Tools.execution.audit.check_batch_close as check_batch_close
+import Tools.knowledge.metadata.check_page_contract as check_page_contract
+from Tools.tests.support.profile_fixture import FIXTURE_UPSTREAM_REVISION
 
 
 SHA_A = "sha256:" + "a" * 64
@@ -70,7 +74,7 @@ class PostDeltaAuditClosureTests(unittest.TestCase):
             "task_id": "task-1",
             "batch_id": "B1",
             "opening_transition_receipt": "opening-b1",
-            "standards_version": "1.0.0",
+            "upstream_revision_id": FIXTURE_UPSTREAM_REVISION,
             "active_standards_sha256": SHA_B,
             "selected_profile_manifest": "profiles/test/profile.md",
             "profile_snapshot_sha256": SHA_C,
@@ -96,7 +100,7 @@ class PostDeltaAuditClosureTests(unittest.TestCase):
                 evidence = {
                     "receipt_id": "page-contract-gate",
                     "tool": "check_page_contract",
-                    "tool_version": "1.5.0",
+                    "tool_version": check_page_contract.TOOL_VERSION,
                     "check": "page-contract-summary",
                     "target": "page-contract",
                     "result": "pass",
@@ -109,7 +113,7 @@ class PostDeltaAuditClosureTests(unittest.TestCase):
                 raw = {
                     "receipt_id": "raw-%02d" % index,
                     "tool": "check_batch_close",
-                    "tool_version": "1.13.0",
+                    "tool_version": check_batch_close.TOOL_VERSION,
                     "check": obligation["producer_check"],
                     "target": obligation["target"],
                     "result": "pass",
@@ -124,7 +128,7 @@ class PostDeltaAuditClosureTests(unittest.TestCase):
                     "batch_id": self.plan["batch_id"],
                     "opening_transition_receipt":
                         self.plan["opening_transition_receipt"],
-                    "standards_version": self.plan["standards_version"],
+                    "upstream_revision_id": self.plan["upstream_revision_id"],
                     "active_standards_sha256":
                         self.plan["active_standards_sha256"],
                     "selected_profile_manifest":
@@ -199,6 +203,67 @@ class PostDeltaAuditClosureTests(unittest.TestCase):
             batch_close_audit.build_full_audit_receipt(
                 self.stage, pair, raw)
 
+    def test_terminal_pair_replays_the_same_precursor_projection(self):
+        pair = next(
+            pair for pair in self.projection
+            if pair["member"]["evidence_kind"] == "audit-receipt")
+        member_id = pair["member"]["member_id"]
+        raw = self.raw_by_member[member_id]
+        receipt = self.final_by_member[member_id]
+
+        final_by_id = {receipt["receipt_id"]: receipt}
+        binding = next(
+            row for row in self.closure["bindings"]
+            if row["member_id"] == member_id)
+        batch_close_audit.validate_post_delta_evidence_set(
+            self.stage, (pair,), (binding,), final_by_id, SHA_F,
+            producer_evidence_by_member={member_id: raw},
+            producer_tool="check_batch_close",
+            producer_tool_version=check_batch_close.TOOL_VERSION)
+
+        with self.assertRaisesRegex(
+                batch_close_audit.PostDeltaAuditError,
+                "producer evidence members"):
+            batch_close_audit.validate_post_delta_evidence_set(
+                self.stage, (pair,), (binding,), final_by_id, SHA_F,
+                producer_evidence_by_member={},
+                producer_tool="check_batch_close",
+                producer_tool_version=check_batch_close.TOOL_VERSION)
+
+        foreign = deepcopy(raw)
+        foreign["obligation_id"] = "foreign-obligation"
+        with self.assertRaisesRegex(
+                batch_close_audit.PostDeltaAuditError,
+                "obligation_id"):
+            batch_close_audit.validate_post_delta_evidence_set(
+                self.stage, (pair,), (binding,), final_by_id, SHA_F,
+                producer_evidence_by_member={member_id: foreign},
+                producer_tool="check_batch_close",
+                producer_tool_version=check_batch_close.TOOL_VERSION)
+
+        mismatched = deepcopy(raw)
+        mismatched["contract_fingerprint"] = SHA_A
+        with self.assertRaisesRegex(
+                batch_close_audit.PostDeltaAuditError,
+                "contract_fingerprint"):
+            batch_close_audit.validate_post_delta_evidence_set(
+                self.stage, (pair,), (binding,), final_by_id, SHA_F,
+                producer_evidence_by_member={member_id: mismatched},
+                producer_tool="check_batch_close",
+                producer_tool_version=check_batch_close.TOOL_VERSION)
+
+        rebound = deepcopy(receipt)
+        rebound["evidence_ref"] = "missing-raw-receipt"
+        with self.assertRaisesRegex(
+                batch_close_audit.PostDeltaAuditError,
+                "evidence_ref"):
+            batch_close_audit.validate_post_delta_evidence_set(
+                self.stage, (pair,), (binding,),
+                {rebound["receipt_id"]: rebound}, SHA_F,
+                producer_evidence_by_member={member_id: raw},
+                producer_tool="check_batch_close",
+                producer_tool_version=check_batch_close.TOOL_VERSION)
+
     def test_item8_consumes_dimensionless_gate_evidence(self):
         item8 = self.closure["bindings"][-1]
         gate = self.final_by_member["manifest_page_contract"]
@@ -207,7 +272,11 @@ class PostDeltaAuditClosureTests(unittest.TestCase):
         self.assertEqual("gate-receipt", item8["evidence_kind"])
         self.assertIsNone(item8["dimension"])
         self.assertNotIn("dimension", gate)
-        self.assertEqual(7, len(self.closure["audit_receipt_ids"]))
+        self.assertEqual(
+            7,
+            sum(binding["evidence_kind"] == "audit-receipt"
+                for binding in self.closure["bindings"]),
+        )
 
         poisoned = dict(gate, dimension="structure_and_links")
         by_id = dict(self.by_id, **{poisoned["receipt_id"]: poisoned})

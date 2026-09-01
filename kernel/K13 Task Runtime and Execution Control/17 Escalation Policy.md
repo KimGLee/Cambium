@@ -12,7 +12,7 @@ It owns the class, one kernel-owned trigger, and the extension point. It does no
 
 ## The Kernel Trigger
 
-Modifying the Standards or the selected profile requires explicit user authorization before the change is made. This trigger is constitutional: a profile may neither relax nor remove it. [[kernel/K13 Task Runtime and Execution Control/04 Guidance Classification and Impact Analysis|K13/04]] routes a Governance candidate to it, [[kernel/K13 Task Runtime and Execution Control/06 Amendment Log and Controlled Replanning|K13/06]] binds it to `standards_version`, and an applicable Card may project it as an action reminder. Those are applications of one rule, not separate owners.
+Modifying the Standards or the selected profile requires explicit user authorization before the change is made. This trigger is constitutional: a profile may neither relax nor remove it. [[kernel/K13 Task Runtime and Execution Control/04 Guidance Classification and Impact Analysis|K13/04]] routes a Governance candidate to it, [[kernel/K13 Task Runtime and Execution Control/06 Amendment Log and Controlled Replanning|K13/06]] binds it to `upstream_revision_id`, and an applicable Card may project it as an action reminder. Those are applications of one rule, not separate owners.
 
 ## Profile-declared Triggers
 

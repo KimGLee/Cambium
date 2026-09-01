@@ -1,5 +1,12 @@
-from pathlib import Path
-import copy
+"""Layered ownership tests for the current Amendment registration lifecycle.
+
+Pure registration predicates run in memory.  Current writer, Progress, and
+Receipt seams consume one cached runtime checkpoint with a private copy per
+method.  Only the JSON transport test executes the public CLI wrapper.
+"""
+
+import contextlib
+import io
 import json
 import shutil
 import subprocess
@@ -7,32 +14,153 @@ import sys
 import tempfile
 import time
 import unittest
+from pathlib import Path
 from types import SimpleNamespace
 from unittest import mock
 
+from Tools.execution.task_runtime import queue_runtime
+import Tools.execution.task_runtime.register_amendment as register_amendment
+import Tools.execution.task_runtime.runtime_validation as runtime_validation
+import Tools.platform.common.kblib as kblib
+from Tools.tests.support.profile_fixture import install_loadable_profile
+
 
 TOOLS = Path(__file__).resolve().parents[1]
-FIXTURE = TOOLS / "tests" / "fixtures" / "runtime_state" / "valid"
-sys.path.insert(0, str(TOOLS / "tests"))
-sys.path.insert(0, str(TOOLS))
-
-import check_queue
-import kblib
-import register_amendment
-from profile_fixture import install_loadable_profile
+FIXTURE = TOOLS / "tests/fixtures/runtime_state/valid"
+REGISTER_CLI = TOOLS / "register_amendment.py"
+_CHECKPOINTS = {}
 
 
-class RegisterAmendmentTests(unittest.TestCase):
+def _capture(callable_, *args, **kwargs):
+    stdout = io.StringIO()
+    stderr = io.StringIO()
+    with contextlib.redirect_stdout(stdout), contextlib.redirect_stderr(stderr):
+        returncode = callable_(*args, **kwargs)
+    return SimpleNamespace(
+        returncode=returncode,
+        stdout=stdout.getvalue(),
+        stderr=stderr.getvalue(),
+    )
+
+
+def amendment_checkpoint(name="current"):
+    """Build the module's one current runtime/Profile checkpoint."""
+    if name in _CHECKPOINTS:
+        return _CHECKPOINTS[name][1]
+    if name != "current":
+        raise KeyError(name)
+    temporary = tempfile.TemporaryDirectory()
+    root = Path(temporary.name) / "repo"
+    shutil.copytree(FIXTURE, root)
+    install_loadable_profile(root)
+    (root / ".cambium/deltas/amendments").mkdir(parents=True)
+    (root / ".cambium/deltas/replans").mkdir(parents=True)
+    _CHECKPOINTS[name] = (temporary, root)
+    return root
+
+
+def _valid_invocation(**overrides):
+    values = {
+        "root": "/unused",
+        "withdraw": None,
+        "reason": None,
+        "operation": "scope-replan",
+        "plan": ".cambium/deltas/amendments/A-SCOPE.yaml",
+        "amendment_id": None,
+        "coverage_proposal": None,
+        "date": time.strftime("%Y-%m-%d", time.gmtime()),
+        "summary": "Approved fixture Amendment",
+        "approval_reference": "user:fixture-approval",
+        "decision_mode": "auto",
+        "expected_coverage_sha256": "sha256:" + "1" * 64,
+        "expected_progress_sha256": "sha256:" + "2" * 64,
+        "expected_queue_sha256": "sha256:" + "3" * 64,
+        "actor_role": "worker",
+        "receipts": register_amendment.RECEIPT_PATH,
+        "apply": False,
+    }
+    values.update(overrides)
+    return SimpleNamespace(**values)
+
+
+class AmendmentRegistrationContractTests(unittest.TestCase):
+    """Current closed predicates, with no runtime or subprocess."""
+
+    def test_receipt_predicate_accepts_only_current_registration_checks(self):
+        for check in register_amendment.RECEIPT_CHECKS:
+            with self.subTest(check=check):
+                receipt = kblib.make_receipt(
+                    register_amendment.TOOL,
+                    register_amendment.TOOL_VERSION,
+                    check,
+                    "A-001",
+                    "pass",
+                    "fixture",
+                    1,
+                    receipt_type_id=register_amendment.RECEIPT_TYPE_ID,
+                )
+                self.assertEqual(
+                    [], register_amendment.current_receipt_errors(receipt))
+        receipt["check"] = "another-registration-check"
+        self.assertTrue(register_amendment.current_receipt_errors(receipt))
+
+    def test_invocation_cross_fields_refuse_before_runtime_access(self):
+        cases = (
+            (_valid_invocation(summary=None), "requires --summary"),
+            (_valid_invocation(date="31-08-2026"), "YYYY-MM-DD"),
+            (_valid_invocation(
+                decision_mode="explicit-user", approval_reference=None),
+             "requires a non-empty --approval-reference"),
+            (_valid_invocation(
+                withdraw="A-001", reason="reason", operation="scope-replan"),
+             "--withdraw takes no registration argument"),
+            (_valid_invocation(
+                withdraw="A-001", reason=" ", operation=None, plan=None,
+                date=None, summary=None, approval_reference=None),
+             "requires a nonempty --reason"),
+            (_valid_invocation(expected_queue_sha256="not-a-sha"),
+             "expected queue SHA"),
+        )
+        for invocation, message in cases:
+            with self.subTest(message=message), \
+                    mock.patch.object(
+                        register_amendment, "_prepare",
+                        side_effect=AssertionError("runtime must not load")), \
+                    mock.patch.object(
+                        register_amendment, "_prepare_withdrawal",
+                        side_effect=AssertionError("runtime must not load")):
+                result = _capture(register_amendment._run, invocation, None)
+                self.assertEqual(1, result.returncode)
+                self.assertIn(message, result.stdout)
+
+
+class AmendmentRuntimeMixin:
+    """One process checkpoint; one private current runtime per method."""
+
+    @classmethod
+    def setUpClass(cls):
+        super().setUpClass()
+        cls.checkpoint = amendment_checkpoint("current")
+
     def setUp(self):
-        self.tmp = tempfile.TemporaryDirectory()
-        self.root = Path(self.tmp.name) / "repo"
-        shutil.copytree(FIXTURE, self.root)
-        install_loadable_profile(self.root)
-        (self.root / ".cambium/deltas/amendments").mkdir(parents=True)
-        (self.root / ".cambium/deltas/replans").mkdir(parents=True)
+        super().setUp()
+        self._temporary = tempfile.TemporaryDirectory()
+        self.addCleanup(self._temporary.cleanup)
+        self.root = Path(self._temporary.name) / "repo"
+        shutil.copytree(self.checkpoint, self.root)
+        self._invocation_timestamp = time.time()
 
-    def tearDown(self):
-        self.tmp.cleanup()
+    def invoke(self, args):
+        """Run one logical CLI invocation without paying for a subprocess.
+
+        The public CLI initializes a distinct receipt run token per process.
+        In-process Integration calls instead advance the receipt second, so
+        multiple logical invocations cannot reuse one process-local identity.
+        """
+        self._invocation_timestamp += 2
+        with mock.patch.object(
+                kblib.time, "time", return_value=self._invocation_timestamp):
+            return _capture(register_amendment.main, args)
 
     def load(self, relative):
         return kblib.load_yaml_file(self.root / relative)
@@ -46,20 +174,21 @@ class RegisterAmendmentTests(unittest.TestCase):
     def shas(self):
         return {
             "coverage": kblib.sha256_file(
-                self.root / check_queue.COVERAGE_PATH),
+                self.root / queue_runtime.COVERAGE_PATH),
             "progress": kblib.sha256_file(
-                self.root / check_queue.PROGRESS_PATH),
+                self.root / queue_runtime.PROGRESS_PATH),
             "queue": kblib.sha256_file(
-                self.root / check_queue.QUEUE_PATH),
+                self.root / queue_runtime.QUEUE_PATH),
         }
 
-    def command(self, operation, *operation_args, apply=False, shas=None,
-                actor_role="worker", approval_reference="user:fixture-approval",
-                decision_mode="auto"):
+    def registration_args(
+            self, operation, *operation_args, apply=False, shas=None,
+            actor_role="worker", approval_reference="user:fixture-approval",
+            decision_mode="auto", json_output=False):
         shas = shas or self.shas()
         args = [
-            sys.executable, str(TOOLS / "register_amendment.py"),
-            str(self.root), "--operation", operation,
+            str(self.root),
+            "--operation", operation,
             "--date", time.strftime("%Y-%m-%d", time.gmtime()),
             "--summary", "Approved fixture Amendment",
             "--expected-coverage-sha256", shas["coverage"],
@@ -74,516 +203,219 @@ class RegisterAmendmentTests(unittest.TestCase):
             args.extend(["--decision-mode", decision_mode])
         if apply:
             args.append("--apply")
-        return subprocess.run(
-            args, text=True, stdout=subprocess.PIPE,
-            stderr=subprocess.STDOUT, check=False,
-        )
+        if json_output:
+            args.append("--json")
+        return args
 
-    def scope_proposal(self):
-        coverage = self.load(check_queue.COVERAGE_PATH)
-        coverage["scope_version"] = "s2"
-        coverage["updated_at"] = "2026-08-05T00:00:00Z"
-        coverage["batch_specs"].append({
-            "id": "B3", "family": "Core", "order_hint": 3,
-            "source_route": "R03", "execution_mode": "concurrent-worker",
-            "depends_on": ["B2"], "confirmation_required": False,
-            "work_spec_path": None, "work_spec_sha256": None,
-        })
-        coverage["pages"].append({
-            "path": "Topics/C.md", "coverage_disposition": "required",
-            "canonical_owner": "Topics/C.md", "type": "concept",
-            "priority": "P1", "tier": "M", "authoring_status": "drafted",
-            "prerequisites": ["Topics/B.md"], "batch": "B3",
-            "next_batch": "B3", "deferred_reason": None,
-            "reentry_condition": None, "gate_receipts": [],
-            "property_state": {},
-        })
-        return coverage
+    def register(self, operation, *operation_args, **kwargs):
+        return self.invoke(
+            self.registration_args(operation, *operation_args, **kwargs))
 
-    def cancel_proposal(self):
-        coverage = self.load(check_queue.COVERAGE_PATH)
-        coverage["scope_version"] = "s2"
-        coverage["updated_at"] = "2026-08-05T00:00:00Z"
-        coverage["batch_specs"] = [
-            entry for entry in coverage["batch_specs"] if entry["id"] != "B2"
-        ]
-        page = next(entry for entry in coverage["pages"]
-                    if entry["path"] == "Topics/B.md")
-        page["coverage_disposition"] = "deferred"
-        page["next_batch"] = None
-        page["deferred_reason"] = "removed by approved Amendment"
-        page["reentry_condition"] = "a successor Amendment restores scope"
-        return coverage
-
-    def cross_plan(self, operation):
-        amendment_id = "A-SCOPE" if operation == "scope-replan" else "A-CANCEL"
-        proposal = (self.scope_proposal() if operation == "scope-replan"
-                    else self.cancel_proposal())
-        proposal_relative = ".cambium/deltas/amendments/%s.coverage.yaml" % \
-            amendment_id
-        proposal_path = self.write_yaml(proposal_relative, proposal)
-        queue = self.load(check_queue.QUEUE_PATH)
-        plan = {
-            "schema_version": 1,
-            "amendment_id": amendment_id,
-            "operation": operation,
-            "affected_pages": (["Topics/C.md"] if operation == "scope-replan"
-                               else ["Topics/B.md"]),
-            "affected_batches": (["B3"] if operation == "scope-replan"
-                                 else ["B2"]),
-            "scope_version_before": queue["scope_version"],
-            "scope_version_after": proposal["scope_version"],
-            "queue_revision_before": queue["queue_revision"],
-            "queue_revision_after": queue["queue_revision"] + 1,
-            "state_revision_before": queue["state_revision"],
-            "state_revision_after": (queue["state_revision"] + 1
-                                     if operation == "cancel-batch"
-                                     else queue["state_revision"]),
-            "coverage_proposal_path": proposal_relative,
-            "coverage_proposal_sha256": kblib.sha256_file(proposal_path),
-            "cancel_batch_id": "B2" if operation == "cancel-batch" else None,
-        }
-        plan_relative = ".cambium/deltas/amendments/%s.yaml" % amendment_id
-        plan_path = self.write_yaml(plan_relative, plan)
-        return plan_relative, plan_path, proposal_relative
-
-    def queue_proposal(self):
-        coverage = self.load(check_queue.COVERAGE_PATH)
-        spec = next(entry for entry in coverage["batch_specs"]
-                    if entry["id"] == "B2")
-        spec["execution_mode"] = "serial-integrator"
-        relative = ".cambium/deltas/replans/A-QUEUE.coverage.yaml"
-        self.write_yaml(relative, coverage)
-        return relative
-
-    def receipt(self):
-        path = self.root / register_amendment.RECEIPT_PATH
-        records = [json.loads(line) for line in path.read_text(
-            encoding="utf-8").splitlines() if line.strip()]
-        self.assertEqual(1, len(records))
-        return records[0]
-
-    def install_delegated_authority(self, *change_classes):
-        """Re-anchor the copied origin fixture with a delegated contract.
-
-        This is fixture construction, not a production mutation: the initial
-        Queue receipt is the copied runtime's origin anchor, so both sides are
-        rebuilt before the first validation in this test.
-        """
-        progress = self.load(check_queue.PROGRESS_PATH)
-        progress["contract"]["amendment_authority"] = {
-            "schema_version": 1,
-            "authority_id": "AUTH-FIXTURE",
-            "mode": "delegated-integrator",
-            "allowed_change_classes": sorted(change_classes),
-        }
-        self.write_yaml(check_queue.PROGRESS_PATH, progress)
-        receipt_path = self.root / \
-            ".cambium/receipts/task-transitions.jsonl"
-        receipts = [json.loads(line) for line in receipt_path.read_text(
-            encoding="utf-8").splitlines() if line.strip()]
-        origin = next(record for record in receipts
-                      if record["receipt_id"] ==
-                      progress["initial_queue_receipt"])
-        origin["contract_sha256"] = check_queue.contract_sha256(progress)
-        origin["after_progress_sha256"] = kblib.sha256_file(
-            self.root / check_queue.PROGRESS_PATH)
-        receipt_path.write_text(
-            "".join(json.dumps(record) + "\n" for record in receipts),
-            encoding="utf-8")
-
-    def prepare_scope_registration(self):
-        plan_relative, plan_path, _ = self.cross_plan("scope-replan")
-        expected = self.shas()
-        args = SimpleNamespace(
-            operation="scope-replan", plan=plan_relative,
-            amendment_id=None, coverage_proposal=None,
-            date=time.strftime("%Y-%m-%d", time.gmtime()),
-            summary="Approved fixture Amendment",
-            approval_reference="user:fixture-approval",
-        )
-        prepared = register_amendment._prepare(
-            str(self.root), args, expected)
-        return plan_relative, plan_path, expected, prepared
-
-    def assert_common_registration(self, amendment_id, operation, before):
-        progress = self.load(check_queue.PROGRESS_PATH)
-        self.assertEqual(1, len(progress["amendments"]))
-        record = progress["amendments"][0]
-        self.assertEqual(amendment_id, record["id"])
-        self.assertEqual(operation, record["operation"])
-        self.assertEqual("approved", record["status"])
-        self.assertIs(record["writeback_done"], False)
-        self.assertEqual("user:fixture-approval", record["approval_reference"])
-        self.assertEqual("explicit-user", record["decision_mode"])
-        self.assertIsNone(record["authority_id"])
-        self.assertIsNone(record["authority_sha256"])
-        self.assertTrue(record["change_classes"])
-        self.assertRegex(record["amendment_impact_sha256"],
-                         r"^sha256:[0-9a-f]{64}$")
-        receipt = self.receipt()
-        self.assertEqual(record["registration_receipt"], receipt["receipt_id"])
-        self.assertEqual("register_amendment", receipt["tool"])
-        self.assertEqual(register_amendment.TOOL_VERSION, receipt["tool_version"])
-        for field in ("decision_mode", "authority_id", "authority_sha256",
-                      "change_classes", "amendment_impact_sha256"):
-            self.assertEqual(record[field], receipt[field])
-        self.assertEqual("amendment_registration", receipt["check"])
-        self.assertEqual(before["coverage"],
-                         receipt["before_coverage_sha256"])
-        self.assertEqual(before["coverage"],
-                         receipt["after_coverage_sha256"])
-        self.assertEqual(before["queue"],
-                         receipt["before_required_queue_sha256"])
-        self.assertEqual(before["queue"],
-                         receipt["after_required_queue_sha256"])
-        self.assertNotEqual(receipt["before_progress_sha256"],
-                            receipt["after_progress_sha256"])
-        self.assertEqual(self.shas()["progress"],
-                         receipt["after_progress_sha256"])
-        self.assertEqual([], check_queue.validate_runtime(self.root)["errors"])
-        return record, receipt
-
-    def test_scope_replan_dry_run_is_non_mutating(self):
-        plan_relative, _, _ = self.cross_plan("scope-replan")
-        before = self.shas()
-        completed = self.command(
-            "scope-replan", "--plan", plan_relative,
-        )
-        self.assertEqual(0, completed.returncode, completed.stdout)
-        self.assertIn("dry run", completed.stdout)
-        self.assertEqual(before, self.shas())
-        self.assertFalse((self.root / register_amendment.RECEIPT_PATH).exists())
-
-    def test_scope_replan_registers_exact_plan_and_receipt(self):
-        plan_relative, plan_path, proposal_relative = self.cross_plan(
-            "scope-replan")
-        before = self.shas()
-        completed = self.command(
-            "scope-replan", "--plan", plan_relative,
-            apply=True, actor_role="integrator",
-        )
-        self.assertEqual(0, completed.returncode, completed.stdout)
-        record, receipt = self.assert_common_registration(
-            "A-SCOPE", "scope-replan", before)
-        self.assertEqual(plan_relative, record["plan_path"])
-        self.assertEqual(kblib.sha256_file(plan_path), record["plan_sha256"])
-        self.assertEqual(proposal_relative,
-                         record["coverage_proposal_path"])
-        self.assertEqual(record["plan_sha256"], receipt["plan_sha256"])
-        self.assertEqual("s1", receipt["scope_version_before"])
-        self.assertEqual("s2", receipt["scope_version_after"])
-
-    def test_contract_delegation_registers_without_a_fresh_user_prompt(self):
-        self.install_delegated_authority(
-            "batch-add", "required-object-add")
-        self.assertEqual([], check_queue.validate_runtime(
-            self.root)["errors"])
-        plan_relative, _, _ = self.cross_plan("scope-replan")
-
-        completed = self.command(
-            "scope-replan", "--plan", plan_relative,
-            approval_reference=None, apply=True,
-            actor_role="integrator")
-
-        self.assertEqual(0, completed.returncode, completed.stdout)
-        progress = self.load(check_queue.PROGRESS_PATH)
-        record = progress["amendments"][-1]
-        self.assertEqual("contract-delegated", record["decision_mode"])
-        self.assertEqual("AUTH-FIXTURE", record["authority_id"])
-        self.assertEqual("contract:AUTH-FIXTURE",
-                         record["approval_reference"])
-        self.assertEqual(
-            ["batch-add", "required-object-add"],
-            record["change_classes"])
-        self.assertEqual([], check_queue.validate_runtime(
-            self.root)["errors"])
-
-    def test_registration_transaction_runs_profile_load_producer_once(self):
-        producer = check_queue.check_profile.evaluate_profile_load
-        receipt_path = self.root / register_amendment.RECEIPT_PATH
-        with mock.patch.object(
-                check_queue.check_profile, "evaluate_profile_load",
-                wraps=producer) as evaluate:
-            _, _, _, prepared = self.prepare_scope_registration()
-            register_amendment._apply(
-                str(self.root), prepared, str(receipt_path))
-
-        self.assertEqual(1, evaluate.call_count)
-        self.assertEqual([], check_queue.validate_runtime(self.root)["errors"])
-
-    def test_registration_rejects_stale_admitted_profile_before_publication(self):
-        _, _, before, prepared = self.prepare_scope_registration()
-        progress_before = (self.root / check_queue.PROGRESS_PATH).read_bytes()
-        profile_slot = self.root / "profiles/test-profile/slots.md"
-        profile_slot.write_text(
-            profile_slot.read_text(encoding="utf-8") +
-            "\n<!-- changed after transaction admission -->\n",
-            encoding="utf-8",
-        )
-        receipt_path = self.root / register_amendment.RECEIPT_PATH
-
-        with self.assertRaisesRegex(
-                ValueError, "changed after profile-load authorization"):
-            register_amendment._apply(
-                str(self.root), prepared, str(receipt_path))
-
-        self.assertEqual(progress_before,
-                         (self.root / check_queue.PROGRESS_PATH).read_bytes())
-        self.assertEqual(before, self.shas())
-        self.assertFalse(receipt_path.exists())
-        self.assertFalse((self.root / ".cambium/tmp/state-writer.lock").exists())
-
-    def test_cancel_batch_registers_exact_plan(self):
-        plan_relative, _, _ = self.cross_plan("cancel-batch")
-        before = self.shas()
-        completed = self.command(
-            "cancel-batch", "--plan", plan_relative,
-            apply=True, actor_role="integrator",
-        )
-        self.assertEqual(0, completed.returncode, completed.stdout)
-        record, receipt = self.assert_common_registration(
-            "A-CANCEL", "cancel-batch", before)
-        self.assertEqual("B2", record["cancel_batch_id"])
-        self.assertEqual(["B2"], record["affected_batches"])
-        self.assertEqual(["Topics/B.md"], record["affected_pages"])
-        self.assertEqual(0, receipt["state_revision_before"])
-        self.assertEqual(1, receipt["state_revision_after"])
-
-    def test_queue_replan_derives_exact_deterministic_bindings(self):
-        proposal = self.queue_proposal()
-        before = self.shas()
-        first = self.command(
-            "queue-replan", "--amendment-id", "A-QUEUE",
-            "--coverage-proposal", proposal,
-        )
-        second = self.command(
-            "queue-replan", "--amendment-id", "A-QUEUE",
-            "--coverage-proposal", proposal,
-        )
-        self.assertEqual(0, first.returncode, first.stdout)
-        self.assertEqual(0, second.returncode, second.stdout)
-        self.assertEqual(before, self.shas())
-
-        completed = self.command(
-            "queue-replan", "--amendment-id", "A-QUEUE",
-            "--coverage-proposal", proposal,
-            apply=True, actor_role="integrator",
-        )
-        self.assertEqual(0, completed.returncode, completed.stdout)
-        record, receipt = self.assert_common_registration(
-            "A-QUEUE", "queue-replan", before)
-        self.assertEqual(["B2"], record["affected_batches"])
-        self.assertEqual([], record["affected_pages"])
-        self.assertRegex(record["replan_diff_sha256"], r"^sha256:[0-9a-f]{64}$")
-        self.assertEqual(record["replan_diff_sha256"],
-                         receipt["replan_diff_sha256"])
-        self.assertEqual(0, receipt["state_revision_before"])
-        self.assertEqual(0, receipt["state_revision_after"])
-
-    def test_apply_requires_integrator(self):
-        plan_relative, _, _ = self.cross_plan("scope-replan")
-        before = self.shas()
-        completed = self.command(
-            "scope-replan", "--plan", plan_relative, apply=True,
-        )
-        self.assertEqual(1, completed.returncode, completed.stdout)
-        self.assertIn("only actor-role integrator", completed.stdout)
-        self.assertEqual(before, self.shas())
-
-    def test_user_only_contract_without_fresh_approval_is_refused(self):
-        plan_relative, _, _ = self.cross_plan("scope-replan")
-
-        completed = self.command(
-            "scope-replan", "--plan", plan_relative,
-            approval_reference=None)
-
-        self.assertEqual(1, completed.returncode, completed.stdout)
-        self.assertIn("fresh user decision required", completed.stdout)
-
-    def test_stale_any_state_sha_fails_closed(self):
-        plan_relative, _, _ = self.cross_plan("scope-replan")
-        for name in ("coverage", "progress", "queue"):
-            with self.subTest(name=name):
-                stale = self.shas()
-                stale[name] = "sha256:" + "0" * 64
-                completed = self.command(
-                    "scope-replan", "--plan", plan_relative,
-                    apply=True, actor_role="integrator", shas=stale,
-                )
-                self.assertEqual(1, completed.returncode, completed.stdout)
-                self.assertIn("expected %s SHA" % name, completed.stdout)
-
-    def test_rejects_second_pending_amendment(self):
-        first_plan, _, _ = self.cross_plan("scope-replan")
-        completed = self.command(
-            "scope-replan", "--plan", first_plan,
-            apply=True, actor_role="integrator",
-        )
-        self.assertEqual(0, completed.returncode, completed.stdout)
-        # A queue proposal is independently valid, but registration is
-        # serialized until the prior authorization is consumed.
-        proposal = self.queue_proposal()
-        rejected = self.command(
-            "queue-replan", "--amendment-id", "A-QUEUE",
-            "--coverage-proposal", proposal,
-        )
-        self.assertEqual(1, rejected.returncode, rejected.stdout)
-        self.assertIn("already has pending Amendment A-SCOPE", rejected.stdout)
-
-    def withdraw(self, amendment_id, *extra, apply=False, shas=None,
-                 actor_role="integrator",
-                 reason="planned final state can no longer validate"):
+    def withdrawal_args(
+            self, amendment_id, *, reason="planned final state invalid",
+            apply=False, shas=None, actor_role="integrator"):
         shas = shas or self.shas()
         args = [
-            sys.executable, str(TOOLS / "register_amendment.py"),
             str(self.root), "--withdraw", amendment_id,
             "--reason", reason,
             "--expected-coverage-sha256", shas["coverage"],
             "--expected-progress-sha256", shas["progress"],
             "--expected-queue-sha256", shas["queue"],
             "--actor-role", actor_role,
-            *extra,
         ]
         if apply:
             args.append("--apply")
-        return subprocess.run(
-            args, text=True, stdout=subprocess.PIPE,
-            stderr=subprocess.STDOUT, check=False,
-        )
+        return args
 
-    def test_withdrawal_unwedges_the_one_pending_rule(self):
-        """K13/06: withdraw a pending registration, then register anew."""
-        first_plan, _, _ = self.cross_plan("scope-replan")
-        completed = self.command(
-            "scope-replan", "--plan", first_plan,
-            apply=True, actor_role="integrator",
-        )
-        self.assertEqual(0, completed.returncode, completed.stdout)
-        withdrawn = self.withdraw("A-SCOPE", apply=True)
-        self.assertEqual(0, withdrawn.returncode, withdrawn.stdout)
-        self.assertIn("withdrawn", withdrawn.stdout)
-        progress = self.load(check_queue.PROGRESS_PATH)
-        row = next(r for r in progress["amendments"]
-                   if r.get("id") == "A-SCOPE")
-        self.assertEqual("withdrawn", row["status"])
-        self.assertFalse(row["writeback_done"])
-        self.assertTrue(row["withdrawal_receipt"])
-        self.assertEqual("planned final state can no longer validate",
-                         row["withdrawal_reason"])
-        self.assertEqual([], check_queue.validate_runtime(
-            str(self.root))["errors"])
-        # A withdrawn row is final: it raises no resume/terminal
-        # reconcile obligation.
-        _, pending = check_queue.pending_control_ids(
-            self.load(check_queue.PROGRESS_PATH))
-        self.assertEqual([], pending)
-        # The one-pending rule is unwedged; the burned ID stays refused.
-        proposal = self.queue_proposal()
-        second = self.command(
-            "queue-replan", "--amendment-id", "A-QUEUE",
-            "--coverage-proposal", proposal,
-            apply=True, actor_role="integrator",
-        )
-        self.assertEqual(0, second.returncode, second.stdout)
-        reused = self.command(
-            "queue-replan", "--amendment-id", "A-SCOPE",
-            "--coverage-proposal", self.queue_proposal(),
-        )
-        self.assertEqual(1, reused.returncode, reused.stdout)
-        self.assertIn("already contains Amendment A-SCOPE", reused.stdout)
+    def withdraw(self, amendment_id, **kwargs):
+        return self.invoke(self.withdrawal_args(amendment_id, **kwargs))
 
-    def test_withdrawal_is_dry_run_first_and_integrator_only(self):
-        first_plan, _, _ = self.cross_plan("scope-replan")
-        self.command("scope-replan", "--plan", first_plan,
-                     apply=True, actor_role="integrator")
+    def scope_proposal(self):
+        coverage = self.load(queue_runtime.COVERAGE_PATH)
+        coverage["scope_version"] = "s2"
+        coverage["updated_at"] = "2026-08-05T00:00:00Z"
+        coverage["batch_specs"].append({
+            "id": "B3",
+            "family": "Core",
+            "order_hint": 3,
+            "source_route": "R03",
+            "execution_mode": "concurrent-worker",
+            "depends_on": ["B2"],
+            "confirmation_required": False,
+            "work_spec_path": None,
+            "work_spec_sha256": None,
+        })
+        coverage["pages"].append({
+            "path": "Topics/C.md",
+            "coverage_disposition": "required",
+            "canonical_owner": "Topics/C.md",
+            "type": "concept",
+            "priority": "P1",
+            "tier": "M",
+            "prerequisites": ["Topics/B.md"],
+            "batch": "B3",
+            "next_batch": "B3",
+            "deferred_reason": None,
+            "reentry_condition": None,
+        })
+        return coverage
+
+    def scope_plan(self):
+        amendment_id = "A-SCOPE"
+        operation = "scope-replan"
+        proposal = self.scope_proposal()
+        proposal_relative = \
+            ".cambium/deltas/amendments/%s.coverage.yaml" % amendment_id
+        proposal_path = self.write_yaml(proposal_relative, proposal)
+        queue = self.load(queue_runtime.QUEUE_PATH)
+        plan = {
+            "schema_version": 1,
+            "amendment_id": amendment_id,
+            "operation": operation,
+            "affected_pages": ["Topics/C.md"],
+            "affected_batches": ["B3"],
+            "scope_version_before": queue["scope_version"],
+            "scope_version_after": proposal["scope_version"],
+            "queue_revision_before": queue["queue_revision"],
+            "queue_revision_after": queue["queue_revision"] + 1,
+            "state_revision_before": queue["state_revision"],
+            "state_revision_after": queue["state_revision"],
+            "coverage_proposal_path": proposal_relative,
+            "coverage_proposal_sha256": kblib.sha256_file(proposal_path),
+            "cancel_batch_id": None,
+        }
+        plan_relative = ".cambium/deltas/amendments/%s.yaml" % amendment_id
+        plan_path = self.write_yaml(plan_relative, plan)
+        return plan_relative, plan_path, proposal_relative
+
+    def records(self):
+        path = self.root / register_amendment.RECEIPT_PATH
+        return [
+            json.loads(line)
+            for line in path.read_text(encoding="utf-8").splitlines()
+            if line.strip()
+        ]
+
+    def prepare_scope_registration(self):
+        plan_relative, plan_path, _ = self.scope_plan()
+        expected = self.shas()
+        args = SimpleNamespace(
+            operation="scope-replan",
+            plan=plan_relative,
+            amendment_id=None,
+            coverage_proposal=None,
+            date=time.strftime("%Y-%m-%d", time.gmtime()),
+            summary="Approved fixture Amendment",
+            approval_reference="user:fixture-approval",
+            decision_mode="auto",
+        )
+        prepared = register_amendment._prepare(
+            str(self.root), args, expected)
+        return plan_path, expected, prepared
+
+    def assert_registration(self, amendment_id, operation, before):
+        progress = self.load(queue_runtime.PROGRESS_PATH)
+        row = next(entry for entry in progress["amendments"]
+                   if entry["id"] == amendment_id)
+        receipt = next(record for record in self.records()
+                       if record["receipt_id"] == row["registration_receipt"])
+        self.assertEqual(operation, row["operation"])
+        self.assertEqual("approved", row["status"])
+        self.assertIs(row["writeback_done"], False)
+        self.assertEqual("amendment_registration", receipt["check"])
+        self.assertEqual(row["approval_reference"],
+                         receipt["approval_reference"])
+        for field in (
+                "decision_mode", "authority_id", "authority_sha256",
+                "change_classes", "amendment_impact_sha256"):
+            self.assertEqual(row[field], receipt[field])
+        self.assertEqual(before["coverage"], receipt["before_coverage_sha256"])
+        self.assertEqual(before["coverage"], receipt["after_coverage_sha256"])
+        self.assertEqual(before["queue"],
+                         receipt["before_required_queue_sha256"])
+        self.assertEqual(before["queue"],
+                         receipt["after_required_queue_sha256"])
+        self.assertEqual(self.shas()["progress"],
+                         receipt["after_progress_sha256"])
+        self.assertEqual([], runtime_validation.validate_runtime(
+            self.root)["errors"])
+        return row, receipt
+
+
+class AmendmentRegistrationIntegrationTests(AmendmentRuntimeMixin,
+                                            unittest.TestCase):
+    """One current writer/transport seam, beginning at a static checkpoint."""
+
+    def test_cli_registration_and_withdrawal_publish_current_receipts(self):
+        plan_relative, plan_path, proposal_relative = self.scope_plan()
         before = self.shas()
-        dry = self.withdraw("A-SCOPE")
-        self.assertEqual(0, dry.returncode, dry.stdout)
-        self.assertIn("dry run", dry.stdout)
-        self.assertEqual(before, self.shas())
-        worker = self.withdraw("A-SCOPE", apply=True, actor_role="worker")
-        self.assertEqual(1, worker.returncode, worker.stdout)
+        args = self.registration_args(
+            "scope-replan", "--plan", plan_relative,
+            apply=True,
+            actor_role="integrator",
+            json_output=True,
+        )
+        registered = subprocess.run(
+            [sys.executable, str(REGISTER_CLI), *args],
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+        self.assertEqual(
+            0, registered.returncode, registered.stdout + registered.stderr)
+        projected = json.loads(registered.stdout)
+        self.assertEqual(1, len(projected))
+        row, receipt = self.assert_registration(
+            "A-SCOPE", "scope-replan", before)
+        self.assertEqual(receipt["receipt_id"], projected[0]["receipt_id"])
+        self.assertEqual(plan_relative, row["plan_path"])
+        self.assertEqual(kblib.sha256_file(plan_path), row["plan_sha256"])
+        self.assertEqual(proposal_relative, row["coverage_proposal_path"])
+        self.assertEqual("s1", receipt["scope_version_before"])
+        self.assertEqual("s2", receipt["scope_version_after"])
 
-    def test_withdrawal_requires_a_pending_row_and_a_reason(self):
-        missing = self.withdraw("A-ABSENT", apply=True)
-        self.assertEqual(1, missing.returncode, missing.stdout)
-        self.assertIn("no Amendment A-ABSENT", missing.stdout)
-        first_plan, _, _ = self.cross_plan("scope-replan")
-        self.command("scope-replan", "--plan", first_plan,
-                     apply=True, actor_role="integrator")
-        empty = self.withdraw("A-SCOPE", reason="  ", apply=True)
-        self.assertEqual(1, empty.returncode, empty.stdout)
         withdrawn = self.withdraw("A-SCOPE", apply=True)
-        self.assertEqual(0, withdrawn.returncode, withdrawn.stdout)
-        again = self.withdraw("A-SCOPE", apply=True)
-        self.assertEqual(1, again.returncode, again.stdout)
-        self.assertIn("not pending", again.stdout)
+        self.assertEqual(
+            0, withdrawn.returncode, withdrawn.stdout + withdrawn.stderr)
 
-    def test_unknown_historical_registration_version_fails_closed(self):
-        """Producer-era handling is closed, not a license for any version."""
-        first_plan, _, _ = self.cross_plan("scope-replan")
-        self.command("scope-replan", "--plan", first_plan,
-                     apply=True, actor_role="integrator")
-        self.withdraw("A-SCOPE", apply=True)
-        receipts_path = self.root / register_amendment.RECEIPT_PATH
-        text = receipts_path.read_text(encoding="utf-8").replace(
-            '"tool_version": "%s"' % register_amendment.TOOL_VERSION,
-            '"tool_version": "0.9.0"')
-        receipts_path.write_text(text, encoding="utf-8")
-        errors = check_queue.validate_runtime(str(self.root))["errors"]
-        self.assertTrue(any(
-            "unsupported register_amendment producer version '0.9.0'" in error
-            for error in errors), "\n".join(errors))
+        progress = self.load(queue_runtime.PROGRESS_PATH)
+        row = next(entry for entry in progress["amendments"]
+                   if entry["id"] == "A-SCOPE")
+        receipt = next(record for record in self.records()
+                       if record["receipt_id"] == row["withdrawal_receipt"])
+        self.assertEqual("withdrawn", row["status"])
+        self.assertIs(row["writeback_done"], False)
+        self.assertEqual("amendment_withdrawal", receipt["check"])
+        self.assertEqual(row["registration_receipt"],
+                         receipt["registration_receipt"])
+        self.assertEqual([], runtime_validation.validate_runtime(
+            self.root)["errors"])
 
-    def test_rejects_unknown_schema_instead_of_legacy_guessing(self):
-        plan_relative, _, _ = self.cross_plan("scope-replan")
-        coverage = self.load(check_queue.COVERAGE_PATH)
-        coverage["schema_version"] = 0
-        self.write_yaml(check_queue.COVERAGE_PATH, coverage)
-        completed = self.command(
-            "scope-replan", "--plan", plan_relative,
-        )
-        self.assertEqual(1, completed.returncode, completed.stdout)
-        self.assertIn("current runtime is inconsistent", completed.stdout)
 
-    def test_shared_writer_lock_blocks_registration(self):
-        plan_relative, _, _ = self.cross_plan("scope-replan")
-        lock = self.root / ".cambium/tmp/state-writer.lock"
-        lock.mkdir()
-        (lock / "owner.json").write_text(json.dumps({
-            "lock_name": "state-writer", "pid": 999999,
-            "created_at": "2026-08-05T00:00:00Z",
-            "operation": {"tool": "fixture", "action": "write"},
-        }) + "\n", encoding="utf-8")
-        completed = self.command(
-            "scope-replan", "--plan", plan_relative,
-            apply=True, actor_role="integrator",
-        )
-        self.assertEqual(1, completed.returncode, completed.stdout)
-        self.assertIn("writer lock", completed.stdout)
+class AmendmentRegistrationSlowTests(AmendmentRuntimeMixin,
+                                     unittest.TestCase):
+    """Writer-specific staged-input currentness and interruption evidence."""
 
-    def test_locked_preflight_rejects_changed_staged_artifact(self):
-        _, plan_path, before, prepared = self.prepare_scope_registration()
-        progress_before = (self.root / check_queue.PROGRESS_PATH).read_bytes()
+    def test_locked_publication_revalidates_staged_plan_bytes(self):
+        plan_path, before, prepared = self.prepare_scope_registration()
+        progress_before = (self.root / queue_runtime.PROGRESS_PATH).read_bytes()
+        receipt_path = self.root / register_amendment.RECEIPT_PATH
         plan_path.write_text(
             plan_path.read_text(encoding="utf-8") + "\n",
             encoding="utf-8",
         )
-        receipt_path = self.root / register_amendment.RECEIPT_PATH
-        with self.assertRaisesRegex(
-                ValueError, "staged artifact bytes changed"):
+        with self.assertRaisesRegex(ValueError, "staged artifact bytes changed"):
             register_amendment._apply(
                 str(self.root), prepared, str(receipt_path))
         self.assertEqual(progress_before,
-                         (self.root / check_queue.PROGRESS_PATH).read_bytes())
+                         (self.root / queue_runtime.PROGRESS_PATH).read_bytes())
         self.assertEqual(before, self.shas())
         self.assertFalse(receipt_path.exists())
         self.assertFalse((self.root / ".cambium/tmp/state-writer.lock").exists())
 
-    def test_receipt_first_interruption_keeps_progress_valid_and_lock_visible(self):
-        _, _, before, prepared = self.prepare_scope_registration()
-        progress_before = (self.root / check_queue.PROGRESS_PATH).read_bytes()
+    def test_receipt_first_interruption_retains_recovery_evidence(self):
+        _plan_path, before, prepared = self.prepare_scope_registration()
+        progress_before = (self.root / queue_runtime.PROGRESS_PATH).read_bytes()
         receipt_path = self.root / register_amendment.RECEIPT_PATH
         with mock.patch.object(
                 kblib, "atomic_write_text",
@@ -593,11 +425,12 @@ class RegisterAmendmentTests(unittest.TestCase):
                 register_amendment._apply(
                     str(self.root), prepared, str(receipt_path))
         self.assertEqual(progress_before,
-                         (self.root / check_queue.PROGRESS_PATH).read_bytes())
+                         (self.root / queue_runtime.PROGRESS_PATH).read_bytes())
         self.assertEqual(before, self.shas())
-        receipt = self.receipt()
-        self.assertEqual("amendment_registration", receipt["check"])
-        runtime = check_queue.validate_runtime(self.root)
+        records = self.records()
+        self.assertEqual(1, len(records))
+        self.assertEqual("amendment_registration", records[0]["check"])
+        runtime = runtime_validation.validate_runtime(self.root)
         self.assertEqual([], runtime["pending_cross_ledger_amendments"])
         self.assertEqual(1, len(runtime["_writer_locks"]))
         evidence = runtime["_writer_locks"][0]["operation_receipt"]

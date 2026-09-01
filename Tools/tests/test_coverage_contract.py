@@ -11,26 +11,27 @@ TOOLS = Path(__file__).resolve().parents[1]
 REPO = TOOLS.parent
 sys.path.insert(0, str(TOOLS))
 
-import amendment_policy  # noqa: E402
-import apply_amendment  # noqa: E402
-import apply_delta  # noqa: E402
-import compile_queue  # noqa: E402
-import coverage_contract  # noqa: E402
-import module_boundary_facts  # noqa: E402
-import work_spec_contract  # noqa: E402
-import queue_runtime.coverage as runtime_coverage  # noqa: E402
-import queue_runtime.delta as runtime_delta  # noqa: E402
-import queue_runtime.runtime as runtime_validator  # noqa: E402
-import queue_runtime.work_spec as runtime_work_spec  # noqa: E402
+import Tools.execution.task_runtime.amendment_policy as amendment_policy  # noqa: E402
+import Tools.execution.task_runtime.amendment_plan as amendment_plan  # noqa: E402
+import Tools.execution.planning.compile_queue as compile_queue  # noqa: E402
+import Tools.execution.planning.coverage_contract as coverage_contract  # noqa: E402
+import Tools.execution.planning.coverage_delta as coverage_delta  # noqa: E402
+import Tools.platform.distribution.module_boundary_facts as module_boundary_facts  # noqa: E402
+import Tools.execution.task_runtime.queue_runtime.coverage as runtime_coverage  # noqa: E402
+import Tools.execution.task_runtime.queue_runtime.delta as runtime_delta  # noqa: E402
+import Tools.execution.task_runtime.queue_runtime.runtime as runtime_validator  # noqa: E402
+from Tools.tests.support.coverage_delta_fixture import (  # noqa: E402
+    premerge_delta_document,
+)
 
 
 def coverage():
     return {
-        "schema_version": 1,
+            "schema_version": 2,
         "task_id": "task",
         "updated_at": "2026-08-27T00:00:00Z",
         "scope_version": "s1",
-        "standards_version": "3.9.2",
+        "upstream_revision_id": "3.9.2",
         "selected_profile_manifest": "profiles/p/profile.yaml",
         "batch_specs": [],
         "maintenance_candidates": [],
@@ -72,6 +73,13 @@ def required_page(batch_id="B1"):
     }
 
 
+def planned_page(batch_id="B1"):
+    page = required_page(batch_id)
+    for field in ("authoring_status", "gate_receipts", "property_state"):
+        page.pop(field)
+    return page
+
+
 def _literal_string_set(node):
     """Read a top-level literal collection, including frozenset((...))."""
     if isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and \
@@ -90,7 +98,7 @@ def _literal_string_set(node):
 
 
 class SharedShapeOwnershipTests(unittest.TestCase):
-    def test_every_compatibility_name_is_the_owner_object(self):
+    def test_every_consumer_projection_is_the_owner_object(self):
         self.assertIs(
             coverage_contract.COVERAGE_TOP_LEVEL_FIELDS,
             amendment_policy.TOP_LEVEL_FIELDS)
@@ -129,31 +137,22 @@ class SharedShapeOwnershipTests(unittest.TestCase):
             runtime_delta.DELTA_CONTROL_FIELDS)
         self.assertIs(
             coverage_contract.COVERAGE_DELTA_PAGE_CONTROL_FIELDS,
-            apply_delta.CONTROL_FIELDS)
-        self.assertIs(
-            work_spec_contract.WORK_SPEC_BINDING_FIELDS,
-            amendment_policy.WORK_SPEC_FIELDS)
-        self.assertIs(
-            work_spec_contract.WORK_SPEC_BINDING_FIELDS,
-            runtime_work_spec.WORK_SPEC_FIELDS)
-        self.assertIs(
-            work_spec_contract.WORK_SPEC_BINDING_FIELDS,
-            compile_queue.WORK_SPEC_FIELDS)
-        self.assertTrue(
-            work_spec_contract.WORK_SPEC_BINDING_FIELDS.issubset(
-                coverage_contract.COVERAGE_BATCH_SPEC_FIELDS))
+            coverage_delta.DELTA_PAGE_CONTROL_FIELDS)
 
     def test_no_other_shipped_module_redeclares_a_shared_shape_literal(self):
         protected = {
             coverage_contract.COVERAGE_TOP_LEVEL_FIELDS,
             coverage_contract.COVERAGE_PAGE_FIELDS,
+            coverage_contract.COVERAGE_PLANNED_PAGE_FIELDS,
+            coverage_contract.COVERAGE_RUNTIME_PAGE_REQUIRED_FIELDS,
             coverage_contract.COVERAGE_REROUTE_FIELDS,
             coverage_contract.COVERAGE_BATCH_SPEC_FIELDS,
             coverage_contract.COVERAGE_DELTA_FIELDS,
             coverage_contract.COVERAGE_DELTA_PAGE_CONTROL_FIELDS,
-            work_spec_contract.WORK_SPEC_BINDING_FIELDS,
         }
-        owner_paths = {"coverage_contract.py", "work_spec_contract.py"}
+        owner_paths = {
+            "execution/planning/coverage_contract.py",
+        }
         duplicates = []
         for relative in module_boundary_facts.shipped_modules(str(TOOLS)):
             if relative in owner_paths:
@@ -173,6 +172,46 @@ class SharedShapeOwnershipTests(unittest.TestCase):
 
 
 class SharedShapeBehaviorTests(unittest.TestCase):
+    def test_planning_and_runtime_page_shapes_are_distinct_closed_forms(self):
+        self.assertEqual(
+            [], coverage_contract.page_shape_errors(
+                planned_page(), "planned"))
+        self.assertEqual(
+            coverage_contract.PAGE_FORM_PLANNING,
+            coverage_contract.classify_page_form(planned_page()))
+        self.assertTrue(coverage_contract.is_planning_page(planned_page()))
+        self.assertTrue(coverage_contract.is_complete_planning_page(
+            planned_page()))
+        self.assertEqual(
+            [], coverage_contract.page_shape_errors(
+                required_page(), "runtime"))
+        self.assertEqual(
+            coverage_contract.PAGE_FORM_CURRENT_RUNTIME,
+            coverage_contract.classify_page_form(required_page()))
+        self.assertFalse(coverage_contract.is_planning_page(required_page()))
+
+        partial = planned_page()
+        partial["authoring_status"] = "reviewed"
+        errors = coverage_contract.page_shape_errors(partial, "partial")
+        self.assertTrue(any("partially materializes" in error
+                            for error in errors), errors)
+        self.assertEqual(
+            coverage_contract.PAGE_FORM_MALFORMED,
+            coverage_contract.classify_page_form(partial))
+        self.assertFalse(coverage_contract.is_complete_planning_page(
+            {"path": "Topics/Only.md"}))
+        self.assertEqual(
+            coverage_contract.PAGE_FORM_MALFORMED,
+            coverage_contract.classify_page_form({"path": "Topics/Only.md"}))
+
+        incomplete_runtime = required_page()
+        incomplete_runtime.pop("property_state")
+        self.assertEqual(
+            coverage_contract.PAGE_FORM_MALFORMED,
+            coverage_contract.classify_page_form(incomplete_runtime))
+        self.assertTrue(coverage_contract.page_shape_errors(
+            incomplete_runtime, "incomplete runtime"))
+
     def test_unknown_coverage_top_level_field_stays_rejected_by_both_paths(self):
         current = coverage()
         proposal = copy.deepcopy(current)
@@ -185,7 +224,7 @@ class SharedShapeBehaviorTests(unittest.TestCase):
         with self.assertRaisesRegex(
                 ValueError,
                 "unsupported top-level field\\(s\\): unexpected"):
-            apply_amendment._validate_coverage_proposal(
+            amendment_plan.validate_coverage_proposal(
                 current, proposal, {
                     "scope_version_before": "s1",
                     "scope_version_after": "s1",
@@ -216,15 +255,9 @@ class SharedShapeBehaviorTests(unittest.TestCase):
             impact["change_classes"])
 
     def test_apply_and_runtime_reject_each_delta_control_field(self):
-        base_delta = {
-            "batch": "B1",
-            "generated_at": "2026-08-27T00:00:00Z",
-            "pages": [],
-            "open_gaps_added": [],
-            "open_gaps_closed": [],
-            "next_batch_updates": [],
-            "watermark_advance": None,
-        }
+        base_delta = premerge_delta_document(
+            "B1", "Topics/A.md", ["gate-1"],
+            generated_at="2026-08-27T00:00:00Z")
         item = {"id": "B1", "manifest": ["Topics/A.md"]}
         records = {
             "Topics/A.md": {"batch": "B1", "next_batch": "B1"},
@@ -234,12 +267,8 @@ class SharedShapeBehaviorTests(unittest.TestCase):
                 coverage_contract.COVERAGE_DELTA_PAGE_CONTROL_FIELDS):
             with self.subTest(field=field):
                 delta = copy.deepcopy(base_delta)
-                delta["pages"] = [{
-                    "path": "Topics/A.md",
-                    "gate_receipts": ["gate-1"],
-                    field: None,
-                }]
-                apply_errors = apply_delta._delta_policy_errors(delta)
+                delta["pages"][0][field] = None
+                apply_errors = coverage_delta.delta_policy_errors(delta)
                 runtime_errors, _settlement, _report = \
                     runtime_delta.delta_handoff_errors(
                         ".cambium/deltas/B1.yaml", delta, item, records,

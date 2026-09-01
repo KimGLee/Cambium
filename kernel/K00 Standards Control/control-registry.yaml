@@ -134,7 +134,7 @@ gates:
     binding_protocol: owner-member-chain
   - gate_id: frontmatter-vocabulary
     tool: check_vocab
-    tool_version: 1.8.0
+    tool_version: 1.9.0
     check: vocab-check-summary
     mode: "*"
     dimensions:
@@ -148,7 +148,7 @@ gates:
     binding_protocol: owner-member-chain
   - gate_id: priority-quota-distribution
     tool: check_vocab
-    tool_version: 1.8.0
+    tool_version: 1.9.0
     check: priority-quota-distribution
     mode: "*"
     dimensions:
@@ -232,7 +232,7 @@ gates:
     binding_protocol: native-owner-receipt
   - gate_id: batch-close
     tool: check_batch_close
-    tool_version: 1.13.0
+    tool_version: 2.0.0
     check: batch_close_gate
     mode: "*"
     dimensions:
@@ -260,7 +260,7 @@ gates:
     binding_protocol: owner-member-chain
   - gate_id: page-contract
     tool: check_page_contract
-    tool_version: 1.5.0
+    tool_version: 1.6.0
     check: page-contract-summary
     mode: "*"
     dimensions:
@@ -381,7 +381,7 @@ gates:
     binding_protocol: not-authorizing
   - gate_id: standards-adoption
     tool: adopt_standards
-    tool_version: 1.9.0
+    tool_version: 2.0.0
     check: standards_adoption
     mode: "*"
     dimensions:
@@ -537,7 +537,7 @@ gates:
     binding_protocol: not-authorizing
   - gate_id: terminal-proof
     tool: check_proof
-    tool_version: 1.18.0
+    tool_version: 2.0.0
     check: proof-check-summary
     mode: "*"
     dimensions:

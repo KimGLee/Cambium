@@ -1,0 +1,47 @@
+schema_version: 2
+task_id: fixture-task
+scope_version: s1
+queue_revision: 2
+state_revision: 2
+upstream_revision_id: 0123456789abcdef0123456789abcdef01234567
+selected_profile_manifest: profiles/test-profile/profile.md
+required_queue:
+  - id: B1
+    family: Core
+    order: 1
+    record_count: 1
+    manifest:
+      - Topics/A.md
+    source_route: R03
+    execution_mode: concurrent-worker
+    depends_on: []
+    confirmation_required: false
+    work_spec_path: null
+    work_spec_sha256: null
+    state: merge-ready
+    hold_state: none
+    opened_at: 2026-08-04T01:00:00Z
+    activation_receipt: audit-check_queue-20260831T221043Z-d696d528dcfd4b788990651d160a0824-0001
+    transition_receipts:
+      - audit-update_queue-20260831T221044Z-df867c40b5bb4362bd2df937e79b7a95-0001
+      - audit-update_queue-20260831T221111Z-e28c5150265445f0b73fbd29c8b5d131-0001
+    merge_ready_at: 2026-08-31T22:11:08Z
+    delta_path: .cambium/deltas/B1.yaml
+    delta_sha256: sha256:b0b6a526bf23b1af9634b25e6d37307ce3c2ae01fa585996881c00a0eca2629b
+    batch_receipts:
+      - audit-manual-attestation-20260831T221058Z-359494a69d9343cbad3400bb1127cc5d-0001
+  - id: B2
+    family: Core
+    order: 2
+    record_count: 1
+    manifest:
+      - Topics/B.md
+    source_route: R03
+    execution_mode: concurrent-worker
+    depends_on:
+      - B1
+    confirmation_required: false
+    work_spec_path: null
+    work_spec_sha256: null
+    state: queued
+    hold_state: none

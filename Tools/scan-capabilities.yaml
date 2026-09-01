@@ -3,5 +3,5 @@ schema_version: 1
 capabilities:
   - capability_id: residual-content-scan-v1
     invocation_contract: profile-registered-scan-v1
-    implementation_path: Tools/check_residual_content.py
+    implementation_path: Tools/knowledge/content/check_residual_content.py
     configuration: required

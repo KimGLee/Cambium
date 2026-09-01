@@ -6,8 +6,8 @@ from pathlib import Path
 TOOLS = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(TOOLS / "tests"))
 sys.path.insert(0, str(TOOLS))
-import standards_state
-from profile_fixture import FIXTURE_UPSTREAM_REVISION
+import Tools.governance.standards.standards_state as standards_state
+from Tools.tests.support.profile_fixture import FIXTURE_UPSTREAM_REVISION
 
 
 class StandardsStateTests(unittest.TestCase):
@@ -16,15 +16,14 @@ class StandardsStateTests(unittest.TestCase):
 
     def value(self):
         return {
-            "schema_version": 1,
+            "schema_version": standards_state.SCHEMA_VERSION,
             "state_revision": 3,
-            "standards_version": self.REVISION,
+            "upstream_revision_id": self.REVISION,
             "status": "approved",
             "effective_date": "2026-08-21",
             "selected_profile_manifest": "profiles/agent-atlas/profile.md",
             "latest_adoption_receipt": "audit-adopt_standards-example-0001",
             "upstream_source_ref": "https://github.com/KimGLee/Cambium",
-            "upstream_revision_id": self.REVISION,
         }
 
     def test_round_trip_and_snapshot(self):
@@ -42,7 +41,7 @@ class StandardsStateTests(unittest.TestCase):
         self.assertEqual(errors, [])
         self.assertEqual(state, value)
         self.assertEqual(view["active_standards_path"], standards_state.STATE_PATH)
-        self.assertEqual(view["standards_version"], self.REVISION)
+        self.assertEqual(view["upstream_revision_id"], self.REVISION)
 
     def test_closed_and_no_markdown_fallback(self):
         value = self.value()
@@ -78,16 +77,16 @@ class StandardsStateTests(unittest.TestCase):
             latest_adoption_receipt="audit-next-0001",
             upstream_source_ref="upstream", upstream_revision_id=revision)
         self.assertEqual(after["state_revision"], 4)
-        self.assertEqual(revision, after["standards_version"])
+        self.assertEqual(revision, after["upstream_revision_id"])
         self.assertNotIn("change_summary", after)
         self.assertNotIn("history", after)
 
-    def test_version_alias_and_upstream_commit_are_one_identity(self):
+    def test_upstream_commit_is_the_only_standards_identity(self):
         for mutation in (
-                {"standards_version": self.OTHER_REVISION},
                 {"upstream_revision_id": "abc123"},
                 {"upstream_source_ref": None},
-                {"upstream_revision_id": None}):
+                {"upstream_revision_id": None},
+                {"release_label": "X.Y.Z"}):
             with self.subTest(mutation=mutation):
                 value = self.value()
                 value.update(mutation)

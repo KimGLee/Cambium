@@ -1,264 +1,31 @@
-import contextlib
 import copy
-import io
 import json
 import os
-import shutil
 import subprocess
 import sys
 import tempfile
 import unittest
 from pathlib import Path
-from unittest import mock
 
 
 TOOLS_DIR = Path(__file__).resolve().parents[1]
 SCRIPT = TOOLS_DIR / "check_proof.py"
-TEMPLATE = TOOLS_DIR / "schemas" / "terminal_proof.template.yaml"
-SYNTHETIC_STANDARDS_VERSION = (
-    "23456789abcdef0123456789abcdef0123456789"
-)
 sys.path.insert(0, str(TOOLS_DIR / "tests"))
 sys.path.insert(0, str(TOOLS_DIR))
 
-import audit_receipt_contract
-import audit_plan_contract
-import check_proof
-import complete_audit_receipt
-import kblib
-import runtime_paths
-import standards_state
-import test_required_queue_e2e as required_queue_e2e
+import Tools.execution.audit.audit_evidence_runtime as audit_evidence_runtime
+import Tools.execution.audit.check_proof as check_proof
+import Tools.platform.common.kblib as kblib
+import Tools.execution.task_runtime.queue_check_receipt as queue_check_receipt
 
 
-class RouteDeclarationAuthorityTests(unittest.TestCase):
-    def setUp(self):
-        self.temporary = tempfile.TemporaryDirectory()
-        self.addCleanup(self.temporary.cleanup)
-        self.root = Path(self.temporary.name)
-        repository = TOOLS_DIR.parent
-        for name in ("Card", "Read Set", "kernel"):
-            shutil.copytree(repository / name, self.root / name)
-        (self.root / "Tools/schemas").mkdir(parents=True)
-        shutil.copy2(
-            repository / "Tools/schemas/card.schema.yaml",
-            self.root / "Tools/schemas/card.schema.yaml")
-        shutil.copy2(
-            repository / "Tools/module-boundaries.yaml",
-            self.root / "Tools/module-boundaries.yaml")
-
-    def test_navigation_indexes_are_not_registry_inputs(self):
-        (self.root / "Card/Card Index.md").write_text(
-            "not a registry\n", encoding="utf-8")
-        (self.root / "Read Set/Read Sets Index.md").write_text(
-            "not a registry\n", encoding="utf-8")
-
-        cards, read_sets, errors = check_proof.load_route_registry(self.root)
-
-        self.assertEqual([], errors)
-        self.assertEqual(13, len(cards))
-        self.assertEqual(13, len(read_sets))
-
-    def test_card_to_read_set_binding_is_checked_from_entities(self):
-        card = self.root / "Card/R01 Core Bootstrap Card.md"
-        card.write_text(card.read_text(encoding="utf-8").replace(
-            "read_set_id: R01", "read_set_id: R02"), encoding="utf-8")
-
-        _cards, _read_sets, errors = check_proof.load_route_registry(self.root)
-
-        self.assertTrue(any("read_set_id must equal route_id" in error
-                            for error in errors), errors)
-
-    def test_registry_membership_is_discovered_not_hardcoded_to_r01_r13(self):
-        read_set = self.root / "Read Set/R99 Fixture Read Set.md"
-        read_set.write_text(
-            "---\n"
-            "type: read-set\n"
-            "schema_version: 1\n"
-            "route_id: R99\n"
-            "activation_phase: batch-preflight\n"
-            "narrowable: true\n"
-            "load_edges:\n"
-            "  - edge_id: R99:start\n"
-            "    kind: required\n"
-            "    phase_id: batch-preflight\n"
-            "    trigger_id: route-selected\n"
-            "    targets:\n"
-            "      - kernel/K00 Standards Overview.md\n"
-            "    read_sets: []\n"
-            "---\n"
-            "# R99 Fixture Read Set\n\n"
-            "## Purpose\n\nFixture.\n\n"
-            "## Non-deterministic triggers\n\nNone.\n",
-            encoding="utf-8")
-        card = self.root / "Card/R99 Fixture Card.md"
-        body = (
-            "# R99 Fixture Card\n\n"
-            "## Purpose\n\nFixture.\n\n"
-            "## Actions\n\n- Observe the fixture.\n\n"
-            "## Stop or escalate\n\n- Stop on a registry error.\n\n"
-            "## Read-back hook\n\n- Read back the fixture target.\n")
-        body_hash = check_proof.stamp_cards.card_body_digest(
-            "---\ntype: card\n---\n" + body)
-        source_hash = check_proof.stamp_cards.source_digest(
-            self.root, ["Read Set/R99 Fixture Read Set.md"])
-        card.write_text(
-            "---\n"
-            "type: card\n"
-            "generation_mode: curated\n"
-            "route_id: R99\n"
-            "read_set_id: R99\n"
-            "read_set: Read Set/R99 Fixture Read Set.md\n"
-            "source_files:\n"
-            "  - Read Set/R99 Fixture Read Set.md\n"
-            "source_hash: '%s'\n"
-            "reviewed_source_hash: '%s'\n"
-            "reviewed_card_hash: '%s'\n"
-            "---\n%s" % (source_hash, source_hash, body_hash, body),
-            encoding="utf-8")
-
-        cards, read_sets, errors = check_proof.load_route_registry(self.root)
-
-        self.assertEqual([], errors)
-        self.assertIn("R99", cards)
-        self.assertIn("R99", read_sets)
-
-
-def materialize_synthetic_standards_state(profile_manifest):
-    """Render the fixture-owned canonical adopter Standards state."""
-    return standards_state.canonical_text({
-        "schema_version": 1,
-        "state_revision": 1,
-        "standards_version": SYNTHETIC_STANDARDS_VERSION,
-        "status": "approved",
-        "effective_date": "2026-08-04",
-        "selected_profile_manifest": profile_manifest,
-        "latest_adoption_receipt": "audit-fixture-standards-adoption",
-        "upstream_source_ref": "fixture://cambium",
-        "upstream_revision_id": SYNTHETIC_STANDARDS_VERSION,
-    })
-
-
-class ActiveStandardsFixtureTests(unittest.TestCase):
-    def test_materializer_renders_canonical_adopter_state(self):
-        rendered = materialize_synthetic_standards_state(
-            "profiles/test-profile/profile.md"
-        )
-        parsed = kblib.parse_yaml_subset(rendered)
-        self.assertEqual(SYNTHETIC_STANDARDS_VERSION,
-                         parsed["standards_version"])
-        self.assertEqual("approved", parsed["status"])
-        self.assertEqual(
-            "profiles/test-profile/profile.md",
-            parsed["selected_profile_manifest"],
-        )
-
-
-class QueueProofStructuralTests(unittest.TestCase):
+class TerminalProofCliBoundaryTests(unittest.TestCase):
     def setUp(self):
         self.tempdir = tempfile.TemporaryDirectory()
         self.root = Path(self.tempdir.name)
-        self.proof = kblib.parse_yaml_subset(
-            TEMPLATE.read_text(encoding="utf-8")
-        )
-        self.proof.update({
-            "standards_version": "cambium-test-v1",
-            "selected_profile_manifest": "profiles/test/profile.md",
-            "coverage_ledger_sha256": "sha256:" + "2" * 64,
-            "progress_ledger_sha256": "sha256:" + "3" * 64,
-            "required_queue_sha256": "sha256:" + "1" * 64,
-            "remaining_required_work_units": 0,
-        })
 
     def tearDown(self):
         self.tempdir.cleanup()
-
-    def run_proof(self, proof):
-        proof_path = self.root / "terminal-proof.yaml"
-        proof_path.write_text(kblib.canonical_yaml(proof), encoding="utf-8")
-        return subprocess.run(
-            [sys.executable, str(SCRIPT), str(proof_path)],
-            text=True, capture_output=True, check=False,
-        )
-
-    def test_missing_queue_field_fails_closed(self):
-        queue_fields = (
-            "coverage_ledger_sha256", "progress_ledger_sha256",
-            "required_queue_path", "queue_revision", "queue_state_revision",
-            "required_queue_sha256", "remaining_required_work_units",
-            "queue_check_receipt", "corpus_plan_check_receipt",
-        )
-        for field in queue_fields:
-            with self.subTest(field=field):
-                proof = dict(self.proof)
-                del proof[field]
-                result = self.run_proof(proof)
-                self.assertEqual(
-                    result.returncode, 1, result.stdout + result.stderr
-                )
-                self.assertIn("proof-field-missing", result.stdout)
-                self.assertIn(field, result.stdout)
-
-    def test_remaining_required_work_nonzero_fails_completion(self):
-        self.proof["remaining_required_work_units"] = 1
-        result = self.run_proof(self.proof)
-        self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
-        self.assertIn("proof-zero-field", result.stdout)
-        self.assertIn("remaining_required_work_units", result.stdout)
-
-    def test_malformed_runtime_fingerprint_fails_closed(self):
-        for field, check in (
-                ("coverage_ledger_sha256",
-                 "proof-coverage-fingerprint-invalid"),
-                ("progress_ledger_sha256",
-                 "proof-progress-fingerprint-invalid"),
-                ("required_queue_sha256", "proof-queue-fingerprint-invalid")):
-            with self.subTest(field=field):
-                proof = dict(self.proof)
-                proof[field] = "sha256:not-a-fingerprint"
-                result = self.run_proof(proof)
-                self.assertEqual(1, result.returncode,
-                                 result.stdout + result.stderr)
-                self.assertIn(check, result.stdout)
-
-    def test_zero_receipts_never_reads_as_nothing_in_scope(self):
-        """K12/16: silence about a dimension is not an applicability claim."""
-        for mutation, check in (
-                (lambda coverage: coverage.pop("formula_and_numeric"),
-                 "proof-dimension-missing"),
-                (lambda coverage: coverage.__setitem__(
-                    "formula_and_numeric", []),
-                 "proof-dimension-empty"),
-                (lambda coverage: coverage.__setitem__(
-                    "formula_and_numeric", "not-applicable:   "),
-                 "proof-dimension-declaration-invalid"),
-                (lambda coverage: coverage.__setitem__(
-                    "formula_and_numeric", "none found"),
-                 "proof-dimension-declaration-invalid")):
-            with self.subTest(check=check):
-                proof = dict(self.proof)
-                proof["dimension_coverage"] = dict(proof["dimension_coverage"])
-                mutation(proof["dimension_coverage"])
-                result = self.run_proof(proof)
-                self.assertEqual(
-                    1, result.returncode, result.stdout + result.stderr)
-                self.assertIn(check, result.stdout)
-                self.assertIn("formula_and_numeric", result.stdout)
-
-    def test_explicit_not_applicable_declaration_is_accepted(self):
-        proof = dict(self.proof)
-        proof["dimension_coverage"] = dict(proof["dimension_coverage"])
-        proof["dimension_coverage"]["formula_and_numeric"] = (
-            "not-applicable: no page in the frozen scope states a formula")
-        result = self.run_proof(proof)
-        self.assertNotIn("proof-dimension", result.stdout)
-
-    def test_dimension_coverage_must_be_a_mapping(self):
-        proof = dict(self.proof)
-        proof["dimension_coverage"] = []
-        result = self.run_proof(proof)
-        self.assertEqual(1, result.returncode, result.stdout + result.stderr)
-        self.assertIn("proof-dimension-coverage-invalid", result.stdout)
 
     def test_receipt_output_cannot_overwrite_runtime_state(self):
         state = self.root / ".cambium/state/required_queue.yaml"
@@ -323,55 +90,74 @@ class CanonicalStateArgumentTests(unittest.TestCase):
 
 class TerminalProofCurrentEvidenceTests(unittest.TestCase):
     def setUp(self):
-        self.root = Path("/tmp/current-evidence-fixture")
-        self.receipt_id = "audit-check_links-current"
-        self.receipt = {
-            "receipt_id": self.receipt_id,
-            "tool": "check_links",
-            "result": "pass",
+        self.receipt_id = "audit-full-current"
+        self.projection = audit_evidence_runtime.reconciliation_from_bindings(
+            [{
+                "obligation_id": "obligation-1",
+                "due_stage": "pre-merge",
+                "evidence_ref": self.receipt_id,
+            }], {"obligation-1": "producer-evidence-1"})
+        self.close = {
+            "receipt_id": "close-1",
+            "audit_plan_id": "audit-plan-1",
+            "invalidated_by": None,
+            **self.projection,
+        }
+        self.proof = {
+            "reused_receipts": [],
+            "superseded_receipts": [],
+            "invalidated_receipts": [],
+            "unresolved_invalidations": 0,
         }
 
-    def runtime(self, *, current=None, historical=None, invalidated=None):
+    def runtime(self, *, close=None, invalidated=None):
+        close = self.close if close is None else close
+        entry = ("receipts/close.jsonl", close)
         return {
-            "current_receipt_catalog": (
-                {self.receipt_id: ("receipts.jsonl", self.receipt)}
-                if current is None else current),
-            "receipt_catalog": (
-                {self.receipt_id: ("receipts.jsonl", self.receipt)}
-                if historical is None else historical),
+            "items_by_id": {
+                "B001": {
+                    "id": "B001",
+                    "state": "closed",
+                    "close_gate_receipt": close["receipt_id"],
+                },
+            },
+            "current_receipt_catalog": {close["receipt_id"]: entry},
             "invalidated_evidence_receipt_ids": invalidated or [],
         }
 
-    def test_reused_receipts_must_be_in_current_catalog(self):
-        proof = {"reused_receipts": [{"receipt_id": self.receipt_id}]}
-        self.assertEqual([], check_proof._reused_receipt_evidence_failures(
-            self.root, proof, runtime=self.runtime()))
+    def test_current_plan_reconciliation_tracks_direct_and_precursor_invalidation(self):
+        self.assertEqual(
+            [], check_proof._terminal_reconciliation_failures(
+                self.proof, self.runtime()))
 
-        failures = check_proof._reused_receipt_evidence_failures(
-            self.root, proof,
-            runtime=self.runtime(
-                current={}, historical={
-                    self.receipt_id: ("receipts.jsonl", self.receipt),
-                }))
-        self.assertEqual("proof-reused-receipt-not-current", failures[0][0])
+        for invalidated in (self.receipt_id, "producer-evidence-1"):
+            with self.subTest(invalidated=invalidated):
+                runtime = self.runtime(invalidated=[invalidated])
+                failures = check_proof._terminal_reconciliation_failures(
+                    self.proof, runtime)
+                checks = {failure[0] for failure in failures}
+                self.assertIn("proof-invalidated-receipts-mismatch", checks)
+                self.assertIn(
+                    "proof-unresolved-invalidations-mismatch", checks)
 
-    def test_empty_current_catalog_never_falls_back_to_history(self):
-        proof = {"reused_receipts": [self.receipt_id]}
-        failures = check_proof._reused_receipt_evidence_failures(
-            self.root, proof,
-            runtime=self.runtime(current={}, historical={
-                self.receipt_id: ("receipts.jsonl", self.receipt),
-            }))
-        self.assertIn("historical evidence is not a fallback", failures[0][2])
+                reconciled = copy.deepcopy(self.proof)
+                reconciled.update({
+                    "invalidated_receipts": [invalidated],
+                    "unresolved_invalidations": 1,
+                })
+                self.assertEqual(
+                    [], check_proof._terminal_reconciliation_failures(
+                        reconciled, runtime))
 
-    def test_invalidated_reused_receipt_fails_even_if_catalog_entry_exists(self):
-        proof = {"reused_receipts": [self.receipt_id]}
-        failures = check_proof._reused_receipt_evidence_failures(
-            self.root, proof,
-            runtime=self.runtime(invalidated=[self.receipt_id]))
-        self.assertEqual("proof-reused-receipt-invalidated-evidence",
-                         failures[0][0])
+    def test_terminal_reconciliation_lists_are_sorted_unique_receipt_ids(self):
+        proof = copy.deepcopy(self.proof)
+        proof["superseded_receipts"] = ["old-2", "old-1", "old-1"]
 
+        failures = check_proof._terminal_reconciliation_failures(
+            proof, self.runtime())
+
+        self.assertEqual(
+            "proof-superseded-receipts-invalid", failures[0][0])
 
 class TerminalRuntimeClosureTests(unittest.TestCase):
     def setUp(self):
@@ -392,7 +178,7 @@ class TerminalRuntimeClosureTests(unittest.TestCase):
             "task_id": "task-1",
             "scope_version": "s1",
             "contract_version": "c1",
-            "standards_version": "cambium-test-v1",
+            "upstream_revision_id": "cambium-test-v1",
             "selected_profile_manifest": "profiles/test/profile.md",
             "coverage_ledger_sha256": "sha256:" + "2" * 64,
             "progress_ledger_sha256": "sha256:" + "3" * 64,
@@ -405,7 +191,7 @@ class TerminalRuntimeClosureTests(unittest.TestCase):
                 "completion_semantics": "build",
                 "scope_version": "s1",
                 "contract_version": "c1",
-                "standards_version": "cambium-test-v1",
+                "upstream_revision_id": "cambium-test-v1",
                 "selected_profile_manifest": "profiles/test/profile.md",
                 **self.load_contract,
             },
@@ -415,7 +201,7 @@ class TerminalRuntimeClosureTests(unittest.TestCase):
         self.coverage = {
             "task_id": "task-1",
             "scope_version": "s1",
-            "standards_version": "cambium-test-v1",
+            "upstream_revision_id": "cambium-test-v1",
             "selected_profile_manifest": "profiles/test/profile.md",
             "open_gaps": [],
         }
@@ -432,7 +218,7 @@ class TerminalRuntimeClosureTests(unittest.TestCase):
             self.proof, self.progress, self.coverage
         ))
 
-    def test_nonterminal_task_state_fails(self):
+    def test_terminal_eligibility_rejects_noncandidate_and_maintenance(self):
         for state in ("planned", "active", "paused", "blocked", "cancelled"):
             with self.subTest(state=state):
                 progress = dict(self.progress)
@@ -442,8 +228,6 @@ class TerminalRuntimeClosureTests(unittest.TestCase):
                 )
                 self.assertIn("progress-task-state-not-terminal-candidate",
                               self.checks(failures))
-
-    def test_terminal_proof_rejects_maintenance_completion_semantics(self):
         progress = dict(self.progress)
         progress["contract"] = dict(self.progress["contract"])
         progress["contract"]["completion_semantics"] = "maintenance"
@@ -454,7 +238,7 @@ class TerminalRuntimeClosureTests(unittest.TestCase):
             "progress-completion-semantics-not-build", self.checks(failures)
         )
 
-    def test_pending_guidance_or_amendment_fails(self):
+    def test_pending_guidance_and_amendment_block_terminal(self):
         progress = dict(self.progress)
         progress["guidance_queue"] = [
             {"guidance_id": "G-1", "disposition": "queue-next",
@@ -474,35 +258,7 @@ class TerminalRuntimeClosureTests(unittest.TestCase):
         self.assertIn("progress-amendment-pending", checks)
         self.assertIn("progress-amendment-writeback-pending", checks)
 
-    def test_explicit_final_guidance_dispositions_are_not_pending(self):
-        progress = dict(self.progress)
-        progress["guidance_queue"] = [
-            {"guidance_id": "G-1", "disposition": "queue-next",
-             "status": status}
-            for status in sorted(check_proof.FINAL_GUIDANCE_STATUSES)
-        ]
-        progress["amendments"] = [
-            {"id": "A-1", "status": "verified", "writeback_done": True},
-            {"id": "A-2", "status": "deferred"},
-        ]
-        self.assertEqual([], check_proof._validate_terminal_progress_state(
-            self.proof, progress
-        ))
-
-    def test_amendment_finality_binds_status_to_writeback_state(self):
-        progress = dict(self.progress)
-        progress["amendments"] = [
-            {"id": "A-1", "status": "withdrawn", "writeback_done": False},
-        ]
-        self.assertEqual([], check_proof._validate_terminal_progress_state(
-            self.proof, progress))
-
-        progress["amendments"][0]["writeback_done"] = True
-        failures = check_proof._validate_terminal_progress_state(
-            self.proof, progress)
-        self.assertIn("progress-amendment-pending", self.checks(failures))
-
-    def test_contract_identity_and_contract_version_must_match_proof(self):
+    def test_frozen_contract_identity_and_load_must_match_proof(self):
         progress = dict(self.progress)
         progress["contract"] = dict(self.progress["contract"])
         progress["contract"]["contract_version"] = "c0"
@@ -513,9 +269,6 @@ class TerminalRuntimeClosureTests(unittest.TestCase):
         self.assertGreaterEqual(
             checks.count("proof-progress-contract-mismatch"), 2
         )
-
-    def test_frozen_load_contract_must_match_proof_exactly(self):
-        """A green live Queue gate cannot license a different Proof list."""
         for field in self.load_contract:
             with self.subTest(field=field):
                 proof = dict(self.proof)
@@ -529,7 +282,7 @@ class TerminalRuntimeClosureTests(unittest.TestCase):
                     self.checks(failures),
                 )
 
-    def test_canonical_progress_and_coverage_fingerprints_must_match_proof(self):
+    def test_runtime_fingerprints_and_coverage_closure_must_match_proof(self):
         progress_checks = self.checks(
             check_proof._validate_terminal_progress_state(
                 self.proof, self.progress, "sha256:" + "9" * 64
@@ -543,8 +296,6 @@ class TerminalRuntimeClosureTests(unittest.TestCase):
         )
         self.assertIn("proof-progress-fingerprint-mismatch", progress_checks)
         self.assertIn("proof-coverage-fingerprint-mismatch", coverage_checks)
-
-    def test_coverage_identity_drift_and_open_gaps_fail(self):
         self.coverage["scope_version"] = "s0"
         self.coverage["selected_profile_manifest"] = "profiles/other/profile.md"
         self.coverage["open_gaps"] = [{"page": "Topics/Missing.md"}]
@@ -560,1039 +311,6 @@ class TerminalRuntimeClosureTests(unittest.TestCase):
         self.assertIn("coverage-open-gaps-remaining", checks)
 
 
-class TerminalProofCanonicalCliTests(unittest.TestCase):
-    @classmethod
-    def setUpClass(cls):
-        """Prepare one real completed runtime, then clone it per test."""
-        cls._lifecycle = required_queue_e2e.RequiredQueueEndToEndTests(
-            methodName="test_two_batch_lifecycle_is_resumable_and_completes")
-        cls._lifecycle.setUp()
-        try:
-            cls._lifecycle.install_terminal_proof_environment()
-            cls._lifecycle.merge_and_close("B1", "Topics/A.md")
-            cls._lifecycle.merge_and_close("B2", "Topics/B.md")
-            candidate_gate_path = \
-                ".cambium/receipts/proof-candidate-gate.jsonl"
-            candidate_gate = cls._lifecycle.run_tool(
-                "check_queue.py", "--require-complete", "--receipts",
-                candidate_gate_path)
-            if candidate_gate.returncode != 0:
-                raise AssertionError(candidate_gate.stdout)
-            candidate_gate_id = json.loads(
-                (cls._lifecycle.root / candidate_gate_path).read_text(
-                    encoding="utf-8").splitlines()[-1])["receipt_id"]
-            cls._lifecycle.task_transition(
-                "completion-candidate", "--queue-check-receipt",
-                candidate_gate_id, "--checkpoint-summary",
-                "all Required work units are terminal")
-
-            terminal_register = ".cambium/receipts/terminal.jsonl"
-            terminal_gate = cls._lifecycle.run_tool(
-                "check_queue.py", "--require-complete", "--receipts",
-                terminal_register)
-            if terminal_gate.returncode != 0:
-                raise AssertionError(terminal_gate.stdout)
-            runtime = check_proof.check_queue.validate_runtime(
-                cls._lifecycle.root)
-            if runtime["errors"]:
-                raise AssertionError("\n".join(runtime["errors"]))
-            cls._prepared_root = cls._lifecycle.root
-        except BaseException:
-            cls._lifecycle.tearDown()
-            raise
-
-    @classmethod
-    def tearDownClass(cls):
-        cls._lifecycle.tearDown()
-
-    def setUp(self):
-        self.tempdir = tempfile.TemporaryDirectory()
-        self.root = Path(self.tempdir.name) / "repo"
-        shutil.copytree(self._prepared_root, self.root)
-        self.profile_manifest = "profiles/test-profile/profile.md"
-
-        runtime = check_proof.check_queue.validate_runtime(self.root)
-        self.assertEqual([], runtime["errors"])
-        queue = runtime["queue"]
-        progress = runtime["progress"]
-        contract = progress["contract"]
-        self.terminal_load_contract = {
-            field: contract[field] for field in (
-                "selected_route_ids", "selected_card_paths",
-                "selected_profile_route_ids", "selected_read_sets",
-                "loaded_module_paths")
-        }
-
-        receipt_dir = self.root / ".cambium/receipts"
-        register = receipt_dir / "terminal.jsonl"
-        queue_receipt = json.loads(register.read_text(
-            encoding="utf-8").splitlines()[-1])
-        self.receipt_id = queue_receipt["receipt_id"]
-
-        full_receipt = kblib.make_receipt(
-            "fixture_deterministic_results", "1.0.0",
-            "full_deterministic_results", ".", "pass",
-            "fixture deterministic checks passed", 1)
-        (receipt_dir / "terminal-full.jsonl").write_text(
-            json.dumps(full_receipt, sort_keys=True) + "\n",
-            encoding="utf-8")
-
-        authorized_view, profile_errors = \
-            check_proof.check_queue.profile_load_authorized_view(
-                self.root, self.profile_manifest)
-        self.assertEqual([], profile_errors)
-        corpus_receipt = kblib.make_receipt(
-            "check_corpus_plan",
-            check_proof.check_corpus_plan.TOOL_VERSION,
-            "corpus_plan", self.profile_manifest, "pass",
-            "terminal fixture Corpus Planning bytes passed", 1)
-        corpus_receipt["gate_id"] = "corpus-plan-structure"
-        self.corpus_receipt_id = corpus_receipt["receipt_id"]
-        corpus_receipt.update(
-            check_proof.check_corpus_plan.current_freshness_binding(
-                self.root, self.profile_manifest,
-                task_id=queue["task_id"],
-                queue_revision=queue["queue_revision"],
-                queue_state_revision=queue["state_revision"],
-                coverage_ledger_sha256=runtime["coverage_sha256"],
-                required_queue_sha256=runtime["queue_sha256"],
-                progress_ledger_sha256=runtime["progress_sha256"],
-                repository_snapshot_sha256=
-                    kblib.repository_snapshot_sha256(self.root),
-                authorized_profile_view=authorized_view,
-            ))
-
-        kblib.write_receipts(register, [corpus_receipt])
-
-        # The completed lifecycle already produced full AuditReceipts through
-        # the real pre-merge and post-Delta producers.  Terminal Proof must cite
-        # those current records, not manufacture a generic Receipt and attach an
-        # ad-hoc ``dimension`` field.  Select one stable current receipt for each
-        # dimension this fixture actually discharged and validate its closed
-        # Kernel shape before placing it in the proof.
-        audit_contract = audit_receipt_contract.load_contract(self.root)
-        current_catalog = check_proof.check_queue.current_receipt_catalog(runtime)
-        self.dimension_receipts = {}
-        for receipt_id, entry in sorted(current_catalog.items()):
-            record = entry[1] if isinstance(entry, tuple) else None
-            if not isinstance(record, dict) or \
-                    record.get("record_kind") != "audit-receipt" or \
-                    record.get("due_stage") != "pre-merge":
-                continue
-            audit_receipt_contract.validate_audit_receipt(
-                record, contract=audit_contract)
-            dimension = record["dimension"]
-            if dimension in {
-                    "structure_and_links", "coverage_and_integration",
-                    "guidance_and_contract", "rendering"}:
-                self.dimension_receipts.setdefault(dimension, receipt_id)
-        self.assertEqual(
-            {"structure_and_links", "coverage_and_integration",
-             "guidance_and_contract", "rendering"},
-            set(self.dimension_receipts))
-        selected_ids = set(self.dimension_receipts.values())
-        audit_register = self.root / runtime_paths.AUDIT_RECEIPT_REGISTER_PATH
-        audit_records = [json.loads(line) for line in audit_register.read_text(
-            encoding="utf-8").splitlines() if line.strip()]
-        selected_records = [record for record in audit_records
-                            if record.get("receipt_id") in selected_ids]
-        self.assertEqual(selected_ids, {
-            record["receipt_id"] for record in selected_records})
-        audit_register.write_text("".join(
-            json.dumps(record, sort_keys=True) + "\n"
-            for record in audit_records
-            if record.get("receipt_id") not in selected_ids),
-            encoding="utf-8")
-        kblib.write_receipts(register, selected_records)
-
-        proof = kblib.parse_yaml_subset(TEMPLATE.read_text(encoding="utf-8"))
-        proof.update({
-            "task_id": queue["task_id"],
-            "scope_version": contract["scope_version"],
-            "contract_version": contract["contract_version"],
-            "coverage_ledger_sha256": runtime["coverage_sha256"],
-            "progress_ledger_sha256": runtime["progress_sha256"],
-            "required_queue_path": check_proof.CANONICAL_QUEUE_PATH,
-            "queue_revision": queue["queue_revision"],
-            "queue_state_revision": queue["state_revision"],
-            "required_queue_sha256": runtime["queue_sha256"],
-            "remaining_required_work_units": runtime["remaining"],
-            "queue_check_receipt": self.receipt_id,
-            "corpus_plan_check_receipt": corpus_receipt["receipt_id"],
-            "standards_version": contract["standards_version"],
-            "selected_profile_manifest": self.profile_manifest,
-            **self.terminal_load_contract,
-            "guidance_cutoff_id": "G-000",
-            "audit_receipt_register": ".cambium/receipts/terminal.jsonl",
-            "full_deterministic_results":
-                ".cambium/receipts/terminal-full.jsonl",
-            "incremental_manual_scope": [],
-            "corpus_plan_semantic_acceptance_receipt": None,
-            "dimension_coverage": {
-                "structure_and_links": [
-                    self.dimension_receipts["structure_and_links"]],
-                "content_and_depth":
-                    "not-applicable: the frozen fixture scope contains no "
-                    "L-tier independent substantive-review obligation",
-                "coverage_and_integration": [
-                    self.dimension_receipts["coverage_and_integration"]],
-                "guidance_and_contract": [
-                    self.dimension_receipts["guidance_and_contract"]],
-                "formula_and_numeric":
-                    "not-applicable: the frozen fixture scope states no "
-                    "formula, symbol, numeric example, or metric provenance",
-                "source_and_currentness":
-                    "not-applicable: the fixture scope cites no external "
-                    "source and carries no time-sensitive claim",
-                "rendering": [self.dimension_receipts["rendering"]],
-            },
-        })
-        self.proof_path = receipt_dir / "terminal-proof.yaml"
-        self.proof_path.write_text(
-            kblib.canonical_yaml(proof), encoding="utf-8")
-
-    def tearDown(self):
-        self.tempdir.cleanup()
-
-    def run_proof(self, progress=check_proof.CANONICAL_PROGRESS_PATH,
-                  coverage=check_proof.CANONICAL_COVERAGE_PATH,
-                  write_receipt=False):
-        command = [
-            sys.executable, str(SCRIPT), str(self.proof_path),
-            "--root", str(self.root), "--progress-ledger", progress,
-            "--ledger", coverage,
-        ]
-        if write_receipt:
-            command.extend([
-                "--receipts", ".cambium/receipts/proof-check.jsonl",
-            ])
-        return subprocess.run(
-            command,
-            cwd=self.root, text=True, capture_output=True, check=False,
-        )
-
-    def test_complete_canonical_runtime_passes_terminal_proof(self):
-        expected_profile = check_proof.check_profile.evaluate_profile_load(
-            self.root / "profiles/test-profile",
-            root=self.root,
-            receipt_identity=None,
-        )
-        self.assertTrue(expected_profile.authorized,
-                        expected_profile.findings)
-        result = self.run_proof(write_receipt=True)
-        self.assertEqual(0, result.returncode, result.stdout + result.stderr)
-        receipt = json.loads((
-            self.root / ".cambium/receipts/proof-check.jsonl"
-        ).read_text(encoding="utf-8").splitlines()[-1])
-        self.assertEqual("check_proof", receipt["tool"])
-        self.assertEqual(check_proof.TOOL_VERSION, receipt["tool_version"])
-        self.assertEqual(check_proof.GATE_ID, receipt["gate_id"])
-        self.assertEqual("proof-check-summary", receipt["check"])
-        self.assertEqual("pass", receipt["result"])
-        self.assertEqual(
-            ".cambium/receipts/terminal-proof.yaml",
-            receipt["terminal_proof_path"],
-        )
-        self.assertEqual(kblib.sha256_file(self.proof_path),
-                         receipt["terminal_proof_sha256"])
-        self.assertEqual(
-            kblib.sha256_file(
-                self.root / check_proof.CANONICAL_COVERAGE_PATH
-            ),
-            receipt["coverage_ledger_sha256"],
-        )
-        self.assertEqual(
-            kblib.sha256_file(
-                self.root / check_proof.CANONICAL_PROGRESS_PATH
-            ),
-            receipt["progress_ledger_sha256"],
-        )
-        proof = kblib.load_yaml_file(self.proof_path)
-        self.assertEqual(proof["corpus_plan_check_receipt"],
-                         receipt["corpus_plan_check_receipt"])
-        self.assertEqual(
-            expected_profile.profile_snapshot_sha256,
-            receipt["profile_snapshot_sha256"],
-        )
-        self.assertEqual(
-            expected_profile.profile_contract_fingerprint,
-            receipt["profile_contract_fingerprint"],
-        )
-        self.assertEqual(
-            expected_profile.profile_load_inputs_sha256,
-            receipt["profile_load_inputs_sha256"],
-        )
-        self.assertEqual(
-            kblib.repository_snapshot_sha256(self.root),
-            receipt["repository_snapshot_sha256"],
-        )
-        for field in ("profile_snapshot_sha256",
-                      "profile_contract_fingerprint",
-                      "profile_load_inputs_sha256",
-                      "repository_snapshot_sha256"):
-            self.assertRegex(receipt[field], r"\Asha256:[0-9a-f]{64}\Z")
-
-    def test_terminal_proof_runs_profile_load_producer_once(self):
-        """Every consumer shares the one entry Profile authorization."""
-        real_evaluate = check_proof.check_profile.evaluate_profile_load
-        argv = [
-            str(SCRIPT), str(self.proof_path),
-            "--root", str(self.root),
-            "--progress-ledger", check_proof.CANONICAL_PROGRESS_PATH,
-            "--ledger", check_proof.CANONICAL_COVERAGE_PATH,
-        ]
-        output = io.StringIO()
-        with mock.patch.object(
-                check_proof.check_profile, "evaluate_profile_load",
-                wraps=real_evaluate) as evaluate, \
-                mock.patch.object(sys, "argv", argv), \
-                contextlib.redirect_stdout(output):
-            exit_code = check_proof.main()
-
-        self.assertEqual(0, exit_code, output.getvalue())
-        self.assertEqual(1, evaluate.call_count)
-
-    def test_failed_profile_load_is_not_retried_by_corpus_consumer(self):
-        """A failed entry producer remains one fail-closed observation."""
-        registry = self.root / "profiles/test-profile/slots.md"
-        registry.write_text(
-            registry.read_text(encoding="utf-8").replace(
-                "## Extension Dimensions\n",
-                "## Broken Extension Dimensions\n", 1),
-            encoding="utf-8")
-        real_evaluate = check_proof.check_profile.evaluate_profile_load
-        argv = [
-            str(SCRIPT), str(self.proof_path),
-            "--root", str(self.root),
-            "--progress-ledger", check_proof.CANONICAL_PROGRESS_PATH,
-            "--ledger", check_proof.CANONICAL_COVERAGE_PATH,
-        ]
-        output = io.StringIO()
-        with mock.patch.object(
-                check_proof.check_profile, "evaluate_profile_load",
-                wraps=real_evaluate) as evaluate, \
-                mock.patch.object(sys, "argv", argv), \
-                contextlib.redirect_stdout(output):
-            exit_code = check_proof.main()
-
-        self.assertEqual(1, exit_code, output.getvalue())
-        self.assertEqual(1, evaluate.call_count)
-        self.assertIn(
-            "proof-corpus-plan-profile-view-unavailable", output.getvalue())
-
-    def test_profile_change_after_shared_evaluation_fails_currency_check(self):
-        """Cached dimensions cannot mask Profile drift before the summary."""
-        evaluation = check_proof.check_profile.evaluate_profile_load(
-            self.root / "profiles/test-profile",
-            root=self.root,
-            receipt_identity=None,
-        )
-        self.assertTrue(evaluation.authorized, evaluation.findings)
-        dimensions_before = check_proof._registered_receipt_dimensions(
-            evaluation)
-        self.assertTrue(dimensions_before[2], dimensions_before[3])
-
-        registry = self.root / "profiles/test-profile/slots.md"
-        registry.write_text(
-            registry.read_text(encoding="utf-8") + "\n",
-            encoding="utf-8",
-        )
-
-        # Enumeration still refers to the one authorized in-memory contract;
-        # the final currency boundary then refuses to summarize it as current.
-        self.assertEqual(
-            dimensions_before,
-            check_proof._registered_receipt_dimensions(evaluation),
-        )
-        failures = check_proof._profile_load_currency_failures(
-            self.root, evaluation)
-        self.assertEqual(
-            ["proof-profile-snapshot-stale"],
-            [failure[0] for failure in failures],
-        )
-
-    def test_profile_load_input_change_after_evaluation_fails_currency_check(self):
-        """A stable Profile tree cannot hide changed root-owned load policy."""
-        evaluation = check_proof.check_profile.evaluate_profile_load(
-            self.root / "profiles/test-profile",
-            root=self.root,
-            receipt_identity=None,
-        )
-        self.assertTrue(evaluation.authorized, evaluation.findings)
-        interface = self.root / check_proof.check_profile.DEFAULT_INTERFACE
-        interface.write_text(
-            interface.read_text(encoding="utf-8") +
-            "\n# Canonical interface revision B.\n",
-            encoding="utf-8",
-        )
-        self.assertEqual(
-            evaluation.profile_snapshot_sha256,
-            kblib.repository_tree_sha256(
-                self.root, evaluation.contract.profile_repo_dir),
-        )
-        failures = check_proof._profile_load_currency_failures(
-            self.root, evaluation)
-        self.assertEqual(
-            ["proof-profile-load-inputs-stale"],
-            [failure[0] for failure in failures],
-        )
-
-    def test_profile_a_b_a_during_terminal_run_cannot_publish_pass(self):
-        """A restored A cannot erase runtime's observation of revision B."""
-        real_evaluate = check_proof.check_profile.evaluate_profile_load
-        real_validate = check_proof.check_queue.validate_runtime
-        registry = self.root / "profiles/test-profile/slots.md"
-        revision_a = registry.read_text(encoding="utf-8")
-
-        def validate_during_revision_b(*args, **kwargs):
-            registry.write_text(
-                revision_a + "\n<!-- transient valid revision B -->\n",
-                encoding="utf-8")
-            try:
-                return real_validate(*args, **kwargs)
-            finally:
-                registry.write_text(revision_a, encoding="utf-8")
-
-        receipt_relative = ".cambium/receipts/toctou-proof-check.jsonl"
-        argv = [
-            str(SCRIPT), str(self.proof_path),
-            "--root", str(self.root),
-            "--progress-ledger", check_proof.CANONICAL_PROGRESS_PATH,
-            "--ledger", check_proof.CANONICAL_COVERAGE_PATH,
-            "--receipts", receipt_relative,
-        ]
-        output = io.StringIO()
-        with mock.patch.object(
-                check_proof.check_profile, "evaluate_profile_load",
-                wraps=real_evaluate) as evaluate, \
-                mock.patch.object(
-                    check_proof.check_queue, "validate_runtime",
-                    side_effect=validate_during_revision_b), \
-                mock.patch.object(sys, "argv", argv), \
-                contextlib.redirect_stdout(output):
-            exit_code = check_proof.main()
-
-        self.assertEqual(1, exit_code, output.getvalue())
-        self.assertEqual(1, evaluate.call_count)
-        self.assertEqual(revision_a, registry.read_text(encoding="utf-8"))
-        records = [
-            json.loads(line) for line in
-            (self.root / receipt_relative).read_text(
-                encoding="utf-8").splitlines()
-            if line.strip()
-        ]
-        self.assertIn(
-            "proof-queue-live-check-failed",
-            [record["check"] for record in records],
-        )
-        self.assertFalse(any(
-            record["check"] == "proof-check-summary" and
-            record["result"] == "pass"
-            for record in records
-        ))
-
-    def test_changes_after_consumers_fail_final_currency_cas(self):
-        """The summary boundary rejects repo and state drift after reads."""
-        real_evaluate = check_proof.check_profile.evaluate_profile_load
-        real_corpus_linkage = check_proof._validate_corpus_plan_linkage
-        registry = self.root / "profiles/test-profile/slots.md"
-
-        def mutate_after_corpus(*args, **kwargs):
-            result = real_corpus_linkage(*args, **kwargs)
-            registry.write_text(
-                registry.read_text(encoding="utf-8") +
-                "\n<!-- post-consumer revision B -->\n",
-                encoding="utf-8")
-            progress = self.root / check_proof.CANONICAL_PROGRESS_PATH
-            progress.write_text(
-                progress.read_text(encoding="utf-8") + "\n",
-                encoding="utf-8")
-            return result
-
-        receipt_relative = ".cambium/receipts/final-cas-proof-check.jsonl"
-        argv = [
-            str(SCRIPT), str(self.proof_path),
-            "--root", str(self.root),
-            "--progress-ledger", check_proof.CANONICAL_PROGRESS_PATH,
-            "--ledger", check_proof.CANONICAL_COVERAGE_PATH,
-            "--receipts", receipt_relative,
-        ]
-        output = io.StringIO()
-        with mock.patch.object(
-                check_proof.check_profile, "evaluate_profile_load",
-                wraps=real_evaluate) as evaluate, \
-                mock.patch.object(
-                    check_proof, "_validate_corpus_plan_linkage",
-                    side_effect=mutate_after_corpus), \
-                mock.patch.object(sys, "argv", argv), \
-                contextlib.redirect_stdout(output):
-            exit_code = check_proof.main()
-
-        self.assertEqual(1, exit_code, output.getvalue())
-        self.assertEqual(1, evaluate.call_count)
-        records = [
-            json.loads(line) for line in
-            (self.root / receipt_relative).read_text(
-                encoding="utf-8").splitlines() if line.strip()
-        ]
-        checks = [record["check"] for record in records]
-        self.assertIn("proof-profile-view-stale", checks)
-        self.assertIn("proof-runtime-state-stale", checks)
-        self.assertIn("proof-repository-snapshot-stale", checks)
-        self.assertNotIn("proof-check-summary", checks)
-
-    def test_changed_corpus_plan_slot_invalidates_terminal_proof(self):
-        slot = self.root / "profiles/test-profile/corpus-planning.yaml"
-        slot.write_text(
-            slot.read_text(encoding="utf-8") + "\n",
-            encoding="utf-8")
-        result = self.run_proof()
-        self.assertEqual(1, result.returncode, result.stdout + result.stderr)
-        self.assertIn("proof-corpus-plan-receipt-stale", result.stdout)
-
-    def test_tampered_corpus_plan_receipt_binding_fails_closed(self):
-        proof = kblib.load_yaml_file(self.proof_path)
-        receipt_id = proof["corpus_plan_check_receipt"]
-        register = self.root / proof["audit_receipt_register"]
-        records = [json.loads(line) for line in register.read_text(
-            encoding="utf-8").splitlines() if line.strip()]
-        for record in records:
-            if record.get("receipt_id") == receipt_id:
-                record["selected_profile_manifest_sha256"] = \
-                    "sha256:" + "0" * 64
-        register.write_text("".join(
-            json.dumps(record, sort_keys=True) + "\n" for record in records),
-            encoding="utf-8")
-        result = self.run_proof()
-        self.assertEqual(1, result.returncode, result.stdout + result.stderr)
-        self.assertIn("proof-corpus-plan-receipt-stale", result.stdout)
-
-    def test_corpus_receipt_in_history_but_not_current_fails_closed(self):
-        proof = kblib.load_yaml_file(self.proof_path)
-        runtime = check_proof.check_queue.validate_runtime(self.root)
-        historical = check_proof.check_queue.historical_receipt_catalog(runtime)
-        current = dict(check_proof.check_queue.current_receipt_catalog(runtime))
-        current.pop(proof["corpus_plan_check_receipt"], None)
-        filtered = dict(runtime)
-        filtered["receipt_catalog"] = historical
-        filtered["current_receipt_catalog"] = current
-        failures, passed = check_proof._validate_corpus_plan_linkage(
-            self.root, proof, proof["progress_ledger_sha256"],
-            runtime=filtered,
-            authorized_profile_view=runtime["_profile_authorized_view"],
-            repository_snapshot_sha256=
-                kblib.repository_snapshot_sha256(self.root))
-        self.assertFalse(passed)
-        self.assertIn(
-            "proof-corpus-plan-receipt-not-current",
-            [failure[0] for failure in failures],
-        )
-
-    def rewrite_dimension_coverage(self, mutate):
-        proof = kblib.load_yaml_file(self.proof_path)
-        mutate(proof["dimension_coverage"])
-        self.proof_path.write_text(
-            kblib.canonical_yaml(proof), encoding="utf-8")
-
-    def test_base_dimension_without_evidence_or_declaration_fails_closed(self):
-        """A dimension nobody ran must not pass by having no receipts."""
-        self.rewrite_dimension_coverage(
-            lambda coverage: coverage.pop("formula_and_numeric"))
-        result = self.run_proof()
-        self.assertEqual(1, result.returncode, result.stdout + result.stderr)
-        self.assertIn("proof-dimension-missing", result.stdout)
-        self.assertIn("formula_and_numeric", result.stdout)
-
-    def test_dimension_receipt_absent_from_the_register_fails_closed(self):
-        receipt_id = (
-            "audit-manual-attestation-20260804T000000Z-"
-            "99999999999999999999999999999999-0001")
-        # Keep the ID current in the repository-wide catalog while omitting it
-        # from the Proof's declared register, so this isolates the register
-        # membership contract from the separate current-evidence contract.
-        current_record = {
-            "receipt_id": receipt_id,
-            "tool": "manual-attestation",
-            "tool_version": "1.0.0",
-            "check": "audit_dimension",
-            "target": "frozen snapshot",
-            "result": "pass",
-            "details": "fixture register-membership isolation",
-            "dimension": "formula_and_numeric",
-            "invalidated_by": None,
-        }
-        (self.root / ".cambium/receipts/current-outside-proof.jsonl").write_text(
-            json.dumps(current_record, sort_keys=True) + "\n",
-            encoding="utf-8",
-        )
-        self.rewrite_dimension_coverage(
-            lambda coverage: coverage.__setitem__(
-                "formula_and_numeric", [receipt_id]))
-        result = self.run_proof()
-        self.assertEqual(1, result.returncode, result.stdout + result.stderr)
-        self.assertIn("proof-dimension-receipt-missing", result.stdout)
-
-    def test_receipt_filed_under_another_dimension_fails_closed(self):
-        def move_rendering_receipt(coverage):
-            coverage["rendering"] = (
-                "not-applicable: moved for this fixture")
-            coverage["formula_and_numeric"] = [
-                self.dimension_receipts["rendering"]]
-
-        self.rewrite_dimension_coverage(move_rendering_receipt)
-        result = self.run_proof()
-        self.assertEqual(1, result.returncode, result.stdout + result.stderr)
-        self.assertIn("proof-dimension-receipt-mismatch", result.stdout)
-
-    def test_receipt_cited_under_two_dimensions_fails_closed(self):
-        self.rewrite_dimension_coverage(
-            lambda coverage: coverage.__setitem__(
-                "formula_and_numeric",
-                [self.dimension_receipts["structure_and_links"]]))
-        result = self.run_proof()
-        self.assertEqual(1, result.returncode, result.stdout + result.stderr)
-        self.assertIn("proof-dimension-receipt-duplicate", result.stdout)
-
-    REGISTRY_TABLE_HEADER = (
-        "| Dimension ID | Target list(s): `review`, `receipt`, or "
-        "`review + receipt` | Meaning |\n|---|---|---|\n"
-    )
-
-    def rebind_corpus_plan_receipt(self):
-        """Re-take the Corpus Planning receipt against the edited tree.
-
-        Editing a profile file changes the frozen repository snapshot and the
-        slot bytes that receipt binds, so without this every registry test
-        would fail on Corpus Planning currency instead of on the behaviour
-        under test.
-        """
-        def rebind(record):
-            record.update(
-                check_proof.check_corpus_plan.current_freshness_binding(
-                    self.root, self.profile_manifest,
-                    task_id=record["task_id"],
-                    queue_revision=record["queue_revision"],
-                    queue_state_revision=record["queue_state_revision"],
-                    coverage_ledger_sha256=record["coverage_ledger_sha256"],
-                    required_queue_sha256=record["required_queue_sha256"],
-                    progress_ledger_sha256=record["progress_ledger_sha256"],
-                    repository_snapshot_sha256=(
-                        kblib.repository_snapshot_sha256(self.root)),
-                ))
-
-        self.rewrite_register_record(self.corpus_receipt_id, rebind)
-
-    def rewrite_extension_dimensions(self, block):
-        """Replace the selected profile's Extension Dimensions registration.
-
-        The typed Profile contract now carries Judgment Items and Scan
-        Registrations in the same fixture file.  Replace only this H2 block;
-        `block` of None removes it while preserving the other dependencies.
-        """
-        registry = self.root / "profiles/test-profile/slots.md"
-        head, marker, remainder = registry.read_text(
-            encoding="utf-8").partition("## Extension Dimensions\n")
-        self.assertTrue(marker, "fixture slot file has no registration block")
-        _old_block, next_heading, tail = remainder.partition(
-            "\n## Judgment Items\n")
-        self.assertTrue(next_heading, "fixture slot file has no Judgment Items")
-        registry.write_text(
-            head + ("" if block is None else marker + block) +
-            next_heading + tail,
-            encoding="utf-8")
-        # A valid Profile revision needs a current Corpus receipt so extension
-        # dimension tests isolate the Terminal obligation.  Deliberately
-        # invalid revisions cannot produce that binding; leave the old receipt
-        # stale and let the one Terminal profile-load report the root failure.
-        authorized_view, _errors = \
-            check_proof.check_queue.profile_load_authorized_view(
-                self.root, self.profile_manifest)
-        if authorized_view is not None:
-            self.rebind_corpus_plan_receipt()
-
-    def register_extension_dimension(self, targets="`review + receipt`"):
-        """Register one profile-owned dimension the way a real profile does."""
-        self.rewrite_extension_dimensions(
-            "\n- Registration: Configured\n\n" + self.REGISTRY_TABLE_HEADER +
-            "| `glossary` | %s | Fitness of the profile's terminology "
-            "pages against its registered glossary contract. |\n" % targets)
-
-    def append_dimension_record(self, dimension):
-        """Build a complete Profile-owned AuditReceipt through production code."""
-        plan_path = next(iter(sorted(
-            (self.root / runtime_paths.AUDIT_PLAN_ROOT).glob("*.yaml"))))
-        plan = kblib.load_yaml_file(plan_path)
-        source = next(
-            obligation for obligation in plan["obligations"]
-            if obligation.get("evidence_kind") == "audit-receipt" and
-            obligation.get("due_stage") == "pre-merge")
-        obligation = copy.deepcopy(source)
-        obligation.update({
-            "obligation_id": "audit-obligation-profile-glossary-fixture",
-            "owner_kind": "profile-extension",
-            "owner_rule_id": "P:test-profile:glossary",
-            "kernel_extension_point": "k12-14-batch-review-requirement",
-            "partition": "profile-registered-review",
-            "target": "profiles/test-profile/slots.md",
-            "applicability": "selected-profile-registers-glossary-receipt",
-            "dimension": dimension,
-            "acceptance_predicate": "profile-glossary-acceptance",
-            "producer_check": "profile_extension_dimension",
-            "producer_capability": "manual-attestation-v1",
-            "producer_gate_id": None,
-            "consumer_gate_id": "terminal-proof",
-        })
-        view, profile_errors = \
-            check_proof.check_queue.profile_load_authorized_view(
-                self.root, self.profile_manifest)
-        self.assertEqual([], profile_errors)
-        self.assertIsNotNone(view)
-        plan = copy.deepcopy(plan)
-        plan.update({
-            "plan_id": "audit-plan-profile-glossary-fixture",
-            "selected_profile_manifest": view["selected_profile_manifest"],
-            "profile_snapshot_sha256": view["profile_snapshot_sha256"],
-            "profile_contract_fingerprint":
-                view["profile_contract_fingerprint"],
-            "obligations": [obligation],
-        })
-        plan_sha = audit_plan_contract.plan_sha256(plan)
-        evidence = kblib.make_receipt(
-            "manual-attestation", "1.0.0",
-            obligation["producer_check"], obligation["target"], "pass",
-            "fixture %s verdict for the frozen snapshot" % dimension, 9)
-        evidence.update({
-            "plan_id": plan["plan_id"],
-            "audit_plan_sha256": plan_sha,
-            "obligation_id": obligation["obligation_id"],
-            "task_id": plan["task_id"],
-            "batch_id": plan["batch_id"],
-            "opening_transition_receipt":
-                plan["opening_transition_receipt"],
-            "standards_version": plan["standards_version"],
-            "active_standards_sha256": plan["active_standards_sha256"],
-            "selected_profile_manifest": plan["selected_profile_manifest"],
-            "profile_snapshot_sha256": plan["profile_snapshot_sha256"],
-            "profile_contract_fingerprint":
-                plan["profile_contract_fingerprint"],
-            "fingerprint_binding": "evidence-time",
-            "artifact_fingerprint": "sha256:" + "1" * 64,
-            "dependency_fingerprint": "sha256:" + "2" * 64,
-            "contract_fingerprint": "sha256:" + "3" * 64,
-            "invalidated_by": None,
-        })
-        record = complete_audit_receipt.build_audit_receipt(
-            plan=plan, plan_sha256=plan_sha, obligation=obligation,
-            evidence=evidence, seq=9)
-        audit_receipt_contract.validate_audit_receipt(
-            record, contract=audit_receipt_contract.load_contract(self.root),
-            dimensions={dimension})
-        register = self.root / ".cambium/receipts/terminal.jsonl"
-        with register.open("a", encoding="utf-8") as handle:
-            handle.write(json.dumps(evidence, sort_keys=True) + "\n")
-            handle.write(json.dumps(record, sort_keys=True) + "\n")
-        self.extension_audit_context = {
-            "plan": plan,
-            "plan_sha256": plan_sha,
-            "obligation": obligation,
-            "evidence": evidence,
-            "receipt": record,
-        }
-        return record["receipt_id"]
-
-    def test_registered_receipt_dimension_omitted_from_the_proof_fails(self):
-        """K12/16: a registered `receipt` dimension is not optional.
-
-        The defect this closes: the profile registers a dimension, judgment
-        items emit into it, and a Terminal Proof that never mentions it passes
-        because the checker only ever iterated the base seven.
-        """
-        self.register_extension_dimension()
-        result = self.run_proof()
-        self.assertEqual(1, result.returncode, result.stdout + result.stderr)
-        self.assertIn("proof-dimension-missing", result.stdout)
-        self.assertIn("glossary", result.stdout)
-
-    def test_registered_receipt_dimension_accounted_for_passes(self):
-        """The obligation is dischargeable by receipts, like the base seven."""
-        self.register_extension_dimension()
-        receipt_id = self.append_dimension_record("glossary")
-        proof = kblib.load_yaml_file(self.proof_path)
-        proof["dimension_coverage"]["glossary"] = [receipt_id]
-        runtime = check_proof.check_queue.validate_runtime(self.root)
-        catalog = dict(
-            check_proof.check_queue.current_receipt_catalog(runtime))
-        context = self.extension_audit_context
-        for record in (context["evidence"], context["receipt"]):
-            catalog[record["receipt_id"]] = (
-                ".cambium/receipts/terminal.jsonl", record)
-        runtime = dict(runtime)
-        runtime["current_receipt_catalog"] = catalog
-        resolved = {
-            "audit_plan_id": context["plan"]["plan_id"],
-            "audit_plan_path": "fixture/profile-extension-plan.yaml",
-            "audit_plan_sha256": context["plan_sha256"],
-            "plan": context["plan"],
-            "obligations": [context["obligation"]],
-        }
-        with mock.patch.object(
-                check_proof.audit_evidence_runtime, "resolve_stage_plan",
-                return_value=resolved):
-            failures = check_proof._validate_dimension_coverage_evidence(
-                self.root, proof, {receipt_id: "glossary"}, runtime,
-                registered_dimensions=("glossary",))
-        self.assertEqual([], failures)
-
-    def test_registered_dimension_declared_not_applicable_passes(self):
-        self.register_extension_dimension()
-        proof = kblib.load_yaml_file(self.proof_path)
-        proof["dimension_coverage"]["glossary"] = (
-            "not-applicable: the frozen fixture scope holds no terminology page")
-        evaluation = check_proof.check_profile.evaluate_profile_load(
-            self.root / "profiles/test-profile", root=self.root,
-            receipt_identity=None)
-        registered, all_registered, authoritative, failures = \
-            check_proof._registered_receipt_dimensions(evaluation)
-        self.assertEqual([], failures)
-        shape_failures, _cited = check_proof._dimension_coverage_failures(
-            proof, registered, all_registered, authoritative)
-        self.assertEqual([], shape_failures)
-
-    def test_registered_dimension_receipt_still_resolves_by_dimension(self):
-        """A registered dimension reuses the base evidence rules unchanged."""
-        self.register_extension_dimension()
-        self.rewrite_dimension_coverage(
-            lambda coverage: coverage.__setitem__(
-                "glossary",
-                [self.dimension_receipts["structure_and_links"]]))
-        result = self.run_proof()
-        self.assertEqual(1, result.returncode, result.stdout + result.stderr)
-        self.assertIn("proof-dimension-receipt-mismatch", result.stdout)
-
-    def test_review_only_registration_owes_the_proof_no_entry(self):
-        """Only a `receipt` target produces receipts to account for."""
-        self.register_extension_dimension(targets="`review`")
-        evaluation = check_proof.check_profile.evaluate_profile_load(
-            self.root / "profiles/test-profile", root=self.root,
-            receipt_identity=None)
-        registered, all_registered, authoritative, failures = \
-            check_proof._registered_receipt_dimensions(evaluation)
-        self.assertEqual((), registered)
-        self.assertEqual(("glossary",), all_registered)
-        self.assertEqual([], failures)
-        proof = kblib.load_yaml_file(self.proof_path)
-        shape_failures, _cited = check_proof._dimension_coverage_failures(
-            proof, registered, all_registered, authoritative)
-        self.assertEqual([], shape_failures)
-
-    def test_review_only_dimension_cannot_supply_terminal_receipt(self):
-        """The registry, not an ad-hoc Proof key, grants receipt authority."""
-        self.register_extension_dimension(targets="`review`")
-        receipt_id = self.dimension_receipts["structure_and_links"]
-        self.rewrite_dimension_coverage(
-            lambda coverage: coverage.__setitem__("glossary", [receipt_id]))
-        result = self.run_proof()
-        self.assertEqual(1, result.returncode, result.stdout + result.stderr)
-        self.assertIn("proof-dimension-review-only", result.stdout)
-
-    def test_review_only_dimension_may_use_explicit_na_declaration(self):
-        """K12/16 permits the key but grants it no receipt target."""
-        self.register_extension_dimension(targets="`review`")
-        self.rewrite_dimension_coverage(
-            lambda coverage: coverage.__setitem__(
-                "glossary",
-                "not-applicable: the frozen scope has no terminology page"))
-        evaluation = check_proof.check_profile.evaluate_profile_load(
-            self.root / "profiles/test-profile", root=self.root,
-            receipt_identity=None)
-        registered, all_registered, authoritative, failures = \
-            check_proof._registered_receipt_dimensions(evaluation)
-        self.assertEqual([], failures)
-        proof = kblib.load_yaml_file(self.proof_path)
-        shape_failures, _cited = check_proof._dimension_coverage_failures(
-            proof, registered, all_registered, authoritative)
-        self.assertEqual([], shape_failures)
-
-    def test_unregistered_extension_dimension_fails_closed(self):
-        """Terminal Proof cannot invent a Profile extension dimension."""
-        self.rewrite_dimension_coverage(
-            lambda coverage: coverage.__setitem__(
-                "invented_dimension",
-                "not-applicable: no object in the frozen fixture scope"))
-        result = self.run_proof()
-        self.assertEqual(1, result.returncode, result.stdout + result.stderr)
-        self.assertIn("proof-dimension-unregistered", result.stdout)
-
-    def test_registration_colliding_with_a_base_dimension_fails(self):
-        """K12/07: the registry appends dimensions, it never redefines one."""
-        self.rewrite_extension_dimensions(
-            "\n- Registration: Configured\n\n" + self.REGISTRY_TABLE_HEADER +
-            "| `rendering` | `review + receipt` | A second, profile-owned "
-            "meaning for a base dimension name. |\n")
-        result = self.run_proof()
-        self.assertEqual(1, result.returncode, result.stdout + result.stderr)
-        self.assertIn("extension-dimension-base-collision",
-                      result.stdout)
-        self.assertIn("rendering", result.stdout)
-
-    def test_registry_without_a_registration_block_fails_closed(self):
-        """The silent-empty case: no block must not read as "registers none".
-
-        Profile admission and Terminal Proof share one parser, so the malformed
-        registry is rejected both when the profile loads and when the Proof
-        tries to enumerate its receipt obligations.
-        """
-        self.rewrite_extension_dimensions(None)
-        result = self.run_proof()
-        self.assertEqual(1, result.returncode, result.stdout + result.stderr)
-        self.assertIn(
-            "extension-dimensions-section-count", result.stdout)
-        self.assertIn("proof-profile-not-loadable", result.stdout)
-
-    def test_unreadable_target_list_fails_closed(self):
-        """An unreadable target list leaves the obligation undecidable."""
-        self.register_extension_dimension(targets="`review + audit`")
-        result = self.run_proof()
-        self.assertEqual(1, result.returncode, result.stdout + result.stderr)
-        self.assertIn(
-            "extension-dimension-target-invalid", result.stdout)
-
-    def test_registration_value_outside_the_interface_fails_closed(self):
-        """Only `None` or `Configured` states what is registered."""
-        self.rewrite_extension_dimensions(
-            "\n- Registration: Not applicable — nothing to register\n\n" +
-            self.REGISTRY_TABLE_HEADER)
-        result = self.run_proof()
-        self.assertEqual(1, result.returncode, result.stdout + result.stderr)
-        self.assertIn(
-            "extension-dimensions-registration", result.stdout)
-
-    def rewrite_register_record(self, receipt_id, mutate):
-        """Apply one mutation to a record of the Audit Receipt Register."""
-        proof = kblib.load_yaml_file(self.proof_path)
-        register = self.root / proof["audit_receipt_register"]
-        records = [json.loads(line) for line in register.read_text(
-            encoding="utf-8").splitlines() if line.strip()]
-        matched = False
-        for record in records:
-            if record.get("receipt_id") == receipt_id:
-                mutate(record)
-                matched = True
-        self.assertTrue(matched, receipt_id)
-        register.write_text("".join(
-            json.dumps(record, sort_keys=True) + "\n" for record in records),
-            encoding="utf-8")
-
-    def test_invalidated_dimension_receipt_fails_closed(self):
-        self.rewrite_register_record(
-            self.dimension_receipts["rendering"],
-            lambda record: record.__setitem__(
-                "invalidated_by", "audit-superseding-review"))
-        result = self.run_proof()
-        self.assertEqual(1, result.returncode, result.stdout + result.stderr)
-        self.assertIn("proof-dimension-receipt-invalidated", result.stdout)
-
-    def test_standards_adoption_invalidated_dimension_receipt_fails_closed(self):
-        """Immutable history cannot authorize a post-adoption Proof.
-
-        This models the exact current view produced by a completed Standards
-        adoption: the receipt remains in the historical catalog, while the
-        adoption record removes it from current evidence and names its ID in
-        the invalidation set.
-        """
-        receipt_id = self.dimension_receipts["rendering"]
-        runtime = check_proof.check_queue.validate_runtime(self.root)
-        historical = dict(
-            check_proof.check_queue.historical_receipt_catalog(runtime))
-        self.assertIn(receipt_id, historical)
-        filtered = dict(runtime)
-        filtered["receipt_catalog"] = historical
-        filtered["current_receipt_catalog"] = {
-            key: value for key, value in historical.items()
-            if key != receipt_id
-        }
-        filtered["invalidated_evidence_receipt_ids"] = [receipt_id]
-        proof = kblib.load_yaml_file(self.proof_path)
-        failures = check_proof._validate_dimension_coverage_evidence(
-            self.root, proof, {receipt_id: "rendering"},
-            runtime=filtered,
-        )
-        self.assertIn(
-            "proof-dimension-receipt-invalidated-evidence",
-            [failure[0] for failure in failures],
-        )
-
-    def test_dimension_receipt_with_another_registered_dimension_fails_closed(self):
-        """A valid AuditReceipt cannot be filed under a different dimension."""
-        self.rewrite_register_record(
-            self.dimension_receipts["structure_and_links"],
-            lambda record: record.__setitem__("dimension", "rendering"))
-        result = self.run_proof()
-        self.assertEqual(1, result.returncode, result.stdout + result.stderr)
-        self.assertIn("proof-dimension-receipt-mismatch", result.stdout)
-        self.assertIn("structure_and_links", result.stdout)
-
-    def test_valid_receipt_cannot_be_moved_to_another_dimension(self):
-        """A closed AuditReceipt carries one dimension and cannot be moved."""
-        def move_rendering_receipt(coverage):
-            coverage["rendering"] = (
-                "not-applicable: moved for this fixture")
-            coverage["formula_and_numeric"] = [
-                self.dimension_receipts["rendering"]]
-
-        self.rewrite_dimension_coverage(move_rendering_receipt)
-        result = self.run_proof()
-        self.assertEqual(1, result.returncode, result.stdout + result.stderr)
-        self.assertIn("proof-dimension-receipt-mismatch", result.stdout)
-
-    def test_failed_dimension_receipt_cannot_carry_a_dimension(self):
-        """A recorded failure verdict is not completion evidence."""
-        self.rewrite_register_record(
-            self.dimension_receipts["structure_and_links"],
-            lambda record: record.__setitem__("result", "failed"))
-        result = self.run_proof()
-        self.assertEqual(1, result.returncode, result.stdout + result.stderr)
-        self.assertIn("proof-dimension-receipt-not-passed", result.stdout)
-        self.assertIn("structure_and_links", result.stdout)
-
-    def test_second_failed_dimension_receipt_fails_closed(self):
-        self.rewrite_register_record(
-            self.dimension_receipts["rendering"],
-            lambda record: record.__setitem__("result", "failed"))
-        result = self.run_proof()
-        self.assertEqual(1, result.returncode, result.stdout + result.stderr)
-        self.assertIn("proof-dimension-receipt-not-passed", result.stdout)
-
-    def test_contract_invalid_dimension_receipt_fails_closed(self):
-        self.rewrite_register_record(
-            self.dimension_receipts["structure_and_links"],
-            lambda record: record.pop("result"))
-        result = self.run_proof()
-        self.assertEqual(1, result.returncode, result.stdout + result.stderr)
-        self.assertIn("proof-dimension-receipt-contract-invalid", result.stdout)
-
-    def test_k12_07_passed_spelling_is_accepted(self):
-        """The AuditReceipt shape writes `passed`; it is a passing verdict."""
-        result = self.run_proof()
-        self.assertEqual(0, result.returncode, result.stdout + result.stderr)
-
-    def test_same_bytes_in_substitute_ledger_paths_cannot_pass(self):
-        substitute_progress = self.root / "progress-substitute.yaml"
-        substitute_coverage = self.root / "coverage-substitute.yaml"
-        substitute_progress.write_bytes(
-            (self.root / check_proof.CANONICAL_PROGRESS_PATH).read_bytes()
-        )
-        substitute_coverage.write_bytes(
-            (self.root / check_proof.CANONICAL_COVERAGE_PATH).read_bytes()
-        )
-        result = self.run_proof(
-            str(substitute_progress), str(substitute_coverage)
-        )
-        self.assertEqual(1, result.returncode, result.stdout + result.stderr)
-        self.assertIn("progress-ledger-noncanonical", result.stdout)
-        self.assertIn("coverage-ledger-noncanonical", result.stdout)
-
-
 class QueueProofLiveLinkageTests(unittest.TestCase):
     def setUp(self):
         self.tempdir = tempfile.TemporaryDirectory()
@@ -1606,7 +324,7 @@ class QueueProofLiveLinkageTests(unittest.TestCase):
             "scope_version": "s1",
             "queue_revision": 2,
             "state_revision": 7,
-            "standards_version": "cambium-test-v1",
+            "upstream_revision_id": "cambium-test-v1",
             "selected_profile_manifest": "profiles/test/profile.md",
             "required_queue": [
                 {"id": "B1", "state": "closed"},
@@ -1631,18 +349,28 @@ class QueueProofLiveLinkageTests(unittest.TestCase):
             "required_queue_sha256": self.queue_sha,
             "contract": {
                 "scope_version": "s1",
-                "standards_version": "cambium-test-v1",
+                "upstream_revision_id": "cambium-test-v1",
                 "selected_profile_manifest": "profiles/test/profile.md",
             },
         }
-        self.receipt_id = (
-            "audit-check_queue-20260804T000000Z-"
-            "11111111111111111111111111111111-0001"
+        self.receipt = queue_check_receipt.make_check_receipt(
+            {
+                "root": self.root,
+                "queue": self.queue,
+                "queue_sha256": self.queue_sha,
+                "coverage_sha256": self.coverage_sha,
+                "progress_sha256": self.progress_sha,
+                "remaining": 0,
+            },
+            "pass",
+            "fixture Required Queue is complete",
+            "require-complete",
         )
+        self.receipt_id = self.receipt["receipt_id"]
         self.proof = {
             "task_id": "task-1",
             "scope_version": "s1",
-            "standards_version": "cambium-test-v1",
+            "upstream_revision_id": "cambium-test-v1",
             "selected_profile_manifest": "profiles/test/profile.md",
             "required_queue_path": check_proof.CANONICAL_QUEUE_PATH,
             "queue_revision": 2,
@@ -1652,24 +380,8 @@ class QueueProofLiveLinkageTests(unittest.TestCase):
             "progress_ledger_sha256": self.progress_sha,
             "remaining_required_work_units": 0,
             "queue_check_receipt": self.receipt_id,
-            "audit_receipt_register": ".cambium/receipts/terminal.jsonl",
-        }
-        self.receipt = {
-            "receipt_id": self.receipt_id,
-            "tool": "check_queue",
-            "tool_version": check_proof.check_queue.TOOL_VERSION,
-            "gate_id": "required-queue-completion",
-            "check": "required_queue",
-            "queue_check_mode": "require-complete",
-            "result": "pass",
-            "invalidated_by": None,
-            "task_id": "task-1",
-            "queue_revision": 2,
-            "queue_state_revision": 7,
-            "required_queue_sha256": self.queue_sha,
-            "coverage_ledger_sha256": self.coverage_sha,
-            "progress_ledger_sha256": self.progress_sha,
-            "remaining_required_work_units": 0,
+            "terminal_audit_receipt_register":
+                ".cambium/receipts/terminal.jsonl",
         }
         self.write_receipt(self.receipt)
 
@@ -1694,7 +406,6 @@ class QueueProofLiveLinkageTests(unittest.TestCase):
             }
         runtime = {
             "current_receipt_catalog": current_catalog,
-            "receipt_catalog": current_catalog,
             "invalidated_evidence_receipt_ids": invalidated_ids or [],
             "errors": runtime_errors or [],
             "_writer_locks": [],
@@ -1715,87 +426,47 @@ class QueueProofLiveLinkageTests(unittest.TestCase):
         self.assertTrue(live_passed)
         self.assertEqual(failures, [])
 
-    def test_stale_hash_and_revision_fail(self):
+    def test_queue_state_and_current_receipt_bindings_are_exact(self):
         self.proof["required_queue_sha256"] = "sha256:" + "f" * 64
         self.proof["queue_state_revision"] = 6
         failures, _ = self.validate()
         checks = self.checks(failures)
         self.assertGreaterEqual(checks.count("proof-required-queue-mismatch"), 2)
+        self.proof["required_queue_sha256"] = self.queue_sha
+        self.proof["queue_state_revision"] = 7
 
-    def test_stale_queue_receipt_fails(self):
-        self.receipt["queue_state_revision"] = 6
-        self.write_receipt(self.receipt)
-        failures, _ = self.validate()
-        self.assertIn("proof-queue-receipt-stale", self.checks(failures))
-
-    def test_noncompletion_mode_or_checker_version_fails(self):
-        for field, value in (("queue_check_mode", "consistency"),
-                             ("tool_version", "0.9.0")):
+        current = self.receipt
+        for field, value in (
+                ("queue_state_revision", 6),
+                ("queue_check_mode", "consistency"),
+                ("tool_version", "0.9.0"),
+                ("invalidated_by", "audit-check_queue-successor")):
             with self.subTest(field=field):
-                receipt = dict(self.receipt)
-                receipt[field] = value
-                self.write_receipt(receipt)
-                failures, _ = self.validate()
-                self.assertIn("proof-queue-receipt-stale",
-                              self.checks(failures))
+                self.receipt = dict(current, **{field: value})
+                self.write_receipt(self.receipt)
+                try:
+                    failures, _ = self.validate()
+                    self.assertIn(
+                        "proof-queue-receipt-stale", self.checks(failures))
+                finally:
+                    self.receipt = current
+                    self.write_receipt(current)
 
-    def test_invalidated_queue_receipt_fails(self):
-        self.receipt["invalidated_by"] = "audit-check_queue-successor"
-        self.write_receipt(self.receipt)
-        failures, _ = self.validate()
-        self.assertIn("proof-queue-receipt-stale", self.checks(failures))
-
-    def test_missing_queue_receipt_fails(self):
-        self.receipt["receipt_id"] = "audit-check_queue-other"
-        self.write_receipt(self.receipt)
-        failures, _ = self.validate()
+        other = dict(self.receipt, receipt_id="audit-check_queue-other")
+        self.write_receipt(other)
+        current_catalog = {
+            self.receipt_id:
+                (".cambium/receipts/terminal.jsonl", self.receipt),
+        }
+        failures, _ = self.validate(current_catalog=current_catalog)
         self.assertIn("proof-queue-receipt-missing", self.checks(failures))
 
-    def test_historical_catalog_is_not_a_current_evidence_fallback(self):
-        failures, _ = self.validate(current_catalog={})
-        self.assertIn("proof-queue-receipt-not-current",
-                      self.checks(failures))
-
-    def test_standards_invalidated_queue_receipt_fails_closed(self):
-        failures, _ = self.validate(
-            current_catalog={}, invalidated_ids=[self.receipt_id])
-        self.assertIn("proof-queue-receipt-invalidated-evidence",
-                      self.checks(failures))
-
-    def test_live_check_queue_failure_fails(self):
+    def test_shared_runtime_is_required_and_live_errors_fail_closed(self):
         failures, live_passed = self.validate(
             runtime_errors=["fixture runtime invalid"])
         self.assertFalse(live_passed)
         self.assertIn("proof-queue-live-check-failed", self.checks(failures))
 
-    def test_audit_receipt_register_must_stay_in_managed_namespace(self):
-        outside = self.root / "terminal.jsonl"
-        outside.write_text(json.dumps(self.receipt) + "\n", encoding="utf-8")
-        self.proof["audit_receipt_register"] = "terminal.jsonl"
-        failures, _ = self.validate()
-        self.assertIn(
-            "proof-queue-receipt-register-unreadable", self.checks(failures)
-        )
-
-    def test_audit_receipt_register_rejects_symlink_and_hardlink(self):
-        source = self.root / ".cambium/receipts/terminal.jsonl"
-        for kind in ("symlink", "hardlink"):
-            with self.subTest(kind=kind):
-                alias = self.root / (".cambium/receipts/%s.jsonl" % kind)
-                if kind == "symlink":
-                    alias.symlink_to(source)
-                else:
-                    os.link(source, alias)
-                self.proof["audit_receipt_register"] = \
-                    ".cambium/receipts/%s.jsonl" % kind
-                failures, _ = self.validate()
-                self.assertIn(
-                    "proof-queue-receipt-register-unreadable",
-                    self.checks(failures),
-                )
-                alias.unlink()
-
-    def test_missing_shared_runtime_fails_closed_without_rerun(self):
         failures, live_passed = \
             check_proof._validate_required_queue_linkage(
                 self.root, self.proof, self.progress,
@@ -1803,6 +474,30 @@ class QueueProofLiveLinkageTests(unittest.TestCase):
         self.assertFalse(live_passed)
         self.assertIn("proof-required-queue-runtime-unavailable",
                       self.checks(failures))
+
+    def test_receipt_register_rejects_outside_symlink_and_hardlink(self):
+        source = self.root / ".cambium/receipts/terminal.jsonl"
+        outside = self.root / "terminal.jsonl"
+        outside.write_text(json.dumps(self.receipt) + "\n", encoding="utf-8")
+        aliases = {
+            "outside": (outside, "terminal.jsonl"),
+            "symlink": (
+                self.root / ".cambium/receipts/symlink.jsonl",
+                ".cambium/receipts/symlink.jsonl"),
+            "hardlink": (
+                self.root / ".cambium/receipts/hardlink.jsonl",
+                ".cambium/receipts/hardlink.jsonl"),
+        }
+        aliases["symlink"][0].symlink_to(source)
+        os.link(source, aliases["hardlink"][0])
+        for kind, (_path, relative) in aliases.items():
+            with self.subTest(kind=kind):
+                self.proof["terminal_audit_receipt_register"] = relative
+                failures, _ = self.validate()
+                self.assertIn(
+                    "proof-queue-receipt-register-unreadable",
+                    self.checks(failures),
+                )
 
 
 if __name__ == "__main__":

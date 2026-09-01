@@ -1,60 +1,48 @@
-"""Tests for render_structure_projection.py (K01/05 derived roles).
+"""Ownership tests for the Structure Registry coverage projection.
 
-The tool owns only the marker-delimited block inside a registered section;
-these tests prove insertion preserves curated prose, application is
-idempotent, staleness is detected after an input change, and a missing
-heading is reported rather than invented.
+Pure tests own only the renderer's marker-delimited projection and section
+replacement contracts. One small filesystem checkpoint proves that the
+application writer consumes those contracts; Profile admission, Structure
+Registry reference validation, Coverage validation, and public CLI transport
+are tested by their respective owners.
 """
 
-import subprocess
-import sys
+import contextlib
+import io
 import tempfile
 import unittest
 from pathlib import Path
+from types import SimpleNamespace
+from unittest import mock
 
-from Tools.tests.profile_fixture import install_loadable_profile
+import Tools.knowledge.structure.render_structure_projection as renderer
 
-SCRIPT = Path(__file__).resolve().parents[1] / \
-    "render_structure_projection.py"
 
-MANIFEST = """# Test Profile
-
-## Implemented Slots
-
-- `Structure Registry`: `structure-registry.yaml`
-"""
-
-REGISTRY = """schema_version: 2
-applicability:
-  state: configured
-  reason: null
-units:
-  - id: U-DOMAIN
-    kind: domain
-    parent: null
-    root: "Domain"
-    entry:
-      path: "Domain/Overview.md"
-      expected_type: overview
-    global_map_entry: null
-    roles:
-      sequence:
-        mode: not-applicable
-        reason: "n/a"
-      coverage:
-        mode: derived
-        generator_capability: structure-coverage-projection-v1
-        inputs_owner: "Corpus Planning/capability_matrix.yaml"
-        path: "Domain/Overview.md"
-        heading: "Coverage Reader View"
-      quick_reference:
-        mode: not-applicable
-        reason: "n/a"
-      expression:
-        mode: not-applicable
-        reason: "n/a"
-support_layers: []
-"""
+REGISTRY = {
+    "schema_version": 2,
+    "applicability": {"state": "configured", "reason": None},
+    "units": [{
+        "id": "U-DOMAIN",
+        "kind": "domain",
+        "parent": None,
+        "root": "Domain",
+        "entry": {
+            "path": "Domain/Overview.md",
+            "expected_type": "overview",
+        },
+        "global_map_entry": None,
+        "roles": {
+            "coverage": {
+                "mode": "derived",
+                "generator_capability": renderer.CAPABILITY_ID,
+                "inputs_owner": "planning/capability-matrix.yaml",
+                "path": "Domain/Overview.md",
+                "heading": "Coverage Reader View",
+            },
+        },
+    }],
+    "support_layers": [],
+}
 
 MATRIX = """schema_version: 1
 capabilities:
@@ -86,132 +74,136 @@ Untouched.
 """
 
 
-class RenderProjectionTests(unittest.TestCase):
-    def build(self):
-        self.tmp = tempfile.TemporaryDirectory()
-        self.addCleanup(self.tmp.cleanup)
-        root = Path(self.tmp.name)
-        profile = install_loadable_profile(root)
-        files = {
-            "profiles/test-profile/structure-registry.yaml": REGISTRY,
-            "Corpus Planning/capability_matrix.yaml": MATRIX,
-            "Domain/Overview.md": OVERVIEW,
-            "Domain/Page.md": "---\ntype: concept\n---\n# P\n",
+def capture_main(root, *arguments):
+    stdout = io.StringIO()
+    stderr = io.StringIO()
+    with contextlib.redirect_stdout(stdout), \
+            contextlib.redirect_stderr(stderr):
+        code = renderer.main([str(root), *arguments])
+    return int(code or 0), stdout.getvalue(), stderr.getvalue()
+
+
+class StructureProjectionContractTests(unittest.TestCase):
+    """Unit/contract: deterministic bytes owned by the renderer."""
+
+    def test_block_projects_only_rows_and_coverage_under_the_unit_root(self):
+        matrix = [{
+            "capability_id": "CAP-001",
+            "capability": "Example capability",
+            "canonical_markdown_paths": ["Domain/Page.md"],
+            "current_level": "2 Core",
+            "target_level": "3 System",
+            "gap_ids": ["GAP-1"],
+        }, {
+            "capability_id": "CAP-OUTSIDE",
+            "capability": "Outside capability",
+            "canonical_markdown_paths": ["Other/Page.md"],
+            "current_level": "1 Listed",
+            "target_level": "2 Core",
+            "gap_ids": [],
+        }]
+        dispositions = {
+            "Domain/Page.md": "required",
+            "Domain/Optional.md": "excluded",
+            "Other/Page.md": "required",
         }
-        for rel, text in files.items():
-            path = root / rel
-            path.parent.mkdir(parents=True, exist_ok=True)
-            path.write_text(text, encoding="utf-8")
-        return root
 
-    def run_tool(self, root, *args):
-        return subprocess.run(
-            [sys.executable, str(SCRIPT), str(root),
-             "--profile", "profiles/test-profile", *args],
-            text=True, capture_output=True, check=False)
+        lines = renderer.render_block(
+            "U-DOMAIN", "Domain", matrix, dispositions)
 
-    def test_apply_inserts_block_and_preserves_prose(self):
-        root = self.build()
-        result = self.run_tool(root, "--apply")
-        self.assertEqual(0, result.returncode, result.stdout)
-        text = (root / "Domain/Overview.md").read_text(encoding="utf-8")
-        self.assertIn("structure-projection:begin", text)
-        self.assertIn("CAP-001", text)
-        self.assertIn("Curated reader guidance that must survive.", text)
-        self.assertIn("## Next Section", text)
-        self.assertIn("structure-coverage-projection-v1", text)
-        self.assertIn("runtime object `coverage-ledger`", text)
-        self.assertNotIn("Tools/render_structure_projection.py", text)
-        self.assertNotIn(".cambium/state/coverage_ledger.yaml", text)
-        begin = text.index("structure-projection:begin")
-        prose = text.index("Curated reader guidance")
-        self.assertLess(begin, prose)
+        self.assertEqual(renderer.BEGIN, lines[0])
+        self.assertEqual(renderer.END, lines[-1])
+        rendered = "\n".join(lines)
+        self.assertIn("CAP-001", rendered)
+        self.assertNotIn("CAP-OUTSIDE", rendered)
+        self.assertIn("records 2 page(s) under this root, 1 of them", rendered)
+        self.assertEqual(
+            lines,
+            renderer.render_block(
+                "U-DOMAIN", "Domain", matrix, dispositions),
+        )
 
-    def test_apply_is_idempotent_and_check_is_clean(self):
-        root = self.build()
-        self.run_tool(root, "--apply")
-        first = (root / "Domain/Overview.md").read_bytes()
-        result = self.run_tool(root, "--check")
-        self.assertEqual(0, result.returncode, result.stdout)
-        self.run_tool(root, "--apply")
-        self.assertEqual(first, (root / "Domain/Overview.md").read_bytes())
+    def test_section_replacement_is_bounded_idempotent_and_requires_heading(self):
+        block = [renderer.BEGIN, "generated", renderer.END]
 
-    def test_check_detects_stale_block_after_input_change(self):
-        root = self.build()
-        self.run_tool(root, "--apply")
-        matrix = root / "Corpus Planning/capability_matrix.yaml"
-        matrix.write_text(MATRIX.replace("2 Core", "3 System"),
-                          encoding="utf-8")
-        result = self.run_tool(root, "--check")
-        self.assertEqual(2, result.returncode, result.stdout)
-        self.assertIn("stale", result.stdout)
+        projected, found, changed = renderer.replace_section_block(
+            OVERVIEW, "Coverage Reader View", block)
 
-    def test_renderer_uses_admitted_registry_input_owner_not_default_path(self):
-        root = self.build()
-        registry = root / "profiles/test-profile/structure-registry.yaml"
-        registry.write_text(
-            registry.read_text(encoding="utf-8").replace(
-                "Corpus Planning/capability_matrix.yaml",
-                "planning/alternate-matrix.yaml"),
-            encoding="utf-8")
-        alternate = root / "planning/alternate-matrix.yaml"
-        alternate.parent.mkdir()
-        alternate.write_text(
-            MATRIX.replace("CAP-001", "CAP-ALT"), encoding="utf-8")
+        self.assertTrue(found)
+        self.assertTrue(changed)
+        self.assertIn("Curated reader guidance that must survive.", projected)
+        self.assertIn("## Next Section\n\nUntouched.", projected)
+        self.assertLess(projected.index(renderer.BEGIN),
+                        projected.index("Curated reader guidance"))
+        repeated, found, changed = renderer.replace_section_block(
+            projected, "Coverage Reader View", block)
+        self.assertTrue(found)
+        self.assertFalse(changed)
+        self.assertEqual(projected, repeated)
 
-        result = self.run_tool(root, "--apply")
+        missing, found, changed = renderer.replace_section_block(
+            OVERVIEW, "Missing Reader View", block)
+        self.assertFalse(found)
+        self.assertFalse(changed)
+        self.assertEqual(OVERVIEW, missing)
 
-        self.assertEqual(0, result.returncode, result.stdout)
-        rendered = (root / "Domain/Overview.md").read_text(encoding="utf-8")
-        self.assertIn("CAP-ALT", rendered)
-        self.assertNotIn("CAP-001", rendered)
 
-    def test_stable_coverage_owner_id_resolves_without_becoming_matrix_path(self):
-        root = self.build()
-        registry = root / "profiles/test-profile/structure-registry.yaml"
-        registry.write_text(
-            registry.read_text(encoding="utf-8").replace(
-                'inputs_owner: "Corpus Planning/capability_matrix.yaml"',
-                "inputs_owner: coverage-ledger"),
-            encoding="utf-8")
-        ledger = root / ".cambium/state/coverage_ledger.yaml"
-        ledger.parent.mkdir(parents=True, exist_ok=True)
-        ledger.write_text(
-            "schema_version: 1\n"
-            "pages:\n"
-            "  - path: Domain/Page.md\n"
-            "    coverage_disposition: required\n",
-            encoding="utf-8")
+class StructureProjectionWriterIntegrationTests(unittest.TestCase):
+    """Integration: one admitted local checkpoint exercises the writer seam."""
 
-        result = self.run_tool(root, "--apply")
+    def test_apply_check_and_input_drift_share_one_minimal_checkpoint(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            files = {
+                "planning/capability-matrix.yaml": MATRIX,
+                "Domain/Overview.md": OVERVIEW,
+            }
+            for relative, text in files.items():
+                path = root / relative
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_text(text, encoding="utf-8")
 
-        self.assertEqual(0, result.returncode, result.stdout)
-        rendered = (root / "Domain/Overview.md").read_text(encoding="utf-8")
-        self.assertIn("Coverage Ledger records 1 page(s)", rendered)
-        self.assertIn("No Capability Matrix row", rendered)
+            admission = SimpleNamespace()
+            capability = {
+                "capability_id": renderer.CAPABILITY_ID,
+                "kind": renderer.CAPABILITY_KIND,
+                "input_owners": [renderer.COVERAGE_LEDGER_OWNER],
+            }
+            patches = (
+                mock.patch.object(
+                    renderer.profile_admission, "admit_profile",
+                    return_value=(admission, [])),
+                mock.patch.object(
+                    renderer.profile_admission, "currency_errors",
+                    return_value=[]),
+                mock.patch.object(
+                    renderer, "registry_document", return_value=REGISTRY),
+                mock.patch.object(
+                    renderer, "projection_capability",
+                    return_value=(capability, None)),
+            )
+            with patches[0], patches[1], patches[2], patches[3]:
+                code, stdout, stderr = capture_main(root, "--apply")
+                self.assertEqual(0, code, stdout + stderr)
+                target = root / "Domain/Overview.md"
+                first = target.read_bytes()
+                self.assertIn(b"CAP-001", first)
+                self.assertIn(
+                    b"Curated reader guidance that must survive.", first)
 
-    def test_missing_heading_is_reported_not_invented(self):
-        root = self.build()
-        (root / "Domain/Overview.md").write_text(
-            "---\ntype: overview\n---\n# Overview\n\n## Other\n\nx\n",
-            encoding="utf-8")
-        result = self.run_tool(root, "--check")
-        self.assertEqual(2, result.returncode, result.stdout)
-        self.assertIn("not found", result.stdout)
+                code, stdout, stderr = capture_main(root, "--check")
+                self.assertEqual(0, code, stdout + stderr)
+                code, stdout, stderr = capture_main(root, "--apply")
+                self.assertEqual(0, code, stdout + stderr)
+                self.assertEqual(first, target.read_bytes())
 
-    def test_unrelated_unloadable_slot_blocks_renderer(self):
-        root = self.build()
-        manifest = root / "profiles/test-profile/profile.md"
-        manifest.write_text(
-            manifest.read_text(encoding="utf-8").replace(
-                "- `Priority Rubric`: `slots.md`",
-                "- `Priority Rubric`: `broken-priority.md`"),
-            encoding="utf-8")
-        (manifest.parent / "broken-priority.md").write_text(
-            "TODO(profile)\n", encoding="utf-8")
-        result = self.run_tool(root, "--check")
-        self.assertEqual(1, result.returncode, result.stdout)
-        self.assertIn("profile-load", result.stdout)
+                matrix = root / "planning/capability-matrix.yaml"
+                matrix.write_text(
+                    MATRIX.replace("2 Core", "3 System"),
+                    encoding="utf-8")
+                code, stdout, stderr = capture_main(root, "--check")
+                self.assertEqual(2, code, stdout + stderr)
+                self.assertIn("stale", stdout)
 
 
 if __name__ == "__main__":

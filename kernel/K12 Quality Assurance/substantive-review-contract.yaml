@@ -1,4 +1,4 @@
-schema_version: 1
+schema_version: 3
 contract_id: cambium-substantive-review
 semantic_owner: K12/12
 record_kind: substantive-review-evidence
@@ -33,6 +33,9 @@ fields:
     type: integer
     nullable: false
   - field: record_kind
+    type: string
+    nullable: false
+  - field: receipt_type_id
     type: string
     nullable: false
   - field: receipt_id
@@ -80,7 +83,7 @@ fields:
   - field: opening_transition_receipt
     type: string
     nullable: false
-  - field: standards_version
+  - field: upstream_revision_id
     type: string
     nullable: false
   - field: active_standards_sha256
