@@ -148,7 +148,7 @@ source_files:
   - Tools/stamp_cards.py
   - Tools/update_queue.py
   - Tools/update_task.py
-source_hash: sha256:185d518d1cb90445faf431db4dafcec26e9f4c7fd47cc39a13ba79667f31df34
+source_hash: sha256:1539a61e33f9548130835298db13710b1345a8a97b2a94defb28b5043cedf413
 agent_interface_policy:
   path: Tools/agent-interface-policy.yaml
   sha256: sha256:26afb19c445def06866398b3019e8043ef4d4548f793e9eafb7a6d3a67d4ca32
@@ -7834,7 +7834,7 @@ tools:
     source_hash: sha256:aee907dd12ee3686b8797504e95599af2396f10ddc5026b895c178e0e0961a4c
     implementation_module: Tools.platform.distribution.test_runner
     implementation_path: Tools/platform/distribution/test_runner.py
-    implementation_source_hash: sha256:ceee0c56adbb82d9cd6ecabbde05ff5b9c330ee88ee328123840ac16611f91a1
+    implementation_source_hash: sha256:7d38431df27b5131635c6d13b6eeccbd49fd0293ca7aabe9612e395a454c74b5
     description: Run catalog-owned tests with bounded, file-level isolation. The ownership manifest decides which cases are safe to overlap. One child process always receives every selected case from one test module, so failures remain attributable to a file and module-local process state is never split across workers. Modules not declared ``parallel_safe`` run serially.
     arguments:
       - dest: suite
@@ -7868,13 +7868,13 @@ tools:
         option_strings:
           - --python
         required: false
-        default: /Applications/Xcode.app/Contents/Developer/usr/bin/python3
-        default_type: str
+        default: null
+        default_type: NoneType
         choices: null
         nargs: null
         action: store
         type: null
-        help: null
+        help: "interpreter used to run test files (default: the current interpreter)"
       - dest: jobs
         option_strings:
           - --jobs
@@ -7902,7 +7902,7 @@ tools:
     receipt_extensions_extraction: complete
     receipt_extension_sources:
       - path: Tools/platform/distribution/test_runner.py
-        sha256: sha256:ceee0c56adbb82d9cd6ecabbde05ff5b9c330ee88ee328123840ac16611f91a1
+        sha256: sha256:7d38431df27b5131635c6d13b6eeccbd49fd0293ca7aabe9612e395a454c74b5
     agent_interface:
       exposure: cli-only
       workspace_argument: root

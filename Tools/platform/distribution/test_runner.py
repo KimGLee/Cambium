@@ -257,7 +257,11 @@ def main(argv=None) -> int:
         choices=("fast", "integration", "e2e", "slow", "historical-read-only", "full"),
     )
     parser.add_argument("--root", default=".")
-    parser.add_argument("--python", default=sys.executable)
+    parser.add_argument(
+        "--python",
+        default=None,
+        help="interpreter used to run test files (default: the current interpreter)",
+    )
     parser.add_argument(
         "--jobs",
         type=int,
@@ -322,7 +326,7 @@ def main(argv=None) -> int:
             continue
         suite_started = time.monotonic()
         run_child = lambda group: _run_child(
-            group, python=args.python, root=root, env=env
+            group, python=args.python or sys.executable, root=root, env=env
         )
         result, completed, modules = _execute_suite(
             suite, groups, jobs=args.jobs, run_child=run_child
