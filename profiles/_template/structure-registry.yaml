@@ -1,5 +1,5 @@
-# Candidate instance values for the Structure Registry slot. The Kernel-owned
-# Profile interface and K01/05-K01/06 define the common shape and semantics.
+# Profile values for the Structure Registry slot. The Kernel-owned Profile
+# interface and K01/05-K01/06 define the common shape and semantics.
 
 schema_version: 2
 

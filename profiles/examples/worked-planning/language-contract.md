@@ -1,6 +1,6 @@
 # Language Contract
 
-Interface: [Kernel-owned Profile interface](../../../kernel/K00%20Standards%20Control/19%20Profile%20Extension%20Interface.md) — Language Contract slot
+Interface: [Kernel-owned Profile interface](../../../kernel/K00%20Standards%20Control/profile-interface.yaml) — Language Contract slot
 
 ## Language Routing
 

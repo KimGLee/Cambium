@@ -4,7 +4,7 @@
 
 The Profile interface is the common boundary through which one adopting knowledge repository binds choices that the Kernel deliberately leaves open. The Kernel owns the existence, meaning, minimum constraints, and invalid forms of each extension point. A selected Profile owns only the confirmed instance value bound to it.
 
-The machine-readable authority for the common slot set is [`profile-interface.yaml`](profile-interface.yaml). Human-oriented Profile documentation, interviews, templates, examples, and validator code may project or consume that registry; none of them may create a second interface.
+The machine-readable authority for the common slot set and canonical Profile form—slot paths, required heading structure, registered table and scalar carriers, stable form-row identities, allowed instance-subheading containers, and references to the owning YAML shape contracts—is [`profile-interface.yaml`](profile-interface.yaml). Human-oriented Profile documentation, interviews, templates, examples, and validator code may project or consume that registry; none of them may create a second interface or repeat a referenced YAML contract.
 
 ## Binding Contract
 

@@ -2,8 +2,6 @@
 
 Kernel owners: K00/02 and K00/12. Common slot identity and table contracts are registered in the Kernel Profile interface.
 
-This candidate registers no supplemental route, L-tier trigger, specialized audit invariant, batch review requirement, or extension Gate. Confirm each inactive choice or add only instance-specific extensions allowed by the Kernel interface.
-
 ## Supplemental Routes
 
 - Registration: None

@@ -4,8 +4,6 @@ Kernel owner: K00 Operating Roles. Common slot identity and table contract are r
 
 ## Process Roles
 
-Bind each stable governance role to the actor or system the user confirms.
-
 | Kernel role | Bound actor or system ID/name |
 |---|---|
 | `proposer` | TODO(profile) |
@@ -23,8 +21,6 @@ Bind each stable governance role to the actor or system the user confirms.
 ## Metric Traceability Roles
 
 - Applicability: Not applicable — this corpus reports no evaluated metric; every recorded number is an observation governed by Source Policy, with its retrieval date.
-
-When configured, bind each role to a profile field or identifier.
 
 | Kernel role | Profile field or identifier |
 |---|---|

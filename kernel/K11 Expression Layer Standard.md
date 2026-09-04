@@ -18,6 +18,8 @@ Concrete artifact types, display names, organization, and the readiness vocabula
 ## Profile Interface
 
 - `Expression Layer Entry` registers the current profile's expression artifacts, entry points, and single-rule owners.
+- Its `Registered Artifacts` configured table is the sole machine-readable registration: each row binds one stable artifact identity and type to its reader-facing label, entry point, canonical dependency map and/or Metadata Contract binding, revalidation trigger, Profile-owned contract, and optional readiness field. `Registration: None` uses the same empty table shape.
+- A readiness field is optional. Registering an expression artifact does not create a readiness axis; when a row names one, that field must already be registered through the Profile's Vocabulary Extensions, Metadata Contract, and Gate contract.
 - A profile MAY add artifact types, templates, classifications, and readiness values, but MUST NOT remove this domain's separation of responsibilities, canonical evidence, status independence, bidirectional binding, or create-before-remove invariants.
 - The kernel references only slots and abstract roles; it does not name any profile implementation directly.
 - A profile that registers no expression artifact creates no R05 task target; the agent stops rather than inventing one. Once an artifact is registered and enters scope, the R05 separation, evidence, binding, migration, and acceptance floor is applicable and cannot be disabled by the profile. The rule is owned by [[kernel/K11 Expression Layer/01 Expression Architecture and Separation#Core Separation|Core Separation]].

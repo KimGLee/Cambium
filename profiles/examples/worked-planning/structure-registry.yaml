@@ -4,8 +4,7 @@
 # The four corpus directories are Profile Scope layers with Global Map
 # entries; none carries a canonical entry page or is maintained or audited
 # independently of the whole, so registering them as units would create
-# hollow structure. See profiles/examples/agent-atlas/ for the configured
-# branch.
+# hollow structure.
 
 schema_version: 2
 

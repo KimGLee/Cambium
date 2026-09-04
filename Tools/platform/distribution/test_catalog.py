@@ -1202,6 +1202,23 @@ def _rows_by_path(rows, field: str) -> dict[str, dict]:
     return found
 
 
+def _is_ephemeral_test_artifact(path: pathlib.Path) -> bool:
+    """Return whether ``path`` is generated process/OS material, not a fixture.
+
+    Git-managed worktrees already exclude these paths through the repository
+    content boundary.  This source-kind guard preserves the same distinction
+    for exported trees without ``.git`` and for fixture-bundle verification.
+    It is intentionally narrow: an unknown ordinary file still enters fixture
+    discovery and therefore fails closed until the ownership manifest names it.
+    """
+
+    return (
+        path.name == ".DS_Store"
+        or path.suffix == ".pyc"
+        or "__pycache__" in path.parts
+    )
+
+
 def _discover_fixture_paths(
     root: pathlib.Path,
     *,
@@ -1211,6 +1228,10 @@ def _discover_fixture_paths(
     tests = root / TEST_DIRECTORY
     bundle_roots = bundle_roots or set()
     bundle_manifests = bundle_manifests or set()
+    repository_content = {
+        relative
+        for _absolute, relative in kblib.repository_content_files(root)
+    }
 
     def covered(path: pathlib.Path) -> bool:
         relative = _relative(path, root)
@@ -1221,25 +1242,32 @@ def _discover_fixture_paths(
             for bundle in bundle_roots
         )
 
+    def discoverable(path: pathlib.Path) -> bool:
+        return (
+            _relative(path, root) in repository_content
+            and not _is_ephemeral_test_artifact(path)
+            and not covered(path)
+        )
+
     paths = {
         _relative(path, root)
         for path in tests.glob("*.py")
         if not path.name.startswith("test_") and path.name != "__init__.py"
-        and not covered(path)
+        and discoverable(path)
     }
     fixture_root = tests / "fixtures"
     if fixture_root.exists():
         paths.update(
             _relative(path, root)
             for path in fixture_root.rglob("*")
-            if path.is_file() and not covered(path)
+            if path.is_file() and discoverable(path)
         )
     support_root = tests / "support"
     if support_root.exists():
         paths.update(
             _relative(path, root)
             for path in support_root.rglob("*.py")
-            if path.name != "__init__.py" and not covered(path)
+            if path.name != "__init__.py" and discoverable(path)
         )
     return paths
 
@@ -1317,7 +1345,7 @@ def _bundle_facts(root: pathlib.Path, row: dict, errors: list[str]) -> dict:
                     % (relative, path.relative_to(bundle_root).as_posix())
                 )
                 continue
-            if not path.is_file() or "__pycache__" in path.parts or path.name == ".DS_Store":
+            if not path.is_file() or _is_ephemeral_test_artifact(path):
                 continue
             member = path.relative_to(bundle_root).as_posix()
             actual_paths.add(member)

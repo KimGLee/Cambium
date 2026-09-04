@@ -1,36 +1,27 @@
-# Agent Systems Atlas profile vocabulary extensions.
-# Interface: kernel/K00 Standards Control/profile-interface.yaml
+# Atlas values for the Kernel-owned Vocabulary Extensions slot.
 
 schema_version: 1
 
 frontmatter_extensions:
   fields:
-    - interview_card
+    - interview_guide
 
 fields:
   type:
     values:
-      - interview-card
+      - interview-topic-guide
       - roadmap
   scope:
     values:
       - interview-only
-  interview_status:
-    owner: "profiles/examples/agent-atlas/expression-layer.md#Interview Readiness Values"
-    role: Expression Status Axis
-    values:
-      - not-required
-      - missing
-      - mapped
-      - interview-ready
   case_class:
-    owner: "profiles/examples/agent-atlas/structure-registry.yaml"
+    owner: "profiles/examples/agent-atlas/scope-and-architecture.md"
     values:
       - reported-system
       - controlled-study
       - composite-reconstruction
   source_class:
-    owner: "profiles/examples/agent-atlas/structure-registry.yaml"
+    owner: "profiles/examples/agent-atlas/source-policy.md"
     values:
       - official-engineering
       - paper

@@ -177,6 +177,33 @@ class CorpusPlanningEnvelopeTests(unittest.TestCase):
                 self.assertIn(expected_code,
                               {issue["code"] for issue in issues}, issues)
 
+    def test_explicit_owner_projection_drives_envelope_and_artifact_shape(self):
+        owner = contract.load_corpus_planning_contract()
+        owner["slot_envelope"]["semantic_acceptance_scope"] = \
+            "synthetic-corpus-acceptance"
+        owner["artifact_contracts"]["global_map"][
+            "relation_types"].append("synthetic-relation")
+        values = contract.validate_corpus_planning_contract(owner)
+        envelope = self.load(
+            "profiles/examples/worked-planning/corpus-planning.yaml")
+        envelope["pass_authority"]["decision_scope_id"] = \
+            "synthetic-corpus-acceptance"
+
+        _normalized, explicit_issues = \
+            contract.validate_corpus_planning_envelope(
+                envelope, contract_values=values)
+        _normalized, shipped_issues = \
+            contract.validate_corpus_planning_envelope(envelope)
+
+        self.assertEqual((), explicit_issues)
+        self.assertIn(
+            "authority_decision_scope",
+            {issue["code"] for issue in shipped_issues})
+        self.assertIn(
+            "synthetic-relation",
+            contract.artifact_contract(
+                "global_map", contract_values=values)["relation_types"])
+
 
 class CorpusPlanningReceiptContractTests(unittest.TestCase):
     def binding(self, applicability):

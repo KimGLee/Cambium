@@ -47,7 +47,7 @@
 #                     (projected during the interview from a confirmed
 #                     answer). `check_profile` validates; it never fills.
 
-interview_contract_version: 7
+interview_contract_version: 9
 target_template: profiles/_template
 fill_depths:
   - shipped-closed   # setup + core pack + closing; packs open later on trigger
@@ -230,8 +230,8 @@ core_pack:
 
   - id: C2
     kind: prefill-confirm
-    question: "Confirm the pre-filled operational defaults: role bindings; naming/display/length rows; the 'general: slow' volatility domain (rename or split it into real domains)."
-    note: "For an existing corpus, 'as found' naming beats a renaming campaign; changed naming rows are migration-grade."
+    question: "Confirm the pre-filled role bindings and naming, display, and length values; name every real volatility domain used by this corpus and bind each to `fast`, `slow`, or `stable`; then, for each `sources` or `related` section role the corpus uses, confirm its reader-facing title or titles and any bounded existing-content or migration aliases."
+    note: "`general: slow` is only a proposal for a genuinely undivided corpus; rename or split it when the confirmed domains differ. Record section-role titles and aliases only in Metadata Contract `section_roles`, not in a second Language Contract table. For an existing corpus, observed naming is the starting evidence; changed naming rows are migration-grade."
     phase: derived-and-conditional
     classification: semantic
     depends_on: [Q2, Q4]
@@ -243,6 +243,7 @@ core_pack:
       - {file: language-contract.md, anchor: "## Terminology And Display"}
       - {file: language-contract.md, anchor: "## Content Length Unit"}
       - {file: vocabulary-extensions.yaml, anchor: "volatility_defaults"}
+      - {file: metadata-contract.yaml, anchor: "section_roles"}
 
   - id: C3
     kind: closing-review
@@ -300,13 +301,13 @@ expansion_packs:
     binds_slot: Expression Layer Entry
     trigger: {routes: [R05], elective: true}
     opens: "a derived reader-facing artifact first appears"
-    asks: "artifact registration; readiness axis + reviewer role + readiness gate (three-piece pattern in answer-patterns.md)"
+    asks: "artifact registration; for each registered artifact, collect its repository-specific purpose, required reader-facing content, conditional reader-facing content, and language or presentation requirements, write them under a Profile-owned heading in `## Artifact Contracts`, and point the row's Contract reference exactly to that heading without copying Kernel or registry rules; then ask whether this repository needs a persistent readiness state for that artifact. Only a confirmed yes opens the readiness field + reviewer role + readiness gate questions in answer-patterns.md; otherwise record `None` in the artifact row and create no readiness machinery"
   - slot: metadata-contract
     phase: derived-and-conditional
     binds_slot: Metadata Contract
     trigger: {elective: true}
     opens: "a tightened mode, extension field, or relationship extension is needed"
-    asks: "differences (tighten only) / extension fields / relationship extensions / section roles"
+    asks: "differences (tighten only) / extension fields / relationship extensions; reader-facing section-role titles and aliases are already collected in C2"
   - slot: language-registrations
     phase: derived-and-conditional
     binds_slot: Language Contract

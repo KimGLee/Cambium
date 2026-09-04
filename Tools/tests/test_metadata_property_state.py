@@ -187,19 +187,19 @@ class MetadataPropertyStateUnitTests(unittest.TestCase):
 
     def test_gate_transition_accepts_only_its_declared_completion_values(self):
         proposed = state.apply_gate_transition(
-            coverage(), PAGE_PATH, "interview_status", "interview-ready",
+            coverage(), PAGE_PATH, "publication_status", "published",
             "audit-gate-1", AFTER_FINGERPRINT,
-            ("draft", "interview-ready"))
+            ("draft", "published"))
         self.assertEqual(
-            "interview-ready",
+            "published",
             proposed["pages"][0]["property_state"][
-                "interview_status"]["value"])
+                "publication_status"]["value"])
 
         with self.assertRaisesRegex(ValueError, "not one of"):
             state.apply_gate_transition(
-                coverage(), PAGE_PATH, "interview_status", "invented",
+                coverage(), PAGE_PATH, "publication_status", "invented",
                 "audit-gate-1", AFTER_FINGERPRINT,
-                ("draft", "interview-ready"))
+                ("draft", "published"))
 
 
 class MetadataPropertyStateContractTests(unittest.TestCase):
@@ -238,14 +238,14 @@ class MetadataPropertyStateContractTests(unittest.TestCase):
 
     def test_profile_gate_owner_domain_is_the_declared_enum(self):
         rule = state.gate_projection_rule(
-            "interview_status", ("interview-ready",))
+            "publication_status", ("published",))
         with self.assertRaises(ValueError):
             metadata_page_state_contract.typed_owner_value(
                 "mapped", rule, PAGE_PATH)
         self.assertEqual(
-            "interview-ready",
+            "published",
             metadata_page_state_contract.typed_owner_value(
-                "interview-ready", rule, PAGE_PATH))
+                "published", rule, PAGE_PATH))
 
 
 class MetadataPropertyStateIntegrationTests(unittest.TestCase):

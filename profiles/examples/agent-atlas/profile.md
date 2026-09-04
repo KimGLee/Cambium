@@ -1,6 +1,6 @@
-# Agent Systems Atlas Example Profile
+# Profile Manifest
 
-Normative interface: [Profile interface](../../README.md). Example namespace rules: [Examples](../README.md).
+Common interface: [Kernel Profile registry](../../../kernel/K00%20Standards%20Control/profile-interface.yaml).
 
 ## Profile Identity
 
@@ -20,8 +20,8 @@ Normative interface: [Profile interface](../../README.md). Example namespace rul
 - `Role Registry`: `registries/roles.md`
 - `Audit Dimension Registry`: `registries/audit-dimensions.md`
 - `Registered Scan Registry`: `registries/registered-scans.md`
-- `Escalation Policy`: `escalation-policy.md`
 - `Routing And Gate Registry`: `registries/routing-and-gates.md`
+- `Escalation Policy`: `escalation-policy.md`
 
 ## Execution Default Overrides
 

@@ -1,5 +1,5 @@
-# Candidate instance values for the Metadata Contract slot. The Kernel-owned
-# Profile interface and K08 define the common shape and extension boundary.
+# Profile values for the Metadata Contract slot. The Kernel-owned Profile
+# interface and K08 define the common shape and extension boundary.
 
 schema_version: 1
 

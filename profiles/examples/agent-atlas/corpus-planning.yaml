@@ -1,3 +1,5 @@
+# Atlas values for the Kernel-owned Corpus Planning slot.
+
 schema_version: 1
 
 applicability:
@@ -12,23 +14,23 @@ artifact_bindings:
 capability_scale:
   - rank: 0
     value: "0 Missing"
-    predicate: "No canonical owner exists, or the topic appears only as disconnected mentions."
+    predicate: "No canonical owner exists."
     target_eligible: false
   - rank: 1
     value: "1 Outline"
-    predicate: "A heading or short definition exists, but mechanism and boundaries are insufficient."
+    predicate: "A definition or outline exists, but mechanism and boundaries are incomplete."
     target_eligible: false
   - rank: 2
     value: "2 Core"
-    predicate: "The core mechanism is clear enough to explain common choices and its canonical owner has passed content review."
+    predicate: "The canonical owner explains the core mechanism and common decision boundary."
     target_eligible: true
   - rank: 3
     value: "3 System"
-    predicate: "The capability connects interfaces, state, failures, metrics, safety, and cost through a complete system path with a reproducible example."
+    predicate: "The capability connects interfaces, state, failures, and evaluation through a system path."
     target_eligible: true
   - rank: 4
     value: "4 Defensible"
-    predicate: "The capability can withstand source-, experiment-, replay-, or case-based challenge through a complete evidence chain and applicable QA."
+    predicate: "The capability has a complete evidence chain for its bounded claims."
     target_eligible: true
 
 pass_authority:

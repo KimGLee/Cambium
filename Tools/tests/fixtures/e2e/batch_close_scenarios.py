@@ -18,9 +18,6 @@ from Tools.tests.fixtures.integration.checkpoint_contract import (
     tree_sha256,
 )
 from Tools.tests.support.batch_close_fixture import CheckBatchCloseFixture
-from Tools.tests.support.profile_fixture import (
-    install_current_adoption_fixture,
-)
 
 
 def _build_scenario(scenario):
@@ -28,18 +25,8 @@ def _build_scenario(scenario):
     root = Path(holder.name) / "repo"
     driver = CheckBatchCloseFixture("runTest")
     driver.root = root
+    driver.state_mutating_scan = scenario == "applied-state-mutating"
     driver.build_repository_fixture()
-    if scenario == "applied-state-mutating":
-        script = root / "Tools/fixture_residual.py"
-        script.write_text(
-            script.read_text(encoding="utf-8") +
-            "with open(os.path.join(a.root,'.cambium/state/"
-            "coverage_ledger.yaml'),'a',encoding='utf-8') as fh:\n"
-            "    fh.write('\\n')\n",
-            encoding="utf-8",
-        )
-        install_current_adoption_fixture(
-            root, root / "profiles/test-profile", replace_current=True)
     driver.prepare_applied_batch()
     return holder, root, {
         "delta_apply_receipt": driver.delta_apply_receipt,

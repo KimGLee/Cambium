@@ -453,41 +453,63 @@ PASS_RECEIPT_PATH_SHA_BINDINGS = _SHIPPED_VALUES["path_sha_bindings"]
 CLOSE_ROUTE_TRIGGER = _SHIPPED_VALUES["close_route_trigger"]
 CLOSE_MANIFEST_TRIGGER = _SHIPPED_VALUES["close_manifest_trigger"]
 CLOSE_TRIGGERS = frozenset((CLOSE_ROUTE_TRIGGER, CLOSE_MANIFEST_TRIGGER))
-_ARTIFACT_CONTRACT_VALUES = MappingProxyType({
-    "global_map": MappingProxyType({
-        "document_fields": _SHIPPED_VALUES[
-            "global_map_document_fields"],
-        "entries": MappingProxyType(_SHIPPED_VALUES[
-            "global_map_entry_contract"]),
-        "typed_dependencies": MappingProxyType(_SHIPPED_VALUES[
-            "global_map_edge_contract"]),
-        "relation_types": _SHIPPED_VALUES["global_map_relation_types"],
-    }),
-    "capability_matrix": MappingProxyType({
-        "document_fields": _SHIPPED_VALUES[
-            "capability_matrix_document_fields"],
-        "capabilities": MappingProxyType(_SHIPPED_VALUES[
-            "capability_contract"]),
-        "rules": _SHIPPED_VALUES["capability_rules"],
-    }),
-    "gap_register": MappingProxyType({
-        "document_fields": _SHIPPED_VALUES[
-            "gap_register_document_fields"],
-        "gaps": MappingProxyType(_SHIPPED_VALUES["gap_contract"]),
-        "statuses": _SHIPPED_VALUES["gap_statuses"],
-        "promoted_statuses": _SHIPPED_VALUES["gap_promoted_statuses"],
-        "unpromoted_statuses": _SHIPPED_VALUES[
-            "gap_unpromoted_statuses"],
-        "resolved_status": _SHIPPED_VALUES["gap_resolved_status"],
-        "rules": _SHIPPED_VALUES["gap_rules"],
-    }),
-})
+def _resolved_contract_values(contract_values=None):
+    """Return one already validated projection or validate a raw owner.
+
+    Public helpers keep their historical no-argument behaviour for callers
+    that intentionally validate the contract shipped beside this module.
+    Runtime entrypoints should instead load one current K02 snapshot and pass
+    its projected values explicitly through the complete validation run.
+    """
+    if contract_values is None:
+        return _SHIPPED_VALUES
+    if not isinstance(contract_values, dict):
+        raise TypeError("Corpus Planning contract values must be a mapping")
+    if "slot_envelope" in contract_values:
+        return validate_corpus_planning_contract(contract_values)
+    missing = sorted(set(_SHIPPED_VALUES) - set(contract_values))
+    if missing:
+        raise ValueError(
+            "Corpus Planning contract projection misses value(s): %s" %
+            ", ".join(missing))
+    return contract_values
 
 
-def artifact_contract(role):
+def _artifact_contract_projection(values):
+    return MappingProxyType({
+        "global_map": MappingProxyType({
+            "document_fields": values["global_map_document_fields"],
+            "entries": MappingProxyType(values[
+                "global_map_entry_contract"]),
+            "typed_dependencies": MappingProxyType(values[
+                "global_map_edge_contract"]),
+            "relation_types": values["global_map_relation_types"],
+        }),
+        "capability_matrix": MappingProxyType({
+            "document_fields": values[
+                "capability_matrix_document_fields"],
+            "capabilities": MappingProxyType(values[
+                "capability_contract"]),
+            "rules": values["capability_rules"],
+        }),
+        "gap_register": MappingProxyType({
+            "document_fields": values["gap_register_document_fields"],
+            "gaps": MappingProxyType(values["gap_contract"]),
+            "statuses": values["gap_statuses"],
+            "promoted_statuses": values["gap_promoted_statuses"],
+            "unpromoted_statuses": values["gap_unpromoted_statuses"],
+            "resolved_status": values["gap_resolved_status"],
+            "rules": values["gap_rules"],
+        }),
+    })
+
+
+def artifact_contract(role, contract_values=None):
     """Return one immutable K02/05-07 artifact contract projection."""
+    contracts = _artifact_contract_projection(
+        _resolved_contract_values(contract_values))
     try:
-        return _ARTIFACT_CONTRACT_VALUES[role]
+        return contracts[role]
     except KeyError as exc:
         raise ValueError(
             "unknown Corpus Planning artifact contract %r" % role) from exc
@@ -523,7 +545,8 @@ def _envelope_mapping(value, fields, path, issues):
     return value
 
 
-def validate_corpus_planning_envelope(document):
+def validate_corpus_planning_envelope(
+        document, contract=None, *, contract_values=None):
     """Validate the current shared slot envelope and its two branches.
 
     Returns ``(normalized, issues)``.  Issues are neutral structural records;
@@ -531,20 +554,36 @@ def validate_corpus_planning_envelope(document):
     artifact existence/containment, Role Registry membership, and the three
     artifact record contracts intentionally remain outside this function.
     """
+    if contract is not None and contract_values is not None:
+        raise ValueError(
+            "pass either contract or contract_values, not both")
+    contract_values = _resolved_contract_values(
+        contract if contract is not None else contract_values)
+    slot_fields = contract_values["slot_fields"]
+    applicability_fields = contract_values["applicability_fields"]
+    artifact_binding_fields = contract_values["artifact_binding_fields"]
+    capability_scale_fields = contract_values["capability_scale_fields"]
+    pass_authority_fields = contract_values["pass_authority_fields"]
+    configured_state = contract_values["configured_state"]
+    inactive_state = contract_values["inactive_state"]
+    applicability_states = frozenset((configured_state, inactive_state))
+    semantic_acceptance_scope = contract_values[
+        "semantic_acceptance_scope"]
     issues = []
-    document = _envelope_mapping(document, SLOT_FIELDS, (), issues)
+    document = _envelope_mapping(document, slot_fields, (), issues)
     if type(document.get("schema_version")) is not int or \
-            document.get("schema_version") != SLOT_SCHEMA_VERSION:
+            document.get("schema_version") != \
+            contract_values["slot_schema_version"]:
         issues.append(_issue("schema_version"))
 
     applicability = _envelope_mapping(
-        document.get("applicability"), APPLICABILITY_FIELDS,
+        document.get("applicability"), applicability_fields,
         ("applicability",), issues)
     artifacts = _envelope_mapping(
-        document.get("artifact_bindings"), ARTIFACT_BINDING_FIELDS,
+        document.get("artifact_bindings"), artifact_binding_fields,
         ("artifact_bindings",), issues)
     authority = _envelope_mapping(
-        document.get("pass_authority"), PASS_AUTHORITY_FIELDS,
+        document.get("pass_authority"), pass_authority_fields,
         ("pass_authority",), issues)
     scale_rows = document.get("capability_scale")
     if not isinstance(scale_rows, list):
@@ -555,23 +594,23 @@ def validate_corpus_planning_envelope(document):
     raw_reason = applicability.get("reason")
     reason = raw_reason.strip() if isinstance(raw_reason, str) else raw_reason
     normalized = {
-        "mode": mode if mode in APPLICABILITY_STATES else None,
+        "mode": mode if mode in applicability_states else None,
         "reason": reason,
         "artifact_bindings": {},
         "scale": [],
         "authority": {},
     }
-    if mode not in APPLICABILITY_STATES:
+    if mode not in applicability_states:
         issues.append(_issue("applicability_state",
                              ("applicability", "state")))
         return normalized, tuple(issues)
 
-    if mode == INACTIVE_STATE:
+    if mode == inactive_state:
         if not isinstance(raw_reason, str) or not raw_reason.strip():
             issues.append(_issue("inactive_reason",
                                  ("applicability", "reason")))
         nonnull_artifacts = tuple(
-            field for field in ARTIFACT_BINDING_FIELDS
+            field for field in artifact_binding_fields
             if artifacts.get(field) is not None)
         if nonnull_artifacts:
             issues.append(_issue(
@@ -580,7 +619,7 @@ def validate_corpus_planning_envelope(document):
         if scale_rows:
             issues.append(_issue("inactive_scale", ("capability_scale",)))
         nonnull_authority = tuple(
-            field for field in PASS_AUTHORITY_FIELDS
+            field for field in pass_authority_fields
             if authority.get(field) is not None)
         if nonnull_authority:
             issues.append(_issue(
@@ -593,7 +632,7 @@ def validate_corpus_planning_envelope(document):
                              ("applicability", "reason")))
 
     artifact_identities = []
-    for field in ARTIFACT_BINDING_FIELDS:
+    for field in artifact_binding_fields:
         value = artifacts.get(field)
         if (not isinstance(value, str) or not value.strip() or
                 not value.lower().endswith(".yaml")):
@@ -616,7 +655,7 @@ def validate_corpus_planning_envelope(document):
     for index, raw in enumerate(scale_rows):
         row_path = ("capability_scale", index)
         row = _envelope_mapping(
-            raw, CAPABILITY_SCALE_FIELDS, row_path, issues)
+            raw, capability_scale_fields, row_path, issues)
         rank = row.get("rank")
         if type(rank) is not int or rank < 0:
             issues.append(_issue("scale_rank_type", row_path + ("rank",),
@@ -706,7 +745,7 @@ def validate_corpus_planning_envelope(document):
         decision = ""
     else:
         decision = raw_decision.strip()
-    if decision != SEMANTIC_ACCEPTANCE_SCOPE:
+    if decision != semantic_acceptance_scope:
         issues.append(_issue("authority_decision_scope",
                              ("pass_authority", "decision_scope_id"),
                              value=decision))
@@ -717,14 +756,16 @@ def validate_corpus_planning_envelope(document):
     return normalized, tuple(issues)
 
 
-def receipt_binding_differences(receipt, expected_binding, *, fields=None):
+def receipt_binding_differences(
+        receipt, expected_binding, *, fields=None, contract_values=None):
     """Return exact field-level differences for one currentness comparison."""
     if not isinstance(receipt, dict):
         raise TypeError("receipt must be a mapping")
     if not isinstance(expected_binding, dict):
         raise TypeError("expected_binding must be a mapping")
+    values = _resolved_contract_values(contract_values)
     selected = tuple(fields) if fields is not None else \
-        PASS_RECEIPT_BINDING_FIELDS
+        values["receipt_binding_fields"]
     return tuple({
         "field": field,
         "missing": field not in receipt,
@@ -735,14 +776,16 @@ def receipt_binding_differences(receipt, expected_binding, *, fields=None):
         receipt.get(field) != expected_binding.get(field))
 
 
-def receipt_path_currentness_issues(receipt, applicability):
+def receipt_path_currentness_issues(
+        receipt, applicability, *, contract_values=None):
     """Validate applicability-dependent path/SHA presence and hash shape."""
     if not isinstance(receipt, dict):
         raise TypeError("receipt must be a mapping")
     issues = []
-    for path_field, sha_field, requirement in PASS_RECEIPT_PATH_SHA_BINDINGS:
+    values = _resolved_contract_values(contract_values)
+    for path_field, sha_field, requirement in values["path_sha_bindings"]:
         required = (requirement == "always" or
-                    applicability == CONFIGURED_STATE)
+                    applicability == values["configured_state"])
         path_value = receipt.get(path_field)
         sha_value = receipt.get(sha_field)
         if required:
@@ -762,39 +805,50 @@ def receipt_path_currentness_issues(receipt, applicability):
     return tuple(issues)
 
 
-def receipt_binding_shape_issues(binding):
+def receipt_binding_shape_issues(binding, *, contract_values=None):
     """Return closed-field and path/SHA issues for a producer binding."""
     if not isinstance(binding, dict):
         return ({"code": "binding_type"},)
     issues = []
+    values = _resolved_contract_values(contract_values)
+    binding_fields = values["receipt_binding_fields"]
     missing = tuple(
-        field for field in PASS_RECEIPT_BINDING_FIELDS
+        field for field in binding_fields
         if field not in binding)
-    extra = tuple(sorted(set(binding) - set(PASS_RECEIPT_BINDING_FIELDS)))
+    extra = tuple(sorted(set(binding) - set(binding_fields)))
     if missing:
         issues.append({"code": "binding_fields_missing", "fields": missing})
     if extra:
         issues.append({"code": "binding_fields_extra", "fields": extra})
     issues.extend(receipt_path_currentness_issues(
-        binding, binding.get("corpus_plan_applicability")))
+        binding, binding.get("corpus_plan_applicability"),
+        contract_values=values))
     return tuple(issues)
 
 
-def derive_close_requirement(selected_route_ids, manifest, affected_paths):
+def derive_close_requirement(
+        selected_route_ids, manifest, affected_paths, *,
+        contract_values=None):
     """Project the existing route/manifest applicability triggers."""
     routes = selected_route_ids if isinstance(selected_route_ids, list) else []
     manifest = manifest if isinstance(manifest, list) else []
     triggers = []
-    if CLOSE_ROUTE_TRIGGER in routes:
-        triggers.append(CLOSE_ROUTE_TRIGGER)
+    values = _resolved_contract_values(contract_values)
+    route_trigger = values["close_route_trigger"]
+    manifest_trigger = values["close_manifest_trigger"]
+    if route_trigger in routes:
+        triggers.append(route_trigger)
     if set(affected_paths).intersection(manifest):
-        triggers.append(CLOSE_MANIFEST_TRIGGER)
+        triggers.append(manifest_trigger)
     triggers = sorted(set(triggers))
     return bool(triggers), triggers
 
 
-def close_trigger_issues(required, triggers):
+def close_trigger_issues(required, triggers, *, contract_values=None):
     """Return neutral issues for a persisted close-trigger projection."""
+    values = _resolved_contract_values(contract_values)
+    close_triggers = frozenset((
+        values["close_route_trigger"], values["close_manifest_trigger"]))
     issues = []
     if (not isinstance(triggers, list) or
             any(not nonempty_string(value) for value in triggers)):
@@ -804,7 +858,7 @@ def close_trigger_issues(required, triggers):
         normalized = triggers
         if normalized != sorted(set(normalized)):
             issues.append({"code": "trigger_order"})
-        unsupported = tuple(sorted(set(normalized) - CLOSE_TRIGGERS))
+        unsupported = tuple(sorted(set(normalized) - close_triggers))
         if unsupported:
             issues.append({"code": "trigger_unsupported",
                            "values": unsupported})

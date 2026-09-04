@@ -4,7 +4,7 @@ pages:
   - path: Topics/A.md
     authoring_status: drafted
     gate_receipts:
-      - audit-record_batch_page_review-20260831T221108Z-6c3321528e9f481bb299ad512a79f4be-0001
+      - audit-record_batch_page_review-20260904T141110Z-7f5e84cdad3b43358c4488fe828fbb10-0001
 open_gaps_added: []
 open_gaps_closed: []
 next_batch_updates: []

@@ -967,43 +967,268 @@ def profile_identity(manifest_text, directory_name, reserved_ids=()):
 # two cannot drift into parallel validators.
 # ---------------------------------------------------------------------------
 
-STRUCTURE_REGISTRY_TOP_FIELDS = frozenset((
-    "schema_version", "applicability", "units", "support_layers",
-))
-STRUCTURE_APPLICABILITY_FIELDS = frozenset(("state", "reason"))
-STRUCTURE_UNIT_FIELDS = frozenset((
-    "id", "kind", "parent", "root", "entry", "global_map_entry", "roles",
-))
-STRUCTURE_ENTRY_FIELDS = frozenset(("path", "expected_type"))
-STRUCTURE_UNIT_ROLES = ("sequence", "coverage", "quick_reference",
-                        "expression")
+STRUCTURE_REGISTRY_CONTRACT_PATH = (
+    "kernel/K01 Scope and Architecture/structure-registry-contract.yaml")
+METADATA_PROFILE_CONTRACT_PATH = (
+    "kernel/K08 Metadata and Status/metadata-profile-contract.yaml")
+
+
+def _shape_contract_closed(value, fields, label):
+    if not isinstance(value, dict) or set(value) != set(fields):
+        missing = sorted(set(fields) - set(value or {})) \
+            if isinstance(value, dict) else sorted(fields)
+        extra = sorted(set(value) - set(fields)) \
+            if isinstance(value, dict) else []
+        raise ValueError(
+            "%s fields are not closed: missing=%s extra=%s" %
+            (label, missing, extra))
+    return value
+
+
+def _shape_contract_strings(value, label, *, allow_empty=False):
+    if (not isinstance(value, list) or (not value and not allow_empty) or
+            any(not isinstance(item, str) or not item or
+                item.strip() != item for item in value) or
+            len(value) != len(set(value))):
+        raise ValueError("%s must be a unique string list" % label)
+    return tuple(value)
+
+
+def _shape_contract_text(path, root=None, text=None):
+    if text is not None:
+        return text
+    if root is None:
+        root = os.path.abspath(os.path.join(
+            os.path.dirname(__file__), "..", "..", ".."))
+    return read_text(os.path.join(root, *path.split("/")))
+
+
+def validate_structure_registry_contract(document):
+    """Validate and project the K01-owned Structure Registry form."""
+    document = _shape_contract_closed(document, {
+        "schema_version", "contract_id", "semantic_owner", "document",
+        "applicability", "unit", "role_modes", "support_layer",
+        "external_reference_checks",
+    }, "Structure Registry contract")
+    if document.get("schema_version") != 1 or \
+            document.get("contract_id") != "structure-registry-shape-v2":
+        raise ValueError("Structure Registry contract identity is invalid")
+    form = _shape_contract_closed(
+        document.get("document"), {"schema_version", "fields"},
+        "Structure Registry document form")
+    if form.get("schema_version") != 2:
+        raise ValueError("Structure Registry document schema_version must be 2")
+    top_fields = _shape_contract_strings(
+        form.get("fields"), "Structure Registry document fields")
+
+    applicability = _shape_contract_closed(
+        document.get("applicability"), {"fields", "states"},
+        "Structure Registry applicability contract")
+    applicability_fields = _shape_contract_strings(
+        applicability.get("fields"), "Structure applicability fields")
+    states = _shape_contract_closed(
+        applicability.get("states"), {"configured", "not-applicable"},
+        "Structure applicability states")
+    configured = _shape_contract_closed(
+        states.get("configured"), {"reason", "units_minimum_items"},
+        "configured Structure applicability")
+    inactive = _shape_contract_closed(
+        states.get("not-applicable"), {
+            "reason_shape", "units_maximum_items",
+            "support_layers_maximum_items"},
+        "inactive Structure applicability")
+    if configured != {"reason": None, "units_minimum_items": 1} or \
+            inactive != {
+                "reason_shape": "nonempty-string",
+                "units_maximum_items": 0,
+                "support_layers_maximum_items": 0}:
+        raise ValueError("Structure applicability branch rules are unsupported")
+
+    unit = _shape_contract_closed(document.get("unit"), {
+        "fields", "kinds", "entry_fields", "role_fields",
+        "identity_rules", "value_rules"}, "Structure unit contract")
+    unit_fields = _shape_contract_strings(
+        unit.get("fields"), "Structure unit fields")
+    unit_kinds = _shape_contract_strings(
+        unit.get("kinds"), "Structure unit kinds")
+    entry_fields = _shape_contract_strings(
+        unit.get("entry_fields"), "Structure entry fields")
+    unit_roles = _shape_contract_strings(
+        unit.get("role_fields"), "Structure unit role fields")
+    identity_rules = _shape_contract_closed(unit.get("identity_rules"), {
+        "id_nonempty", "id_unique", "domain_parent_null",
+        "module_parent_required", "module_parent_resolves",
+        "parent_graph_acyclic"}, "Structure unit identity rules")
+    if any(value is not True for value in identity_rules.values()):
+        raise ValueError("Structure unit identity rules must all be enabled")
+    value_rules = _shape_contract_closed(unit.get("value_rules"), {
+        "root_shape", "entry_path_shape", "expected_type_shape",
+        "global_map_entry_shape"}, "Structure unit value rules")
+    if value_rules != {
+            "root_shape": "repository-relative-directory",
+            "entry_path_shape": "markdown-path",
+            "expected_type_shape": "nullable-nonempty-string",
+            "global_map_entry_shape": "nullable-nonempty-string"}:
+        raise ValueError("Structure unit value rules are unsupported")
+
+    role_modes = _shape_contract_closed(document.get("role_modes"), {
+        "embedded", "standalone", "derived", "not-applicable",
+        "stable_capability_id_pattern", "value_rules"},
+        "Structure role modes")
+    mode_fields = {}
+    for mode in ("embedded", "standalone", "derived", "not-applicable"):
+        record = _shape_contract_closed(
+            role_modes.get(mode), {"required_fields", "optional_fields"},
+            "Structure role mode %s" % mode)
+        mode_fields[mode] = (
+            frozenset(_shape_contract_strings(
+                record.get("required_fields"),
+                "Structure %s required fields" % mode)),
+            frozenset(_shape_contract_strings(
+                record.get("optional_fields"),
+                "Structure %s optional fields" % mode,
+                allow_empty=True)),
+        )
+    stable_pattern = role_modes.get("stable_capability_id_pattern")
+    if not isinstance(stable_pattern, str) or not stable_pattern:
+        raise ValueError("Structure stable capability ID pattern is invalid")
+    role_value_rules = _shape_contract_closed(role_modes.get("value_rules"), {
+        "declared_values_nonempty", "derived_heading_requires_path",
+        "inputs_owner_kinds", "inputs_owner_forbids_tool_path",
+        "inputs_owner_forbids_runtime_physical_path"},
+        "Structure role value rules")
+    if (role_value_rules.get("declared_values_nonempty") is not True or
+            role_value_rules.get("derived_heading_requires_path") is not True or
+            role_value_rules.get("inputs_owner_forbids_tool_path") is not True or
+            role_value_rules.get(
+                "inputs_owner_forbids_runtime_physical_path") is not True or
+            set(_shape_contract_strings(
+                role_value_rules.get("inputs_owner_kinds"),
+                "Structure role input owner kinds")) != {
+                    "stable-runtime-object-id",
+                    "repository-relative-corpus-artifact"}):
+        raise ValueError("Structure role value rules are unsupported")
+
+    layer = _shape_contract_closed(document.get("support_layer"), {
+        "fields", "roles", "layouts", "entry_fields", "identity_rules",
+        "value_rules", "taxonomy", "binding_fields_by_role",
+        "source_index_modes", "readiness_projection_shape"},
+        "Structure support-layer contract")
+    layer_fields = _shape_contract_strings(
+        layer.get("fields"), "Structure support-layer fields")
+    layer_roles = _shape_contract_strings(
+        layer.get("roles"), "Structure support-layer roles")
+    layouts = _shape_contract_strings(
+        layer.get("layouts"), "Structure support-layer layouts")
+    if tuple(entry_fields) != tuple(_shape_contract_strings(
+            layer.get("entry_fields"),
+            "Structure support-layer entry fields")):
+        raise ValueError("Structure entry field forms disagree")
+    layer_identity_rules = _shape_contract_closed(
+        layer.get("identity_rules"), {
+        "layer_id_nonempty", "layer_id_unique"},
+        "Structure support-layer identity rules")
+    if any(value is not True for value in layer_identity_rules.values()):
+        raise ValueError(
+            "Structure support-layer identity rules must all be enabled")
+    layer_value_rules = _shape_contract_closed(layer.get("value_rules"), {
+        "root_shape", "entry_path_shape", "expected_type_shape",
+        "global_map_entry_shape", "flat_taxonomy",
+        "grouped_taxonomy_required"}, "Structure support-layer value rules")
+    if layer_value_rules != {
+            "root_shape": "repository-relative-directory",
+            "entry_path_shape": "markdown-path",
+            "expected_type_shape": "nullable-nonempty-string",
+            "global_map_entry_shape": "nullable-nonempty-string",
+            "flat_taxonomy": None,
+            "grouped_taxonomy_required": True}:
+        raise ValueError("Structure support-layer value rules are unsupported")
+    taxonomy = _shape_contract_closed(layer.get("taxonomy"), {
+        "fields", "class_fields", "minimum_classes", "values_nonempty",
+        "class_values_unique", "directory_values_unique"},
+        "Structure taxonomy contract")
+    taxonomy_fields = _shape_contract_strings(
+        taxonomy.get("fields"), "Structure taxonomy fields")
+    taxonomy_class_fields = _shape_contract_strings(
+        taxonomy.get("class_fields"), "Structure taxonomy class fields")
+    if (taxonomy.get("minimum_classes") != 1 or
+            any(taxonomy.get(field) is not True for field in (
+                "values_nonempty", "class_values_unique",
+                "directory_values_unique"))):
+        raise ValueError("Structure taxonomy rules are unsupported")
+    bindings = _shape_contract_closed(
+        layer.get("binding_fields_by_role"), set(layer_roles),
+        "Structure support-layer bindings")
+    binding_fields = {
+        role: frozenset(_shape_contract_strings(
+            bindings.get(role), "Structure %s binding fields" % role))
+        for role in layer_roles
+    }
+    source_index_modes = _shape_contract_strings(
+        layer.get("source_index_modes"), "Structure source index modes")
+    if layer.get("readiness_projection_shape") != "role-mode":
+        raise ValueError(
+            "Structure readiness projection shape must be role-mode")
+    checks = document.get("external_reference_checks")
+    if (not isinstance(checks, dict) or set(checks) != {
+            "profile_scope_layer_identity", "corpus_paths_and_headings",
+            "expected_entry_type", "projection_capability_identity",
+            "projection_input_owner_identity", "global_map_entry_identity",
+            "coverage_owner_identity", "grouped_taxonomy_membership",
+            "role_binding_resolution"} or
+            any(value is not True for value in checks.values())):
+        raise ValueError(
+            "Structure external reference checks must be an enabled mapping")
+    return MappingProxyType({
+        "document_schema_version": form["schema_version"],
+        "top_fields": frozenset(top_fields),
+        "applicability_fields": frozenset(applicability_fields),
+        "unit_fields": frozenset(unit_fields),
+        "unit_kinds": frozenset(unit_kinds),
+        "entry_fields": frozenset(entry_fields),
+        "unit_roles": tuple(unit_roles),
+        "stable_id_pattern": stable_pattern,
+        "role_mode_fields": MappingProxyType(mode_fields),
+        "layer_fields": frozenset(layer_fields),
+        "layer_roles": tuple(layer_roles),
+        "layouts": frozenset(layouts),
+        "taxonomy_fields": frozenset(taxonomy_fields),
+        "taxonomy_class_fields": frozenset(taxonomy_class_fields),
+        "binding_fields": MappingProxyType(binding_fields),
+        "source_index_modes": frozenset(source_index_modes),
+        "configured_state": "configured",
+        "inactive_state": "not-applicable",
+    })
+
+
+def load_structure_registry_contract(root=None, *, text=None):
+    document = parse_yaml_subset(_shape_contract_text(
+        STRUCTURE_REGISTRY_CONTRACT_PATH, root, text))
+    validate_structure_registry_contract(document)
+    return document
+
+
+_STRUCTURE_CONTRACT = load_structure_registry_contract()
+_STRUCTURE_VALUES = validate_structure_registry_contract(_STRUCTURE_CONTRACT)
+STRUCTURE_REGISTRY_TOP_FIELDS = _STRUCTURE_VALUES["top_fields"]
+STRUCTURE_APPLICABILITY_FIELDS = _STRUCTURE_VALUES["applicability_fields"]
+STRUCTURE_UNIT_FIELDS = _STRUCTURE_VALUES["unit_fields"]
+STRUCTURE_ENTRY_FIELDS = _STRUCTURE_VALUES["entry_fields"]
+STRUCTURE_UNIT_KINDS = _STRUCTURE_VALUES["unit_kinds"]
+STRUCTURE_UNIT_ROLES = _STRUCTURE_VALUES["unit_roles"]
 STRUCTURE_STABLE_ID_RE = re.compile(
-    r"[a-z][a-z0-9]*(?:-[a-z0-9]+)*\Z")
-STRUCTURE_ROLE_MODE_FIELDS = {
-    "embedded": (frozenset(("mode", "path", "heading")), frozenset()),
-    "standalone": (frozenset(("mode", "path")), frozenset()),
-    "derived": (frozenset(("mode", "generator_capability", "inputs_owner")),
-                frozenset(("path", "heading"))),
-    "not-applicable": (frozenset(("mode", "reason")), frozenset()),
-}
-STRUCTURE_LAYER_FIELDS = frozenset((
-    "layer_id", "role", "root", "entry", "layout", "taxonomy", "coverage",
-    "global_map_entry", "bindings",
-))
-STRUCTURE_LAYER_ROLES = ("cases", "sources", "synthesis", "expression")
-STRUCTURE_TAXONOMY_FIELDS = frozenset(("axis", "page_field", "classes"))
-STRUCTURE_TAXONOMY_CLASS_FIELDS = frozenset(("class", "directory"))
-STRUCTURE_LAYER_BINDING_FIELDS = {
-    "cases": frozenset(("evidence_binding_owner",)),
-    "sources": frozenset(("authority_taxonomy_ref", "intake_policy_ref",
-                          "freshness_policy_ref", "index_mode")),
-    "synthesis": frozenset(("question_identity_field",
-                            "promotion_policy_ref")),
-    "expression": frozenset(("artifact_registry_ref",
-                             "preparation_route_ref",
-                             "readiness_projection")),
-}
-STRUCTURE_SOURCE_INDEX_MODES = frozenset(("derived", "none"))
+    _STRUCTURE_VALUES["stable_id_pattern"] + r"\Z")
+STRUCTURE_ROLE_MODE_FIELDS = _STRUCTURE_VALUES["role_mode_fields"]
+STRUCTURE_LAYER_FIELDS = _STRUCTURE_VALUES["layer_fields"]
+STRUCTURE_LAYER_ROLES = _STRUCTURE_VALUES["layer_roles"]
+STRUCTURE_LAYER_LAYOUTS = _STRUCTURE_VALUES["layouts"]
+STRUCTURE_TAXONOMY_FIELDS = _STRUCTURE_VALUES["taxonomy_fields"]
+STRUCTURE_TAXONOMY_CLASS_FIELDS = _STRUCTURE_VALUES[
+    "taxonomy_class_fields"]
+STRUCTURE_LAYER_BINDING_FIELDS = _STRUCTURE_VALUES["binding_fields"]
+STRUCTURE_SOURCE_INDEX_MODES = _STRUCTURE_VALUES["source_index_modes"]
+STRUCTURE_CONFIGURED_STATE = _STRUCTURE_VALUES["configured_state"]
+STRUCTURE_INACTIVE_STATE = _STRUCTURE_VALUES["inactive_state"]
 
 
 def _structure_nonempty(value):
@@ -1140,9 +1365,13 @@ def validate_structure_registry_references(
     return errors
 
 
-def _structure_input_owner(errors, value, label):
+def _structure_input_owner(errors, value, label, stable_id_re=None):
     """Validate the representation boundary of ``inputs_owner``."""
-    kind = structure_input_owner_reference_kind(value)
+    if stable_id_re is None:
+        stable_id_re = STRUCTURE_STABLE_ID_RE
+    kind = None if not _structure_nonempty(value) else (
+        "object-id" if stable_id_re.fullmatch(value.strip()) is not None
+        else "corpus-artifact")
     if kind is None:
         return
     value = value.strip()
@@ -1185,21 +1414,24 @@ def _structure_closed(errors, value, required, label, optional=frozenset()):
     return value
 
 
-def _structure_role_mapping(errors, value, label):
+def _structure_role_mapping(errors, value, label, contract_values=None):
     """Validate one role declaration; returns the mapping (or {})."""
+    values = contract_values or _STRUCTURE_VALUES
+    role_mode_fields = values["role_mode_fields"]
+    stable_id_re = re.compile(values["stable_id_pattern"] + r"\Z")
     if not isinstance(value, dict):
         errors.append(("structure-registry-role", label,
                        "role must be a mapping declaring exactly one mode"))
         return {}
     mode = value.get("mode")
-    if mode not in STRUCTURE_ROLE_MODE_FIELDS:
+    if mode not in role_mode_fields:
         errors.append((
             "structure-registry-role", label,
-            "mode must be one of embedded, standalone, derived, "
-            "not-applicable; found %r — absence of a declaration must not "
-            "express not-applicable" % (mode,)))
+            "mode must be one of %s; found %r — absence of a declaration "
+            "must not express not-applicable" %
+            (", ".join(sorted(role_mode_fields)), mode)))
         return value
-    required, optional = STRUCTURE_ROLE_MODE_FIELDS[mode]
+    required, optional = role_mode_fields[mode]
     value = _structure_closed(errors, value, required, label, optional)
     for field in sorted((required | optional) & set(value)):
         if field == "mode":
@@ -1210,14 +1442,15 @@ def _structure_role_mapping(errors, value, label):
     if mode == "derived":
         generator = value.get("generator_capability")
         if _structure_nonempty(generator) and \
-                STRUCTURE_STABLE_ID_RE.fullmatch(generator.strip()) is None:
+                stable_id_re.fullmatch(generator.strip()) is None:
             errors.append((
                 "structure-registry-role",
                 label + ":generator_capability",
                 "must be a stable Tool capability ID, not an implementation "
                 "path"))
         _structure_input_owner(
-            errors, value.get("inputs_owner"), label + ":inputs_owner")
+            errors, value.get("inputs_owner"), label + ":inputs_owner",
+            stable_id_re)
     if value.get("heading") is not None and mode == "derived" and \
             value.get("path") is None:
         errors.append(("structure-registry-role", label,
@@ -1225,7 +1458,8 @@ def _structure_role_mapping(errors, value, label):
     return value
 
 
-def validate_structure_registry_shape(document, target="structure-registry"):
+def validate_structure_registry_shape(
+        document, target="structure-registry", contract=None):
     """Return [(check_id, label, details)] shape errors for one registry.
 
     Pure byte-level contract: closed fields, applicability branches, per-mode
@@ -1233,16 +1467,35 @@ def validate_structure_registry_shape(document, target="structure-registry"):
     Vault resolution (paths, headings, Profile Scope layers, Global Map and
     Coverage references) belongs to check_structure.py.
     """
+    values = (_STRUCTURE_VALUES if contract is None else
+              validate_structure_registry_contract(contract))
+    top_fields = values["top_fields"]
+    applicability_fields = values["applicability_fields"]
+    unit_fields = values["unit_fields"]
+    entry_fields = values["entry_fields"]
+    unit_kinds = values["unit_kinds"]
+    unit_roles = values["unit_roles"]
+    layer_fields = values["layer_fields"]
+    layer_roles = values["layer_roles"]
+    layer_layouts = values["layouts"]
+    taxonomy_fields = values["taxonomy_fields"]
+    taxonomy_class_fields = values["taxonomy_class_fields"]
+    binding_fields_by_role = values["binding_fields"]
+    source_index_modes = values["source_index_modes"]
+    configured_state = values["configured_state"]
+    inactive_state = values["inactive_state"]
     errors = []
     document = _structure_closed(
-        errors, document, STRUCTURE_REGISTRY_TOP_FIELDS, target)
+        errors, document, top_fields, target)
     if type(document.get("schema_version")) is not int or \
-            document.get("schema_version") != 2:
+            document.get("schema_version") != \
+            values["document_schema_version"]:
         errors.append(("structure-registry-schema", target,
-                       "schema_version must be integer 2"))
+                       "schema_version must be integer %d" %
+                       values["document_schema_version"]))
     applicability = _structure_closed(
         errors, document.get("applicability"),
-        STRUCTURE_APPLICABILITY_FIELDS, target + ":applicability")
+        applicability_fields, target + ":applicability")
     units = document.get("units")
     layers = document.get("support_layers")
     if not isinstance(units, list):
@@ -1256,7 +1509,7 @@ def validate_structure_registry_shape(document, target="structure-registry"):
 
     state = applicability.get("state")
     reason = applicability.get("reason")
-    if state == "configured":
+    if state == configured_state:
         if reason is not None:
             errors.append(("structure-registry-applicability", target,
                            "configured requires null reason"))
@@ -1265,7 +1518,7 @@ def validate_structure_registry_shape(document, target="structure-registry"):
                 "structure-registry-applicability", target,
                 "configured requires at least one unit; a corpus with no "
                 "registrable unit selects not-applicable instead"))
-    elif state == "not-applicable":
+    elif state == inactive_state:
         if not _structure_nonempty(reason):
             errors.append(("structure-registry-applicability", target,
                            "not-applicable requires a nonempty reason"))
@@ -1275,15 +1528,17 @@ def validate_structure_registry_shape(document, target="structure-registry"):
                 "not-applicable requires empty units and support_layers"))
     else:
         errors.append(("structure-registry-applicability", target,
-                       "state must be configured or not-applicable; found %r"
-                       % (state,)))
+                       "state must be one of %s; found %r" %
+                       (", ".join(sorted((configured_state,
+                                          inactive_state))),
+                        state)))
 
     seen_ids = {}
     parents = {}
     kinds = {}
     for index, unit in enumerate(units):
         label = "%s:units[%d]" % (target, index)
-        unit = _structure_closed(errors, unit, STRUCTURE_UNIT_FIELDS, label)
+        unit = _structure_closed(errors, unit, unit_fields, label)
         unit_id = unit.get("id")
         if not _structure_nonempty(unit_id):
             errors.append(("structure-registry-unit", label + ":id",
@@ -1298,10 +1553,10 @@ def validate_structure_registry_shape(document, target="structure-registry"):
             kinds[unit_id] = unit.get("kind")
         kind = unit.get("kind")
         parent = unit.get("parent")
-        if kind not in ("domain", "module"):
+        if kind not in unit_kinds:
             errors.append(("structure-registry-unit", label + ":kind",
-                           "kind must be domain or module; found %r"
-                           % (kind,)))
+                           "kind must be one of %s; found %r" %
+                           (", ".join(sorted(unit_kinds)), kind)))
         elif kind == "domain" and parent is not None:
             errors.append(("structure-registry-unit", label + ":parent",
                            "a domain has no parent; found %r" % (parent,)))
@@ -1317,7 +1572,7 @@ def validate_structure_registry_shape(document, target="structure-registry"):
             errors.append(("structure-registry-unit", label + ":root",
                            "no trailing slash"))
         entry = _structure_closed(errors, unit.get("entry"),
-                                  STRUCTURE_ENTRY_FIELDS, label + ":entry")
+                                  entry_fields, label + ":entry")
         if not _structure_nonempty(entry.get("path")) or \
                 not str(entry.get("path", "")).lower().endswith(".md"):
             errors.append(("structure-registry-unit", label + ":entry",
@@ -1333,12 +1588,13 @@ def validate_structure_registry_shape(document, target="structure-registry"):
                            label + ":global_map_entry",
                            "must be null or a nonempty entry id"))
         roles = _structure_closed(errors, unit.get("roles"),
-                                  frozenset(STRUCTURE_UNIT_ROLES),
+                                  frozenset(unit_roles),
                                   label + ":roles")
-        for role in STRUCTURE_UNIT_ROLES:
+        for role in unit_roles:
             if role in roles:
                 _structure_role_mapping(errors, roles.get(role),
-                                        "%s:roles:%s" % (label, role))
+                                        "%s:roles:%s" % (label, role),
+                                        values)
 
     for unit_id, parent in parents.items():
         if parent is None or not _structure_nonempty(parent):
@@ -1364,7 +1620,7 @@ def validate_structure_registry_shape(document, target="structure-registry"):
     seen_layers = set()
     for index, layer in enumerate(layers):
         label = "%s:support_layers[%d]" % (target, index)
-        layer = _structure_closed(errors, layer, STRUCTURE_LAYER_FIELDS,
+        layer = _structure_closed(errors, layer, layer_fields,
                                   label)
         layer_id = layer.get("layer_id")
         if not _structure_nonempty(layer_id):
@@ -1376,17 +1632,17 @@ def validate_structure_registry_shape(document, target="structure-registry"):
         else:
             seen_layers.add(layer_id)
         role = layer.get("role")
-        if role not in STRUCTURE_LAYER_ROLES:
+        if role not in layer_roles:
             errors.append(("structure-registry-layer", label + ":role",
                            "role must be one of %s; found %r"
-                           % (", ".join(STRUCTURE_LAYER_ROLES), role)))
+                           % (", ".join(layer_roles), role)))
         root = layer.get("root")
         if not _structure_nonempty(root) or str(root).endswith("/"):
             errors.append(("structure-registry-layer", label + ":root",
                            "must be a nonempty directory with no trailing "
                            "slash"))
         entry = _structure_closed(errors, layer.get("entry"),
-                                  STRUCTURE_ENTRY_FIELDS, label + ":entry")
+                                  entry_fields, label + ":entry")
         if not _structure_nonempty(entry.get("path")) or \
                 not str(entry.get("path", "")).lower().endswith(".md"):
             errors.append(("structure-registry-layer", label + ":entry",
@@ -1399,7 +1655,7 @@ def validate_structure_registry_shape(document, target="structure-registry"):
                                "flat layout requires null taxonomy"))
         elif layout == "grouped":
             taxonomy = _structure_closed(errors, taxonomy,
-                                         STRUCTURE_TAXONOMY_FIELDS,
+                                         taxonomy_fields,
                                          label + ":taxonomy")
             for field in ("axis", "page_field"):
                 if not _structure_nonempty(taxonomy.get(field)):
@@ -1417,7 +1673,7 @@ def validate_structure_registry_shape(document, target="structure-registry"):
             for c_index, entry_row in enumerate(classes):
                 c_label = "%s:taxonomy:classes[%d]" % (label, c_index)
                 entry_row = _structure_closed(
-                    errors, entry_row, STRUCTURE_TAXONOMY_CLASS_FIELDS,
+                    errors, entry_row, taxonomy_class_fields,
                     c_label)
                 for field, bucket in (("class", names),
                                       ("directory", directories)):
@@ -1436,25 +1692,26 @@ def validate_structure_registry_shape(document, target="structure-registry"):
                         label + ":taxonomy:classes",
                         "%s values must be unique; the class-to-directory "
                         "mapping is one-to-one" % what))
-        else:
+        elif layout not in layer_layouts:
             errors.append(("structure-registry-layout", label + ":layout",
-                           "layout must be flat or grouped; found %r"
-                           % (layout,)))
+                           "layout must be one of %s; found %r" %
+                           (", ".join(sorted(layer_layouts)),
+                            layout)))
         _structure_role_mapping(errors, layer.get("coverage"),
-                                label + ":coverage")
+                                label + ":coverage", values)
         gm_entry = layer.get("global_map_entry")
         if gm_entry is not None and not _structure_nonempty(gm_entry):
             errors.append(("structure-registry-layer",
                            label + ":global_map_entry",
                            "must be null or a nonempty entry id"))
-        binding_fields = STRUCTURE_LAYER_BINDING_FIELDS.get(role)
+        binding_fields = binding_fields_by_role.get(role)
         if binding_fields is not None:
             bindings = _structure_closed(errors, layer.get("bindings"),
                                          binding_fields, label + ":bindings")
             for field in sorted(binding_fields & set(bindings)):
                 value = bindings.get(field)
                 if field == "index_mode":
-                    if value not in STRUCTURE_SOURCE_INDEX_MODES:
+                    if value not in source_index_modes:
                         errors.append((
                             "structure-registry-layer",
                             "%s:bindings:index_mode" % label,
@@ -1462,7 +1719,8 @@ def validate_structure_registry_shape(document, target="structure-registry"):
                             "member index is not a registrable mode"))
                 elif field == "readiness_projection":
                     _structure_role_mapping(
-                        errors, value, "%s:bindings:%s" % (label, field))
+                        errors, value, "%s:bindings:%s" % (label, field),
+                        values)
                 elif not _structure_nonempty(value):
                     errors.append(("structure-registry-layer",
                                    "%s:bindings:%s" % (label, field),
@@ -1507,50 +1765,209 @@ def profile_scope_layers(scope_text):
 # cannot drift into parallel validators.
 # ---------------------------------------------------------------------------
 
-METADATA_CONTRACT_TOP_FIELDS = frozenset((
-    "schema_version", "applicability", "applicability_differences",
-    "extension_fields", "relationship_extensions", "section_roles",
-))
-# Optional top-level keys of the Metadata Contract slot (K08/09:
-# boundary projection display-label overrides).
-METADATA_CONTRACT_OPTIONAL_FIELDS = frozenset(("boundary_projection",))
-METADATA_APPLICABILITY_FIELDS = frozenset(("state",))
-METADATA_MODES = frozenset((
-    "required", "conditional", "optional", "derived", "projection",
-    "user-owned", "forbidden",
-))
-METADATA_SHAPES = frozenset((
-    "nonempty-string", "date", "url", "path", "list-of-strings",
-    "list-of-paths", "delegated",
-))
-METADATA_DIFFERENCE_FIELDS = frozenset(("field", "mode", "condition", "note"))
-METADATA_EXTENSION_FIELDS = frozenset((
-    "field", "mode", "shape", "condition", "owner",
-))
-METADATA_RELATIONSHIP_FIELDS = frozenset((
-    "field", "mode", "direction", "target", "shape", "owner",
-))
-METADATA_SECTION_ROLE_FIELDS = frozenset((
-    "role", "titles", "aliases", "owner",
-))
-METADATA_SECTION_ROLES = frozenset(("sources", "related"))
-# The only mode transitions a profile difference may declare (K08/06:
-# a profile only tightens).
-METADATA_TIGHTENING = frozenset((
-    ("optional", "required"), ("optional", "conditional"),
-    ("conditional", "required"),
-))
+def validate_metadata_profile_contract(document):
+    """Validate and project the K08-owned Profile Metadata form."""
+    document = _shape_contract_closed(document, {
+        "schema_version", "contract_id", "semantic_owner", "document",
+        "applicability", "mode_values", "shape_values", "condition",
+        "entry_types", "entry_rules", "tightening_transitions",
+        "boundary_projection",
+    }, "Metadata Profile contract")
+    if document.get("schema_version") != 1 or \
+            document.get("contract_id") != "metadata-contract-shape-v1":
+        raise ValueError("Metadata Profile contract identity is invalid")
+    form = _shape_contract_closed(document.get("document"), {
+        "schema_version", "required_fields", "optional_fields"},
+        "Metadata Profile document form")
+    if form.get("schema_version") != 1:
+        raise ValueError("Metadata Profile document schema_version must be 1")
+    top_fields = _shape_contract_strings(
+        form.get("required_fields"), "Metadata Profile required fields")
+    optional_fields = _shape_contract_strings(
+        form.get("optional_fields"), "Metadata Profile optional fields",
+        allow_empty=True)
+    applicability = _shape_contract_closed(document.get("applicability"), {
+        "fields", "states", "configuration_fields",
+        "kernel_defaults_requires_empty_configuration",
+        "configured_requires_nonempty_configuration"},
+        "Metadata Profile applicability")
+    applicability_fields = _shape_contract_strings(
+        applicability.get("fields"), "Metadata applicability fields")
+    states = _shape_contract_strings(
+        applicability.get("states"), "Metadata applicability states")
+    configuration_fields = _shape_contract_strings(
+        applicability.get("configuration_fields"),
+        "Metadata configuration fields")
+    if (applicability.get(
+            "kernel_defaults_requires_empty_configuration") is not True or
+            applicability.get(
+                "configured_requires_nonempty_configuration") is not True):
+        raise ValueError("Metadata applicability rules must be enabled")
+    modes = _shape_contract_strings(
+        document.get("mode_values"), "Metadata mode values")
+    shapes = _shape_contract_strings(
+        document.get("shape_values"), "Metadata shape values")
+    condition = _shape_contract_closed(document.get("condition"), {
+        "allowed_group_fields", "minimum_groups", "clause_required_fields",
+        "clause_choice_fields", "exactly_one_clause_choice", "in_shape",
+        "absent_value"}, "Metadata condition contract")
+    condition_groups = _shape_contract_strings(
+        condition.get("allowed_group_fields"), "Metadata condition groups")
+    clause_required = _shape_contract_strings(
+        condition.get("clause_required_fields"),
+        "Metadata condition required fields")
+    clause_choices = _shape_contract_strings(
+        condition.get("clause_choice_fields"),
+        "Metadata condition choice fields")
+    if (condition.get("minimum_groups") != 1 or
+            condition.get("exactly_one_clause_choice") is not True or
+            condition.get("in_shape") != "nonempty-list" or
+            condition.get("absent_value") is not True):
+        raise ValueError("Metadata condition rules are unsupported")
+    entry_types = _shape_contract_closed(document.get("entry_types"), {
+        "applicability_difference", "extension_field",
+        "relationship_extension", "section_role"},
+        "Metadata entry type contracts")
+    projected_entries = {}
+    for name, record in entry_types.items():
+        expected = {"required_fields", "optional_fields"}
+        if name == "applicability_difference":
+            expected.add("allowed_modes")
+        elif name == "relationship_extension":
+            expected.add("target_shapes")
+        elif name == "section_role":
+            expected.update({"roles", "titles_shape", "aliases_shape"})
+        record = _shape_contract_closed(
+            record, expected, "Metadata %s entry contract" % name)
+        projection = {
+            "required_fields": frozenset(_shape_contract_strings(
+                record.get("required_fields"),
+                "Metadata %s required fields" % name)),
+            "optional_fields": frozenset(_shape_contract_strings(
+                record.get("optional_fields"),
+                "Metadata %s optional fields" % name, allow_empty=True)),
+        }
+        for field in ("allowed_modes", "target_shapes", "roles"):
+            if field in record:
+                projection[field] = frozenset(_shape_contract_strings(
+                    record.get(field), "Metadata %s %s" % (name, field)))
+        projected_entries[name] = MappingProxyType(projection)
+    rules = _shape_contract_closed(document.get("entry_rules"), {
+        "field_identity_unique_across", "conditional_mode_requires_condition",
+        "shape_required_for", "owner_required_for",
+        "section_role_identity_unique"}, "Metadata entry rules")
+    if (rules.get("conditional_mode_requires_condition") is not True or
+            rules.get("section_role_identity_unique") is not True or
+            set(_shape_contract_strings(
+                rules.get("field_identity_unique_across"),
+                "Metadata field identity scope")) != {
+                    "applicability_differences", "extension_fields",
+                    "relationship_extensions"} or
+            set(_shape_contract_strings(
+                rules.get("shape_required_for"),
+                "Metadata shape-required entry types")) != {
+                    "extension_fields", "relationship_extensions"} or
+            set(_shape_contract_strings(
+                rules.get("owner_required_for"),
+                "Metadata owner-required entry types")) != {
+                    "extension_fields", "relationship_extensions",
+                    "section_roles"}):
+        raise ValueError("Metadata entry rules are invalid")
+    transitions = document.get("tightening_transitions")
+    if not isinstance(transitions, list) or not transitions:
+        raise ValueError("Metadata tightening transitions must be a list")
+    tightening = []
+    for index, row in enumerate(transitions):
+        row = _shape_contract_closed(
+            row, {"from", "to"},
+            "Metadata tightening transition %d" % index)
+        if row.get("from") not in modes or row.get("to") not in modes:
+            raise ValueError("Metadata tightening transition is invalid")
+        tightening.append((row["from"], row["to"]))
+    boundary = _shape_contract_closed(
+        document.get("boundary_projection"), {
+            "fields", "label_keys", "label_shape"},
+        "Metadata boundary projection")
+    boundary_fields = _shape_contract_strings(
+        boundary.get("fields"), "Metadata boundary projection fields")
+    boundary_label_keys = _shape_contract_strings(
+        boundary.get("label_keys"), "Metadata boundary label keys")
+    if boundary.get("label_shape") != "nonempty-string":
+        raise ValueError("Metadata boundary label shape is unsupported")
+    return MappingProxyType({
+        "document_schema_version": form["schema_version"],
+        "top_fields": frozenset(top_fields),
+        "optional_fields": frozenset(optional_fields),
+        "applicability_fields": frozenset(applicability_fields),
+        "applicability_states": tuple(states),
+        "configuration_fields": tuple(configuration_fields),
+        "modes": frozenset(modes),
+        "shapes": frozenset(shapes),
+        "condition_groups": frozenset(condition_groups),
+        "condition_clause_required": frozenset(clause_required),
+        "condition_clause_choices": frozenset(clause_choices),
+        "entry_types": MappingProxyType(projected_entries),
+        "tightening": frozenset(tightening),
+        "boundary_fields": frozenset(boundary_fields),
+        "boundary_label_keys": frozenset(boundary_label_keys),
+    })
 
 
-def validate_condition_shape(condition, label, errors):
-    """Validate one K08/06 condition: {all|any: [{field, in|absent}]}."""
+def load_metadata_profile_contract(root=None, *, text=None):
+    document = parse_yaml_subset(_shape_contract_text(
+        METADATA_PROFILE_CONTRACT_PATH, root, text))
+    validate_metadata_profile_contract(document)
+    return document
+
+
+_METADATA_PROFILE_CONTRACT = load_metadata_profile_contract()
+_METADATA_VALUES = validate_metadata_profile_contract(
+    _METADATA_PROFILE_CONTRACT)
+METADATA_CONTRACT_TOP_FIELDS = _METADATA_VALUES["top_fields"]
+METADATA_CONTRACT_OPTIONAL_FIELDS = _METADATA_VALUES["optional_fields"]
+METADATA_APPLICABILITY_FIELDS = _METADATA_VALUES["applicability_fields"]
+METADATA_APPLICABILITY_STATES = _METADATA_VALUES["applicability_states"]
+METADATA_CONFIGURATION_FIELDS = _METADATA_VALUES["configuration_fields"]
+METADATA_MODES = _METADATA_VALUES["modes"]
+METADATA_SHAPES = _METADATA_VALUES["shapes"]
+METADATA_CONDITION_GROUP_FIELDS = _METADATA_VALUES["condition_groups"]
+METADATA_CONDITION_CLAUSE_REQUIRED_FIELDS = _METADATA_VALUES[
+    "condition_clause_required"]
+METADATA_CONDITION_CLAUSE_CHOICE_FIELDS = _METADATA_VALUES[
+    "condition_clause_choices"]
+_METADATA_ENTRY_TYPES = _METADATA_VALUES["entry_types"]
+METADATA_DIFFERENCE_FIELDS = (
+    _METADATA_ENTRY_TYPES["applicability_difference"]["required_fields"] |
+    _METADATA_ENTRY_TYPES["applicability_difference"]["optional_fields"])
+METADATA_EXTENSION_FIELDS = (
+    _METADATA_ENTRY_TYPES["extension_field"]["required_fields"] |
+    _METADATA_ENTRY_TYPES["extension_field"]["optional_fields"])
+METADATA_RELATIONSHIP_FIELDS = (
+    _METADATA_ENTRY_TYPES["relationship_extension"]["required_fields"] |
+    _METADATA_ENTRY_TYPES["relationship_extension"]["optional_fields"])
+METADATA_SECTION_ROLE_FIELDS = (
+    _METADATA_ENTRY_TYPES["section_role"]["required_fields"] |
+    _METADATA_ENTRY_TYPES["section_role"]["optional_fields"])
+METADATA_SECTION_ROLES = _METADATA_ENTRY_TYPES["section_role"]["roles"]
+METADATA_TIGHTENING = _METADATA_VALUES["tightening"]
+METADATA_BOUNDARY_PROJECTION_FIELDS = _METADATA_VALUES["boundary_fields"]
+METADATA_BOUNDARY_LABEL_KEYS = _METADATA_VALUES["boundary_label_keys"]
+
+
+def validate_condition_shape(condition, label, errors, contract_values=None):
+    """Validate one K08/06 condition against its bound owner projection."""
+    values = contract_values or _METADATA_VALUES
+    group_fields = values["condition_groups"]
+    required_fields = values["condition_clause_required"]
+    choice_fields = values["condition_clause_choices"]
     if not isinstance(condition, dict) or \
-            set(condition) - {"all", "any"} or not condition:
+            set(condition) - group_fields or \
+            not condition:
         errors.append(("metadata-contract-condition", label,
                        "condition must be a mapping with `all` and/or `any` "
                        "clause lists"))
         return
-    for group in ("all", "any"):
+    for group in group_fields:
         if group not in condition:
             continue
         clauses = condition[group]
@@ -1562,7 +1979,7 @@ def validate_condition_shape(condition, label, errors):
         for index, clause in enumerate(clauses):
             c_label = "%s:%s[%d]" % (label, group, index)
             if not isinstance(clause, dict) or \
-                    set(clause) - {"field", "in", "absent"} or \
+                    set(clause) - (required_fields | choice_fields) or \
                     not _structure_nonempty(clause.get("field")):
                 errors.append(("metadata-contract-condition", c_label,
                                "clause must carry a nonempty `field` plus "
@@ -1582,35 +1999,51 @@ def validate_condition_shape(condition, label, errors):
                                "`absent` carries only the literal true"))
 
 
-def validate_metadata_contract_shape(document, target="metadata-contract"):
+def validate_metadata_contract_shape(
+        document, target="metadata-contract", contract=None):
     """Return [(check_id, label, details)] shape errors for one contract.
 
     Pure byte-level: closed fields, the configured / kernel-defaults branch,
     mode and shape vocabularies, and per-entry conditional coherence.
     Whether a difference is a legal tightening of the kernel base belongs to
     Tools/compose_page_contract.py, which owns the composition."""
+    values = (_METADATA_VALUES if contract is None else
+              validate_metadata_profile_contract(contract))
+    top_fields = values["top_fields"]
+    optional_fields = values["optional_fields"]
+    applicability_fields = values["applicability_fields"]
+    applicability_states = values["applicability_states"]
+    configuration_fields = values["configuration_fields"]
+    modes = values["modes"]
+    shapes = values["shapes"]
+    entry_types = values["entry_types"]
+    boundary_fields = values["boundary_fields"]
+    boundary_label_keys = values["boundary_label_keys"]
     errors = []
     document = _structure_closed(
-        errors, document, METADATA_CONTRACT_TOP_FIELDS, target,
-        METADATA_CONTRACT_OPTIONAL_FIELDS)
+        errors, document, top_fields, target, optional_fields)
     if type(document.get("schema_version")) is not int or \
-            document.get("schema_version") != 1:
+            document.get("schema_version") != \
+            values["document_schema_version"]:
         errors.append(("metadata-contract-schema", target,
-                       "schema_version must be integer 1"))
+                       "schema_version must be integer %d" %
+                       values["document_schema_version"]))
     applicability = _structure_closed(
         errors, document.get("applicability"),
-        METADATA_APPLICABILITY_FIELDS, target + ":applicability")
+        applicability_fields, target + ":applicability")
     state = applicability.get("state")
     lists = {}
-    for name in ("applicability_differences", "extension_fields",
-                 "relationship_extensions", "section_roles"):
+    for name in (
+            field for field in configuration_fields
+            if field != "boundary_projection"):
         value = document.get(name)
         if not isinstance(value, list):
             errors.append(("metadata-contract-schema",
                            "%s:%s" % (target, name), "must be a list"))
             value = []
         lists[name] = value
-    total = sum(len(v) for v in lists.values())
+    total = sum(len(v) for v in lists.values()) + int(
+        document.get("boundary_projection") is not None)
     if state == "kernel-defaults":
         if total:
             errors.append(("metadata-contract-applicability", target,
@@ -1622,16 +2055,20 @@ def validate_metadata_contract_shape(document, target="metadata-contract"):
                 "configured requires at least one difference, extension "
                 "field, or relationship extension; a profile with none "
                 "declares kernel-defaults instead"))
-    else:
+    elif state not in applicability_states:
         errors.append(("metadata-contract-applicability", target,
-                       "state must be configured or kernel-defaults; "
-                       "found %r" % (state,)))
+                       "state must be one of %s; found %r" %
+                       (", ".join(applicability_states), state)))
 
     seen = set()
 
-    def check_entry(entry, allowed, label, requires_shape):
-        entry = _structure_closed(errors, entry, frozenset(("field", "mode")),
-                                  label, allowed - {"field", "mode"})
+    def check_entry(entry, entry_type, label, requires_shape):
+        entry_contract = entry_types[entry_type]
+        required = entry_contract["required_fields"]
+        optional = entry_contract["optional_fields"]
+        allowed = required | optional
+        entry = _structure_closed(
+            errors, entry, required, label, optional)
         field = entry.get("field")
         if not _structure_nonempty(field):
             errors.append(("metadata-contract-entry", label + ":field",
@@ -1643,10 +2080,10 @@ def validate_metadata_contract_shape(document, target="metadata-contract"):
         else:
             seen.add(field)
         mode = entry.get("mode")
-        if mode not in METADATA_MODES:
+        if mode not in modes:
             errors.append(("metadata-contract-entry", label + ":mode",
                            "mode must be one of %s; found %r"
-                           % (", ".join(sorted(METADATA_MODES)), mode)))
+                           % (", ".join(sorted(modes)), mode)))
         condition = entry.get("condition")
         if mode == "conditional" and condition is None:
             errors.append(("metadata-contract-entry", label,
@@ -1656,12 +2093,12 @@ def validate_metadata_contract_shape(document, target="metadata-contract"):
                 errors.append(("metadata-contract-entry", label,
                                "this entry kind carries no condition"))
             else:
-                validate_condition_shape(condition, label + ":condition",
-                                         errors)
-        if requires_shape and entry.get("shape") not in METADATA_SHAPES:
+                validate_condition_shape(
+                    condition, label + ":condition", errors, values)
+        if requires_shape and entry.get("shape") not in shapes:
             errors.append(("metadata-contract-entry", label + ":shape",
                            "shape must be one of %s; found %r"
-                           % (", ".join(sorted(METADATA_SHAPES)),
+                           % (", ".join(sorted(shapes)),
                               entry.get("shape"))))
         if "owner" in allowed and not _structure_nonempty(
                 entry.get("owner")):
@@ -1671,26 +2108,29 @@ def validate_metadata_contract_shape(document, target="metadata-contract"):
 
     for index, entry in enumerate(lists["applicability_differences"]):
         label = "%s:applicability_differences[%d]" % (target, index)
-        entry = check_entry(entry, METADATA_DIFFERENCE_FIELDS, label, False)
+        entry = check_entry(
+            entry, "applicability_difference", label, False)
         mode = entry.get("mode")
-        if mode is not None and mode in METADATA_MODES and \
-                mode not in ("required", "conditional"):
+        if mode is not None and mode in modes and \
+                mode not in entry_types[
+                    "applicability_difference"]["allowed_modes"]:
             errors.append((
                 "metadata-contract-entry", label + ":mode",
                 "a difference only tightens: the declared mode must be "
                 "required or conditional"))
     for index, entry in enumerate(lists["extension_fields"]):
         label = "%s:extension_fields[%d]" % (target, index)
-        check_entry(entry, METADATA_EXTENSION_FIELDS, label, True)
+        check_entry(entry, "extension_field", label, True)
 
     seen_roles = set()
     for index, entry in enumerate(lists["section_roles"]):
         label = "%s:section_roles[%d]" % (target, index)
-        entry = _structure_closed(errors, entry,
-                                  frozenset(("role", "titles", "owner")),
-                                  label, frozenset(("aliases",)))
+        section_contract = entry_types["section_role"]
+        entry = _structure_closed(
+            errors, entry, section_contract["required_fields"], label,
+            section_contract["optional_fields"])
         role = entry.get("role")
-        if role not in METADATA_SECTION_ROLES:
+        if role not in section_contract["roles"]:
             errors.append(("metadata-contract-section-role",
                            label + ":role",
                            "role must be sources or related; found %r"
@@ -1722,7 +2162,8 @@ def validate_metadata_contract_shape(document, target="metadata-contract"):
 
     for index, entry in enumerate(lists["relationship_extensions"]):
         label = "%s:relationship_extensions[%d]" % (target, index)
-        entry = check_entry(entry, METADATA_RELATIONSHIP_FIELDS, label, True)
+        entry = check_entry(
+            entry, "relationship_extension", label, True)
         if not _structure_nonempty(entry.get("direction")):
             errors.append(("metadata-contract-entry", label + ":direction",
                            "must be a nonempty direction word"))
@@ -1737,7 +2178,7 @@ def validate_metadata_contract_shape(document, target="metadata-contract"):
     projection = document.get("boundary_projection")
     if projection is not None:
         projection = _structure_closed(
-            errors, projection, frozenset(("labels",)),
+            errors, projection, boundary_fields,
             target + ":boundary_projection")
         labels = projection.get("labels")
         if not isinstance(labels, dict) or not labels:
@@ -1746,12 +2187,12 @@ def validate_metadata_contract_shape(document, target="metadata-contract"):
                            "must be a nonempty mapping of display labels"))
         else:
             for key, value in labels.items():
-                if key not in BOUNDARY_PROJECTION_LABEL_KEYS:
+                if key not in boundary_label_keys:
                     errors.append((
                         "metadata-contract-boundary-projection",
                         "%s:boundary_projection:labels:%s" % (target, key),
                         "label key must be one of %s"
-                        % ", ".join(sorted(BOUNDARY_PROJECTION_LABEL_KEYS))))
+                        % ", ".join(sorted(boundary_label_keys))))
                 elif not _structure_nonempty(value):
                     errors.append((
                         "metadata-contract-boundary-projection",
@@ -1785,7 +2226,11 @@ BOUNDARY_PROJECTION_LABELS = {
     "goals": "Goals",
     "non_goals": "Non-goals",
 }
-BOUNDARY_PROJECTION_LABEL_KEYS = frozenset(BOUNDARY_PROJECTION_LABELS)
+if frozenset(BOUNDARY_PROJECTION_LABELS) != METADATA_BOUNDARY_LABEL_KEYS:
+    raise ValueError(
+        "K08 boundary display defaults do not cover the Metadata Profile "
+        "contract label keys")
+BOUNDARY_PROJECTION_LABEL_KEYS = METADATA_BOUNDARY_LABEL_KEYS
 
 
 def _boundary_slug_ok(value):

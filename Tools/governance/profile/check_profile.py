@@ -25,11 +25,15 @@ Method:
   declaration table, checked separately below.
 - Manifest: `<profile_dir>/profile.md`. Its `## Implemented Slots` section must
   bind every interface slot, as `- `Slot Name`: <binding>`.
-- Each of the 13 slots is file-bound. A binding may spell its exact
+- Each registered slot is file-bound. A binding may spell its exact
   profile-relative path in a wiki link, Markdown link, or one inline-code span;
   it has no extension guessing, path normalization, case alias,
   repository-root fallback, or inline-manifest alternative. Execution Default
   Overrides is the sole manifest-resident contract.
+- Common Profile form: the same interface registry owns each canonical slot
+  path, required H1/H2 skeleton, and the containers that may hold referenced
+  instance H3 owners. Form conformance is structural only; it cannot confirm
+  the instance answer.
 - Execution Default Overrides: the table contains only explicit overrides;
   sparse-default semantics are owned by the profile interface. Duplicate,
   unknown, default-restating, and constitutional rows fail, and so does a row
@@ -222,7 +226,7 @@ DEFAULT_RELATIONSHIP_BASE = profile_contract.KERNEL_RELATIONSHIP_PATH
 DEFAULT_VOCABULARY_BASE = profile_contract.KERNEL_VOCABULARY_PATH
 DEFAULT_GATE_REGISTRY = \
     control_registry_contract.STANDARDS_GATE_REGISTRY_PATH
-CANONICAL_PROFILE_LOAD_INPUTS = (
+_BASE_CANONICAL_PROFILE_LOAD_INPUTS = (
     DEFAULT_INTERFACE,
     DEFAULT_AUDIT_DIMENSION_BASE,
     DEFAULT_CORPUS_PLANNING_CONTRACT,
@@ -238,6 +242,13 @@ CANONICAL_PROFILE_LOAD_INPUTS = (
     DEFAULT_VOCABULARY_BASE,
     DEFAULT_GATE_REGISTRY,
 )
+_PROFILE_INTERFACE_REGISTRY_INPUTS = tuple(sorted(set(
+    profile_contract.load_profile_interface(REPO_ROOT)
+    ["registry_references"].values()) -
+    set(_BASE_CANONICAL_PROFILE_LOAD_INPUTS)))
+CANONICAL_PROFILE_LOAD_INPUTS = (
+    _BASE_CANONICAL_PROFILE_LOAD_INPUTS +
+    _PROFILE_INTERFACE_REGISTRY_INPUTS)
 
 SLOTS_SECTION = "Implemented Slots"
 OVERRIDES_SECTION = "Execution Default Overrides"
@@ -261,8 +272,8 @@ AUDIT_DIMENSION_SLOT = profile_contract.AUDIT_DIMENSION_REGISTRY_SLOT
 #
 # An assisting agent triaging a failed run needs to know which findings it
 # can fix directly and re-run (MECHANICAL: path resolution, identity and
-# directory agreement, table/manifest shape, self-reference containment,
-# declaration word shape) and which findings name an operator answer that is
+# directory agreement, table/manifest shape, and self-reference containment)
+# and which findings name an operator answer that is
 # missing or unconfirmed (SEMANTIC_UNRESOLVED: the unfilled sentinel and
 # every other finding whose subject is the *content* of a decision rather
 # than the shape of one already made).  The map is a closed dict over every
@@ -278,15 +289,14 @@ AUDIT_DIMENSION_SLOT = profile_contract.AUDIT_DIMENSION_REGISTRY_SLOT
 #   name (profile-id-directory-mismatch), so the correct value is a pure
 #   function of the package location -- mechanical, including the reserved
 #   placeholder case.
-# * declaration-invalid / extension-dimensions-registration /
-#   corpus-planning-applicability: the operator's declaration exists but is
-#   misspelled or mis-shaped; normalizing an already-made choice to its
-#   legal spelling is mechanical.  (An *unanswered* declaration still
-#   carries the sentinel and fails as unfilled-placeholder instead.)
-# * configured-table-missing/-empty/-incomplete, *-row-empty, and the empty
-#   registry findings: the declared structure demands content that simply is
-#   not there (or a cell is blank); inventing that content would be a domain
-#   decision, so these stay semantic-unresolved.
+# * extension-dimensions-registration / corpus-planning-applicability: the
+#   operator's declaration exists but is misspelled or mis-shaped;
+#   normalizing an already-made choice to its legal spelling is mechanical.
+#   (An unanswered declaration still carries the sentinel and fails as
+#   unfilled-placeholder instead.)
+# * *-row-empty and the empty registry findings: the declared structure
+#   demands content that simply is not there (or a cell is blank); inventing
+#   that content would be a domain decision, so these stay semantic-unresolved.
 # * override-choice-empty / override-value-domain: the profile value is
 #   absent or rejected; an admissible replacement is an operator choice.
 #   The sibling override rows (duplicate, unknown item, constitutional,
@@ -303,9 +313,6 @@ _SEMANTIC_UNRESOLVED_CHECKS = frozenset((
     "slot-not-in-interface",
     "override-choice-empty",
     "override-value-domain",
-    "configured-table-missing",
-    "configured-table-empty",
-    "configured-table-incomplete",
     "extension-dimensions-configured-empty",
     "extension-dimensions-row-empty",
     "judgment-items-empty",
@@ -313,6 +320,9 @@ _SEMANTIC_UNRESOLVED_CHECKS = frozenset((
     "registered-scans-empty",
     "registered-scans-row-empty",
     "extension-gates-configured-empty",
+    "expression-artifacts-configured-empty",
+    "expression-artifacts-row-empty",
+    "expression-artifact-binding-missing",
     "batch-review-configured-empty",
     "batch-review-requirements-row-empty",
     "extension-gates-row-empty",
@@ -351,9 +361,6 @@ _MECHANICAL_CHECKS = frozenset((
     "profile-id-placeholder",
     "profile-id-invalid",
     "profile-id-directory-mismatch",
-    # optional/conditional declarations
-    "declaration-invalid",
-    "inactive-table-has-rows",
     # Corpus Planning slot envelope
     "corpus-planning-binding",
     "corpus-planning-contract-invalid",
@@ -409,6 +416,23 @@ _MECHANICAL_CHECKS = frozenset((
     "profile-contract-slot-unresolved",
     "profile-contract-slot-outside-profile",
     "profile-contract-slot-unreadable",
+    # Kernel-owned Profile form conformance (location + heading skeleton)
+    "profile-form-binding-path",
+    "profile-form-heading-structure",
+    "profile-form-subheading-container",
+    "profile-form-subheading-reference",
+    "profile-form-table-count",
+    "profile-form-table-header",
+    "profile-form-table-separator",
+    "profile-form-table-shape",
+    "profile-form-table-row-count",
+    "profile-form-table-row-identity",
+    "profile-form-table-row-shape",
+    "profile-form-table-unexpected",
+    "profile-form-scalar-count",
+    "profile-form-scalar-value",
+    "profile-form-yaml-owner",
+    "profile-form-yaml-shape",
     "extension-dimensions-registration",
     "extension-dimensions-none-with-rows",
     "extension-dimension-id-invalid",
@@ -428,6 +452,22 @@ _MECHANICAL_CHECKS = frozenset((
     "registered-scan-capability-implementation",
     "registered-scan-config-required",
     "registered-scan-config-forbidden",
+    # typed Expression Layer artifact registry
+    "expression-artifacts-registration",
+    "expression-artifacts-none-with-rows",
+    "expression-artifact-metadata-contract",
+    "expression-artifact-type-registry",
+    "expression-artifact-id-invalid",
+    "expression-artifact-id-duplicate",
+    "expression-artifact-type-unknown",
+    "expression-artifact-entry-invalid",
+    "expression-artifact-dependency-map-invalid",
+    "expression-artifact-binding-invalid",
+    "expression-artifact-binding-unknown",
+    "expression-artifact-binding-shape",
+    "expression-artifact-readiness-field",
+    "expression-artifact-readiness-metadata",
+    "expression-artifact-readiness-gate",
     # typed Profile extension Gate execution contract
     "extension-gates-registration",
     "extension-gates-none-with-rows",
@@ -504,6 +544,12 @@ _MECHANICAL_CHECKS = frozenset((
     "extension-gates-table-header",
     "extension-gates-table-separator",
     "extension-gates-row-shape",
+    "expression-artifacts-section-count",
+    "expression-artifacts-table-count",
+    "expression-artifacts-table-shape",
+    "expression-artifacts-table-header",
+    "expression-artifacts-table-separator",
+    "expression-artifacts-row-shape",
     # Profile-owned dependency resolution (composed `<kind>-<failure>`)
     "predicate-owner-heading-empty",
     "predicate-owner-heading-missing",
@@ -519,6 +565,13 @@ _MECHANICAL_CHECKS = frozenset((
     "scan-config-unreadable",
     "scan-config-heading-non-markdown",
     "scan-config-heading-count",
+    "expression-contract-heading-empty",
+    "expression-contract-heading-missing",
+    "expression-contract-path-invalid",
+    "expression-contract-path-outside-profile",
+    "expression-contract-unreadable",
+    "expression-contract-heading-non-markdown",
+    "expression-contract-heading-count",
 ))
 
 if _MECHANICAL_CHECKS & _SEMANTIC_UNRESOLVED_CHECKS:
@@ -729,58 +782,6 @@ def profile_declarations(profile_snapshot):
                     )
 
 
-def _validate_profile_declarations(profile_snapshot, profile_disp, sentinel,
-                                   add):
-    """Validate declarations only in the typed Profile snapshot closure."""
-    declaration_count = 0
-    for rel, heading, kind, value, tables in profile_declarations(
-            profile_snapshot):
-        declaration_count += 1
-        target = "%s/%s#%s" % (profile_disp, rel, heading)
-        if sentinel in value:
-            continue
-        active = value == "Configured"
-        registration_inactive = value == "None"
-        applicability_inactive = bool(
-            re.fullmatch(r"Not applicable — .+", value))
-        inactive = registration_inactive or applicability_inactive
-        valid = (
-            kind == "Registration" and (active or registration_inactive)
-        ) or (
-            kind == "Applicability" and (active or applicability_inactive)
-        )
-        if not valid:
-            expected = ("`None` or `Configured`"
-                        if kind == "Registration"
-                        else "`Configured` or `Not applicable — <reason>`")
-            add("declaration-invalid", target, "fail",
-                "%s declaration %r is invalid; use %s" %
-                (kind, value, expected))
-            continue
-        if active:
-            if not tables:
-                add("configured-table-missing", target, "fail",
-                    "Configured declares an active block, but the section has "
-                    "no table to carry its bindings")
-            for table_no, (header, rows) in enumerate(tables, 1):
-                if not rows:
-                    add("configured-table-empty", target, "fail",
-                        "Configured table %d has no data row" % table_no)
-                    continue
-                for row_no, cells in enumerate(rows, 1):
-                    if (len(cells) != len(header) or
-                            any(not cell for cell in cells)):
-                        add("configured-table-incomplete", target, "fail",
-                            "Configured table %d row %d has %d/%d cells or "
-                            "an empty cell" %
-                            (table_no, row_no, len(cells), len(header)))
-        elif inactive and any(rows for _, rows in tables):
-            add("inactive-table-has-rows", target, "fail",
-                "%s leaves active table rows behind; remove those rows so "
-                "the single declaration is authoritative" % value)
-    return declaration_count
-
-
 def unbacktick(value):
     value = value.strip()
     m = re.fullmatch(r"`([^`]*)`", value)
@@ -812,7 +813,8 @@ def scan_sentinel(profile_snapshot, sentinel):
     return hits, read_n, skipped_n
 
 
-def validate_corpus_planning_slot(path, target, add, text=None):
+def validate_corpus_planning_slot(
+        path, target, add, text=None, owner_document=None):
     """Validate the Profile slot's closed restricted-YAML envelope."""
     try:
         document = kblib.parse_yaml_subset(
@@ -822,7 +824,8 @@ def validate_corpus_planning_slot(path, target, add, text=None):
             "cannot parse restricted YAML: %s" % exc)
         return
     _normalized, issues = \
-        corpus_planning_contract.validate_corpus_planning_envelope(document)
+        corpus_planning_contract.validate_corpus_planning_envelope(
+            document, contract=owner_document)
 
     def label(path_parts):
         if not path_parts:
@@ -1267,7 +1270,23 @@ def main(argv=None, *, _evaluation_out=None,
 
     try:
         interface_text = normative_snapshots[DEFAULT_INTERFACE].read_text()
-        slots = interface_slots(interface_text)
+        interface_document = profile_contract.load_profile_interface(
+            root, snapshots=normative_snapshots)
+        slots = profile_contract.profile_interface_slots(interface_document)
+        registry_references = interface_document["registry_references"]
+        corpus_owner_document = \
+            corpus_planning_contract.load_corpus_planning_contract(
+                root, text=normative_snapshots[
+                    registry_references["corpus_planning_contract"]
+                ].read_text())
+        structure_owner_document = kblib.load_structure_registry_contract(
+            root, text=normative_snapshots[
+                registry_references["structure_registry_contract"]
+            ].read_text())
+        metadata_owner_document = kblib.load_metadata_profile_contract(
+            root, text=normative_snapshots[
+                registry_references["metadata_profile_contract"]
+            ].read_text())
     except (OSError, UnicodeError, ValueError, kblib.YamlSubsetError) as exc:
         add("interface-unreadable", DEFAULT_INTERFACE, "fail",
             "cannot read the normative slot interface: %s" % exc)
@@ -1377,7 +1396,8 @@ def main(argv=None, *, _evaluation_out=None,
                 else:
                     validate_corpus_planning_slot(
                         detail, target, add,
-                        text=profile_snapshot_text(detail))
+                        text=profile_snapshot_text(detail),
+                        owner_document=corpus_owner_document)
             elif slot == STRUCTURE_REGISTRY_SLOT:
                 target = os.path.relpath(
                     detail, root).replace(os.sep, "/")
@@ -1395,7 +1415,8 @@ def main(argv=None, *, _evaluation_out=None,
                     else:
                         shape_errors = \
                             kblib.validate_structure_registry_shape(
-                                document, target)
+                                document, target,
+                                contract=structure_owner_document)
                         for check, label, details in shape_errors:
                             add(check, label, "fail", details)
                         if not shape_errors:
@@ -1442,7 +1463,8 @@ def main(argv=None, *, _evaluation_out=None,
                     else:
                         for check, label, details in \
                                 kblib.validate_metadata_contract_shape(
-                                    document, target):
+                                    document, target,
+                                    contract=metadata_owner_document):
                             add(check, label, "fail", details)
         elif kind == "inline":
             add("slot-binding-inline", "%s#%s" % (manifest_disp, slot),
@@ -1496,8 +1518,12 @@ def main(argv=None, *, _evaluation_out=None,
         files_skipped = (
             len(profile_tree_snapshot.files) - len(profile_snapshot.files) +
             closure_skipped)
-        declaration_count = _validate_profile_declarations(
-            profile_snapshot, profile_disp, sentinel, add)
+        # Scalar values and their table activation shape are already checked
+        # from the K00 form registry by ``load_profile_contract``.  This scan
+        # remains a display count only; it must not recreate the allowed
+        # declaration set as a second authority.
+        declaration_count = sum(1 for _item in profile_declarations(
+            profile_snapshot))
     except (OSError, UnicodeError, ValueError) as exc:
         add("profile-snapshot-invalid", profile_disp, "fail",
             "cannot project the selected Profile's typed dependency "
@@ -1634,12 +1660,14 @@ def main(argv=None, *, _evaluation_out=None,
     candidates = [r for r in receipts if r["result"] == "candidate"]
     if not fails and not candidates:
         add(GATE_CHECK, contract.manifest_repo_path, "pass",
-            "profile_id=%s; %d/%d interface slot(s) bound and resolved; %d "
-            "explicit override(s) registered; %d optional/conditional "
-            "declaration(s) structurally consistent; %d typed dependency "
-            "edge(s) authorized; no unfilled sentinel, placeholder profile "
-            "id, unresolved binding, or cross-Profile reference remains"
-            % (profile_id, bound_ok, len(slots), len(registered),
+            "profile_id=%s; slot_resolution=%d/%d; form_conformance=%d/%d; "
+            "%d explicit override(s) registered; %d optional/conditional "
+            "declaration(s) structurally consistent; typed_closure=%d "
+            "dependency edge(s) authorized; this proves machine structure "
+            "and reference closure, not semantic quality or user confirmation"
+            % (profile_id, bound_ok, len(slots),
+               contract.profile_form_conformant,
+               contract.profile_form_expected, len(registered),
                declaration_count, len(contract.dependency_edges)))
         summary = receipts[-1]
         summary["selected_profile_manifest"] = contract.manifest_repo_path
@@ -1652,10 +1680,12 @@ def main(argv=None, *, _evaluation_out=None,
     # ---- human-readable summary ----
     say("check_profile: %s (profile_id=%s)"
           % (profile_disp, profile_id if profile_id else "<none>"))
-    say("  interface=%s slots=%d bound_ok=%d explicit_overrides=%d "
-          "files_scanned=%d files_skipped=%d"
+    say("  interface=%s slots=%d bound_ok=%d form_ok=%d/%d "
+          "explicit_overrides=%d files_scanned=%d files_skipped=%d"
           % (os.path.relpath(interface_path, root).replace(os.sep, "/"),
-             len(slots), bound_ok, len(registered), files_read, files_skipped))
+             len(slots), bound_ok, contract.profile_form_conformant,
+             contract.profile_form_expected, len(registered), files_read,
+             files_skipped))
     say("  sentinel_hits(fail)=%d" % len(hits))
     for r in receipts:
         if r["result"] == "fail":
@@ -1670,10 +1700,10 @@ def main(argv=None, *, _evaluation_out=None,
         say("  Conclusion: REVIEW REQUIRED — %d candidate finding(s); no "
               "profile-load pass receipt was emitted." % len(candidates))
     else:
-        say("  Conclusion: Profile load authorized; every interface slot and "
-              "machine-active Profile dependency resolves inside the selected "
-              "Profile. This checks authority and structure, not whether the "
-              "answers are good.")
+        say("  Conclusion: Profile load authorized; slot resolution, form "
+              "conformance, and the typed dependency closure all pass. This "
+              "checks machine structure, not whether answers are good or "
+              "whether the user confirmed them.")
 
     return finish()
 

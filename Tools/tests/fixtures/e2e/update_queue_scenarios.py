@@ -17,6 +17,7 @@ import Tools.execution.task_runtime.runtime_validation as runtime_validation
 from Tools.tests.fixtures.integration.checkpoint_contract import (
     PERSISTED_PATHS,
     PROFILE_DEPENDENCY_BUILDER as BASE_PROFILE_DEPENDENCY_BUILDER,
+    copy_checkpoint_seed,
     file_records,
     tree_sha256,
 )
@@ -58,7 +59,7 @@ class _ScenarioWalker(UpdateQueueFixture, unittest.TestCase):
 
 
 def _build_base(walker, inherited):
-    shutil.copytree(UPDATE_QUEUE_BASE_FIXTURE, walker.root)
+    copy_checkpoint_seed(UPDATE_QUEUE_BASE_FIXTURE, walker.root)
     install_update_queue_profile(walker.root, "merged-b1")
     for name in ("deltas", "receipts", "reports"):
         (walker.root / ".cambium" / name).mkdir(exist_ok=True)

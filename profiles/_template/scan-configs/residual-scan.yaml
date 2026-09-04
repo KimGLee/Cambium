@@ -1,5 +1,5 @@
-# Candidate machine parameters for the residual-content verifier selected by
-# this Profile. Tool-owned code defines matching and receipt behavior.
+# Machine parameters for the residual-content verifier selected by this
+# Profile. Tool-owned code defines matching and receipt behavior.
 
 residual_scan_config_version: 1
 

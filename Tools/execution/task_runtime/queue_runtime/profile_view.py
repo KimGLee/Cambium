@@ -20,7 +20,9 @@ from Tools.execution.task_runtime.queue_runtime.canon import SHA256_RE
 from Tools.execution.task_runtime.queue_runtime.primitives import nonempty_string
 
 
-EXPRESSION_LAYER_SLOT = "Expression Layer Entry"
+# Current public compatibility name for runtime consumers.  The Profile
+# contract remains the sole machine owner of the slot identity.
+EXPRESSION_LAYER_SLOT = profile_contract.EXPRESSION_LAYER_ENTRY_SLOT
 
 
 @dataclass(frozen=True)

@@ -29,6 +29,9 @@ from Tools.tests.support.canonical_registry_fixture import (  # noqa: E402
 from Tools.tests.support.initial_task_plan_fixture import (  # noqa: E402
     install_initial_task_plan_fixture,
 )
+from Tools.tests.support.profile_contract_fixture import (  # noqa: E402
+    materialize_current_profile_forms,
+)
 
 def _runtime_routes():
     """Derive the fixture route closed set from shipped Read Set owners."""
@@ -285,8 +288,8 @@ def _install_runtime_activation_fixture(root):
 
 
 def install_loadable_profile(root, profile_id="test-profile",
-                             override_rows="",
-                             upstream_revision_id=FIXTURE_UPSTREAM_REVISION):
+                             upstream_revision_id=FIXTURE_UPSTREAM_REVISION,
+                             before_adoption=None):
     """Overlay a real Profile and the production dependencies it consumes.
 
     Runtime tests consume one shared R01-R13 activation declaration set so
@@ -320,12 +323,7 @@ def install_loadable_profile(root, profile_id="test-profile",
                 "test-profile", profile_id),
             encoding="utf-8",
         )
-    if override_rows:
-        manifest = profile / "profile.md"
-        manifest.write_text(
-            manifest.read_text(encoding="utf-8") + override_rows,
-            encoding="utf-8",
-        )
+    materialize_current_profile_forms(profile)
 
     (root / "Tools/schemas").mkdir(parents=True, exist_ok=True)
     shutil.copy2(
@@ -391,6 +389,8 @@ def install_loadable_profile(root, profile_id="test-profile",
             "upstream_source_ref": "fixture://cambium",
         }), encoding="utf-8")
     _install_runtime_activation_fixture(root)
+    if before_adoption is not None:
+        before_adoption(root, profile)
     install_current_adoption_fixture(root, profile)
     progress_path = root / ".cambium/state/progress_ledger.yaml"
     if progress_path.is_file():
