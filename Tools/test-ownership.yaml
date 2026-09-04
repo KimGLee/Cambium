@@ -69,6 +69,12 @@ tests:
         semantics: adoption_resume_names_only_producer_admitted_batch
         owner_contract_symbol: resume.actionable_revalidation_batches
         parallel_safe: true
+      - selector: CorrectiveAdoptionBeforeImageTests.*
+        owner: Tools/execution/task_runtime/queue_runtime/runtime.py
+        level: integration
+        semantics: corrective_adoption_before_profile_lineage_boundary
+        owner_contract_symbol: runtime.validate_runtime
+        parallel_safe: false
       - selector: BaseReadSetCheckpointTests.*
         owner: Tools/execution/task_runtime/queue_runtime/adoption.py
         level: integration
