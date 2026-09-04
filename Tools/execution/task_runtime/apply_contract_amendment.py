@@ -158,7 +158,7 @@ def _validate_plan_shape(plan):
 
 
 def _current_effective_policy(root, contract):
-    """Resolve the selected Profile's effective quota policy, or refuse.
+    """Resolve the selected Profile's optional quota policy, or refuse.
 
     The writer resolves the same slot bytes the batch-close consumer will:
     the manifest's ``Priority Rubric`` binding through
@@ -182,7 +182,7 @@ def _current_effective_policy(root, contract):
     binding = (bindings.get("Priority Rubric") or "").strip("`").strip()
     if not binding:
         raise Refusal("the selected Profile binds no Priority Rubric slot; "
-                      "K00/07 places the standing quotas there")
+                      "K00/07 places optional quota registration there")
     rubric_path = os.path.join(os.path.dirname(manifest_path), binding)
     try:
         with open(rubric_path, encoding="utf-8") as handle:
@@ -203,14 +203,13 @@ def _require_policy_authorization(policy, fingerprint, exceptions):
 
     Two checks.  First, every exception for a registered policy must carry
     the CURRENT effective-policy fingerprint of ITS OWN family -- a quota
-    grant is judged against the resolved Profile quotas, a kernel-owned
-    policy against the kernel statement of the rule.  An exception judged
-    against bytes that are not the live ones is not a grant, and the
-    consumer would silently never match it.  Second, the effective quota
-    ceilings -- exception where granted, standing quota where not -- must
-    jointly stay below the Kernel registry's partition ceiling (K00/07):
-    summing only granted values could ignore the other class's standing
-    ceiling and authorize a pair that leaves no remainder.
+    grant is judged against the Profile's resolved registration, while a
+    kernel-owned policy is judged against the Kernel statement of the rule.
+    An exception judged against a policy that is not current is not a grant,
+    and the consumer would silently never match it. Second, quota exceptions
+    are legal only when the Profile configured the pair, and the effective
+    ceilings -- exception where granted, configured value where not -- must
+    jointly stay below the Kernel registry's partition ceiling (K00/07).
     """
     for index, entry in enumerate(exceptions):
         if not isinstance(entry, dict):
@@ -236,11 +235,11 @@ def _require_policy_authorization(policy, fingerprint, exceptions):
                 "  claimed:  %s\n"
                 "  expected: %s\n"
                 "The expected value is the fingerprint of the resolved "
-                "policy object (for a quota: the standing values, kernel "
-                "defaults and protocol version; for a kernel-owned policy: "
-                "the kernel statement of the rule), not the SHA of any "
-                "file; confirm the policy is the one this grant was judged "
-                "against, then record the expected value"
+                "policy object (for a quota: enabled state, configured values "
+                "when present, and protocol version; for a kernel-owned "
+                "policy: the kernel statement of the rule), not the SHA of "
+                "any file; confirm the policy is the one this grant was "
+                "judged against, then record the expected value"
                 % (index, policy_id, claimed, expected))
     ceilings, errors = contract_exception_policy.effective_quota_ceilings(
         policy, exceptions)

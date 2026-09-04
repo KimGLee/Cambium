@@ -3,7 +3,7 @@
 
 ``kernel/K00 Standards Control/contract-exception-policy-base.yaml`` is the
 sole authority for which policies are exceptable, who owns them, what their
-limits mean, their defaults, and their effective-policy fingerprint payload.
+limits mean, and their effective-policy fingerprint payload.
 This module owns only deterministic loading, validation, Profile-value
 parsing, policy resolution, hashing, and effective-ceiling arithmetic.  It
 does not create governance policy, measure a corpus, issue a verdict, or
@@ -73,9 +73,9 @@ def policy_registry_records(document, *, root=None,
     _closed_mapping(
         document, {"schema_version", "registry_id", "families"},
         "contract-exception policy registry")
-    if document.get("schema_version") != 1:
+    if document.get("schema_version") != 2:
         raise ValueError(
-            "contract-exception policy registry schema_version must be 1")
+            "contract-exception policy registry schema_version must be 2")
     if document.get("registry_id") != "contract-exception-policy":
         raise ValueError(
             "contract-exception policy registry has the wrong registry_id")
@@ -114,7 +114,7 @@ def policy_registry_records(document, *, root=None,
         payload = family.get("fingerprint_payload")
         _closed_mapping(payload, {
             "schema_version", "protocol_version",
-            "kernel_default_source", "profile_configured_source",
+            "profile_none_source", "profile_configured_source",
         }, "%s fingerprint_payload" % label)
         _positive_int(payload.get("schema_version"),
                       "%s payload schema_version" % label)
@@ -122,7 +122,7 @@ def policy_registry_records(document, *, root=None,
                       "%s payload protocol_version" % label)
         for field in set(payload) - {"schema_version", "protocol_version"}:
             _nonempty(payload.get(field), "%s payload %s" % (label, field))
-        if (payload["kernel_default_source"] ==
+        if (payload["profile_none_source"] ==
                 payload["profile_configured_source"]):
             raise ValueError("%s payload source labels must be distinct" % label)
 
@@ -163,8 +163,7 @@ def policy_registry_records(document, *, root=None,
         classes = set()
         for policy_index, policy in enumerate(policies):
             policy_label = "%s policy %d" % (label, policy_index)
-            fields = {
-                "policy_id", "owner", "quota_class", "kernel_default"}
+            fields = {"policy_id", "owner", "quota_class"}
             _closed_mapping(policy, fields, policy_label)
             policy_id = policy.get("policy_id")
             _nonempty(policy_id, "%s policy_id" % policy_label)
@@ -188,13 +187,6 @@ def policy_registry_records(document, *, root=None,
             if quota_class in classes:
                 raise ValueError("duplicate quota_class %s" % quota_class)
             classes.add(quota_class)
-            default = policy.get("kernel_default")
-            if (isinstance(default, bool) or
-                    not isinstance(default, (int, float)) or
-                    not minimum <= default < maximum):
-                raise ValueError(
-                    "%s kernel_default is outside its limit domain" %
-                    policy_label)
             record["remainder_class"] = \
                 family["profile_resolution"]["remainder_class"]
             records[policy_id] = record
@@ -234,20 +226,20 @@ PRIORITY_QUOTA_NONE = \
 PRIORITY_QUOTA_CONFIGURED = \
     _PRIORITY_FAMILY["profile_resolution"]["registration_configured"]
 _PRIORITY_POLICIES = tuple(_PRIORITY_FAMILY["policies"])
-PRIORITY_QUOTA_KERNEL_DEFAULTS = tuple(
-    row["kernel_default"] for row in _PRIORITY_POLICIES)
 
 
 def priority_quota_policy(rubric_text, registry=None):
     """Read the Priority Rubric slot's quota registration, K00/07.
 
-    Returns ``((p0, p1), configured, errors)``.  One reader for the one
-    long-lived quota truth: the profile-load Gate validates through it and the
-    batch-close consumer resolves through it, so the two can never disagree
-    about what the slot declares.  ``Registration: None`` selects the kernel
-    defaults; ``Configured`` requires one row for every registered quota
-    class, a nonempty rationale, and values inside the registry's individual
-    and joint domains so the registered remainder class stays reachable.
+    Returns ``((p0, p1), configured, errors)`` when configured, and
+    ``((), False, errors)`` when the slot explicitly selects no quota. One
+    reader owns the long-lived quota truth: the profile-load Gate validates
+    through it and the batch-close consumer resolves through it, so the two
+    can never disagree about what the slot declares. ``Registration: None``
+    leaves quota enforcement inactive. ``Configured`` requires one row for every
+    registered quota class, a nonempty rationale, and values inside the
+    registry's individual and joint domains so the registered remainder class
+    stays reachable.
     """
     registry = registry or _SHIPPED_POLICY_REGISTRY
     family = _family(registry, "profile-priority-quota")
@@ -257,7 +249,6 @@ def priority_quota_policy(rubric_text, registry=None):
     registration_configured = resolution["registration_configured"]
     policies = tuple(family["policies"])
     classes = tuple(row["quota_class"] for row in policies)
-    defaults = tuple(row["kernel_default"] for row in policies)
     domain = family["limit_domain"]
     minimum = domain["minimum_inclusive"]
     maximum = domain["maximum_exclusive"]
@@ -291,10 +282,10 @@ def priority_quota_policy(rubric_text, registry=None):
             rows.append(cells)
     if declaration is None:
         errors.append(
-            "the %s section must declare `- Registration: %s` (kernel "
-            "defaults) or `- Registration: %s`" %
+            "the %s section must declare `- Registration: %s` (no quota) or "
+            "`- Registration: %s`" %
             (section, registration_none, registration_configured))
-        return defaults, False, errors
+        return (), False, errors
     if declaration == registration_none:
         data_rows = rows[1:] if rows else []
         if data_rows:
@@ -302,13 +293,13 @@ def priority_quota_policy(rubric_text, registry=None):
                 "Registration: %s leaves active quota rows behind; remove "
                 "them so the single declaration is authoritative" %
                 registration_none)
-        return defaults, False, errors
+        return (), False, errors
     if declaration != registration_configured:
         errors.append(
             "%s declaration %r is invalid; use `%s` or `%s`" %
             (section, declaration, registration_none,
              registration_configured))
-        return defaults, False, errors
+        return (), False, errors
 
     values = {}
     data_rows = rows[1:] if rows else []
@@ -347,7 +338,7 @@ def priority_quota_policy(rubric_text, registry=None):
         errors.append(
             "%s must declare every quota class; missing %s" %
             (registration_configured, ", ".join(missing)))
-        return defaults, False, errors
+        return (), False, errors
     joint = sum(values[quota_class] for quota_class in classes)
     if joint >= joint_maximum:
         errors.append(
@@ -368,13 +359,13 @@ def effective_priority_policy(rubric_text, registry=None):
     """Resolve the one effective quota policy and its canonical fingerprint.
 
     Everything an authorization decision depends on is folded into one object
-    and one fingerprint: the registered policy IDs, the *resolved* per-class
-    values (kernel defaults included -- a `Registration: None` slot resolves
-    to the kernel numbers, so a kernel default change moves this fingerprint
-    even though the rubric bytes did not), the resolution source, and the
-    comparison protocol version.  An exception's baseline fingerprint binds
-    to this object; hashing the rubric file alone would let the effective
-    policy drift underneath a standing grant.
+    and one fingerprint: whether this optional policy is active, the registered
+    policy IDs and resolved per-class values when active, the resolution
+    source, and the comparison protocol version. ``Registration: None`` is an
+    explicit, fingerprinted inactive policy; it never acquires hidden numeric
+    defaults. An exception's baseline fingerprint binds to this object; hashing
+    the rubric file alone would let the effective policy drift underneath an
+    active grant.
 
     Returns ``(policy, fingerprint, errors)``.  ``fingerprint`` is None when
     the slot does not resolve.
@@ -385,20 +376,17 @@ def effective_priority_policy(rubric_text, registry=None):
     payload_contract = family["fingerprint_payload"]
     values, configured, errors = priority_quota_policy(
         rubric_text, registry=registry)
-    defaults = {
-        row["policy_id"]: row["kernel_default"] for row in rows
-    }
-    resolved = {
+    resolved = ({
         row["policy_id"]: values[index]
         for index, row in enumerate(rows)
-    }
+    } if configured else {})
     policy = {
         "schema_version": payload_contract["schema_version"],
         "protocol_version": payload_contract["protocol_version"],
+        "enabled": configured,
         "source": (payload_contract["profile_configured_source"]
                    if configured else
-                   payload_contract["kernel_default_source"]),
-        "kernel_defaults": defaults,
+                   payload_contract["profile_none_source"]),
         "resolved": resolved,
     }
     if errors:
@@ -433,22 +421,24 @@ def effective_policy_for(policy_id, rubric_text=None, registry=None):
 
 
 def effective_quota_ceilings(policy, exceptions, registry=None):
-    """Fold standing quotas and granted exceptions into effective ceilings.
+    """Fold configured quotas and granted exceptions into effective ceilings.
 
     ``policy`` is the object from :func:`effective_priority_policy`;
     ``exceptions`` is the list of currently applicable contract policy
-    exceptions (the caller decides currency and scope).  For each registered
-    policy the effective ceiling is the largest granted exception limit when
-    one exists, else the standing resolved value.
+    exceptions (the caller decides currency and scope). For an enabled policy,
+    each registered class uses the largest granted exception limit when one
+    exists, else the Profile-resolved value. An inactive policy has no ceiling
+    to relax, so any quota exception against it is an error rather than a way
+    to create an implicit quota.
 
     K00/07's registry-defined joint bound is judged over the effective pair,
-    because a grant and the other class's standing quota partition the same
+    because a grant and the other class's configured quota partition the same
     corpus. Summing grants alone could call the pair bounded while ignoring a
-    standing ceiling. This function executes that arithmetic; it does not own
+    configured ceiling. This function executes that arithmetic; it does not own
     the bound.
 
     Returns ``(ceilings, errors)``.  ``ceilings`` maps policy_id to
-    ``{"limit": number, "source": "standing" | "exception:<decision_id>"}``.
+    ``{"limit": number, "source": "configured" | "exception:<decision_id>"}``.
     """
     from fractions import Fraction
     registry = registry or _SHIPPED_POLICY_REGISTRY
@@ -457,13 +447,25 @@ def effective_quota_ceilings(policy, exceptions, registry=None):
         row["policy_id"] for row in family["policies"])
     joint_maximum = family["limit_domain"]["joint_maximum_exclusive"]
     remainder_class = family["profile_resolution"]["remainder_class"]
+    quota_exceptions = [
+        entry for entry in (exceptions or [])
+        if isinstance(entry, dict) and entry.get("policy_id") in priority_ids
+    ]
+    if not isinstance(policy, dict) or policy.get("enabled") is not True:
+        errors = []
+        if quota_exceptions:
+            errors.append(
+                "priority quota is not configured by the selected Profile; "
+                "an inactive policy has no ceiling to relax")
+        return {}, errors
+
     ceilings = {}
     # Quota family only: the joint bound is an arithmetic over corpus shares,
-    # and a policy from another family has no standing share to fold in.
+    # and a policy from another family has no configured share to fold in.
     for policy_id in sorted(priority_ids):
         resolved = (policy or {}).get("resolved", {}).get(policy_id)
-        ceilings[policy_id] = {"limit": resolved, "source": "standing"}
-    for entry in exceptions or []:
+        ceilings[policy_id] = {"limit": resolved, "source": "configured"}
+    for entry in quota_exceptions:
         if not isinstance(entry, dict):
             continue
         policy_id = entry.get("policy_id")
@@ -473,7 +475,7 @@ def effective_quota_ceilings(policy, exceptions, registry=None):
         if isinstance(limit, bool) or not isinstance(limit, (int, float)):
             continue
         current = ceilings[policy_id]
-        if (current["source"] == "standing" or
+        if (current["source"] == "configured" or
                 not isinstance(current["limit"], (int, float)) or
                 limit > current["limit"]):
             ceilings[policy_id] = {

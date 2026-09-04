@@ -134,7 +134,7 @@ gates:
     binding_protocol: owner-member-chain
   - gate_id: frontmatter-vocabulary
     tool: check_vocab
-    tool_version: 1.9.0
+    tool_version: 2.0.0
     check: vocab-check-summary
     mode: "*"
     dimensions:
@@ -148,7 +148,7 @@ gates:
     binding_protocol: owner-member-chain
   - gate_id: priority-quota-distribution
     tool: check_vocab
-    tool_version: 1.9.0
+    tool_version: 2.0.0
     check: priority-quota-distribution
     mode: "*"
     dimensions:

@@ -37,4 +37,4 @@ The registered vocabulary base is the sole normative source for closed priority 
 - `P1`: declared by the selected profile as a high-priority extension; SHOULD reach the readiness predicate specified by that profile.
 - `P2`: supplementary breadth; MAY be built after the core system is complete.
 
-P0 / P1 / P2 is a fixed three-level axis that feeds the page tier derivation and quota linkage mechanism; the selected profile MUST NOT replace, add to, remove from, or redefine this axis. The concrete granting conditions for P0 / P1 are registered by the `Priority Rubric`.
+P0 / P1 / P2 is a fixed three-level axis that feeds page tier derivation and, only when the selected Profile configures one, optional quota measurement. The selected Profile MUST NOT replace, add to, remove from, or redefine this axis. The concrete granting conditions for P0 / P1 are registered by the `Priority Rubric` whether or not a numeric quota is active.

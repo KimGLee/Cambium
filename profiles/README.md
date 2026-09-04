@@ -8,6 +8,8 @@ The common slot interface is owned by [`kernel/K00 Standards Control/profile-int
 
 A selected Profile may hold stable, repository-specific choices such as scope, logical directories, language, terminology, sources, priority predicates, role bindings, review predicates, and enabled Kernel extensions. It may also hold stable references to Read Sets, Tool capabilities, host capabilities, or corpus artifacts without taking ownership of their contents, implementation, or current state.
 
+The `Priority Rubric` always supplies the repository's P0/P1 grant predicates. Its numeric `Priority Quota` is optional: `Registration: None` activates no corpus-share ceiling, while `Configured` supplies a user-confirmed P0/P1 pair and rationale under K00/07. Absence of a quota never weakens the grant predicates.
+
 A Profile does not hold Kernel defaults, common slot schemas, Card steps, Read Set membership, Tool implementation details, task-time choices, Queue or Coverage data, receipts, recovery data, or adoption history. Current selection and execution evidence belong under `.cambium/`.
 
 ## Candidate creation

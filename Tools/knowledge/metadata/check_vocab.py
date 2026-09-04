@@ -40,25 +40,26 @@ scan is an invocation error, never a pass.
 Exit codes: 0 = all pass, 1 = at least one fail, 2 = no fail but candidates.
 
 Usage: python3 check_vocab.py <vault_root> [--scope SUBPATH]
-       [--vocab .cambium/derived/vocab.yaml] [--quota-p0 N] [--quota-p1 N]
+       [--vocab .cambium/derived/vocab.yaml]
+       [--quota-p0 N --quota-p1 N --policy-fingerprint SHA256]
        [--receipts PATH] [--json]
 """
 
 import os
+import re
 import sys
 from functools import partial
 
 import Tools.platform.common.kblib as kblib
 from Tools.execution.evidence import receipt_type_contract
 import Tools.knowledge.metadata.compose_vocab as compose_vocab
-import Tools.governance.control.contract_exception_policy as contract_exception_policy
 import Tools.governance.profile.profile_admission as profile_admission
 import Tools.execution.task_runtime.runtime_paths as runtime_paths
 from Tools.platform.common import reporting
 from Tools.platform.common import receipts as tool_receipts
 
 TOOL = "check_vocab"
-TOOL_VERSION = "1.9.0"
+TOOL_VERSION = "2.0.0"
 GATE_ID = "frontmatter-vocabulary"
 # Every K00/12 Gate this producer binds, with the check each receipt writes;
 # the registry guard compares its rows against this mapping.
@@ -70,6 +71,7 @@ GATE_CHECKS = {
 # tool offers as gate evidence carries it verbatim.
 GATE_CHECK = "vocab-check-summary"
 RECEIPT_TYPE_ID = "vocabulary-gate-receipt-v1"
+SHA256_RE = re.compile(r"sha256:[0-9a-f]{64}\Z")
 
 
 def current_receipt_errors(record, *, root=None):
@@ -131,27 +133,43 @@ def main(argv=None, *, authorized_admission=None):
                          "by the K08 module's knowledge-page schema)")
     ap.add_argument(
         "--quota-p0", type=float,
-        default=contract_exception_policy.PRIORITY_QUOTA_KERNEL_DEFAULTS[0],
-        help="P0 priority quota in percent (defaults to the Kernel policy "
-             "registry value; the selected Profile or Task Contract may "
-             "supply the already-resolved effective value)")
+        default=None,
+        help="configured Profile P0 quota in percent; must be supplied with "
+             "--quota-p1 and --policy-fingerprint; omission disables quota "
+             "evaluation")
     ap.add_argument(
         "--quota-p1", type=float,
-        default=contract_exception_policy.PRIORITY_QUOTA_KERNEL_DEFAULTS[1],
-        help="P1 priority quota in percent (defaults to the Kernel policy "
-             "registry value; the selected Profile or Task Contract may "
-             "supply the already-resolved effective value)")
+        default=None,
+        help="configured Profile P1 quota in percent; must be supplied with "
+             "--quota-p0 and --policy-fingerprint; omission disables quota "
+             "evaluation")
     ap.add_argument("--policy-fingerprint",
                     help="effective-policy fingerprint (from the Kernel "
                          "policy registry resolver) the quotas were "
                          "resolved from; recorded on the priority-quota-"
-                         "compliance receipt so its consumers can bind the "
+                         "distribution receipt so its consumers can bind the "
                          "policy identity, never re-derive it")
     ap.add_argument("--receipts", help="JSONL path to append machine-readable receipts to")
     ap.add_argument(
         "--json", action="store_true",
         help=JSON_HELP)
     args = ap.parse_args(argv)
+
+    supplied = (args.quota_p0 is not None, args.quota_p1 is not None)
+    if supplied[0] != supplied[1]:
+        ap.error("--quota-p0 and --quota-p1 must be supplied together")
+    if supplied[0]:
+        if not all(0 <= value < 100
+                   for value in (args.quota_p0, args.quota_p1)):
+            ap.error("configured quota values must be at least 0 and under 100")
+        if args.quota_p0 + args.quota_p1 >= 100:
+            ap.error("configured P0 and P1 quotas must leave a P2 remainder")
+        if (not isinstance(args.policy_fingerprint, str) or
+                SHA256_RE.fullmatch(args.policy_fingerprint) is None):
+            ap.error("configured quotas require --policy-fingerprint "
+                     "sha256:<64 lowercase hex>")
+    elif args.policy_fingerprint is not None:
+        ap.error("--policy-fingerprint is valid only with both quota values")
 
     if not args.json:
         return _run(args, None, authorized_admission)
@@ -379,7 +397,9 @@ def _run(args, produced, authorized_admission):
         if r["result"] == "fail":
             print("  [FAIL %s] %s — %s" % (r["check"], r["target"], r["details"]))
 
-    # Distribution stats and Priority Quota check (owner: K00/07 Effort Tiering / Priority Quota)
+    # Distribution stats remain useful even where the selected Profile registers
+    # no quota. Only an explicitly supplied Configured pair activates quota
+    # comparison, candidates, and the priority-quota-distribution Gate.
     for _axis in ("priority", "tier"):
         _tot = sum(dist[_axis].values())
         if _tot:
@@ -391,60 +411,56 @@ def _run(args, produced, authorized_admission):
     # reference to the dict bound at entry, and rebinding the name to a new
     # dict would leave that receipt recording `priority_shares: {}` forever
     # while this loop fills an object nobody references.
-    _quota_exceeded = []
-    for _pcls, _quota in (("P0", args.quota_p0), ("P1", args.quota_p1)):
-        _n = dist["priority"].get(_pcls, 0)
-        _share = (_n * 100.0 / _ptot) if _ptot else 0.0
-        priority_shares[_pcls] = {
-            "pages": _n, "total": _ptot, "share": round(_share, 4),
-            "quota": _quota,
-        }
-        if _ptot and not kblib.quota_share_within_limit(_n, _ptot, _quota):
-            # Exact arithmetic, same owner as the authorization comparison:
-            # a float rendering must neither invent nor hide an excess.
-            # One candidate per class: an exception is a bounded grant for
-            # one class at one magnitude, and a type that fused P0 and P1
-            # would make accepting one mean accepting both.
-            _quota_exceeded.append(_pcls)
-            seq += 1
-            _receipt = _make_receipt(
-                "priority-quota-%s" % _pcls, "vault", "candidate",
-                "%s share %.1f%% (%d/%d) exceeds the K00/07 Priority Quota "
-                "target <=%.0f%%; resolve by demotion, a profile quota "
-                "registration, or a bounded contract policy exception"
-                % (_pcls, _share, _n, _ptot, _quota), seq,
-                root=args.vault_root)
-            _receipt["priority_share"] = priority_shares[_pcls]
-            receipts.append(_receipt)
-            print("  [CAND priority-quota-%s] share %.1f%% exceeds the <=%.0f%% quota (K00/07)"
-                  % (_pcls, _share, _quota))
+    if args.quota_p0 is not None:
+        _quota_exceeded = []
+        for _pcls, _quota in (("P0", args.quota_p0),
+                              ("P1", args.quota_p1)):
+            _n = dist["priority"].get(_pcls, 0)
+            _share = (_n * 100.0 / _ptot) if _ptot else 0.0
+            priority_shares[_pcls] = {
+                "pages": _n, "total": _ptot, "share": round(_share, 4),
+                "quota": _quota,
+            }
+            if (_ptot and not kblib.quota_share_within_limit(
+                    _n, _ptot, _quota)):
+                # Exact arithmetic, same owner as the authorization comparison:
+                # a float rendering must neither invent nor hide an excess.
+                # One candidate per class: an exception is a bounded grant for
+                # one class at one magnitude, and a type that fused P0 and P1
+                # would make accepting one mean accepting both.
+                _quota_exceeded.append(_pcls)
+                seq += 1
+                _receipt = _make_receipt(
+                    "priority-quota-%s" % _pcls, "vault", "candidate",
+                    "%s share %.1f%% (%d/%d) exceeds the configured K00/07 "
+                    "Priority Quota target <=%.0f%%; resolve by demotion, a "
+                    "Profile quota revision, or a bounded contract policy "
+                    "exception"
+                    % (_pcls, _share, _n, _ptot, _quota), seq,
+                    root=args.vault_root)
+                _receipt["priority_share"] = priority_shares[_pcls]
+                receipts.append(_receipt)
+                print("  [CAND priority-quota-%s] share %.1f%% exceeds the "
+                      "configured <=%.0f%% quota (K00/07)" %
+                      (_pcls, _share, _quota))
 
-    # The whole-corpus distribution Gate (K00/12 `priority-quota-
-    # distribution`): one receipt carrying the same scan's per-class shares
-    # and the policy identity they were measured under, so batch-close,
-    # Maintenance/REBASE reconciliation, and the Terminal Audit consume one
-    # structured evidence object instead of re-deriving the distribution
-    # from display text.  It MEASURES and itemizes; it never judges.  The
-    # human call on an excess lives in the per-class candidates above --
-    # they are the dispositionable objects K00/07's three instruments
-    # answer -- so this receipt is `pass` whenever the measurement
-    # completed, with any exceeded classes named in `quota_exceeded`.  A
-    # judging result here would mint a second candidate for the same excess
-    # and a second place where quota acceptance is decided.
-    seq += 1
-    _compliance = _make_receipt(
-        "priority-quota-distribution", "vault", "pass",
-        ("priority shares measured; within the standing quotas"
-         if not _quota_exceeded else
-         "priority shares measured; class(es) %s exceed the standing "
-         "quotas, itemized as per-class candidates (K00/07 owns the "
-         "resolution instruments)" % ", ".join(_quota_exceeded)),
-        seq, root=args.vault_root)
-    _compliance["gate_id"] = "priority-quota-distribution"
-    _compliance["priority_shares"] = priority_shares
-    _compliance["quota_exceeded"] = list(_quota_exceeded)
-    _compliance["policy_fingerprint"] = args.policy_fingerprint
-    receipts.append(_compliance)
+        # This optional Gate exists only when the selected Profile configured a
+        # quota pair. It measures and itemizes one whole-corpus snapshot; the
+        # per-class candidates above remain the only dispositionable objects.
+        seq += 1
+        _compliance = _make_receipt(
+            "priority-quota-distribution", "vault", "pass",
+            ("priority shares measured; within the configured quotas"
+             if not _quota_exceeded else
+             "priority shares measured; class(es) %s exceed the configured "
+             "quotas, itemized as per-class candidates (K00/07 owns the "
+             "resolution instruments)" % ", ".join(_quota_exceeded)),
+            seq, root=args.vault_root)
+        _compliance["gate_id"] = "priority-quota-distribution"
+        _compliance["priority_shares"] = priority_shares
+        _compliance["quota_exceeded"] = list(_quota_exceeded)
+        _compliance["policy_fingerprint"] = args.policy_fingerprint
+        receipts.append(_compliance)
 
     if admission is not None:
         final_currency = compose_vocab.artifact_currency_errors(

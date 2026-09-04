@@ -23,6 +23,7 @@ from Tools.platform.agent_interface import tool_availability
 
 REPOSITORY = Path(__file__).resolve().parents[2]
 EXAMPLE_PROFILE = "profiles/examples/agent-atlas/profile.md"
+CONFIGURED_PROFILE = "profiles/examples/worked-planning/profile.md"
 
 
 class RunGatesContractTests(unittest.TestCase):
@@ -95,6 +96,32 @@ class RunGatesContractTests(unittest.TestCase):
             previous = commands_by_selector.setdefault(
                 selector, tuple(command))
             self.assertEqual(previous, tuple(command))
+
+    def test_profile_none_omits_quota_arguments_and_marks_gate_not_applicable(self):
+        command = self.recipes[("check_vocab", "vocab-check-summary", "*")]
+        self.assertNotIn("--quota-p0", command)
+        self.assertNotIn("--quota-p1", command)
+        self.assertNotIn("--policy-fingerprint", command)
+        self.assertIsNone(
+            self.recipes[(
+                "check_vocab", "priority-quota-distribution", "*")])
+
+    def test_profile_configured_projects_the_exact_pair_to_one_command(self):
+        recipes = run_gates._recipes(
+            str(REPOSITORY), CONFIGURED_PROFILE, [])
+        command = recipes[(
+            "check_vocab", "priority-quota-distribution", "*")]
+
+        self.assertIsNotNone(command)
+        self.assertEqual(
+            command,
+            recipes[("check_vocab", "vocab-check-summary", "*")])
+        self.assertEqual(
+            "10.0", command[command.index("--quota-p0") + 1])
+        self.assertEqual(
+            "30.0", command[command.index("--quota-p1") + 1])
+        fingerprint = command[command.index("--policy-fingerprint") + 1]
+        self.assertRegex(fingerprint, r"^sha256:[0-9a-f]{64}$")
 
     def test_missing_runnable_producer_recipe_fails_closed(self):
         registry = {

@@ -11,7 +11,7 @@ import copy
 import io
 import tempfile
 import unittest
-from contextlib import redirect_stdout
+from contextlib import redirect_stderr, redirect_stdout
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -19,11 +19,13 @@ import Tools.execution.audit.check_batch_close as check_batch_close
 from Tools.execution.task_runtime.queue_runtime import policy_exceptions
 import Tools.governance.control.contract_exception_policy as exception_policy
 import Tools.knowledge.metadata.check_vocab as check_vocab
+from Tools.tests.fixtures.contract.priority_quota_objects import (
+    CONFIGURED_PRIORITY_QUOTA_RUBRIC,
+)
 
 
 POLICY_FINGERPRINT = "sha256:" + "a" * 64
 SNAPSHOT = "sha256:" + "b" * 64
-NONE_RUBRIC = "## Priority Quota\n\n- Registration: None\n"
 
 
 def live_exception(*, decision_id="PE-1", policy_id="priority_quota.P0",
@@ -41,7 +43,7 @@ def live_exception(*, decision_id="PE-1", policy_id="priority_quota.P0",
     }
 
 
-def quota_candidate(*, pages=None, total=None, quota_class="P0"):
+def quota_candidate(*, pages=None, total=None, quota_class="P0", quota=20.0):
     candidate = {
         "candidate_id": "candidate-sha256:" + "0" * 64,
         "candidate_type": "check_vocab:priority-quota-%s" % quota_class,
@@ -54,39 +56,18 @@ def quota_candidate(*, pages=None, total=None, quota_class="P0"):
             "pages": pages,
             "total": total,
             "share": round(pages * 100.0 / total, 4),
-            "quota": 15.0,
+            "quota": quota,
         }
     return candidate
-
-
-class _ProfileSnapshot:
-
-    def __init__(self, texts):
-        self._texts = texts
-
-    def read_text(self, repo_path):
-        return self._texts[repo_path]
 
 
 class QuotaExceptionSelectionContractTests(unittest.TestCase):
 
     def test_only_current_scope_and_policy_bindings_are_selected(self):
         _policy, fingerprint, errors = \
-            exception_policy.effective_priority_policy(NONE_RUBRIC)
+            exception_policy.effective_priority_policy(
+                CONFIGURED_PRIORITY_QUOTA_RUBRIC)
         self.assertEqual([], errors)
-        manifest_path = "profiles/current/profile.md"
-        rubric_path = "profiles/current/priority-rubric.md"
-        evaluation = SimpleNamespace(
-            contract=SimpleNamespace(
-                manifest_repo_path=manifest_path,
-                profile_repo_dir="profiles/current"),
-            profile_snapshot=_ProfileSnapshot({
-                manifest_path: (
-                    "## Implemented Slots\n\n"
-                    "- `Priority Rubric`: `priority-rubric.md`\n"),
-                rubric_path: NONE_RUBRIC,
-            }),
-        )
         current = live_exception(fingerprint=fingerprint)
         stale = live_exception(
             decision_id="PE-stale", fingerprint="sha256:" + "c" * 64)
@@ -104,16 +85,15 @@ class QuotaExceptionSelectionContractTests(unittest.TestCase):
             }},
         }
 
-        selected = check_batch_close._quota_exceptions(runtime, evaluation)
+        selected = check_batch_close._quota_exceptions(runtime, fingerprint)
 
         self.assertEqual([current], selected["P0"])
         self.assertEqual([snapshot], selected["P1"])
 
-
 class QuotaDispositionContractTests(unittest.TestCase):
 
     def test_structured_share_decision_matrix_and_sealed_output(self):
-        grant = live_exception(limit=15)
+        grant = live_exception(limit=24)
         grants = {"P0": [grant]}
 
         errors, accepted = check_batch_close._quota_candidate_dispositions(
@@ -121,14 +101,14 @@ class QuotaDispositionContractTests(unittest.TestCase):
         self.assertEqual([], accepted)
         self.assertIn("no structured share", errors[0])
 
-        measured = quota_candidate(pages=37, total=246)
+        measured = quota_candidate(pages=1, total=4)
         errors, accepted = check_batch_close._quota_candidate_dispositions(
             [measured], grants, SNAPSHOT, POLICY_FINGERPRINT)
         self.assertEqual([], accepted)
         self.assertIn("no valid contract policy exception", errors[0])
 
         covering = copy.deepcopy(grant)
-        covering["limit"] = 15.1
+        covering["limit"] = 26
         errors, accepted = check_batch_close._quota_candidate_dispositions(
             [measured], {"P0": [covering]}, SNAPSHOT,
             POLICY_FINGERPRINT)
@@ -138,12 +118,12 @@ class QuotaDispositionContractTests(unittest.TestCase):
             {
                 "decision_id": "PE-1",
                 "policy_id": "priority_quota.P0",
-                "limit": 15.1,
+                "limit": 26,
                 "scope_kind": "task",
                 "scope_ref": "TASK-1",
                 "policy_fingerprint": POLICY_FINGERPRINT,
-                "pages": 37,
-                "total": 246,
+                "pages": 1,
+                "total": 4,
             },
             accepted[0]["policy_exception"])
 
@@ -194,7 +174,8 @@ class QuotaDispositionContractTests(unittest.TestCase):
 
 class QuotaDistributionProducerIntegrationTests(unittest.TestCase):
 
-    def test_one_scan_publishes_bound_distribution_evidence(self):
+    @staticmethod
+    def _scan(quota_p0, quota_p1, policy_fingerprint):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             (root / "A.md").write_text(
@@ -212,13 +193,32 @@ class QuotaDistributionProducerIntegrationTests(unittest.TestCase):
                 encoding="utf-8")
             args = SimpleNamespace(
                 vault_root=str(root), scope=None, vocab=str(vocab),
-                exclude=[], quota_p0=15.0, quota_p1=35.0,
-                policy_fingerprint=POLICY_FINGERPRINT, receipts=None,
+                exclude=[], quota_p0=quota_p0, quota_p1=quota_p1,
+                policy_fingerprint=policy_fingerprint, receipts=None,
                 json=False)
             produced = []
 
             with redirect_stdout(io.StringIO()):
                 code = check_vocab._run(args, produced, None)
+        return code, produced
+
+    def test_none_policy_has_no_candidate_or_quota_gate_receipt(self):
+        code, produced = self._scan(None, None, None)
+
+        self.assertEqual(0, code)
+        self.assertFalse(any(
+            receipt.get("check", "").startswith("priority-quota")
+            for receipt in produced))
+        summaries = [
+            receipt for receipt in produced
+            if receipt.get("check") == check_vocab.GATE_CHECK
+        ]
+        self.assertTrue(summaries)
+        self.assertTrue(all(summary["priority_shares"] == {}
+                            for summary in summaries))
+
+    def test_configured_pair_publishes_exact_bound_distribution_evidence(self):
+        code, produced = self._scan(20.0, 30.0, POLICY_FINGERPRINT)
 
         self.assertEqual(2, code)
         distributions = [
@@ -232,10 +232,10 @@ class QuotaDistributionProducerIntegrationTests(unittest.TestCase):
                          distribution["policy_fingerprint"])
         self.assertEqual(["P0"], distribution["quota_exceeded"])
         self.assertEqual(
-            {"pages": 1, "total": 2, "share": 50.0, "quota": 15.0},
+            {"pages": 1, "total": 2, "share": 50.0, "quota": 20.0},
             distribution["priority_shares"]["P0"])
         self.assertEqual(
-            {"pages": 0, "total": 2, "share": 0.0, "quota": 35.0},
+            {"pages": 0, "total": 2, "share": 0.0, "quota": 30.0},
             distribution["priority_shares"]["P1"])
         summaries = [
             receipt for receipt in produced
@@ -244,6 +244,20 @@ class QuotaDistributionProducerIntegrationTests(unittest.TestCase):
         self.assertTrue(summaries)
         self.assertTrue(all(summary["priority_shares"]
                             for summary in summaries))
+
+
+class QuotaCliPairContractTests(unittest.TestCase):
+
+    def test_partial_configured_input_is_rejected_before_scanning(self):
+        cases = (
+            [".", "--quota-p0", "20"],
+            [".", "--quota-p0", "20", "--quota-p1", "30"],
+        )
+        for argv in cases:
+            with self.subTest(argv=argv), redirect_stderr(io.StringIO()), \
+                    self.assertRaises(SystemExit) as raised:
+                check_vocab.main(argv)
+            self.assertEqual(1, raised.exception.code)
 
 
 if __name__ == "__main__":

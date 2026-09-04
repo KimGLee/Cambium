@@ -1,17 +1,18 @@
-schema_version: 1
+schema_version: 2
 registry_id: contract-exception-policy
 
 # This is the sole machine authority for the Kernel policies that may be
 # named by a bounded Task Contract policy exception.  The individual owner
 # pages explain each rule; this registry closes identity, limit semantics,
-# defaults, and the canonical effective-policy payload that currentness binds.
+# Profile registration state, and the canonical effective-policy payload that
+# currentness binds.  It defines no Kernel-default priority share.
 families:
   - family_id: priority_quota
     policy_kind: profile-priority-quota
     fingerprint_payload:
-      schema_version: 1
-      protocol_version: 1
-      kernel_default_source: kernel-defaults
+      schema_version: 2
+      protocol_version: 2
+      profile_none_source: profile-none
       profile_configured_source: profile-configured
     limit_domain:
       domain_id: percent-share-under-100
@@ -28,8 +29,6 @@ families:
       - policy_id: priority_quota.P0
         owner: kernel/K00 Standards Control/07 Effort Tiering and Priority Quota.md
         quota_class: P0
-        kernel_default: 15.0
       - policy_id: priority_quota.P1
         owner: kernel/K00 Standards Control/07 Effort Tiering and Priority Quota.md
         quota_class: P1
-        kernel_default: 35.0

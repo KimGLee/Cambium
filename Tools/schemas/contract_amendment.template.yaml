@@ -16,7 +16,7 @@
 # K13/15, and any other contract change with a successor task.
 #
 # An exception is current authorization with a declared end. Its baseline
-# fingerprint binds it to the policy bytes it was judged against, so a
+# fingerprint binds it to the resolved policy it was judged against, so a
 # Standards or Profile revision it never saw invalidates it rather than being
 # silently covered by it.
 # =============================================================================
@@ -59,13 +59,14 @@ policy_exceptions_after:
     # owner (for example, K00/07 for a priority-quota policy).
     policy_id: TODO(amendment)
     # The CURRENT effective-policy fingerprint from the resolver
-    # (contract_exception_policy.effective_priority_policy): a canonical hash over the resolved
-    # standing quotas, kernel defaults, and comparison protocol -- NOT the
-    # SHA of any file, and not computable by hand. Run the writer once with
-    # any placeholder here; its refusal prints the expected value, and the
-    # operator's job is to confirm the standing policy is the one this grant
-    # was judged against before recording it. A later policy revision moves
-    # the fingerprint and thereby invalidates the exception.
+    # (contract_exception_policy.effective_priority_policy): a canonical hash
+    # over the enabled state, configured values when present, and comparison
+    # protocol -- NOT the SHA of any file, and not computable by hand. A
+    # priority-quota exception is legal only when the selected Profile has a
+    # Configured pair. Run the writer once with any placeholder here; its
+    # refusal prints the expected value, and the operator's job is to confirm
+    # that this is the configured policy against which the grant was judged.
+    # A later policy revision moves the fingerprint and invalidates it.
     baseline_policy_fingerprint: TODO(amendment)
     # The bound this exception grants. Its unit and meaning belong to the
     # policy owner; for priority_quota.* it is the maximum corpus share in

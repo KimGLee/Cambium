@@ -1699,7 +1699,6 @@ modules:
     layer: contract
     public:
       - POLICY_REGISTRY
-      - PRIORITY_QUOTA_KERNEL_DEFAULTS
       - PRIORITY_QUOTA_POLICY_IDS
       - effective_policy_for
       - effective_priority_policy

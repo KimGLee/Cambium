@@ -209,13 +209,20 @@ tests:
         semantics: contract_amendment_admissible_runtime_edge
         owner_contract_symbol: apply_contract_amendment._require_amendable_runtime
         parallel_safe: true
-      - selector: ContractAmendmentPolicyConnectionTests.*
+      - selector: ContractAmendmentPolicyConnectionTests.test_writer_accepts_only_the_registrys_current_policy_fingerprint
         level: contract
         semantics: contract_amendment_current_policy_fingerprint_connection
         owner_contract_symbol: apply_contract_amendment._require_policy_authorization
         parallel_safe: true
         consumer_only: true
-        primary_owner_test: test_contract_exception_policy_registry.FingerprintCurrentnessTests.test_effective_policy_fingerprint_is_stable
+        primary_owner_test: test_contract_exception_policy_registry.FingerprintCurrentnessTests.test_registry_policy_revision_moves_the_effective_fingerprint
+      - selector: ContractAmendmentPolicyConnectionTests.test_writer_rejects_quota_exception_when_profile_registers_none
+        level: contract
+        semantics: contract_amendment_inactive_quota_exception_rejection
+        owner_contract_symbol: apply_contract_amendment._require_policy_authorization
+        parallel_safe: true
+        consumer_only: true
+        primary_owner_test: test_contract_exception_policy_registry.EffectiveQuotaCeilingTests.test_inactive_configured_exception_and_joint_bound_matrix
       - selector: ContractAmendmentReceiptContractTests.*
         level: contract
         semantics: current_contract_amendment_receipt_selector
@@ -1181,6 +1188,21 @@ tests:
     disposition: keep
     semantics: contract_exception_policy_registry
     parallel_safe: true
+    overrides:
+      - selector: PriorityQuotaRegistryConnectionTests.test_exception_shape_validation_consumes_registry_bounds
+        owner: Tools/execution/task_runtime/queue_runtime/policy_exceptions.py
+        level: contract
+        semantics: policy_exception_registry_limit_domain_consumer
+        owner_contract_symbol: policy_exceptions.policy_exception_errors
+        parallel_safe: true
+        consumer_only: true
+        primary_owner_test: test_contract_exception_policy_registry.RegistryShapeTests.test_limit_domain_is_projected_to_each_policy
+      - selector: EffectiveQuotaCeilingTests.*
+        owner: Tools/governance/control/contract_exception_policy.py
+        level: unit
+        semantics: optional_priority_quota_effective_ceiling_matrix
+        owner_contract_symbol: contract_exception_policy.effective_quota_ceilings
+        parallel_safe: true
   - path: Tools/tests/test_control_registry_contract.py
     owner: Tools/governance/control/control_registry_contract.py
     level: contract
@@ -1964,6 +1986,12 @@ tests:
         semantics: priority_quota_distribution_receipt_producer
         owner_contract_symbol: check_vocab._run
         parallel_safe: true
+      - selector: QuotaCliPairContractTests.*
+        owner: Tools/knowledge/metadata/check_vocab.py
+        level: contract
+        semantics: configured_priority_quota_cli_pair_contract
+        owner_contract_symbol: check_vocab.main
+        parallel_safe: true
   - path: Tools/tests/test_receipt_reference_contract.py
     owner: Tools/execution/evidence/receipt_reference_contract.py
     level: contract
@@ -2253,6 +2281,16 @@ tests:
     owner_contract_symbol: run_gates.derive_verification_set
     parallel_safe: true
     overrides:
+      - selector: RunGatesContractTests.test_profile_none_omits_quota_arguments_and_marks_gate_not_applicable
+        level: integration
+        semantics: profile_none_to_optional_quota_gate_projection
+        owner_contract_symbol: run_gates._recipes
+        parallel_safe: true
+      - selector: RunGatesContractTests.test_profile_configured_projects_the_exact_pair_to_one_command
+        level: integration
+        semantics: profile_configured_to_optional_quota_gate_projection
+        owner_contract_symbol: run_gates._recipes
+        parallel_safe: true
       - selector: RunGatesDispatchIntegrationTests.*
         level: integration
         semantics: multi_gate_unique_producer_dispatch_and_diagnostic_outcome
@@ -2902,6 +2940,10 @@ fixtures:
   - path: Tools/tests/fixtures/contract/corpus_plan_objects.py
     owner: kernel/K02 Knowledge Work Construction/corpus-planning-contract.yaml
     purpose: Minimal current Corpus Planning object values without runtime construction
+    lifecycle: current
+  - path: Tools/tests/fixtures/contract/priority_quota_objects.py
+    owner: kernel/K00 Standards Control/contract-exception-policy-base.yaml
+    purpose: Minimal current None and Configured Profile forms for priority-quota contract tests
     lifecycle: current
   - path: Tools/tests/fixtures/integration/card_activation_checkpoint.py
     owner: Tools/execution/context_delivery/card_activation.py

@@ -18,7 +18,7 @@ Every capability has a stable identity, a priority, one or more owning Map Entri
 
 A capability passes only when its current rank is at least its target rank, the target scale row is eligible, and a current `corpus-plan-semantic-acceptance` receipt records `accepted` for that exact Capability ID under the role and decision scope bound by the selected Profile. K02/04 owns that receipt's machine contract and invalidation boundary. The decision concerns semantic capability coverage; it does not change page `authoring_status`, `coverage_disposition`, batch lifecycle, task state, or evidence maturity. The matrix MUST be reconciled when its owner paths, prerequisites, capability definitions, scale evidence, or target values change.
 
-Matrix `priority` ranks a corpus capability only. It does not grant or change a page's P0/P1/P2 priority, alter Coverage, consume quota, or override the selected Profile's `Priority Rubric`; page priority remains owned by that rubric and the kernel quota contract.
+Matrix `priority` ranks a corpus capability only. It does not grant or change a page's P0/P1/P2 priority, alter Coverage, activate or satisfy an optional quota, or override the selected Profile's `Priority Rubric`; page priority and any numeric guardrail remain owned by that rubric under K00/07.
 
 ## Related
 

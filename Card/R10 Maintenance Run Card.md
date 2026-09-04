@@ -11,8 +11,8 @@ source_files:
   - kernel/K12 Quality Assurance/09 Batch-close Closed List.md
   - kernel/K12 Quality Assurance/19 Incremental Audit Planning.md
   - kernel/K13 Task Runtime and Execution Control/12 Completion Gate Bindings.md
-source_hash: '7944fd93813a'
-reviewed_source_hash: '7944fd93813a'
+source_hash: '365c45c28b32'
+reviewed_source_hash: '365c45c28b32'
 reviewed_card_hash: 'a9645f211b03'
 ---
 # R10 Maintenance Run Card
