@@ -13,9 +13,11 @@ P2 remains the kernel fallback for every other in-scope page. This rubric grants
 
 ## Priority Quota
 
+This example independently configures a repository-specific guardrail; neither value is inherited from the Kernel.
+
 - Registration: Configured
 
 | Class | Maximum corpus share | Rationale |
 |---|---|---|
 | `P0` | `10%` | A service corpus keeps its always-verified core deliberately small; ten percent of the pages carry the procedures a mechanic opens with a customer waiting |
-| `P1` | `35%` | The kernel default fits the applied middle tier as measured |
+| `P1` | `30%` | The workshop reserves a bounded supporting tier for evidence and operating context while keeping supplementary P2 material as the corpus majority |

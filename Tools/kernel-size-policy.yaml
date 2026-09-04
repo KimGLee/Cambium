@@ -57,7 +57,7 @@ exceptions:
     growth_cap_bytes: 7168
     record_id: EXC-011
   - path: kernel/K12 Quality Assurance/09 Batch-close Closed List.md
-    measured_bytes: 12737
+    measured_bytes: 12827
     growth_cap_bytes: 16896
     record_id: EXC-012
   - path: kernel/K12 Quality Assurance/10 Standards Version Adoption.md
@@ -85,7 +85,7 @@ exceptions:
     growth_cap_bytes: 12288
     record_id: EXC-018
   - path: kernel/K13 Task Runtime and Execution Control/06 Amendment Log and Controlled Replanning.md
-    measured_bytes: 6185
+    measured_bytes: 6243
     growth_cap_bytes: 9728
     record_id: EXC-019
   - path: kernel/K13 Task Runtime and Execution Control/08 Required Queue Contract and Lifecycle.md

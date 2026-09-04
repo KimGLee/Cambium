@@ -11,6 +11,8 @@ Kernel owner: K00/07. Common slot identity is registered in the Kernel Profile i
 
 ## Priority Quota
 
+This Profile does not add a numeric corpus-share ceiling. The grant criteria above remain authoritative for every P0/P1 assignment.
+
 - Registration: None
 
 | Class | Maximum corpus share | Rationale |

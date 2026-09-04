@@ -67,7 +67,7 @@ def policy_exception_errors(value, label):
                 not SHA256_RE.fullmatch(fingerprint)):
             errors.append(
                 "%s baseline_policy_fingerprint must be sha256:<64 lowercase "
-                "hex>; an exception unbound from the policy bytes it was "
+                "hex>; an exception unbound from the resolved policy it was "
                 "judged against would survive revisions it never saw" %
                 entry_label)
         policy_id = entry.get("policy_id")
@@ -97,8 +97,8 @@ def policy_exception_errors(value, label):
                 "%s scope_kind must be one of %s" %
                 (entry_label,
                  ", ".join(sorted(POLICY_EXCEPTION_SCOPE_KINDS))))
-    # Joint bound and conflict rules across the register: the granted P0 and
-    # P1 ceilings partition the same corpus as the standing quotas do, and
+    # Joint bound and conflict rules across the register: granted P0 and P1
+    # ceilings partition the same corpus as configured Profile quotas, and
     # two grants for the same policy in the same scope are a conflict, not a
     # choice the consumer may make.
     by_key = {}

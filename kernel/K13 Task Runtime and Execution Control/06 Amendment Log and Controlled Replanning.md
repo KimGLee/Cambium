@@ -54,7 +54,7 @@ While a row is approved but unwritten, its registration evidence is current auth
 
 The registered Contract-amendment transaction is limited to the Task Contract authorization fields explicitly opened by the Task Contract machine contract, including bounded policy exceptions and amendment delegation. It consumes one confirmed plan, validates the complete after image, and either commits one verified Amendment with an evidence-bound Contract anchor or changes nothing.
 
-A successful Contract Amendment advances `contract_version` and `queue_revision` exactly once while preserving scope, batch structure, lifecycle, and task state. Policy exceptions bind the current effective policy and must remain within the policy owner's ceilings. Delegation changes use only the closed change-class vocabulary. A `merge-ready` batch blocks such a revision because it would strand frozen integration evidence.
+A successful Contract Amendment advances `contract_version` and `queue_revision` exactly once while preserving scope, batch structure, lifecycle, and task state. Policy exceptions bind a current active effective policy and must remain within the policy owner's ceilings; an inactive Profile registration cannot be excepted. Delegation changes use only the closed change-class vocabulary. A `merge-ready` batch blocks such a revision because it would strand frozen integration evidence.
 
 A Contract change outside the opened allowlist requires pausing or cancelling the current task, preserving its runtime history, and carrying the approved change into a successor task. Extending the allowlist is a governance change, not an implementation convenience.
 

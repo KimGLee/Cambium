@@ -112,12 +112,6 @@ def generate_required_queue_checkpoint(scenario, destination, manifest_path):
             driver.tearDown()
 
 
-def generate_maintenance_closed_checkpoint(destination, manifest_path):
-    """Stable convenience name for this round's one generated artifact."""
-    generate_required_queue_checkpoint(
-        "maintenance-closed", destination, manifest_path)
-
-
 class RequiredQueueE2EScenarioCase(RequiredQueueFixture,
                                    unittest.TestCase):
     """A private starting tree for one representative complete lifecycle."""

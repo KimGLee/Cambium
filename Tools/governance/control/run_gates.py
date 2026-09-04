@@ -175,13 +175,12 @@ def _boundary_findings(root, manifest):
 
 
 def _effective_policy(root, manifest):
-    """Resolve the selected profile's standing quota policy, or fail closed.
+    """Resolve the selected Profile's optional quota policy, or fail closed.
 
-    The sweep hands `check_vocab` the SAME resolved values and fingerprint
-    the batch-close consumer uses (one resolver, `kblib`), because a sweep
-    that measures against kernel defaults on a profile with a Configured
-    quota block reports an excess nobody has -- the first live run of this
-    tool did exactly that, which is why this function exists.
+    ``Registration: None`` is a fingerprinted inactive state. Configured
+    values and their fingerprint are handed to ``check_vocab`` from the same
+    resolver batch close uses, so the two consumers cannot silently compare
+    the corpus against different policies.
     """
     manifest_path = os.path.join(root, manifest)
     manifest_text = kblib.read_text(manifest_path)
@@ -189,7 +188,8 @@ def _effective_policy(root, manifest):
     binding = (bindings.get("Priority Rubric") or "").strip("`").strip()
     if not binding:
         raise RunnerError("the selected Profile binds no Priority Rubric "
-                          "slot; K00/07 places the standing quotas there")
+                          "slot; K00/07 places optional quota registration "
+                          "there")
     rubric_path = os.path.join(os.path.dirname(manifest_path), binding)
     rubric_text = kblib.read_text(rubric_path)
     policy, fingerprint, errors = (
@@ -215,7 +215,7 @@ def _residual_scan_command(root, manifest):
 
 
 def _recipes(root, manifest, excludes):
-    """Invocation recipes per (tool, mode) for runnable registry rows.
+    """Invocation recipes for runnable producer/check/mode registry rows.
 
     This mapping is the runner's own contract, not a second Gate authority:
     K00/12 stays the only enumeration of Gates, and a registered deterministic
@@ -240,16 +240,25 @@ def _recipes(root, manifest, excludes):
         vocab_exclude_args.extend(["--exclude", value])
     python = _python()
     policy, policy_fingerprint = _effective_policy(root, manifest)
+    vocab_command = [
+        python, _tool_path("check_vocab"), root, *vocab_exclude_args]
+    if policy["enabled"]:
+        vocab_command.extend([
+            "--quota-p0", str(policy["resolved"]["priority_quota.P0"]),
+            "--quota-p1", str(policy["resolved"]["priority_quota.P1"]),
+            "--policy-fingerprint", policy_fingerprint,
+        ])
     recipes = {
         ("check_links", "*"): [
             python, _tool_path("check_links"), root, *exclude_args],
-        ("check_vocab", "*"): [
-            python, _tool_path("check_vocab"), root, *vocab_exclude_args,
-            "--quota-p0",
-            str(policy["resolved"]["priority_quota.P0"]),
-            "--quota-p1",
-            str(policy["resolved"]["priority_quota.P1"]),
-            "--policy-fingerprint", policy_fingerprint],
+        # ``check_vocab`` produces two Gate checks. Check identity, rather than
+        # Receipt ``Mode``, distinguishes their recipes: Mode is reserved for
+        # actual receipt narrowing and only check_queue emits such a field.
+        # When the optional quota policy is configured, the identical command
+        # is cached and run once by the dispatch loop below.
+        ("check_vocab", "vocab-check-summary", "*"): vocab_command,
+        ("check_vocab", "priority-quota-distribution", "*"):
+            vocab_command if policy["enabled"] else None,
         ("check_structure", "*"): [
             python, _tool_path("check_structure"), root,
             "--profile", os.path.join(root, profile_dir)],
@@ -345,13 +354,22 @@ def derive_verification_set(root, registry, recipes, transaction_writers):
         if tool in transaction_writers:
             derived.append((gate_id, "transaction", None))
             continue
-        key = (tool, mode if (tool, mode) in recipes else "*")
-        if key not in recipes:
+        check = predicate.get("check")
+        candidates = (
+            (tool, check, mode),
+            (tool, check, "*"),
+            (tool, mode),
+            (tool, "*"),
+        )
+        key = next((candidate for candidate in candidates
+                    if candidate in recipes), None)
+        if key is None:
             hard_errors.append(
-                "Gate ID %s registers producer %s (mode %s) that this "
+                "Gate ID %s registers producer %s (check %s, mode %s) that "
+                "this "
                 "runner has no recipe for; extend run_gates.py together "
                 "with the registry -- a silent skip is how verification "
-                "sets rot" % (gate_id, tool, mode))
+                "sets rot" % (gate_id, tool, check, mode))
             continue
         derived.append((gate_id, "run", recipes[key]))
     return derived, hard_errors
@@ -470,8 +488,8 @@ def main(argv=None):
                   "guarded transaction" % gate_id)
             continue
         if command is None:
-            print("  [N/A] %s -- the selected profile registers no scan"
-                  % gate_id)
+            print("  [N/A] %s -- the selected Profile does not enable this "
+                  "optional Gate" % gate_id)
             continue
         key = tuple(command)
         if key in ran:

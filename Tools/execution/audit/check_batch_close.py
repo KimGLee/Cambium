@@ -735,17 +735,16 @@ def _rubric_text_for(evaluation):
         "%s/%s" % (contract.profile_repo_dir.rstrip("/"), binding))
 
 
-def _priority_quotas(evaluation):
-    """Resolve the long-lived quota truth from the Priority Rubric slot.
+def _priority_policy(evaluation):
+    """Resolve the optional quota policy from the Priority Rubric slot.
 
-    K00/07 owns the quota model and places the standing values in the
-    selected profile's Priority Rubric; the retired ``priority_quota.*``
-    execution-default rows are rejected by profile-load as unknown items, and
-    this consumer reads the same slot bytes through the same kblib reader the
-    Gate validated, so the two cannot disagree.
+    K00/07 owns the quota model and the selected Profile owns any configured
+    values. ``Registration: None`` resolves to a fingerprinted inactive
+    policy, not hidden Kernel defaults. This consumer reads the same slot bytes
+    through the same resolver the profile-load Gate validates.
     """
     if not evaluation.authorized:
-        raise ValueError("priority quotas require one authorized profile-load")
+        raise ValueError("priority policy requires one authorized profile-load")
     contract = evaluation.contract
     snapshot = evaluation.profile_snapshot
     manifest_text = snapshot.read_text(contract.manifest_repo_path)
@@ -762,36 +761,23 @@ def _priority_quotas(evaluation):
         raise ValueError(
             "the Priority Rubric quota registration does not resolve: %s" %
             "; ".join(errors))
-    return (policy["resolved"]["priority_quota.P0"],
-            policy["resolved"]["priority_quota.P1"])
+    return policy, fingerprint
 
 
-def _quota_exceptions(runtime, evaluation):
+def _quota_exceptions(runtime, policy_fingerprint):
     """Return the contract's currently valid priority-quota exceptions.
 
     Validity is judged here, at consumption: the baseline fingerprint must
-    equal the SHA-256 of the *current* Priority Rubric slot bytes -- a
-    Standards or Profile revision the exception never saw invalidates it
-    rather than being silently covered -- and a task-scoped exception must
-    name this task.  Snapshot-scoped entries are returned with their scope
-    for the caller to compare against the merged snapshot it is closing.
+    equal the fingerprint of the current resolved policy object -- a Standards
+    or Profile revision the exception never saw invalidates it rather than
+    being silently covered -- and a task-scoped exception must name this task.
+    Snapshot-scoped entries are returned with their scope for the caller to
+    compare against the merged snapshot it is closing.
     """
     contract_state = (runtime.get("progress") or {}).get("contract") or {}
     entries = contract_state.get("policy_exceptions")
     if not isinstance(entries, list) or not entries:
         return {}
-    profile = evaluation.contract
-    snapshot = evaluation.profile_snapshot
-    manifest_text = snapshot.read_text(profile.manifest_repo_path)
-    bindings = kblib.profile_slot_bindings(manifest_text)
-    binding = (bindings.get("Priority Rubric") or "").strip("`").strip()
-    rubric_repo_path = "%s/%s" % (profile.profile_repo_dir.rstrip("/"),
-                                  binding) if binding else None
-    rubric_fingerprint = None
-    if rubric_repo_path:
-        _policy, rubric_fingerprint, _errors = \
-            contract_exception_policy.effective_priority_policy(
-                snapshot.read_text(rubric_repo_path))
     task_id = (runtime.get("queue") or {}).get("task_id")
     valid = {}
     for entry in entries:
@@ -800,7 +786,7 @@ def _quota_exceptions(runtime, evaluation):
         policy_id = entry.get("policy_id")
         if policy_id not in ("priority_quota.P0", "priority_quota.P1"):
             continue
-        if entry.get("baseline_policy_fingerprint") != rubric_fingerprint:
+        if entry.get("baseline_policy_fingerprint") != policy_fingerprint:
             # Stale against the live policy source: not an error, simply no
             # longer an authorization.
             continue
@@ -1600,15 +1586,12 @@ def _main(argv=None):
                     raise ValueError(
                         "cannot adapt shared Profile evaluation for batch "
                         "consumers: %s" % "; ".join(admission_errors))
-                p0, p1 = _priority_quotas(profile_evaluation)
-                # One resolution, used everywhere in this close: the quotas
-                # handed to check_vocab, the fingerprint on its distribution
-                # receipt, and the exception-consumption comparison below
-                # all come from this single resolver call.
-                (quota_policy_object, quota_policy_fingerprint,
-                 _quota_policy_errors) = (
-                    contract_exception_policy.effective_priority_policy(
-                        _rubric_text_for(profile_evaluation)))
+                # One resolution, used everywhere in this close: whether the
+                # optional Gate applies, the Configured values handed to
+                # check_vocab, and exception currentness all come from this
+                # single resolver call.
+                quota_policy_object, quota_policy_fingerprint = \
+                    _priority_policy(profile_evaluation)
                 checks = {}
                 links = _run_receipting_command(
                     [sys.executable, str(SCRIPT_DIR / "check_links.py"), root],
@@ -1658,9 +1641,16 @@ def _main(argv=None):
                     # first close on foreign example values.
                     "--exclude", card_contract.load_schema(root)["directory"],
                     "--exclude", profile_layout_contract.PROFILES_DIRECTORY,
-                    "--quota-p0", str(p0), "--quota-p1", str(p1),
-                    "--policy-fingerprint", str(quota_policy_fingerprint),
                 ]
+                if quota_policy_object["enabled"]:
+                    vocab_args.extend([
+                        "--quota-p0", str(quota_policy_object["resolved"][
+                            "priority_quota.P0"]),
+                        "--quota-p1", str(quota_policy_object["resolved"][
+                            "priority_quota.P1"]),
+                        "--policy-fingerprint",
+                        str(quota_policy_fingerprint),
+                    ])
                 vocab = _run_inprocess_checker(
                     [sys.executable, str(SCRIPT_DIR / "check_vocab.py"),
                      *vocab_args], root, "check_vocab",
@@ -1765,17 +1755,27 @@ def _main(argv=None):
                     args.accept_while_unchanged_type)
             check_errors.extend(disposition_errors)
             current_exceptions = _quota_exceptions(
-                runtime, profile_evaluation)
-            # Belt over the writer's braces: the effective ceilings --
-            # exception where granted, standing quota where not -- must be
-            # jointly admissible at CONSUMPTION too, so a contract state
-            # that somehow bypassed the writer still cannot authorize a
-            # close that consumes the whole corpus (K00/07).
+                runtime, quota_policy_fingerprint)
+            # Belt over the writer's braces: a configured policy's effective
+            # ceilings -- exception where granted, configured quota where not
+            # -- must be jointly admissible at CONSUMPTION too. An inactive
+            # policy has no ceiling to relax, so a forged exception also fails
+            # closed here (K00/07).
+            quota_exception_inputs = [
+                entry for entries in current_exceptions.values()
+                for entry in entries
+            ]
+            if not quota_policy_object["enabled"]:
+                # Inactivity invalidates the concept of a quota exception, not
+                # merely exceptions carrying the current fingerprint. Leaving
+                # a stale grant in the current Task Contract must not make it
+                # silently legal; the amendment writer can remove it.
+                quota_exception_inputs = (
+                    ((runtime.get("progress") or {}).get("contract") or {}).get(
+                        "policy_exceptions", []))
             _ceilings, ceiling_errors = (
                 contract_exception_policy.effective_quota_ceilings(
-                    quota_policy_object,
-                    [entry for entries in current_exceptions.values()
-                     for entry in entries]))
+                    quota_policy_object, quota_exception_inputs))
             check_errors.extend(ceiling_errors)
             quota_errors, quota_accepted = _quota_candidate_dispositions(
                 quota_candidates, current_exceptions, snapshot,

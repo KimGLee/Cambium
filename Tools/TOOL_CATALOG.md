@@ -10,7 +10,7 @@ Regenerate with `python3 Tools/generate_tool_catalog.py .`. Verify without writi
 | Source | Exact-byte SHA-256 |
 |---|---|
 | `Tools/tool-taxonomy.yaml` | `sha256:44c6a46acf604ab28023a4028fb026bf11b01582093450bd113ff3527c95998f` |
-| `Tools/module-boundaries.yaml` | `sha256:4cd0c04eca855498ad1ebd94083fa603cfa28768f9bfb52cd2119c8e413da56e` |
+| `Tools/module-boundaries.yaml` | `sha256:5dd62769f436285310fd4af948f89572997100875fa36fd104276780a77b1f68` |
 | `Tools/agent-interface-policy.yaml` | `sha256:26afb19c445def06866398b3019e8043ef4d4548f793e9eafb7a6d3a67d4ca32` |
 | `Tools/operation-capabilities.yaml` | `sha256:1be81780f43dcaa39b34c09fce02fe66586bc4145487dbc0e0e78fc1e991fb64` |
 
@@ -25,7 +25,7 @@ Static consumption, private access, and dependency facts come from `Tools/platfo
 | declared cli tools | 62 |
 | mcp tools | 46 |
 | host transports | 1 |
-| static public api symbols | 1388 |
+| static public api symbols | 1387 |
 | declared unused static public apis | 52 |
 | declared public apis without observed consumers | 12 |
 | registered capability relationships | 135 |
@@ -338,7 +338,7 @@ Machine-contract loading, closed validation, pure projection, and stable predica
 
 | Module | Path | Type | Responsibility class | Interface exposure |
 |---|---|---|---|---|
-| `governance.control.contract_exception_policy` | `Tools/governance/control/contract_exception_policy.py` | python-module | `governance / control / contract` | static Python (7 symbols / 6 consumers) |
+| `governance.control.contract_exception_policy` | `Tools/governance/control/contract_exception_policy.py` | python-module | `governance / control / contract` | static Python (6 symbols / 5 consumers) |
 | `governance.control.control_registry_contract` | `Tools/governance/control/control_registry_contract.py` | python-module | `governance / control / contract` | static Python (8 symbols / 5 consumers) |
 | `governance.control.metadata_execution_contract` | `Tools/governance/control/metadata_execution_contract.py` | python-module | `governance / control / contract` | static Python (22 symbols / 21 consumers) |
 
@@ -1528,7 +1528,6 @@ Repository IO, serialization, locking, transport, generation, and other Tool-own
 | `execution.task_runtime.update_task.build_task_transition` | `execution.task_runtime.update_queue` | declared |
 | `execution.task_runtime.update_task.main` | `update_task` | declared |
 | `governance.control.contract_exception_policy.POLICY_REGISTRY` | `execution.task_runtime.apply_contract_amendment`, `execution.task_runtime.queue_runtime.policy_exceptions` | declared |
-| `governance.control.contract_exception_policy.PRIORITY_QUOTA_KERNEL_DEFAULTS` | `knowledge.metadata.check_vocab` | declared |
 | `governance.control.contract_exception_policy.PRIORITY_QUOTA_POLICY_IDS` | `execution.task_runtime.apply_contract_amendment` | declared |
 | `governance.control.contract_exception_policy.effective_policy_for` | `execution.task_runtime.apply_contract_amendment` | declared |
 | `governance.control.contract_exception_policy.effective_priority_policy` | `execution.audit.check_batch_close`, `execution.task_runtime.apply_contract_amendment`, `governance.control.run_gates` | declared |

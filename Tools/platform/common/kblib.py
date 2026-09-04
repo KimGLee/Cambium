@@ -816,12 +816,11 @@ def profile_slot_bindings(manifest_text, include_duplicates=False):
 
 
 def quota_share_within_limit(pages, total, limit):
-    """Decide ``pages/total <= limit%`` exactly, never through prose or floats.
+    """Compare a page share to an already-resolved configured limit exactly.
 
     The authorization comparison is cross-multiplied over exact rationals:
     ``pages * 100 <= limit * total`` with ``limit`` read as a decimal string.
-    37/246 is 15.04065...%, renders as 15.0, and a limit of 15 must refuse
-    it; one display rounding must never become an authorization.
+    Display rounding therefore cannot invent or hide an authorization.
     """
     if (not isinstance(pages, int) or isinstance(pages, bool) or
             not isinstance(total, int) or isinstance(total, bool) or

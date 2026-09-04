@@ -33,13 +33,16 @@ import Tools.execution.task_runtime.runtime_validation as runtime_validation  # 
 from Tools.execution.task_runtime import queue_runtime  # noqa: E402
 import Tools.governance.control.contract_exception_policy as contract_exception_policy  # noqa: E402
 import Tools.platform.common.kblib as kblib  # noqa: E402
+from Tools.tests.fixtures.contract.priority_quota_objects import (  # noqa: E402
+    CONFIGURED_PRIORITY_QUOTA_RUBRIC,
+    NONE_PRIORITY_QUOTA_RUBRIC,
+)
 from Tools.tests.support.profile_fixture import install_loadable_profile  # noqa: E402
 
 
 AMENDMENT_RELATIVE = \
     ".cambium/deltas/contract-amendments/CA-CONTRACT.yaml"
 DIGEST = "sha256:" + "1" * 64
-NONE_RUBRIC = "## Priority Quota\n\n- Registration: None\n"
 
 
 def _user_only_authority():
@@ -225,7 +228,8 @@ class ContractAmendmentPolicyConnectionTests(unittest.TestCase):
 
     def test_writer_accepts_only_the_registrys_current_policy_fingerprint(self):
         policy, fingerprint, errors = \
-            contract_exception_policy.effective_priority_policy(NONE_RUBRIC)
+            contract_exception_policy.effective_priority_policy(
+                CONFIGURED_PRIORITY_QUOTA_RUBRIC)
         self.assertEqual([], errors)
         apply_contract_amendment._require_policy_authorization(
             policy, fingerprint, [_policy_exception(fingerprint)])
@@ -235,6 +239,17 @@ class ContractAmendmentPolicyConnectionTests(unittest.TestCase):
                 "does not match the current effective policy"):
             apply_contract_amendment._require_policy_authorization(
                 policy, fingerprint, [_policy_exception(DIGEST)])
+
+    def test_writer_rejects_quota_exception_when_profile_registers_none(self):
+        policy, fingerprint, errors = \
+            contract_exception_policy.effective_priority_policy(
+                NONE_PRIORITY_QUOTA_RUBRIC)
+        self.assertEqual([], errors)
+
+        with self.assertRaisesRegex(
+                apply_contract_amendment.Refusal, "not configured"):
+            apply_contract_amendment._require_policy_authorization(
+                policy, fingerprint, [_policy_exception(fingerprint)])
 
 
 class ContractAmendmentReceiptContractTests(unittest.TestCase):

@@ -11,6 +11,8 @@ Kernel owner: K00/07. Common slot identity is registered in the Kernel Profile i
 
 ## Priority Quota
 
+This optional registration is independent of the grant criteria above. `None` means that no numeric corpus-share ceiling is active; it does not relax or replace those criteria.
+
 - Registration: None
 
 | Class | Maximum corpus share | Rationale |
