@@ -62,7 +62,7 @@ This registry governs rule text. The three conditions do not authorize a view of
 | Active-task Standards adoption state-write and interrupted-transaction boundary | [[kernel/K13 Task Runtime and Execution Control/15 Standards Adoption State Transaction\|Standards Adoption State Transaction]] |
 | Initial planning state-write: the one transaction that fills an empty runtime namespace, and where it stops | [[kernel/K13 Task Runtime and Execution Control/18 Initial Task Planning Transaction\|Initial Task Planning Transaction]] |
 | Contract policy-exception register and the guarded Contract Amendment state-write | [[kernel/K13 Task Runtime and Execution Control/06 Amendment Log and Controlled Replanning\|Amendment Log and Controlled Replanning]] |
-| Exceptable policy IDs, owner references, limit domains, defaults, and effective-policy fingerprint payload | `kernel/K00 Standards Control/contract-exception-policy-base.yaml`; each row retains the semantic owner it names |
+| Exceptable policy IDs, owner references, limit domains, Profile registration states, and effective-policy fingerprint payload | `kernel/K00 Standards Control/contract-exception-policy-base.yaml`; each row retains the semantic owner it names |
 | Resume `next_action` token vocabulary | [[kernel/K13 Task Runtime and Execution Control/16 Resume Next Action Vocabulary\|Resume Next Action Vocabulary]] |
 | Escalation contract: which conditions oblige suspending a run and handing the decision to a person | [[kernel/K13 Task Runtime and Execution Control/17 Escalation Policy\|Escalation Policy]] |
 | Guidance classification and impact | [[kernel/K13 Task Runtime and Execution Control/04 Guidance Classification and Impact Analysis\|Guidance Classification and Impact Analysis]] |
