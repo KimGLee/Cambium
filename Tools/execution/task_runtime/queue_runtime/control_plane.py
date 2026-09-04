@@ -7,7 +7,7 @@ therefore decided here rather than per page at the point of edit.
 
 import os
 
-import Tools.governance.profile.check_profile as check_profile
+import Tools.governance.profile.profile_contract as profile_contract
 import Tools.platform.common.kblib as kblib
 import Tools.governance.profile.profile_layout_contract as profile_layout_contract
 
@@ -19,12 +19,6 @@ from Tools.execution.task_runtime.queue_runtime.profile_view import (
     profile_load_authorized_view,
     profile_view_read_scope_errors,
 )
-from Tools.execution.task_runtime.queue_runtime.repofs import (
-    normalized_repository_path,
-    repository_path_refusal,
-)
-
-
 # K13/10 concurrency admission condition 2 ("B does not edit control or hub
 # pages").  The kernel enumerates the members; these constants only spell the
 # machine judgment for that enumeration.  `type` and `scope` are the K08
@@ -36,9 +30,6 @@ from Tools.execution.task_runtime.queue_runtime.repofs import (
 HUB_PAGE_TYPES = frozenset(("overview", "runtime-card", "card-index"))
 HUB_TERM_TYPE = "term"
 HUB_TERM_SCOPE = "shared"
-HUB_DEPENDENCY_MAP_LABEL = "existing canonical dependency-map"
-
-
 CONTROL_PLANE_PREFIXES = (
     "kernel/",
     profile_layout_contract.PROFILES_DIRECTORY + "/",
@@ -65,66 +56,19 @@ def batch_touches_control_plane(item):
 
 
 def unadmitted_profile_hub_paths(root, profile_manifest):
-    """Derive hub pages for the explicit corrective-adoption escape only.
+    """Fail closed when corrective adoption has no authorized typed view.
 
-    Ordinary runtime consumers must use :func:`profile_hub_paths`, whose slot
-    path comes from one authorized typed contract.  This raw manifest reader
-    survives only so ``adopt_standards`` can inspect and replace an invalid
-    current Profile without requiring that broken closure to authorize itself.
+    The hard-cut runtime does not parse an invalid Profile through a second,
+    weaker Expression table reader.  A corrective serial-integrator may still
+    replace that Profile, but concurrent hub admission remains unavailable
+    until ``profile-load`` authorizes the current contract.
     """
-    paths = set()
     if not nonempty_string(profile_manifest):
-        return paths, []
-    try:
-        profile_layout_contract.parse_profile_manifest_path(profile_manifest)
-    except profile_layout_contract.ProfileLayoutError:
-        # The exact runtime shape is owned by
-        # selected_profile_manifest_errors; this only refuses to read a
-        # package that is not a profile manifest at all.
-        return paths, []
-    try:
-        manifest_path = kblib.repository_path(
-            root, profile_manifest, must_exist=True, reject_symlink=True)
-        manifest_text = kblib.read_text(manifest_path)
-    except (OSError, UnicodeError, ValueError) as exc:
-        return paths, ["selected profile manifest is unreadable, so the "
-                       "K13/10 hub set cannot be derived: %s" % exc]
-    binding = kblib.profile_slot_bindings(manifest_text).get(
-        EXPRESSION_LAYER_SLOT)
-    if not nonempty_string(binding):
-        # No slot binding at all: the profile registers no expression hub.
-        return paths, []
-    profile_dir = os.path.dirname(manifest_path)
-    kind, detail = kblib.resolve_profile_binding(binding, root, profile_dir)
-    if kind != "path":
-        return paths, [
-            "selected profile %s binding is %s, so the K13/10 hub set cannot "
-            "be derived" % (EXPRESSION_LAYER_SLOT, kind)
-        ]
-    try:
-        text = kblib.read_text(detail)
-    except (OSError, UnicodeError, ValueError) as exc:
-        return paths, ["selected profile %s is unreadable, so the K13/10 hub "
-                       "set cannot be derived: %s" % (EXPRESSION_LAYER_SLOT,
-                                                      exc)]
-    for cells in check_profile.table_rows(text.splitlines()):
-        if len(cells) != 2:
-            continue
-        label = check_profile.unbacktick(cells[0]).strip().lower()
-        if not label.startswith(HUB_DEPENDENCY_MAP_LABEL):
-            continue
-        for declared in cells[1].split(";"):
-            candidate = normalized_repository_path(declared)
-            if candidate is None or candidate.lower() == "none":
-                continue
-            if "TODO(" in candidate or "/" not in candidate:
-                # An unfilled sentinel or an opaque artifact ID is not a
-                # decidable repository path; check_profile owns that verdict.
-                continue
-            if repository_path_refusal(
-                    root, candidate, must_exist=False) is None:
-                paths.add(candidate)
-    return paths, []
+        return set(), []
+    return set(), [
+        "selected Profile has no authorized typed Registered Artifacts "
+        "projection, so the K13/10 hub set cannot be derived"
+    ]
 
 
 def profile_hub_paths(root, profile_manifest, *, authorized_view=None,
@@ -133,19 +77,19 @@ def profile_hub_paths(root, profile_manifest, *, authorized_view=None,
                       profile_read_scope=None):
     """Return Expression hubs from one snapshot-bound Profile view.
 
-    K13/10 binds pages registered by the ``Expression Layer Entry`` into the
-    hub set.  The slot path is taken from the typed dependency edges produced
-    by the same ``profile-load`` invocation as ``authorized_view``; the
-    manifest is never reparsed.  The complete Profile tree is CAS-checked
-    before and after reading the slot, so a verdict for revision A cannot be
-    combined with Expression rows from revision B.
+    K13/10 binds dependency-map pages registered by the ``Expression Layer
+    Entry`` into the hub set.  The rows are projected from the typed contract
+    produced by the same ``profile-load`` invocation as ``authorized_view``;
+    neither the manifest nor the slot bytes are reparsed here.  The complete
+    Profile tree is CAS-checked around the projection so a verdict for
+    revision A cannot be combined with revision B's contract.
 
     Direct callers may omit ``authorized_view`` and this function will create
     exactly one.  Such a direct call owns both currency checks.  The outer
     runtime instead passes the opaque read scope it opened after its own
-    before check; this helper then reads the same immutable snapshot and lets
-    the runtime's final check close the phase.  The unadmitted path is reserved
-    for the explicit corrective-adoption escape.
+    before check; this helper consumes the contract bound to that scope and
+    lets the runtime's final check close the phase.  The unadmitted path is
+    reserved for the explicit corrective-adoption escape.
     """
     if type(evaluate_if_missing) is not bool:
         raise TypeError("evaluate_if_missing must be boolean")
@@ -182,37 +126,20 @@ def profile_hub_paths(root, profile_manifest, *, authorized_view=None,
             profile_read_scope, root, profile_manifest, authorized_view)
     if view_errors:
         return set(), view_errors
-    slot_paths = dict(authorized_view["_manifest_slot_paths"])
-    expression_path = slot_paths.get(EXPRESSION_LAYER_SLOT)
     try:
-        text = authorized_view["_profile_snapshot"].read_text(
-            expression_path)
-    except (KeyError, OSError, UnicodeError, ValueError) as exc:
-        return set(), ["authorized selected profile %s is unreadable, so the "
-                       "K13/10 hub set cannot be derived: %s" % (
-                           EXPRESSION_LAYER_SLOT, exc)]
+        paths = set(profile_contract.
+                    expression_dependency_map_paths_projection(
+                        authorized_view["_contract"]))
+    except (KeyError, TypeError,
+            profile_contract.ProfileContractError) as exc:
+        return set(), ["authorized selected Profile has no valid typed "
+                       "Registered Artifacts projection, so the K13/10 hub "
+                       "set cannot be derived: %s" % exc]
     if owns_currency_boundary:
         after_error = profile_view_snapshot_error(
             root, authorized_view, "after")
         if after_error:
             return set(), [after_error]
-
-    paths = set()
-    for cells in check_profile.table_rows(text.splitlines()):
-        if len(cells) != 2:
-            continue
-        label = check_profile.unbacktick(cells[0]).strip().lower()
-        if not label.startswith(HUB_DEPENDENCY_MAP_LABEL):
-            continue
-        for declared in cells[1].split(";"):
-            candidate = normalized_repository_path(declared)
-            if candidate is None or candidate.lower() == "none":
-                continue
-            if "TODO(" in candidate or "/" not in candidate:
-                continue
-            if repository_path_refusal(
-                    root, candidate, must_exist=False) is None:
-                paths.add(candidate)
     return paths, []
 
 

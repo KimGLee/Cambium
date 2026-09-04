@@ -1,12 +1,12 @@
-# Candidate instance values for the Vocabulary Extensions slot. The
-# Kernel-owned Profile interface and K08 define the common extension shape.
+# Profile values for the Vocabulary Extensions slot. The Kernel-owned Profile
+# interface and K08 define the common extension shape.
 
 schema_version: 1
 
 frontmatter_extensions:
   fields: []
 
-fields:
+fields: {}
 
 volatility_defaults:
   general: slow

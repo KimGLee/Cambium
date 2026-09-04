@@ -1,0 +1,168 @@
+schema_version: 1
+contract_id: structure-registry-shape-v2
+semantic_owner: K01/05+K01/06
+
+# This contract owns the common machine shape of the Profile Structure Registry. A selected Profile owns only its instance values.
+document:
+  schema_version: 2
+  fields:
+    - schema_version
+    - applicability
+    - units
+    - support_layers
+
+applicability:
+  fields:
+    - state
+    - reason
+  states:
+    configured:
+      reason: null
+      units_minimum_items: 1
+    not-applicable:
+      reason_shape: nonempty-string
+      units_maximum_items: 0
+      support_layers_maximum_items: 0
+
+unit:
+  fields:
+    - id
+    - kind
+    - parent
+    - root
+    - entry
+    - global_map_entry
+    - roles
+  kinds:
+    - domain
+    - module
+  entry_fields:
+    - path
+    - expected_type
+  role_fields:
+    - sequence
+    - coverage
+    - quick_reference
+    - expression
+  identity_rules:
+    id_nonempty: true
+    id_unique: true
+    domain_parent_null: true
+    module_parent_required: true
+    module_parent_resolves: true
+    parent_graph_acyclic: true
+  value_rules:
+    root_shape: repository-relative-directory
+    entry_path_shape: markdown-path
+    expected_type_shape: nullable-nonempty-string
+    global_map_entry_shape: nullable-nonempty-string
+
+role_modes:
+  embedded:
+    required_fields:
+      - mode
+      - path
+      - heading
+    optional_fields: []
+  standalone:
+    required_fields:
+      - mode
+      - path
+    optional_fields: []
+  derived:
+    required_fields:
+      - mode
+      - generator_capability
+      - inputs_owner
+    optional_fields:
+      - path
+      - heading
+  not-applicable:
+    required_fields:
+      - mode
+      - reason
+    optional_fields: []
+  stable_capability_id_pattern: "[a-z][a-z0-9]*(?:-[a-z0-9]+)*"
+  value_rules:
+    declared_values_nonempty: true
+    derived_heading_requires_path: true
+    inputs_owner_kinds:
+      - stable-runtime-object-id
+      - repository-relative-corpus-artifact
+    inputs_owner_forbids_tool_path: true
+    inputs_owner_forbids_runtime_physical_path: true
+
+support_layer:
+  fields:
+    - layer_id
+    - role
+    - root
+    - entry
+    - layout
+    - taxonomy
+    - coverage
+    - global_map_entry
+    - bindings
+  roles:
+    - cases
+    - sources
+    - synthesis
+    - expression
+  layouts:
+    - flat
+    - grouped
+  entry_fields:
+    - path
+    - expected_type
+  identity_rules:
+    layer_id_nonempty: true
+    layer_id_unique: true
+  value_rules:
+    root_shape: repository-relative-directory
+    entry_path_shape: markdown-path
+    expected_type_shape: nullable-nonempty-string
+    global_map_entry_shape: nullable-nonempty-string
+    flat_taxonomy: null
+    grouped_taxonomy_required: true
+  taxonomy:
+    fields:
+      - axis
+      - page_field
+      - classes
+    class_fields:
+      - class
+      - directory
+    minimum_classes: 1
+    values_nonempty: true
+    class_values_unique: true
+    directory_values_unique: true
+  binding_fields_by_role:
+    cases:
+      - evidence_binding_owner
+    sources:
+      - authority_taxonomy_ref
+      - intake_policy_ref
+      - freshness_policy_ref
+      - index_mode
+    synthesis:
+      - question_identity_field
+      - promotion_policy_ref
+    expression:
+      - artifact_registry_ref
+      - preparation_route_ref
+      - readiness_projection
+  source_index_modes:
+    - derived
+    - none
+  readiness_projection_shape: role-mode
+
+external_reference_checks:
+  profile_scope_layer_identity: true
+  corpus_paths_and_headings: true
+  expected_entry_type: true
+  projection_capability_identity: true
+  projection_input_owner_identity: true
+  global_map_entry_identity: true
+  coverage_owner_identity: true
+  grouped_taxonomy_membership: true
+  role_binding_resolution: true

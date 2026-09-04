@@ -1,7 +1,6 @@
 # Worked Planning metadata-contract slot: the kernel-defaults branch.
 # Interface: kernel/K00 Standards Control/profile-interface.yaml
-# The kernel applicability and relationship bases apply unchanged; a profile
-# with no differences declares that explicitly instead of restating defaults.
+# The Kernel applicability and relationship bases apply unchanged.
 
 schema_version: 1
 

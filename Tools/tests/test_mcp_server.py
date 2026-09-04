@@ -51,6 +51,9 @@ import Tools.platform.agent_interface.mcp_server as mcp_server  # noqa: E402
 import Tools.execution.task_runtime.runtime_paths as runtime_paths  # noqa: E402
 import Tools.platform.distribution.module_boundary_facts as module_boundary_facts  # noqa: E402
 import Tools.platform.repository.path_capability as path_capability  # noqa: E402
+from Tools.tests.support.canonical_registry_fixture import (  # noqa: E402
+    install_isolated_tool_registry_bundle,
+)
 from Tools.tests.support.test_effects import catalog_effects  # noqa: E402
 
 
@@ -227,12 +230,11 @@ class SyntheticDistribution(object):
             target.parent.mkdir(parents=True, exist_ok=True)
             target.write_text(source, encoding="utf-8")
         if production_checkpoint is not None:
-            checkpoint_tools = Path(production_checkpoint) / "Tools"
-            for source in checkpoint_tools.rglob("*"):
+            checkpoint_root = Path(production_checkpoint)
+            for source in checkpoint_root.rglob("*"):
                 if not source.is_file():
                     continue
-                target = self.root / "Tools" / source.relative_to(
-                    checkpoint_tools)
+                target = self.root / source.relative_to(checkpoint_root)
                 target.parent.mkdir(parents=True, exist_ok=True)
                 shutil.copy2(source, target)
         elif production_roots:
@@ -971,9 +973,10 @@ class PathCapabilityIsolationTests(ArgvTests):
     """Descriptor-retention seams across a real child.
 
     Resolving the shipped dependency closure is a contract check, not part of
-    each security scenario.  Build that four-file checkpoint once, then give
-    every scenario a private copy and workspace.  The tests still cross the
-    real process boundary; they no longer rerun the same global module scan.
+    each security scenario. Build the Python and machine-contract checkpoint
+    once, then give every scenario a private copy and workspace. The tests
+    still cross the real process boundary; they no longer reconstruct the
+    same distribution closure for every scenario.
     """
 
     @classmethod
@@ -982,6 +985,8 @@ class PathCapabilityIsolationTests(ArgvTests):
         module_boundary_facts.stage_shipped_modules(
             str(REPO_ROOT), cls._production_checkpoint.name,
             ["platform.common.kblib"])
+        install_isolated_tool_registry_bundle(
+            cls._production_checkpoint.name)
 
     @classmethod
     def tearDownClass(cls):

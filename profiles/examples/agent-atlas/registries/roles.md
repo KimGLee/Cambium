@@ -1,15 +1,15 @@
 # Role Registry
 
-Interface: [Kernel-owned Profile interface](../../../../kernel/K00%20Standards%20Control/19%20Profile%20Extension%20Interface.md) — Role Registry slot
+Kernel owner: K00 Operating Roles. Common slot identity and table contract are registered in the Kernel Profile interface.
 
 ## Process Roles
 
 | Kernel role | Bound actor or system ID/name |
 |---|---|
-| `proposer` | Model-proposal actor |
-| `gatekeeper` | Harness-control system |
-| `executor` | External-executor actor |
-| `stopper` | Human authority |
+| `proposer` | Assisting Agent |
+| `gatekeeper` | User |
+| `executor` | Authorized Agent |
+| `stopper` | User |
 
 ## Knowledge Host
 
@@ -20,24 +20,14 @@ Interface: [Kernel-owned Profile interface](../../../../kernel/K00%20Standards%2
 
 ## Metric Traceability Roles
 
-- Applicability: Configured
+- Applicability: Not applicable — Atlas does not maintain a Profile-owned evaluation-execution record model. External metrics and quantitative claims follow Kernel evidence rules and this Profile's Source Policy, including source identity, version or retrieval date, and the bounded claim they support.
 
 | Kernel role | Profile field or identifier |
 |---|---|
-| `task` | `task_id` |
-| `dataset` | Immutable Dataset And Sample Manifest identifier |
-| `trial` | `trial_id`; at evidence-record level, `run_id` plus `trial_index` |
-| `execution runtime` | `system_id` plus the immutable Environment Manifest identifier |
-| `grader` | `grader_id` or the Grader Record's pinned implementation/version |
-| `aggregation` | Immutable Aggregation Record identifier plus implementation digest |
-
-These bindings apply when Atlas reports evaluated metrics, whether the measurement was produced locally or summarized from an external source. Their target-corpus semantics are owned by `AI Systems Engineering/Evaluation/Evaluation Provenance.md#Core Records`; the profile's Source Policy governs the evidence required for external results.
 
 ## Extension Roles
 
-- Registration: Configured
+- Registration: None
 
 | Role ID | Bound actor or system ID/name | Responsibility |
 |---|---|---|
-| `interview-reviewer` | Human authority or explicitly delegated qualified reviewer | Judge Interview Card acceptance and authorize promotion to `interview-ready`. |
-| `content-reviewer` | Human authority or explicitly delegated qualified reviewer | Judge each manifest page's two-axis content-form and rewrite-disposition evidence before `merge-ready`, including any source-gap disposition. |

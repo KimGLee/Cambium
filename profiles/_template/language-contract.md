@@ -14,8 +14,6 @@ Kernel owner: K10 Writing and Formatting. Common slot identity is registered in 
 
 ## Canonical Naming
 
-Confirm or replace these operational defaults; for an existing corpus, "as found" naming that these rows describe is preferable to a renaming campaign.
-
 | Object | Language, casing, and separators |
 |---|---|
 | Folders | Body language, Title Case, spaces; preserve official casing where it differs. |
@@ -36,8 +34,6 @@ Confirm or replace these operational defaults; for an existing corpus, "as found
 ## Content Length Unit
 
 - Unit (`words` or `characters`): words
-
-Confirm with the body language: CJK body languages use `characters`.
 
 ## K10/04 Scoped Anti-pattern Extensions
 

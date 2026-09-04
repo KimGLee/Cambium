@@ -6,7 +6,7 @@
 # input relationship-base: kernel/K08 Metadata and Status/relationship-base.yaml sha256=cb0d1cc37e69afa5b3ab0a73be2c7a8151126f0d349688b36fd7ee7759153a8f
 # input sources-role-base: kernel/K07 Sources and Accuracy/sources-role-base.yaml sha256=7b0e24ffe9528ebbe8d919cc0858840c052fe5576a6234a51e31ae98053be7e2
 # input metadata-contract: profiles/test-profile/metadata-contract.yaml sha256=c5959429917d119fc2a32eeffbd219921a02f830d724c3608f8bcbc976aad3e8
-# input vocabulary-extensions: profiles/test-profile/vocabulary-extensions.yaml sha256=041e5c1266422cb35e546942edb93b9b812dbc5e1392e7fb2e46e85b076685af
+# input vocabulary-extensions: profiles/test-profile/vocabulary-extensions.yaml sha256=0c1d015de896bfb7e527f26998dfcdae8034d569148010acfc41fb3147acb1b8
 schema_version: 1
 fields:
   type:

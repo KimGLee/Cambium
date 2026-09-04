@@ -16,6 +16,45 @@ REPOSITORY = Path(__file__).resolve().parents[3]
 SYNTHETIC_PROFILE = REPOSITORY / "Tools/tests/fixtures/synthetic_profile"
 
 
+def _h2_sections(text):
+    """Return raw H2 sections by title for fixture projection only."""
+    lines = text.splitlines(keepends=True)
+    starts = []
+    for index, line in enumerate(lines):
+        heading = kblib.markdown_atx_heading(line.rstrip("\r\n"))
+        if heading is not None and heading[0] == 2:
+            starts.append((index, heading[1]))
+    sections = {}
+    for position, (start, title) in enumerate(starts):
+        end = starts[position + 1][0] if position + 1 < len(starts) \
+            else len(lines)
+        sections[title] = "".join(lines[start:end])
+    return sections
+
+
+def materialize_current_profile_forms(profile, source_slots=None):
+    """Project compact fixture answers into the canonical Profile forms."""
+    profile = Path(profile)
+    source_slots = Path(source_slots or profile / "slots.md")
+    source_sections = _h2_sections(source_slots.read_text(encoding="utf-8"))
+    interface = profile_contract.load_profile_interface(REPOSITORY)
+    _manifest_form, forms = profile_contract.profile_interface_forms(interface)
+    for form in forms.values():
+        if not form.path.endswith(".md"):
+            continue
+        template = REPOSITORY / "profiles/_template" / form.path
+        text = template.read_text(encoding="utf-8").replace(
+            "TODO(profile)", "fixture-value")
+        template_sections = _h2_sections(text)
+        for title, replacement in source_sections.items():
+            current = template_sections.get(title)
+            if current is not None:
+                text = text.replace(current, replacement, 1)
+        target = profile / form.path
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text(text, encoding="utf-8")
+
+
 class CurrentProfileContractFixture:
     """Isolate one current Profile without adoption or runtime lifecycle."""
 
@@ -36,6 +75,10 @@ class CurrentProfileContractFixture:
                 shutil.copy2(source, target)
         for relative in (
                 profile_contract.SCAN_CAPABILITY_PATH,
+                kblib.STRUCTURE_REGISTRY_CONTRACT_PATH,
+                kblib.METADATA_PROFILE_CONTRACT_PATH,
+                profile_contract.vocabulary_contract.
+                VOCABULARY_EXTENSIONS_CONTRACT_PATH,
                 "Tools/knowledge/content/check_residual_content.py"):
             target = self.root / relative
             target.parent.mkdir(parents=True, exist_ok=True)
@@ -47,10 +90,23 @@ class CurrentProfileContractFixture:
         self.scan_config = self.profile / "scan-configs/residual-scan.yaml"
         self.operation_capabilities = (
             self.root / "Tools/operation-capabilities.yaml")
+        self._materialize_form_files()
 
     def load(self, sentinel="TODO(profile)"):
+        self._materialize_form_files()
         return profile_contract.load_profile_contract(
             self.root, self.manifest, sentinel=sentinel)
+
+    def _materialize_form_files(self):
+        """Project the composite unit-test source into current slot forms.
+
+        ``slots.md`` remains a compact authoring helper for tests that mutate
+        one typed table.  It is not a bound Profile slot.  Each load projects
+        those mutated sections into the canonical per-slot form, so the test
+        fixture exercises current production structure without making every
+        test rebuild fourteen files by hand.
+        """
+        materialize_current_profile_forms(self.profile, self.slots)
 
     def checks(self, contract=None):
         contract = contract or self.load()
@@ -218,5 +274,41 @@ class CurrentProfileContractFixture:
         self.slots.write_text(
             text[:start] + section + text[end:], encoding="utf-8")
 
+    def expression_artifact_row(
+            self, *, artifact_id="test-expression-guide",
+            artifact_type="cheat-sheet", label="Expression Guide",
+            entry_point="Expression/Guide.md",
+            dependency_map="Expression/Overview.md", binding_fields="None",
+            revalidation="Revalidate when a bound canonical owner changes.",
+            contract_reference=(
+                "profiles/test-profile/slots.md#Synthetic Predicate"),
+            readiness="None"):
+        return (
+            "| `%s` | `%s` | %s | `%s` | `%s` | `%s` | %s | `%s` | `%s` |\n"
+            % (artifact_id, artifact_type, label, entry_point,
+               dependency_map, binding_fields, revalidation,
+               contract_reference, readiness))
 
-__all__ = ["CurrentProfileContractFixture"]
+    def configure_expression_artifacts(self, rows):
+        """Replace the fixture's typed Registered Artifacts rows."""
+        text = self.slots.read_text(encoding="utf-8")
+        start = text.index("## Registered Artifacts")
+        end = text.index("\n## ", start + 4)
+        section = text[start:end]
+        registration = "Configured" if rows else "None"
+        section = section.replace(
+            "- Registration: None", "- Registration: %s" % registration, 1)
+        section = section.replace(
+            "- Registration: Configured",
+            "- Registration: %s" % registration, 1)
+        separator = "|" + "---|" * len(
+            profile_contract.REGISTERED_ARTIFACT_HEADER) + "\n"
+        section = section.replace(separator, separator + "".join(rows), 1)
+        self.slots.write_text(
+            text[:start] + section + text[end:], encoding="utf-8")
+
+
+__all__ = [
+    "CurrentProfileContractFixture",
+    "materialize_current_profile_forms",
+]

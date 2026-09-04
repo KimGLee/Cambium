@@ -10,8 +10,6 @@ Kernel owner: K01 Scope and Architecture. Common slot identity is registered in 
 
 ## Content Priority Factors
 
-A short ranked list is legal; one substantive factor plus a catch-all is the minimal shape.
-
 | Rank | Ranked content-priority factor |
 |---:|---|
 | 1 | TODO(profile) |
@@ -19,15 +17,11 @@ A short ranked list is legal; one substantive factor plus a catch-all is the min
 
 ## Excluded Scope
 
-Confirm or replace: `None — no exclusions` is a complete answer.
-
 | Bounded excluded content (`None — no exclusions` allowed) | Destination or handling (`Not applicable` when none) |
 |---|---|
 | None — no exclusions | Not applicable |
 
 ## Logical Architecture
-
-Use exact repository-relative directory paths without trailing slashes. Separate multiple directories in one layer with semicolons. A flat corpus registers one layer owning its whole tree.
 
 | Stable Layer ID | Repository-relative directories | Single layer responsibility |
 |---|---|---|
@@ -35,15 +29,11 @@ Use exact repository-relative directory paths without trailing slashes. Separate
 
 ## Knowledge Spine
 
-A one-line spine is legal — for example, "one page per device, service, or recurring procedure; each page names what it depends on", located by a stated field or opening-paragraph statement.
-
 | Page-to-page organizing logic / Knowledge Spine | Field or statement locating each page on that spine |
 |---|---|
 | TODO(profile) | TODO(profile) |
 
 ## Placement Layer Registrations
-
-Layer roles bind a registered Layer ID; an unused role uses `None` plus its fallback Layer ID. With a single registered layer, every fallback is that layer's ID.
 
 | Kernel role | Binding type | Registered binding or inactive form |
 |---|---|---|
@@ -64,15 +54,11 @@ Layer roles bind a registered Layer ID; an unused role uses `None` plus its fall
 
 ## Terminology Structure
 
-A single bounded class with an explicit inclusion boundary is the minimal shape — for example, "names used in more than one note; included when ambiguous, excluded when upstream documentation is the only reader-facing form".
-
 | Bounded term class | Registered target Layer ID | Inclusion/exclusion boundary |
 |---|---|---|
 | TODO(profile) | TODO(profile) | TODO(profile) |
 
 ## Foundation Depth Requirements
-
-One page class with a four-element predicate is the minimal shape — for example, "a page describing anything the maintainer must restore: names the thing, its current version, where its backup or definition lives, and the observable condition or stable check capability that verifies it works".
 
 | Bounded foundation page class | Testable completeness predicate |
 |---|---|

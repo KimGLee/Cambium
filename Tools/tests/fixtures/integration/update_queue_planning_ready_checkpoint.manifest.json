@@ -1,6 +1,6 @@
 {
   "artifacts": {
-    "ready_gate": "audit-check_queue-20260831T221043Z-6a312b8aeb4c46b393e27864fd96ad5c-0001"
+    "ready_gate": "audit-check_queue-20260904T140616Z-6e966f2d011d4688a30d9f329795d519-0001"
   },
   "checkpoint_id": "update-queue-planning-ready-current",
   "current_contract_owner": "Tools.execution.task_runtime.runtime_validation.validate_runtime",
@@ -13,12 +13,12 @@
     },
     {
       "path": ".cambium/derived/page_contract.yaml",
-      "sha256": "sha256:db783fd56b9107968da1f8cc252b39c975f08cc27d54c56429f11bc9c9a08101",
+      "sha256": "sha256:9683e97cde079899202f45c71e8b827579327ed48ca5a9d9023efeab52dd27fa",
       "size": 5146
     },
     {
       "path": ".cambium/derived/vocab.yaml",
-      "sha256": "sha256:e80d30b4b7e28dfeaef23546dd8c1224c41cbfac991b08d58a7eaf12711d69a6",
+      "sha256": "sha256:e554b4d7f5edb47674647d58472e2b27cc78c2ca72d4fabf7bdefb422aedd336",
       "size": 3762
     },
     {
@@ -28,17 +28,17 @@
     },
     {
       "path": ".cambium/receipts/gates.jsonl",
-      "sha256": "sha256:0149810c5227534eda92f4b38c935dd000e3c1bfd160593b6b98ee0d49cb010c",
+      "sha256": "sha256:9a9a1ced5517d085a129d1f614cd34c6f01332cdbebccc82f6d5cc5fd7e70c1b",
       "size": 8114
     },
     {
       "path": ".cambium/receipts/standards-adoptions.jsonl",
-      "sha256": "sha256:c49dd3bbc7ac74e4ad6cd403c048bf39fb36e35c0217229c215b21f170ab8170",
-      "size": 2414
+      "sha256": "sha256:31eabdfa8cc337c5875c494694a4d5196ad62a8d036da972a55ab079146540dd",
+      "size": 2420
     },
     {
       "path": ".cambium/receipts/task-plans.jsonl",
-      "sha256": "sha256:29e72e060e3c033f988dee72c15459e8ec677fc249330b3e860882544b0a96f5",
+      "sha256": "sha256:ad36865d0c24241df4b92f70c86f51ee77b6750e00e56cafeaa319f8fc86c3ad",
       "size": 1738
     },
     {
@@ -68,8 +68,8 @@
     },
     {
       "path": ".cambium/tmp/receipt-append.free",
-      "sha256": "sha256:2d35298e79f2701326fbe99d986d672cd46e2867c35a01be2652dcdeba89a13c",
-      "size": 90
+      "sha256": "sha256:883ad46ff8c20240ba30dbd02ee662cc9e47920035c24399525f49ff93e26afc",
+      "size": 91
     },
     {
       "path": "Topics/A.md",
@@ -91,6 +91,6 @@
   "scenario": "planning-ready",
   "scenario_dependency_builder": "Tools.tests.fixtures.integration.update_queue_checkpoints.install_update_queue_profile",
   "schema_version": 1,
-  "tree_sha256": "sha256:262b57c27e73cbace7a96837362737f5e60fa0805b64fae5c2443ec8f037e953",
-  "validated_tree_sha256": "sha256:a2b953d745d6fb7ea9c6a4f4fa555f1296031a8198e58d893bc77280d78a7597"
+  "tree_sha256": "sha256:4d31757dfa4842fac557c852b71d603b6c4158990b00af03bd14167291d6d2f5",
+  "validated_tree_sha256": "sha256:3e045cca241ada845b3ff9293c9b1e71c36591bfee8024a9415f51ff93d1bea5"
 }

@@ -200,6 +200,14 @@ class FindingClassificationContractTests(unittest.TestCase):
                         if isinstance(sub, ast.Constant) and
                         isinstance(sub.value, str) and
                         sub.value.startswith("%s-"))
+                if node.name in (
+                        "_markdown_form_errors", "_scalar_form_values",
+                        "_table_row_form_errors", "_yaml_form_errors"):
+                    codes.update(
+                        sub.value for sub in ast.walk(node)
+                        if isinstance(sub, ast.Constant) and
+                        isinstance(sub.value, str) and
+                        sub.value.startswith("profile-form-"))
             if (isinstance(node, ast.Call) and
                     isinstance(node.func, ast.Attribute) and node.args):
                 if node.func.attr in ("section", "table", "cells"):
@@ -266,7 +274,7 @@ class ProfileCliTransportTests(unittest.TestCase):
     def test_json_cli_projects_one_categorized_failure_and_exit_code(self):
         CurrentProfileContractFixture.replace(
             self.fixture.manifest,
-            "- `Priority Rubric`: `slots.md`\n", "")
+            "- `Priority Rubric`: `priority-rubric.md`\n", "")
         completed = subprocess.run(
             [sys.executable, "-B", str(SCRIPT),
              str(self.fixture.profile),
@@ -280,6 +288,25 @@ class ProfileCliTransportTests(unittest.TestCase):
         self.assertTrue(all(
             set(finding) == {"check", "target", "details", "category"}
             for finding in report["findings"]))
+
+    def test_profile_load_reports_form_drift_as_mechanical(self):
+        scope = self.fixture.profile / "scope-and-architecture.md"
+        CurrentProfileContractFixture.replace(
+            scope, "## Goal\n", "## Renamed Goal\n")
+        completed = subprocess.run(
+            [sys.executable, "-B", str(SCRIPT),
+             str(self.fixture.profile), "--root", str(self.fixture.root),
+             "--json"],
+            text=True, capture_output=True, check=False)
+        report = json.loads(completed.stdout)
+
+        self.assertEqual(1, completed.returncode, completed.stderr)
+        findings = {
+            finding["check"]: finding for finding in report["findings"]
+        }
+        self.assertEqual(
+            check_profile.MECHANICAL,
+            findings["profile-form-heading-structure"]["category"])
 
 
 if __name__ == "__main__":

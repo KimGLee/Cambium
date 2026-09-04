@@ -14,7 +14,6 @@ TESTS = Path(__file__).resolve().parents[1]
 TOOLS = TESTS.parent
 REPOSITORY = TOOLS.parent
 FIXTURE = TOOLS / "tests" / "fixtures" / "runtime_state" / "valid"
-SYNTHETIC_PROFILE = TOOLS / "tests" / "fixtures" / "synthetic_profile"
 sys.path.insert(0, str(TOOLS / "tests"))
 sys.path.insert(0, str(TOOLS))
 import Tools.platform.distribution.module_boundary_facts as module_boundary_facts  # noqa: E402
@@ -43,6 +42,9 @@ from Tools.tests.support.initial_task_plan_fixture import (  # noqa: E402
     install_initial_task_plan_fixture,
 )
 from Tools.tests.support.coverage_delta_fixture import write_premerge_delta
+from Tools.tests.fixtures.integration.checkpoint_contract import (
+    copy_checkpoint_seed,
+)
 
 
 # ---------------------------------------------------------------------------
@@ -62,13 +64,9 @@ from Tools.tests.support.coverage_delta_fixture import write_premerge_delta
 
 
 def install_terminal_proof_dependencies(root):
-    """Reconstruct the non-runtime dependencies of a terminal checkpoint."""
+    """Reconstruct non-Profile dependencies of a terminal checkpoint."""
     root = Path(root)
     shutil.copytree(REPOSITORY / "kernel", root / "kernel", dirs_exist_ok=True)
-    (root / "profiles").mkdir(exist_ok=True)
-    shutil.copytree(
-        SYNTHETIC_PROFILE, root / "profiles/test-profile",
-        dirs_exist_ok=True)
     tools_root = root / "Tools"
     (tools_root / "schemas").mkdir(parents=True, exist_ok=True)
     module_boundary_facts.stage_shipped_modules(
@@ -94,7 +92,7 @@ class RequiredQueueFixture:
 
     def build_repository_fixture(self):
         """Lay down the fixture tree the original per-test setUp built."""
-        shutil.copytree(FIXTURE, self.root)
+        copy_checkpoint_seed(FIXTURE, self.root)
         install_loadable_profile(self.root)
         for name in ("deltas", "receipts", "reports"):
             (self.root / ".cambium" / name).mkdir(exist_ok=True)

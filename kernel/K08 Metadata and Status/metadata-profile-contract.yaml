@@ -1,0 +1,143 @@
+schema_version: 1
+contract_id: metadata-contract-shape-v1
+semantic_owner: K08/06+K08/08+K08/09
+
+# This contract owns the common machine shape of the Profile Metadata Contract. A selected Profile owns only its differences, extensions, role titles, and display labels.
+document:
+  schema_version: 1
+  required_fields:
+    - schema_version
+    - applicability
+    - applicability_differences
+    - extension_fields
+    - relationship_extensions
+    - section_roles
+  optional_fields:
+    - boundary_projection
+
+applicability:
+  fields:
+    - state
+  states:
+    - kernel-defaults
+    - configured
+  configuration_fields:
+    - applicability_differences
+    - extension_fields
+    - relationship_extensions
+    - section_roles
+    - boundary_projection
+  kernel_defaults_requires_empty_configuration: true
+  configured_requires_nonempty_configuration: true
+
+mode_values:
+  - required
+  - conditional
+  - optional
+  - derived
+  - projection
+  - user-owned
+  - forbidden
+
+shape_values:
+  - nonempty-string
+  - date
+  - url
+  - path
+  - list-of-strings
+  - list-of-paths
+  - delegated
+
+condition:
+  allowed_group_fields:
+    - all
+    - any
+  minimum_groups: 1
+  clause_required_fields:
+    - field
+  clause_choice_fields:
+    - in
+    - absent
+  exactly_one_clause_choice: true
+  in_shape: nonempty-list
+  absent_value: true
+
+entry_types:
+  applicability_difference:
+    required_fields:
+      - field
+      - mode
+    optional_fields:
+      - condition
+      - note
+    allowed_modes:
+      - required
+      - conditional
+  extension_field:
+    required_fields:
+      - field
+      - mode
+      - shape
+      - owner
+    optional_fields:
+      - condition
+  relationship_extension:
+    required_fields:
+      - field
+      - mode
+      - direction
+      - target
+      - shape
+      - owner
+    optional_fields:
+      - condition
+    target_shapes:
+      - nonempty-string
+      - nonempty-string-list
+  section_role:
+    required_fields:
+      - role
+      - titles
+      - owner
+    optional_fields:
+      - aliases
+    roles:
+      - sources
+      - related
+    titles_shape: nonempty-string-list
+    aliases_shape: string-list
+
+entry_rules:
+  field_identity_unique_across:
+    - applicability_differences
+    - extension_fields
+    - relationship_extensions
+  conditional_mode_requires_condition: true
+  shape_required_for:
+    - extension_fields
+    - relationship_extensions
+  owner_required_for:
+    - extension_fields
+    - relationship_extensions
+    - section_roles
+  section_role_identity_unique: true
+
+tightening_transitions:
+  - from: optional
+    to: required
+  - from: optional
+    to: conditional
+  - from: conditional
+    to: required
+
+boundary_projection:
+  fields:
+    - labels
+  label_keys:
+    - preamble
+    - owns
+    - excludes
+    - owner
+    - goals
+    - non_goals
+  label_shape: nonempty-string

@@ -32,6 +32,7 @@ PROFILE_MANIFEST = "profiles/test-profile/profile.md"
 CORPUS_SLOT = "profiles/test-profile/corpus-planning.yaml"
 PROFILE_SCOPE = "profiles/test-profile/scope-and-architecture.md"
 ROLE_REGISTRY = "profiles/test-profile/roles.md"
+REPOSITORY = Path(__file__).resolve().parents[2]
 
 
 def sha256_fixture(character):
@@ -67,6 +68,11 @@ class MinimalCorpusPlanFixture:
                 "profiles/test-profile", "planning", "Topics",
                 ".cambium/state"):
             (self.root / relative).mkdir(parents=True, exist_ok=True)
+        owner_relative = \
+            corpus_planning_contract.CORPUS_PLANNING_CONTRACT_PATH
+        owner_target = self.root / owner_relative
+        owner_target.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(REPOSITORY / owner_relative, owner_target)
         for removable in ("Other", ".cambium/evidence.json"):
             candidate = self.root / removable
             if candidate.is_dir():
@@ -467,6 +473,20 @@ class CorpusPlanPipelineIntegrationTests(
                 check_corpus_plan, "_profile_view_currency_errors",
                 return_value=[]):
             with self.assertRaisesRegex(ValueError, "Global Map changed"):
+                check_corpus_plan.receipt_binding(result)
+
+    def test_k02_owner_mutation_invalidates_the_bound_validation_result(self):
+        result = self.validate_current_plan()
+        self.assertEqual([], result["errors"])
+        owner = self.root / \
+            corpus_planning_contract.CORPUS_PLANNING_CONTRACT_PATH
+        owner.write_bytes(owner.read_bytes() + b"\n# changed bytes\n")
+
+        with mock.patch.object(
+                check_corpus_plan, "_profile_view_currency_errors",
+                return_value=[]):
+            with self.assertRaisesRegex(
+                    ValueError, "K02 Corpus Planning contract changed"):
                 check_corpus_plan.receipt_binding(result)
 
 

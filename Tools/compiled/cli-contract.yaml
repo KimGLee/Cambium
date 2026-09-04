@@ -148,7 +148,7 @@ source_files:
   - Tools/stamp_cards.py
   - Tools/update_queue.py
   - Tools/update_task.py
-source_hash: sha256:1539a61e33f9548130835298db13710b1345a8a97b2a94defb28b5043cedf413
+source_hash: sha256:8cd20b08379b0561b9c247dd10bc0a7082a26334c7c3674a46ff6ef562bfdc9f
 agent_interface_policy:
   path: Tools/agent-interface-policy.yaml
   sha256: sha256:26afb19c445def06866398b3019e8043ef4d4548f793e9eafb7a6d3a67d4ca32
@@ -437,7 +437,7 @@ tools:
       - path: Tools/governance/standards/adopt_standards.py
         sha256: sha256:8297cae8d4cd4feaa1b433079bec23086b5bf122781beb0122b8a570767a4504
       - path: Tools/platform/common/kblib.py
-        sha256: sha256:e3c4768907708d817747072c0b797c7bd0e4ce2c7b5005292bee6624c1febd70
+        sha256: sha256:df2764dcae7e331629e363442bb794651c7edc581d26ad0c1c571ed6286b8b8c
     agent_interface:
       exposure: cli-only
       workspace_argument: root
@@ -598,7 +598,7 @@ tools:
       - path: Tools/execution/task_runtime/apply_amendment.py
         sha256: sha256:4d61fa446fbb6d78120c78692fb066fbedb8d92781e0f7553383cb41241fcac3
       - path: Tools/platform/common/kblib.py
-        sha256: sha256:e3c4768907708d817747072c0b797c7bd0e4ce2c7b5005292bee6624c1febd70
+        sha256: sha256:df2764dcae7e331629e363442bb794651c7edc581d26ad0c1c571ed6286b8b8c
     agent_interface:
       exposure: mcp
       workspace_argument: root
@@ -737,7 +737,7 @@ tools:
       - path: Tools/execution/task_runtime/apply_contract_amendment.py
         sha256: sha256:cbc680cdf9d067101c5b2b2987d1d3525693289ce1d33de819236c8eb0324c34
       - path: Tools/platform/common/kblib.py
-        sha256: sha256:e3c4768907708d817747072c0b797c7bd0e4ce2c7b5005292bee6624c1febd70
+        sha256: sha256:df2764dcae7e331629e363442bb794651c7edc581d26ad0c1c571ed6286b8b8c
     agent_interface:
       exposure: mcp
       workspace_argument: root
@@ -903,7 +903,7 @@ tools:
       - path: Tools/execution/task_runtime/apply_delta.py
         sha256: sha256:b68b5625f203d8568dbd67be7f9844d4c70fd559885ad5fa7150160ae42fa937
       - path: Tools/platform/common/kblib.py
-        sha256: sha256:e3c4768907708d817747072c0b797c7bd0e4ce2c7b5005292bee6624c1febd70
+        sha256: sha256:df2764dcae7e331629e363442bb794651c7edc581d26ad0c1c571ed6286b8b8c
     agent_interface:
       exposure: mcp
       workspace_argument: root
@@ -1108,7 +1108,7 @@ tools:
       - path: Tools/knowledge/metadata/apply_metadata_transition.py
         sha256: sha256:4328c1038510fdf9f9940d27f275c873301eedabf3b0759662efb35e7a14b6b4
       - path: Tools/platform/common/kblib.py
-        sha256: sha256:e3c4768907708d817747072c0b797c7bd0e4ce2c7b5005292bee6624c1febd70
+        sha256: sha256:df2764dcae7e331629e363442bb794651c7edc581d26ad0c1c571ed6286b8b8c
     agent_interface:
       exposure: mcp
       workspace_argument: root
@@ -1239,7 +1239,7 @@ tools:
       - path: Tools/governance/profile/apply_profile_adoption.py
         sha256: sha256:7c6e7ac6fd74b8051e5ed297a03304a76779b18b7b8298166b97e9aaf6dd0121
       - path: Tools/platform/common/kblib.py
-        sha256: sha256:e3c4768907708d817747072c0b797c7bd0e4ce2c7b5005292bee6624c1febd70
+        sha256: sha256:df2764dcae7e331629e363442bb794651c7edc581d26ad0c1c571ed6286b8b8c
     agent_interface:
       exposure: cli-only
       workspace_argument: root
@@ -1677,11 +1677,11 @@ tools:
       - path: Tools/execution/audit/check_batch_close.py
         sha256: sha256:5e95c6de76ad87cf4d00bbbcb148e0b5d0e95bcbd062d2f809aa5241bf2649f9
       - path: Tools/execution/planning/check_corpus_plan.py
-        sha256: sha256:cd3306f74db28553fd255952fd8ac4fb07cec2dfcdc9ba3db48face9c15bcdce
+        sha256: sha256:69fc6165025dd2a2f8638383b0862162ee339e27927a84dba28268fda88f012b
       - path: Tools/execution/task_runtime/queue_check_receipt.py
         sha256: sha256:0cbe8593fa3e1fbaf38b76a34f4f84f283a7ed5c70db0052d4db838a3f8f002f
       - path: Tools/platform/common/kblib.py
-        sha256: sha256:e3c4768907708d817747072c0b797c7bd0e4ce2c7b5005292bee6624c1febd70
+        sha256: sha256:df2764dcae7e331629e363442bb794651c7edc581d26ad0c1c571ed6286b8b8c
     agent_interface:
       exposure: mcp
       workspace_argument: root
@@ -1818,7 +1818,7 @@ tools:
       - path: Tools/knowledge/structure/check_boundary_contract.py
         sha256: sha256:a152ad6b15d48334714379c4c5250b62c1c57c243a00634d276c3aae134b5c3c
       - path: Tools/platform/common/kblib.py
-        sha256: sha256:e3c4768907708d817747072c0b797c7bd0e4ce2c7b5005292bee6624c1febd70
+        sha256: sha256:df2764dcae7e331629e363442bb794651c7edc581d26ad0c1c571ed6286b8b8c
     agent_interface:
       exposure: mcp
       workspace_argument: vault_root
@@ -1871,7 +1871,7 @@ tools:
     source_hash: sha256:b9b4e26d2da393302c327ec70940c502de5c4e4d5b356d177347037f13ce7f8c
     implementation_module: Tools.execution.planning.check_corpus_plan
     implementation_path: Tools/execution/planning/check_corpus_plan.py
-    implementation_source_hash: sha256:cd3306f74db28553fd255952fd8ac4fb07cec2dfcdc9ba3db48face9c15bcdce
+    implementation_source_hash: sha256:69fc6165025dd2a2f8638383b0862162ee339e27927a84dba28268fda88f012b
     description: Validate explicit Corpus Planning artifacts
     arguments:
       - dest: root
@@ -1926,9 +1926,9 @@ tools:
     receipt_extensions_extraction: partial
     receipt_extension_sources:
       - path: Tools/execution/planning/check_corpus_plan.py
-        sha256: sha256:cd3306f74db28553fd255952fd8ac4fb07cec2dfcdc9ba3db48face9c15bcdce
+        sha256: sha256:69fc6165025dd2a2f8638383b0862162ee339e27927a84dba28268fda88f012b
       - path: Tools/platform/common/kblib.py
-        sha256: sha256:e3c4768907708d817747072c0b797c7bd0e4ce2c7b5005292bee6624c1febd70
+        sha256: sha256:df2764dcae7e331629e363442bb794651c7edc581d26ad0c1c571ed6286b8b8c
     agent_interface:
       exposure: mcp
       workspace_argument: root
@@ -2047,7 +2047,7 @@ tools:
       - path: Tools/knowledge/metadata/check_freshness.py
         sha256: sha256:01bf601fbba54ef916da17bc36068f24b710889483858c24a5aadd5d0d7c3548
       - path: Tools/platform/common/kblib.py
-        sha256: sha256:e3c4768907708d817747072c0b797c7bd0e4ce2c7b5005292bee6624c1febd70
+        sha256: sha256:df2764dcae7e331629e363442bb794651c7edc581d26ad0c1c571ed6286b8b8c
     agent_interface:
       exposure: mcp
       workspace_argument: vault_root
@@ -2283,7 +2283,7 @@ tools:
       - path: Tools/knowledge/structure/check_moc.py
         sha256: sha256:d94c087f06f952d8ea09aa0be2c237054966b98669ba34bdbe1dfe234ff6ea79
       - path: Tools/platform/common/kblib.py
-        sha256: sha256:e3c4768907708d817747072c0b797c7bd0e4ce2c7b5005292bee6624c1febd70
+        sha256: sha256:df2764dcae7e331629e363442bb794651c7edc581d26ad0c1c571ed6286b8b8c
     agent_interface:
       exposure: mcp
       workspace_argument: root
@@ -2413,7 +2413,7 @@ tools:
       - path: Tools/knowledge/metadata/check_page_contract.py
         sha256: sha256:bc5dfe1e0d2c38159c3479a16ab9e03d026802338740eab194bf0cee36ee889e
       - path: Tools/platform/common/kblib.py
-        sha256: sha256:e3c4768907708d817747072c0b797c7bd0e4ce2c7b5005292bee6624c1febd70
+        sha256: sha256:df2764dcae7e331629e363442bb794651c7edc581d26ad0c1c571ed6286b8b8c
     agent_interface:
       exposure: mcp
       workspace_argument: vault_root
@@ -2466,7 +2466,7 @@ tools:
     source_hash: sha256:f96d687d93a05e35e7d20cda94db8ebc2e2447fd6e2c840dd88b6a028ac6c66f
     implementation_module: Tools.governance.profile.check_profile
     implementation_path: Tools/governance/profile/check_profile.py
-    implementation_source_hash: sha256:e1ad274e44816c13be6755ed07726e3f5df304928121d670e761f85e1312fc6c
+    implementation_source_hash: sha256:d35b3096bc20cd702c705ae0a2e611ea3f36d1caff38cf98da1a1698c00905a1
     description: Profile manifest completeness and unfilled-template check
     arguments:
       - dest: profile_dir
@@ -2550,7 +2550,7 @@ tools:
     receipt_extensions_extraction: complete
     receipt_extension_sources:
       - path: Tools/governance/profile/check_profile.py
-        sha256: sha256:e1ad274e44816c13be6755ed07726e3f5df304928121d670e761f85e1312fc6c
+        sha256: sha256:d35b3096bc20cd702c705ae0a2e611ea3f36d1caff38cf98da1a1698c00905a1
     agent_interface:
       exposure: mcp
       workspace_argument: root
@@ -2693,7 +2693,7 @@ tools:
       - path: Tools/execution/audit/check_proof.py
         sha256: sha256:10d25bcb82a1a0aba00d1add8313baceed8fa0f5ad69bd1089d7c890f982f85c
       - path: Tools/platform/common/kblib.py
-        sha256: sha256:e3c4768907708d817747072c0b797c7bd0e4ce2c7b5005292bee6624c1febd70
+        sha256: sha256:df2764dcae7e331629e363442bb794651c7edc581d26ad0c1c571ed6286b8b8c
     agent_interface:
       exposure: mcp
       workspace_argument: root
@@ -3029,7 +3029,7 @@ tools:
       - path: Tools/execution/task_runtime/queue_check_receipt.py
         sha256: sha256:0cbe8593fa3e1fbaf38b76a34f4f84f283a7ed5c70db0052d4db838a3f8f002f
       - path: Tools/platform/common/kblib.py
-        sha256: sha256:e3c4768907708d817747072c0b797c7bd0e4ce2c7b5005292bee6624c1febd70
+        sha256: sha256:df2764dcae7e331629e363442bb794651c7edc581d26ad0c1c571ed6286b8b8c
     agent_interface:
       exposure: mcp
       workspace_argument: root
@@ -3302,7 +3302,7 @@ tools:
       - path: Tools/knowledge/structure/check_structure.py
         sha256: sha256:2f32a940570d737bef6afe26d19cbf9b6c861e2450e784adffd6ebd8fc3e1a51
       - path: Tools/platform/common/kblib.py
-        sha256: sha256:e3c4768907708d817747072c0b797c7bd0e4ce2c7b5005292bee6624c1febd70
+        sha256: sha256:df2764dcae7e331629e363442bb794651c7edc581d26ad0c1c571ed6286b8b8c
     agent_interface:
       exposure: mcp
       workspace_argument: vault_root
@@ -3645,7 +3645,7 @@ tools:
       - path: Tools/platform/agent_interface/compile_cli_contract.py
         sha256: sha256:c63392a63075ad431c83365f8f6d227c905993ad3c4edff1175a443a076acf68
       - path: Tools/platform/common/kblib.py
-        sha256: sha256:e3c4768907708d817747072c0b797c7bd0e4ce2c7b5005292bee6624c1febd70
+        sha256: sha256:df2764dcae7e331629e363442bb794651c7edc581d26ad0c1c571ed6286b8b8c
     agent_interface:
       exposure: cli-only
       workspace_argument: root
@@ -3872,7 +3872,7 @@ tools:
       - path: Tools/execution/planning/compile_queue.py
         sha256: sha256:6468db4ac13abf581ac6a4badd461b199e43b31924a82fffc7304c8fce0e3b16
       - path: Tools/platform/common/kblib.py
-        sha256: sha256:e3c4768907708d817747072c0b797c7bd0e4ce2c7b5005292bee6624c1febd70
+        sha256: sha256:df2764dcae7e331629e363442bb794651c7edc581d26ad0c1c571ed6286b8b8c
     agent_interface:
       exposure: mcp
       workspace_argument: root
@@ -4022,7 +4022,7 @@ tools:
       - path: Tools/execution/audit/complete_audit_receipt.py
         sha256: sha256:95d16e76f5b68f3e2e9bf95a241f7b67adede84acef1a4beab32dea4fc46f39a
       - path: Tools/platform/common/kblib.py
-        sha256: sha256:e3c4768907708d817747072c0b797c7bd0e4ce2c7b5005292bee6624c1febd70
+        sha256: sha256:df2764dcae7e331629e363442bb794651c7edc581d26ad0c1c571ed6286b8b8c
     agent_interface:
       exposure: mcp
       workspace_argument: root
@@ -4203,7 +4203,7 @@ tools:
     source_hash: sha256:1bcabafa9fc4ceec824541e4921d15c1e597bb909325c2bd7d1220efe3c9afbb
     implementation_module: Tools.knowledge.metadata.compose_vocab
     implementation_path: Tools/knowledge/metadata/compose_vocab.py
-    implementation_source_hash: sha256:b4b65a70c9a74611d843949e48e40f6af86da9e9949110c80c618f17ebed7c20
+    implementation_source_hash: sha256:de06f70a0845a2f1983e8adead3cf748eb235a7699aebbabf96709901c9a5d1b
     description: Deterministically compose the vocabulary artifact from the kernel base and the selected profile's extensions.
     arguments:
       - dest: base
@@ -4255,7 +4255,7 @@ tools:
     receipt_extensions_extraction: complete
     receipt_extension_sources:
       - path: Tools/knowledge/metadata/compose_vocab.py
-        sha256: sha256:b4b65a70c9a74611d843949e48e40f6af86da9e9949110c80c618f17ebed7c20
+        sha256: sha256:de06f70a0845a2f1983e8adead3cf748eb235a7699aebbabf96709901c9a5d1b
     agent_interface:
       exposure: cli-only
       workspace_argument: null
@@ -4360,7 +4360,7 @@ tools:
       - path: Tools/knowledge/content/duplicate_check.py
         sha256: sha256:082a1dd31fed42e756d59ce0a290d6ea71811c1858aa3003383485b2ec1f48cf
       - path: Tools/platform/common/kblib.py
-        sha256: sha256:e3c4768907708d817747072c0b797c7bd0e4ce2c7b5005292bee6624c1febd70
+        sha256: sha256:df2764dcae7e331629e363442bb794651c7edc581d26ad0c1c571ed6286b8b8c
     agent_interface:
       exposure: mcp
       workspace_argument: vault
@@ -4394,7 +4394,7 @@ tools:
     source_hash: sha256:e36e927061f489c16087bd6e3870386cc594b0304aed98e034608b085e818aa6
     implementation_module: Tools.platform.distribution.test_catalog
     implementation_path: Tools/platform/distribution/test_catalog.py
-    implementation_source_hash: sha256:0b04f219c0b6adf82334c9cfd6ba0b971d2c873bd40ca03f638004cbc98d09ce
+    implementation_source_hash: sha256:433aa5d4a5fb7cc7f0b46c5e4628a9abbc0005a78bc1d9ffd1016eb79bd10466
     description: Generate the non-authoritative test ownership and execution catalog. ``Tools/test-ownership.yaml`` is the only reviewed source for test ownership, level, lifecycle, and execution disposition. This module joins that manifest with facts observed directly from the test sources. The generated Markdown and JSON files are navigation and runner inputs; neither may be edited as a second classification source.
     arguments:
       - dest: root
@@ -4423,7 +4423,7 @@ tools:
     receipt_extensions_extraction: complete
     receipt_extension_sources:
       - path: Tools/platform/distribution/test_catalog.py
-        sha256: sha256:0b04f219c0b6adf82334c9cfd6ba0b971d2c873bd40ca03f638004cbc98d09ce
+        sha256: sha256:433aa5d4a5fb7cc7f0b46c5e4628a9abbc0005a78bc1d9ffd1016eb79bd10466
     agent_interface:
       exposure: cli-only
       workspace_argument: root
@@ -5181,7 +5181,7 @@ tools:
       - path: Tools/execution/audit/record_batch_judgment.py
         sha256: sha256:79c873271a2c9f1888672c412c3216c89fb028dc2379cbf3f36390d1d92c361f
       - path: Tools/platform/common/kblib.py
-        sha256: sha256:e3c4768907708d817747072c0b797c7bd0e4ce2c7b5005292bee6624c1febd70
+        sha256: sha256:df2764dcae7e331629e363442bb794651c7edc581d26ad0c1c571ed6286b8b8c
     agent_interface:
       exposure: mcp
       workspace_argument: root
@@ -5418,7 +5418,7 @@ tools:
       - path: Tools/execution/audit/record_batch_page_review.py
         sha256: sha256:5e5fefb7b51f962f9edc788a9b9af67c45f4f7ac37eab47e0916d341f031183d
       - path: Tools/platform/common/kblib.py
-        sha256: sha256:e3c4768907708d817747072c0b797c7bd0e4ce2c7b5005292bee6624c1febd70
+        sha256: sha256:df2764dcae7e331629e363442bb794651c7edc581d26ad0c1c571ed6286b8b8c
     agent_interface:
       exposure: mcp
       workspace_argument: root
@@ -5558,7 +5558,7 @@ tools:
       - path: Tools/execution/audit/record_batch_review.py
         sha256: sha256:bc3f66e7bea7372ec727705f5275609eb6b968f797fd75b138cef2c678ff1a8e
       - path: Tools/platform/common/kblib.py
-        sha256: sha256:e3c4768907708d817747072c0b797c7bd0e4ce2c7b5005292bee6624c1febd70
+        sha256: sha256:df2764dcae7e331629e363442bb794651c7edc581d26ad0c1c571ed6286b8b8c
     agent_interface:
       exposure: mcp
       workspace_argument: root
@@ -5729,7 +5729,7 @@ tools:
       - path: Tools/execution/audit/record_changed_scope_evidence.py
         sha256: sha256:daa4fbe203e7aa084572217e2275bc6d31361d2e099d48fd2af7700bb8b7f636
       - path: Tools/platform/common/kblib.py
-        sha256: sha256:e3c4768907708d817747072c0b797c7bd0e4ce2c7b5005292bee6624c1febd70
+        sha256: sha256:df2764dcae7e331629e363442bb794651c7edc581d26ad0c1c571ed6286b8b8c
     agent_interface:
       exposure: mcp
       workspace_argument: root
@@ -5842,11 +5842,11 @@ tools:
     receipt_extensions_extraction: partial
     receipt_extension_sources:
       - path: Tools/execution/planning/check_corpus_plan.py
-        sha256: sha256:cd3306f74db28553fd255952fd8ac4fb07cec2dfcdc9ba3db48face9c15bcdce
+        sha256: sha256:69fc6165025dd2a2f8638383b0862162ee339e27927a84dba28268fda88f012b
       - path: Tools/execution/planning/record_corpus_acceptance.py
         sha256: sha256:314bed485acf10019b0db5dc21854f7ef95c33cb0bafda11882cc9f90e1ed683
       - path: Tools/platform/common/kblib.py
-        sha256: sha256:e3c4768907708d817747072c0b797c7bd0e4ce2c7b5005292bee6624c1febd70
+        sha256: sha256:df2764dcae7e331629e363442bb794651c7edc581d26ad0c1c571ed6286b8b8c
     agent_interface:
       exposure: mcp
       workspace_argument: root
@@ -6013,7 +6013,7 @@ tools:
       - path: Tools/execution/evidence/record_gate_attestation.py
         sha256: sha256:b3d6dc6d33db2225c6662fa1d25df67056cf1bc23e9c2fab0520f008303a8635
       - path: Tools/platform/common/kblib.py
-        sha256: sha256:e3c4768907708d817747072c0b797c7bd0e4ce2c7b5005292bee6624c1febd70
+        sha256: sha256:df2764dcae7e331629e363442bb794651c7edc581d26ad0c1c571ed6286b8b8c
     agent_interface:
       exposure: mcp
       workspace_argument: root
@@ -6163,7 +6163,7 @@ tools:
       - path: Tools/execution/evidence/record_gate_result.py
         sha256: sha256:9fa582ba54f1ca4c05654b9a48dd28739f9455c37d07b4c355789b84212f22ea
       - path: Tools/platform/common/kblib.py
-        sha256: sha256:e3c4768907708d817747072c0b797c7bd0e4ce2c7b5005292bee6624c1febd70
+        sha256: sha256:df2764dcae7e331629e363442bb794651c7edc581d26ad0c1c571ed6286b8b8c
     agent_interface:
       exposure: mcp
       workspace_argument: root
@@ -6309,7 +6309,7 @@ tools:
       - path: Tools/execution/task_runtime/record_maintenance_evidence.py
         sha256: sha256:5f3ec0452b9404d5c17960e75a764b3ef2bfdfd3eae348cff53b640213a64cf6
       - path: Tools/platform/common/kblib.py
-        sha256: sha256:e3c4768907708d817747072c0b797c7bd0e4ce2c7b5005292bee6624c1febd70
+        sha256: sha256:df2764dcae7e331629e363442bb794651c7edc581d26ad0c1c571ed6286b8b8c
     agent_interface:
       exposure: mcp
       workspace_argument: root
@@ -6501,7 +6501,7 @@ tools:
       - path: Tools/knowledge/rendering/record_rendering_verification.py
         sha256: sha256:c62a5e5d7dcd85fe4e3847a915f9ee2287ad6cfd5f9bdd8962f147bd67216d57
       - path: Tools/platform/common/kblib.py
-        sha256: sha256:e3c4768907708d817747072c0b797c7bd0e4ce2c7b5005292bee6624c1febd70
+        sha256: sha256:df2764dcae7e331629e363442bb794651c7edc581d26ad0c1c571ed6286b8b8c
     agent_interface:
       exposure: mcp
       workspace_argument: root
@@ -6749,7 +6749,7 @@ tools:
       - path: Tools/execution/audit/record_substantive_review.py
         sha256: sha256:4eaf14c94f727c4040784137e567b5e8438ec649f1c01b1ecba17cddf66daae8
       - path: Tools/platform/common/kblib.py
-        sha256: sha256:e3c4768907708d817747072c0b797c7bd0e4ce2c7b5005292bee6624c1febd70
+        sha256: sha256:df2764dcae7e331629e363442bb794651c7edc581d26ad0c1c571ed6286b8b8c
     agent_interface:
       exposure: mcp
       workspace_argument: root
@@ -7027,7 +7027,7 @@ tools:
       - path: Tools/execution/task_runtime/register_amendment.py
         sha256: sha256:ad7ccc3c5ced4bce9c934e00d8373ef88076bf05dca48f6f341113dc72ac2244
       - path: Tools/platform/common/kblib.py
-        sha256: sha256:e3c4768907708d817747072c0b797c7bd0e4ce2c7b5005292bee6624c1febd70
+        sha256: sha256:df2764dcae7e331629e363442bb794651c7edc581d26ad0c1c571ed6286b8b8c
     agent_interface:
       exposure: mcp
       workspace_argument: root
@@ -8072,7 +8072,7 @@ tools:
       - path: Tools/execution/evidence/seal_receipts.py
         sha256: sha256:6ec4c83e0ae1eb0ff3456d09065cbd58b5aad736f96061316053a18bcb379b55
       - path: Tools/platform/common/kblib.py
-        sha256: sha256:e3c4768907708d817747072c0b797c7bd0e4ce2c7b5005292bee6624c1febd70
+        sha256: sha256:df2764dcae7e331629e363442bb794651c7edc581d26ad0c1c571ed6286b8b8c
     agent_interface:
       exposure: mcp
       workspace_argument: root
@@ -8644,7 +8644,7 @@ tools:
       - path: Tools/execution/task_runtime/update_task.py
         sha256: sha256:15b01b886c9f862e5ef49fb2fd693bc145a510622e86dd41840e828051713174
       - path: Tools/platform/common/kblib.py
-        sha256: sha256:e3c4768907708d817747072c0b797c7bd0e4ce2c7b5005292bee6624c1febd70
+        sha256: sha256:df2764dcae7e331629e363442bb794651c7edc581d26ad0c1c571ed6286b8b8c
     agent_interface:
       exposure: mcp
       workspace_argument: root

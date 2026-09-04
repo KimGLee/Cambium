@@ -1,6 +1,6 @@
 # Source Policy
 
-Interface: [Kernel-owned Profile interface](../../../kernel/K00%20Standards%20Control/19%20Profile%20Extension%20Interface.md) — Source Policy slot
+Interface: [Kernel-owned Profile interface](../../../kernel/K00%20Standards%20Control/profile-interface.yaml) — Source Policy slot
 
 ## Source Authority
 

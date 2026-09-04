@@ -2,19 +2,29 @@
 
 import hashlib
 import json
+import shutil
 
 
 PERSISTED_PATHS = (".cambium", "Topics")
 PROFILE_DEPENDENCY_BUILDER = (
     "Tools.tests.support.profile_fixture.install_loadable_profile"
 )
+FIXTURE_EXCLUDED_NAMES = ("__pycache__", ".DS_Store")
+
+
+def copy_checkpoint_seed(source, destination):
+    """Copy one source fixture without host-local or generated noise."""
+    return shutil.copytree(
+        source, destination,
+        ignore=shutil.ignore_patterns(*FIXTURE_EXCLUDED_NAMES),
+    )
 
 
 def file_records(root):
     """Project inspectable checkpoint bytes into one canonical file list."""
     records = []
     for source in sorted(path for path in root.rglob("*") if path.is_file()):
-        if "__pycache__" in source.parts or source.name == ".DS_Store":
+        if any(part in FIXTURE_EXCLUDED_NAMES for part in source.parts):
             continue
         content = source.read_bytes()
         records.append({
@@ -34,8 +44,10 @@ def tree_sha256(records):
 
 
 __all__ = [
+    "FIXTURE_EXCLUDED_NAMES",
     "PERSISTED_PATHS",
     "PROFILE_DEPENDENCY_BUILDER",
+    "copy_checkpoint_seed",
     "file_records",
     "tree_sha256",
 ]

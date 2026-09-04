@@ -168,21 +168,25 @@ class StructureRegistryFixture:
     def __init__(self):
         self._temporary = tempfile.TemporaryDirectory()
         self.root = Path(self._temporary.name).resolve() / "repository"
-        self.profile = install_loadable_profile(self.root)
-        manifest = self.profile / "profile.md"
-        manifest.write_text(
-            manifest.read_text(encoding="utf-8").replace(
-                "- `Profile Scope`: `slots.md`",
-                "- `Profile Scope`: `scope.md`"),
-            encoding="utf-8")
-        (self.profile / "scope.md").write_text(
-            "# Scope\n\n## Logical Architecture\n\n"
+        self.profile = install_loadable_profile(
+            self.root, before_adoption=self._install_initial_structure)
+
+    def _install_initial_structure(self, _root, profile):
+        """Install the fixture's declared corpus before Profile adoption."""
+        scope = profile / "scope-and-architecture.md"
+        text = scope.read_text(encoding="utf-8")
+        start = text.index("## Logical Architecture")
+        end = text.index("\n## ", start + 4)
+        logical_architecture = (
+            "## Logical Architecture\n\n"
             "| Stable Layer ID | Repository-relative directories | "
             "Single layer responsibility |\n"
             "|---|---|---|\n"
             "| `L-DOMAIN` | `Domain` | Own the domain. |\n"
             "| `L-CASES` | `Cases` | Own cases. |\n"
-            "| `L-SYNTHESIS` | `Synthesis` | Own synthesis. |\n",
+            "| `L-SYNTHESIS` | `Synthesis` | Own synthesis. |\n")
+        scope.write_text(
+            text[:start] + logical_architecture + text[end:],
             encoding="utf-8")
         self._write("Domain/Domain Overview.md", """---
 type: overview

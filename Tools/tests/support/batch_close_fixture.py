@@ -29,10 +29,12 @@ import Tools.platform.distribution.module_boundary_facts as module_boundary_fact
 import Tools.governance.profile.profile_admission as profile_admission
 import Tools.execution.task_runtime.runtime_paths as runtime_paths
 from Tools.tests.support.profile_fixture import (
-    install_current_adoption_fixture,
     install_loadable_profile,
 )
 from Tools.tests.support.coverage_delta_fixture import write_premerge_delta
+from Tools.tests.fixtures.integration.checkpoint_contract import (
+    copy_checkpoint_seed,
+)
 
 
 class BatchCloseRuntimeActions:
@@ -126,30 +128,31 @@ class CheckBatchCloseFixture(BatchCloseRuntimeActions, unittest.TestCase):
 
     def build_repository_fixture(self):
         """Lay down the current Profile and repository dependency tree."""
-        shutil.copytree(FIXTURE, self.root)
+        copy_checkpoint_seed(FIXTURE, self.root)
         for name in ("deltas", "receipts", "reports"):
             (self.root / ".cambium" / name).mkdir(exist_ok=True)
         self.install_profile_and_tools()
         self.install_plain_s_audit_fixture()
 
     def install_profile_and_tools(self):
-        install_loadable_profile(self.root)
-        manifest = self.root / "profiles/test-profile/profile.md"
-        manifest_text = manifest.read_text(encoding="utf-8")
-        manifest.write_text(
-            manifest_text.replace(
-                "- `Audit Dimension Registry`: `slots.md`",
-                "- `Audit Dimension Registry`: "
-                "`registries/audit-dimensions.md`",
-            ).replace(
-                "- `Registered Scan Registry`: `slots.md`",
-                "- `Registered Scan Registry`: "
-                "`registries/registered-scans.md`",
-            ),
-            encoding="utf-8",
+        install_loadable_profile(
+            self.root,
+            before_adoption=self.configure_batch_close_profile,
         )
-        audit_registry = manifest.parent / "registries/audit-dimensions.md"
-        audit_registry.parent.mkdir(parents=True)
+
+    def configure_batch_close_profile(self, root, profile):
+        """Finalize this scenario's Profile before its single adoption."""
+        # The shared Profile fixture owns the complete current form and its
+        # directory tree.  This scenario only replaces two existing slot
+        # values with the batch-close-specific judgment and scan contracts;
+        # it must not recreate the form or retain the retired slots.md bridge.
+        audit_registry = profile / "registries/audit-dimensions.md"
+        registry = profile / "registries/registered-scans.md"
+        for slot in (audit_registry, registry):
+            if not slot.is_file():
+                raise AssertionError(
+                    "shared Profile fixture omitted required slot: %s" %
+                    slot.relative_to(self.root))
         audit_registry.write_text(
             "# Audit Dimension Registry\n\n"
             "## Extension Dimensions\n\n"
@@ -167,12 +170,11 @@ class CheckBatchCloseFixture(BatchCloseRuntimeActions, unittest.TestCase):
             "| `fixture-item` | `coverage_and_integration` | `Batch Review` "
             "| The fixture scan candidates have accepted dispositions. | "
             "`emits` | `profiles/test-profile/registries/"
-            "audit-dimensions.md#Fixture Predicate` |\n\n"
-            "## Fixture Predicate\n\n"
+            "audit-dimensions.md#Residual Disposition` |\n\n"
+            "## Residual Disposition\n\n"
             "The fixture verifier reports residual candidates.\n",
             encoding="utf-8",
         )
-        registry = manifest.parent / "registries/registered-scans.md"
         registry.write_text(
             "# Registered Scan Registry\n\n## Scan Registrations\n\n"
             "| Stable Scan ID | Activation role | Whole-corpus scope/root | "
@@ -185,7 +187,7 @@ class CheckBatchCloseFixture(BatchCloseRuntimeActions, unittest.TestCase):
             "candidate-only | `fixture-item` |\n",
             encoding="utf-8",
         )
-        tools = self.root / "Tools"
+        tools = root / "Tools"
         tools.mkdir(exist_ok=True)
         (tools / "schemas").mkdir(exist_ok=True)
         module_boundary_facts.stage_shipped_modules(
@@ -225,6 +227,15 @@ class CheckBatchCloseFixture(BatchCloseRuntimeActions, unittest.TestCase):
             "kblib.write_receipts(a.receipts,[r])\n",
             encoding="utf-8",
         )
+        if getattr(self, "state_mutating_scan", False):
+            script = tools / "fixture_residual.py"
+            script.write_text(
+                script.read_text(encoding="utf-8") +
+                "with open(os.path.join(a.root,'.cambium/state/"
+                "coverage_ledger.yaml'),'a',encoding='utf-8') as fh:\n"
+                "    fh.write('\\n')\n",
+                encoding="utf-8",
+            )
         (tools / "scan-capabilities.yaml").write_text(
             "schema_version: 1\n\n"
             "capabilities:\n"
@@ -235,37 +246,22 @@ class CheckBatchCloseFixture(BatchCloseRuntimeActions, unittest.TestCase):
             encoding="utf-8")
         vocab_base = (
             "kernel/K08 Metadata and Status/vocabulary-base.yaml")
-        (self.root / vocab_base).parent.mkdir(parents=True, exist_ok=True)
-        shutil.copy2(TOOLS.parent / vocab_base, self.root / vocab_base)
-        profile_manifest = self.root / "profiles/test-profile/profile.md"
-        profile_manifest.write_text(
-            profile_manifest.read_text(encoding="utf-8").replace(
-                "- `Vocabulary Extensions`: `slots.md`",
-                "- `Vocabulary Extensions`: `vocabulary-extensions.yaml`"),
-            encoding="utf-8")
-        (profile_manifest.parent / "vocabulary-extensions.yaml").write_text(
-            "schema_version: 1\n"
-            "frontmatter_extensions:\n"
-            "  fields: []\n"
-            "fields:\n"
-            "volatility_defaults:\n"
-            "  fixture: stable\n",
-            encoding="utf-8")
+        (root / vocab_base).parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(TOOLS.parent / vocab_base, root / vocab_base)
+        vocabulary_path = profile / "vocabulary-extensions.yaml"
+        vocabulary = kblib.load_yaml_file(vocabulary_path)
+        vocabulary["volatility_defaults"] = {"fixture": "stable"}
+        vocabulary_path.write_text(
+            kblib.canonical_yaml(vocabulary), encoding="utf-8")
         admission, admission_errors = profile_admission.admit_profile(
-            self.root, profile_manifest.parent)
+            root, profile)
         self.assertEqual([], admission_errors)
         rendered, _vocab, compile_errors = compose_vocab.compiled_artifact(
-            self.root, admission)
+            root, admission)
         self.assertEqual([], compile_errors)
-        vocab_path = self.root / runtime_paths.VOCAB_ARTIFACT_PATH
+        vocab_path = root / runtime_paths.VOCAB_ARTIFACT_PATH
         vocab_path.parent.mkdir(parents=True, exist_ok=True)
         vocab_path.write_text(rendered, encoding="utf-8")
-        # All Profile, verifier-registry and vocabulary inputs are now final.
-        # Rebuild the one current adoption chain from those exact after-image
-        # bytes rather than leaving install_loadable_profile's earlier
-        # synthetic adoption authoritative over a profile we then changed.
-        install_current_adoption_fixture(
-            self.root, profile_manifest.parent, replace_current=True)
 
     def install_plain_s_audit_fixture(self):
         """Install the bounded page and Profile contracts this suite needs.

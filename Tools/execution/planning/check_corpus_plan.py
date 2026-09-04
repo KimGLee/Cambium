@@ -49,6 +49,50 @@ SEMANTIC_ACCEPTANCE_CHECK = "corpus_plan_semantic_acceptance"
 GATE_RECEIPT_TYPE_ID = "corpus-plan-gate-receipt-v1"
 DIAGNOSTIC_RECEIPT_TYPE_ID = "corpus-plan-diagnostic-receipt-v1"
 
+_CONTRACT_VALUES_KEY = "_corpus_planning_contract_values"
+_CONTRACT_SNAPSHOT_KEY = "_corpus_planning_contract_snapshot"
+
+
+def _load_current_contract_context(root, result):
+    """Bind and project the K02 owner exactly once for one entrypoint run."""
+    relative = corpus_planning_contract.CORPUS_PLANNING_CONTRACT_PATH
+    try:
+        snapshot = kblib.repository_file_snapshot(
+            root, relative, singly_linked=True)
+        values = corpus_planning_contract.\
+            current_corpus_planning_contract_values(
+                root, snapshots={relative: snapshot})
+    except (OSError, UnicodeError, TypeError, ValueError,
+            kblib.YamlSubsetError) as exc:
+        _add_error(
+            result, "corpus_planning_contract", relative,
+            "cannot bind the current K02 Corpus Planning contract: %s" %
+            exc)
+        return None
+    result[_CONTRACT_VALUES_KEY] = values
+    result[_CONTRACT_SNAPSHOT_KEY] = snapshot
+    return values
+
+
+def _result_contract_values(result, contract_values=None):
+    """Resolve explicit values, retaining a compatibility-only fallback."""
+    if contract_values is not None:
+        return contract_values
+    if isinstance(result, dict):
+        values = result.get(_CONTRACT_VALUES_KEY)
+        if isinstance(values, dict):
+            return values
+    # Hand-built legacy/unit results do not carry an owner snapshot.  Their
+    # compatibility path intentionally uses the contract shipped with this
+    # Tool rather than pretending an arbitrary fixture root is authoritative.
+    return corpus_planning_contract.current_corpus_planning_contract_values()
+
+
+def _artifact_roles(contract_values):
+    return tuple(
+        contract_values["artifact_roles"][field]
+        for field in contract_values["artifact_binding_fields"])
+
 
 def current_gate_receipt_errors(record, *, root=None):
     errors = receipt_type_contract.base_receipt_errors(
@@ -575,14 +619,17 @@ def _role_ids(root, profile_view, result):
     return roles
 
 
-def _validate_slot(text, target, profile_view, root, result):
+def _validate_slot(
+        text, target, profile_view, root, result, contract_values=None):
+    contract_values = _result_contract_values(result, contract_values)
     try:
         document = kblib.parse_yaml_subset(text)
     except kblib.YamlSubsetError as exc:
         _add_error(result, "slot_yaml_parse", target, str(exc))
         return None
     envelope, issues = \
-        corpus_planning_contract.validate_corpus_planning_envelope(document)
+        corpus_planning_contract.validate_corpus_planning_envelope(
+            document, contract_values=contract_values)
 
     def issue_target(path):
         if not path:
@@ -615,7 +662,9 @@ def _validate_slot(text, target, profile_view, root, result):
             _add_error(result, "yaml_type", label, "must be a list")
         elif code == "applicability_state":
             _add_error(result, "applicability", label,
-                       "must be exactly configured or not-applicable")
+                       "must be exactly %s or %s" % (
+                           contract_values["configured_state"],
+                           contract_values["inactive_state"]))
         elif code == "configured_reason":
             _add_error(result, "applicability", label,
                        "configured requires null reason")
@@ -675,19 +724,19 @@ def _validate_slot(text, target, profile_view, root, result):
         elif code == "authority_decision_scope":
             _add_error(result, "pass_authority", label,
                        "must be exactly %s" %
-                       corpus_planning_contract.SEMANTIC_ACCEPTANCE_SCOPE)
+                       contract_values["semantic_acceptance_scope"])
 
     mode = envelope["mode"]
     reason = envelope["reason"]
-    if mode == corpus_planning_contract.INACTIVE_STATE:
+    if mode == contract_values["inactive_state"]:
         return {"mode": mode, "reason": reason, "bindings": {},
                 "scale": [], "authorities": []}
-    if mode != corpus_planning_contract.CONFIGURED_STATE:
+    if mode != contract_values["configured_state"]:
         return None
 
     bindings = {}
-    for field in corpus_planning_contract.ARTIFACT_BINDING_FIELDS:
-        role = corpus_planning_contract.ARTIFACT_FIELD_ROLES[field]
+    for field in contract_values["artifact_binding_fields"]:
+        role = contract_values["artifact_roles"][field]
         raw = envelope["artifact_bindings"].get(field)
         if raw is None:
             continue
@@ -793,9 +842,12 @@ def _validate_profile_scope(root, profile_view, result):
     return {"path": target, "layers": layers, "text": text}
 
 
-def _validate_global_map(root, binding, profile_scope, result):
+def _validate_global_map(
+        root, binding, profile_scope, result, contract_values=None):
+    contract_values = _result_contract_values(result, contract_values)
     target = binding["value"]
-    contract = corpus_planning_contract.artifact_contract("global_map")
+    contract = corpus_planning_contract.artifact_contract(
+        "global_map", contract_values=contract_values)
     entries_contract = contract["entries"]
     edges_contract = contract["typed_dependencies"]
     document = _schema_document(
@@ -922,10 +974,12 @@ def _validate_global_map(root, binding, profile_scope, result):
     return {"entries": entries, "edges": edges, "path": target}
 
 
-def _validate_matrix(root, binding, scale, global_map, result):
+def _validate_matrix(
+        root, binding, scale, global_map, result, contract_values=None):
+    contract_values = _result_contract_values(result, contract_values)
     target = binding["value"]
     contract = corpus_planning_contract.artifact_contract(
-        "capability_matrix")
+        "capability_matrix", contract_values=contract_values)
     collection = contract["capabilities"]
     document = _schema_document(
         binding, contract["document_fields"], target, result)
@@ -1055,9 +1109,13 @@ def _validate_matrix(root, binding, scale, global_map, result):
     return {"capabilities": capabilities, "path": target}
 
 
-def _validate_gap_register(root, binding, global_map, matrix, runtime, result):
+def _validate_gap_register(
+        root, binding, global_map, matrix, runtime, result,
+        contract_values=None):
+    contract_values = _result_contract_values(result, contract_values)
     target = binding["value"]
-    contract = corpus_planning_contract.artifact_contract("gap_register")
+    contract = corpus_planning_contract.artifact_contract(
+        "gap_register", contract_values=contract_values)
     collection = contract["gaps"]
     document = _schema_document(
         binding, contract["document_fields"], target, result)
@@ -1170,7 +1228,8 @@ def _validate_gap_register(root, binding, global_map, matrix, runtime, result):
 
     if ("matrix_gap_links_bidirectional" in
             corpus_planning_contract.artifact_contract(
-                "capability_matrix")["rules"] and
+                "capability_matrix",
+                contract_values=contract_values)["rules"] and
             "matrix_gap_links_bidirectional" in
             contract["rules"]):
         for capability in matrix.get("capabilities", []):
@@ -1244,7 +1303,7 @@ def runtime(root, result, authorized_profile_view=None,
     return runtime
 
 
-def planning_artifact_paths(result):
+def planning_artifact_paths(result, *, contract_values=None):
     """Return every explicit path that makes a batch planning-affected.
 
     The selected Profile manifest is included because it owns the slot
@@ -1255,6 +1314,7 @@ def planning_artifact_paths(result):
     entries, Matrix canonical/evidence paths, and Gap promoted/evidence paths.
     No prose, backlink, similarity, or inferred dependency expands this set.
     """
+    contract_values = _result_contract_values(result, contract_values)
     paths = []
 
     def add(candidate):
@@ -1273,7 +1333,7 @@ def planning_artifact_paths(result):
     if isinstance(slot, dict):
         bindings = slot.get("bindings")
         if isinstance(bindings, dict):
-            for role in corpus_planning_contract.ARTIFACT_ROLES:
+            for role in _artifact_roles(contract_values):
                 binding = bindings.get(role)
                 add(binding)
 
@@ -1303,20 +1363,23 @@ def planning_artifact_paths(result):
     return tuple(dict.fromkeys(paths))
 
 
-def close_requirement(runtime, item, result):
+def close_requirement(runtime, item, result, *, contract_values=None):
     """Return the deterministic Corpus Planning close-gate requirement.
 
     R13 selection is task-level.  Manifest applicability is exact path-set
     intersection against :func:`planning_artifact_paths`; it never infers a
     relationship from content or naming.
     """
+    contract_values = _result_contract_values(result, contract_values)
     contract = {}
     if isinstance(runtime, dict):
         contract = (runtime.get("progress") or {}).get("contract") or {}
     selected_routes = contract.get("selected_route_ids")
     manifest = item.get("manifest") if isinstance(item, dict) else []
     return corpus_planning_contract.derive_close_requirement(
-        selected_routes, manifest, planning_artifact_paths(result))
+        selected_routes, manifest,
+        planning_artifact_paths(result, contract_values=contract_values),
+        contract_values=contract_values)
 
 
 def _profile_snapshot_file_sha256(result, relative, label):
@@ -1341,6 +1404,26 @@ def _result_currency_errors(result):
     if not isinstance(root, str) or not isinstance(view, dict):
         return ["Corpus Planning result has no authorized Profile view"]
     errors = list(_profile_view_currency_errors(root, view))
+    contract_snapshot = result.get(_CONTRACT_SNAPSHOT_KEY)
+    has_contract_context = _CONTRACT_VALUES_KEY in result or \
+        _CONTRACT_SNAPSHOT_KEY in result
+    if has_contract_context and not isinstance(
+            contract_snapshot, kblib.RepositoryFileSnapshot):
+        errors.append("Corpus Planning result has no immutable K02 contract "
+                      "snapshot")
+    elif has_contract_context:
+        try:
+            current_contract = kblib.repository_file_snapshot(
+                root,
+                corpus_planning_contract.CORPUS_PLANNING_CONTRACT_PATH,
+                singly_linked=True)
+        except (OSError, ValueError) as exc:
+            errors.append("cannot re-bind the K02 Corpus Planning contract: "
+                          "%s" % exc)
+        else:
+            if current_contract.sha256 != contract_snapshot.sha256:
+                errors.append("K02 Corpus Planning contract changed after "
+                              "validation")
 
     runtime = result.get("runtime")
     if isinstance(runtime, dict):
@@ -1365,7 +1448,8 @@ def _result_currency_errors(result):
                               relative)
 
     bindings = ((result.get("slot") or {}).get("bindings") or {})
-    for role in corpus_planning_contract.ARTIFACT_ROLES:
+    contract_values = _result_contract_values(result)
+    for role in _artifact_roles(contract_values):
         artifact = bindings.get(role)
         if not isinstance(artifact, dict):
             continue
@@ -1386,7 +1470,7 @@ def _result_currency_errors(result):
 
 
 def receipt_binding(result, *, repository_snapshot_sha256=None,
-                    progress_ledger_sha256=None):
+                    progress_ledger_sha256=None, contract_values=None):
     """Return the exact freshness binding for one successful validation.
 
     ``progress_ledger_sha256`` is an explicit terminal-only override.  A
@@ -1395,6 +1479,7 @@ def receipt_binding(result, *, repository_snapshot_sha256=None,
     supplies that receipt-bound before-image while requiring the transition's
     after-image to equal current Progress bytes.
     """
+    contract_values = _result_contract_values(result, contract_values)
     if result.get("errors"):
         raise ValueError("cannot bind a failed Corpus Planning validation")
     currency = _result_currency_errors(result)
@@ -1465,7 +1550,7 @@ def receipt_binding(result, *, repository_snapshot_sha256=None,
         binding["progress_ledger_sha256"] = progress_ledger_sha256
 
     if result.get("applicability") == \
-            corpus_planning_contract.CONFIGURED_STATE:
+            contract_values["configured_state"]:
         profile_scope = result.get("profile_scope") or {}
         profile_scope_path = profile_scope.get("path")
         if not isinstance(profile_scope_path, str) or not profile_scope_path:
@@ -1481,7 +1566,7 @@ def receipt_binding(result, *, repository_snapshot_sha256=None,
                 "capability_matrix_path", "capability_matrix_sha256"),
             "Gap Register": ("gap_register_path", "gap_register_sha256"),
         }
-        for role in corpus_planning_contract.ARTIFACT_ROLES:
+        for role in _artifact_roles(contract_values):
             artifact = bindings.get(role)
             if not isinstance(artifact, dict):
                 raise ValueError("configured plan has no %s binding" % role)
@@ -1493,10 +1578,11 @@ def receipt_binding(result, *, repository_snapshot_sha256=None,
                                  "snapshot" % role)
             binding[sha_field] = snapshot.sha256
     elif result.get("applicability") != \
-            corpus_planning_contract.INACTIVE_STATE:
+            contract_values["inactive_state"]:
         raise ValueError("Corpus Planning applicability is not resolved")
     binding_issues = \
-        corpus_planning_contract.receipt_binding_shape_issues(binding)
+        corpus_planning_contract.receipt_binding_shape_issues(
+            binding, contract_values=contract_values)
     if binding_issues:
         raise ValueError(
             "Corpus Planning receipt binding violates the K02 contract: %r"
@@ -1510,12 +1596,14 @@ def receipt_binding(result, *, repository_snapshot_sha256=None,
 
 
 def make_pass_receipt(result, *, repository_snapshot_sha256=None,
-                      progress_ledger_sha256=None, seq=1):
+                      progress_ledger_sha256=None, seq=1,
+                      contract_values=None):
     """Build one reusable pass receipt bound to exact current bytes."""
     binding = receipt_binding(
         result,
         repository_snapshot_sha256=repository_snapshot_sha256,
         progress_ledger_sha256=progress_ledger_sha256,
+        contract_values=contract_values,
     )
     details = (
         "applicability=%s; layers=%d; entries=%d; capabilities=%d; "
@@ -1569,6 +1657,10 @@ def current_freshness_binding(root, selected_profile_manifest, *, task_id,
         "runtime": None,
         "errors": [],
     }
+    contract_values = _load_current_contract_context(root, result)
+    if contract_values is None:
+        raise ValueError("; ".join(
+            _display_error(error) for error in result["errors"]))
     manifest_path, profile_view, _ = _authorized_profile_view(
         root, selected_profile_manifest, result,
         authorized_profile_view=authorized_profile_view)
@@ -1578,22 +1670,23 @@ def current_freshness_binding(root, selected_profile_manifest, *, task_id,
     result["_authorized_profile_view"] = profile_view
     result["profile_manifest"] = _relative(root, manifest_path)
     slot_path = _typed_slot_path(
-        root, profile_view, corpus_planning_contract.SLOT_NAME, result)
+        root, profile_view, contract_values["slot_name"], result)
     if slot_path is None:
         raise ValueError("; ".join(
             _display_error(error) for error in result["errors"]))
     result["slot_path"] = _relative(root, slot_path)
     slot_text = _typed_slot_text(
-        profile_view, corpus_planning_contract.SLOT_NAME, result)
+        profile_view, contract_values["slot_name"], result)
     if slot_text is None:
         raise ValueError("; ".join(
             _display_error(error) for error in result["errors"]))
     slot = _validate_slot(
-        slot_text, result["slot_path"], profile_view, root, result)
+        slot_text, result["slot_path"], profile_view, root, result,
+        contract_values=contract_values)
     result["slot"] = slot
     if slot:
         result["applicability"] = slot["mode"]
-        if slot["mode"] == corpus_planning_contract.CONFIGURED_STATE:
+        if slot["mode"] == contract_values["configured_state"]:
             result["profile_scope"] = _validate_profile_scope(
                 root, profile_view, result)
     if result["errors"] or not slot:
@@ -1628,6 +1721,7 @@ def current_freshness_binding(root, selected_profile_manifest, *, task_id,
             terminal_progress_ledger_sha256
             if terminal_progress_ledger_sha256 is not None
             else progress_ledger_sha256),
+        contract_values=contract_values,
     )
 
 
@@ -1636,7 +1730,8 @@ def pass_receipt_errors(root, receipt, *, result=None,
                         repository_snapshot_sha256=None,
                         progress_ledger_sha256=None,
                         require_runtime=True,
-                        require_configured=False):
+                        require_configured=False,
+                        contract_values=None):
     """Return freshness errors for one persisted Corpus Planning pass.
 
     Consumers rerun the structural/reconciliation validator only when they
@@ -1649,6 +1744,18 @@ def pass_receipt_errors(root, receipt, *, result=None,
         return ["Corpus Planning receipt must be a mapping"]
     if result is None and expected_binding is None:
         result = validate_corpus_plan(root)
+    if contract_values is None:
+        if isinstance(result, dict):
+            contract_values = _result_contract_values(result)
+        else:
+            try:
+                contract_values = \
+                    corpus_planning_contract.\
+                    current_corpus_planning_contract_values(root)
+            except (OSError, UnicodeError, TypeError, ValueError,
+                    kblib.YamlSubsetError) as exc:
+                return ["cannot bind the current K02 Corpus Planning "
+                        "contract: %s" % exc]
     if result is not None and result.get("errors"):
         errors.append(
             "current Corpus Planning validation fails: %s" % "; ".join(
@@ -1658,7 +1765,7 @@ def pass_receipt_errors(root, receipt, *, result=None,
                      if isinstance(expected_binding, dict)
                      else result.get("applicability"))
     if require_configured and applicability != \
-            corpus_planning_contract.CONFIGURED_STATE:
+            contract_values["configured_state"]:
         errors.append("R13 requires Corpus Planning applicability.state=configured")
     if expected_binding is None:
         try:
@@ -1684,7 +1791,7 @@ def pass_receipt_errors(root, receipt, *, result=None,
             errors.append("Corpus Planning receipt %s=%r, expected %r" %
                           (field, receipt.get(field), expected))
     for difference in corpus_planning_contract.receipt_binding_differences(
-            receipt, expected_binding):
+            receipt, expected_binding, contract_values=contract_values):
         errors.append("Corpus Planning receipt %s=%r, expected %r" %
                       (difference["field"], difference["actual"],
                        difference["expected"]))
@@ -1723,6 +1830,7 @@ def acceptance_plan_errors(root, plan, result):
     It does not make the semantic decision: every accepted/rejected value and
     rationale remains the declaration of the Profile-bound authority role.
     """
+    contract_values = _result_contract_values(result)
     errors = _plain_closed_mapping_errors(
         plan, SEMANTIC_ACCEPTANCE_PLAN_FIELDS,
         "Corpus Planning semantic-acceptance plan")
@@ -1732,7 +1840,7 @@ def acceptance_plan_errors(root, plan, result):
         errors.append("current Corpus Planning structure/reconciliation fails")
         return errors
     if result.get("applicability") != \
-            corpus_planning_contract.CONFIGURED_STATE:
+            contract_values["configured_state"]:
         errors.append(
             "semantic acceptance requires applicability.state=configured")
         return errors
@@ -1756,9 +1864,9 @@ def acceptance_plan_errors(root, plan, result):
             "authority_role_id=%r, expected the Profile-bound role %r" %
             (plan.get("authority_role_id"), expected_authority))
     if plan.get("decision_scope_id") != \
-            corpus_planning_contract.SEMANTIC_ACCEPTANCE_SCOPE:
+            contract_values["semantic_acceptance_scope"]:
         errors.append("decision_scope_id must be exactly %s" %
-                      corpus_planning_contract.SEMANTIC_ACCEPTANCE_SCOPE)
+                      contract_values["semantic_acceptance_scope"])
 
     decisions = plan.get("decisions")
     if not isinstance(decisions, list) or not decisions:
@@ -1824,6 +1932,7 @@ def semantic_acceptance_receipt_errors(
         return ["Corpus Planning semantic-acceptance receipt must be a mapping"]
     if result is None:
         result = validate_corpus_plan(root)
+    contract_values = _result_contract_values(result)
     if result.get("errors"):
         return ["current Corpus Planning structure/reconciliation fails"]
     try:
@@ -1838,7 +1947,7 @@ def semantic_acceptance_receipt_errors(
         "tool": SEMANTIC_ACCEPTANCE_TOOL,
         "tool_version": SEMANTIC_ACCEPTANCE_TOOL_VERSION,
         "check": SEMANTIC_ACCEPTANCE_CHECK,
-        "gate_id": corpus_planning_contract.SEMANTIC_ACCEPTANCE_SCOPE,
+        "gate_id": contract_values["semantic_acceptance_scope"],
         "target": expected_binding["selected_profile_manifest"],
         "invalidated_by": None,
     }
@@ -1847,7 +1956,7 @@ def semantic_acceptance_receipt_errors(
             errors.append("semantic-acceptance receipt %s=%r, expected %r" %
                           (field, receipt.get(field), expected))
     for difference in corpus_planning_contract.receipt_binding_differences(
-            receipt, expected_binding):
+            receipt, expected_binding, contract_values=contract_values):
         errors.append("semantic-acceptance receipt %s=%r, expected %r" %
                       (difference["field"], difference["actual"],
                        difference["expected"]))
@@ -1918,24 +2027,25 @@ def semantic_acceptance_receipt_errors(
         errors.extend(pass_receipt_errors(
             root, structural_receipt, result=result,
             repository_snapshot_sha256=repository_snapshot_sha256,
-            require_runtime=True, require_configured=True))
+            require_runtime=True, require_configured=True,
+            contract_values=contract_values))
     return errors
 
 
 def semantic_acceptance_status(result, *, repository_snapshot_sha256=None):
     """Return the current machine-readable authority-decision status."""
+    contract_values = _result_contract_values(result)
     base = {
         "status": "not-recorded",
         "receipt_id": None,
         "authority_role_id": None,
-        "decision_scope_id":
-            corpus_planning_contract.SEMANTIC_ACCEPTANCE_SCOPE,
+        "decision_scope_id": contract_values["semantic_acceptance_scope"],
         "capability_decisions": [],
     }
     if result.get("errors") or result.get("applicability") != \
-            corpus_planning_contract.CONFIGURED_STATE and \
+            contract_values["configured_state"] and \
             result.get("applicability") != \
-            corpus_planning_contract.INACTIVE_STATE:
+            contract_values["inactive_state"]:
         base["status"] = "unavailable"
         return base
     runtime = result.get("runtime")
@@ -1944,8 +2054,8 @@ def semantic_acceptance_status(result, *, repository_snapshot_sha256=None):
         base["status"] = "unavailable"
         return base
     if result.get("applicability") == \
-            corpus_planning_contract.INACTIVE_STATE:
-        base["status"] = corpus_planning_contract.INACTIVE_STATE
+            contract_values["inactive_state"]:
+        base["status"] = contract_values["inactive_state"]
         return base
     authorities = (result.get("slot") or {}).get("authorities") or []
     if len(authorities) == 1:
@@ -2014,6 +2124,9 @@ def validate_corpus_plan(root, profile=None, *, authorized_profile_view=None,
     if not os.path.isdir(root):
         _add_error(result, "root", root, "repository root is not a directory")
         return result
+    contract_values = _load_current_contract_context(root, result)
+    if contract_values is None:
+        return result
 
     manifest_path, profile_view, _ = _authorized_profile_view(
         root, profile, result,
@@ -2023,17 +2136,18 @@ def validate_corpus_plan(root, profile=None, *, authorized_profile_view=None,
     result["_authorized_profile_view"] = profile_view
     result["profile_manifest"] = _relative(root, manifest_path)
     slot_path = _typed_slot_path(
-        root, profile_view, corpus_planning_contract.SLOT_NAME, result)
+        root, profile_view, contract_values["slot_name"], result)
     if slot_path is None:
         return result
     result["slot_path"] = _relative(root, slot_path)
     slot_text = _typed_slot_text(
-        profile_view, corpus_planning_contract.SLOT_NAME, result)
+        profile_view, contract_values["slot_name"], result)
     if slot_text is None:
         return result
 
     slot = _validate_slot(
-        slot_text, result["slot_path"], profile_view, root, result)
+        slot_text, result["slot_path"], profile_view, root, result,
+        contract_values=contract_values)
     result["slot"] = slot
     if slot:
         result["applicability"] = slot["mode"]
@@ -2054,13 +2168,13 @@ def validate_corpus_plan(root, profile=None, *, authorized_profile_view=None,
             )
 
     if not slot or slot["mode"] != \
-            corpus_planning_contract.CONFIGURED_STATE:
+            contract_values["configured_state"]:
         for error in _profile_view_currency_errors(root, profile_view):
             _add_error(result, "profile_currency",
                        result["profile_manifest"], error)
         return result
     if set(slot["bindings"]) != set(
-            corpus_planning_contract.ARTIFACT_ROLES):
+            _artifact_roles(contract_values)):
         for error in _profile_view_currency_errors(root, profile_view):
             _add_error(result, "profile_currency",
                        result["profile_manifest"], error)
@@ -2071,15 +2185,16 @@ def validate_corpus_plan(root, profile=None, *, authorized_profile_view=None,
     result["profile_scope"] = profile_scope
 
     global_map = _validate_global_map(
-        root, slot["bindings"]["Global Map"], profile_scope, result)
+        root, slot["bindings"]["Global Map"], profile_scope, result,
+        contract_values=contract_values)
     result["global_map"] = global_map
     matrix = _validate_matrix(
         root, slot["bindings"]["Capability Matrix"], slot["scale"],
-        global_map, result)
+        global_map, result, contract_values=contract_values)
     result["matrix"] = matrix
     gap_register = _validate_gap_register(
         root, slot["bindings"]["Gap Register"], global_map, matrix,
-        runtime_result, result)
+        runtime_result, result, contract_values=contract_values)
     result["gap_register"] = gap_register
     for error in _profile_view_currency_errors(root, profile_view):
         _add_error(result, "profile_currency",
@@ -2259,7 +2374,8 @@ def main(argv=None):
         print("[FAIL] Corpus Planning validation failed with %d issue(s)" %
               len(result["errors"]))
         return 1
-    if result["applicability"] == corpus_planning_contract.INACTIVE_STATE:
+    contract_values = _result_contract_values(result)
+    if result["applicability"] == contract_values["inactive_state"]:
         print("[PASS] Corpus Planning structure: not applicable: %s" %
               result["applicability_reason"])
     else:

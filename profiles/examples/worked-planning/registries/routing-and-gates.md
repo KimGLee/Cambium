@@ -1,6 +1,6 @@
 # Routing And Gate Registry
 
-Interface: [Kernel-owned Profile interface](../../../../kernel/K00%20Standards%20Control/19%20Profile%20Extension%20Interface.md) — Routing And Gate Registry slot
+Interface: [Kernel-owned Profile interface](../../../../kernel/K00%20Standards%20Control/profile-interface.yaml) — Routing And Gate Registry slot
 
 Every subsection is `None`. Corpus planning is gated by the kernel gates `corpus-plan-structure` and `corpus-plan-semantic-acceptance`, which this profile parameterizes through its Corpus Planning slot rather than supplementing here. No configured feature of this profile depends on a registration in this file: there is no readiness axis, so no readiness gate is required.
 
@@ -24,6 +24,13 @@ Every subsection is `None`. Corpus planning is gated by the kernel gates `corpus
 
 | Judgment Item ID reference | Applicability / trigger predicate | Verification procedure or existing Scan/receipt-source reference | Evidence-reuse predicate/boundary |
 |---|---|---|---|
+
+## Batch Review Requirements
+
+- Registration: None
+
+| Judgment Item ID reference | Target selector: `each-manifest-page` or `batch` | Trigger: `before-merge-ready` | Producer kind: `manual-attestation` | Receipt schema | Pass-authority Role ID reference |
+|---|---|---|---|---|---|
 
 ## Extension Gates
 

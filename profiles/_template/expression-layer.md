@@ -6,4 +6,7 @@ Kernel owner: K11 Expression Layer. Common slot identity is registered in the Ke
 
 - Registration: None
 
-This candidate registers no derived reader-facing artifact. Confirm that the repository uses its canonical pages directly, or replace this inactive choice with stable artifact bindings allowed by the Kernel extension point.
+| Stable artifact ID | Artifact type | Reader-facing label | Entry point | Dependency-map path or `None` | Metadata binding field ID(s) or `None` | Revalidation trigger | Contract reference (Profile path with `#heading`) | Readiness field ID or `None` |
+|---|---|---|---|---|---|---|---|---|
+
+## Artifact Contracts

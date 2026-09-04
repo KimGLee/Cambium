@@ -2,8 +2,6 @@
 
 Kernel owner: K07 Sources and Accuracy. Common slot identity is registered in the Kernel Profile interface.
 
-For a personal or operational corpus, the maintainer's own observation — recorded with a retrieval date — is a registrable source class, alongside the primary vendor or upstream documentation. "This corpus has no sources" is almost never true; name where its claims actually come from.
-
 ## Source Authority
 
 | Rank | Stable Source ID and exact location | Bounded canonical claim/content class | Version/release/commit, or retrieval date if unversioned |

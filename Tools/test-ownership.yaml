@@ -1740,6 +1740,18 @@ tests:
         semantics: profile_expression_status_target_projection
         owner_contract_symbol: profile_contract.expression_status_target_projection
         parallel_safe: true
+      - selector: ExpressionArtifactRegistryContractTests.test_runtime_hub_consumer_uses_only_the_typed_projection
+        owner: Tools/execution/task_runtime/queue_runtime/control_plane.py
+        level: contract
+        semantics: expression_hub_typed_profile_projection_connection
+        owner_contract_symbol: control_plane.profile_hub_paths
+        parallel_safe: true
+      - selector: ExpressionArtifactRegistryContractTests.test_agent_atlas_example_projects_its_registered_interview_hub
+        owner: Tools/execution/task_runtime/queue_runtime/control_plane.py
+        level: contract
+        semantics: agent_atlas_expression_hub_typed_profile_projection
+        owner_contract_symbol: control_plane.profile_hub_paths
+        parallel_safe: true
       - selector: ProfileVolatilityDefaultsContractTests.*
         level: contract
         semantics: profile_volatility_defaults_typed_projection
@@ -2950,10 +2962,6 @@ fixtures:
   - path: Tools/tests/support/cli_contract_fixture.py
     owner: Tools/platform/agent_interface/compile_cli_contract.py
     purpose: Minimal parser and policy checkpoint for compiled CLI contract tests
-    lifecycle: current
-  - path: Tools/tests/support/corpus_plan_fixture.py
-    owner: kernel/K02 Knowledge Work Construction/corpus-planning-contract.yaml
-    purpose: Current Profile/runtime integration checkpoint for semantic acceptance
     lifecycle: current
   - path: Tools/tests/support/coverage_delta_fixture.py
     owner: Tools/execution/planning/coverage_delta.py

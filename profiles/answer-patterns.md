@@ -24,16 +24,22 @@ official / standard / paper / book / ecosystem-implementation / community, each 
 
 ## 6. Readiness Axis Three-piece (expression-layer expansion)
 
-A readiness field (`not-required / missing / mapped / ready`-shaped values) + a reviewer role bound in Role Registry + one extension gate that alone grants the terminal value. The same shape serves any derived-artifact pipeline (interview cards, published digests, release notes).
+A readiness field + a reviewer role bound in Role Registry + one extension gate that alone grants the terminal value. Use this only when an adopter needs a durable readiness claim distinct from authoring, mapping, and learning status; merely registering an expression artifact does not require it.
 
 ## 7. Residual-scan Archetype (C1)
 
-`<X>-type structure belongs only under <X's root>`; the scan reports it leaking anywhere else. Instances: dated scratch entries outside the daily-log folder; interview-card structure outside the interview layer. On a corpus that already has pages, matchers come from strings that really occur under the accepted root. On an empty one they are declared from the page structure just confirmed, and bounded founding creates the witness page that carries them — before any batch or runtime state exists: the production scan requires the repository to contain at least one file the matchers recognise, so a declared class must be materialized rather than left on paper. The positive control does not catch a fabricated matcher — it synthesizes its own inputs and proves only self-consistency.
+`<X>-type structure belongs only under <X's root>`; the scan reports it leaking anywhere else. Instances include dated scratch entries outside the daily-log folder or a registered expression structure outside its expression layer. On a corpus that already has pages, matchers come from strings that really occur under the accepted root. On an empty one they are declared from the page structure just confirmed, and bounded founding creates the witness page that carries them before any batch or runtime state exists. The production scan requires the repository to contain at least one file the matchers recognize, so a declared class must be materialized rather than left on paper. The positive control does not catch a fabricated matcher; it synthesizes its own inputs and proves only self-consistency.
 
 ## 8. Term-band Rule (bilingual corpora, language expansion)
 
 Body prose defaults to the body language; a foreign-language term appears only in one of two bands — identifier band (verbatim interface/product names, kept exactly; translating would break the source correspondence) or term-anchor band (first use as `native term (foreign term)`, native-only afterward). Per-term test, no counting thresholds.
 
+## 9. Volatility Domains And Section-role Display (C2)
+
+`volatility_defaults` maps the corpus's real stable domain IDs to `fast`, `slow`, or `stable`. The template's `general: slow` is only a pre-filled proposal: confirm it only for a genuinely undivided corpus; otherwise rename or split it to match the confirmed domains without inventing a second domain taxonomy.
+
+Metadata Contract `section_roles` is the sole machine-readable binding for the Kernel roles `sources` and `related`. For each role actually used by the corpus, record its accepted reader-facing title or titles and only the bounded aliases that existing content or a confirmed migration requires. Language Contract states the human-facing language and display policy; it does not repeat the `section_roles` mapping.
+
 ## Also Available As Worked Examples
 
-Two-provider comparison rules and evaluation-provenance extensions (metric-reporting corpora) have configured forms in `profiles/examples/agent-atlas/source-policy.md`; inactive and default forms remain available in the sole `profiles/_template/` candidate template.
+The shipped examples demonstrate how to fill the same candidate template at different levels of detail. They do not establish vendor-specific comparison duties, experiment systems, source defaults, or a second template tier.

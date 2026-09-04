@@ -6,7 +6,7 @@ This directory is a non-normative, filled example of the Cambium profile interfa
 
 It is not a template, a default configuration, or a claim that a corpus this small needs a plan. Because it lives under `profiles/examples/`, its manifest is intentionally not selectable in place.
 
-The common interface is owned by [K00/19](../../../kernel/K00%20Standards%20Control/19%20Profile%20Extension%20Interface.md); the three artifact contracts are owned by [K02/05](../../../kernel/K02%20Knowledge%20Work%20Construction/05%20Global%20Map%20Contract.md), [K02/06](../../../kernel/K02%20Knowledge%20Work%20Construction/06%20Capability%20Matrix%20Contract.md), and [K02/07](../../../kernel/K02%20Knowledge%20Work%20Construction/07%20Gap%20Register%20Contract.md).
+The common interface is owned by the [Kernel Profile registry](../../../kernel/K00%20Standards%20Control/profile-interface.yaml); the three artifact contracts are owned by [K02/05](../../../kernel/K02%20Knowledge%20Work%20Construction/05%20Global%20Map%20Contract.md), [K02/06](../../../kernel/K02%20Knowledge%20Work%20Construction/06%20Capability%20Matrix%20Contract.md), and [K02/07](../../../kernel/K02%20Knowledge%20Work%20Construction/07%20Gap%20Register%20Contract.md).
 
 ## Why The Corpus Is Inside The Package
 
@@ -38,7 +38,7 @@ A Global Map entry must name a Markdown file that really exists, and a Profile S
 - **Three capability positions**: above the lowest rank and below target (needs both evidence and a Gap ID); at target (needs neither); still at rank `0` (the only position where `evidence_paths` may legally be `[]`).
 - **The empty-list branch**, written as an explicit `[]` exactly where K02/06 and K02/07 permit it — `evidence_paths` and `gap_ids` in the Matrix, `evidence_paths` in the Register — and never for `map_entry_ids`, `canonical_markdown_paths`, or `capability_ids`, which those modules require to carry at least one value.
 - **Bidirectional Matrix–Gap links**, including a `rejected` gap and a `deferred` gap that a capability still names.
-- **One legal Execution Default Overrides row** ([profile.md](profile.md)), using `priority_quota.P0` — the item this distribution's tools actually resolve from the manifest.
+- **One legal Execution Default Overrides row** ([profile.md](profile.md)), using `concurrency_cap` — an item this distribution's tools actually resolve from the manifest.
 - **Judgment items with all three evidence roles**: `emits`, `consumes` (satisfied by the `corpus-plan-structure` receipt), and `triggers` (raises candidates, produces no receipt).
 
 ## What It Does Not Demonstrate
@@ -50,7 +50,7 @@ A Global Map entry must name a Markdown file that really exists, and a Profile S
 
 ## Materialization Warning
 
-The verifier command in [registries/registered-scans.md](registries/registered-scans.md), the predicate-owner cells in [registries/audit-dimensions.md](registries/audit-dimensions.md), the three artifact bindings, and every path inside `planning/` contain this example's own repository path. If you materialize the answer shape, rewrite every `profiles/examples/worked-planning/...` string to the intended Profile or corpus path. `check_profile.py` fails closed on the Profile-owned config and predicate-owner edges through `profile-load`; `check_corpus_plan.py` remains the separate owner of the externally bound planning artifacts and their corpus paths. Neither checker guesses a replacement.
+The configuration reference in [registries/registered-scans.md](registries/registered-scans.md), the predicate-owner cells in [registries/audit-dimensions.md](registries/audit-dimensions.md), the three artifact bindings, and every path inside `planning/` contain this example's own repository path. If you materialize the answer shape, rewrite every `profiles/examples/worked-planning/...` string to the intended Profile or corpus path. `check_profile.py` fails closed on the Profile-owned config and predicate-owner edges through `profile-load`; `check_corpus_plan.py` remains the separate owner of the externally bound planning artifacts and their corpus paths. Neither checker guesses a replacement.
 
 ## Validation Provenance
 

@@ -1,0 +1,45 @@
+schema_version: 1
+contract_id: vocabulary-extensions-shape-v1
+semantic_owner: K08/01+K08/03+K08/05
+
+# This contract owns the common machine shape of Profile vocabulary extensions. A selected Profile owns only its added values, optional Profile-only field semantics, and domain volatility bindings.
+document:
+  schema_version: 1
+  fields:
+    - schema_version
+    - frontmatter_extensions
+    - fields
+    - volatility_defaults
+
+frontmatter_extensions:
+  fields:
+    - fields
+  field_list_shape: unique-nonempty-string-list
+
+vocabulary_field:
+  field_id_pattern: "[a-z][a-z0-9_]*"
+  required_fields:
+    - values
+  optional_fields:
+    - owner
+    - role
+  values_shape: string-list
+  owner_shape: nonempty-string
+  role_shape: nonempty-string
+
+volatility_defaults:
+  minimum_items: 1
+  domain_id_shape: nonempty-trimmed-string
+  value_owner: K08-vocabulary.volatility
+
+composition_rules:
+  policy: append-only-profile-extensions
+  kernel_field_allowed_fields:
+    - values
+  profile_only_field_allowed_fields:
+    - owner
+    - role
+    - values
+  domain_identity_owner: volatility_defaults.keys
+  fields_domain_forbidden: true
+  composed_frontmatter_field_membership: explicit-plus-profile-only-fields

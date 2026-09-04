@@ -118,6 +118,55 @@ class TestCatalogContractTests(unittest.TestCase):
              "file_copies": 0, "full_repository_copies": 0},
             case["execution"]["transitive_effects"])
 
+    def test_ephemeral_os_and_python_artifacts_are_not_fixtures(self):
+        root = self.root()
+        SyntheticCatalogWorkspace.write(
+            root,
+            test_source=(
+                "import unittest\n"
+                "from Tools.tests.support.sample_fixture import value\n"
+                "class SampleTests(unittest.TestCase):\n"
+                "    def test_value(self):\n"
+                "        self.assertEqual(1, value())\n"
+            ),
+            fixture_source="def value():\n    return 1\n",
+        )
+        fixture_root = root / "Tools/tests/fixtures"
+        cache = fixture_root / "contract/__pycache__"
+        cache.mkdir(parents=True)
+        (fixture_root / ".DS_Store").write_bytes(b"Finder metadata")
+        (cache / "objects.cpython-312.pyc").write_bytes(b"bytecode")
+        (fixture_root / "stray.pyc").write_bytes(b"bytecode")
+
+        catalog, errors = test_catalog.build_catalog(root)
+
+        self.assertEqual([], errors)
+        self.assertEqual(1, catalog["summary"]["fixtures"])
+
+    def test_unknown_ordinary_fixture_still_fails_closed(self):
+        root = self.root()
+        SyntheticCatalogWorkspace.write(
+            root,
+            test_source=(
+                "import unittest\n"
+                "from Tools.tests.support.sample_fixture import value\n"
+                "class SampleTests(unittest.TestCase):\n"
+                "    def test_value(self):\n"
+                "        self.assertEqual(1, value())\n"
+            ),
+            fixture_source="def value():\n    return 1\n",
+        )
+        unknown = root / "Tools/tests/fixtures/unowned.json"
+        unknown.parent.mkdir(parents=True)
+        unknown.write_text("{}\n", encoding="utf-8")
+
+        _catalog, errors = test_catalog.build_catalog(root)
+
+        self.assertTrue(any(
+            "unclassified fixtures: Tools/tests/fixtures/unowned.json" in error
+            for error in errors
+        ), errors)
+
     def test_transitive_lifecycle_and_scopes_reject_a_fast_classification(self):
         root = self.root()
         SyntheticCatalogWorkspace.write(

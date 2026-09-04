@@ -1,6 +1,6 @@
 # Scope And Architecture
 
-Interface: [Kernel-owned Profile interface](../../../kernel/K00%20Standards%20Control/19%20Profile%20Extension%20Interface.md) — Profile Scope slot
+Interface: [Kernel-owned Profile interface](../../../kernel/K00%20Standards%20Control/profile-interface.yaml) — Profile Scope slot
 
 ## Goal
 
@@ -25,16 +25,12 @@ Interface: [Kernel-owned Profile interface](../../../kernel/K00%20Standards%20Co
 
 ## Logical Architecture
 
-Use exact repository-relative directory paths without trailing slashes. Separate multiple directories in one layer with semicolons.
-
 | Stable Layer ID | Repository-relative directories | Single layer responsibility |
 |---|---|---|
 | L-FOUNDATION | profiles/examples/worked-planning/corpus/Foundations | Own the concepts a service decision depends on, independent of any one procedure. |
 | L-PROCEDURE | profiles/examples/worked-planning/corpus/Procedures | Own the bench procedures, each with its own finish condition. |
 | L-CASES | profiles/examples/worked-planning/corpus/Service Cases | Own completed services as worked cases with retained measurements. |
 | L-SOURCES | profiles/examples/worked-planning/corpus/Source Notes | Own which external documents are canonical and what each is canonical for. |
-
-A real adopter's layer directories are vault-root-relative and sit outside `profiles/`. They are nested inside this example package only so the deterministic checkers have real files to resolve; see [README.md](README.md).
 
 ## Knowledge Spine
 
@@ -43,8 +39,6 @@ A real adopter's layer directories are vault-root-relative and sit outside `prof
 | Concept, then procedure that applies it, then case that evidences it, with source notes naming what each figure is quoted from. | The Global Map entry's typed dependency edges; every page is the downstream end of at least one. |
 
 ## Placement Layer Registrations
-
-Layer roles bind a registered Layer ID; an unused role uses `None` plus its fallback Layer ID. The expression role uses a testable predicate, or `always false` when unused.
 
 | Kernel role | Binding type | Registered binding or inactive form |
 |---|---|---|

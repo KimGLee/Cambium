@@ -1,6 +1,6 @@
-# Worked Planning Example Profile
+# Profile Manifest
 
-Normative interface: [Profile interface](../../README.md). Example namespace rules: [Examples](../README.md).
+Common interface: [Kernel Profile registry](../../../kernel/K00%20Standards%20Control/profile-interface.yaml).
 
 ## Profile Identity
 

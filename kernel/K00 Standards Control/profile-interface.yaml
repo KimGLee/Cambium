@@ -1,82 +1,680 @@
-schema_version: 1
+schema_version: 3
 interface_id: cambium-profile-interface
 semantic_owner: K00/19
 
 registry_references:
   audit_dimension_base: kernel/K12 Quality Assurance/audit-dimension-base.yaml
   corpus_planning_contract: kernel/K02 Knowledge Work Construction/corpus-planning-contract.yaml
+  metadata_profile_contract: kernel/K08 Metadata and Status/metadata-profile-contract.yaml
+  structure_registry_contract: kernel/K01 Scope and Architecture/structure-registry-contract.yaml
+  vocabulary_extensions_contract: kernel/K08 Metadata and Status/vocabulary-extensions-contract.yaml
 
-# This registry owns the common Profile interface. A selected Profile owns
-# only the confirmed value bound to each slot. Profile documentation and
-# profiles/_template are orientation and candidate material, not interface
-# authorities.
+manifest_form:
+  path: profile.md
+  required_headings:
+    - "# Profile Manifest"
+    - "## Profile Identity"
+    - "## Implemented Slots"
+    - "## Execution Default Overrides"
+  instance_subheading_containers: []
+
+# This registry owns the common Profile slot and form interface. A selected
+# Profile owns only the confirmed value bound to each slot. Profile
+# documentation and profiles/_template are orientation and candidate
+# material, not interface authorities.
 slots:
   - slot_id: profile-scope
     name: Profile Scope
     binding: file
     kernel_owner: K01/01-K01/04
+    form:
+      path: scope-and-architecture.md
+      required_headings:
+        - "# Scope And Architecture"
+        - "## Goal"
+        - "## Content Priority Factors"
+        - "## Excluded Scope"
+        - "## Logical Architecture"
+        - "## Knowledge Spine"
+        - "## Placement Layer Registrations"
+        - "## New Page Placement Rule"
+        - "## Terminology Structure"
+        - "## Foundation Depth Requirements"
+        - "## Production System Reasoning Applicability"
+        - "## Representative Sample Plan"
+        - "## Dependency-ordered Build Sequence"
+      instance_subheading_containers: []
   - slot_id: corpus-planning
     name: Corpus Planning
     binding: file
     kernel_owner: K02/03
+    form:
+      path: corpus-planning.yaml
+      shape_owner:
+        contract_id: cambium-corpus-planning-contract
+        registry_reference: corpus_planning_contract
   - slot_id: structure-registry
     name: Structure Registry
     binding: file
     kernel_owner: K01/05-K01/06
+    form:
+      path: structure-registry.yaml
+      shape_owner:
+        contract_id: structure-registry-shape-v2
+        registry_reference: structure_registry_contract
   - slot_id: metadata-contract
     name: Metadata Contract
     binding: file
     kernel_owner: K08/06-K08/09
+    form:
+      path: metadata-contract.yaml
+      shape_owner:
+        contract_id: metadata-contract-shape-v1
+        registry_reference: metadata_profile_contract
   - slot_id: priority-rubric
     name: Priority Rubric
     binding: file
     kernel_owner: K00/07
+    form:
+      path: priority-rubric.md
+      required_headings:
+        - "# Priority Rubric"
+        - "## Profile-owned Grant Criteria"
+        - "## Priority Quota"
+      instance_subheading_containers: []
   - slot_id: vocabulary-extensions
     name: Vocabulary Extensions
     binding: file
     kernel_owner: K08/01-K08/05
+    form:
+      path: vocabulary-extensions.yaml
+      shape_owner:
+        contract_id: vocabulary-extensions-shape-v1
+        registry_reference: vocabulary_extensions_contract
   - slot_id: language-contract
     name: Language Contract
     binding: file
     kernel_owner: K10/01-K10/04
+    form:
+      path: language-contract.md
+      required_headings:
+        - "# Language Contract"
+        - "## Language Routing"
+        - "## Canonical Naming"
+        - "## Terminology And Display"
+        - "## Content Length Unit"
+        - "## K10/04 Scoped Anti-pattern Extensions"
+        - "## Additional Formatting Migration Invalidations"
+      instance_subheading_containers: []
   - slot_id: expression-layer-entry
     name: Expression Layer Entry
     binding: file
     kernel_owner: K11/01
+    form:
+      path: expression-layer.md
+      required_headings:
+        - "# Expression Layer"
+        - "## Registered Artifacts"
+        - "## Artifact Contracts"
+      instance_subheading_containers:
+        - heading: "## Artifact Contracts"
+          reference_kinds:
+            - expression-contract
   - slot_id: source-policy
     name: Source Policy
     binding: file
     kernel_owner: K07/01-K07/06
+    form:
+      path: source-policy.md
+      required_headings:
+        - "# Source Policy"
+        - "## Source Authority"
+        - "## Verification Entry Points"
+        - "## Staleness Triggers"
+        - "## Domain-specific Comparison Rules"
+        - "## Provenance Extensions"
+      instance_subheading_containers: []
   - slot_id: role-registry
     name: Role Registry
     binding: file
     kernel_owner: K00/19
+    form:
+      path: registries/roles.md
+      required_headings:
+        - "# Role Registry"
+        - "## Process Roles"
+        - "## Knowledge Host"
+        - "## Metric Traceability Roles"
+        - "## Extension Roles"
+      instance_subheading_containers: []
   - slot_id: audit-dimension-registry
     name: Audit Dimension Registry
     binding: file
     kernel_owner: K12/01-K12/08
+    form:
+      path: registries/audit-dimensions.md
+      required_headings:
+        - "# Audit Dimension Registry"
+        - "## Extension Dimensions"
+        - "## Judgment Items"
+        - "## Residual Disposition"
+      instance_subheading_containers:
+        - heading: "## Judgment Items"
+          reference_kinds:
+            - predicate-owner
+        - heading: "## Residual Disposition"
+          reference_kinds:
+            - predicate-owner
   - slot_id: registered-scan-registry
     name: Registered Scan Registry
     binding: file
     kernel_owner: K12/05-K12/09
+    form:
+      path: registries/registered-scans.md
+      required_headings:
+        - "# Registered Scan Registry"
+        - "## Scan Registrations"
+      instance_subheading_containers: []
   - slot_id: escalation-policy
     name: Escalation Policy
     binding: file
     kernel_owner: K13/17
+    form:
+      path: escalation-policy.md
+      required_headings:
+        - "# Escalation Policy"
+        - "## Escalation Triggers"
+      instance_subheading_containers: []
   - slot_id: routing-and-gate-registry
     name: Routing And Gate Registry
     binding: file
     kernel_owner: K00/02+K00/12
+    form:
+      path: registries/routing-and-gates.md
+      required_headings:
+        - "# Routing And Gate Registry"
+        - "## Supplemental Routes"
+        - "## Additional L-tier Triggers"
+        - "## Specialized Audit Invariants"
+        - "## Batch Review Requirements"
+        - "## Extension Gates"
+      instance_subheading_containers: []
+
+scalar_carrier_types:
+  registration:
+    label: Registration
+    allowed_exact_values:
+      - "None"
+      - Configured
+    allowed_prefixes: []
+  applicability:
+    label: Applicability
+    allowed_exact_values:
+      - Configured
+    allowed_prefixes:
+      - "Not applicable — "
+  content_length_unit:
+    label: "Unit (`words` or `characters`)"
+    allowed_exact_values:
+      - words
+      - characters
+    allowed_prefixes: []
+
+scalar_carriers:
+  production_system_reasoning_applicability:
+    form_id: profile-scope
+    section: Production System Reasoning Applicability
+    carrier_type: applicability
+    cardinality: exactly-one
+  representative_sample_applicability:
+    form_id: profile-scope
+    section: Representative Sample Plan
+    carrier_type: applicability
+    cardinality: exactly-one
+  dependency_ordered_build_applicability:
+    form_id: profile-scope
+    section: Dependency-ordered Build Sequence
+    carrier_type: applicability
+    cardinality: exactly-one
+  priority_quota_registration:
+    form_id: priority-rubric
+    section: Priority Quota
+    carrier_type: registration
+    cardinality: exactly-one
+  content_length_unit:
+    form_id: language-contract
+    section: Content Length Unit
+    carrier_type: content_length_unit
+    cardinality: exactly-one
+  scoped_anti_pattern_registration:
+    form_id: language-contract
+    section: K10/04 Scoped Anti-pattern Extensions
+    carrier_type: registration
+    cardinality: exactly-one
+  formatting_migration_registration:
+    form_id: language-contract
+    section: Additional Formatting Migration Invalidations
+    carrier_type: registration
+    cardinality: exactly-one
+  registered_artifacts_registration:
+    form_id: expression-layer-entry
+    section: Registered Artifacts
+    carrier_type: registration
+    cardinality: exactly-one
+  domain_comparison_registration:
+    form_id: source-policy
+    section: Domain-specific Comparison Rules
+    carrier_type: registration
+    cardinality: exactly-one
+  provenance_extension_registration:
+    form_id: source-policy
+    section: Provenance Extensions
+    carrier_type: registration
+    cardinality: exactly-one
+  metric_traceability_applicability:
+    form_id: role-registry
+    section: Metric Traceability Roles
+    carrier_type: applicability
+    cardinality: exactly-one
+  extension_role_registration:
+    form_id: role-registry
+    section: Extension Roles
+    carrier_type: registration
+    cardinality: exactly-one
+  extension_dimension_registration:
+    form_id: audit-dimension-registry
+    section: Extension Dimensions
+    carrier_type: registration
+    cardinality: exactly-one
+  escalation_trigger_registration:
+    form_id: escalation-policy
+    section: Escalation Triggers
+    carrier_type: registration
+    cardinality: exactly-one
+  supplemental_route_registration:
+    form_id: routing-and-gate-registry
+    section: Supplemental Routes
+    carrier_type: registration
+    cardinality: exactly-one
+  additional_l_tier_registration:
+    form_id: routing-and-gate-registry
+    section: Additional L-tier Triggers
+    carrier_type: registration
+    cardinality: exactly-one
+  specialized_audit_registration:
+    form_id: routing-and-gate-registry
+    section: Specialized Audit Invariants
+    carrier_type: registration
+    cardinality: exactly-one
+  batch_review_registration:
+    form_id: routing-and-gate-registry
+    section: Batch Review Requirements
+    carrier_type: registration
+    cardinality: exactly-one
+  extension_gate_registration:
+    form_id: routing-and-gate-registry
+    section: Extension Gates
+    carrier_type: registration
+    cardinality: exactly-one
 
 tables:
+  execution_default_overrides:
+    form_id: profile-manifest
+    section: Execution Default Overrides
+    cardinality: exactly-one
+    row_policy:
+      kind: open
+    header:
+      - Override item ID from the registry
+      - Non-default profile value
+  goal:
+    form_id: profile-scope
+    section: Goal
+    cardinality: exactly-one
+    row_policy:
+      kind: exactly-one
+    header:
+      - Knowledge-base goal (one sentence)
+      - Intended reader role(s)
+  content_priority_factors:
+    form_id: profile-scope
+    section: Content Priority Factors
+    cardinality: exactly-one
+    row_policy:
+      kind: open
+    header:
+      - Rank
+      - Ranked content-priority factor
+  excluded_scope:
+    form_id: profile-scope
+    section: Excluded Scope
+    cardinality: exactly-one
+    row_policy:
+      kind: open
+    header:
+      - "Bounded excluded content (`None — no exclusions` allowed)"
+      - "Destination or handling (`Not applicable` when none)"
+  logical_architecture:
+    form_id: profile-scope
+    section: Logical Architecture
+    cardinality: exactly-one
+    row_policy:
+      kind: open
+    header:
+      - Stable Layer ID
+      - Repository-relative directories
+      - Single layer responsibility
+  knowledge_spine:
+    form_id: profile-scope
+    section: Knowledge Spine
+    cardinality: exactly-one
+    row_policy:
+      kind: exactly-one
+    header:
+      - Page-to-page organizing logic / Knowledge Spine
+      - Field or statement locating each page on that spine
+  placement_layer_registrations:
+    form_id: profile-scope
+    section: Placement Layer Registrations
+    cardinality: exactly-one
+    row_policy:
+      kind: fixed-key
+      key_column: Kernel role
+      keys:
+        - Shared Foundation Layer
+        - Production Systems Layer
+        - Cross-domain Concepts Layer
+        - Expression Layer Predicate
+        - Case Study Layer
+        - Source Note Layer
+        - Research Synthesis Layer
+    header:
+      - Kernel role
+      - Binding type
+      - Registered binding or inactive form
+  new_page_placement_rule:
+    form_id: profile-scope
+    section: New Page Placement Rule
+    cardinality: exactly-one
+    row_policy:
+      kind: open
+    header:
+      - Order
+      - Testable page predicate
+      - Registered target Layer ID
+  terminology_structure:
+    form_id: profile-scope
+    section: Terminology Structure
+    cardinality: exactly-one
+    row_policy:
+      kind: open
+    header:
+      - Bounded term class
+      - Registered target Layer ID
+      - Inclusion/exclusion boundary
+  foundation_depth_requirements:
+    form_id: profile-scope
+    section: Foundation Depth Requirements
+    cardinality: exactly-one
+    row_policy:
+      kind: open
+    header:
+      - Bounded foundation page class
+      - Testable completeness predicate
+  production_system_reasoning_applicability:
+    form_id: profile-scope
+    section: Production System Reasoning Applicability
+    cardinality: exactly-one
+    row_policy:
+      kind: applicability-open
+      carrier_id: production_system_reasoning_applicability
+    header:
+      - Page predicate covered by production-system reasoning
+  representative_sample_plan:
+    form_id: profile-scope
+    section: Representative Sample Plan
+    cardinality: exactly-one
+    row_policy:
+      kind: applicability-open
+      carrier_id: representative_sample_applicability
+    header:
+      - Note type
+      - Selection predicate
+  dependency_ordered_build_sequence:
+    form_id: profile-scope
+    section: Dependency-ordered Build Sequence
+    cardinality: exactly-one
+    row_policy:
+      kind: applicability-open
+      carrier_id: dependency_ordered_build_applicability
+    header:
+      - Order
+      - Stage
+      - Depends on
+      - Output
+  profile_owned_grant_criteria:
+    form_id: priority-rubric
+    section: Profile-owned Grant Criteria
+    cardinality: exactly-one
+    row_policy:
+      kind: fixed-key
+      key_column: Priority
+      keys:
+        - P0
+        - P1
+    header:
+      - Priority
+      - "Testable grant predicate (`No grants` if always false)"
+      - "Protected reader capability or time horizon (`Not applicable` for no grants)"
+  priority_quota:
+    form_id: priority-rubric
+    section: Priority Quota
+    cardinality: exactly-one
+    row_policy:
+      kind: registration-fixed-key
+      carrier_id: priority_quota_registration
+      key_column: Class
+      keys:
+        - P0
+        - P1
+    header:
+      - Class
+      - Maximum corpus share
+      - Rationale
+  language_routing:
+    form_id: language-contract
+    section: Language Routing
+    cardinality: exactly-one
+    row_policy:
+      kind: fixed-key
+      key_column: Concern
+      keys:
+        - Body language (language name or tag)
+        - "Secondary language and canonical form on disagreement (`None — monolingual` allowed)"
+        - General proper-name display (localized, original, or bilingual; include occurrence scope)
+        - Official external-name display around preserved identity
+        - Machine-identifier display around the exact token
+    header:
+      - Concern
+      - Profile rule
+  canonical_naming:
+    form_id: language-contract
+    section: Canonical Naming
+    cardinality: exactly-one
+    row_policy:
+      kind: fixed-key
+      key_column: Object
+      keys:
+        - Folders
+        - Pages
+        - Term notes
+        - Image assets
+    header:
+      - Object
+      - Language, casing, and separators
+  terminology_and_display:
+    form_id: language-contract
+    section: Terminology And Display
+    cardinality: exactly-one
+    row_policy:
+      kind: fixed-key
+      key_column: Concern
+      keys:
+        - Alias forms (included name/language forms)
+        - Headings and labels (display pattern)
+        - Abbreviation first use (form and page/vault scope)
+        - Reader-facing display order (ordered components)
+        - "File-name annotation boundary (allowed annotations or `None`)"
+    header:
+      - Concern
+      - Profile rule
+  scoped_anti_pattern_extensions:
+    form_id: language-contract
+    section: K10/04 Scoped Anti-pattern Extensions
+    cardinality: exactly-one
+    row_policy:
+      kind: registration-open
+      carrier_id: scoped_anti_pattern_registration
+    header:
+      - Kernel anti-pattern ID or profile extension ID
+      - Scoped exception or added predicate
+      - Predicate-owner path
+  formatting_migration_invalidations:
+    form_id: language-contract
+    section: Additional Formatting Migration Invalidations
+    cardinality: exactly-one
+    row_policy:
+      kind: registration-open
+      carrier_id: formatting_migration_registration
+    header:
+      - K10/04 change-kind ID or profile trigger
+      - Additional invalidated dimensions
+      - Scoped exception
+      - Rule-owner path
+  registered_artifacts:
+    form_id: expression-layer-entry
+    section: Registered Artifacts
+    cardinality: exactly-one
+    row_policy:
+      kind: registration-open
+      carrier_id: registered_artifacts_registration
+    header:
+      - Stable artifact ID
+      - Artifact type
+      - Reader-facing label
+      - Entry point
+      - "Dependency-map path or `None`"
+      - "Metadata binding field ID(s) or `None`"
+      - Revalidation trigger
+      - "Contract reference (Profile path with `#heading`)"
+      - "Readiness field ID or `None`"
+  source_authority:
+    form_id: source-policy
+    section: Source Authority
+    cardinality: exactly-one
+    row_policy:
+      kind: open
+    header:
+      - Rank
+      - Stable Source ID and exact location
+      - Bounded canonical claim/content class
+      - Version/release/commit, or retrieval date if unversioned
+  verification_entry_points:
+    form_id: source-policy
+    section: Verification Entry Points
+    cardinality: exactly-one
+    row_policy:
+      kind: open
+    header:
+      - Bounded claim class
+      - Registered Source ID
+      - Stable verifier capability, evidence source, or semantic review criterion
+      - Version pin or freshness window
+  staleness_triggers:
+    form_id: source-policy
+    section: Staleness Triggers
+    cardinality: exactly-one
+    row_policy:
+      kind: open
+    header:
+      - Observable change event
+      - Bounded affected pages or claims
+  domain_specific_comparison_rules:
+    form_id: source-policy
+    section: Domain-specific Comparison Rules
+    cardinality: exactly-one
+    row_policy:
+      kind: registration-open
+      carrier_id: domain_comparison_registration
+    header:
+      - Condition
+      - Additional profile rule
+  provenance_extensions:
+    form_id: source-policy
+    section: Provenance Extensions
+    cardinality: exactly-one
+    row_policy:
+      kind: registration-open
+      carrier_id: provenance_extension_registration
+    header:
+      - Applicability / trigger
+      - Additional provenance requirement
+      - Recording target reference (Vocabulary field ID, body heading, or evidence path)
+  process_roles:
+    form_id: role-registry
+    section: Process Roles
+    cardinality: exactly-one
+    row_policy:
+      kind: fixed-key
+      key_column: Kernel role
+      keys:
+        - proposer
+        - gatekeeper
+        - executor
+        - stopper
+    header:
+      - Kernel role
+      - Bound actor or system ID/name
+  knowledge_host:
+    form_id: role-registry
+    section: Knowledge Host
+    cardinality: exactly-one
+    row_policy:
+      kind: fixed-key
+      key_column: Kernel role
+      keys:
+        - knowledge-host
+        - knowledge-host UI
+    header:
+      - Kernel role
+      - Binding
+  metric_traceability_roles:
+    form_id: role-registry
+    section: Metric Traceability Roles
+    cardinality: exactly-one
+    row_policy:
+      kind: applicability-open
+      carrier_id: metric_traceability_applicability
+    header:
+      - Kernel role
+      - Profile field or identifier
   extension_dimensions:
+    form_id: audit-dimension-registry
     section: Extension Dimensions
+    cardinality: exactly-one
+    row_policy:
+      kind: registration-open
+      carrier_id: extension_dimension_registration
     header:
       - Dimension ID
       - "Target list(s): `review`, `receipt`, or `review + receipt`"
       - Meaning
   judgment_items:
+    form_id: audit-dimension-registry
     section: Judgment Items
+    cardinality: exactly-one
+    row_policy:
+      kind: open
     header:
       - Stable Judgment Item ID
       - Base or registered receipt Dimension ID
@@ -85,7 +683,11 @@ tables:
       - "Evidence role: `emits`, `consumes`, or `triggers`"
       - "Predicate owner (repo-relative path; optional `#heading`)"
   registered_scans:
+    form_id: registered-scan-registry
     section: Scan Registrations
+    cardinality: exactly-one
+    row_policy:
+      kind: open
     header:
       - Stable Scan ID
       - Activation role
@@ -95,7 +697,12 @@ tables:
       - Candidate predicate/boundary
       - Judgment Item ID reference
   extension_gates:
+    form_id: routing-and-gate-registry
     section: Extension Gates
+    cardinality: exactly-one
+    row_policy:
+      kind: registration-open
+      carrier_id: extension_gate_registration
     header:
       - Gate ID
       - "Kernel Gate ID or repo-relative owner path, optionally `#heading`"
@@ -110,13 +717,23 @@ tables:
       - Receipt schema
       - Consumer capability
   extension_roles:
+    form_id: role-registry
     section: Extension Roles
+    cardinality: exactly-one
+    row_policy:
+      kind: registration-open
+      carrier_id: extension_role_registration
     header:
       - Role ID
       - Bound actor or system ID/name
       - Responsibility
   batch_review_requirements:
+    form_id: routing-and-gate-registry
     section: Batch Review Requirements
+    cardinality: exactly-one
+    row_policy:
+      kind: registration-open
+      carrier_id: batch_review_registration
     header:
       - Judgment Item ID reference
       - "Target selector: `each-manifest-page` or `batch`"
@@ -124,8 +741,63 @@ tables:
       - "Producer kind: `manual-attestation`"
       - Receipt schema
       - Pass-authority Role ID reference
+  escalation_triggers:
+    form_id: escalation-policy
+    section: Escalation Triggers
+    cardinality: exactly-one
+    row_policy:
+      kind: registration-open
+      carrier_id: escalation_trigger_registration
+    header:
+      - Trigger ID
+      - Condition that fires it
+      - "`machine-checkable` or `review-checkable`"
+      - Deciding Role ID reference
+      - Resume condition
+  supplemental_routes:
+    form_id: routing-and-gate-registry
+    section: Supplemental Routes
+    cardinality: exactly-one
+    row_policy:
+      kind: registration-open
+      carrier_id: supplemental_route_registration
+    header:
+      - "Profile route ID: `P:<profile_id>:<route_name>`"
+      - Kernel route ID reference
+      - Repo-relative Profile Read Set path
+  additional_l_tier_triggers:
+    form_id: routing-and-gate-registry
+    section: Additional L-tier Triggers
+    cardinality: exactly-one
+    row_policy:
+      kind: registration-open
+      carrier_id: additional_l_tier_registration
+    header:
+      - Testable materiality predicate
+      - Why full L-tier review is required
+  specialized_audit_invariants:
+    form_id: routing-and-gate-registry
+    section: Specialized Audit Invariants
+    cardinality: exactly-one
+    row_policy:
+      kind: registration-open
+      carrier_id: specialized_audit_registration
+    header:
+      - Judgment Item ID reference
+      - Applicability / trigger predicate
+      - Verification procedure or existing Scan/receipt-source reference
+      - Evidence-reuse predicate/boundary
 
 closed_sets:
+  table_cardinalities:
+    - exactly-one
+  table_row_policy_kinds:
+    - open
+    - exactly-one
+    - fixed-key
+    - registration-open
+    - registration-fixed-key
+    - applicability-open
   batch_review_target_selectors:
     - each-manifest-page
     - batch

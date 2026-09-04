@@ -62,6 +62,110 @@ PROFILE_LOAD_EVIDENCE_FIELDS = (
 PROFILE_LOAD_EVIDENCE_FINGERPRINT_FIELDS = \
     PROFILE_LOAD_EVIDENCE_FIELDS[1:]
 
+@dataclass(frozen=True)
+class ProfileForm:
+    """One Kernel-owned Profile file form.
+
+    The form binds one canonical file location to either a Markdown form
+    skeleton or a referenced Kernel-owned YAML shape contract. Candidate
+    prose, template answers, and instance values remain outside this machine
+    contract.
+    """
+
+    path: str
+    required_headings: Tuple[str, ...]
+    yaml_shape_owner: Optional[Tuple[str, str]]
+    instance_subheading_containers: Tuple[
+        Tuple[str, Tuple[str, ...]], ...]
+
+
+def _profile_form(value, label):
+    if not isinstance(value, dict) or "path" not in value:
+        raise ValueError("%s fields are not closed" % label)
+    path = canonical_repository_relative_path(
+        value.get("path"), "%s path" % label)
+    if not path.endswith((".md", ".yaml")):
+        raise ValueError("%s path must end in .md or .yaml" % label)
+    markdown = path.endswith(".md")
+    expected_fields = (
+        {"path", "required_headings", "instance_subheading_containers"}
+        if markdown else {"path", "shape_owner"})
+    if set(value) != expected_fields:
+        raise ValueError(
+            "%s fields are not closed for a %s form" %
+            (label, "Markdown" if markdown else "YAML"))
+    headings = value.get("required_headings", [])
+    yaml_shape_owner = value.get("shape_owner")
+    containers = value.get("instance_subheading_containers", [])
+    if (not isinstance(headings, list) or
+            any(not isinstance(item, str) for item in headings) or
+            len(headings) != len(set(headings))):
+        raise ValueError("%s required_headings must be a unique string list" %
+                         label)
+    if markdown and not headings:
+        raise ValueError("%s Markdown form must declare headings" % label)
+    parsed_yaml_shape_owner = None
+    if not markdown:
+        if not isinstance(yaml_shape_owner, dict) or set(yaml_shape_owner) != {
+                "contract_id", "registry_reference"}:
+            raise ValueError(
+                "%s YAML shape_owner fields are not closed" % label)
+        contract_id = yaml_shape_owner.get("contract_id")
+        registry_reference = yaml_shape_owner.get("registry_reference")
+        for field, item in (("contract_id", contract_id),
+                            ("registry_reference", registry_reference)):
+            if (not isinstance(item, str) or
+                    re.fullmatch(r"[a-z][a-z0-9_-]*", item) is None):
+                raise ValueError(
+                    "%s YAML shape_owner %s is invalid" % (label, field))
+        parsed_yaml_shape_owner = (contract_id, registry_reference)
+    parsed = []
+    for item in headings:
+        heading = kblib.markdown_atx_heading(item)
+        if (heading is None or heading[0] not in (1, 2) or
+                item != "%s %s" % ("#" * heading[0], heading[1])):
+            raise ValueError(
+                "%s required heading %r must be one canonical H1/H2" %
+                (label, item))
+        parsed.append(heading)
+    parsed_containers = []
+    for index, item in enumerate(containers):
+        if not isinstance(item, dict) or set(item) != {
+                "heading", "reference_kinds"}:
+            raise ValueError(
+                "%s instance subheading container %d fields are not closed" %
+                (label, index))
+        heading_text = item.get("heading")
+        reference_kinds = item.get("reference_kinds")
+        if (not isinstance(reference_kinds, list) or not reference_kinds or
+                any(not isinstance(kind, str) or
+                    re.fullmatch(r"[a-z][a-z0-9]*(?:-[a-z0-9]+)*", kind)
+                    is None for kind in reference_kinds) or
+                len(reference_kinds) != len(set(reference_kinds))):
+            raise ValueError(
+                "%s instance subheading container %d reference_kinds must "
+                "be a non-empty unique kebab-case list" % (label, index))
+        heading = kblib.markdown_atx_heading(heading_text)
+        if (heading is None or heading[0] != 2 or
+                heading_text != "## %s" % heading[1] or
+                heading_text not in headings):
+            raise ValueError(
+                "%s instance subheading container %r must name one required "
+                "H2" % (label, heading_text))
+        parsed_containers.append(
+            (heading_text, tuple(reference_kinds)))
+    if len({item[0] for item in parsed_containers}) != \
+            len(parsed_containers):
+        raise ValueError(
+            "%s instance subheading container headings must be unique" %
+            label)
+    return ProfileForm(
+        path=path,
+        required_headings=tuple(headings),
+        yaml_shape_owner=parsed_yaml_shape_owner,
+        instance_subheading_containers=tuple(parsed_containers),
+    )
+
 
 def scan_capability_records(document):
     """Return the closed Tool-owned verifier capability registry by ID."""
@@ -137,7 +241,8 @@ def profile_interface_slots(document):
     required = {
         "schema_version", "interface_id", "semantic_owner", "slots",
         "registry_references", "tables", "closed_sets",
-        "capability_bindings",
+        "capability_bindings", "manifest_form", "scalar_carrier_types",
+        "scalar_carriers",
     }
     missing = sorted(required - set(document))
     extra = sorted(set(document) - required)
@@ -145,15 +250,17 @@ def profile_interface_slots(document):
         raise ValueError(
             "Profile interface fields are not closed: missing=%s extra=%s" %
             (missing, extra))
-    if document.get("schema_version") != 1:
-        raise ValueError("Profile interface schema_version must be 1")
+    if document.get("schema_version") != 3:
+        raise ValueError("Profile interface schema_version must be 3")
     if document.get("interface_id") != "cambium-profile-interface":
         raise ValueError("Profile interface_id must be cambium-profile-interface")
     if document.get("semantic_owner") != "K00/19":
         raise ValueError("Profile semantic_owner must be K00/19")
     references = document.get("registry_references")
     if not isinstance(references, dict) or set(references) != {
-            "audit_dimension_base", "corpus_planning_contract"}:
+            "audit_dimension_base", "corpus_planning_contract",
+            "metadata_profile_contract", "structure_registry_contract",
+            "vocabulary_extensions_contract"}:
         raise ValueError("Profile registry_references fields are not closed")
     if references.get("audit_dimension_base") != \
             audit_dimension_contract.AUDIT_DIMENSION_BASE_PATH:
@@ -165,6 +272,23 @@ def profile_interface_slots(document):
         raise ValueError(
             "Profile corpus_planning_contract reference must be %s" %
             corpus_planning_contract.CORPUS_PLANNING_CONTRACT_PATH)
+    for reference_id, path in references.items():
+        try:
+            path = canonical_repository_relative_path(
+                path, "Profile registry reference %s" % reference_id)
+        except ValueError as exc:
+            raise ValueError(str(exc)) from exc
+        if not path.endswith(".yaml"):
+            raise ValueError(
+                "Profile registry reference %s must name one YAML file" %
+                reference_id)
+    manifest_form = _profile_form(
+        document.get("manifest_form"), "Profile manifest form")
+    if manifest_form.path != profile_layout_contract.PROFILE_MANIFEST_NAME:
+        raise ValueError(
+            "Profile manifest form path must be %s" %
+            profile_layout_contract.PROFILE_MANIFEST_NAME)
+
     slots = document.get("slots")
     if not isinstance(slots, list) or not slots:
         raise ValueError("Profile interface slots must be a non-empty list")
@@ -173,7 +297,8 @@ def profile_interface_slots(document):
     for index, row in enumerate(slots):
         if not isinstance(row, dict):
             raise ValueError("Profile interface slot %d must be a mapping" % index)
-        if set(row) != {"slot_id", "name", "binding", "kernel_owner"}:
+        if set(row) != {
+                "slot_id", "name", "binding", "kernel_owner", "form"}:
             raise ValueError(
                 "Profile interface slot %d fields are not closed" % index)
         name = row.get("name")
@@ -189,11 +314,270 @@ def profile_interface_slots(document):
         if not isinstance(row.get("kernel_owner"), str) or not \
                 row["kernel_owner"].strip():
             raise ValueError("Profile interface slot %d has no Kernel owner" % index)
+        form = _profile_form(
+            row.get("form"), "Profile interface slot %d form" % index)
+        if form.yaml_shape_owner is not None:
+            _contract_id, registry_reference = form.yaml_shape_owner
+            if registry_reference not in references:
+                raise ValueError(
+                    "Profile interface slot %d YAML shape owner names unknown "
+                    "registry_reference %r" %
+                    (index, registry_reference))
         names.append(name)
         identifiers.append(slot_id)
     if len(set(names)) != len(names) or len(set(identifiers)) != len(identifiers):
         raise ValueError("Profile interface slot names and IDs must be unique")
+    form_paths = [manifest_form.path] + [
+        _profile_form(row["form"], "Profile interface slot form").path
+        for row in slots
+    ]
+    if len(form_paths) != len(set(form_paths)):
+        raise ValueError("Profile interface form paths must be unique")
+
+    tables = document.get("tables")
+    closed_sets = document.get("closed_sets")
+    if not isinstance(tables, dict) or not tables:
+        raise ValueError("Profile interface tables must be a non-empty mapping")
+    if not isinstance(closed_sets, dict):
+        raise ValueError("Profile interface closed_sets must be a mapping")
+    table_cardinalities = closed_sets.get("table_cardinalities")
+    if (not isinstance(table_cardinalities, list) or
+            table_cardinalities != ["exactly-one"]):
+        raise ValueError(
+            "Profile interface table_cardinalities must be exactly "
+            "['exactly-one']")
+    forms_by_id = {"profile-manifest": manifest_form}
+    forms_by_id.update({
+        row["slot_id"]: _profile_form(
+            row["form"], "Profile interface slot %s form" % row["name"])
+        for row in slots
+    })
+    carrier_types = document.get("scalar_carrier_types")
+    if not isinstance(carrier_types, dict) or not carrier_types:
+        raise ValueError(
+            "Profile interface scalar_carrier_types must be a non-empty "
+            "mapping")
+    for carrier_type, row in carrier_types.items():
+        if (not isinstance(carrier_type, str) or
+                re.fullmatch(r"[a-z][a-z0-9_]*", carrier_type) is None):
+            raise ValueError(
+                "Profile interface scalar carrier type %r must be "
+                "lower_snake_case" % carrier_type)
+        if not isinstance(row, dict) or set(row) != {
+                "label", "allowed_exact_values", "allowed_prefixes"}:
+            raise ValueError(
+                "Profile interface scalar carrier type %s fields are not "
+                "closed" % carrier_type)
+        label = row.get("label")
+        exact = row.get("allowed_exact_values")
+        prefixes = row.get("allowed_prefixes")
+        if not isinstance(label, str) or not label or label.strip() != label:
+            raise ValueError(
+                "Profile interface scalar carrier type %s label is invalid" %
+                carrier_type)
+        for field, values in (("allowed_exact_values", exact),
+                              ("allowed_prefixes", prefixes)):
+            if (not isinstance(values, list) or
+                    any(not isinstance(value, str) or not value
+                        for value in values) or
+                    len(values) != len(set(values))):
+                raise ValueError(
+                    "Profile interface scalar carrier type %s %s must be a "
+                    "unique string list" % (carrier_type, field))
+        if not exact and not prefixes:
+            raise ValueError(
+                "Profile interface scalar carrier type %s permits no value" %
+                carrier_type)
+
+    carriers = document.get("scalar_carriers")
+    if not isinstance(carriers, dict) or not carriers:
+        raise ValueError(
+            "Profile interface scalar_carriers must be a non-empty mapping")
+    carrier_owners = set()
+    for carrier_id, row in carriers.items():
+        if (not isinstance(carrier_id, str) or
+                re.fullmatch(r"[a-z][a-z0-9_]*", carrier_id) is None):
+            raise ValueError(
+                "Profile interface scalar carrier ID %r must be "
+                "lower_snake_case" % carrier_id)
+        if not isinstance(row, dict) or set(row) != {
+                "form_id", "section", "carrier_type", "cardinality"}:
+            raise ValueError(
+                "Profile interface scalar carrier %s fields are not closed" %
+                carrier_id)
+        form_id = row.get("form_id")
+        form = forms_by_id.get(form_id)
+        section = row.get("section")
+        if form is None:
+            raise ValueError(
+                "Profile interface scalar carrier %s names unknown form_id "
+                "%r" % (carrier_id, form_id))
+        if (not isinstance(section, str) or
+                "## %s" % section not in form.required_headings):
+            raise ValueError(
+                "Profile interface scalar carrier %s section %r is not a "
+                "required H2 of form %s" %
+                (carrier_id, section, form_id))
+        if row.get("carrier_type") not in carrier_types:
+            raise ValueError(
+                "Profile interface scalar carrier %s names unknown type %r" %
+                (carrier_id, row.get("carrier_type")))
+        if row.get("cardinality") not in table_cardinalities:
+            raise ValueError(
+                "Profile interface scalar carrier %s has unsupported "
+                "cardinality %r" %
+                (carrier_id, row.get("cardinality")))
+        owner = (form_id, section)
+        if owner in carrier_owners:
+            raise ValueError(
+                "Profile interface form %s section %r owns more than one "
+                "scalar carrier" % (form_id, section))
+        carrier_owners.add(owner)
+
+    row_policy_kinds = closed_sets.get("table_row_policy_kinds")
+    supported_row_policy_kinds = {
+        "open", "exactly-one", "fixed-key", "registration-open",
+        "registration-fixed-key", "applicability-open",
+    }
+    if (not isinstance(row_policy_kinds, list) or
+            set(row_policy_kinds) != supported_row_policy_kinds or
+            any(not isinstance(kind, str) or not kind
+                for kind in row_policy_kinds) or
+            len(row_policy_kinds) != len(set(row_policy_kinds))):
+        raise ValueError(
+            "Profile interface table_row_policy_kinds must exactly match "
+            "the implemented form policy kinds")
+    section_owners = set()
+    for table_id, row in tables.items():
+        if (not isinstance(table_id, str) or
+                re.fullmatch(r"[a-z][a-z0-9_]*", table_id) is None):
+            raise ValueError(
+                "Profile interface table ID %r must be lower_snake_case" %
+                table_id)
+        row = tables[table_id]
+        if not isinstance(row, dict) or set(row) != {
+                "form_id", "section", "cardinality", "header",
+                "row_policy"}:
+            raise ValueError(
+                "Profile interface table %s fields are not closed" %
+                table_id)
+        form_id = row.get("form_id")
+        form = forms_by_id.get(form_id)
+        if form is None:
+            raise ValueError(
+                "Profile interface table %s names unknown form_id %r" %
+                (table_id, form_id))
+        section = row.get("section")
+        header = row.get("header")
+        if (not isinstance(section, str) or not section or
+                section.strip() != section):
+            raise ValueError(
+                "Profile interface table %s section must be a non-empty "
+                "trimmed string" % table_id)
+        if "## %s" % section not in form.required_headings:
+            raise ValueError(
+                "Profile interface table %s section %r is not a required H2 "
+                "of form %s" % (table_id, section, form_id))
+        if row.get("cardinality") not in table_cardinalities:
+            raise ValueError(
+                "Profile interface table %s has unsupported cardinality %r" %
+                (table_id, row.get("cardinality")))
+        if (not isinstance(header, list) or not header or
+                any(not isinstance(field, str) or not field or
+                    field.strip() != field for field in header) or
+                len(header) != len(set(header))):
+            raise ValueError(
+                "Profile interface table %s header must be a non-empty "
+                "unique list of non-empty trimmed strings" % table_id)
+        policy = row.get("row_policy")
+        if not isinstance(policy, dict):
+            raise ValueError(
+                "Profile interface table %s row_policy must be a mapping" %
+                table_id)
+        kind = policy.get("kind")
+        if kind not in row_policy_kinds:
+            raise ValueError(
+                "Profile interface table %s has unsupported row policy %r" %
+                (table_id, kind))
+        expected_policy_fields = {
+            "open": {"kind"},
+            "exactly-one": {"kind"},
+            "fixed-key": {"kind", "key_column", "keys"},
+            "registration-open": {"kind", "carrier_id"},
+            "registration-fixed-key": {
+                "kind", "carrier_id", "key_column", "keys"},
+            "applicability-open": {"kind", "carrier_id"},
+        }[kind]
+        if set(policy) != expected_policy_fields:
+            raise ValueError(
+                "Profile interface table %s row_policy fields are not "
+                "closed for %s" % (table_id, kind))
+        if "key_column" in policy:
+            key_column = policy.get("key_column")
+            keys = policy.get("keys")
+            if key_column not in header:
+                raise ValueError(
+                    "Profile interface table %s row key column %r is not in "
+                    "its header" % (table_id, key_column))
+            if (not isinstance(keys, list) or not keys or
+                    any(not isinstance(key, str) or not key for key in keys) or
+                    len(keys) != len(set(keys))):
+                raise ValueError(
+                    "Profile interface table %s fixed keys must be a "
+                    "non-empty unique string list" % table_id)
+        owner = (form_id, section)
+        if "carrier_id" in policy:
+            carrier_id = policy.get("carrier_id")
+            carrier = carriers.get(carrier_id)
+            if not isinstance(carrier, dict) or (
+                    carrier.get("form_id"), carrier.get("section")) != owner:
+                raise ValueError(
+                    "Profile interface table %s carrier %r must own the same "
+                    "form section" % (table_id, carrier_id))
+            expected_type = (
+                "applicability" if kind == "applicability-open" else
+                "registration")
+            if carrier.get("carrier_type") != expected_type:
+                raise ValueError(
+                    "Profile interface table %s carrier %r must have type "
+                    "%s" % (table_id, carrier_id, expected_type))
+        if owner in section_owners:
+            raise ValueError(
+                "Profile interface form %s section %r owns more than one "
+                "table contract" % (form_id, section))
+        section_owners.add(owner)
+    table_carrier_owners = {
+        (row["form_id"], row["section"])
+        for row in tables.values()
+        if "carrier_id" in row["row_policy"]
+    }
+    required_table_carrier_owners = {
+        owner for owner in carrier_owners
+        if carriers[next(
+            carrier_id for carrier_id, carrier in carriers.items()
+            if (carrier["form_id"], carrier["section"]) == owner
+        )]["carrier_type"] != "content_length_unit"
+    }
+    if table_carrier_owners != required_table_carrier_owners:
+        raise ValueError(
+            "Profile interface scalar-controlled tables do not match scalar "
+            "carrier sections: missing=%s extra=%s" %
+            (sorted(required_table_carrier_owners - table_carrier_owners),
+             sorted(table_carrier_owners - required_table_carrier_owners)))
     return tuple(names)
+
+
+def profile_interface_forms(document):
+    """Return the validated manifest form and slot-name form mapping."""
+    profile_interface_slots(document)
+    return (
+        _profile_form(document["manifest_form"], "Profile manifest form"),
+        {
+            row["name"]: _profile_form(
+                row["form"], "Profile interface slot %s form" % row["name"])
+            for row in document["slots"]
+        },
+    )
 
 
 def profile_interface_slot_names(document):
@@ -302,6 +686,8 @@ KERNEL_VOCABULARY_PATH = vocabulary_contract.VOCABULARY_BASE_PATH
 PROFILE_FILE_SLOTS = profile_file_slots()
 
 EXTENSION_SECTION, EXTENSION_HEADER = _table_contract("extension_dimensions")
+REGISTERED_ARTIFACT_SECTION, REGISTERED_ARTIFACT_HEADER = _table_contract(
+    "registered_artifacts")
 JUDGMENT_SECTION, JUDGMENT_HEADER = _table_contract("judgment_items")
 SCAN_SECTION, SCAN_HEADER = _table_contract("registered_scans")
 EXTENSION_GATE_SECTION, EXTENSION_GATE_HEADER = _table_contract("extension_gates")
@@ -328,6 +714,15 @@ VOCABULARY_VALUE_RE = re.compile(r"[a-z0-9][a-z0-9_-]*\Z")
 REQUIRED_SCAN_RE = re.compile(r"(?<![A-Za-z0-9])K12/09\s+item\s+6(?![0-9])")
 TABLE_SEPARATOR_RE = re.compile(r":?-{3,}:?\Z")
 REGISTRATION_RE = re.compile(r"^\s*-\s+Registration:\s*(.*?)\s*$")
+REGISTRATION_VALUES = frozenset(
+    _SHIPPED_PROFILE_INTERFACE["scalar_carrier_types"]["registration"]
+    ["allowed_exact_values"])
+CONFIGURED_CARRIER_VALUE = "Configured"
+if CONFIGURED_CARRIER_VALUE not in REGISTRATION_VALUES:
+    raise ValueError(
+        "Profile interface registration form must define Configured")
+INACTIVE_REGISTRATION_VALUES = (
+    REGISTRATION_VALUES - {CONFIGURED_CARRIER_VALUE})
 KERNEL_ROLE_IDS = _closed_values("kernel_role_ids")
 PRODUCER_KINDS = _closed_values("producer_kinds")
 PRODUCER_CAPABILITY_BY_KIND = dict(
@@ -482,6 +877,27 @@ class VocabularyField:
 
 
 @dataclass(frozen=True)
+class RegisteredExpressionArtifact:
+    """One Profile-owned expression artifact registration.
+
+    The row binds stable instance semantics only.  Its entry and dependency
+    map may name future corpus paths, so admission validates their canonical
+    spelling without requiring the targets to exist yet.
+    """
+
+    artifact_id: str
+    artifact_type: str
+    label: str
+    entry_point: str
+    dependency_map_path: Optional[str]
+    binding_field_ids: Tuple[str, ...]
+    revalidation_trigger: str
+    contract_owner: ProfileDependency
+    readiness_field_id: Optional[str]
+    source: SourceCell
+
+
+@dataclass(frozen=True)
 class ExpressionStatusTarget:
     """The exact Profile field and Gate that define one expression target."""
 
@@ -533,6 +949,11 @@ class ProfileContract:
     batch_review_requirements: Tuple[BatchReviewRequirement, ...] = ()
     vocabulary_fields: Tuple[VocabularyField, ...] = ()
     volatility_defaults: Tuple[Tuple[str, str], ...] = ()
+    expression_registry_path: Optional[str] = None
+    expression_registration: Optional[str] = None
+    expression_artifacts: Tuple[RegisteredExpressionArtifact, ...] = ()
+    profile_form_expected: int = 0
+    profile_form_conformant: int = 0
 
     @property
     def authorized(self):
@@ -637,6 +1058,22 @@ class ProfileContract:
             # for role-bearing fields, whose role is consumed by the typed
             # contract rather than merely retained as inert source text.
             value["vocabulary_role_fields"] = role_fields
+        value["expression_registration"] = self.expression_registration
+        value["expression_artifacts"] = [
+            {
+                "artifact_id": artifact.artifact_id,
+                "artifact_type": artifact.artifact_type,
+                "label": artifact.label,
+                "entry_point": artifact.entry_point,
+                "dependency_map_path": artifact.dependency_map_path,
+                "binding_field_ids": list(artifact.binding_field_ids),
+                "revalidation_trigger": artifact.revalidation_trigger,
+                "contract_path": artifact.contract_owner.path,
+                "contract_heading": artifact.contract_owner.heading,
+                "readiness_field_id": artifact.readiness_field_id,
+            }
+            for artifact in self.expression_artifacts
+        ]
         value["volatility_defaults"] = [
             {"domain": domain, "volatility": volatility}
             for domain, volatility in self.volatility_defaults
@@ -1194,6 +1631,437 @@ def _load_bound_slot(builder, manifest_text, manifest_path,
     return relative, text
 
 
+def _direct_h2_table_groups(text):
+    """Return pipe-table groups together with their H2/H3 location."""
+    groups = []
+    current_h2 = None
+    current_h3 = None
+    current_rows = []
+
+    def flush():
+        if current_rows:
+            groups.append((current_h2, current_h3, tuple(current_rows)))
+            current_rows.clear()
+
+    for line_number, line in _blank_fenced_lines(text):
+        heading = kblib.markdown_atx_heading(line)
+        if heading is not None:
+            flush()
+            level, title = heading
+            if level == 1:
+                current_h2 = None
+                current_h3 = None
+            elif level == 2:
+                current_h2 = title
+                current_h3 = None
+            elif level == 3:
+                current_h3 = title
+            continue
+        cells = _split_pipe_row(line)
+        if cells:
+            current_rows.append(_TableRow(line_number, cells))
+        else:
+            flush()
+    flush()
+    return tuple(groups)
+
+
+def _scalar_form_values(text, scalar_contracts, scalar_types):
+    """Validate common scalar carriers and return their exact instance values."""
+    errors = []
+    values = {}
+    sections = {}
+    for section in _sections(text):
+        sections.setdefault(section.heading, []).append(section)
+    for carrier_id, contract in scalar_contracts:
+        carrier_type = scalar_types[contract["carrier_type"]]
+        label = carrier_type["label"]
+        matches = []
+        for section in sections.get(contract["section"], ()):
+            pattern = re.compile(
+                r"^\s*-\s+%s:\s*(.*?)\s*$" % re.escape(label))
+            matches.extend(
+                (line_number, match.group(1).strip())
+                for line_number, line in section.lines
+                for match in (pattern.match(line),) if match is not None)
+        if contract["cardinality"] == "exactly-one" and len(matches) != 1:
+            errors.append((
+                "profile-form-scalar-count",
+                "expected exactly one `- %s:` carrier in `## %s`; found %d" %
+                (label, contract["section"], len(matches)),
+            ))
+            continue
+        _line_number, value = matches[0]
+        exact = carrier_type["allowed_exact_values"]
+        prefixes = carrier_type["allowed_prefixes"]
+        if value not in exact and not any(
+                value.startswith(prefix) and len(value) > len(prefix)
+                for prefix in prefixes):
+            permitted = list(exact) + [prefix + "<value>" for prefix in prefixes]
+            errors.append((
+                "profile-form-scalar-value",
+                "`- %s:` in `## %s` must use one registered form %r; found "
+                "%r" % (label, contract["section"], permitted, value),
+            ))
+            continue
+        values[carrier_id] = value
+    return tuple(errors), values
+
+
+def _table_row_form_errors(section, contract, rows, scalar_values):
+    """Validate only row shape and stable row identity, never answer values."""
+    errors = []
+    header = tuple(contract["header"])
+    data_rows = rows[2:]
+    malformed = [row for row in data_rows if len(row.cells) != len(header)]
+    for row in malformed:
+        errors.append((
+            "profile-form-table-row-shape",
+            "data row at line %d in `## %s` must contain exactly %d cells; "
+            "found %d" %
+            (row.line, section, len(header), len(row.cells)),
+        ))
+    if malformed:
+        return tuple(errors)
+
+    policy = contract["row_policy"]
+    kind = policy["kind"]
+    if kind == "exactly-one" and len(data_rows) != 1:
+        errors.append((
+            "profile-form-table-row-count",
+            "`## %s` must contain exactly one value row; found %d" %
+            (section, len(data_rows)),
+        ))
+    elif kind in ("fixed-key", "registration-fixed-key"):
+        expected = tuple(policy["keys"])
+        if kind == "registration-fixed-key":
+            carrier = scalar_values.get(policy["carrier_id"])
+            if carrier is None:
+                return tuple(errors)
+            expected = expected if carrier == CONFIGURED_CARRIER_VALUE else ()
+        key_index = header.index(policy["key_column"])
+        observed = tuple(_literal(row.cells[key_index]) for row in data_rows)
+        if observed != expected:
+            errors.append((
+                "profile-form-table-row-identity",
+                "stable `%s` rows in `## %s` must be exactly %r; found %r" %
+                (policy["key_column"], section, expected, observed),
+            ))
+    elif kind in ("registration-open", "applicability-open"):
+        carrier = scalar_values.get(policy["carrier_id"])
+        active = carrier == CONFIGURED_CARRIER_VALUE
+        # Invalid values are omitted by _scalar_form_values.  Therefore any
+        # other present value is the inactive form registered by K00, without
+        # restating `None` or the applicability prefix here.
+        inactive = isinstance(carrier, str) and not active
+        if not active and not inactive:
+            return tuple(errors)
+        if active and not data_rows:
+            errors.append((
+                "profile-form-table-row-count",
+                "configured `## %s` must contain at least one value row" %
+                section,
+            ))
+        elif inactive and data_rows:
+            errors.append((
+                "profile-form-table-row-count",
+                "inactive `## %s` must keep its common-form table empty; "
+                "found %d value row(s)" % (section, len(data_rows)),
+            ))
+    return tuple(errors)
+
+
+def _markdown_form_errors(text, form, table_contracts=(),
+                          scalar_contracts=(), scalar_types=None):
+    """Return structural form errors without interpreting Profile answers."""
+    headings = kblib.headings_of(kblib.blank_markdown_authority(text))
+    actual_required = tuple(
+        "%s %s" % ("#" * level, title)
+        for _line, level, title in headings if level <= 2)
+    errors = []
+    if actual_required != form.required_headings:
+        errors.append((
+            "profile-form-heading-structure",
+            "required H1/H2 sequence differs; expected=%r found=%r" %
+            (form.required_headings, actual_required),
+        ))
+    allowed_h2 = {
+        kblib.markdown_atx_heading(item)[1]: reference_kinds
+        for item, reference_kinds in form.instance_subheading_containers
+    }
+    current_h2 = None
+    current_h3 = None
+    instance_subheadings = []
+    for line_number, level, title in headings:
+        if level == 1:
+            current_h2 = None
+            current_h3 = None
+        elif level == 2:
+            current_h2 = title
+            current_h3 = None
+        elif level == 3:
+            if current_h2 not in allowed_h2:
+                errors.append((
+                    "profile-form-subheading-container",
+                    "line %d heading %r is outside a registered instance "
+                    "subheading container" % (line_number, title),
+                ))
+                current_h3 = None
+            else:
+                current_h3 = title
+                instance_subheadings.append(
+                    (line_number, title, allowed_h2[current_h2]))
+        elif current_h2 not in allowed_h2 or current_h3 is None:
+            errors.append((
+                "profile-form-subheading-container",
+                "line %d heading %r must be nested below a registered "
+                "instance H3" % (line_number, title),
+            ))
+
+    scalar_errors, scalar_values = _scalar_form_values(
+        text, scalar_contracts, scalar_types or {})
+    errors.extend(scalar_errors)
+    expected_tables = {
+        row["section"]: row for row in table_contracts
+    }
+    observed_tables = {}
+    for h2, h3, rows in _direct_h2_table_groups(text):
+        if h3 is not None:
+            continue
+        observed_tables.setdefault(h2, []).append(rows)
+    for section, groups in sorted(
+            observed_tables.items(), key=lambda item: str(item[0])):
+        if section not in expected_tables:
+            errors.append((
+                "profile-form-table-unexpected",
+                "found %d direct table(s) in %s, which has no registered "
+                "common form table" %
+                (len(groups), "the document root" if section is None else
+                 "`## %s`" % section),
+            ))
+    for section, contract in expected_tables.items():
+        groups = observed_tables.get(section, ())
+        if contract["cardinality"] == "exactly-one" and len(groups) != 1:
+            errors.append((
+                "profile-form-table-count",
+                "expected exactly one direct Markdown table in `## %s`; "
+                "found %d" % (section, len(groups)),
+            ))
+            continue
+        rows = groups[0]
+        if len(rows) < 2:
+            errors.append((
+                "profile-form-table-shape",
+                "the table in `## %s` must contain a header and separator "
+                "row" % section,
+            ))
+            continue
+        header = tuple(contract["header"])
+        if rows[0].cells != header:
+            errors.append((
+                "profile-form-table-header",
+                "table header in `## %s` must be exactly `%s`; found `%s`" %
+                (section, " | ".join(header),
+                 " | ".join(rows[0].cells)),
+            ))
+        separator = rows[1].cells
+        if len(separator) != len(header) or not all(
+                TABLE_SEPARATOR_RE.fullmatch(cell.replace(" ", ""))
+                for cell in separator):
+            errors.append((
+                "profile-form-table-separator",
+                "table separator in `## %s` must contain exactly %d "
+                "canonical cells" % (section, len(header)),
+            ))
+            continue
+        errors.extend(_table_row_form_errors(
+            section, contract, rows, scalar_values))
+    return tuple(errors), tuple(instance_subheadings)
+
+
+def _shape_owner_text(root, path, root_input_snapshots=None):
+    snapshot = (root_input_snapshots or {}).get(path)
+    if snapshot is not None:
+        return snapshot.read_text()
+    return kblib.read_text(os.path.join(root, *path.split("/")))
+
+
+def _yaml_shape_owner_document(root, interface_document, shape_owner,
+                               root_input_snapshots=None):
+    contract_id, registry_reference = shape_owner
+    path = interface_document["registry_references"][registry_reference]
+    text = _shape_owner_text(root, path, root_input_snapshots)
+    if registry_reference == "corpus_planning_contract":
+        owner = corpus_planning_contract.load_corpus_planning_contract(
+            root, text=text)
+    elif registry_reference == "structure_registry_contract":
+        owner = kblib.load_structure_registry_contract(root, text=text)
+    elif registry_reference == "metadata_profile_contract":
+        owner = kblib.load_metadata_profile_contract(root, text=text)
+    elif registry_reference == "vocabulary_extensions_contract":
+        owner = vocabulary_contract.load_vocabulary_extensions_contract(
+            root, text=text)
+    else:
+        raise ValueError(
+            "no Tool shape reader is registered for %s" %
+            registry_reference)
+    if owner.get("contract_id") != contract_id:
+        raise ValueError(
+            "shape owner %s declares contract_id %r, expected %r" %
+            (path, owner.get("contract_id"), contract_id))
+    return owner
+
+
+def _yaml_shape_issues(shape_owner, owner_document, document):
+    contract_id, _registry_reference = shape_owner
+    if contract_id == "cambium-corpus-planning-contract":
+        _normalized, issues = \
+            corpus_planning_contract.validate_corpus_planning_envelope(
+                document, contract=owner_document)
+        return tuple("%s" % issue for issue in issues)
+    if contract_id == "structure-registry-shape-v2":
+        return tuple(
+            "%s: %s" % (check, details)
+            for check, _target, details in
+            kblib.validate_structure_registry_shape(
+                document, contract=owner_document))
+    if contract_id == "metadata-contract-shape-v1":
+        return tuple(
+            "%s: %s" % (check, details)
+            for check, _target, details in
+            kblib.validate_metadata_contract_shape(
+                document, contract=owner_document))
+    if contract_id == "vocabulary-extensions-shape-v1":
+        return vocabulary_contract.validate_vocabulary_extensions(
+            document, contract=owner_document)
+    return ("unsupported shape owner contract %r" % contract_id,)
+
+
+def _yaml_form_errors(text, form, root, interface_document,
+                      root_input_snapshots=None):
+    """Validate a YAML form through its declared single shape owner."""
+    try:
+        document = kblib.parse_yaml_subset(text)
+    except (TypeError, ValueError, kblib.YamlSubsetError) as exc:
+        return ((
+            "profile-form-yaml-shape",
+            "cannot parse restricted YAML: %s" % exc,
+        ),)
+    try:
+        owner_document = _yaml_shape_owner_document(
+            root, interface_document, form.yaml_shape_owner,
+            root_input_snapshots)
+    except (OSError, UnicodeError, ValueError, kblib.YamlSubsetError,
+            vocabulary_contract.VocabularyContractError) as exc:
+        return ((
+            "profile-form-yaml-owner",
+            "cannot load declared shape owner: %s" % exc,
+        ),)
+    return tuple(
+        ("profile-form-yaml-shape",
+         "%s: %s" % (form.yaml_shape_owner[0], issue))
+        for issue in _yaml_shape_issues(
+            form.yaml_shape_owner, owner_document, document))
+
+
+def _validate_profile_forms(builder, interface_document, manifest_text,
+                            manifest_relative, profile_root,
+                            root_input_snapshots=None):
+    """Validate candidate files against the one Kernel-owned form registry."""
+    manifest_form, slot_forms = profile_interface_forms(interface_document)
+    expected = 1 + len(slot_forms)
+    conformant = 0
+
+    table_contracts = {}
+    for row in interface_document["tables"].values():
+        table_contracts.setdefault(row["form_id"], []).append(row)
+    scalar_contracts = {}
+    for carrier_id, row in interface_document["scalar_carriers"].items():
+        scalar_contracts.setdefault(row["form_id"], []).append(
+            (carrier_id, row))
+    scalar_types = interface_document["scalar_carrier_types"]
+    manifest_errors, _manifest_subheadings = _markdown_form_errors(
+        manifest_text, manifest_form,
+        table_contracts.get("profile-manifest", ()),
+        scalar_contracts.get("profile-manifest", ()), scalar_types)
+    for check, details in manifest_errors:
+        builder.add(check, manifest_relative, details)
+    if not manifest_errors:
+        conformant += 1
+
+    pending_subheadings = []
+    bindings, duplicates = kblib.profile_slot_bindings(
+        manifest_text, include_duplicates=True)
+    for slot_name, form in slot_forms.items():
+        binding = bindings.get(slot_name)
+        if binding is None or slot_name in duplicates:
+            continue
+        kind, resolved = kblib.resolve_profile_binding(
+            binding, builder.root, profile_root)
+        if kind != "path":
+            continue
+        source = _slot_source(manifest_text, manifest_relative, slot_name)
+        observed = os.path.relpath(
+            os.path.abspath(resolved), profile_root).replace(os.sep, "/")
+        path_ok = observed == form.path
+        if not path_ok:
+            builder.add(
+                "profile-form-binding-path",
+                source.target if source else manifest_relative,
+                "`%s` must bind the canonical form path `%s`; found `%s`" %
+                (slot_name, form.path, observed), source,
+            )
+            continue
+        try:
+            relative = os.path.relpath(
+                os.path.abspath(resolved), builder.root).replace(os.sep, "/")
+            text = builder.read_profile_text(relative)
+        except (OSError, UnicodeError):
+            continue
+        form_id = next(
+            row["slot_id"] for row in interface_document["slots"]
+            if row["name"] == slot_name)
+        if form.path.endswith(".md"):
+            errors, instance_subheadings = _markdown_form_errors(
+                text, form, table_contracts.get(form_id, ()),
+                scalar_contracts.get(form_id, ()), scalar_types)
+        else:
+            errors = _yaml_form_errors(
+                text, form, builder.root, interface_document,
+                root_input_snapshots)
+            instance_subheadings = ()
+        for check, details in errors:
+            builder.add(check, relative, details, source)
+        if not errors:
+            conformant += 1
+            pending_subheadings.extend(
+                (relative, line_number, title, reference_kinds)
+                for line_number, title, reference_kinds
+                in instance_subheadings)
+    return expected, conformant, tuple(pending_subheadings)
+
+
+def _validate_form_subheading_references(builder, pending_subheadings):
+    """Require each admitted instance H3 to have at least one typed reference."""
+    orphan_paths = set()
+    for path, line_number, title, reference_kinds in pending_subheadings:
+        consumers = [
+            edge for edge in builder.edges
+            if edge.path == path and edge.fragment == title and
+            edge.kind in reference_kinds
+        ]
+        if not consumers:
+            orphan_paths.add(path)
+            builder.add(
+                "profile-form-subheading-reference",
+                "%s:%d" % (path, line_number),
+                "instance H3 %r must be consumed by at least one typed owner "
+                "reference of kind %s; found none" %
+                (title, ", ".join(reference_kinds)),
+            )
+    return len(orphan_paths)
+
+
 def _parse_extensions(builder, text, source_path):
     section = builder.section(
         text, EXTENSION_SECTION, source_path, "extension-dimensions")
@@ -1224,11 +2092,11 @@ def _parse_extensions(builder, text, source_path):
                 "Extension Dimensions registration contains the unfilled "
                 "sentinel %r" % builder.sentinel, source,
             )
-        elif raw not in ("None", "Configured"):
+        elif raw not in REGISTRATION_VALUES:
             builder.add(
                 "extension-dimensions-registration", source.target,
-                "Registration must be exactly `None` or `Configured`; found %r"
-                % raw, source,
+                "Registration must use one registered form %r; found %r" %
+                (sorted(REGISTRATION_VALUES), raw), source,
             )
         else:
             registration = raw
@@ -1277,13 +2145,13 @@ def _parse_extensions(builder, text, source_path):
             parsed.append(ExtensionDimension(
                 dimension_id, tuple(targets), cells[2].raw.strip(), cells[0]))
 
-    if registration == "None" and rows:
+    if registration in INACTIVE_REGISTRATION_VALUES and rows:
         builder.add(
             "extension-dimensions-none-with-rows", source_path,
             "`Registration: None` requires an empty registration table; "
             "found %d data row(s)" % len(rows),
         )
-    if registration == "Configured" and not rows:
+    if registration == CONFIGURED_CARRIER_VALUE and not rows:
         builder.add(
             "extension-dimensions-configured-empty", source_path,
             "`Registration: Configured` requires at least one data row",
@@ -1472,9 +2340,12 @@ def _parse_scans(builder, text, source_path, profile_repo_dir, capabilities):
 
 
 def _section_registration(builder, section, source_path, prefix):
-    check = ("extension-gates-registration"
-             if prefix == "extension-gates"
-             else "extension-gate-role-registry")
+    if prefix == "extension-gates":
+        check = "extension-gates-registration"
+    elif prefix == "expression-artifacts":
+        check = "expression-artifacts-registration"
+    else:
+        check = "extension-gate-role-registry"
     declarations = []
     for line_number, line in section.lines:
         match = REGISTRATION_RE.match(line)
@@ -1496,11 +2367,11 @@ def _section_registration(builder, section, source_path, prefix):
             "%s registration contains the unfilled sentinel %r" %
             (section.heading, builder.sentinel), source)
         return None
-    if raw not in ("None", "Configured"):
+    if raw not in REGISTRATION_VALUES:
         builder.add(
             check, source.target,
-            "Registration must be exactly `None` or `Configured`; found %r" %
-            raw, source)
+            "Registration must use one registered form %r; found %r" %
+            (sorted(REGISTRATION_VALUES), raw), source)
         return None
     return raw
 
@@ -1588,11 +2459,11 @@ def _extension_role_ids(builder, text, source_path):
             "Extension Roles table separator is not canonical")
         return frozenset(role_ids)
     data_rows = rows[2:]
-    if registration == "None" and data_rows:
+    if registration in INACTIVE_REGISTRATION_VALUES and data_rows:
         builder.add(
             "extension-gate-role-registry", source_path,
             "Extension Roles `Registration: None` requires an empty table")
-    if registration == "Configured" and not data_rows:
+    if registration == CONFIGURED_CARRIER_VALUE and not data_rows:
         builder.add(
             "extension-gate-role-registry", source_path,
             "Extension Roles `Registration: Configured` requires a data row")
@@ -1647,6 +2518,25 @@ def _vocabulary_extensions(builder, text, source_path,
         builder.add(
             "extension-gate-vocabulary-registry", source_path,
             "Vocabulary Extensions must be a mapping")
+        return (), ()
+    owner_snapshot = (root_input_snapshots or {}).get(
+        vocabulary_contract.VOCABULARY_EXTENSIONS_CONTRACT_PATH)
+    try:
+        owner_contract = vocabulary_contract.\
+            load_vocabulary_extensions_contract(
+                builder.root,
+                text=owner_snapshot.read_text()
+                if owner_snapshot is not None else None)
+        shape_issues = vocabulary_contract.validate_vocabulary_extensions(
+            document, contract=owner_contract)
+    except (OSError, UnicodeError, ValueError, kblib.YamlSubsetError,
+            vocabulary_contract.VocabularyContractError) as exc:
+        shape_issues = ("owner contract is unavailable: %s" % exc,)
+    for issue in shape_issues:
+        builder.add(
+            "extension-gate-vocabulary-registry", source_path,
+            "Vocabulary Extensions shape: %s" % issue)
+    if shape_issues:
         return (), ()
 
     fields = document.get("fields") if isinstance(document, dict) else None
@@ -1740,7 +2630,260 @@ def _vocabulary_extensions(builder, text, source_path,
     )
 
 
-def _metadata_extension_fields(builder, text, source_path):
+def _metadata_binding_field_ids(
+        builder, text, source_path, owner_document):
+    """Return Profile metadata field declarations expression rows may use."""
+    try:
+        document = kblib.parse_yaml_subset(text)
+    except (TypeError, ValueError) as exc:
+        builder.add(
+            "expression-artifact-metadata-contract", source_path,
+            "cannot parse Metadata Contract as restricted YAML: %s" % exc)
+        return {}
+    if owner_document is None:
+        return {}
+    shape_errors = kblib.validate_metadata_contract_shape(
+        document, target=source_path, contract=owner_document)
+    for check, label, details in shape_errors:
+        builder.add(
+            "expression-artifact-metadata-contract", label,
+            "%s: %s" % (check, details))
+    if shape_errors:
+        return {}
+    return {
+        entry["field"]: (name, entry)
+        for name in ("extension_fields", "relationship_extensions")
+        for entry in document.get(name, ())
+        if isinstance(entry, dict) and isinstance(entry.get("field"), str)
+    }
+
+
+def _parse_registered_artifacts(builder, text, source_path,
+                                profile_repo_dir, vocabulary_fields,
+                                metadata_text, metadata_path,
+                                metadata_owner_document, gates,
+                                root_input_snapshots=None):
+    """Compile the sole configured Expression Layer artifact registry."""
+    section = builder.section(
+        text, REGISTERED_ARTIFACT_SECTION, source_path,
+        "expression-artifacts")
+    if section is None:
+        return None, ()
+    registration = _section_registration(
+        builder, section, source_path, "expression-artifacts")
+    rows = builder.table(
+        section, REGISTERED_ARTIFACT_HEADER, source_path,
+        "expression-artifacts")
+    if registration in INACTIVE_REGISTRATION_VALUES and rows:
+        builder.add(
+            "expression-artifacts-none-with-rows", source_path,
+            "`Registration: None` requires an empty Registered Artifacts "
+            "table; found %d data row(s)" % len(rows))
+    if registration == CONFIGURED_CARRIER_VALUE and not rows:
+        builder.add(
+            "expression-artifacts-configured-empty", source_path,
+            "`Registration: Configured` requires at least one Registered "
+            "Artifacts row")
+    if not rows:
+        return registration, ()
+
+    try:
+        snapshot = (root_input_snapshots or {}).get(KERNEL_VOCABULARY_PATH)
+        base = vocabulary_contract.load_vocabulary_base(
+            builder.root,
+            text=snapshot.read_text() if snapshot is not None else None)
+        allowed_types = set(base["field_values"].get("type", ()))
+    except (OSError, UnicodeError, ValueError,
+            kblib.YamlSubsetError) as exc:
+        builder.add(
+            "expression-artifact-type-registry", source_path,
+            "cannot load the Kernel-owned type vocabulary: %s" % exc)
+        allowed_types = set()
+    fields_by_id = {field.field_id: field for field in vocabulary_fields}
+    type_extension = fields_by_id.get("type")
+    if type_extension is not None:
+        allowed_types.update(type_extension.values)
+    metadata_fields = (_metadata_binding_field_ids(
+        builder, metadata_text, metadata_path, metadata_owner_document)
+        if metadata_text is not None else {})
+    if metadata_text is None:
+        builder.add(
+            "expression-artifact-metadata-contract", source_path,
+            "configured Registered Artifacts require a readable Metadata "
+            "Contract")
+    gates_by_field = {}
+    for gate in gates:
+        if gate.field_id is not None:
+            gates_by_field.setdefault(gate.field_id, []).append(gate)
+
+    parsed = []
+    seen = set()
+    for row_number, row in enumerate(rows, 1):
+        cells = builder.cells(
+            row, REGISTERED_ARTIFACT_HEADER, source_path,
+            REGISTERED_ARTIFACT_SECTION, row_number,
+            "expression-artifacts")
+        if cells is None:
+            continue
+        artifact_id = _literal(cells[0].raw)
+        artifact_type = _literal(cells[1].raw)
+        label = cells[2].raw.strip()
+        entry_point = _literal(cells[3].raw)
+        dependency_literal = _literal(cells[4].raw)
+        dependency_map_path = (
+            None if dependency_literal == "None" else dependency_literal)
+        binding_literal = _literal(cells[5].raw)
+        binding_field_ids = (
+            () if binding_literal == "None" else
+            _completion_values(cells[5].raw))
+        revalidation_trigger = cells[6].raw.strip()
+        readiness_literal = _literal(cells[8].raw)
+        readiness_field_id = (
+            None if readiness_literal == "None" else readiness_literal)
+        valid = True
+
+        if not STABLE_ID_RE.fullmatch(artifact_id):
+            builder.add(
+                "expression-artifact-id-invalid", cells[0].target,
+                "Stable artifact ID %r must be lowercase kebab-case" %
+                artifact_id, cells[0])
+            valid = False
+        if artifact_id in seen:
+            builder.add(
+                "expression-artifact-id-duplicate", cells[0].target,
+                "Stable artifact ID %r is registered more than once" %
+                artifact_id, cells[0])
+            valid = False
+        seen.add(artifact_id)
+        if artifact_type not in allowed_types:
+            builder.add(
+                "expression-artifact-type-unknown", cells[1].target,
+                "Artifact type %r is not in the composed Kernel + Profile "
+                "`type` vocabulary" % artifact_type, cells[1])
+            valid = False
+        try:
+            canonical_repository_relative_path(entry_point, "entry point")
+        except ValueError as exc:
+            builder.add(
+                "expression-artifact-entry-invalid", cells[3].target,
+                str(exc), cells[3])
+            valid = False
+        else:
+            builder.edges.append(DependencyEdge(
+                kind="expression-entry", owner_id=artifact_id,
+                path=entry_point))
+        if dependency_map_path is not None:
+            try:
+                canonical_repository_relative_path(
+                    dependency_map_path, "dependency-map path")
+            except ValueError as exc:
+                builder.add(
+                    "expression-artifact-dependency-map-invalid",
+                    cells[4].target, str(exc), cells[4])
+                valid = False
+            else:
+                builder.edges.append(DependencyEdge(
+                    kind="expression-dependency-map", owner_id=artifact_id,
+                    path=dependency_map_path))
+        if (len(binding_field_ids) != len(set(binding_field_ids)) or
+                any(FIELD_ID_RE.fullmatch(field_id) is None
+                    for field_id in binding_field_ids)):
+            builder.add(
+                "expression-artifact-binding-invalid", cells[5].target,
+                "Metadata binding field IDs must be unique lowercase "
+                "snake_case values", cells[5])
+            valid = False
+        unknown_bindings = sorted(
+            set(binding_field_ids) - set(metadata_fields))
+        if unknown_bindings:
+            builder.add(
+                "expression-artifact-binding-unknown", cells[5].target,
+                "Metadata binding field ID(s) are not declared by the "
+                "Profile Metadata Contract: %s" %
+                ", ".join(unknown_bindings), cells[5])
+            valid = False
+        invalid_binding_shapes = sorted(
+            field_id for field_id in binding_field_ids
+            if field_id in metadata_fields and
+            not (
+                (metadata_fields[field_id][0] == "extension_fields" and
+                 metadata_fields[field_id][1].get("shape") == "path") or
+                (metadata_fields[field_id][0] ==
+                 "relationship_extensions" and
+                 metadata_fields[field_id][1].get("shape") ==
+                 "list-of-paths" and
+                 metadata_fields[field_id][1].get("direction") ==
+                 "expression-to-canonical")
+            ))
+        if invalid_binding_shapes:
+            builder.add(
+                "expression-artifact-binding-shape", cells[5].target,
+                "Metadata binding field ID(s) must be an extension `path` "
+                "or an `expression-to-canonical` relationship with "
+                "`list-of-paths` shape: %s" %
+                ", ".join(invalid_binding_shapes), cells[5])
+            valid = False
+        for field_id in binding_field_ids:
+            builder.edges.append(DependencyEdge(
+                kind="expression-binding-field", owner_id=artifact_id,
+                target_id=field_id))
+        if dependency_map_path is None and not binding_field_ids:
+            builder.add(
+                "expression-artifact-binding-missing", cells[4].target,
+                "each artifact requires a dependency-map path, at least one "
+                "Metadata binding field ID, or both", cells[4])
+            valid = False
+
+        contract_owner = builder.profile_dependency(
+            "expression-contract", artifact_id, cells[7].raw, cells[7],
+            profile_repo_dir, require_heading=True)
+        if contract_owner is None:
+            valid = False
+        if readiness_field_id is not None:
+            field = fields_by_id.get(readiness_field_id)
+            if (field is None or
+                    field.role != EXPRESSION_STATUS_AXIS_ROLE):
+                builder.add(
+                    "expression-artifact-readiness-field", cells[8].target,
+                    "Readiness field ID %r must name a Vocabulary field with "
+                    "role `%s`" % (readiness_field_id,
+                                   EXPRESSION_STATUS_AXIS_ROLE), cells[8])
+                valid = False
+            if readiness_field_id not in metadata_fields:
+                builder.add(
+                    "expression-artifact-readiness-metadata",
+                    cells[8].target,
+                    "Readiness field ID %r must be declared by the Profile "
+                    "Metadata Contract" % readiness_field_id, cells[8])
+                valid = False
+            matching_gates = gates_by_field.get(readiness_field_id, ())
+            if len(matching_gates) != 1:
+                builder.add(
+                    "expression-artifact-readiness-gate", cells[8].target,
+                    "Readiness field ID %r must bind exactly one extension "
+                    "Gate; found %d" %
+                    (readiness_field_id, len(matching_gates)), cells[8])
+                valid = False
+            builder.edges.append(DependencyEdge(
+                kind="expression-readiness-field", owner_id=artifact_id,
+                target_id=readiness_field_id))
+        if valid and contract_owner is not None:
+            parsed.append(RegisteredExpressionArtifact(
+                artifact_id=artifact_id,
+                artifact_type=artifact_type,
+                label=label,
+                entry_point=entry_point,
+                dependency_map_path=dependency_map_path,
+                binding_field_ids=tuple(binding_field_ids),
+                revalidation_trigger=revalidation_trigger,
+                contract_owner=contract_owner,
+                readiness_field_id=readiness_field_id,
+                source=cells[0],
+            ))
+    return registration, tuple(parsed)
+
+
+def _metadata_extension_fields(builder, text, source_path, owner_document):
     """Compile the Profile-owned page fields a typed Gate may project."""
     try:
         document = kblib.parse_yaml_subset(text)
@@ -1749,8 +2892,10 @@ def _metadata_extension_fields(builder, text, source_path):
             "extension-gate-metadata-contract", source_path,
             "cannot parse Metadata Contract as restricted YAML: %s" % exc)
         return {}
+    if owner_document is None:
+        return {}
     shape_errors = kblib.validate_metadata_contract_shape(
-        document, target=source_path)
+        document, target=source_path, contract=owner_document)
     for check, label, details in shape_errors:
         builder.add(
             "extension-gate-metadata-contract", label,
@@ -1965,12 +3110,12 @@ def _parse_batch_review_requirements(builder, text, source_path,
     rows = builder.table(
         section, BATCH_REVIEW_HEADER, source_path,
         "batch-review-requirements")
-    if registration == "None" and rows:
+    if registration in INACTIVE_REGISTRATION_VALUES and rows:
         builder.add(
             "batch-review-none-with-rows", source_path,
             "`Registration: None` requires an empty Batch Review "
             "Requirements table; found %d data row(s)" % len(rows))
-    if registration == "Configured" and not rows:
+    if registration == CONFIGURED_CARRIER_VALUE and not rows:
         builder.add(
             "batch-review-configured-empty", source_path,
             "`Registration: Configured` requires at least one Batch Review "
@@ -2071,6 +3216,7 @@ def _parse_extension_gates(builder, text, source_path, profile_repo_dir,
                            profile_id, role_text, role_path,
                            vocabulary_fields,
                            metadata_text, metadata_path,
+                           metadata_owner_document,
                            judgments, scans, root_input_snapshots=None):
     section = builder.section(
         text, EXTENSION_GATE_SECTION, source_path, "extension-gates")
@@ -2080,12 +3226,12 @@ def _parse_extension_gates(builder, text, source_path, profile_repo_dir,
         builder, section, source_path, "extension-gates")
     rows = builder.table(
         section, EXTENSION_GATE_HEADER, source_path, "extension-gates")
-    if registration == "None" and rows:
+    if registration in INACTIVE_REGISTRATION_VALUES and rows:
         builder.add(
             "extension-gates-none-with-rows", source_path,
             "`Registration: None` requires an empty extension Gate table; "
             "found %d data row(s)" % len(rows))
-    if registration == "Configured" and not rows:
+    if registration == CONFIGURED_CARRIER_VALUE and not rows:
         builder.add(
             "extension-gates-configured-empty", source_path,
             "`Registration: Configured` requires at least one extension Gate")
@@ -2098,7 +3244,7 @@ def _parse_extension_gates(builder, text, source_path, profile_repo_dir,
         field.field_id: field.values for field in vocabulary_fields
     }
     metadata_fields = (_metadata_extension_fields(
-        builder, metadata_text, metadata_path)
+        builder, metadata_text, metadata_path, metadata_owner_document)
         if metadata_text is not None else {})
     kernel_metadata_fields = _kernel_metadata_fields(
         builder, source_path, root_input_snapshots=root_input_snapshots)
@@ -2436,6 +3582,8 @@ def load_profile_contract(root, manifest_path, sentinel="TODO(profile)",
     row or dependency in an unauthorized contract.
     """
     builder = _Builder(root, manifest_path, sentinel)
+    profile_form_expected = 0
+    profile_form_conformant = 0
     try:
         root_real, manifest_absolute, manifest_relative = _manifest_location(
             builder.root_input, manifest_path)
@@ -2474,7 +3622,7 @@ def load_profile_contract(root, manifest_path, sentinel="TODO(profile)",
         return _empty_contract(builder)
     required_typed_slots = {
         AUDIT_SLOT, SCAN_SLOT, ROLE_SLOT, VOCABULARY_SLOT,
-        METADATA_SLOT, ROUTING_SLOT,
+        METADATA_SLOT, ROUTING_SLOT, EXPRESSION_LAYER_ENTRY_SLOT,
     }
     missing_typed = sorted(required_typed_slots - set(interface_slots))
     if missing_typed:
@@ -2536,6 +3684,23 @@ def load_profile_contract(root, manifest_path, sentinel="TODO(profile)",
             profile_root, profile_repo_dir)
     builder.scan_text_sentinel(
         manifest_text, manifest_relative, "Profile manifest")
+    (profile_form_expected, profile_form_conformant,
+     pending_form_subheadings) = _validate_profile_forms(
+         builder, interface_document, manifest_text, manifest_relative,
+         profile_root, root_input_snapshots)
+    try:
+        metadata_owner_path = interface_document["registry_references"][
+            "metadata_profile_contract"]
+        metadata_owner_text = _shape_owner_text(
+            builder.root, metadata_owner_path,
+            root_input_snapshots)
+        metadata_owner_document = kblib.load_metadata_profile_contract(
+            builder.root, text=metadata_owner_text)
+    except (OSError, UnicodeError, ValueError,
+            kblib.YamlSubsetError):
+        # The form pass already emitted the owner diagnostic. Typed consumers
+        # must not silently fall back to an import-time owner projection.
+        metadata_owner_document = None
 
     audit_path, audit_text = _load_bound_slot(
         builder, manifest_text, manifest_absolute, manifest_relative,
@@ -2555,6 +3720,9 @@ def load_profile_contract(root, manifest_path, sentinel="TODO(profile)",
     routing_path, routing_text = _load_bound_slot(
         builder, manifest_text, manifest_absolute, manifest_relative,
         profile_root, ROUTING_SLOT)
+    expression_path, expression_text = _load_bound_slot(
+        builder, manifest_text, manifest_absolute, manifest_relative,
+        profile_root, EXPRESSION_LAYER_ENTRY_SLOT)
 
     # Bind every declared first-hop file, not only the two registries whose
     # contents this linker interprets transitively.  ``check_profile`` owns the
@@ -2581,13 +3749,17 @@ def load_profile_contract(root, manifest_path, sentinel="TODO(profile)",
     if routing_path is not None:
         builder.edges.append(DependencyEdge(
             kind="manifest-slot", owner_id=ROUTING_SLOT, path=routing_path))
+    if expression_path is not None:
+        builder.edges.append(DependencyEdge(
+            kind="manifest-slot", owner_id=EXPRESSION_LAYER_ENTRY_SLOT,
+            path=expression_path))
     bindings, duplicate_bindings = kblib.profile_slot_bindings(
         manifest_text, include_duplicates=True)
     for slot_name in interface_slots:
         if slot_name in (
                 AUDIT_SLOT, SCAN_SLOT, ROLE_SLOT, VOCABULARY_SLOT,
                 METADATA_SLOT,
-                ROUTING_SLOT):
+                ROUTING_SLOT, EXPRESSION_LAYER_ENTRY_SLOT):
             continue
         if slot_name in duplicate_bindings:
             source = _slot_source(
@@ -2643,6 +3815,8 @@ def load_profile_contract(root, manifest_path, sentinel="TODO(profile)",
     scans = ()
     gate_registration = None
     gates = ()
+    expression_registration = None
+    expression_artifacts = ()
     vocabulary_fields = ()
     volatility_defaults = ()
     try:
@@ -2696,13 +3870,24 @@ def load_profile_contract(root, manifest_path, sentinel="TODO(profile)",
             builder, routing_text, routing_path, profile_repo_dir,
             declared_profile_id or os.path.basename(profile_repo_dir),
             role_text, role_path, vocabulary_fields,
-            metadata_text, metadata_path,
+            metadata_text, metadata_path, metadata_owner_document,
             judgments, scans,
             root_input_snapshots=root_input_snapshots)
         review_registration, review_requirements = \
             _parse_batch_review_requirements(
                 builder, routing_text, routing_path,
                 role_text, role_path, judgments)
+
+    if expression_text is not None:
+        expression_registration, expression_artifacts = \
+            _parse_registered_artifacts(
+                builder, expression_text, expression_path,
+                profile_repo_dir, vocabulary_fields,
+                metadata_text, metadata_path, metadata_owner_document, gates,
+                root_input_snapshots=root_input_snapshots)
+
+    profile_form_conformant -= _validate_form_subheading_references(
+        builder, pending_form_subheadings)
 
     edges = tuple(sorted(
         builder.edges,
@@ -2729,6 +3914,11 @@ def load_profile_contract(root, manifest_path, sentinel="TODO(profile)",
         batch_review_requirements=tuple(review_requirements),
         vocabulary_fields=tuple(vocabulary_fields),
         volatility_defaults=tuple(volatility_defaults),
+        expression_registry_path=expression_path,
+        expression_registration=expression_registration,
+        expression_artifacts=tuple(expression_artifacts),
+        profile_form_expected=profile_form_expected,
+        profile_form_conformant=profile_form_conformant,
         dependency_edges=edges,
         source_cells=tuple(builder.source_cells),
         diagnostics=tuple(builder.diagnostics),
@@ -2783,6 +3973,21 @@ def expression_status_target_projection(contract):
         field_id=field.field_id,
         completion_values=gate.completion_values,
     ),)
+
+
+def expression_dependency_map_paths_projection(contract):
+    """Project registered Expression dependency maps without reopening bytes."""
+    if not isinstance(contract, ProfileContract):
+        raise TypeError("contract must be a ProfileContract")
+    if not contract.authorized:
+        raise ProfileContractError(
+            "Profile contract is not authorized: %s" %
+            format_diagnostics(contract.diagnostics))
+    return tuple(sorted({
+        artifact.dependency_map_path
+        for artifact in contract.expression_artifacts
+        if artifact.dependency_map_path is not None
+    }))
 
 
 def terminal_receipt_dimensions_projection(contract):
@@ -2898,12 +4103,17 @@ def compile_registered_scan_command(root, contract, scan=None):
 __all__ = [
     'ProfileContract',
     'ProfileContractError',
+    'ProfileForm',
     'AUDIT_DIMENSION_BASE_PATH',
     'KERNEL_VOCABULARY_PATH',
     'SCAN_CAPABILITY_PATH',
     'compile_registered_scan_command',
+    'expression_dependency_map_paths_projection',
     'format_diagnostics',
+    'load_profile_interface',
     'load_profile_contract',
+    'profile_interface_forms',
+    'profile_interface_slots',
     'registered_scan_entrypoint',
     'scan_capability_implementation_paths',
     'terminal_receipt_dimensions_projection',

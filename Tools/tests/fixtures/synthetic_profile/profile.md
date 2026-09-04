@@ -1,4 +1,4 @@
-# Synthetic Test Profile
+# Profile Manifest
 
 Interface: [Profile interface](../README.md)
 
@@ -8,20 +8,20 @@ Interface: [Profile interface](../README.md)
 
 ## Implemented Slots
 
-- `Profile Scope`: `slots.md`
+- `Profile Scope`: `scope-and-architecture.md`
 - `Corpus Planning`: `corpus-planning.yaml`
 - `Structure Registry`: `structure-registry.yaml`
 - `Metadata Contract`: `metadata-contract.yaml`
-- `Priority Rubric`: `slots.md`
+- `Priority Rubric`: `priority-rubric.md`
 - `Vocabulary Extensions`: `vocabulary-extensions.yaml`
-- `Language Contract`: `slots.md`
-- `Expression Layer Entry`: `slots.md`
-- `Source Policy`: `slots.md`
-- `Role Registry`: `slots.md`
-- `Audit Dimension Registry`: `slots.md`
-- `Registered Scan Registry`: `slots.md`
-- `Escalation Policy`: `slots.md`
-- `Routing And Gate Registry`: `slots.md`
+- `Language Contract`: `language-contract.md`
+- `Expression Layer Entry`: `expression-layer.md`
+- `Source Policy`: `source-policy.md`
+- `Role Registry`: `registries/roles.md`
+- `Audit Dimension Registry`: `registries/audit-dimensions.md`
+- `Registered Scan Registry`: `registries/registered-scans.md`
+- `Escalation Policy`: `escalation-policy.md`
+- `Routing And Gate Registry`: `registries/routing-and-gates.md`
 
 ## Execution Default Overrides
 

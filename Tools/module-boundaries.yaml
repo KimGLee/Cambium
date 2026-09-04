@@ -831,6 +831,7 @@ modules:
       - close_trigger_issues
       - current_corpus_planning_contract_values
       - derive_close_requirement
+      - load_corpus_planning_contract
       - receipt_binding_differences
       - receipt_binding_shape_issues
       - receipt_path_currentness_issues
@@ -1826,6 +1827,7 @@ modules:
     public:
       - AUDIT_DIMENSION_REGISTRY_SLOT
       - CORPUS_PLANNING_SLOT
+      - EXPRESSION_LAYER_ENTRY_SLOT
       - METADATA_CONTRACT_SLOT
       - PRIORITY_RUBRIC_SLOT
       - PROFILE_LOAD_GATE_ID
@@ -1844,10 +1846,14 @@ modules:
       - PROFILE_LOAD_EVIDENCE_FINGERPRINT_FIELDS
       - ProfileContract
       - ProfileContractError
+      - ProfileForm
       - SCAN_CAPABILITY_PATH
       - compile_registered_scan_command
+      - expression_dependency_map_paths_projection
       - format_diagnostics
+      - load_profile_interface
       - load_profile_contract
+      - profile_interface_forms
       - profile_interface_slots
       - registered_scan_entrypoint
       - scan_capability_implementation_paths
@@ -2119,9 +2125,14 @@ modules:
       - PRIORITY_VALUES
       - REVIEW_INTERVALS_DAYS
       - VOCABULARY_BASE_PATH
+      - VOCABULARY_EXTENSIONS_CONTRACT_PATH
       - VocabularyContractError
       - load_vocabulary_base
+      - load_vocabulary_extensions_contract
       - validate_vocabulary_base
+      - validate_vocabulary_extensions
+      - validate_vocabulary_extensions_contract
+      - vocabulary_extensions_shape
   - module: knowledge.rendering.changed_scope_rendering_checks
     path: Tools/knowledge/rendering/changed_scope_rendering_checks.py
     area: knowledge
@@ -2376,6 +2387,7 @@ modules:
       - BOUNDARY_PROJECTION_END
       - BOUNDARY_PROJECTION_LABELS
       - METADATA_MODES
+      - METADATA_PROFILE_CONTRACT_PATH
       - METADATA_TIGHTENING
       - RECEIPT_COLD_EVIDENCE_PREFIX
       - RECEIPT_COLD_INDEX_PATH
@@ -2387,6 +2399,7 @@ modules:
       - RepositoryFileSnapshot
       - RepositoryTreeSnapshot
       - RuntimeStateLockedError
+      - STRUCTURE_REGISTRY_CONTRACT_PATH
       - YamlSubsetError
       - atomic_write_text
       - blank_markdown_authority
@@ -2403,6 +2416,8 @@ modules:
       - iter_managed_md_files
       - iter_md_files
       - load_yaml_file
+      - load_metadata_profile_contract
+      - load_structure_registry_contract
       - make_receipt
       - managed_repository_path
       - markdown_atx_heading
@@ -2449,8 +2464,10 @@ modules:
       - structure_input_owner_reference_kind
       - validate_boundary_shape
       - validate_metadata_contract_shape
+      - validate_metadata_profile_contract
       - validate_receipt_output_path
       - validate_structure_registry_references
+      - validate_structure_registry_contract
       - validate_structure_registry_shape
       - write_receipts
       - write_receipts_observed

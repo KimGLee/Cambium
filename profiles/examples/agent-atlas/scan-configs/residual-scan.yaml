@@ -1,0 +1,37 @@
+# Atlas parameters for the Tool-owned residual-content verifier.
+
+residual_scan_config_version: 1
+
+allowed_roots:
+  - Interview Preparation
+
+excluded_roots:
+  - .obsidian
+  - Archive
+  - Tools
+  - kernel
+  - profiles
+
+frontmatter_match:
+  field: type
+  values:
+    - interview-topic-guide
+
+heading_match:
+  any: []
+  combination:
+    - 30-Second Answer
+    - 30-Second Answer（30 秒回答）
+    - 30-second Answer（30 秒回答）
+    - 30 Seconds
+    - "Level 1: 30 Seconds"
+    - 90-Second Answer
+    - 90-Second Answer（90 秒回答）
+    - 90-second Answer（90 秒回答）
+    - 90 Seconds
+    - "Level 2: 90 Seconds"
+  minimum_distinct: 2
+
+mandated_headings:
+  - 30-Second Answer
+  - 90-Second Answer

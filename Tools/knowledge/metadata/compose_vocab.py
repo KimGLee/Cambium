@@ -96,16 +96,17 @@ ROOT_KEY_ORDER = [
     "volatility_defaults",
 ]
 
-# The current Vocabulary Extensions input is deliberately closed. Profile
-# identity and slot selection live in profile.md; base identity and composition
-# policy live in the kernel base. Older extension files repeated those values.
-PROFILE_ROOT_KEYS = {
-    "schema_version",
-    "frontmatter_extensions",
-    "fields",
-    "volatility_defaults",
-}
-FRONTMATTER_EXTENSION_KEYS = {"fields"}
+# K08 owns the input shape.  This compiler consumes its immutable projection;
+# it does not repeat the document, nested-record, or composition closed sets.
+VOCABULARY_EXTENSIONS_SHAPE = \
+    vocabulary_contract.vocabulary_extensions_shape()
+PROFILE_ROOT_KEYS = VOCABULARY_EXTENSIONS_SHAPE["document_fields"]
+FRONTMATTER_EXTENSION_KEYS = \
+    VOCABULARY_EXTENSIONS_SHAPE["frontmatter_fields"]
+KERNEL_FIELD_EXTENSION_KEYS = \
+    VOCABULARY_EXTENSIONS_SHAPE["kernel_field_allowed_fields"]
+PROFILE_ONLY_FIELD_KEYS = \
+    VOCABULARY_EXTENSIONS_SHAPE["profile_only_field_allowed_fields"]
 
 
 def resolve_path(path):
@@ -385,7 +386,9 @@ def compose(base, profile, base_arg, ext_arg, profile_id, *,
                     "fields.%s: extension entry is not a mapping" % name
                 )
                 extension = {}
-            extra_keys = [k for k in extension if k != "values"]
+            extra_keys = [
+                key for key in extension
+                if key not in KERNEL_FIELD_EXTENSION_KEYS]
             if extra_keys:
                 conflicts.append(
                     "fields.%s: a kernel-field extension may only append "
@@ -404,8 +407,9 @@ def compose(base, profile, base_arg, ext_arg, profile_id, *,
         if not isinstance(profile_spec, dict):
             conflicts.append("profile-only field %r is not a mapping" % name)
             continue
-        allowed = ("owner", "role", "values")
-        extra_keys = [k for k in profile_spec if k not in allowed]
+        extra_keys = [
+            key for key in profile_spec
+            if key not in PROFILE_ONLY_FIELD_KEYS]
         if extra_keys:
             conflicts.append(
                 "fields.%s: profile-only field may only carry owner/role/"

@@ -401,12 +401,15 @@ class BuildCompletionPublicationRecoverySlowTests(CurrentRuntimeCase):
     """Build-completion publication failures preserve exact recovery state."""
 
     def replace_profile_with_valid_revision(self):
-        slots = self.root / "profiles/test-profile/slots.md"
-        text = slots.read_text(encoding="utf-8")
-        before = "test-profile-residual-disposition"
-        after = "test-profile-residual-disposition-v2"
+        owner = (
+            self.root /
+            "profiles/test-profile/registries/audit-dimensions.md"
+        )
+        text = owner.read_text(encoding="utf-8")
+        before = "The fixture accepts no production candidate;"
+        after = "The revised fixture accepts no production candidate;"
         self.assertIn(before, text)
-        slots.write_text(text.replace(before, after), encoding="utf-8")
+        owner.write_text(text.replace(before, after), encoding="utf-8")
 
     def completion_context(self):
         """Produce one legal proof consumer input through machine owners."""

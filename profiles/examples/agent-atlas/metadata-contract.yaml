@@ -1,16 +1,4 @@
-# Agent Systems Atlas metadata-contract slot: the configured branch.
-# Interface: kernel/K00 Standards Control/profile-interface.yaml
-# Kernel defaults stay in kernel/K08 Metadata and Status/applicability-base.yaml
-# and relationship-base.yaml; only Atlas differences and extensions appear
-# here. `interview_card` and `interview_status`
-# are the Expression Layer bindings under K08/07 authority: a mapped-class
-# value needs a resolvable reciprocal binding, and interview-ready is granted
-# only by the registered expression gate. `canonical_bindings` is the
-# expression-to-canonical relation and never enters `evidence_sources`.
-# `source_class` is the L-SOURCES grouped-taxonomy page field of the
-# Structure Registry; `case_class` is the L-CASES evidence-form class. The
-# bilingual section-role titles project the Language Contract's
-# display binding; the prose owner stays language-contract.md.
+# Atlas values for the Kernel-owned Metadata Contract slot.
 
 schema_version: 1
 
@@ -20,19 +8,9 @@ applicability:
 applicability_differences: []
 
 extension_fields:
-  - field: interview_status
+  - field: interview_guide
     mode: optional
-    shape: nonempty-string
-    owner: "profiles/examples/agent-atlas/expression-layer.md"
-  - field: interview_card
-    mode: conditional
     shape: path
-    condition:
-      all:
-        - field: interview_status
-          in:
-            - mapped
-            - interview-ready
     owner: "profiles/examples/agent-atlas/expression-layer.md"
   - field: case_class
     mode: conditional
@@ -42,7 +20,7 @@ extension_fields:
         - field: type
           in:
             - case-study
-    owner: "profiles/examples/agent-atlas/structure-registry.yaml"
+    owner: "profiles/examples/agent-atlas/scope-and-architecture.md"
   - field: source_class
     mode: conditional
     shape: nonempty-string
@@ -51,7 +29,7 @@ extension_fields:
         - field: type
           in:
             - source-note
-    owner: "profiles/examples/agent-atlas/structure-registry.yaml"
+    owner: "profiles/examples/agent-atlas/source-policy.md"
 
 relationship_extensions:
   - field: canonical_bindings

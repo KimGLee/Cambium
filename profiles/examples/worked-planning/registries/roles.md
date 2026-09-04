@@ -1,10 +1,8 @@
 # Role Registry
 
-Interface: [Kernel-owned Profile interface](../../../../kernel/K00%20Standards%20Control/19%20Profile%20Extension%20Interface.md) — Role Registry slot
+Interface: [Kernel-owned Profile interface](../../../../kernel/K00%20Standards%20Control/profile-interface.yaml) — Role Registry slot
 
 ## Process Roles
-
-Use an actor or system ID/name for each binding.
 
 | Kernel role | Bound actor or system ID/name |
 |---|---|
@@ -23,8 +21,6 @@ Use an actor or system ID/name for each binding.
 ## Metric Traceability Roles
 
 - Applicability: Not applicable — this corpus reports no evaluated metric; its numbers are published figures quoted from a named document revision or single measurements retained on a service case.
-
-When configured, bind each role to a profile field or identifier.
 
 | Kernel role | Profile field or identifier |
 |---|---|
