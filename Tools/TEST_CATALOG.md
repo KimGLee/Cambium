@@ -6,7 +6,7 @@ This file is generated from `Tools/test-ownership.yaml` and static source facts.
 
 | Test modules | Test cases | Fixtures | Fixture bundles | Parallel-safe cases | Test process calls | Fixture process calls | Test full copies | Fixture full copies | Cross-test imports |
 | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| 127 | 1117 | 51 | 8 | 930 | 41 | 11 | 15 | 24 | 0 |
+| 127 | 1118 | 51 | 8 | 930 | 41 | 11 | 15 | 24 | 0 |
 
 ### Method-level transitive exposure
 
@@ -14,16 +14,16 @@ These counts identify test methods whose per-method, per-class, or per-process s
 
 | Process | Temporary resource | File copy | Full repository copy | E2E builder | Full lifecycle |
 | ---: | ---: | ---: | ---: | ---: | ---: |
-| 39 | 270 | 59 | 49 | 2 | 2 |
+| 39 | 271 | 60 | 50 | 2 | 2 |
 
 ## Before and current static baseline
 
 | Metric | Before closure | Current |
 | --- | ---: | ---: |
 | Test modules | 129 | 127 |
-| Test cases | 2543 | 1117 |
+| Test cases | 2543 | 1118 |
 | Process-launch call sites | 192 | 52 |
-| Temporary-resource call sites | 233 | 142 |
+| Temporary-resource call sites | 233 | 143 |
 | Full repository copy call sites | 86 | 39 |
 | Cross-test import sites | 22 | 0 |
 
@@ -43,7 +43,7 @@ These counts identify test methods whose per-method, per-class, or per-process s
 | --- | --- | ---: |
 | `unit` | In-process deterministic computation owned by one module. | 371 |
 | `contract` | Schema, registry, owner, closed-set, or producer-consumer contract. | 523 |
-| `integration` | Adjacent production modules joined in an isolated temporary runtime. | 149 |
+| `integration` | Adjacent production modules joined in an isolated temporary runtime. | 150 |
 | `e2e` | One representative complete current-contract lifecycle. | 4 |
 | `slow` | Real security, concurrency, crash, recovery, or host-isolation behavior. | 69 |
 | `historical-read-only` | Current-contract sealed history that cannot regain current authority. | 1 |
@@ -52,7 +52,7 @@ These counts identify test methods whose per-method, per-class, or per-process s
 
 | Module | Owner | Default level | Parallel safe | Cases | Overrides | Process | Temp | Copies | Full copies |
 | --- | --- | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: |
-| `Tools/tests/test_adopt_standards.py` | `Tools/governance/standards/adopt_standards.py` | `unit` | True | 10 | 6 | 0 | 4 | 0 | 2 |
+| `Tools/tests/test_adopt_standards.py` | `Tools/governance/standards/adopt_standards.py` | `unit` | True | 11 | 7 | 0 | 5 | 0 | 2 |
 | `Tools/tests/test_adoption_lineage_contract.py` | `Tools/governance/standards/adoption_lineage_contract.py` | `contract` | True | 12 | 0 | 0 | 0 | 0 | 0 |
 | `Tools/tests/test_agent_interface_path_policy.py` | `Tools/platform/common/kblib.py` | `unit` | True | 3 | 2 | 1 | 0 | 0 | 0 |
 | `Tools/tests/test_amendment_control_consistency.py` | `Tools/execution/task_runtime/queue_runtime/task_record.py` | `contract` | True | 5 | 1 | 0 | 0 | 0 | 0 |
@@ -214,6 +214,7 @@ Only mixed test modules need method-level rows. All other cases inherit their mo
 | `test_adopt_standards.AdoptionTransactionSafetyTests.test_final_append_drift_restores_state_and_keeps_recovery_lock` | `Tools/governance/standards/adopt_standards.py` | `slow` | False | adopt_standards_transaction_cas_rollback_recovery_lock |
 | `test_adopt_standards.AdoptionTransactionSafetyTests.test_locked_prewrite_component_cas_rejects_drift` | `Tools/governance/standards/adopt_standards.py` | `slow` | False | adopt_standards_transaction_cas_rollback_recovery_lock |
 | `test_adopt_standards.BaseReadSetCheckpointTests.test_complete_declared_closure_accepts_route_bound_extra_paths` | `Tools/execution/task_runtime/queue_runtime/adoption.py` | `integration` | False | adoption_plan_read_set_closure_checkpoint |
+| `test_adopt_standards.CorrectiveAdoptionBeforeImageTests.test_new_profile_load_inputs_do_not_rebind_old_adoption_receipts` | `Tools/execution/task_runtime/queue_runtime/runtime.py` | `integration` | False | corrective_adoption_before_profile_lineage_boundary |
 | `test_adopt_standards.RevalidationSelectionContractTests.test_resume_names_only_batches_the_current_producer_admits` | `Tools/execution/task_runtime/queue_runtime/resume.py` | `contract` | True | adoption_resume_names_only_producer_admitted_batch |
 | `test_adopt_standards.WriterProjectionUnitTests.test_plan_identity_contains_only_current_non_version_identity` | `Tools/governance/standards/adopt_standards.py` | `unit` | True | adopt_standards_current_plan_identity |
 | `test_agent_interface_path_policy.CurrentFixedOutputOwnerContractTests.test_current_cli_consumers_join_to_unique_output_owners` | `Tools/platform/agent_interface/compile_cli_contract.py` | `contract` | True | current_cli_fixed_output_owner_closure |
@@ -689,6 +690,7 @@ Ownership fields come from `Tools/test-ownership.yaml`; fixture entrypoints and 
 | `test_adopt_standards.AdoptionTransactionSafetyTests.test_final_append_drift_restores_state_and_keeps_recovery_lock` | `adopt_standards._commit_transaction` | `test_adopt_standards.AdoptionTransactionSafetyTests.test_final_append_drift_restores_state_and_keeps_recovery_lock` | `slow` | — | temp=1 | — | — | — | — | — | False | — | `keep` |
 | `test_adopt_standards.AdoptionTransactionSafetyTests.test_locked_prewrite_component_cas_rejects_drift` | `adopt_standards._commit_transaction` | `test_adopt_standards.AdoptionTransactionSafetyTests.test_locked_prewrite_component_cas_rejects_drift` | `slow` | — | temp=1 | — | — | — | — | — | False | — | `keep` |
 | `test_adopt_standards.BaseReadSetCheckpointTests.test_complete_declared_closure_accepts_route_bound_extra_paths` | `adoption.standards_adoption_plan_errors` | `test_adopt_standards.BaseReadSetCheckpointTests.test_complete_declared_closure_accepts_route_bound_extra_paths` | `integration` | — | temp=1 | — | — | — | — | — | False | — | `keep` |
+| `test_adopt_standards.CorrectiveAdoptionBeforeImageTests.test_new_profile_load_inputs_do_not_rebind_old_adoption_receipts` | `runtime.validate_runtime` | `test_adopt_standards.CorrectiveAdoptionBeforeImageTests.test_new_profile_load_inputs_do_not_rebind_old_adoption_receipts` | `integration` | — | temp=1, copy=7, full-copy=2 | — | — | — | — | `Tools/tests/support/profile_fixture.py:install_loadable_profile` | False | — | `keep` |
 | `test_adopt_standards.RevalidationSelectionContractTests.test_resume_names_only_batches_the_current_producer_admits` | `resume.actionable_revalidation_batches` | `test_adopt_standards.RevalidationSelectionContractTests.test_resume_names_only_batches_the_current_producer_admits` | `contract` | — | — | — | — | — | — | — | False | — | `keep` |
 | `test_adopt_standards.WriterProjectionUnitTests.test_plan_identity_contains_only_current_non_version_identity` | `adopt_standards._plan_identity` | `test_adopt_standards.WriterProjectionUnitTests.test_plan_identity_contains_only_current_non_version_identity` | `unit` | — | — | — | — | — | — | — | False | — | `keep` |
 | `test_adopt_standards.WriterProjectionUnitTests.test_writer_guard_allows_only_adopter_owned_projection` | `adopt_standards._assert_only_permitted_changes` | `test_adopt_standards.WriterProjectionUnitTests.test_writer_guard_allows_only_adopter_owned_projection` | `unit` | — | — | — | — | — | — | — | False | — | `keep` |

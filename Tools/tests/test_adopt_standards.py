@@ -1032,6 +1032,40 @@ class RevalidationSelectionContractTests(AdoptStandardsFixture,
                             "run-standards-revalidation:B1", action)
 
 
+class CorrectiveAdoptionBeforeImageTests(AdoptStandardsFixture,
+                                         unittest.TestCase):
+    """One local current-runtime seam for the K12/10 asymmetric boundary."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.root = Path(self.tmp.name) / "repo"
+        self.build_repository_fixture()
+
+    def test_new_profile_load_inputs_do_not_rebind_old_adoption_receipts(self):
+        # Public release components are installed before adopt_standards can
+        # run.  A byte change in their canonical Profile-load input closure
+        # therefore creates a valid target view that the immutable before
+        # Receipt could never have bound.
+        contract = self.root / \
+            "kernel/K00 Standards Control/profile-interface.yaml"
+        contract.write_text(
+            contract.read_text(encoding="utf-8") + "\n",
+            encoding="utf-8")
+
+        ordinary = runtime_validation.validate_runtime(self.root)
+        self.assertIn(
+            "does not bind current authorized Profile",
+            "\n".join(ordinary["errors"]))
+
+        corrective = runtime_validation.validate_runtime(
+            self.root,
+            allow_invalid_current_profile_for_corrective_adoption=True,
+            allow_active_standards_mismatch_for_adoption=True)
+        self.assertEqual([], corrective["errors"])
+        self.assertIsNotNone(corrective["_profile_authorized_view"])
+
+
 class BaseReadSetCheckpointTests(AdoptStandardsFixture,
                                  unittest.TestCase):
     """One adjacent Read Set closure -> adoption-plan seam."""

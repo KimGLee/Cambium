@@ -490,8 +490,20 @@ def validate_runtime(root, allowed_open_delta=None,
             continue
         catalog[receipt_id] = ("<pending-write>", receipt)
     if active_standards_view is not None:
-        profile_evidence = (public_profile_load_evidence(profile_view)
-                            if profile_view is not None else None)
+        # K12/10 makes the persisted before-image deliberately asymmetric:
+        # corrective Standards adoption may inspect a Profile with the target
+        # release's producer, but the immutable old adoption Receipt cannot
+        # have bound the new root-owned input bytes installed from the target
+        # components.  Keep the successfully produced view for
+        # impact/runtime checks, while validating the old lineage as identity
+        # only.  Proposed and post-write validation never receive this flag
+        # and therefore still require the complete current Profile binding.
+        profile_evidence = (
+            None
+            if allow_invalid_current_profile_for_corrective_adoption
+            else (public_profile_load_evidence(profile_view)
+                  if profile_view is not None else None)
+        )
         if (pending_active_standards_receipt_id is not None and
                 active_standards_view.get("latest_adoption_receipt") !=
                 pending_active_standards_receipt_id):

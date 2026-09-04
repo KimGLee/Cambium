@@ -1164,7 +1164,7 @@
   ],
   "modules": [
     {
-      "case_count": 10,
+      "case_count": 11,
       "cases": [
         {
           "consumer_only": false,
@@ -1992,6 +1992,123 @@
           "execution": {
             "builder_triggers": [],
             "e2e_builder_entrypoints": [],
+            "fixture_entrypoints": [
+              "Tools/tests/support/profile_fixture.py:install_loadable_profile"
+            ],
+            "full_lifecycle": false,
+            "full_lifecycle_entrypoints": [],
+            "lifecycle_signals": [],
+            "recurring_effects": {
+              "file_copies": 7,
+              "full_repository_copies": 2,
+              "process_calls": 0,
+              "temp_resources": 1
+            },
+            "scopes": {
+              "direct_method": {
+                "builder_triggers": [],
+                "e2e_builder_entrypoints": [],
+                "effects": {
+                  "file_copies": 0,
+                  "full_repository_copies": 0,
+                  "process_calls": 0,
+                  "temp_resources": 0
+                },
+                "first_use_builds": {},
+                "fixture_entrypoints": [],
+                "full_lifecycle": false,
+                "full_lifecycle_entrypoints": [],
+                "lifecycle_signals": []
+              },
+              "per_class": {
+                "builder_triggers": [],
+                "e2e_builder_entrypoints": [],
+                "effects": {
+                  "file_copies": 0,
+                  "full_repository_copies": 0,
+                  "process_calls": 0,
+                  "temp_resources": 0
+                },
+                "first_use_builds": {},
+                "fixture_entrypoints": [],
+                "full_lifecycle": false,
+                "full_lifecycle_entrypoints": [],
+                "lifecycle_signals": []
+              },
+              "per_method": {
+                "builder_triggers": [],
+                "e2e_builder_entrypoints": [],
+                "effects": {
+                  "file_copies": 7,
+                  "full_repository_copies": 2,
+                  "process_calls": 0,
+                  "temp_resources": 1
+                },
+                "first_use_builds": {},
+                "fixture_entrypoints": [
+                  "Tools/tests/support/profile_fixture.py:install_loadable_profile"
+                ],
+                "full_lifecycle": false,
+                "full_lifecycle_entrypoints": [],
+                "lifecycle_signals": []
+              },
+              "per_process": {
+                "builder_triggers": [],
+                "e2e_builder_entrypoints": [],
+                "effects": {
+                  "file_copies": 0,
+                  "full_repository_copies": 0,
+                  "process_calls": 0,
+                  "temp_resources": 0
+                },
+                "first_use_builds": {},
+                "fixture_entrypoints": [],
+                "full_lifecycle": false,
+                "full_lifecycle_entrypoints": [],
+                "lifecycle_signals": []
+              }
+            },
+            "transitive_effects": {
+              "file_copies": 7,
+              "full_repository_copies": 2,
+              "process_calls": 0,
+              "temp_resources": 1
+            },
+            "triggered_once_per_process": {
+              "builds": {},
+              "effects": {
+                "file_copies": 0,
+                "full_repository_copies": 0,
+                "process_calls": 0,
+                "temp_resources": 0
+              }
+            }
+          },
+          "level": "integration",
+          "lifecycle": "current",
+          "override": "CorrectiveAdoptionBeforeImageTests.*",
+          "owner": "Tools/execution/task_runtime/queue_runtime/runtime.py",
+          "owner_contract_symbol": "runtime.validate_runtime",
+          "parallel_safe": false,
+          "path": "Tools/tests/test_adopt_standards.py",
+          "primary_owner_test": "test_adopt_standards.CorrectiveAdoptionBeforeImageTests.test_new_profile_load_inputs_do_not_rebind_old_adoption_receipts",
+          "selector": "CorrectiveAdoptionBeforeImageTests.test_new_profile_load_inputs_do_not_rebind_old_adoption_receipts",
+          "semantics": "corrective_adoption_before_profile_lineage_boundary",
+          "test_id": "test_adopt_standards.CorrectiveAdoptionBeforeImageTests.test_new_profile_load_inputs_do_not_rebind_old_adoption_receipts"
+        },
+        {
+          "consumer_only": false,
+          "disposition": "keep",
+          "duplicate_group": null,
+          "effects": {
+            "file_copies": 0,
+            "full_repository_copies": 0,
+            "process_calls": 0,
+            "temp_resources": 0
+          },
+          "execution": {
+            "builder_triggers": [],
+            "e2e_builder_entrypoints": [],
             "fixture_entrypoints": [],
             "full_lifecycle": false,
             "full_lifecycle_entrypoints": [],
@@ -2324,13 +2441,13 @@
         "file_copies": 6,
         "full_repository_copies": 3,
         "process_calls": 0,
-        "temp_resources": 4
+        "temp_resources": 5
       },
       "effects": {
         "file_copies": 0,
         "full_repository_copies": 2,
         "process_calls": 0,
-        "temp_resources": 4
+        "temp_resources": 5
       },
       "fixture_dependencies": [
         "Tools/tests/support/canonical_registry_fixture.py",
@@ -2339,7 +2456,7 @@
         "Tools/tests/support/profile_fixture.py"
       ],
       "lifecycle": "current",
-      "override_count": 6,
+      "override_count": 7,
       "owner": "Tools/governance/standards/adopt_standards.py",
       "parallel_safe": true,
       "path": "Tools/tests/test_adopt_standards.py",
@@ -132519,17 +132636,17 @@
       "contract": 523,
       "e2e": 4,
       "historical-read-only": 1,
-      "integration": 149,
+      "integration": 150,
       "slow": 69,
       "unit": 371
     },
     "method_transitive_exposure": {
       "e2e_builder": 2,
-      "file_copies": 59,
+      "file_copies": 60,
       "full_lifecycle": 2,
-      "full_repository_copies": 49,
+      "full_repository_copies": 50,
       "process_calls": 39,
-      "temp_resources": 270
+      "temp_resources": 271
     },
     "module_scenario_first_use_builds": 14,
     "parallel_safe_cases": 930,
@@ -132537,9 +132654,9 @@
       "file_copies": 8,
       "full_repository_copies": 15,
       "process_calls": 41,
-      "temp_resources": 125
+      "temp_resources": 126
     },
-    "test_cases": 1117,
+    "test_cases": 1118,
     "test_modules": 127
   }
 }
