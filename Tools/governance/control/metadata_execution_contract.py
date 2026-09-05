@@ -220,14 +220,15 @@ def compose_profile_projection_rules(contract, profile_contract):
     Static Kernel fields remain covered bidirectionally by exact authority
     rules and concrete writer operations.  Dynamic Profile fields are instead
     admitted through one installed generic operation, then instantiated only
-    from an authorized typed Profile's exact Gate enum set.
+    from a valid typed Profile's exact Gate enum set. This pure composition
+    does not authorize a write; the caller supplies its admitted context.
     """
     if not isinstance(contract, CompiledMetadataExecutionContract):
         raise TypeError("contract must be a CompiledMetadataExecutionContract")
     if (profile_contract is None or
-            not getattr(profile_contract, "authorized", False)):
+            not getattr(profile_contract, "valid", False)):
         raise ValueError(
-            "Profile projection composition requires an authorized typed "
+            "Profile projection composition requires a valid typed "
             "Profile contract")
     writer_capability = compiled_operation_owner(
         contract, PROFILE_EXTENSION_ENUM_PROJECTION_OPERATION, kind="writer")

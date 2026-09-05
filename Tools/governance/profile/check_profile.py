@@ -1,87 +1,14 @@
 #!/usr/bin/env python3
-"""Profile manifest completeness check script.
+"""The sole complete profile-load Gate evaluator for a structured Profile.
 
-Rule owners:
-- "kernel/K00 Standards Control/profile-interface.yaml" (the Kernel-owned
-  machine registry for the common slot interface and Profile-specific closed
-  contracts);
-- "kernel/K12 Quality Assurance/audit-dimension-base.yaml" (the Kernel-owned
-  base receipt dimensions, evidence roles, and extension-target mappings);
-- "kernel/K00 Standards Control/execution-defaults-base.yaml" (the canonical
-  membership registry for the overridable / constitutional split, and the
-  admissible value form of an item whose owner module fixes one);
-- "Tools/schemas/execution_defaults.template.yaml" (executor-side placeholder
-  configuration only: reserved profile_id values and the unfilled sentinel).
+The Profile linker reads one profile.toml, validates its Kernel-owned CUE
+contract and typed references, and exposes immutable slot values. This module
+binds that result to the canonical metadata execution contract and stable
+Profile/Kernel snapshots, checks runtime capability and override semantics,
+and emits the registered Gate evidence only for one complete evaluation.
 
-What this script is for: a profile copied from `profiles/_template/` is a
-skeleton of constraints and TODOs, not a runnable profile. Nothing in prose can
-stop an agent from loading a half-filled skeleton and reporting success. This
-script is the mechanical stop: it fails while the skeleton is still visible, so
-an unfilled profile cannot pass a gate that runs it.
-
-Method:
-- Slot list: the ordered `slots` rows of the Kernel-owned interface registry.
-  The Execution Default Overrides Contract is not a file-bound slot -- it is a
-  declaration table, checked separately below.
-- Manifest: `<profile_dir>/profile.md`. Its `## Implemented Slots` section must
-  bind every interface slot, as `- `Slot Name`: <binding>`.
-- Each registered slot is file-bound. A binding may spell its exact
-  profile-relative path in a wiki link, Markdown link, or one inline-code span;
-  it has no extension guessing, path normalization, case alias,
-  repository-root fallback, or inline-manifest alternative. Execution Default
-  Overrides is the sole manifest-resident contract.
-- Common Profile form: the same interface registry owns each canonical slot
-  path, required H1/H2 skeleton, and the containers that may hold referenced
-  instance H3 owners. Form conformance is structural only; it cannot confirm
-  the instance answer.
-- Execution Default Overrides: the table contains only explicit overrides;
-  sparse-default semantics are owned by the profile interface. Duplicate,
-  unknown, default-restating, and constitutional rows fail, and so does a row
-  whose value leaves the `value_domain` the kernel registry records for that
-  item. A registered form may carry the bound its owner module writes into
-  it. An item the registry gives no `value_domain` is left to its owner
-  module; this script invents no bound of its own.
-- Corpus Planning: the bound slot is a closed restricted-YAML document whose
-  applicability, three artifact bindings, ordered capability scale, and pass
-  authority are validated directly; Markdown declaration heuristics do not
-  define this slot.
-- Profile dependency closure: the Audit Dimension and Registered Scan
-  registries are compiled through ``profile_contract`` into one typed,
-  fail-closed graph.  Predicate owners and every explicit verifier
-  ``--config`` stay inside the selected Profile; optional owner headings must
-  resolve exactly once.  The passing Gate receipt binds both the complete
-  Profile tree and the typed edge graph.
-- Optional/conditional declarations: `Configured` must be backed by complete
-  table rows; `None` and `Not applicable — <reason>` must not retain active
-  rows. This makes one declaration control one block instead of relying on
-  repeated prose fallbacks.
-
-Two independent incompleteness blocks, either of which fails the profile:
-1. the unfilled sentinel (default `TODO(profile)`) appearing anywhere under the
-   profile directory;
-2. a `profile_id` that is missing or still one of the reserved placeholder
-   values.
-Each block is cleared only by editing the file.  Clearing them is necessary
-but no longer sufficient: the manifest, all slots, and the transitive Profile
-dependency closure must also resolve. None of these checks is evidence that
-the answers are *good*; content quality stays a human call.
-
-Result semantics: unbound slots, unresolved bindings, invalid override rows,
-and both incompleteness blocks are result=fail. A manifest binding
-for a slot the interface does not define is result=candidate (an extension
-binding may be legitimate; whether it is, is a human call).
-
-Scope semantics: a profile directory that does not exist, or that has no
-profile.md, is result=fail -- a scan with nothing to check is an invocation
-error, never a pass.
-
-Exit codes: 0 = all pass, 1 = at least one fail, 2 = no fail but candidates.
-
-Usage: python3 check_profile.py <profile_dir> [--root VAULT_ROOT]
-       [--interface "kernel/K00 Standards Control/profile-interface.yaml"]
-       [--defaults Tools/schemas/execution_defaults.template.yaml]
-       [--execution-defaults "kernel/K00 Standards Control/execution-defaults-base.yaml"]
-       [--receipts PATH]
+Draft inspection belongs to profile_contract.load_profile_draft; it never
+produces this Gate's pass evidence or admits a runtime consumer.
 """
 from Tools.platform.repository.repository import repository_source_root
 
@@ -93,15 +20,17 @@ import json
 import os
 import re
 import sys
+from types import MappingProxyType
 from typing import Optional, Tuple
 
-import Tools.governance.control.contract_exception_policy as contract_exception_policy
 import Tools.governance.control.control_registry_contract as control_registry_contract
+import Tools.governance.control.contract_exception_policy as contract_exception_policy
 import Tools.execution.planning.corpus_planning_contract as corpus_planning_contract
 import Tools.platform.common.kblib as kblib
 from Tools.execution.evidence import receipt_type_contract
 import Tools.governance.control.metadata_execution_contract as metadata_execution_contract
 import Tools.governance.profile.profile_contract as profile_contract
+import Tools.governance.profile.rendering_contract as rendering_contract
 import Tools.governance.profile.profile_layout_contract as profile_layout_contract
 
 TOOL = "check_profile"
@@ -167,23 +96,46 @@ class ProfileLoadEvaluation:
     profile_id: Optional[str]
     profile_snapshot_sha256: Optional[str]
     profile_contract_fingerprint: Optional[str]
-    execution_default_overrides: Tuple[Tuple[str, str], ...]
+    execution_default_overrides: Tuple[Tuple[str, object], ...]
     profile_snapshot: Optional[object]
     profile_load_inputs_sha256: Optional[str]
     summary_receipt: Optional[dict]
     output: str
+    normative_snapshots: Optional[Mapping] = None
 
     @property
     def authorized(self):
-        return (
+        complete = (
             self.exit_code == 0 and
-            self.contract is not None and
-            self.metadata_execution_contract is not None and
+            isinstance(self.contract, profile_contract.ProfileContract) and
+            self.contract.valid and
+            isinstance(self.metadata_execution_contract,
+                       metadata_execution_contract.CompiledMetadataExecutionContract) and
             self.profile_id is not None and
             self.summary_receipt is not None and
             self.profile_snapshot_sha256 is not None and
             self.profile_contract_fingerprint is not None and
             self.profile_load_inputs_sha256 is not None
+            and isinstance(self.normative_snapshots, Mapping)
+            and bool(self.normative_snapshots)
+        )
+        if not complete or not isinstance(self.summary_receipt, dict):
+            return False
+        return (
+            not self.findings and
+            isinstance(self.profile_snapshot, kblib.RepositoryTreeSnapshot) and
+            self.profile_snapshot.sha256 == self.profile_snapshot_sha256 and
+            self.profile_id == self.contract.profile_id and
+            self.profile_contract_fingerprint == self.contract.fingerprint and
+            self.summary_receipt.get("tool") == TOOL and
+            self.summary_receipt.get("check") == GATE_CHECK and
+            self.summary_receipt.get("result") == "pass" and
+            self.summary_receipt.get("selected_profile_manifest") ==
+                self.contract.manifest_repo_path and
+            all(self.summary_receipt.get(name) == getattr(self, name)
+                for name in profile_contract.PROFILE_LOAD_EVIDENCE_FINGERPRINT_FIELDS) and
+            self.summary_receipt.get("metadata_execution_contract_fingerprint") ==
+                self.metadata_execution_contract.contract_fingerprint
         )
 
     def rebind_profile_snapshot(self, root=None):
@@ -200,6 +152,17 @@ class ProfileLoadEvaluation:
         candidate_tree = kblib.repository_tree_snapshot(
             effective_root, self.contract.profile_repo_dir)
         return candidate_tree.project(self.contract.profile_snapshot_paths)
+
+    def rebind_normative_inputs(self, root=None):
+        """Rebind the complete fixed and linked owner input set for currency."""
+        if not self.authorized:
+            raise ValueError("cannot re-bind inputs from an unauthorized evaluation")
+        effective_root = self.contract.root if root is None else os.path.realpath(
+            os.path.abspath(os.fspath(root)))
+        if effective_root != os.path.realpath(self.contract.root):
+            raise ValueError("Profile evaluation belongs to a different repository root")
+        return canonical_profile_load_inputs(
+            effective_root, additional_paths=self.normative_snapshots.keys())
 
 
 REPO_ROOT = repository_source_root(__file__)
@@ -235,31 +198,22 @@ _BASE_CANONICAL_PROFILE_LOAD_INPUTS = (
     DEFAULT_OPERATION_CAPABILITIES,
     DEFAULT_RUNTIME_PATH_REGISTRY,
     DEFAULT_SCAN_CAPABILITIES,
+    rendering_contract.CAPABILITY_REGISTRY_PATH,
     DEFAULT_METADATA_AUTHORITY,
     DEFAULT_METADATA_CONTRACT,
     DEFAULT_APPLICABILITY_BASE,
     DEFAULT_RELATIONSHIP_BASE,
     DEFAULT_VOCABULARY_BASE,
     DEFAULT_GATE_REGISTRY,
+    contract_exception_policy.POLICY_REGISTRY_PATH,
+    "Tools/governance/profile/profile_codec.py",
+    "Tools/governance/profile/profile_cue.py",
+    "Tools/governance/profile/cue-toolchain.json",
+    profile_contract.PROFILE_REQUIREMENTS_PATH,
+    "Tools/governance/profile/profile-encoding.yaml",
+    "Tools/governance/profile/profile_schema_projection.py",
 )
-_PROFILE_INTERFACE_REGISTRY_INPUTS = tuple(sorted(set(
-    profile_contract.load_profile_interface(REPO_ROOT)
-    ["registry_references"].values()) -
-    set(_BASE_CANONICAL_PROFILE_LOAD_INPUTS)))
-CANONICAL_PROFILE_LOAD_INPUTS = (
-    _BASE_CANONICAL_PROFILE_LOAD_INPUTS +
-    _PROFILE_INTERFACE_REGISTRY_INPUTS)
-
-SLOTS_SECTION = "Implemented Slots"
-OVERRIDES_SECTION = "Execution Default Overrides"
-
-# Extensions read as text during the sentinel scan; anything else (images,
-# archives) is skipped and reported in the summary counts.
-TEXT_SUFFIXES = (".md", ".yaml", ".yml", ".txt", ".json", ".jsonl", ".py", ".csv")
-
-DECLARATION_RE = re.compile(
-    r"^\s*-\s+(Registration|Applicability):\s*(.*?)\s*$"
-)
+CANONICAL_PROFILE_LOAD_INPUTS = _BASE_CANONICAL_PROFILE_LOAD_INPUTS
 
 STRUCTURE_REGISTRY_SLOT = profile_contract.STRUCTURE_REGISTRY_SLOT
 PRIORITY_RUBRIC_SLOT = profile_contract.PRIORITY_RUBRIC_SLOT
@@ -267,311 +221,157 @@ METADATA_CONTRACT_SLOT = profile_contract.METADATA_CONTRACT_SLOT
 
 AUDIT_DIMENSION_SLOT = profile_contract.AUDIT_DIMENSION_REGISTRY_SLOT
 
-# ---------------------------------------------------------------------------
-# Structured finding classification (``--json``).
-#
-# An assisting agent triaging a failed run needs to know which findings it
-# can fix directly and re-run (MECHANICAL: path resolution, identity and
-# directory agreement, table/manifest shape, and self-reference containment)
-# and which findings name an operator answer that is
-# missing or unconfirmed (SEMANTIC_UNRESOLVED: the unfilled sentinel and
-# every other finding whose subject is the *content* of a decision rather
-# than the shape of one already made).  The map is a closed dict over every
-# check code this producer can emit -- its own literals, the kblib
-# identity/shape validators it consumes, and the profile_contract
-# diagnostics it forwards (``profile-contract-sentinel`` is re-emitted as
-# ``unfilled-placeholder`` and therefore does not appear here).
-# test_check_profile pins the coverage against the emitting sources, so
-# adding a check without classifying it fails the suite.
-#
-# Non-obvious calls, decided by reading each check:
-# * profile-id-*: the manifest identity must equal the profile directory
-#   name (profile-id-directory-mismatch), so the correct value is a pure
-#   function of the package location -- mechanical, including the reserved
-#   placeholder case.
-# * extension-dimensions-registration / corpus-planning-applicability: the
-#   operator's declaration exists but is misspelled or mis-shaped;
-#   normalizing an already-made choice to its legal spelling is mechanical.
-#   (An unanswered declaration still carries the sentinel and fails as
-#   unfilled-placeholder instead.)
-# * *-row-empty and the empty registry findings: the declared structure
-#   demands content that simply is not there (or a cell is blank); inventing
-#   that content would be a domain decision, so these stay semantic-unresolved.
-# * override-choice-empty / override-value-domain: the profile value is
-#   absent or rejected; an admissible replacement is an operator choice.
-#   The sibling override rows (duplicate, unknown item, constitutional,
-#   redundant default, row shape, unknown domain name) each have one
-#   determined fix -- remove or reshape the row -- and stay mechanical.
-# * slot-not-in-interface: the tool's own result text says whether the
-#   extension binding is reasonable "is a human call" -- semantic-unresolved.
-# ---------------------------------------------------------------------------
+# Classification affects diagnostic presentation only. Candidate completeness
+# comes from the draft model; only this evaluator emits profile-load evidence.
+# Unrecognized diagnostics remain unresolved rather than being auto-repaired.
 MECHANICAL = "mechanical"
 SEMANTIC_UNRESOLVED = "semantic-unresolved"
 
 _SEMANTIC_UNRESOLVED_CHECKS = frozenset((
-    "unfilled-placeholder",
-    "slot-not-in-interface",
+    "expression-artifact-binding-missing",
     "override-choice-empty",
     "override-value-domain",
-    "extension-dimensions-configured-empty",
-    "extension-dimensions-row-empty",
-    "judgment-items-empty",
-    "judgment-items-row-empty",
-    "registered-scans-empty",
-    "registered-scans-row-empty",
-    "extension-gates-configured-empty",
-    "expression-artifacts-configured-empty",
-    "expression-artifacts-row-empty",
-    "expression-artifact-binding-missing",
-    "batch-review-configured-empty",
-    "batch-review-requirements-row-empty",
-    "extension-gates-row-empty",
+    "unfilled-placeholder",
 ))
 
 _MECHANICAL_CHECKS = frozenset((
-    # invocation and canonical-input handling
-    "profile-receipt-path-inside-profile",
-    "profile-load-noncanonical-input",
-    "profile-load-input-unreadable",
-    "profile-load-input-changed",
-    "profile-load-metadata-contract-invalid",
-    "profile-dir-missing",
-    "manifest-missing",
-    "profile-snapshot-invalid",
-    "profile-snapshot-changed-during-check",
-    "interface-unreadable",
-    "defaults-unreadable",
-    "execution-defaults-unreadable",
-    "profile-text-unreadable",
-    # interface and manifest shape
-    "interface-no-slots",
-    "profile-interface-slot-registry-mismatch",
-    "manifest-section-duplicate",
-    "slots-section-empty",
-    "slot-unbound",
-    "slot-binding-duplicate",
-    "slot-binding-inline",
-    "slot-binding-invalid",
-    "slot-binding-unresolved",
-    "slot-binding-outside-profile",
-    "slot-binding-unrecognized",
-    # manifest identity (the value is a pure function of the directory name)
-    "profile-id-missing",
-    "profile-id-duplicate",
-    "profile-id-placeholder",
-    "profile-id-invalid",
-    "profile-id-directory-mismatch",
-    # Corpus Planning slot envelope
-    "corpus-planning-binding",
+    "batch-review-judgment-duplicate",
+    "batch-review-judgment-reference",
+    "batch-review-role-reference",
     "corpus-planning-contract-invalid",
-    "corpus-planning-yaml",
-    "corpus-planning-schema",
-    "corpus-planning-applicability",
-    "corpus-planning-artifact",
-    "corpus-planning-scale",
-    "corpus-planning-authority",
-    # Structure Registry slot shape (kblib validator)
-    "structure-registry-binding",
-    "structure-registry-yaml",
-    "structure-registry-schema",
-    "structure-registry-applicability",
-    "structure-registry-unit",
-    "structure-registry-parent",
-    "structure-registry-layer",
-    "structure-registry-layout",
-    "structure-registry-role",
-    "structure-registry-capability",
-    "structure-registry-input-owner",
-    # Priority Rubric quota block
-    "priority-quota-policy",
-    # Metadata Contract slot shape (kblib validator)
-    "metadata-contract-binding",
-    "metadata-contract-yaml",
-    "metadata-contract-schema",
+    "expression-artifact-binding-invalid",
+    "expression-artifact-binding-shape",
+    "expression-artifact-binding-unknown",
+    "expression-artifact-dependency-map-invalid",
+    "expression-artifact-entry-invalid",
+    "expression-artifact-id-duplicate",
+    "expression-artifact-id-invalid",
+    "expression-artifact-readiness-field",
+    "expression-artifact-readiness-gate",
+    "expression-artifact-readiness-metadata",
+    "expression-artifact-type-registry",
+    "expression-artifact-type-unknown",
+    "expression-contract-definition-field-invalid",
+    "expression-contract-definition-field-missing",
+    "expression-contract-definition-fragment-invalid",
+    "expression-contract-definition-heading-count",
+    "expression-contract-definition-heading-missing",
+    "expression-contract-definition-path-invalid",
+    "expression-contract-definition-path-outside-profile",
+    "expression-contract-field-invalid",
+    "expression-contract-field-missing",
+    "expression-contract-fragment-invalid",
+    "expression-contract-heading-count",
+    "expression-contract-heading-missing",
+    "expression-contract-id-duplicate",
+    "expression-contract-path-invalid",
+    "expression-contract-path-outside-profile",
+    "expression-contract-reference-closure",
+    "extension-dimension-id-collision",
+    "extension-gate-capability-registry",
+    "extension-gate-completion-invalid",
+    "extension-gate-completion-reference",
+    "extension-gate-consumer-capability",
+    "extension-gate-deterministic-completion",
+    "extension-gate-field-applicability",
+    "extension-gate-field-completion",
+    "extension-gate-field-kernel-collision",
+    "extension-gate-field-reference",
+    "extension-gate-field-shape",
+    "extension-gate-id-duplicate",
+    "extension-gate-id-invalid",
+    "extension-gate-judgment-reference",
+    "extension-gate-kernel-metadata-registry",
+    "extension-gate-owner-field-invalid",
+    "extension-gate-owner-field-missing",
+    "extension-gate-owner-fragment-invalid",
+    "extension-gate-owner-heading-count",
+    "extension-gate-owner-heading-missing",
+    "extension-gate-owner-path-invalid",
+    "extension-gate-owner-path-outside-profile",
+    "extension-gate-owner-reference",
+    "extension-gate-owner-registry",
+    "extension-gate-producer-capability",
+    "extension-gate-producer-reference",
+    "extension-gate-receipt-schema",
+    "extension-gate-role-reference",
+    "extension-gate-role-registry",
+    "extension-gate-transition-duplicate",
+    "extension-gate-vocabulary-registry",
+    "extension-gate-writer-capability",
+    "interface-unreadable",
+    "judgment-item-dimension-unknown",
+    "judgment-item-id-duplicate",
+    "manifest-missing",
     "metadata-contract-applicability",
-    "metadata-contract-entry",
-    "metadata-contract-condition",
-    "metadata-contract-section-role",
     "metadata-contract-boundary-projection",
-    # Execution Default Overrides table
-    "overrides-section-missing",
-    "override-row-shape",
-    "override-item-duplicate",
+    "metadata-contract-condition",
+    "metadata-contract-entry",
+    "metadata-contract-schema",
+    "metadata-contract-section-role",
     "override-constitutional-item",
     "override-item-unknown",
     "override-redundant-default",
     "override-value-domain-unknown",
-    # typed dependency closure (profile_contract diagnostics)
-    "profile-contract-manifest-path",
-    "profile-contract-interface-invalid",
-    "profile-contract-interface-incomplete",
-    "profile-contract-audit-dimension-base-invalid",
-    "profile-contract-profile-root",
-    "profile-contract-snapshot-invalid",
-    "profile-contract-manifest-name",
-    "profile-contract-manifest-unreadable",
-    "profile-contract-slot-duplicate",
-    "profile-contract-slot-missing",
-    "profile-contract-slot-invalid",
-    "profile-contract-slot-unresolved",
-    "profile-contract-slot-outside-profile",
-    "profile-contract-slot-unreadable",
-    # Kernel-owned Profile form conformance (location + heading skeleton)
-    "profile-form-binding-path",
-    "profile-form-heading-structure",
-    "profile-form-subheading-container",
-    "profile-form-subheading-reference",
-    "profile-form-table-count",
-    "profile-form-table-header",
-    "profile-form-table-separator",
-    "profile-form-table-shape",
-    "profile-form-table-row-count",
-    "profile-form-table-row-identity",
-    "profile-form-table-row-shape",
-    "profile-form-table-unexpected",
-    "profile-form-scalar-count",
-    "profile-form-scalar-value",
-    "profile-form-yaml-owner",
-    "profile-form-yaml-shape",
-    "extension-dimensions-registration",
-    "extension-dimensions-none-with-rows",
-    "extension-dimension-id-invalid",
-    "extension-dimension-id-duplicate",
-    "extension-dimension-base-collision",
-    "extension-dimension-target-invalid",
-    "judgment-item-id-invalid",
-    "judgment-item-id-duplicate",
-    "judgment-item-dimension-unknown",
-    "judgment-item-evidence-role-invalid",
-    "registered-scan-id-invalid",
-    "registered-scan-id-duplicate",
-    "registered-scan-judgment-reference",
-    "registered-scans-required-count",
-    "scan-capability-registry-invalid",
-    "registered-scan-capability-unknown",
-    "registered-scan-capability-implementation",
-    "registered-scan-config-required",
-    "registered-scan-config-forbidden",
-    # typed Expression Layer artifact registry
-    "expression-artifacts-registration",
-    "expression-artifacts-none-with-rows",
-    "expression-artifact-metadata-contract",
-    "expression-artifact-type-registry",
-    "expression-artifact-id-invalid",
-    "expression-artifact-id-duplicate",
-    "expression-artifact-type-unknown",
-    "expression-artifact-entry-invalid",
-    "expression-artifact-dependency-map-invalid",
-    "expression-artifact-binding-invalid",
-    "expression-artifact-binding-unknown",
-    "expression-artifact-binding-shape",
-    "expression-artifact-readiness-field",
-    "expression-artifact-readiness-metadata",
-    "expression-artifact-readiness-gate",
-    # typed Profile extension Gate execution contract
-    "extension-gates-registration",
-    "extension-gates-none-with-rows",
-    "batch-review-judgment-duplicate",
-    "batch-review-judgment-reference",
-    "batch-review-none-with-rows",
-    "batch-review-producer-kind",
-    "batch-review-receipt-schema",
-    "batch-review-requirements-row-shape",
-    "batch-review-requirements-section-count",
-    "batch-review-requirements-table-count",
-    "batch-review-requirements-table-header",
-    "batch-review-requirements-table-separator",
-    "batch-review-requirements-table-shape",
-    "batch-review-role-reference",
-    "batch-review-role-registry",
-    "batch-review-target-selector",
-    "batch-review-trigger",
-    "extension-gate-deterministic-completion",
-    "extension-gate-id-invalid",
-    "extension-gate-id-duplicate",
-    "extension-gate-transition-invalid",
-    "extension-gate-transition-duplicate",
-    "extension-gate-owner-registry",
-    "extension-gate-owner-reference",
-    "extension-gate-owner-heading-empty",
-    "extension-gate-owner-heading-missing",
-    "extension-gate-owner-path-invalid",
-    "extension-gate-owner-unreadable",
-    "extension-gate-owner-heading-non-markdown",
-    "extension-gate-owner-heading-count",
-    "extension-gate-role-registry",
-    "extension-gate-role-reference",
-    "extension-gate-vocabulary-registry",
-    "extension-gate-metadata-contract",
-    "extension-gate-kernel-metadata-registry",
-    "extension-gate-field-reference",
-    "extension-gate-field-applicability",
-    "extension-gate-field-shape",
-    "extension-gate-field-kernel-collision",
-    "extension-gate-field-completion",
-    "extension-gate-completion-invalid",
-    "extension-gate-completion-reference",
-    "extension-gate-judgment-reference",
-    "extension-gate-producer-kind",
-    "extension-gate-capability-registry",
-    "extension-gate-producer-capability",
-    "extension-gate-producer-reference",
-    "extension-gate-receipt-schema",
-    "extension-gate-consumer-capability",
-    "extension-gate-writer-capability",
-    # registry table shape (composed `<section>-<shape>` diagnostics)
-    "extension-dimensions-section-count",
-    "extension-dimensions-table-count",
-    "extension-dimensions-table-shape",
-    "extension-dimensions-table-header",
-    "extension-dimensions-table-separator",
-    "extension-dimensions-row-shape",
-    "judgment-items-section-count",
-    "judgment-items-table-count",
-    "judgment-items-table-shape",
-    "judgment-items-table-header",
-    "judgment-items-table-separator",
-    "judgment-items-row-shape",
-    "registered-scans-section-count",
-    "registered-scans-table-count",
-    "registered-scans-table-shape",
-    "registered-scans-table-header",
-    "registered-scans-table-separator",
-    "registered-scans-row-shape",
-    "extension-gates-section-count",
-    "extension-gates-table-count",
-    "extension-gates-table-shape",
-    "extension-gates-table-header",
-    "extension-gates-table-separator",
-    "extension-gates-row-shape",
-    "expression-artifacts-section-count",
-    "expression-artifacts-table-count",
-    "expression-artifacts-table-shape",
-    "expression-artifacts-table-header",
-    "expression-artifacts-table-separator",
-    "expression-artifacts-row-shape",
-    # Profile-owned dependency resolution (composed `<kind>-<failure>`)
-    "predicate-owner-heading-empty",
+    "predicate-owner-field-invalid",
+    "predicate-owner-field-missing",
+    "predicate-owner-fragment-invalid",
+    "predicate-owner-heading-count",
     "predicate-owner-heading-missing",
     "predicate-owner-path-invalid",
     "predicate-owner-path-outside-profile",
-    "predicate-owner-unreadable",
-    "predicate-owner-heading-non-markdown",
-    "predicate-owner-heading-count",
-    "scan-config-heading-empty",
+    "priority-quota-policy",
+    "profile-contract-incomplete",
+    "profile-contract-input",
+    "profile-contract-link",
+    "profile-contract-manifest-unreadable",
+    "profile-contract-owner",
+    "profile-contract-schema",
+    "profile-corpus-planning-contract",
+    "profile-dir-missing",
+    "profile-draft-input",
+    "profile-draft-shape",
+    "profile-id-invalid",
+    "profile-id-placeholder",
+    "profile-load-input-changed",
+    "profile-load-input-unreadable",
+    "profile-load-metadata-contract-invalid",
+    "profile-load-noncanonical-input",
+    "profile-placeholder-registry",
+    "profile-receipt-path-inside-profile",
+    "profile-rendering-contract-invalid",
+    "profile-snapshot-changed-during-check",
+    "profile-snapshot-invalid",
+    "registered-scan-capability-implementation",
+    "registered-scan-capability-unknown",
+    "registered-scan-config-forbidden",
+    "registered-scan-config-required",
+    "registered-scan-id-duplicate",
+    "registered-scan-judgment-reference",
+    "registered-scans-required-count",
+    "residual-policy-field-invalid",
+    "residual-policy-field-missing",
+    "residual-policy-fragment-invalid",
+    "residual-policy-heading-count",
+    "residual-policy-heading-missing",
+    "residual-policy-path-invalid",
+    "residual-policy-path-outside-profile",
+    "scan-config-field-invalid",
+    "scan-config-field-missing",
+    "scan-config-fragment-invalid",
+    "scan-config-heading-count",
     "scan-config-heading-missing",
     "scan-config-path-invalid",
     "scan-config-path-outside-profile",
-    "scan-config-unreadable",
-    "scan-config-heading-non-markdown",
-    "scan-config-heading-count",
-    "expression-contract-heading-empty",
-    "expression-contract-heading-missing",
-    "expression-contract-path-invalid",
-    "expression-contract-path-outside-profile",
-    "expression-contract-unreadable",
-    "expression-contract-heading-non-markdown",
-    "expression-contract-heading-count",
+    "structure-registry-applicability",
+    "structure-registry-capability",
+    "structure-registry-input-owner",
+    "structure-registry-layer",
+    "structure-registry-layout",
+    "structure-registry-parent",
+    "structure-registry-role",
+    "structure-registry-schema",
+    "structure-registry-unit",
 ))
 
 if _MECHANICAL_CHECKS & _SEMANTIC_UNRESOLVED_CHECKS:
@@ -587,23 +387,44 @@ FINDING_CATEGORIES = {
 
 
 def finding_category(check):
-    """Category for one emitted check code; unknown codes stay conservative.
-
-    The closed map is pinned by tests, so an unknown code here means a
-    mis-deployed tree; classifying it as semantic-unresolved keeps an
-    assisting agent from auto-"fixing" a finding nobody classified.
-    """
+    """Classify diagnostics without granting repair or adoption authority."""
     return FINDING_CATEGORIES.get(check, SEMANTIC_UNRESOLVED)
 
 
-def canonical_profile_load_inputs(root):
+def profile_load_inputs_fingerprint(snapshots):
+    """Hash the exact immutable input set; linked owner files are included."""
+    return kblib.sha256_bytes(
+        "\0".join(
+            "%s\0%s" % (relative, snapshots[relative].sha256)
+            for relative in sorted(snapshots)))
+
+
+def canonical_profile_load_inputs(root, *, additional_paths=()):
     """Return immutable canonical producer inputs and their aggregate hash."""
     snapshots = {}
     # This walks the same capability implementations the contract compiler
     # walks, independently and in the same process, so it pays the same
     # repeated directory listings.  It means one consistent view too.
     with kblib.directory_listing_scope():
-        for relative in CANONICAL_PROFILE_LOAD_INPUTS:
+        snapshots[DEFAULT_INTERFACE] = kblib.repository_file_snapshot(
+            root, DEFAULT_INTERFACE, singly_linked=True)
+        interface = profile_contract.load_profile_interface(
+            root, snapshots=snapshots)
+        snapshots[profile_contract.PROFILE_ENCODING_PATH] = kblib.repository_file_snapshot(
+            root, profile_contract.PROFILE_ENCODING_PATH, singly_linked=True)
+        encoding = profile_contract.load_profile_encoding(root, snapshots=snapshots)
+        profile_contract.validate_profile_encoding(interface, encoding)
+        owner_paths = set(encoding["registry_references"].values()) | set(encoding["encoding_cue_sources"])
+        for source in encoding["cue_sources"]:
+            owner_paths.add(source["path"])
+            if source.get("projection_of"):
+                owner_paths.add(source["projection_of"])
+        if isinstance(additional_paths, (str, bytes)):
+            raise TypeError("additional input paths must be a collection")
+        owner_paths.update(additional_paths)
+        for relative in sorted(set(CANONICAL_PROFILE_LOAD_INPUTS) | owner_paths):
+            if relative in snapshots:
+                continue
             snapshots[relative] = kblib.repository_file_snapshot(
                 root, relative, singly_linked=True)
         capabilities = kblib.parse_yaml_subset(
@@ -620,11 +441,13 @@ def canonical_profile_load_inputs(root):
                 scan_capability_implementation_paths(scan_capabilities):
             snapshots[relative] = kblib.repository_file_snapshot(
                 root, relative, singly_linked=True)
-    fingerprint = kblib.sha256_bytes(
-        "\0".join(
-            "%s\0%s" % (relative, snapshots[relative].sha256)
-            for relative in sorted(snapshots)))
-    return snapshots, fingerprint
+        rendering_capabilities = kblib.parse_yaml_subset(
+            snapshots[rendering_contract.CAPABILITY_REGISTRY_PATH].read_text())
+        for relative in rendering_contract.capability_implementation_paths(
+                rendering_capabilities):
+            snapshots[relative] = kblib.repository_file_snapshot(
+                root, relative, singly_linked=True)
+    return snapshots, profile_load_inputs_fingerprint(snapshots)
 
 
 def _positive_integer_domain(value):
@@ -660,303 +483,11 @@ VALUE_DOMAINS = {
 }
 
 
-def blank_fenced(text):
-    """Blank non-authoritative Markdown, retaining inline code and line count."""
-    return kblib.blank_markdown_authority(text)
-
-
-def h2_headings(text):
-    """Return the H2 heading texts of a fence-blanked document, in order."""
-    return [h for _, level, h in kblib.headings_of(blank_fenced(text)) if level == 2]
-
-
-def section_lines(text, heading):
-    """Return the lines of the H2 section with this exact heading (or [])."""
-    lines = blank_fenced(text).splitlines()
-    out = []
-    inside = False
-    for line in lines:
-        parsed = kblib.markdown_atx_heading(line)
-        if parsed is not None:
-            if inside and parsed[0] <= 2:
-                break
-            inside = (parsed[0] == 2 and parsed[1] == heading)
-            continue
-        if inside:
-            out.append(line)
-    return out
-
-
-def h2_sections(text):
-    """Return [(H2 heading, section lines)] including nested H3+ content."""
-    sections = []
-    current = None
-    body = []
-    for line in blank_fenced(text).splitlines():
-        parsed = kblib.markdown_atx_heading(line)
-        if parsed is not None and parsed[0] <= 2:
-            if current is not None:
-                sections.append((current, body))
-            current = parsed[1] if parsed[0] == 2 else None
-            body = []
-            continue
-        if current is not None:
-            body.append(line)
-    if current is not None:
-        sections.append((current, body))
-    return sections
-
-
-def interface_slots(text):
-    """Return ordered slot names from the Kernel-owned machine registry."""
-    document = kblib.parse_yaml_subset(text)
-    return list(profile_contract.profile_interface_slots(document))
-
-
-def parse_bindings(manifest_text):
-    """Return the slot mapping and repeated names from Implemented Slots."""
-    return kblib.profile_slot_bindings(
-        manifest_text, include_duplicates=True
-    )
-
-
-def resolve_binding(binding, root, profile_dir):
-    """Resolve one binding through the shared manifest-binding contract."""
-    return kblib.resolve_profile_binding(binding, root, profile_dir)
-
-
-def table_rows(lines):
-    """Yield the cell lists of Markdown table rows, skipping separator rows."""
-    for line in lines:
-        stripped = line.strip()
-        if not stripped.startswith("|"):
-            continue
-        cells = [c.strip() for c in stripped.strip("|").split("|")]
-        if all(re.fullmatch(r":?-{2,}:?", c) for c in cells if c):
-            continue
-        yield cells
-
-
-def markdown_table_data(lines):
-    """Return (header, data rows) for each Markdown table in a section."""
-    tables = []
-    group = []
-
-    def finish():
-        if not group:
-            return
-        rows = list(table_rows(group))
-        if rows:
-            tables.append((rows[0], rows[1:]))
-
-    for line in lines:
-        if line.strip().startswith("|"):
-            group.append(line)
-        else:
-            finish()
-            group = []
-    finish()
-    return tables
-
-
-def profile_declarations(profile_snapshot):
-    """Yield declarations from the same immutable bytes as profile-load."""
-    prefix = profile_snapshot.relative_directory.rstrip("/") + "/"
-    for repository_path, data in sorted(profile_snapshot.files.items()):
-        if (not repository_path.startswith(prefix) or
-                not repository_path.lower().endswith(".md")):
-            continue
-        rel = repository_path[len(prefix):]
-        sections = h2_sections(data.decode("utf-8"))
-        for heading, lines in sections:
-            for line in lines:
-                match = DECLARATION_RE.match(line)
-                if match:
-                    tables = markdown_table_data(lines)
-                    yield (
-                        rel,
-                        heading,
-                        match.group(1),
-                        match.group(2).strip(),
-                        tables,
-                    )
-
-
-def unbacktick(value):
-    value = value.strip()
-    m = re.fullmatch(r"`([^`]*)`", value)
-    return m.group(1).strip() if m else value
-
-
-def scan_sentinel(profile_snapshot, sentinel):
-    """Return marker locations from every regular Profile file.
-
-    The sentinel is ASCII text, so scanning bytes covers uncommon suffixes
-    and binary assets without pretending those assets are UTF-8 documents.
-    Known text suffixes are still decoded strictly; typed authority files with
-    other suffixes receive their strict-UTF-8 check from ``profile_contract``.
-    """
-    hits, read_n, skipped_n = [], 0, 0
-    needle = sentinel.encode("utf-8")
-    prefix = profile_snapshot.relative_directory.rstrip("/") + "/"
-    for repository_path, data in sorted(profile_snapshot.files.items()):
-        if not repository_path.startswith(prefix):
-            skipped_n += 1
-            continue
-        read_n += 1
-        rel = repository_path[len(prefix):]
-        if repository_path.lower().endswith(TEXT_SUFFIXES):
-            data.decode("utf-8")
-        for lineno, line in enumerate(data.splitlines(), 1):
-            if needle in line:
-                hits.append((rel, lineno))
-    return hits, read_n, skipped_n
-
-
-def validate_corpus_planning_slot(
-        path, target, add, text=None, owner_document=None):
-    """Validate the Profile slot's closed restricted-YAML envelope."""
-    try:
-        document = kblib.parse_yaml_subset(
-            kblib.read_text(path) if text is None else text)
-    except (OSError, kblib.YamlSubsetError) as exc:
-        add("corpus-planning-yaml", target, "fail",
-            "cannot parse restricted YAML: %s" % exc)
-        return
-    _normalized, issues = \
-        corpus_planning_contract.validate_corpus_planning_envelope(
-            document, contract=owner_document)
-
-    def label(path_parts):
-        if not path_parts:
-            return target
-        if path_parts[0] == "capability_scale" and \
-                len(path_parts) >= 2 and isinstance(path_parts[1], int):
-            return "%s:capability_scale[%d]" % (target, path_parts[1])
-        return target + ":" + str(path_parts[0])
-
-    structural = {
-        "mapping_type", "missing_fields", "unsupported_fields",
-        "schema_version", "scale_list",
-    }
-    applicability = {
-        "applicability_state", "configured_reason", "inactive_reason",
-    }
-    artifacts = {
-        "configured_artifact_path", "artifact_bindings_distinct",
-        "inactive_artifacts",
-    }
-    scale = {
-        "configured_scale_empty", "scale_rank_type",
-        "scale_rank_position", "scale_value_type",
-        "scale_value_empty", "scale_value_duplicate",
-        "scale_predicate_type", "scale_predicate_empty",
-        "scale_target_eligible_type", "configured_target_eligible",
-        "inactive_scale",
-    }
-
-    # Keep the producer's historical check-code vocabulary literal and
-    # inspectable even though the shared contract now owns branch selection.
-    def add_schema(issue_target, details):
-        add("corpus-planning-schema", issue_target, "fail", details)
-
-    def add_applicability(issue_target, details):
-        add("corpus-planning-applicability", issue_target, "fail", details)
-
-    def add_artifact(issue_target, details):
-        add("corpus-planning-artifact", issue_target, "fail", details)
-
-    def add_scale(issue_target, details):
-        add("corpus-planning-scale", issue_target, "fail", details)
-
-    def add_authority(issue_target, details):
-        add("corpus-planning-authority", issue_target, "fail", details)
-
-    for issue in issues:
-        code = issue["code"]
-        path_parts = issue.get("path") or ()
-        issue_target = label(path_parts)
-        if code in structural:
-            emit = add_schema
-            if code == "mapping_type":
-                details = "must be a mapping"
-            elif code == "missing_fields":
-                details = "missing field(s): %s" % ", ".join(issue["fields"])
-            elif code == "unsupported_fields":
-                details = "unsupported field(s): %s" % ", ".join(
-                    issue["fields"])
-            elif code == "schema_version":
-                details = "schema_version must be integer 1"
-            else:
-                details = "must be a list"
-        elif code in applicability:
-            emit = add_applicability
-            issue_target = target
-            details = {
-                "applicability_state":
-                    "state must be exactly configured or not-applicable",
-                "configured_reason": "configured requires null reason",
-                "inactive_reason":
-                    "not-applicable requires a non-empty reason",
-            }[code]
-        elif code in artifacts:
-            emit = add_artifact
-            if code == "configured_artifact_path":
-                issue_target = target + ":" + str(path_parts[-1])
-                details = (
-                    "configured requires a repository-relative .yaml path")
-            elif code == "artifact_bindings_distinct":
-                issue_target = target
-                details = "artifact bindings must be distinct"
-            else:
-                issue_target = target
-                details = (
-                    "not-applicable requires all artifact bindings to be null")
-        elif code in scale:
-            emit = add_scale
-            if code == "configured_scale_empty":
-                issue_target = target
-                details = "configured requires at least one scale item"
-            elif code in ("scale_rank_type", "scale_rank_position"):
-                details = "rank must equal zero-based list position %d" % \
-                    issue["index"]
-            elif code in ("scale_value_type", "scale_value_empty"):
-                details = "value must be a non-empty string"
-            elif code == "scale_value_duplicate":
-                details = "scale value must be unique"
-            elif code in ("scale_predicate_type", "scale_predicate_empty"):
-                details = "predicate must be a non-empty string"
-            elif code == "scale_target_eligible_type":
-                details = "target_eligible must be boolean"
-            elif code == "configured_target_eligible":
-                issue_target = target
-                details = "at least one scale item must be target eligible"
-            else:
-                issue_target = target
-                details = "not-applicable requires an empty scale list"
-        elif code in ("authority_decision_type",
-                      "authority_decision_empty"):
-            # Profile-load historically reports the closed-scope failure;
-            # the deeper structural producer retains its scalar diagnostic.
-            continue
-        else:
-            emit = add_authority
-            issue_target = target
-            if code in ("authority_role_type", "authority_role_empty"):
-                details = "configured requires a non-empty role_id"
-            elif code == "authority_decision_scope":
-                details = "decision_scope_id must be %s" % \
-                    corpus_planning_contract.SEMANTIC_ACCEPTANCE_SCOPE
-            else:
-                details = "not-applicable requires null authority fields"
-        emit(issue_target, details)
-
-
 def main(argv=None, *, _evaluation_out=None,
          _receipt_identity=_LIVE_RUNTIME_RECEIPT_IDENTITY,
          _write_receipts=True):
     ap = kblib.ArgumentParser(
-        description="Profile manifest completeness and unfilled-template check")
+        description="Complete structured Profile validation and profile-load Gate")
     ap.add_argument("profile_dir", help="the profile directory to check "
                                         "(e.g. profiles/<profile-id>)")
     ap.add_argument("--root", default=REPO_ROOT,
@@ -966,7 +497,7 @@ def main(argv=None, *, _evaluation_out=None,
                     help="normative slot interface file "
                          "(default: %s under --root)" % DEFAULT_INTERFACE)
     ap.add_argument("--defaults", default=None,
-                    help="machine-readable profile-form placeholder registry "
+                    help="machine-readable unresolved-input marker registry "
                          "(default: %s under --root)" % DEFAULT_DEFAULTS)
     ap.add_argument("--execution-defaults", default=None,
                     help="kernel execution-default override registry "
@@ -1037,6 +568,7 @@ def main(argv=None, *, _evaluation_out=None,
     profile_tree_snapshot = None
     profile_snapshot_before = None
     profile_load_inputs_sha256 = None
+    normative_snapshots = {}
     resolved_overrides = ()
     summary = None
 
@@ -1083,7 +615,7 @@ def main(argv=None, *, _evaluation_out=None,
             authorized_contract = (
                 contract
                 if (exit_code == 0 and contract is not None and
-                    contract.authorized and summary is not None)
+                    contract.valid and summary is not None)
                 else None
             )
             authorized_metadata = (
@@ -1120,6 +652,9 @@ def main(argv=None, *, _evaluation_out=None,
                     if authorized_contract is not None else None
                 ),
                 "summary_receipt": summary,
+                "normative_snapshots": (
+                    MappingProxyType(dict(normative_snapshots))
+                    if authorized_contract is not None else None),
             })
         return exit_code
 
@@ -1263,364 +798,131 @@ def main(argv=None, *, _evaluation_out=None,
             (profile_disp, profile_layout_contract.PROFILE_MANIFEST_NAME))
         return finish()
 
-    def profile_snapshot_text(path):
-        relative = os.path.relpath(
-            os.path.abspath(path), root).replace(os.sep, "/")
-        return profile_tree_snapshot.read_text(relative)
-
     try:
-        interface_text = normative_snapshots[DEFAULT_INTERFACE].read_text()
         interface_document = profile_contract.load_profile_interface(
             root, snapshots=normative_snapshots)
         slots = profile_contract.profile_interface_slots(interface_document)
-        registry_references = interface_document["registry_references"]
-        corpus_owner_document = \
-            corpus_planning_contract.load_corpus_planning_contract(
-                root, text=normative_snapshots[
-                    registry_references["corpus_planning_contract"]
-                ].read_text())
-        structure_owner_document = kblib.load_structure_registry_contract(
-            root, text=normative_snapshots[
-                registry_references["structure_registry_contract"]
-            ].read_text())
-        metadata_owner_document = kblib.load_metadata_profile_contract(
-            root, text=normative_snapshots[
-                registry_references["metadata_profile_contract"]
-            ].read_text())
-    except (OSError, UnicodeError, ValueError, kblib.YamlSubsetError) as exc:
-        add("interface-unreadable", DEFAULT_INTERFACE, "fail",
-            "cannot read the normative slot interface: %s" % exc)
-        say("check_profile: FAIL — cannot read interface %s: %s" % (interface_path, exc))
-        return finish()
-
-    try:
         defaults = kblib.parse_yaml_subset(
             normative_snapshots[DEFAULT_DEFAULTS].read_text())
-    except (OSError, UnicodeError, kblib.YamlSubsetError) as exc:
-        add("defaults-unreadable", DEFAULT_DEFAULTS, "fail",
-            "cannot read/parse the profile-form placeholder registry: %s" % exc)
-        say("check_profile: FAIL — cannot read defaults %s: %s" % (defaults_path, exc))
-        return finish()
-
-    try:
         execution_defaults = kblib.parse_yaml_subset(
             normative_snapshots[DEFAULT_EXECUTION_DEFAULTS].read_text())
-    except (OSError, UnicodeError, kblib.YamlSubsetError) as exc:
-        add("execution-defaults-unreadable", DEFAULT_EXECUTION_DEFAULTS, "fail",
-            "cannot read/parse the kernel execution-default registry: %s" % exc)
-        say("check_profile: FAIL — cannot read execution defaults %s: %s"
-              % (execution_defaults_path, exc))
+    except (OSError, UnicodeError, ValueError) as exc:
+        add("interface-unreadable", DEFAULT_INTERFACE, "fail",
+            "cannot read canonical Profile contract inputs: %s" % exc)
         return finish()
 
     sentinel = str(defaults.get("unfilled_sentinel") or "TODO(profile)")
-    reserved_ids = set(profile_layout_contract.RESERVED_PROFILE_IDS)
-    reserved_ids.update(
-        str(v) for v in (defaults.get("reserved_profile_ids") or []))
-    overridable = {str(e.get("item")): e
-                   for e in (execution_defaults.get("overridable") or [])
-                   if isinstance(e, dict) and e.get("item")}
-    constitutional = {str(e.get("item")): e
-                      for e in (execution_defaults.get("constitutional") or [])
-                      if isinstance(e, dict) and e.get("item")}
+
+    def root_owner_snapshot(relative):
+        """Bind a real owner dependency discovered by this same typed link."""
+        if relative not in normative_snapshots:
+            normative_snapshots[relative] = kblib.repository_file_snapshot(
+                root, relative, singly_linked=True)
+        return normative_snapshots[relative]
 
     try:
-        manifest_text = profile_snapshot_text(manifest_path)
-    except (OSError, UnicodeError) as exc:
-        add("profile-text-unreadable", profile_disp, "fail",
-            "Profile text files must be readable strict UTF-8: %s" % exc)
-        say("check_profile: FAIL — Profile text is not strict UTF-8: %s" %
-              exc)
+        contract = profile_contract.load_profile_contract(
+            root, manifest_path, sentinel=sentinel,
+            profile_snapshot=profile_tree_snapshot,
+            root_input_snapshots=normative_snapshots,
+            root_snapshot_resolver=root_owner_snapshot)
+    except (OSError, UnicodeError, ValueError) as exc:
+        add("profile-contract-manifest-unreadable", manifest_relative, "fail",
+            "cannot compile the structured Profile: %s" % exc)
         return finish()
-    manifest_disp = "%s/%s" % (
-        profile_disp, profile_layout_contract.PROFILE_MANIFEST_NAME)
 
-    manifest_h2s = h2_headings(manifest_text)
-    for heading in ("Profile Identity", SLOTS_SECTION, OVERRIDES_SECTION):
-        count = manifest_h2s.count(heading)
-        if count > 1:
-            add("manifest-section-duplicate", "%s#%s" %
-                (manifest_disp, heading), "fail",
-                "manifest contains %d `%s` sections; exactly one is allowed"
-                % (count, heading))
+    profile_id = contract.profile_id
+    profile_load_inputs_sha256 = profile_load_inputs_fingerprint(
+        normative_snapshots)
+    for diagnostic in contract.diagnostics:
+        check = ("unfilled-placeholder"
+                 if diagnostic.check == "profile-contract-sentinel"
+                 else diagnostic.check)
+        add(check, diagnostic.target, "fail", diagnostic.details)
+    if not contract.valid and not contract.diagnostics:
+        add("profile-contract-incomplete", manifest_relative, "fail",
+            "the structured Profile linker did not return a complete contract")
 
-    if not slots:
-        add("interface-no-slots", DEFAULT_INTERFACE, "fail",
-            "the interface registry declares no slots; with no slot list "
-            "there is nothing to check against")
-    if tuple(slots) != profile_contract.PROFILE_FILE_SLOTS:
-        add("profile-interface-slot-registry-mismatch", DEFAULT_INTERFACE,
-            "fail", "canonical Profile interface slots must equal the typed "
-            "linker's closed ordered registry; interface=%r linker=%r" %
-            (tuple(slots), profile_contract.PROFILE_FILE_SLOTS))
-
-    # ---- placeholder profile_id ----
-    profile_id, identity_errors = kblib.profile_identity(
-        manifest_text, os.path.basename(profile_dir), reserved_ids
-    )
-    for check, details in identity_errors:
-        target = ("%s#Profile Identity" % manifest_disp
-                  if check == "profile-id-missing"
-                  else "%s#profile_id" % manifest_disp)
-        add(check, target, "fail", details)
-
-    # ---- slot coverage and binding resolution ----
-    bindings, duplicate_bindings = parse_bindings(manifest_text)
-    for name in duplicate_bindings:
-        add("slot-binding-duplicate", "%s#%s" %
-            (manifest_disp, SLOTS_SECTION), "fail",
-            "slot `%s` is bound more than once; one manifest slot must have "
-            "exactly one authoritative binding" % name)
-    if slots and not bindings:
-        add("slots-section-empty", "%s#%s" % (manifest_disp, SLOTS_SECTION), "fail",
-            "the %s section binds no slots; the composed standard cannot be "
-            "judged loaded when no slot resolves" % SLOTS_SECTION)
-
-    bound_ok = 0
-    for slot in slots:
-        binding = bindings.get(slot)
-        if binding is None:
-            add("slot-unbound", "%s#%s" % (manifest_disp, slot), "fail",
-                "interface slot `%s` is not bound in %s; when a slot required "
-                "by the current task is missing, the composed standard must "
-                "not be judged fully loaded" % (slot, SLOTS_SECTION))
-            continue
-        kind, detail = resolve_binding(binding, root, profile_dir)
-        if kind == "path":
-            bound_ok += 1
-            if slot == corpus_planning_contract.SLOT_NAME:
-                target = os.path.relpath(
-                    detail, root).replace(os.sep, "/")
-                if not target.lower().endswith(".yaml"):
-                    add("corpus-planning-binding", target, "fail",
-                        "Corpus Planning must bind a restricted-YAML .yaml file")
-                else:
-                    validate_corpus_planning_slot(
-                        detail, target, add,
-                        text=profile_snapshot_text(detail),
-                        owner_document=corpus_owner_document)
-            elif slot == STRUCTURE_REGISTRY_SLOT:
-                target = os.path.relpath(
-                    detail, root).replace(os.sep, "/")
-                if not target.lower().endswith(".yaml"):
-                    add("structure-registry-binding", target, "fail",
-                        "Structure Registry must bind a restricted-YAML "
-                        ".yaml file")
-                else:
-                    try:
-                        document = kblib.parse_yaml_subset(
-                            profile_snapshot_text(detail))
-                    except (OSError, kblib.YamlSubsetError) as exc:
-                        add("structure-registry-yaml", target, "fail",
-                            "cannot parse restricted YAML: %s" % exc)
-                    else:
-                        shape_errors = \
-                            kblib.validate_structure_registry_shape(
-                                document, target,
-                                contract=structure_owner_document)
-                        for check, label, details in shape_errors:
-                            add(check, label, "fail", details)
-                        if not shape_errors:
-                            projection_capabilities = {
-                                entry["capability_id"]: entry
-                                for entry in operation_capabilities[
-                                    "capabilities"]
-                                if entry["kind"] == "projection"
-                            }
-                            for check, label, details in \
-                                    kblib.\
-                                    validate_structure_registry_references(
-                                        document, projection_capabilities,
-                                        target):
-                                add(check, label, "fail", details)
-            elif slot == PRIORITY_RUBRIC_SLOT:
-                target = os.path.relpath(
-                    detail, root).replace(os.sep, "/")
-                try:
-                    rubric_text = profile_snapshot_text(detail)
-                except (OSError, UnicodeError) as exc:
-                    add("priority-quota-policy", target, "fail",
-                        "cannot read the Priority Rubric: %s" % exc)
-                else:
-                    _quotas, _configured, policy_errors = \
-                        contract_exception_policy.priority_quota_policy(
-                            rubric_text)
-                    for details in policy_errors:
-                        add("priority-quota-policy", target, "fail", details)
-            elif slot == METADATA_CONTRACT_SLOT:
-                target = os.path.relpath(
-                    detail, root).replace(os.sep, "/")
-                if not target.lower().endswith(".yaml"):
-                    add("metadata-contract-binding", target, "fail",
-                        "Metadata Contract must bind a restricted-YAML "
-                        ".yaml file")
-                else:
-                    try:
-                        document = kblib.parse_yaml_subset(
-                            profile_snapshot_text(detail))
-                    except (OSError, kblib.YamlSubsetError) as exc:
-                        add("metadata-contract-yaml", target, "fail",
-                            "cannot parse restricted YAML: %s" % exc)
-                    else:
-                        for check, label, details in \
-                                kblib.validate_metadata_contract_shape(
-                                    document, target,
-                                    contract=metadata_owner_document):
-                            add(check, label, "fail", details)
-        elif kind == "inline":
-            add("slot-binding-inline", "%s#%s" % (manifest_disp, slot),
-                "fail", "slot `%s` is file-bound; Execution Default Overrides "
-                "is the only manifest-resident Profile contract" % slot)
-        elif kind == "invalid":
-            add("slot-binding-invalid", "%s#%s" % (manifest_disp, slot),
-                "fail", "slot `%s` has a non-canonical binding: %s" %
-                (slot, detail))
-        elif kind == "unresolved":
-            add("slot-binding-unresolved", "%s#%s" % (manifest_disp, slot), "fail",
-                "slot `%s` binds to %r, which does not exist under the profile "
-                "directory" % (slot, detail))
-        elif kind == "outside-profile":
-            add("slot-binding-outside-profile", "%s#%s" %
-                (manifest_disp, slot), "fail",
-                "slot `%s` resolves outside the selected profile directory: "
-                "%s; a profile must be a self-contained configuration package"
-                % (slot, detail))
-        else:
-            add("slot-binding-unrecognized", "%s#%s" % (manifest_disp, slot), "fail",
-                "slot `%s` binding %r is not one canonical profile-relative "
-                "file path" % (slot, binding))
-
-    for name in sorted(bindings):
-        if name not in slots:
-            add("slot-not-in-interface", "%s#%s" % (manifest_disp, name), "candidate",
-                "`%s` is bound in %s but is not a slot the interface defines; "
-                "whether this extension binding is reasonable is a human call"
-                % (name, SLOTS_SECTION))
-
-    # ---- typed Profile dependency closure ----
-    # The manifest-to-slot pass above proves the first hop.  Runtime-active
-    # registry cells are linked separately so a copied/renamed Profile cannot
-    # keep executing another Profile's config or citing its predicate owner.
-    contract = profile_contract.load_profile_contract(
-        root, manifest_path, sentinel=sentinel,
-        profile_snapshot=profile_tree_snapshot,
-        root_input_snapshots=normative_snapshots)
-
-    hits = []
-    files_read = 0
-    files_skipped = len(profile_tree_snapshot.files)
-    declaration_count = 0
     try:
         profile_snapshot = profile_tree_snapshot.project(
             contract.profile_snapshot_paths)
         profile_snapshot_before = profile_snapshot.sha256
-        hits, files_read, closure_skipped = scan_sentinel(
-            profile_snapshot, sentinel)
-        files_skipped = (
-            len(profile_tree_snapshot.files) - len(profile_snapshot.files) +
-            closure_skipped)
-        # Scalar values and their table activation shape are already checked
-        # from the K00 form registry by ``load_profile_contract``.  This scan
-        # remains a display count only; it must not recreate the allowed
-        # declaration set as a second authority.
-        declaration_count = sum(1 for _item in profile_declarations(
-            profile_snapshot))
     except (OSError, UnicodeError, ValueError) as exc:
         add("profile-snapshot-invalid", profile_disp, "fail",
-            "cannot project the selected Profile's typed dependency "
-            "closure from its immutable candidate tree: %s" % exc)
+            "cannot project the typed Profile dependency closure from "
+            "its immutable candidate tree: %s" % exc)
 
-    # An unbound file is not part of the selected Profile contract.  Sentinel
-    # and declaration validation therefore operate on the same projected
-    # bytes that the public snapshot fingerprint identifies.
-    for rel, lineno in hits:
-        target = ("%s/%s:%d" % (profile_disp, rel, lineno)
-                  if profile_disp != "." else "%s:%d" % (rel, lineno))
-        add("unfilled-placeholder", target, "fail",
-            "line still carries the unfilled sentinel %r; a typed Profile "
-            "dependency with any TODO left is not runnable" % sentinel)
+    # Shape validation has one owner in the linker. These checks connect the
+    # already-typed instance values with installed runtime capabilities.
+    if contract.valid:
+        structure = contract.slot_document(STRUCTURE_REGISTRY_SLOT)
+        projection_capabilities = {
+            entry["capability_id"]: entry
+            for entry in operation_capabilities["capabilities"]
+            if entry["kind"] == "projection"
+        }
+        for check, label, details in kblib.validate_structure_registry_references(
+                structure, projection_capabilities,
+                manifest_relative + "#slots.structure-registry"):
+            add(check, label, "fail", details)
+        try:
+            policy_registry = contract_exception_policy.load_policy_registry(
+                root, text=normative_snapshots[
+                    contract_exception_policy.POLICY_REGISTRY_PATH].read_text(),
+                require_owner_files=False)
+            _quotas, _configured, policy_errors = \
+                contract_exception_policy.priority_quota_policy(
+                    contract.slot_document(PRIORITY_RUBRIC_SLOT),
+                    registry=policy_registry)
+        except (OSError, UnicodeError, ValueError) as exc:
+            policy_errors = ["cannot evaluate the frozen quota policy: %s" % exc]
+        for details in policy_errors:
+            add("priority-quota-policy", manifest_relative +
+                "#slots.priority-rubric.priority_quota", "fail", details)
 
-    sentinel_targets = {
-        "%s:%d" % (("%s/%s" % (profile_disp, rel))
-                    if profile_disp != "." else rel, lineno)
-        for rel, lineno in hits
-    }
-    for diagnostic in contract.diagnostics:
-        # scan_sentinel above already owns the user-facing incompleteness
-        # finding for known text suffixes.  The linker also scans every file
-        # in the typed closure, including uncommon suffixes; surface only the
-        # markers the broad scan did not already report.
-        if diagnostic.check == "profile-contract-sentinel":
-            if diagnostic.target not in sentinel_targets:
-                add("unfilled-placeholder", diagnostic.target, "fail",
-                    diagnostic.details + "; a Profile dependency with any "
-                    "TODO left cannot authorize profile-load")
-            continue
-        add(diagnostic.check, diagnostic.target, "fail", diagnostic.details)
-
-    # ---- Execution Default Overrides sparse table ----
-    override_lines = section_lines(manifest_text, OVERRIDES_SECTION)
-    override_rows = list(table_rows(override_lines))
-    data_rows = override_rows[1:] if override_rows else []
-    registered = []
-    for cells in data_rows:
-        item = unbacktick(cells[0]) if cells else ""
-        value = unbacktick(cells[1]) if len(cells) > 1 else ""
-        registered.append((item, value))
-        if len(cells) != 2:
-            add("override-row-shape", "%s#%s" %
-                (manifest_disp, item or "<empty>"), "fail",
-                "override rows must contain exactly two cells; found %d"
-                % len(cells))
-    if not override_lines:
-        add("overrides-section-missing", "%s#%s" % (manifest_disp, OVERRIDES_SECTION),
-            "fail",
-            "the manifest has no %s section; the sparse explicit-override "
-            "table is required even when it has no data rows"
-            % OVERRIDES_SECTION)
-    else:
-        seen = set()
-        for item, value in registered:
-            target = "%s#%s" % (manifest_disp, item or "<empty>")
-            if item in seen:
-                add("override-item-duplicate", target, "fail",
-                    "override item `%s` appears more than once" % item)
+    # Override values are parsed once by the linker. The canonical K00
+    # registry still owns which values may override which defaults.
+    overridable = {str(entry["item"]): entry
+                   for entry in execution_defaults.get("overridable", ())
+                   if isinstance(entry, dict) and entry.get("item")}
+    constitutional = {str(entry["item"]): entry
+                      for entry in execution_defaults.get("constitutional", ())
+                      if isinstance(entry, dict) and entry.get("item")}
+    registered = tuple(contract.execution_default_overrides)
+    for item, value in registered:
+        target = "%s#execution_default_overrides.%s" % (
+            manifest_relative, item)
+        if item in constitutional:
+            add("override-constitutional-item", target, "fail",
+                "%s is a constitutional constant (owner: %s)" %
+                (item, constitutional[item].get("owner", "kernel")))
+        elif item not in overridable:
+            add("override-item-unknown", target, "fail",
+                "%s is not in the closed overridable registry" % item)
+        elif value is None or value == "":
+            add("override-choice-empty", target, "fail",
+                "%s has no explicit Profile value" % item)
+        elif value == "use-kernel-default":
+            add("override-redundant-default", target, "fail",
+                "remove %s; unlisted items already use the Kernel default" %
+                item)
+        else:
+            entry = overridable[item]
+            domain = entry.get("value_domain")
+            if domain is None:
                 continue
-            seen.add(item)
-            if item in constitutional:
-                add("override-constitutional-item", target, "fail",
-                    "`%s` is a constitutional constant (owner: %s) and is not "
-                    "overridable" %
-                    (item, constitutional[item].get("owner", "kernel")))
-            elif item not in overridable:
-                add("override-item-unknown", target, "fail",
-                    "`%s` is not in the closed overridable registry" % item)
-            elif not value:
-                add("override-choice-empty", target, "fail",
-                    "override item `%s` has no explicit profile value" % item)
-            elif value == "use-kernel-default":
-                add("override-redundant-default", target, "fail",
-                    "remove `%s`; unlisted items already use the kernel default"
-                    % item)
-            else:
-                entry = overridable[item]
-                domain = entry.get("value_domain")
-                if domain is None:
-                    continue
-                domain = str(domain)
-                validate = VALUE_DOMAINS.get(domain)
-                if validate is None:
-                    add("override-value-domain-unknown", target, "fail",
-                        "the registry gives `%s` the value domain %r, which "
-                        "this checker does not implement; registry and checker "
-                        "must be updated together" % (item, domain))
-                    continue
-                reason = validate(value)
-                if reason:
-                    add("override-value-domain", target, "fail",
-                        "override value `%s` for `%s` leaves its registered "
-                        "value domain %r (owner: %s): %s"
-                        % (value, item, domain,
-                           entry.get("owner", "kernel"), reason))
+            validate = VALUE_DOMAINS.get(str(domain))
+            if validate is None:
+                add("override-value-domain-unknown", target, "fail",
+                    "the registered value domain %r for %s has no validator" %
+                    (domain, item))
+                continue
+            reason = validate(str(value))
+            if reason:
+                add("override-value-domain", target, "fail",
+                    "value %r for %s leaves registered domain %r "
+                    "(owner: %s): %s" %
+                    (value, item, domain, entry.get("owner", "kernel"), reason))
     resolved_overrides = tuple(sorted(registered))
 
     if profile_snapshot_before is not None:
@@ -1660,15 +962,12 @@ def main(argv=None, *, _evaluation_out=None,
     candidates = [r for r in receipts if r["result"] == "candidate"]
     if not fails and not candidates:
         add(GATE_CHECK, contract.manifest_repo_path, "pass",
-            "profile_id=%s; slot_resolution=%d/%d; form_conformance=%d/%d; "
-            "%d explicit override(s) registered; %d optional/conditional "
-            "declaration(s) structurally consistent; typed_closure=%d "
-            "dependency edge(s) authorized; this proves machine structure "
-            "and reference closure, not semantic quality or user confirmation"
-            % (profile_id, bound_ok, len(slots),
-               contract.profile_form_conformant,
-               contract.profile_form_expected, len(registered),
-               declaration_count, len(contract.dependency_edges)))
+            "profile_id=%s; structured_slots=%d; explicit_overrides=%d; "
+            "typed_closure=%d dependency edge(s); this proves machine "
+            "structure and reference closure, not semantic quality or "
+            "user confirmation"
+            % (profile_id, len(contract.slot_values), len(registered),
+               len(contract.dependency_edges)))
         summary = receipts[-1]
         summary["selected_profile_manifest"] = contract.manifest_repo_path
         summary["profile_snapshot_sha256"] = profile_snapshot_sha256
@@ -1680,13 +979,9 @@ def main(argv=None, *, _evaluation_out=None,
     # ---- human-readable summary ----
     say("check_profile: %s (profile_id=%s)"
           % (profile_disp, profile_id if profile_id else "<none>"))
-    say("  interface=%s slots=%d bound_ok=%d form_ok=%d/%d "
-          "explicit_overrides=%d files_scanned=%d files_skipped=%d"
-          % (os.path.relpath(interface_path, root).replace(os.sep, "/"),
-             len(slots), bound_ok, contract.profile_form_conformant,
-             contract.profile_form_expected, len(registered), files_read,
-             files_skipped))
-    say("  sentinel_hits(fail)=%d" % len(hits))
+    say("  interface=%s slots=%d explicit_overrides=%d"
+        % (os.path.relpath(interface_path, root).replace(os.sep, "/"),
+           len(contract.slot_values), len(registered)))
     for r in receipts:
         if r["result"] == "fail":
             say("  [FAIL %s] %s — %s" % (r["check"], r["target"], r["details"]))
@@ -1700,8 +995,8 @@ def main(argv=None, *, _evaluation_out=None,
         say("  Conclusion: REVIEW REQUIRED — %d candidate finding(s); no "
               "profile-load pass receipt was emitted." % len(candidates))
     else:
-        say("  Conclusion: Profile load authorized; slot resolution, form "
-              "conformance, and the typed dependency closure all pass. This "
+        say("  Conclusion: Profile load authorized; structured values and "
+              "the typed dependency closure pass. This "
               "checks machine structure, not whether answers are good or "
               "whether the user confirmed them.")
 
@@ -1761,6 +1056,7 @@ def evaluate_profile_load(profile_dir, *, root, interface=None, defaults=None,
             "profile_load_inputs_sha256"),
         summary_receipt=evaluation.get("summary_receipt"),
         output=captured.getvalue(),
+        normative_snapshots=evaluation.get("normative_snapshots"),
     )
 
 

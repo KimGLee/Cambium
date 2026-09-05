@@ -1,51 +1,14 @@
 # Profile Examples
 
-## Purpose
+These packages are non-normative, filled examples of structured Profile answers. They show domain choices; they do not define the public interface, supply defaults, confirm another repository's policies, or select a Profile.
 
-This directory contains non-normative, filled reference cases. An example shows what concrete, testable answers to the profile interface can look like in one domain. It does not define the interface, supply kernel defaults, or constrain another profile.
+[The Kernel interface](../../kernel/K00%20Standards%20Control/profile-interface.yaml) registers the stable slots and their separate semantic owners. Each example has one `profile.toml` entrypoint with embedded slot values. Necessary independent policy bodies and registered scan parameters remain explicitly referenced support files; they do not create additional slots.
 
-The distinction is deliberate:
+Examples under `profiles/examples/` are intentionally not selectable in place. For a new Profile, the conducting Agent creates a direct-child candidate under `profiles/<profile-id>/` and records answers through the interview. The user does not copy or edit the example's files. Checking answers and selecting a version remain separate operations.
 
-- `kernel/K00 Standards Control/profile-interface.yaml` defines the common slot registry; K00/19 defines its semantic boundary.
-- `profiles/_template/` is the only candidate template; it asks an adopter to provide its own answers.
-- `profiles/examples/` shows completed domain-specific answers for reference.
+- [Agent Systems Atlas](agent-atlas/README.md) shows Chinese-first engineering knowledge, explicit structure and metadata choices, Interview expression contracts, and one generic residual scan. It carries no private corpus, selected state, or adoption evidence.
+- [Worked Planning](worked-planning/README.md) contains a configured Corpus Planning slot, three planning artifacts, and a six-page workshop corpus so its references can be checked locally.
 
-## Selection Boundary
+The examples do not exhaust the interface. Neither is a worked example of a supplemental Profile Read Set, a promoted/resolved Gap with real runtime state, or a separate readiness Gate. Missing examples do not forbid legal extensions defined by their owner.
 
-Examples are not templates or adoption starting points. The active-selection contract accepts exactly `profiles/<profile-id>/profile.md`; manifests nested under `profiles/examples/` are intentionally not selectable in place.
-
-Start from `_template`, create `profiles/<profile-id>/`, and use the interview to determine the answers that fit the repository before validating and selecting the copy through governance. Consult examples for answer shape and specificity without inheriting their domain choices.
-
-## Example Package Shape
-
-Every example contains the filled template skeleton and may also contain:
-
-- an example-specific README that explains its domain and reading order;
-- machine parameters or other support data explicitly consumed by an existing slot registration.
-
-Additional support files do not create slots or extend the profile interface. Policy remains in the bound slot owners, and persistent executable code shipped by Cambium remains under `Tools/`. An example must identify auxiliary files and explain why they exist.
-
-Every example README carries a `## Validation Provenance` table: for each validator the example claims to pass, the tool version it was last validated against, the exact command, and the expected result. The public distribution is intentionally uninstantiated and therefore has no `upstream_revision_id` for an example to name, so the tool version is the machine-checkable stand-in. `Tools/tests/test_profile_examples.py` re-runs every command in every such table and fails when a declared version no longer matches the tool.
-
-## Included Examples
-
-- [Agent Systems Atlas](agent-atlas/README.md) — a Chinese-first engineering knowledge corpus that uses kernel route R05 for an Interview expression layer and binds an Atlas-specific residual scan to the generic tool implementation.
-- [Worked Planning](worked-planning/README.md) — a configured Corpus Planning slot with a filled Global Map, Capability Matrix, and Gap Register that pass `check_corpus_plan.py`, over a six-page micro-corpus carried inside the package.
-
-## Branch Coverage
-
-The two examples together are not a complete tour of the interface, and this section names what is still missing so that an absent form is not read as a forbidden one.
-
-Between them the examples show selected forms of the optional and conditional switches in `profiles/_template/`; Atlas configures seventeen of the eighteen, and the remaining forms are available in the sole candidate template. Each package states the reason for its own choices. The optional K08/09 `boundary_projection` key added later is left in its inactive kernel-default form by every example (see the table below).
-
-Documented forms that still have **no** worked example anywhere in this repository:
-
-| Missing form | Why it is missing |
-|---|---|
-| A supplemental route with its profile Read Set (`type: profile-read-set`) | No example needs a route the kernel does not already provide; the current machine declaration is validated by the runtime tooling. |
-| Gap Register statuses `promoted` and `resolved` | Both require a real Coverage object and initialized `.cambium/` runtime state, which this repository deliberately does not carry. |
-| A non-generic deterministic residual verifier, and additional optional candidate scans | Every example is served by the generic `Tools/check_residual_content.py` matcher with one registered scan. |
-| A profile-owned extension audit dimension beyond the one Atlas registers | Not needed by the other two domains. |
-| A `boundary_projection` display-label override, or a profile-closed `boundary` concern vocabulary | The K08/09 kernel display labels and the open (shape-checked only) concern-slug state are the intended defaults during a corpus's boundary migration; closing the vocabulary is a later governance decision no example has reached. |
-
-An adopter who needs one of these starts from the Kernel-owned interface and the relevant semantic owner, not from an example.
+Each package records its validation commands and tool versions. Re-run them when the interface or tools change; validation provenance does not confer adoption or semantic acceptance.

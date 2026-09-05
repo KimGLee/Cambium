@@ -278,7 +278,7 @@ def _canonical_apply(args, delta, new_text, planned, rejected,
             metadata_property_state.profile_gate_projection_rules(
                 root, profile_contract.extension_gates,
                 metadata_contract=metadata_contract,
-                authorized_profile_contract=profile_contract)
+                typed_profile_contract=profile_contract)
         parsed_new, property_paths, property_events = \
             metadata_property_state.apply_content_change(
                 parsed_new, root, delta_manifest, receipt,

@@ -2,12 +2,12 @@
 """compose_vocab.py -- persistent vocabulary compiler (kernel tooling).
 
 Deterministically composes the selected-profile vocabulary artifact
-(.cambium/derived/vocab.yaml by default) from two restricted-YAML-subset
-inputs:
+(.cambium/derived/vocab.yaml by default) from the Kernel vocabulary base and
+the selected Profile's admitted typed vocabulary slot:
 
   --base        kernel vocabulary base
                 (default: "kernel/K08 Metadata and Status/vocabulary-base.yaml")
-  --extensions  selected profile's vocabulary extensions. The canonical
+  --profile     selected Profile manifest. The canonical
                 adopter Standards state determines the one
                 allowed `Vocabulary Extensions` binding. The flag may repeat
                 that path
@@ -37,8 +37,8 @@ Modes:
 Exit codes: 0 = ok / check passed; 1 = conflict or input error;
             2 = --check mismatch.
 
-Only the python3 standard library is used; YAML parsing goes through the
-shared ``Tools.platform.common.kblib`` restricted subset parser.
+Kernel YAML parsing goes through the shared restricted subset parser.
+Profile decoding and validation belong to the shared Profile admission chain.
 """
 from Tools.platform.repository.repository import repository_source_root, tools_source_root
 
@@ -74,13 +74,11 @@ UNINSTANTIATED_RE = re.compile(r"\{\{.*?\}\}")
 # in a clone that does not carry the named profile, a hardcoded default
 # resolves to a missing file, and in a clone that carries a different
 # profile, it composes the wrong one without saying so.
-EXTENSIONS_BASENAME = "vocabulary-extensions.yaml"
 PROFILES_DIR = profile_layout_contract.PROFILES_DIRECTORY
 # Directory names under profiles/ that are not selectable profiles:
 # `_template` is an unfilled skeleton whose value lists are empty by design,
 # so composing against it would yield a base-only artifact that looks valid.
 NON_PROFILE_DIRS = profile_layout_contract.RESERVED_PROFILE_IDS
-PROFILE_ID_VALUE_RE = re.compile(r"^[a-z0-9][a-z0-9_-]*$")
 
 # Fixed root key order of the composed artifact (base-driven; profile-derived
 # keys are interleaved at their canonical positions). Keys absent from the
@@ -167,16 +165,11 @@ def active_extensions_selection():
         require_approved=True)
     if admission is None:
         return None, None, errors, None
-    path, error = profile_admission.require_slot(
+    _slot, error = profile_admission.require_slot(
         admission, "Vocabulary Extensions")
     if error:
         return None, None, [error], None
-    extensions = os.path.relpath(path, REPO_ROOT).replace(os.sep, "/")
-    if not extensions.lower().endswith((".yaml", ".yml")):
-        return None, None, [
-            "Vocabulary Extensions binding must resolve to YAML; found %s" %
-            extensions
-        ], None
+    extensions = admission.manifest_repo_path
     return extensions, admission.profile_id, [], admission
 
 
@@ -194,40 +187,24 @@ def report_inactive_selection(errors):
     else:
         print("  No filled profile manifest in this repository resolves a "
               "Vocabulary Extensions binding.")
-        print("  Copy profiles/_template/ to profiles/<your-profile-id>/ "
-              "and fill it in first.")
+        print("  Start the Profile interview so the Agent can create and "
+              "fill a candidate through Tools/scaffold_profile.py.")
 
 
 
-def load_subset(path, text=None):
-    if text is not None:
-        return kblib.parse_yaml_subset(text)
-    with open(path, "r", encoding="utf-8") as fh:
-        return kblib.parse_yaml_subset(fh.read())
-
-
-def compiled_artifact(root, admission, *, base_arg=DEFAULT_BASE,
-                      extensions_arg=None):
+def compiled_artifact(root, admission, *, base_arg=DEFAULT_BASE):
     """Return canonical vocabulary bytes from one admitted input snapshot."""
     errors = []
     try:
         _base_relative, base_snapshot = repository.repository_input_snapshot(
             root, base_arg, "base")
-        base = load_subset(None, base_snapshot.read_text())
-        profile = load_subset(
-            None, admission.slot_text("Vocabulary Extensions"))
+        base = kblib.parse_yaml_subset(base_snapshot.read_text())
+        profile = admission.slot_document("Vocabulary Extensions")
     except (OSError, UnicodeError, ValueError,
             kblib.YamlSubsetError) as exc:
         return None, None, [
             "input outside the canonical restricted snapshot: %s" % exc]
-    extension_path = admission.slot_path("Vocabulary Extensions")
-    if extension_path is None:
-        return None, None, [
-            "authorized Profile has no Vocabulary Extensions slot"]
-    extension_relative = os.path.relpath(
-        extension_path, os.path.realpath(os.path.abspath(root))).replace(
-            os.sep, "/")
-    extensions_arg = extensions_arg or extension_relative
+    extension_relative = admission.manifest_repo_path
     try:
         volatility_defaults = \
             profile_contract.volatility_defaults_projection(
@@ -238,16 +215,17 @@ def compiled_artifact(root, admission, *, base_arg=DEFAULT_BASE,
             "authorized Profile has no valid typed volatility_defaults "
             "projection: %s" % exc]
     output, conflicts = compose(
-        base, profile, base_arg, extensions_arg, admission.profile_id,
+        base, profile, base_arg, extension_relative, admission.profile_id,
         volatility_defaults=volatility_defaults)
     errors.extend(conflicts)
     if errors:
         return None, None, errors
     base_sha = base_snapshot.sha256.split(":", 1)[1]
     ext_sha = hashlib.sha256(
-        admission.slot_bytes["Vocabulary Extensions"]).hexdigest()
+        admission.evaluation.profile_snapshot.read_bytes(
+            admission.manifest_repo_path)).hexdigest()
     rendered = render(output, build_header(
-        base_arg, extensions_arg, base_sha, ext_sha))
+        base_arg, extension_relative, base_sha, ext_sha))
     return rendered, output, []
 
 
@@ -303,12 +281,10 @@ def artifact_currency_errors(root, artifact_path, admission):
     return errors
 
 
-def compilation_currency_errors(root, admission, expected_text, *, base_arg,
-                                extensions_arg):
+def compilation_currency_errors(root, admission, expected_text, *, base_arg):
     """Recompile all inputs and require the initially rendered IR to persist."""
     current_text, _output, errors = compiled_artifact(
-        root, admission, base_arg=base_arg,
-        extensions_arg=extensions_arg)
+        root, admission, base_arg=base_arg)
     if errors:
         return errors
     if current_text != expected_text:
@@ -343,7 +319,7 @@ def compose(base, profile, base_arg, ext_arg, profile_id, *,
     if extra_root_keys:
         conflicts.append(
             "extensions: unsupported root key(s) %s; profile_id and the "
-            "Vocabulary Extensions binding come only from profile.md, while "
+            "Vocabulary Extensions binding come only from profile.toml, while "
             "base identity and composition policy come only from the kernel "
             "base" % extra_root_keys
         )
@@ -579,12 +555,11 @@ def main(argv=None):
                         help="the kernel vocabulary base the extensions are "
                              "appended to (default: %s)" % DEFAULT_BASE)
     parser.add_argument(
-        "--extensions",
+        "--profile",
         default=None,
-        help="the active profile's %s. Canonical adopter Standards state "
+        help="the active Profile manifest. Canonical adopter Standards state "
              "selects the path; when this "
-             "flag is present it must name that same path"
-        % EXTENSIONS_BASENAME,
+             "flag is present it must name that same path",
     )
     parser.add_argument("--output", default=DEFAULT_OUTPUT,
                         help="composed vocabulary artifact to write, or to "
@@ -614,36 +589,27 @@ def main(argv=None):
         ])
         return 1
 
-    if args.extensions is None:
-        args.extensions = active_extensions
+    if args.profile is None:
         print("compose_vocab: using the profile selected by %s: %s" %
               (ACTIVE_STATE_PATH, active_extensions))
     else:
         requested_extensions, requested_error = _repo_relative_name(
-            args.extensions
+            args.profile
         )
         if requested_error:
-            print("compose_vocab: --extensions is invalid: %s" %
+            print("compose_vocab: --profile is invalid: %s" %
                   requested_error)
             return 1
         if requested_extensions != active_extensions:
-            print("compose_vocab: --extensions %r does not match the active "
+            print("compose_vocab: --profile %r does not match the active "
                   "profile selected by %s: %s" %
                   (requested_extensions, ACTIVE_STATE_PATH, active_extensions))
             print("  Change profile selection through R09 governance; this "
                   "compiler does not select profiles.")
             return 1
-        args.extensions = requested_extensions
-
-    profile_id = active_profile_id
-    if not isinstance(profile_id, str) or not PROFILE_ID_VALUE_RE.fullmatch(profile_id):
-        print("compose_vocab: invalid profile_id %r; use a lowercase path slug "
-              "matching [a-z0-9][a-z0-9_-]*" % profile_id)
-        return 1
 
     rendered, output, compile_errors = compiled_artifact(
-        REPO_ROOT, admission, base_arg=args.base,
-        extensions_arg=args.extensions)
+        REPO_ROOT, admission, base_arg=args.base)
     if compile_errors:
         print("compose_vocab: %d conflict/input error(s); extensions must be "
               "append-only:" % len(compile_errors))
@@ -652,8 +618,7 @@ def main(argv=None):
         return 1
 
     currency = compilation_currency_errors(
-        REPO_ROOT, admission, rendered, base_arg=args.base,
-        extensions_arg=args.extensions)
+        REPO_ROOT, admission, rendered, base_arg=args.base)
     if currency:
         for error in currency:
             print("compose_vocab: %s" % error)
@@ -687,8 +652,7 @@ def main(argv=None):
                   % args.output)
             return 2
         currency = compilation_currency_errors(
-            REPO_ROOT, admission, rendered, base_arg=args.base,
-            extensions_arg=args.extensions)
+            REPO_ROOT, admission, rendered, base_arg=args.base)
         if currency:
             for error in currency:
                 print("compose_vocab --check: %s" % error)
@@ -707,8 +671,7 @@ def main(argv=None):
     kblib.atomic_write_text(output_path, rendered,
                             validator=kblib.parse_vocabulary_artifact)
     currency = compilation_currency_errors(
-        REPO_ROOT, admission, rendered, base_arg=args.base,
-        extensions_arg=args.extensions)
+        REPO_ROOT, admission, rendered, base_arg=args.base)
     if currency:
         for error in currency:
             print("compose_vocab: %s" % error)

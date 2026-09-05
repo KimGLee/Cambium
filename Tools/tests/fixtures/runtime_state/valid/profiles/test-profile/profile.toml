@@ -1,0 +1,6 @@
+# Identity-only checkpoint. Runtime fixtures install the shared complete typed
+# Profile before any real admission; this seed alone is not a loadable Profile.
+schema_version = 1
+profile_id = "test-profile"
+
+[slots]

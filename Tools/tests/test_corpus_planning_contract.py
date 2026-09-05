@@ -16,6 +16,9 @@ sys.path.insert(0, str(TOOLS / "tests"))
 
 import Tools.execution.planning.corpus_planning_contract as contract  # noqa: E402
 import Tools.platform.common.kblib as kblib  # noqa: E402
+from Tools.tests.fixtures.contract.corpus_plan_objects import (
+    CONFIGURED_SLOT, INACTIVE_SLOT,
+)
 
 
 class CorpusPlanningRegistryTests(unittest.TestCase):
@@ -88,31 +91,36 @@ class CorpusPlanningRegistryTests(unittest.TestCase):
 
 
 class CorpusPlanningEnvelopeTests(unittest.TestCase):
-    def load(self, relative):
-        return kblib.parse_yaml_subset(
-            (REPOSITORY / relative).read_text(encoding="utf-8"))
+    def inactive_envelope(self):
+        value = copy.deepcopy(INACTIVE_SLOT)
+        owner = contract.load_corpus_planning_contract()["slot_envelope"]
+        for container, field_key in (("artifact_bindings", "artifact_binding_fields"),
+                                     ("pass_authority", "pass_authority_fields")):
+            value[container] = dict.fromkeys(owner[field_key])
+        return value
 
-    def load_template(self):
-        return self.load("profiles/_template/corpus-planning.yaml")
+    def configured_envelope(self):
+        """The domain validator consumes the linked value, not TOML bytes."""
+        value = copy.deepcopy(CONFIGURED_SLOT)
+        value["applicability"]["reason"] = None
+        return value
 
     def test_both_existing_applicability_branches_validate(self):
         configured, configured_issues = \
-            contract.validate_corpus_planning_envelope(self.load(
-                "profiles/examples/worked-planning/corpus-planning.yaml"))
+            contract.validate_corpus_planning_envelope(self.configured_envelope())
         inactive, inactive_issues = \
-            contract.validate_corpus_planning_envelope(self.load_template())
+            contract.validate_corpus_planning_envelope(self.inactive_envelope())
 
         self.assertEqual((), configured_issues)
         self.assertEqual(contract.CONFIGURED_STATE, configured["mode"])
-        self.assertEqual(4, len(configured["scale"]))
+        self.assertTrue(configured["scale"])
         self.assertEqual((), inactive_issues)
         self.assertEqual(contract.INACTIVE_STATE, inactive["mode"])
         self.assertEqual({}, inactive["artifact_bindings"])
 
     def test_envelope_shape_and_branch_rules_have_one_table_owner(self):
-        configured = self.load(
-            "profiles/examples/worked-planning/corpus-planning.yaml")
-        inactive = self.load_template()
+        configured = self.configured_envelope()
+        inactive = self.inactive_envelope()
 
         cases = []
 
@@ -184,8 +192,7 @@ class CorpusPlanningEnvelopeTests(unittest.TestCase):
         owner["artifact_contracts"]["global_map"][
             "relation_types"].append("synthetic-relation")
         values = contract.validate_corpus_planning_contract(owner)
-        envelope = self.load(
-            "profiles/examples/worked-planning/corpus-planning.yaml")
+        envelope = self.configured_envelope()
         envelope["pass_authority"]["decision_scope_id"] = \
             "synthetic-corpus-acceptance"
 
@@ -302,7 +309,7 @@ class CorpusPlanningSingleOwnerTests(unittest.TestCase):
 
     def test_each_producer_and_consumer_calls_the_shared_contract(self):
         required_symbols = {
-            "Tools/governance/profile/check_profile.py": (
+            "Tools/governance/profile/profile_contract.py": (
                 "validate_corpus_planning_envelope",),
             "Tools/execution/planning/check_corpus_plan.py": (
                 "artifact_contract",

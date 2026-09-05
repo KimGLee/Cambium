@@ -1,35 +1,8 @@
-# Exact-copy manifest for scaffolding a candidate profile from
-# profiles/_template. `Tools/scaffold_profile.py` copies ONLY the files
-# listed under `copy:`; it never walks the template directory, so a stray
-# file in the template (editor swap, .DS_Store) is never copied by accident.
-#
-# Every file shipped under profiles/_template must appear in exactly one of
-# the two lists below; `Tools/tests/test_scaffold_profile.py` enforces that
-# parity in both directions, so adding a template file without classifying it
-# here fails tests. Orientation files are template documentation, never
-# Profile policy, so they are deliberately not copied.
-
-template_manifest_version: 1
-
+template_manifest_version: 2
 source: profiles/_template
-
 copy:
-  - corpus-planning.yaml
-  - escalation-policy.md
-  - expression-layer.md
-  - language-contract.md
-  - metadata-contract.yaml
-  - priority-rubric.md
-  - profile.md
-  - registries/audit-dimensions.md
-  - registries/registered-scans.md
-  - registries/roles.md
-  - registries/routing-and-gates.md
-  - scan-configs/residual-scan.yaml
-  - scope-and-architecture.md
-  - source-policy.md
-  - structure-registry.yaml
-  - vocabulary-extensions.yaml
-
+- profile.toml
+- policies/residual-disposition.md
+- scan-configs/residual-scan.yaml
 orientation_not_copied:
-  - README.md
+- README.md

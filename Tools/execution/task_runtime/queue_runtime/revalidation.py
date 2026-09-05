@@ -309,7 +309,18 @@ def consumed_standards_revalidation_keys(item, catalog):
                   for transition in walk_revalidation_hold(transitions)[1]}
     for transition in transitions:
         receipt_id = transition.get("standards_revalidation_receipt")
-        if transition.get("receipt_id") not in discharges:
+        # A queued batch consumes adoption bindings at admission without ever
+        # entering the revalidation hold machine.  Hold discharge and initial
+        # admission are distinct consumer edges; replay both, without treating
+        # an arbitrary edge carrying an aggregate as authorization.
+        opening_consumption = (
+            transition.get("before_state") == "queued" and
+            transition.get("after_state") == "open" and
+            transition.get("before_hold_state") in {
+                "none", "confirmation-required"} and
+            transition.get("after_hold_state") == "none")
+        if not opening_consumption and \
+                transition.get("receipt_id") not in discharges:
             continue
         receipt_entry = resolve(receipt_id) if nonempty_string(
             receipt_id) else None

@@ -12,8 +12,8 @@ source_files:
   - kernel/K12 Quality Assurance/12 Substantive Correctness Review.md
   - kernel/K12 Quality Assurance/18 Cross-page and Control-plane Dimension Map.md
   - kernel/K12 Quality Assurance/19 Incremental Audit Planning.md
-source_hash: '254f6960dd5d'
-reviewed_source_hash: '254f6960dd5d'
+source_hash: '4445e0b2a2ec'
+reviewed_source_hash: '4445e0b2a2ec'
 reviewed_card_hash: '1def15842fac'
 ---
 # R12 Targeted and Specialized Audit Card

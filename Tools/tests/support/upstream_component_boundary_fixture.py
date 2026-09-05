@@ -12,6 +12,7 @@ import subprocess
 from unittest import mock
 
 import Tools.platform.distribution.upstream_component_boundary as boundary
+from Tools.governance.profile import profile_codec
 
 
 SYNTHETIC_REVISION = "a" * 40
@@ -47,9 +48,11 @@ def write_component_tree(root, source=None, *, omit_distribution_only=True):
         path = root / relative
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_bytes(data)
-    selected = root / "profiles/adopter/profile.md"
+    selected = root / "profiles/adopter/profile.toml"
     selected.parent.mkdir(parents=True, exist_ok=True)
-    selected.write_text("# Adopter-owned Profile\n", encoding="utf-8")
+    selected.write_bytes(profile_codec.dumps_profile({
+        "schema_version": 1, "profile_id": "adopter",
+    }))
 
 
 class SyntheticUpstreamSnapshot:

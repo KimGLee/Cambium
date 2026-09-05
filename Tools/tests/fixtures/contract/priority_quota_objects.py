@@ -1,21 +1,17 @@
-"""Minimal current Profile forms for the optional priority-quota contract."""
+"""Minimal typed inputs to the Kernel-owned optional quota policy."""
 
+NONE_PRIORITY_QUOTA_RUBRIC = {
+    "priority_quota": {"mode": "none", "items": []},
+}
 
-NONE_PRIORITY_QUOTA_RUBRIC = """## Priority Quota
-
-- Registration: None
-"""
-
-CONFIGURED_PRIORITY_QUOTA_RUBRIC = """## Priority Quota
-
-- Registration: Configured
-
-| Class | Maximum corpus share | Rationale |
-|---|---|---|
-| `P0` | `20%` | instance-specific core ceiling |
-| `P1` | `30%` | instance-specific supporting ceiling |
-"""
-
+CONFIGURED_PRIORITY_QUOTA_RUBRIC = {
+    "priority_quota": {"mode": "configured", "items": [
+        {"priority": "P0", "maximum_share": 0.2,
+         "rationale": "instance-specific core ceiling"},
+        {"priority": "P1", "maximum_share": 0.3,
+         "rationale": "instance-specific supporting ceiling"},
+    ]},
+}
 
 __all__ = [
     "CONFIGURED_PRIORITY_QUOTA_RUBRIC",

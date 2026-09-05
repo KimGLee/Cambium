@@ -1,7 +1,7 @@
 task_id: fixture-task
 scope_version: s1
 upstream_revision_id: 0123456789abcdef0123456789abcdef01234567
-selected_profile_manifest: profiles/test-profile/profile.md
+selected_profile_manifest: profiles/test-profile/profile.toml
 schema_version: 3
 run_id: fixture-maintenance-run-1
 previous_maintenance_completion_receipt: null
@@ -44,4 +44,4 @@ required_batch_ids:
 deferred_count: 0
 open_items: 0
 state: closed
-closed_at: 2026-09-04T17:59:41Z
+closed_at: 2026-09-05T06:45:54Z

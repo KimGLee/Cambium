@@ -24,6 +24,7 @@ import Tools.execution.audit.audit_receipt_contract as receipt_contract  # noqa:
 import Tools.execution.audit.complete_audit_receipt as complete_receipt  # noqa: E402
 import Tools.execution.audit.record_substantive_review as review_producer  # noqa: E402
 import Tools.execution.audit.substantive_review_contract as review_contract  # noqa: E402
+from Tools.execution.task_runtime.queue_runtime import profile_view
 import Tools.platform.common.kblib as kblib  # noqa: E402
 from Tools.tests.support.profile_fixture import (  # noqa: E402
     FIXTURE_UPSTREAM_REVISION,
@@ -69,7 +70,7 @@ class CurrentEvidenceCheckpoint:
             "required_queue_sha256": digest("required-queue"),
             "upstream_revision_id": FIXTURE_UPSTREAM_REVISION,
             "active_standards_sha256": digest("active-standards"),
-            "selected_profile_manifest": "profiles/test/profile.md",
+            "selected_profile_manifest": "profiles/test/profile.toml",
             "profile_snapshot_sha256": digest("profile"),
             "profile_contract_fingerprint": digest("profile-contract"),
             "opening_transition_receipt": "queue-open-current",
@@ -311,12 +312,10 @@ class TerminalDimensionEvidenceProjectionTests(unittest.TestCase):
     def setUp(self):
         self.profile_fixture = CurrentProfileContractFixture(self)
         self.profile_fixture.configure_extension_dimensions((
-            ("language_quality", "receipt", "Language quality receipt."),
+            {"dimension_id": "language_quality", "targets": ["receipt"],
+             "meaning": "Language quality receipt."},
         ))
-        self.profile_contract = self.profile_fixture.load()
-        self.assertTrue(
-            self.profile_contract.authorized,
-            self.profile_contract.diagnostics)
+        self.profile_view = self.admit_dimensions()
         self.plan_sha256 = digest("terminal-plan")
         self.plan_path = \
             ".cambium/work_specs/audit-plans/audit-plan-B001.yaml"
@@ -404,7 +403,7 @@ class TerminalDimensionEvidenceProjectionTests(unittest.TestCase):
             "obligations": copy.deepcopy(self.obligations),
         }
         self.result = {
-            "root": str(REPOSITORY),
+            "root": str(self.profile_fixture.root),
             "errors": [],
             "items_by_id": {"B001": self.item},
             "current_receipt_catalog": {
@@ -412,10 +411,15 @@ class TerminalDimensionEvidenceProjectionTests(unittest.TestCase):
                 **self.records,
             },
             "invalidated_evidence_receipt_ids": [],
-            "_profile_authorized_view": {
-                "_contract": self.profile_contract,
-            },
+            "_profile_authorized_view": self.profile_view,
         }
+
+    def admit_dimensions(self):
+        view, errors = profile_view.profile_load_authorized_view(
+            self.profile_fixture.root,
+            self.profile_fixture.manifest.relative_to(self.profile_fixture.root).as_posix())
+        self.assertEqual([], errors)
+        return view
 
     def _resolution(self, obligation):
         record = self.records[self.refs[obligation["obligation_id"]]]
@@ -561,13 +565,14 @@ class TerminalDimensionEvidenceProjectionTests(unittest.TestCase):
 
     def test_typed_profile_receipt_target_enters_but_review_only_stays_out(self):
         self.profile_fixture.configure_extension_dimensions((
-            ("language_quality", "receipt", "Language quality receipt."),
-            ("review_only", "review", "Review-only judgment."),
-            ("terminal_receipt", "receipt", "Terminal receipt judgment."),
+            {"dimension_id": "language_quality", "targets": ["receipt"],
+             "meaning": "Language quality receipt."},
+            {"dimension_id": "review_only", "targets": ["review"],
+             "meaning": "Review-only judgment."},
+            {"dimension_id": "terminal_receipt", "targets": ["receipt"],
+             "meaning": "Terminal receipt judgment."},
         ))
-        contract = self.profile_fixture.load()
-        self.assertTrue(contract.authorized, contract.diagnostics)
-        self.result["_profile_authorized_view"] = {"_contract": contract}
+        self.result["_profile_authorized_view"] = self.admit_dimensions()
 
         additions = (
             ("profile-review-only", "review_only",

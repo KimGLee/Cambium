@@ -91,7 +91,7 @@ fields:
     type: repository-path
     nullable: false
     source: runtime
-    example: profiles/example/profile.md
+    example: profiles/example/profile.toml
   - field: selected_route_ids
     type: string-list
     nullable: false

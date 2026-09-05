@@ -22,6 +22,8 @@ import Tools.knowledge.metadata.compose_page_contract as compose_page_contract
 import Tools.knowledge.metadata.compose_vocab as compose_vocab
 import Tools.platform.common.kblib as kblib
 import Tools.governance.profile.profile_admission as profile_admission
+import Tools.governance.profile.profile_codec as profile_codec
+import Tools.governance.profile.profile_contract as profile_contract
 import Tools.governance.standards.standards_state as standards_state
 from Tools.tests.support.profile_fixture import install_loadable_profile
 import Tools.platform.distribution.upstream_identity as upstream_identity
@@ -37,7 +39,7 @@ def _current_contract_plan():
     """Return one complete current-schema plan without touching a repository."""
     digest = "sha256:" + "1" * 64
     revision = "a" * 40
-    manifest = "profiles/test-profile/profile.md"
+    manifest = "profiles/test-profile/profile.toml"
     return {
         "schema_version": 3,
         "adoption_id": "SA-CONTRACT",
@@ -94,7 +96,7 @@ class AdoptStandardsFixture:
     PLAN = ".cambium/deltas/standards-adoptions/SA-001.yaml"
     RECEIPTS = ".cambium/receipts/standards-adoptions.jsonl"
     WRITER_BEFORE_REVISION = "0123456789abcdef0123456789abcdef01234567"
-    WRITER_PROFILE = "profiles/writer-profile/profile.md"
+    WRITER_PROFILE = "profiles/writer-profile/profile.toml"
 
     def build_repository_fixture(self):
         """Lay down the fixture tree the original setUp built per test."""
@@ -618,7 +620,7 @@ class AdoptStandardsFixture:
     LEAF_PROFILE = "kernel/K99 Fixture Family/03 Profile Leaf.md"
     LEAF_RELATED = "kernel/K99 Fixture Family/04 Related Only Leaf.md"
     ORDINARY_SELECTED = "profiles/test-profile/ordinary.md"
-    BOUND_PROFILE_FILE = "profiles/test-profile/profile.md"
+    BOUND_PROFILE_FILE = "profiles/test-profile/profile.toml"
     BOUND_TOOL_FILE = "Tools/fixture_tool.py"
     def read_set_text(self, route_id, *, targets, read_sets,
                       document_type="read-set", trigger_note="None."):
@@ -806,19 +808,19 @@ class WriterProjectionUnitTests(unittest.TestCase):
         plan = _current_contract_plan()
         self.assertEqual({
             "task_id": "T-CONTRACT",
-            "selected_profile_manifest": "profiles/test-profile/profile.md",
+            "selected_profile_manifest": "profiles/test-profile/profile.toml",
         }, adopt_standards._plan_identity(plan))
 
     def test_writer_guard_allows_only_adopter_owned_projection(self):
         before = {
             "coverage": {
                 "upstream_revision_id": "before",
-                "selected_profile_manifest": "profiles/before/profile.md",
+                "selected_profile_manifest": "profiles/before/profile.toml",
                 "pages": [{"path": "Topics/A.md"}],
             },
             "queue": {
                 "upstream_revision_id": "before",
-                "selected_profile_manifest": "profiles/before/profile.md",
+                "selected_profile_manifest": "profiles/before/profile.toml",
                 "queue_revision": 1,
                 "state_revision": 7,
                 "required_queue": [{"id": "B1"}],
@@ -833,7 +835,7 @@ class WriterProjectionUnitTests(unittest.TestCase):
                     "contract_version": "c1",
                     "upstream_revision_id": "before",
                     "selected_profile_manifest":
-                        "profiles/before/profile.md",
+                        "profiles/before/profile.toml",
                     "selected_route_ids": [],
                     "selected_card_paths": [],
                     "selected_profile_route_ids": [],
@@ -847,7 +849,7 @@ class WriterProjectionUnitTests(unittest.TestCase):
                 "status": "current",
                 "effective_date": "2026-08-01",
                 "selected_profile_manifest":
-                    "profiles/before/profile.md",
+                    "profiles/before/profile.toml",
                 "latest_adoption_receipt": "R0",
                 "upstream_source_ref":
                     "https://example.test/cambium.git",
@@ -857,11 +859,11 @@ class WriterProjectionUnitTests(unittest.TestCase):
         after = copy.deepcopy(before)
         after["coverage"].update({
             "upstream_revision_id": "after",
-            "selected_profile_manifest": "profiles/after/profile.md",
+            "selected_profile_manifest": "profiles/after/profile.toml",
         })
         after["queue"].update({
             "upstream_revision_id": "after",
-            "selected_profile_manifest": "profiles/after/profile.md",
+            "selected_profile_manifest": "profiles/after/profile.toml",
             "queue_revision": 2,
         })
         after["progress"].update({
@@ -872,14 +874,14 @@ class WriterProjectionUnitTests(unittest.TestCase):
         after["progress"]["contract"].update({
             "contract_version": "c2",
             "upstream_revision_id": "after",
-            "selected_profile_manifest": "profiles/after/profile.md",
+            "selected_profile_manifest": "profiles/after/profile.toml",
             "loaded_module_paths": ["kernel/K00.md"],
         })
         after["standards"].update({
             "state_revision": 2,
             "upstream_revision_id": "after",
             "effective_date": "2026-08-31",
-            "selected_profile_manifest": "profiles/after/profile.md",
+            "selected_profile_manifest": "profiles/after/profile.toml",
             "latest_adoption_receipt": "R1",
         })
         adopt_standards._assert_only_permitted_changes(before, after)
@@ -1047,10 +1049,13 @@ class CorrectiveAdoptionBeforeImageTests(AdoptStandardsFixture,
         # run.  A byte change in their canonical Profile-load input closure
         # therefore creates a valid target view that the immutable before
         # Receipt could never have bound.
-        contract = self.root / \
-            "kernel/K00 Standards Control/profile-interface.yaml"
-        contract.write_text(
-            contract.read_text(encoding="utf-8") + "\n",
+        # Keep every semantic owner and generated projection unchanged. A
+        # comment in the frozen toolchain input changes its fingerprint while
+        # retaining a valid target evaluation for this historical-binding seam.
+        requirements = self.root / profile_contract.PROFILE_REQUIREMENTS_PATH
+        requirements.write_text(
+            requirements.read_text(encoding="utf-8") +
+            "\n# Current release input; dependency constraints unchanged.\n",
             encoding="utf-8")
 
         ordinary = runtime_validation.validate_runtime(self.root)
@@ -1080,10 +1085,9 @@ class BaseReadSetCheckpointTests(AdoptStandardsFixture,
         governance.write_text("## Fixture governance\n", encoding="utf-8")
         profile = self.root / self.BOUND_PROFILE_FILE
         profile.parent.mkdir(parents=True, exist_ok=True)
-        profile.write_text(
-            "# Fixture Profile\n\n## Profile Identity\n\n"
-            "- `profile_id`: `test-profile`\n",
-            encoding="utf-8")
+        profile.write_bytes(profile_codec.dumps_profile({
+            "schema_version": 1, "profile_id": "test-profile",
+        }))
         schema = self.root / "Read Set/read-set.schema.yaml"
         schema.parent.mkdir(parents=True, exist_ok=True)
         schema.write_bytes(

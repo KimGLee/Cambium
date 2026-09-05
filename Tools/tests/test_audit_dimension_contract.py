@@ -2,7 +2,6 @@
 
 import copy
 from pathlib import Path
-import shutil
 import sys
 import tempfile
 import unittest
@@ -15,8 +14,9 @@ sys.path.insert(0, str(TOOLS))
 import Tools.execution.audit.audit_dimension_contract as audit_dimension_contract
 import Tools.governance.profile.check_profile as check_profile
 import Tools.platform.common.kblib as kblib
-import Tools.governance.control.metadata_execution_contract as metadata_execution_contract
-import Tools.governance.profile.profile_contract as profile_contract
+from Tools.tests.support.profile_load_fixture import (
+    install_current_profile_load_inputs,
+)
 
 
 class AuditDimensionContractTests(unittest.TestCase):
@@ -68,24 +68,7 @@ class AuditDimensionContractTests(unittest.TestCase):
     def test_profile_load_currentness_binds_the_k12_registry_bytes(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
-            for relative in check_profile.CANONICAL_PROFILE_LOAD_INPUTS:
-                target = root / relative
-                target.parent.mkdir(parents=True, exist_ok=True)
-                shutil.copy2(REPOSITORY / relative, target)
-            capabilities = kblib.load_yaml_file(
-                REPOSITORY / check_profile.DEFAULT_OPERATION_CAPABILITIES)
-            for relative in metadata_execution_contract.\
-                    capability_implementation_paths(capabilities):
-                target = root / relative
-                target.parent.mkdir(parents=True, exist_ok=True)
-                shutil.copy2(REPOSITORY / relative, target)
-            scans = kblib.load_yaml_file(
-                REPOSITORY / profile_contract.SCAN_CAPABILITY_PATH)
-            for relative in profile_contract.\
-                    scan_capability_implementation_paths(scans):
-                target = root / relative
-                target.parent.mkdir(parents=True, exist_ok=True)
-                shutil.copy2(REPOSITORY / relative, target)
+            install_current_profile_load_inputs(root)
 
             _snapshots, before = check_profile.canonical_profile_load_inputs(
                 root)

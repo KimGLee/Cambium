@@ -21,8 +21,8 @@ upstream_revision_id_before: TODO(adoption-before)
 # revision keeps the same upstream commit identity.
 upstream_revision_id_after: TODO(adoption-after)
 standards_effective_date_after: TODO(adoption-after)
-selected_profile_manifest_before: "profiles/my-profile/profile.md"
-selected_profile_manifest_after: "profiles/my-profile/profile.md"
+selected_profile_manifest_before: "profiles/my-profile/profile.toml"
+selected_profile_manifest_after: "profiles/my-profile/profile.toml"
 governance_revision_ref: "kernel/K00 Standards Control/03 Standards Governance.md"
 governance_revision_sha256: "sha256:replace-with-current-governance-file-fingerprint"
 standards_state_sha256_before: "sha256:replace-with-current-standards-state-fingerprint"

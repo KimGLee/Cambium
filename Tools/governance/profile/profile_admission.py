@@ -3,28 +3,22 @@
 This module is deliberately a thin consumer adapter.  ``check_profile`` owns
 Profile authorization and ``profile_contract`` owns the typed dependency
 graph.  Gate checkers and artifact producers call :func:`admit_profile` once,
-then consume only the ``manifest-slot`` edges exposed by that authorized
-evaluation instead of parsing ``profile.md`` again.
+then consume the immutable slot and record values from that evaluation.
 """
 
+from collections.abc import Mapping
 from dataclasses import dataclass
 from types import MappingProxyType
 import os
 
 import Tools.governance.profile.check_profile as check_profile
 import Tools.governance.profile.profile_contract as profile_contract
+import Tools.governance.profile.profile_layout_contract as profile_layout_contract
 import Tools.platform.common.kblib as kblib
 import Tools.governance.standards.standards_state as standards_state
 
 
 PROFILE_SCOPE_SLOT = profile_contract.PROFILE_SCOPE_SLOT
-
-
-def _profile_load_inputs_sha256(root):
-    """Project the core producer's canonical input binding for currency."""
-    _snapshots, fingerprint = \
-        check_profile.canonical_profile_load_inputs(root)
-    return fingerprint
 
 
 @dataclass(frozen=True)
@@ -33,8 +27,6 @@ class ProfileAdmission:
 
     root: str
     evaluation: check_profile.ProfileLoadEvaluation
-    slot_paths: object
-    slot_bytes: object
     active_state: object
     active_state_repo_path: object
     active_state_sha256: object
@@ -55,40 +47,63 @@ class ProfileAdmission:
     def profile_snapshot_sha256(self):
         return self.evaluation.profile_snapshot_sha256
 
-    def slot_path(self, slot_name):
-        """Return one Profile slot's canonical absolute path, or ``None``."""
-        return self.slot_paths.get(slot_name)
+    @property
+    def source_path(self):
+        """The manifest source for diagnostics, not a slot read interface."""
+        return os.path.join(self.root, *self.manifest_repo_path.split("/"))
 
-    def slot_text(self, slot_name):
-        """Return strict UTF-8 text from the admitted snapshot bytes."""
-        value = self.slot_bytes.get(slot_name)
-        if value is None:
-            return None
-        return value.decode("utf-8", errors="strict")
+    def slot(self, slot_name):
+        """Return one immutable slot by its registered ID or display name."""
+        return self.contract.slot(slot_name)
+
+    def slot_document(self, slot_name):
+        """Return a defensive plain-data projection for domain validators."""
+        return self.contract.slot_document(slot_name)
+
+    def value(self, slot_name, *keys):
+        """Read a named field from the admitted typed slot without IO."""
+        value = self.slot(slot_name)
+        for key in keys:
+            if not isinstance(value, Mapping) or key not in value:
+                raise KeyError((slot_name,) + keys)
+            value = value[key]
+        return value
+
+    def record(self, slot_name, collection, record_id, *, id_field="id"):
+        """Read one record by stable identity from an explicit collection.
+
+        Collection names may be a string or a tuple of field names. Missing
+        or ambiguous IDs fail instead of falling back to positional lookup.
+        """
+        keys = (collection,) if isinstance(collection, str) else tuple(collection)
+        records = self.value(slot_name, *keys)
+        if isinstance(records, Mapping):
+            if record_id not in records:
+                raise KeyError(record_id)
+            return records[record_id]
+        if not isinstance(records, tuple):
+            raise TypeError("record collection must be a typed mapping or tuple")
+        matches = tuple(item for item in records
+                        if isinstance(item, Mapping) and
+                        item.get(id_field) == record_id)
+        if not matches:
+            raise KeyError(record_id)
+        if len(matches) != 1:
+            raise ValueError("record identity %r is ambiguous" % record_id)
+        return matches[0]
 
 
 def scope_directories(admission):
-    """Return ``(directories, errors)`` from the admitted Profile Scope.
-
-    The projection is shared by structure checkers and renderers.  It reads
-    only the already-authorized immutable slot bytes and does not select a
-    Profile or a scan scope on the caller's behalf.
-    """
-    _path, error = require_slot(admission, PROFILE_SCOPE_SLOT)
+    """Project corpus directories from the admitted structured scope slot."""
+    scope, error = require_slot(admission, PROFILE_SCOPE_SLOT)
     if error:
         return [], [error]
-    try:
-        layers = kblib.profile_scope_layers(
-            admission.slot_text(PROFILE_SCOPE_SLOT))
-    except (OSError, UnicodeError) as exc:
-        return [], ["cannot read admitted Profile Scope: %s" % exc]
+    layers = scope["logical_architecture"]
     directories = sorted({
-        directory
-        for layer_directories in layers.values()
-        for directory in layer_directories
+        directory for layer in layers for directory in layer["directories"]
     })
     if not directories:
-        return [], ["no Logical Architecture layer table found"]
+        return [], ["Profile Scope has no Logical Architecture directories"]
     return directories, []
 
 
@@ -130,20 +145,6 @@ def admission_from_evaluation(root, evaluation, *, active_state=None,
             "profile-load evaluation belongs to a different repository root"
         ]
 
-    slots = {}
-    edge_paths = {}
-    for edge in contract.dependency_edges:
-        if edge.kind != "manifest-slot":
-            continue
-        if edge.owner_id in slots:
-            return None, [
-                "profile-load returned duplicate typed slot edge for %r" %
-                edge.owner_id
-            ]
-        slots[edge.owner_id] = os.path.join(
-            contract.root, *edge.path.split("/"))
-        edge_paths[edge.owner_id] = edge.path
-
     profile_snapshot = evaluation.profile_snapshot
     if (not isinstance(profile_snapshot, kblib.RepositoryTreeSnapshot) or
             profile_snapshot.sha256 != evaluation.profile_snapshot_sha256):
@@ -151,25 +152,42 @@ def admission_from_evaluation(root, evaluation, *, active_state=None,
             "profile-load did not expose the immutable Profile snapshot "
             "that authorized its typed contract"
         ]
-    slot_bytes = {}
-    for slot_name, relative in edge_paths.items():
-        try:
-            slot_bytes[slot_name] = profile_snapshot.read_bytes(relative)
-        except FileNotFoundError:
-            return None, [
-                "admitted typed slot %r is absent from the materialized "
-                "Profile snapshot" % slot_name
-            ]
-
     return ProfileAdmission(
         root=root,
         evaluation=evaluation,
-        slot_paths=MappingProxyType(slots),
-        slot_bytes=MappingProxyType(slot_bytes),
         active_state=MappingProxyType(dict(active_state or {})),
         active_state_repo_path=active_state_repo_path,
         active_state_sha256=active_state_sha256,
     ), []
+
+
+def contract_from_admitted_view(root, view):
+    """Read the exact model paired with an existing in-process Gate result.
+
+    This checks identity only: it does no IO, repeats no Gate, and never
+    turns compilation validity into approval. Transaction owners separately
+    rebind currency at their established before/after boundaries.
+    """
+    if not isinstance(view, Mapping):
+        raise ValueError("runtime has no admitted Profile view")
+    evaluation = view.get("_evaluation")
+    admission, errors = admission_from_evaluation(root, evaluation)
+    if errors:
+        raise ValueError("; ".join(errors))
+    if (view.get("_contract") is not evaluation.contract or
+            view.get("_profile_snapshot") is not evaluation.profile_snapshot or
+            view.get("_metadata_execution_contract") is not evaluation.metadata_execution_contract):
+        raise ValueError("Profile view does not reuse the exact Gate result objects")
+    expected = {
+        "selected_profile_manifest": admission.manifest_repo_path,
+        "metadata_execution_contract_fingerprint":
+            evaluation.metadata_execution_contract.contract_fingerprint,
+    }
+    expected.update({name: getattr(evaluation, name)
+                     for name in profile_contract.PROFILE_LOAD_EVIDENCE_FINGERPRINT_FIELDS})
+    if any(view.get(name) != value for name, value in expected.items()):
+        raise ValueError("Profile view public identity differs from its Gate result")
+    return admission.contract
 
 
 def admit_profile(root, override=None, *,
@@ -278,15 +296,44 @@ def admit_profile(root, override=None, *,
         active_state_sha256=active_state_sha256)
 
 
+def admit_profile_manifest(root, manifest, *, evaluation=None):
+    """Admit an explicitly bound manifest, optionally reusing its Gate result.
+
+    A compiled model is never accepted as authorization. This adapter neither
+    chooses an active Profile nor confirms or adopts candidate answers.
+    """
+    root = os.path.realpath(os.path.abspath(os.fspath(root)))
+    try:
+        profile_layout_contract.parse_profile_manifest_path(manifest)
+    except (TypeError, ValueError) as exc:
+        return None, ["invalid Profile manifest identity: %s" % exc]
+    if evaluation is None:
+        try:
+            evaluation = check_profile.evaluate_profile_load(
+                os.path.join(root, os.path.dirname(manifest)), root=root,
+                receipt_identity=None)
+        except (OSError, UnicodeError, ValueError) as exc:
+            return None, ["cannot evaluate profile-load: %s" % exc]
+    admission, errors = admission_from_evaluation(root, evaluation)
+    if errors:
+        return None, errors
+    if admission.manifest_repo_path != manifest:
+        return None, ["profile-load evaluation selects a different manifest"]
+    errors = currency_errors(admission)
+    return (None, errors) if errors else (admission, [])
+
+
 def require_slot(admission, slot_name):
-    """Return ``(path, error)`` for one typed first-hop slot edge."""
-    path = admission.slot_path(slot_name) if admission is not None else None
-    if path is None:
-        return None, (
-            "authorized profile-load contract carries no typed %r slot edge"
-            % slot_name
-        )
-    return path, None
+    """Return an immutable slot value and error, never a filesystem path."""
+    if admission is None:
+        return None, "Profile slot access requires an authorized admission"
+    try:
+        value = admission.slot(slot_name)
+    except (KeyError, ValueError) as exc:
+        return None, "authorized Profile has no %r slot: %s" % (slot_name, exc)
+    if value is None:
+        return None, "authorized Profile has no %r slot" % slot_name
+    return value, None
 
 
 def currency_errors(admission):
@@ -317,7 +364,8 @@ def currency_errors(admission):
                 "authorized by profile-load"
             ]
     try:
-        current_inputs = _profile_load_inputs_sha256(admission.root)
+        _snapshots, current_inputs = admission.evaluation.rebind_normative_inputs(
+            admission.root)
     except (OSError, ValueError) as exc:
         return ["cannot re-bind canonical profile-load inputs: %s" % exc]
     if current_inputs != admission.evaluation.profile_load_inputs_sha256:

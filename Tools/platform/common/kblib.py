@@ -775,44 +775,6 @@ def read_set_document_type(text):
             document_type in READ_SET_DOCUMENT_TYPES else None)
 
 
-PROFILE_ID_LINE_RE = re.compile(
-    r"^\s*-\s+`profile_id`\s*:\s*`([^`]*)`\s*$"
-)
-PROFILE_ID_VALUE_RE = re.compile(r"^[a-z0-9][a-z0-9_-]*$")
-
-PROFILE_SLOT_BINDING_RE = re.compile(
-    r"^\s*-\s+`([^`]+)`\s*:\s*(.+?)\s*$"
-)
-PROFILE_WIKI_BINDING_RE = re.compile(r"\[\[([^\[\]]+?)\]\]")
-PROFILE_MARKDOWN_BINDING_RE = re.compile(r"\[[^\]]*\]\(([^)]+)\)")
-PROFILE_CODE_BINDING_RE = re.compile(r"`([^`]+)`")
-PROFILE_INLINE_BINDING_RE = re.compile(r"\binline\b", re.IGNORECASE)
-
-
-
-def profile_slot_bindings(manifest_text, include_duplicates=False):
-    """Return the Implemented Slots mapping and optionally duplicate names."""
-    bindings = {}
-    duplicates = []
-    inside = False
-    for _line_number, line in markdown_authority_lines(manifest_text):
-        heading = markdown_atx_heading(line)
-        if heading is not None and heading[0] <= 2:
-            inside = (
-                heading[0] == 2
-                and heading[1] == "Implemented Slots"
-            )
-            continue
-        if inside:
-            match = PROFILE_SLOT_BINDING_RE.match(line)
-            if match:
-                name = match.group(1).strip()
-                if name in bindings and name not in duplicates:
-                    duplicates.append(name)
-                bindings[name] = match.group(2).strip()
-    if include_duplicates:
-        return bindings, duplicates
-    return bindings
 
 
 def quota_share_within_limit(pages, total, limit):
@@ -832,130 +794,6 @@ def quota_share_within_limit(pages, total, limit):
     return Fraction(pages * 100, 1) <= Fraction(str(limit)) * total
 
 
-def resolve_profile_binding(binding, root, profile_dir):
-    """Resolve one manifest slot binding with check_profile semantics.
-
-    Returns ``(kind, detail)`` where kind is path, outside-profile,
-    unresolved, invalid, inline, or unrecognized.  A file-bound slot uses one
-    exact profile-relative path.  There is no ``./``/``../`` normalization,
-    extension guessing, case alias, or repository-root fallback: those would
-    make a copied package's first-hop dependency graph platform-dependent.
-    """
-    value = binding.strip()
-    target = None
-    match = PROFILE_WIKI_BINDING_RE.fullmatch(value)
-    if match:
-        target = re.split(r"\\\||\|", match.group(1), maxsplit=1)[0]
-    if target is None:
-        match = PROFILE_MARKDOWN_BINDING_RE.fullmatch(value)
-        if match:
-            target = match.group(1)
-    if target is None and (
-            PROFILE_INLINE_BINDING_RE.fullmatch(value) or
-            (len(value) >= 2 and value[0] == value[-1] == "`" and
-             PROFILE_INLINE_BINDING_RE.fullmatch(value[1:-1]))):
-        return "inline", None
-    if target is None:
-        match = PROFILE_CODE_BINDING_RE.fullmatch(value)
-        if match:
-            target = match.group(1)
-    if target is None:
-        if (PROFILE_WIKI_BINDING_RE.search(value) or
-                PROFILE_MARKDOWN_BINDING_RE.search(value) or
-                PROFILE_CODE_BINDING_RE.search(value) or
-                PROFILE_INLINE_BINDING_RE.search(value)):
-            return "invalid", (
-                "slot value must be exactly one path binding; mixed, "
-                "multiple, or annotated binding constructs are ambiguous: "
-                "%r" % binding)
-        return "unrecognized", None
-    if target != target.strip():
-        return "invalid", "path has leading or trailing whitespace: %r" % target
-    if not target or "\x00" in target or "\\" in target or os.path.isabs(target):
-        return "invalid", "path is not a canonical profile-relative spelling: %r" % target
-    parts = target.split("/")
-    if any(part in ("", ".", "..") for part in parts):
-        return "invalid", "path contains an empty, `.` or `..` segment: %r" % target
-
-    root_real = os.path.realpath(os.path.abspath(root))
-    profile_absolute = os.path.abspath(profile_dir)
-    profile_real = os.path.realpath(profile_absolute)
-    try:
-        if os.path.commonpath((root_real, profile_real)) != root_real:
-            return "outside-profile", profile_dir
-    except ValueError:
-        return "outside-profile", profile_dir
-    profile_relative = os.path.relpath(
-        profile_absolute, root_real).replace(os.sep, "/")
-    repository_relative = profile_relative + "/" + target
-    candidate = os.path.join(root_real, *repository_relative.split("/"))
-    if not os.path.exists(candidate):
-        return "unresolved", target
-    try:
-        canonical_repository_file(
-            root_real, repository_relative, singly_linked=True)
-    except (OSError, ValueError) as exc:
-        return "invalid", "%s: %s" % (target, exc)
-    return "path", candidate
-
-
-def profile_identity(manifest_text, directory_name, reserved_ids=()):
-    """Return ``(profile_id, errors)`` for one profile manifest.
-
-    ``errors`` contains ``(check_id, details)`` pairs.  The manifest is the
-    sole profile-id source: exactly one ``profile_id`` bullet must occur under
-    the ``Profile Identity`` H2, it must be a lowercase path slug, must not be
-    reserved, and must equal the profile directory name.  Fenced examples are
-    ignored so documentation cannot accidentally become identity data.
-    """
-    profile_ids = []
-    inside_identity = False
-    for _line_number, line in markdown_authority_lines(manifest_text):
-        heading = markdown_atx_heading(line)
-        if heading is not None and heading[0] <= 2:
-            inside_identity = (
-                heading[0] == 2
-                and heading[1] == "Profile Identity"
-            )
-            continue
-        if inside_identity:
-            match = PROFILE_ID_LINE_RE.match(line)
-            if match:
-                profile_ids.append(match.group(1).strip())
-
-    profile_id = profile_ids[0] if profile_ids else None
-    errors = []
-    if not profile_ids:
-        errors.append((
-            "profile-id-missing",
-            "no `profile_id`: `<value>` bullet found under Profile Identity; "
-            "the manifest must name the profile it composes with the kernel",
-        ))
-    elif len(profile_ids) > 1:
-        errors.append((
-            "profile-id-duplicate",
-            "Profile Identity contains %d profile_id entries; exactly one "
-            "manifest identity is allowed" % len(profile_ids),
-        ))
-    elif profile_id in {str(value) for value in reserved_ids}:
-        errors.append((
-            "profile-id-placeholder",
-            "profile_id is still the reserved placeholder %r; replace it with "
-            "this profile's own id before the profile may be loaded" % profile_id,
-        ))
-    elif not PROFILE_ID_VALUE_RE.fullmatch(profile_id):
-        errors.append((
-            "profile-id-invalid",
-            "profile_id %r is not a lowercase path slug matching "
-            "[a-z0-9][a-z0-9_-]*" % profile_id,
-        ))
-    elif profile_id != directory_name:
-        errors.append((
-            "profile-id-directory-mismatch",
-            "profile_id %r must match the profile directory name %r; the "
-            "manifest is the single identity source" % (profile_id, directory_name),
-        ))
-    return profile_id, errors
 
 
 # ---------------------------------------------------------------------------
@@ -1727,33 +1565,6 @@ def validate_structure_registry_shape(
     return errors
 
 
-PROFILE_SCOPE_ARCHITECTURE_HEADING = "Logical Architecture"
-
-
-def profile_scope_layers(scope_text):
-    """Return {layer_id: [directories]} from a Profile Scope's Logical
-    Architecture table (Profile Scope is the sole Layer ID owner)."""
-    layers = {}
-    in_section = False
-    for line in scope_text.splitlines():
-        stripped = line.strip()
-        if stripped.startswith("## "):
-            in_section = (stripped[3:].strip() ==
-                          PROFILE_SCOPE_ARCHITECTURE_HEADING)
-            continue
-        if not in_section or not stripped.startswith("|"):
-            continue
-        cells = [c.strip() for c in stripped.strip("|").split("|")]
-        if len(cells) < 2 or all(
-                c and set(c) <= set(":-") for c in cells if c):
-            continue
-        layer = cells[0].strip("`").strip()
-        if not layer or layer.lower().startswith("stable layer id"):
-            continue
-        directories = [d.strip().strip("`").strip()
-                       for d in cells[1].split(";")]
-        layers[layer] = [d for d in directories if d]
-    return layers
 
 
 # ---------------------------------------------------------------------------
@@ -4191,7 +4002,7 @@ def repository_parent_tree_snapshot(root, child_path):
     """Bind the admitted parent package of one explicit file capability.
 
     Some public arguments accept either a Profile directory or its
-    ``profile.md`` manifest.  The manifest form still denotes the Profile
+    ``profile.toml`` manifest.  The manifest form still denotes the Profile
     package closure.  Its server-retained parent descriptor is therefore the
     only safe way to materialize that closure after admission; reopening the
     directory name would reintroduce the race this capability protocol closes.

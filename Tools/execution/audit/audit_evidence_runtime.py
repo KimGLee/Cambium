@@ -30,6 +30,7 @@ import Tools.knowledge.metadata.metadata_property_state as metadata_property_sta
 import Tools.governance.profile.profile_batch_judgment_contract as profile_batch_judgment_contract
 import Tools.governance.profile.profile_contract as profile_contract
 import Tools.knowledge.rendering.rendering_verification_contract as rendering_verification_contract
+import Tools.knowledge.rendering.profile_rendering_evidence_contract as profile_rendering
 import Tools.execution.task_runtime.runtime_paths as runtime_paths
 import Tools.execution.audit.substantive_review_contract as substantive_review_contract
 
@@ -256,10 +257,8 @@ def _current_plan_errors(result, item, plan, catalog, *, required_state=None):
                 (field, plan.get(field), value))
     try:
         view = result.get("_profile_authorized_view")
-        contract = view.get("_contract") if isinstance(view, dict) else None
-        if contract is None or not getattr(contract, "authorized", False):
-            raise ValueError(
-                "AuditPlan reload requires an authorized typed Profile")
+        from Tools.governance.profile.profile_admission import contract_from_admitted_view
+        contract = contract_from_admitted_view(result["root"], view)
         audit_obligation_projection.validate_plan_definition_authority(
             plan, contract, root=result.get("root"))
         actual_snapshot = audit_plan_contract.\
@@ -305,7 +304,7 @@ def _resolve_current_plan(result, item, catalog, *, required_state=None):
     return candidates[0]
 
 
-def _require_current_profile_rendering_contract_state(result, item):
+def _require_current_profile_rendering_contract_state(result, item, plan):
     """Re-evaluate the tri-state against current bytes without editing plan."""
     root = result.get("root")
     manifest = item.get("manifest")
@@ -321,8 +320,8 @@ def _require_current_profile_rendering_contract_state(result, item):
             raise AuditEvidenceError(
                 "current Profile rendering target is absent: %s" % relative)
         pages.append((relative, snapshot.read_text()))
-    changed_scope_rendering_checks.require_profile_rendering_contract_state(
-        pages, contract_is_bound_and_valid=False)
+    profile = (result.get("_profile_authorized_view") or {}).get("_contract")
+    profile_rendering.require_plan_applicability(plan, pages, profile, root=root)
 
 
 def resolve_stage_plan(result, item, due_stage, required_state=None,
@@ -347,7 +346,7 @@ def resolve_stage_plan(result, item, due_stage, required_state=None,
         raise AuditEvidenceError(
             "resolved current AuditPlan path %s differs from requested %s" %
             (relative, plan_path))
-    _require_current_profile_rendering_contract_state(result, item)
+    _require_current_profile_rendering_contract_state(result, item, plan)
     obligations = tuple(
         dict(row) for row in plan["obligations"]
         if row.get("due_stage") == due_stage)
@@ -396,7 +395,8 @@ def _producer_evidence_errors(root, catalog, plan, plan_sha256,
         return [str(exc)]
     try:
         chain = audit_producer_chain.require_precursor_record(
-            evidence, obligation, root=root)
+            evidence, obligation, root=root,
+            evaluation=((result or {}).get("_profile_authorized_view") or {}).get("_evaluation"))
     except audit_producer_chain.AuditProducerChainError as exc:
         return ["AuditReceipt producer chain: %s" % exc]
     errors.extend(audit_lifecycle_contract.attempt_binding_mismatches(
@@ -472,6 +472,14 @@ def _producer_evidence_errors(root, catalog, plan, plan_sha256,
                 audit_fingerprint.obligation_contract_fingerprint(
                     plan, obligation):
             errors.append("contract_fingerprint")
+    elif chain["execution_route"] == "profile-rendering":
+        try:
+            profile_rendering.validate_record_for_obligation(
+                evidence, plan, plan_sha256, obligation, root=root,
+                evaluation=((result or {}).get("_profile_authorized_view") or {}).get("_evaluation"),
+                require_current=require_current)
+        except (OSError, TypeError, UnicodeError, ValueError, RuntimeError) as exc:
+            errors.append("Profile rendering evidence: %s" % exc)
     elif chain["execution_route"] == "rendering-verification":
         try:
             contract = rendering_verification_contract.load_contract(root)
@@ -598,11 +606,10 @@ def _direct_binding_errors(
                 current_artifact = _current_page_artifact_fingerprint(
                     root, target)
             profile_view = (result or {}).get("_profile_authorized_view") or {}
-            profile = profile_view.get("_contract")
             changed_scope_evidence_contract.validate_record_for_plan(
                 record, plan, plan_sha256, obligation, root=root,
                 artifact_fingerprint=current_artifact,
-                contract=profile if is_profile_scan else None)
+                evaluation=profile_view.get("_evaluation") if is_profile_scan else None)
             if is_profile_scan:
                 if not profile_view:
                     raise ValueError(
@@ -672,9 +679,11 @@ def _profile_judgment_binding_errors(result, item, plan, plan_sha256,
                                      obligation, record, *,
                                      require_current=True):
     view = result.get("_profile_authorized_view") or {}
-    contract = view.get("_contract")
-    if contract is None or not getattr(contract, "authorized", False):
-        return ["runtime has no authorized typed Profile contract"]
+    from Tools.governance.profile.profile_admission import contract_from_admitted_view
+    try:
+        contract = contract_from_admitted_view(result["root"], view)
+    except ValueError as exc:
+        return [str(exc)]
     if obligation.get("kernel_extension_point") != \
             profile_batch_judgment_contract.EXTENSION_POINT:
         return ["kernel_extension_point"]
@@ -683,7 +692,7 @@ def _profile_judgment_binding_errors(result, item, plan, plan_sha256,
         require_current=require_current)
 
 
-def _artifact_state(root, obligation, record):
+def _artifact_state(root, obligation, record, *, evaluation=None):
     """Classify one attempt against the current observable after-image.
 
     ``unknown`` means that currentness is owned by the evidence-kind-specific
@@ -711,7 +720,7 @@ def _artifact_state(root, obligation, record):
         if obligation.get("evidence_kind") == "audit-receipt":
             try:
                 chain = audit_producer_chain.precursor_chain_for_obligation(
-                    obligation, root=root)
+                    obligation, root=root, evaluation=evaluation)
             except audit_producer_chain.AuditProducerChainError:
                 return "invalid"
         if isinstance(chain, dict) and \
@@ -864,10 +873,10 @@ def _invalid_history_reason(label, attempts):
     return "%s: %s" % (label, "; ".join(details)) if details else label
 
 
-def _negative_status(root, catalog, obligation, record):
+def _negative_status(root, catalog, obligation, record, *, evaluation=None):
     try:
         chain = audit_producer_chain.precursor_chain_for_obligation(
-            obligation, root=root)
+            obligation, root=root, evaluation=evaluation)
     except audit_producer_chain.AuditProducerChainError:
         chain = None
     if isinstance(chain, dict) and \
@@ -918,7 +927,9 @@ def _substantive_precursor_resolution(
     valid = []
     invalid = []
     for record in records:
-        artifact_state = (_artifact_state(root, obligation, record)
+        artifact_state = (_artifact_state(
+            root, obligation, record,
+            evaluation=(result.get("_profile_authorized_view") or {}).get("_evaluation"))
                           if require_current else
                           ("invalidated"
                            if record.get("invalidated_by") is not None
@@ -1009,7 +1020,8 @@ def _audit_precursor_resolution(
         require_current=True, selected_ref=None):
     try:
         chain = audit_producer_chain.precursor_chain_for_obligation(
-            obligation, root=result["root"])
+            obligation, root=result["root"],
+            evaluation=(result.get("_profile_authorized_view") or {}).get("_evaluation"))
     except audit_producer_chain.AuditProducerChainError as exc:
         return "invalid", None, [], str(exc)
     if chain["execution_route"] == "substantive-review":
@@ -1021,7 +1033,9 @@ def _audit_precursor_resolution(
     current = []
     invalid = []
     for record in records:
-        artifact_state = (_artifact_state(root, obligation, record)
+        artifact_state = (_artifact_state(
+            root, obligation, record,
+            evaluation=(result.get("_profile_authorized_view") or {}).get("_evaluation"))
                           if require_current else
                           ("invalidated"
                            if record.get("invalidated_by") is not None
@@ -1073,10 +1087,10 @@ def _audit_precursor_resolution(
     return "invalid", None, attempts, "producer result is not pass/fail"
 
 
-def _audit_precursor_records(records, obligation, root):
+def _audit_precursor_records(records, obligation, root, *, evaluation=None):
     """Return only the producer attempts owned by one AuditReceipt row."""
     chain = audit_producer_chain.precursor_chain_for_obligation(
-        obligation, root=root)
+        obligation, root=root, evaluation=evaluation)
     return [
         row for row in records
         if row.get("record_kind") != "audit-receipt" and
@@ -1099,7 +1113,8 @@ def _terminal_with_precursor_resolution(
                     if isinstance(terminal, dict) else None)
     try:
         precursors = _audit_precursor_records(
-            records, obligation, result["root"])
+            records, obligation, result["root"],
+            evaluation=(result.get("_profile_authorized_view") or {}).get("_evaluation"))
     except audit_producer_chain.AuditProducerChainError as exc:
         resolution = dict(terminal_resolution)
         resolution.update({
@@ -1173,7 +1188,8 @@ def _required_obligation_resolution_unchecked(
     invalid = []
     for record in final_records:
         artifact_state = (_artifact_state(
-            result["root"], obligation, record) if require_current else
+            result["root"], obligation, record,
+            evaluation=(result.get("_profile_authorized_view") or {}).get("_evaluation")) if require_current else
             ("invalidated" if record.get("invalidated_by") is not None
              else "unknown"))
         if artifact_state == "invalid":
@@ -1239,7 +1255,8 @@ def _required_obligation_resolution_unchecked(
     if rejected:
         resolution = {
             "status": _negative_status(
-                result["root"], catalog, obligation, rejected[0]),
+                result["root"], catalog, obligation, rejected[0],
+                evaluation=(result.get("_profile_authorized_view") or {}).get("_evaluation")),
             "record": rejected[0], "reused": False,
             "reason": "current terminal evidence did not satisfy the "
                       "acceptance predicate", "attempts": attempts,
@@ -1256,7 +1273,8 @@ def _required_obligation_resolution_unchecked(
         # than competing attempts.
         try:
             precursors = _audit_precursor_records(
-                records, obligation, result["root"])
+                records, obligation, result["root"],
+                evaluation=(result.get("_profile_authorized_view") or {}).get("_evaluation"))
         except audit_producer_chain.AuditProducerChainError as exc:
             return {
                 "status": "invalid", "record": None, "reused": False,
@@ -1938,9 +1956,9 @@ def terminal_dimension_evidence(result):
             "Terminal dimension evidence has no canonical Queue item view")
     catalog = current_receipt_catalog(result)
     profile_view = result.get("_profile_authorized_view")
-    contract = profile_view.get("_contract") \
-        if isinstance(profile_view, dict) else None
     try:
+        from Tools.governance.profile.profile_admission import contract_from_admitted_view
+        contract = contract_from_admitted_view(result["root"], profile_view)
         terminal_dimensions = frozenset(
             profile_contract.terminal_receipt_dimensions_projection(
                 contract))
@@ -2041,7 +2059,7 @@ def stage_evidence_status(result, item, due_stage, required_state=None):
     catalog = current_receipt_catalog(result)
     relative, plan, plan_sha256 = _resolve_current_plan(
         result, item, catalog, required_state=required_state)
-    _require_current_profile_rendering_contract_state(result, item)
+    _require_current_profile_rendering_contract_state(result, item, plan)
     obligations = [row for row in plan["obligations"]
                    if row["due_stage"] == due_stage]
     if not obligations:
@@ -2123,7 +2141,7 @@ def stage_evidence_closure(result, item, due_stage, required_state=None):
     catalog = current_receipt_catalog(result)
     relative, plan, plan_sha256 = _resolve_current_plan(
         result, item, catalog, required_state=required_state)
-    _require_current_profile_rendering_contract_state(result, item)
+    _require_current_profile_rendering_contract_state(result, item, plan)
     selected = _required_stage_records(
         result, item, plan, plan_sha256, catalog, due_stage,
         require_current=_stage_requires_live_currentness(

@@ -9,14 +9,12 @@ import sys
 TESTS = Path(__file__).resolve().parents[1]
 TOOLS = TESTS.parent
 REPOSITORY = TOOLS.parent
-SYNTHETIC_PROFILE = TESTS / "fixtures" / "synthetic_profile"
 
 for path in (str(TESTS), str(TOOLS)):
     if path not in sys.path:
         sys.path.insert(0, path)
 import Tools.platform.common.kblib as kblib  # noqa: E402
 import Tools.governance.profile.check_profile as check_profile  # noqa: E402
-import Tools.governance.control.metadata_execution_contract as metadata_execution_contract  # noqa: E402
 import Tools.platform.distribution.module_boundary_facts as module_boundary_facts  # noqa: E402
 import Tools.governance.standards.adoption_lineage_contract as adoption_lineage_contract  # noqa: E402
 import Tools.governance.standards.standards_state as standards_state  # noqa: E402
@@ -24,13 +22,15 @@ import Tools.platform.distribution.stamp_cards as stamp_cards  # noqa: E402
 import Tools.execution.context_delivery.read_set_contract as read_set_contract  # noqa: E402
 from Tools.tests.support.canonical_registry_fixture import (  # noqa: E402
     contract_exception_owner_paths,
-    install_isolated_tool_registry_bundle,
 )
 from Tools.tests.support.initial_task_plan_fixture import (  # noqa: E402
     install_initial_task_plan_fixture,
 )
 from Tools.tests.support.profile_contract_fixture import (  # noqa: E402
-    materialize_current_profile_forms,
+    install_profile_package,
+)
+from Tools.tests.support.profile_load_fixture import (  # noqa: E402
+    install_current_profile_load_inputs,
 )
 
 def _runtime_routes():
@@ -290,90 +290,30 @@ def _install_runtime_activation_fixture(root):
 def install_loadable_profile(root, profile_id="test-profile",
                              upstream_revision_id=FIXTURE_UPSTREAM_REVISION,
                              before_adoption=None):
-    """Overlay a real Profile and the production dependencies it consumes.
+    """Install a typed Profile for tests that own an actual runtime lifecycle.
 
-    Runtime tests consume one shared R01-R13 activation declaration set so
-    separate fixtures cannot claim the same route identity differently.
+    Local contract/adapter tests use install_profile_package instead. Only
+    this runtime fixture creates the declared current adoption evidence and
+    completes a pre-existing task checkpoint.
     """
     root = Path(root)
-    # Copied production modules resolve their Kernel-owned registries against
-    # this scratch root at import time. Install the complete canonical bundle
-    # through one fixture owner rather than growing per-test path lists.
-    install_isolated_tool_registry_bundle(root)
-    # The contract-exception registry validates owner *existence*, while its
-    # YAML remains the sole machine authority.  Exact copies of those prose
-    # owners pull their full Wiki Link graph into this deliberately isolated
-    # repository and make an unrelated link Gate fail on absent modules.
-    # Replace only those explanatory pages with link-free fixture owners; do
-    # not recreate any registry values in prose.
+    install_current_profile_load_inputs(root)
+    # Keep prose-only explanatory owners link-free in the isolated runtime
+    # corpus; their machine policy remains the current copied Kernel source.
     for relative in contract_exception_owner_paths():
         owner = root / relative
         owner.write_text(
             "# Fixture Kernel Owner\n\n"
             "The canonical machine policy is installed from the Kernel "
-            "registry.\n",
-            encoding="utf-8",
-        )
+            "registry.\n", encoding="utf-8")
     profile = root / "profiles" / profile_id
-    shutil.copytree(SYNTHETIC_PROFILE, profile, dirs_exist_ok=True)
-    for name in ("profile.md", "slots.md"):
-        path = profile / name
-        path.write_text(
-            path.read_text(encoding="utf-8").replace(
-                "test-profile", profile_id),
-            encoding="utf-8",
-        )
-    materialize_current_profile_forms(profile)
-
+    install_profile_package(profile, profile_id)
     (root / "Tools/schemas").mkdir(parents=True, exist_ok=True)
     shutil.copy2(
         TOOLS / "schemas/execution_defaults.template.yaml",
-        root / "Tools/schemas/execution_defaults.template.yaml",
-    )
-    # A registered production consumer needs the verifier's whole shipped
-    # dependency closure, not one copied entry-point file that crashes when
-    # invoked in the adopting repository.  Derive that closure from the same
-    # module-boundary owner used by distribution.
+        root / "Tools/schemas/execution_defaults.template.yaml")
     module_boundary_facts.stage_shipped_modules(
         str(REPOSITORY), str(root), ["check_residual_content"])
-    # ``profile-load`` and every metadata writer share one compiled authority
-    # bundle.  Runtime fixtures install its canonical sources and after-image
-    # together so tests exercise currentness rather than an implicit fallback
-    # to the Cambium source checkout.
-    (root / "Tools/compiled").mkdir(parents=True, exist_ok=True)
-    shutil.copy2(
-        TOOLS / "operation-capabilities.yaml",
-        root / "Tools/operation-capabilities.yaml",
-    )
-    runtime_registry = root / "Tools/execution/task_runtime/runtime_paths.py"
-    runtime_registry.parent.mkdir(parents=True, exist_ok=True)
-    shutil.copy2(
-        TOOLS / "execution/task_runtime/runtime_paths.py",
-        runtime_registry,
-    )
-    shutil.copy2(
-        TOOLS / "scan-capabilities.yaml",
-        root / "Tools/scan-capabilities.yaml",
-    )
-    capability_document = kblib.parse_yaml_subset(
-        (TOOLS / "operation-capabilities.yaml").read_text(encoding="utf-8"))
-    for relative in metadata_execution_contract.\
-            capability_implementation_paths(capability_document):
-        target = root / relative
-        target.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copy2(REPOSITORY / relative, target)
-    shutil.copy2(
-        TOOLS / "compiled/metadata-execution-contract.json",
-        root / "Tools/compiled/metadata-execution-contract.json",
-    )
-    # Bind the fixture projection to the exact implementation bytes copied
-    # above. The source checkout may legitimately be testing an uncommitted
-    # implementation revision while its committed projection still names HEAD.
-    compiled = metadata_execution_contract.compile_metadata_execution_contract(
-        str(root))
-    kblib.atomic_write_text(
-        root / metadata_execution_contract.DEFAULT_COMPILED_PATH,
-        compiled.canonical_bytes.decode("utf-8"))
     active = root / standards_state.STATE_PATH
     active.parent.mkdir(parents=True, exist_ok=True)
     if not active.exists():
@@ -384,7 +324,7 @@ def install_loadable_profile(root, profile_id="test-profile",
             "status": "approved",
             "effective_date": "2026-08-01",
             "selected_profile_manifest":
-                "profiles/%s/profile.md" % profile_id,
+                "profiles/%s/profile.toml" % profile_id,
             "latest_adoption_receipt": FIXTURE_ADOPTION_RECEIPT_ID,
             "upstream_source_ref": "fixture://cambium",
         }), encoding="utf-8")

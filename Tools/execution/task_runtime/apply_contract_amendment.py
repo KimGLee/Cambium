@@ -41,6 +41,7 @@ import Tools.platform.common.kblib as kblib
 from Tools.execution.evidence import receipt_type_contract
 import Tools.execution.task_runtime.amendment_policy as amendment_policy
 import Tools.governance.control.contract_exception_policy as contract_exception_policy
+import Tools.governance.profile.profile_admission as profile_admission
 import Tools.execution.task_runtime.runtime_paths as runtime_paths
 import Tools.execution.task_runtime.runtime_state_io as runtime_state_io
 import Tools.execution.task_runtime.runtime_state_contract as runtime_state_contract
@@ -158,43 +159,21 @@ def _validate_plan_shape(plan):
 
 
 def _current_effective_policy(root, contract):
-    """Resolve the selected Profile's optional quota policy, or refuse.
-
-    The writer resolves the same slot bytes the batch-close consumer will:
-    the manifest's ``Priority Rubric`` binding through
-    ``contract_exception_policy.effective_priority_policy``.  A plan
-    author never computes the canonical fingerprint by hand -- it is an
-    internal representation -- so
-    this function is what makes the template's fingerprint field checkable:
-    the writer prints the expected value on mismatch.
-    """
-    manifest_rel = contract.get("selected_profile_manifest")
-    if not isinstance(manifest_rel, str) or not manifest_rel.strip():
-        raise Refusal("the contract names no selected_profile_manifest; a "
-                      "policy exception cannot be judged against no profile")
-    manifest_path = os.path.join(root, manifest_rel)
-    try:
-        with open(manifest_path, encoding="utf-8") as handle:
-            manifest_text = handle.read()
-    except OSError as exc:
-        raise Refusal("the selected profile manifest is unreadable: %s" % exc)
-    bindings = kblib.profile_slot_bindings(manifest_text)
-    binding = (bindings.get("Priority Rubric") or "").strip("`").strip()
-    if not binding:
-        raise Refusal("the selected Profile binds no Priority Rubric slot; "
-                      "K00/07 places optional quota registration there")
-    rubric_path = os.path.join(os.path.dirname(manifest_path), binding)
-    try:
-        with open(rubric_path, encoding="utf-8") as handle:
-            rubric_text = handle.read()
-    except OSError as exc:
-        raise Refusal("the Priority Rubric slot is unreadable: %s" % exc)
-    policy, fingerprint, errors = (
-        contract_exception_policy.effective_priority_policy(rubric_text))
+    """Bind current quota values through the shared Profile admission owner."""
+    manifest = contract.get("selected_profile_manifest")
+    if not isinstance(manifest, str) or not manifest.strip():
+        raise Refusal("the contract names no selected Profile manifest")
+    admission, errors = profile_admission.admit_profile(root, os.path.dirname(manifest))
+    if admission is None or admission.manifest_repo_path != manifest:
+        raise Refusal("selected Profile failed profile-load: %s" % "; ".join(errors))
+    registry = contract_exception_policy.load_policy_registry(
+        root, text=admission.evaluation.normative_snapshots[
+            contract_exception_policy.POLICY_REGISTRY_PATH].read_text(),
+        require_owner_files=False)
+    policy, fingerprint, errors = contract_exception_policy.effective_priority_policy(
+        admission.slot_document("Priority Rubric"), registry=registry)
     if errors or fingerprint is None:
-        raise Refusal(
-            "the selected Profile's Priority Rubric does not resolve:\n  %s"
-            % "\n  ".join(errors[:5]))
+        raise Refusal("Priority Rubric does not resolve: %s" % "; ".join(errors))
     return policy, fingerprint
 
 

@@ -9,6 +9,7 @@ import sys
 import tempfile
 
 from Tools.knowledge.structure import check_structure
+from Tools.governance.profile import profile_codec
 from Tools.platform.common import kblib
 from Tools.tests.support.profile_fixture import install_loadable_profile
 
@@ -163,7 +164,7 @@ class StructureRegistryFixture:
     """One current Profile with a mutable, read-only validation surface."""
 
     PROFILE = "profiles/test-profile"
-    REGISTRY = PROFILE + "/structure-registry.yaml"
+    MANIFEST = PROFILE + "/profile.toml"
 
     def __init__(self):
         self._temporary = tempfile.TemporaryDirectory()
@@ -173,21 +174,23 @@ class StructureRegistryFixture:
 
     def _install_initial_structure(self, _root, profile):
         """Install the fixture's declared corpus before Profile adoption."""
-        scope = profile / "scope-and-architecture.md"
-        text = scope.read_text(encoding="utf-8")
-        start = text.index("## Logical Architecture")
-        end = text.index("\n## ", start + 4)
-        logical_architecture = (
-            "## Logical Architecture\n\n"
-            "| Stable Layer ID | Repository-relative directories | "
-            "Single layer responsibility |\n"
-            "|---|---|---|\n"
-            "| `L-DOMAIN` | `Domain` | Own the domain. |\n"
-            "| `L-CASES` | `Cases` | Own cases. |\n"
-            "| `L-SYNTHESIS` | `Synthesis` | Own synthesis. |\n")
-        scope.write_text(
-            text[:start] + logical_architecture + text[end:],
-            encoding="utf-8")
+        manifest = profile / "profile.toml"
+        document = profile_codec.loads_profile(manifest.read_bytes())
+        scope = document["slots"]["profile-scope"]
+        scope["logical_architecture"] = [
+            {"layer_id": identity, "directories": [directory],
+             "responsibility": responsibility}
+            for identity, directory, responsibility in (
+                ("L-DOMAIN", "Domain", "Own the domain."),
+                ("L-CASES", "Cases", "Own cases."),
+                ("L-SYNTHESIS", "Synthesis", "Own synthesis."))]
+        for row in scope["placement_layer_registrations"]:
+            if row["binding"].get("layer_id") == "L-TOPICS":
+                row["binding"]["layer_id"] = "L-DOMAIN"
+        for collection in ("new_page_placement_rule", "terminology_structure"):
+            for row in scope[collection]:
+                row["layer_id"] = "L-DOMAIN"
+        manifest.write_bytes(profile_codec.dumps_profile(document))
         self._write("Domain/Domain Overview.md", """---
 type: overview
 ---
@@ -239,7 +242,33 @@ type: research-synthesis
         return path
 
     def set_registry(self, document):
-        self._write(self.REGISTRY, kblib.canonical_yaml(document))
+        (self.root / self.MANIFEST).write_bytes(self.manifest_with_registry(document))
+
+    def manifest_with_registry(self, registry):
+        """Encode one typed slot, omitting only its declared nullable values.
+
+        Shape-unit tests retain the domain owner's nullable semantic objects;
+        Profile transport represents these explicit no-bindings by omission.
+        This helper does not parse or recreate an old per-slot file format.
+        """
+        registry = copy.deepcopy(registry)
+        applicability = registry.get("applicability", {})
+        if applicability.get("state") == "configured" and applicability.get("reason") is None:
+            applicability.pop("reason", None)
+        for row in registry.get("units", ()):
+            if row.get("kind") == "domain" and row.get("parent") is None:
+                row.pop("parent", None)
+        for row in (*registry.get("units", ()), *registry.get("support_layers", ())):
+            if row.get("global_map_entry") is None:
+                row.pop("global_map_entry", None)
+            if isinstance(row.get("entry"), dict) and row["entry"].get("expected_type") is None:
+                row["entry"].pop("expected_type", None)
+        for row in registry.get("support_layers", ()):
+            if row.get("layout") == "flat" and row.get("taxonomy") is None:
+                row.pop("taxonomy", None)
+        document = profile_codec.loads_profile((self.root / self.MANIFEST).read_bytes())
+        document["slots"]["structure-registry"] = registry
+        return profile_codec.dumps_profile(document)
 
     @contextlib.contextmanager
     def override(self, files):

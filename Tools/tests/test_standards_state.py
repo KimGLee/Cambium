@@ -21,7 +21,7 @@ class StandardsStateTests(unittest.TestCase):
             "upstream_revision_id": self.REVISION,
             "status": "approved",
             "effective_date": "2026-08-21",
-            "selected_profile_manifest": "profiles/agent-atlas/profile.md",
+            "selected_profile_manifest": "profiles/agent-atlas/profile.toml",
             "latest_adoption_receipt": "audit-adopt_standards-example-0001",
             "upstream_source_ref": "https://github.com/KimGLee/Cambium",
         }
@@ -56,9 +56,9 @@ class StandardsStateTests(unittest.TestCase):
 
     def test_selected_profile_manifest_uses_the_shared_selectable_envelope(self):
         for manifest in (
-                "profiles/a/b/profile.md",
-                "profiles/_template/profile.md",
-                "profiles/examples/demo/profile.md"):
+                "profiles/a/b/profile.toml",
+                "profiles/_template/profile.toml",
+                "profiles/examples/demo/profile.toml"):
             with self.subTest(manifest=manifest):
                 value = self.value()
                 value["selected_profile_manifest"] = manifest
@@ -73,7 +73,7 @@ class StandardsStateTests(unittest.TestCase):
         after = standards_state.next_state(
             before,
             effective_date="2026-08-22",
-            selected_profile_manifest="profiles/agent-atlas/profile.md",
+            selected_profile_manifest="profiles/agent-atlas/profile.toml",
             latest_adoption_receipt="audit-next-0001",
             upstream_source_ref="upstream", upstream_revision_id=revision)
         self.assertEqual(after["state_revision"], 4)

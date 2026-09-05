@@ -1,0 +1,32 @@
+schema_version: 1
+contract_id: cambium-profile-rendering-contract
+semantic_owner: K12/02
+extension_point_id: k12-02-profile-rendering
+
+# Sole Profile answer shape. Concrete selectors, renderer implementations and
+# accepted output kinds belong to the Tool capability registry.
+profile_shape:
+  schema_version: 1
+  fields:
+    - schema_version
+    - registration
+    - rules
+  registration_values:
+    - none
+    - configured
+  inactive_registration: none
+  configured_registration: configured
+  rule_fields:
+    - rule_id
+    - construct
+    - capability_id
+    - acceptance
+  identifier_pattern: "[a-z][a-z0-9]*(?:-[a-z0-9]+)*"
+  unique_rule_fields:
+    - rule_id
+    - construct
+
+# Inactive grants no rendering acceptance. A selected construct without an
+# admitted matching rule remains contract-gap/HOLD. Configured rules emit
+# rendering evidence per applicable page/rule before merge through batch-review;
+# they change neither Kernel Level 0/1 base nor candidate-scan semantics.

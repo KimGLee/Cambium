@@ -1,0 +1,4 @@
+# Tool implementation dependencies; these are not Profile governance policy.
+# Use the same decoder on every supported Python to avoid TOML dialect drift.
+tomli==2.4.1
+tomli-w==1.2.0

@@ -20,6 +20,7 @@ import Tools.execution.audit.audit_obligation_projection as projection
 import Tools.execution.audit.substantive_review_contract as substantive
 import Tools.governance.control.metadata_execution_contract as capabilities
 import Tools.knowledge.rendering.rendering_verification_contract as rendering
+import Tools.knowledge.rendering.profile_rendering_evidence_contract as profile_rendering
 
 
 class AuditProducerChainError(ValueError):
@@ -52,7 +53,7 @@ def _definition_candidates(spec, obligation):
         dimension=dimension) for trigger in triggers)
 
 
-def validated_spec(spec, *, root=None, snapshots=None):
+def validated_spec(spec, *, root=None, snapshots=None, evaluation=None):
     """Return the canonical base spec exactly named by ``spec``.
 
     A caller cannot pass a nearby dictionary and have this layer infer the
@@ -64,8 +65,8 @@ def validated_spec(spec, *, root=None, snapshots=None):
             "AuditReceipt producer-chain spec must be a mapping")
     rule_id = spec.get("owner_rule_id")
     try:
-        canonical = projection.obligation_spec_for_rule(
-            rule_id, root=root, snapshots=snapshots)
+        canonical = _canonical_spec(
+            spec, root=root, snapshots=snapshots, evaluation=evaluation)
     except (TypeError, ValueError) as exc:
         raise AuditProducerChainError(
             "unknown AuditReceipt producer chain owner %r: %s" %
@@ -81,14 +82,15 @@ def validated_spec(spec, *, root=None, snapshots=None):
     return deepcopy(canonical)
 
 
-def validated_spec_for_obligation(obligation, *, root=None, snapshots=None):
+def validated_spec_for_obligation(obligation, *, root=None, snapshots=None,
+                                  evaluation=None):
     """Return the sole base spec that exactly produced ``obligation``."""
     if not isinstance(obligation, dict):
         raise AuditProducerChainError("AuditPlan obligation must be a mapping")
     rule_id = obligation.get("owner_rule_id")
     try:
-        spec = projection.obligation_spec_for_rule(
-            rule_id, root=root, snapshots=snapshots)
+        spec = _canonical_spec(
+            obligation, root=root, snapshots=snapshots, evaluation=evaluation)
         candidates = _definition_candidates(spec, obligation)
     except (TypeError, ValueError) as exc:
         raise AuditProducerChainError(
@@ -111,6 +113,24 @@ def validated_spec_for_obligation(obligation, *, root=None, snapshots=None):
         raise AuditProducerChainError(
             "obligation has an ambiguous registered producer-chain spec")
     return deepcopy(spec)
+
+
+def _canonical_spec(value, *, root=None, snapshots=None, evaluation=None):
+    if value.get("kernel_extension_point") != profile_rendering.EXTENSION_POINT:
+        return projection.obligation_spec_for_rule(
+            value.get("owner_rule_id"), root=root, snapshots=snapshots)
+    # Dispatch projects an already admitted runtime context. It must not
+    # select a Profile or invoke a second profile-load Gate for every row.
+    from Tools.governance.profile.profile_admission import admission_from_evaluation
+    admission, errors = admission_from_evaluation(root, evaluation)
+    if errors:
+        raise ValueError("; ".join(errors))
+    profile = admission.contract
+    matches = [spec for spec in projection.profile_rendering_specs(profile, root=root)
+               if spec["owner_rule_id"] == value.get("owner_rule_id")]
+    if len(matches) != 1:
+        raise ValueError("Profile rendering rule has no unique authorized projection")
+    return matches[0]
 
 
 def finalizer_capability_for_spec(spec):
@@ -146,6 +166,8 @@ def _registered_producer(capability_id, capability_document, *, root=None):
 def _record_contract(spec, *, root=None, snapshots=None):
     """Return execution route and intermediate shape from its sole owner."""
     source = spec.get("source_registry")
+    if spec.get("kernel_extension_point") == profile_rendering.EXTENSION_POINT:
+        return "profile-rendering", profile_rendering.RECORD_KIND
     if source == projection.SUBSTANTIVE_REGISTRY_PATH:
         contract = substantive.load_contract(root, snapshots=snapshots)
         substantive.validate_contract(contract)
@@ -163,9 +185,10 @@ def _record_contract(spec, *, root=None, snapshots=None):
         "contract")
 
 
-def precursor_chain_for_spec(spec, *, root=None, snapshots=None):
+def precursor_chain_for_spec(spec, *, root=None, snapshots=None, evaluation=None):
     """Resolve one validated precursor and its derived finalizer."""
-    spec = validated_spec(spec, root=root, snapshots=snapshots)
+    spec = validated_spec(
+        spec, root=root, snapshots=snapshots, evaluation=evaluation)
     capability_id = spec.get("producer_capability")
     if capability_id is None or spec.get("producer_gate_id") is not None:
         raise AuditProducerChainError(
@@ -198,12 +221,12 @@ def precursor_chain_for_spec(spec, *, root=None, snapshots=None):
 
 
 def precursor_chain_for_obligation(obligation, *, root=None,
-                                    snapshots=None):
+                                    snapshots=None, evaluation=None):
     """Validate a frozen obligation and resolve its complete producer chain."""
     spec = validated_spec_for_obligation(
-        obligation, root=root, snapshots=snapshots)
+        obligation, root=root, snapshots=snapshots, evaluation=evaluation)
     return precursor_chain_for_spec(
-        spec, root=root, snapshots=snapshots)
+        spec, root=root, snapshots=snapshots, evaluation=evaluation)
 
 
 def precursor_record_matches(record, chain):
@@ -215,10 +238,10 @@ def precursor_record_matches(record, chain):
 
 
 def require_precursor_record(record, obligation, *, root=None,
-                             snapshots=None):
+                             snapshots=None, evaluation=None):
     """Return the chain or reject evidence from another registered producer."""
     chain = precursor_chain_for_obligation(
-        obligation, root=root, snapshots=snapshots)
+        obligation, root=root, snapshots=snapshots, evaluation=evaluation)
     if not precursor_record_matches(record, chain):
         raise AuditProducerChainError(
             "producer evidence does not match the registered precursor chain")

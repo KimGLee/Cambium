@@ -79,8 +79,29 @@ def install_terminal_proof_dependencies(root):
 
 def install_terminal_checkpoint_dependencies(root):
     """Rebuild the complete non-runtime tree of a terminal checkpoint."""
-    install_loadable_profile(root)
+    install_loadable_profile(root, before_adoption=_terminal_before_adoption)
+
+
+def _terminal_before_adoption(root, _profile):
+    """Finish terminal owners and seed policy before evidence is produced."""
     install_terminal_proof_dependencies(root)
+    progress_path = Path(root) / queue_runtime.PROGRESS_PATH
+    progress = kblib.load_yaml_file(progress_path)
+    if isinstance(progress.get("initial_task_plan_receipt"), str):
+        # Reconstructing a persisted checkpoint never rewrites its runtime.
+        return
+    selected_route_ids = ["R01", "R03", "R08", "R12"]
+    cards, _read_sets = stamp_cards.discover_cards(root)
+    progress["contract"].update({
+        "selected_route_ids": selected_route_ids,
+        "selected_card_paths": sorted(
+            cards[route_id]["path"] for route_id in selected_route_ids),
+        "selected_profile_route_ids": [],
+        "selected_read_sets": [],
+        "loaded_module_paths": [
+            "kernel/K13 Task Runtime and Execution Control/08 Required Queue Contract and Lifecycle.md"],
+    })
+    progress_path.write_text(kblib.canonical_yaml(progress), encoding="utf-8")
 
 
 class RequiredQueueFixture:
@@ -90,10 +111,10 @@ class RequiredQueueFixture:
     per-test tree construction moved out, into the template registry.
     """
 
-    def build_repository_fixture(self):
+    def build_repository_fixture(self, *, before_adoption=None):
         """Lay down the fixture tree the original per-test setUp built."""
         copy_checkpoint_seed(FIXTURE, self.root)
-        install_loadable_profile(self.root)
+        install_loadable_profile(self.root, before_adoption=before_adoption)
         for name in ("deltas", "receipts", "reports"):
             (self.root / ".cambium" / name).mkdir(exist_ok=True)
         self.install_plain_s_audit_fixture()
@@ -306,7 +327,7 @@ class RequiredQueueFixture:
             metadata_property_state.profile_gate_projection_rules(
                 self.root, profile_view["_contract"].extension_gates,
                 metadata_contract=metadata_contract,
-                authorized_profile_contract=profile_view["_contract"])
+                typed_profile_contract=profile_view["_contract"])
         profile_bindings = {
             field: profile_view[field]
             for field in (
@@ -661,62 +682,6 @@ class RequiredQueueFixture:
         self.assertEqual(1, len(receipts), receipts)
         return receipts[0]["receipt_id"]
 
-    def install_terminal_proof_environment(self):
-        install_terminal_proof_dependencies(self.root)
-
-        manifest = "profiles/test-profile/profile.md"
-        active_path = self.root / standards_state.STATE_PATH
-        active, _view, errors = standards_state.snapshot(self.root)
-        self.assertEqual([], errors)
-        active = dict(active)
-        active["selected_profile_manifest"] = manifest
-        active_path.write_text(
-            standards_state.canonical_text(active), encoding="utf-8")
-
-        coverage_path = self.root / queue_runtime.COVERAGE_PATH
-        queue_path = self.root / queue_runtime.QUEUE_PATH
-        progress_path = self.root / queue_runtime.PROGRESS_PATH
-        coverage = kblib.load_yaml_file(coverage_path)
-        queue = kblib.load_yaml_file(queue_path)
-        progress = kblib.load_yaml_file(progress_path)
-        coverage["selected_profile_manifest"] = manifest
-        queue["selected_profile_manifest"] = manifest
-        progress["contract"]["selected_profile_manifest"] = manifest
-        selected_route_ids = ["R01", "R03", "R08", "R12"]
-        cards, _read_sets = stamp_cards.discover_cards(self.root)
-        progress["contract"].update({
-            "selected_route_ids": selected_route_ids,
-            "selected_card_paths": sorted(
-                cards[route_id]["path"] for route_id in selected_route_ids),
-            "selected_profile_route_ids": [],
-            "selected_read_sets": [],
-            "loaded_module_paths": [
-                "kernel/K13 Task Runtime and Execution Control/08 Required Queue Contract and Lifecycle.md",
-            ],
-        })
-        coverage_path.write_text(kblib.canonical_yaml(coverage), encoding="utf-8")
-        queue_text = kblib.canonical_yaml(queue)
-        queue_path.write_text(queue_text, encoding="utf-8")
-        queue_sha = kblib.sha256_bytes(queue_text)
-        coverage_sha = kblib.sha256_file(coverage_path)
-        progress["required_queue_sha256"] = queue_sha
-        progress["checkpoint"]["required_queue_sha256"] = queue_sha
-        progress["checkpoint"]["coverage_sha256"] = coverage_sha
-        progress_path.write_text(kblib.canonical_yaml(progress), encoding="utf-8")
-
-        receipt_path = self.root / ".cambium/receipts/task-transitions.jsonl"
-        receipts = [json.loads(line) for line in receipt_path.read_text(
-            encoding="utf-8").splitlines()]
-        for receipt in receipts:
-            if receipt.get("receipt_id") == "audit-fixture-initial-queue":
-                receipt["after_required_queue_sha256"] = queue_sha
-                receipt["after_coverage_sha256"] = coverage_sha
-                receipt["contract_sha256"] = \
-                    queue_runtime.contract_sha256(progress)
-        receipt_path.write_text("".join(json.dumps(receipt) + "\n"
-                                        for receipt in receipts),
-                                encoding="utf-8")
-        self.assertEqual([], runtime_validation.validate_runtime(self.root)["errors"])
 
     def merge_and_apply(self, batch_id, object_path):
         ready = self.ready_receipt(batch_id)
@@ -810,6 +775,10 @@ def _build_base(walker, inherited):
     walker.build_repository_fixture()
 
 
+def _build_terminal_base(walker, inherited):
+    walker.build_repository_fixture(before_adoption=_terminal_before_adoption)
+
+
 def _build_b1_open(walker, inherited):
     ready = walker.ready_receipt("B1")
     walker.transition(
@@ -893,6 +862,7 @@ def _build_maintenance_closed(walker, inherited):
 
 _TEMPLATE_PARENTS = {
     "base": None,
+    "terminal-base": None,
     "b1-open": "base",
     "b1-applied": "base",
     "closed-b1": "b1-applied",
@@ -902,6 +872,7 @@ _TEMPLATE_PARENTS = {
 }
 _TEMPLATE_BUILDERS = {
     "base": _build_base,
+    "terminal-base": _build_terminal_base,
     "b1-open": _build_b1_open,
     "b1-applied": _build_b1_applied,
     "closed-b1": _build_closed_b1,
@@ -936,10 +907,12 @@ def _template(name):
 class RequiredQueueLifecycleDriver(RequiredQueueFixture, unittest.TestCase):
     """Assertion-capable lifecycle driver with no discoverable test methods."""
 
+    START_SCENARIO = "base"
+
     def setUp(self):
         self.temporary = tempfile.TemporaryDirectory()
         self.root = Path(self.temporary.name) / "repo"
-        shutil.copytree(_template("base")[0], self.root)
+        shutil.copytree(_template(self.START_SCENARIO)[0], self.root)
 
     def tearDown(self):
         self.temporary.cleanup()

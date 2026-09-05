@@ -28,7 +28,7 @@ Plain pages normally stop here. UI browsing cannot replace Level 0, and fence cl
 
 The only Level 1 Kernel base predicate is conditional outer-pipe-table structure: delimiter row, column counts, and escaped wiki alias pipes. Cell length has no universal threshold.
 
-Mermaid compilation, formula rendering, paths, assets, dimensions, and long-cell policy belong to a typed Profile Rendering Contract. A Tool supplies its registered compiler, renderer, parser, or probe; the Host binds that capability. Mermaid fence closure and compilation are separate evidence.
+Mermaid compilation, formula rendering, paths, assets, dimensions, and long-cell policy belong to a typed Profile Rendering Contract. [`profile-rendering-contract.yaml`](profile-rendering-contract.yaml) owns the common answer shape; [`changed-scope-check-registry.yaml`](changed-scope-check-registry.yaml) registers its AuditPlan extension point without adding these choices to the Kernel base. A Tool supplies its registered compiler, renderer, parser, or probe; the Host binds that capability. Mermaid fence closure and compilation are separate evidence.
 
 Level 1 MUST prefer compilers, parsers, structured extraction, file probing, and repeatable non-interactive previews. Producing a static artifact does not authorize visual judgment; as long as compile results, structured data, and geometry information can already answer the acceptance question, do not proceed to opening the UI or taking screenshots.
 

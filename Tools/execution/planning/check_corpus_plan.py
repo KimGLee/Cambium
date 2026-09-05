@@ -20,6 +20,7 @@ import Tools.platform.common.kblib as kblib
 from Tools.execution.evidence import receipt_type_contract
 import Tools.governance.profile.profile_admission as profile_admission
 import Tools.governance.profile.profile_contract as profile_contract
+import Tools.governance.profile.profile_layout_contract as profile_layout_contract
 import Tools.execution.task_runtime.runtime_paths as runtime_paths
 from Tools.execution.task_runtime.queue_runtime.coverage import (
     promoted_coverage_projection,
@@ -54,15 +55,18 @@ _CONTRACT_SNAPSHOT_KEY = "_corpus_planning_contract_snapshot"
 
 
 def _load_current_contract_context(root, result):
-    """Bind and project the K02 owner exactly once for one entrypoint run."""
+    """Project K02 values from the same evaluation that admitted the Profile."""
     relative = corpus_planning_contract.CORPUS_PLANNING_CONTRACT_PATH
     try:
-        snapshot = kblib.repository_file_snapshot(
-            root, relative, singly_linked=True)
+        view = result.get("_authorized_profile_view") or {}
+        evaluation = view.get("_evaluation")
+        if evaluation is None or not evaluation.authorized:
+            raise ValueError("K02 consumption requires the authorized Profile evaluation")
+        snapshot = evaluation.normative_snapshots[relative]
         values = corpus_planning_contract.\
             current_corpus_planning_contract_values(
-                root, snapshots={relative: snapshot})
-    except (OSError, UnicodeError, TypeError, ValueError,
+                root, snapshots=evaluation.normative_snapshots)
+    except (OSError, UnicodeError, TypeError, ValueError, KeyError,
             kblib.YamlSubsetError) as exc:
         _add_error(
             result, "corpus_planning_contract", relative,
@@ -120,11 +124,6 @@ SEMANTIC_ACCEPTANCE_DECISION_FIELDS = {
     "capability_id", "decision", "rationale",
 }
 
-SCOPE_LAYER_HEADERS = (
-    "Stable Layer ID",
-    "Repository-relative directories",
-    "Single layer responsibility",
-)
 # A successful receipt is a reusable assertion only while every byte named by
 # this closed binding remains current.  The planning artifacts live outside
 # ``.cambium`` and are therefore also covered by the repository snapshot; the
@@ -134,8 +133,6 @@ SCOPE_LAYER_HEADERS = (
 SHA256_RE = re.compile(r"^sha256:[0-9a-f]{64}$")
 
 ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:-]*$")
-HEADING_RE = re.compile(r"^\s*(#{1,6})\s+(.*?)\s*#*\s*$")
-SEPARATOR_RE = re.compile(r"^:?-{3,}:?$")
 
 
 def _add_error(result, check, target, details):
@@ -151,129 +148,6 @@ def _display_error(error):
         error["check"], error["target"], error["details"])
 
 
-def _value(cell):
-    """Return a table/bullet scalar with one Markdown code pair removed."""
-    value = cell.strip()
-    if len(value) >= 2 and value[0] == value[-1] == "`":
-        value = value[1:-1].strip()
-    return value
-
-
-def _unfenced_lines(text):
-    """Yield (line number, line) while replacing fenced bodies with blanks."""
-    fence = None
-    for line_number, line in enumerate(text.splitlines(), 1):
-        stripped = line.lstrip()
-        match = re.match(r"^(```+|~~~+)", stripped)
-        if fence is None and match:
-            fence = match.group(1)[0] * 3
-            yield line_number, ""
-            continue
-        if fence is not None:
-            if match and stripped.startswith(fence):
-                fence = None
-            yield line_number, ""
-            continue
-        yield line_number, line
-
-
-def _h2_sections(text, expected, label, result, *, allow_extras=False):
-    sections = {}
-    duplicates = []
-    extras = []
-    current = None
-    for line_number, line in _unfenced_lines(text):
-        heading = HEADING_RE.match(line)
-        if heading and len(heading.group(1)) <= 2:
-            if len(heading.group(1)) == 2:
-                title = heading.group(2).strip()
-                current = title
-                if title in sections:
-                    duplicates.append(title)
-                else:
-                    sections[title] = []
-                if title not in expected:
-                    extras.append(title)
-            else:
-                current = None
-            continue
-        if current in sections:
-            sections[current].append((line_number, line))
-
-    for title in expected:
-        if title not in sections:
-            _add_error(result, "markdown_contract", label,
-                       "missing exact H2 heading: ## %s" % title)
-    for title in sorted(set(duplicates)):
-        _add_error(result, "markdown_contract", label,
-                   "repeats H2 heading: ## %s" % title)
-    if not allow_extras:
-        for title in extras:
-            _add_error(result, "markdown_contract", label,
-                       "unsupported H2 heading: ## %s" % title)
-    return sections
-
-
-def _split_table_row(line):
-    stripped = line.strip()
-    if not (stripped.startswith("|") and stripped.endswith("|")):
-        return None
-    # v1 fields are identifiers, paths, or bounded prose without literal pipe
-    # characters.  Rejecting embedded pipes avoids an ambiguous parser surface.
-    return [cell.strip() for cell in stripped[1:-1].split("|")]
-
-
-def _table_groups(lines):
-    groups = []
-    current = []
-    for line_number, line in lines:
-        cells = _split_table_row(line)
-        if cells is None:
-            if current:
-                groups.append(current)
-                current = []
-            continue
-        current.append((line_number, cells))
-    if current:
-        groups.append(current)
-    return groups
-
-
-def _parse_table(lines, expected_headers, label, result):
-    valid = []
-    for group in _table_groups(lines):
-        if len(group) < 2:
-            continue
-        header = tuple(_value(cell) for cell in group[0][1])
-        separator = group[1][1]
-        if (len(separator) == len(header) and
-                all(SEPARATOR_RE.fullmatch(cell.strip())
-                    for cell in separator)):
-            valid.append((header, group))
-    if len(valid) != 1:
-        _add_error(result, "markdown_table", label,
-                   "must contain exactly one Markdown table; found %d" %
-                   len(valid))
-        return []
-    header, group = valid[0]
-    if header != tuple(expected_headers):
-        _add_error(result, "markdown_table", label,
-                   "headers must be exactly: %s" % " | ".join(
-                       expected_headers))
-        return []
-    rows = []
-    for line_number, cells in group[2:]:
-        if len(cells) != len(header):
-            _add_error(result, "markdown_table", label,
-                       "line %d has %d cells; expected %d" %
-                       (line_number, len(cells), len(header)))
-            continue
-        rows.append({name: _value(value)
-                     for name, value in zip(header, cells)})
-    return rows
-
-
-
 def _relative(root, path):
     return os.path.relpath(path, root).replace(os.sep, "/")
 
@@ -283,7 +157,7 @@ def _resolve_path(root, raw, label, result, *, must_exist=True,
     if not isinstance(raw, str):
         _add_error(result, "path", label, "must be a string path")
         return None
-    value = _value(raw)
+    value = raw
     if not value or value == "None":
         _add_error(result, "path", label,
                    "must be an explicit repository-relative path")
@@ -394,30 +268,6 @@ def _reject_runtime_path(resolved, label, result):
         )
 
 
-def _parse_list(value, label, result, *, allow_none=True):
-    raw_value = value.strip()
-    if _value(raw_value) == "None":
-        if allow_none:
-            return []
-        _add_error(result, "explicit_list", label,
-                   "must contain at least one explicit value")
-        return []
-    # A Markdown cell may code-format each list member independently
-    # (`` `A`; `B` ``).  The table scalar normalizer removes the outermost
-    # pair, so trim a remaining member-level tick on either side here.
-    values = [item.strip().strip("`").strip()
-              for item in raw_value.split(";")]
-    if any(not item for item in values):
-        _add_error(result, "explicit_list", label,
-                   "contains an empty semicolon-delimited value")
-        return []
-    duplicates = sorted({item for item in values if values.count(item) > 1})
-    if duplicates:
-        _add_error(result, "explicit_list", label,
-                   "repeats value(s): %s" % ", ".join(duplicates))
-    return values
-
-
 def _valid_id(value, label, result):
     if not ID_RE.fullmatch(value or ""):
         _add_error(result, "stable_id", label,
@@ -459,15 +309,15 @@ def _resolve_manifest(root, profile, result):
                 raise ValueError("path does not exist: %s" % profile)
             if capability["kind"] == "directory":
                 kblib.repository_tree_snapshot(root, profile)
-                profile = profile.rstrip("/") + "/profile.md"
+                profile = profile.rstrip("/") + "/" + profile_layout_contract.PROFILE_MANIFEST_NAME
             elif capability["kind"] == "file":
-                if not profile.lower().endswith(".md"):
+                if os.path.basename(profile) != profile_layout_contract.PROFILE_MANIFEST_NAME:
                     raise ValueError(
-                        "must identify a Markdown Profile manifest")
+                        "must identify a structured Profile manifest")
                 kblib.repository_parent_tree_snapshot(root, profile)
             else:
                 raise ValueError(
-                    "must identify a Profile directory or Markdown manifest")
+                    "must identify a Profile directory or structured manifest")
             candidate = os.path.join(root, *profile.split("/"))
             if not kblib.retained_tree_contains(profile):
                 raise ValueError("Profile manifest is absent from the "
@@ -476,15 +326,15 @@ def _resolve_manifest(root, profile, result):
         candidate = kblib.repository_path(root, profile, must_exist=True,
                                           reject_symlink=True)
         if os.path.isdir(candidate):
-            profile = profile.rstrip("/") + "/profile.md"
+            profile = profile.rstrip("/") + "/" + profile_layout_contract.PROFILE_MANIFEST_NAME
             candidate = kblib.repository_path(
                 root, profile, must_exist=True, reject_symlink=True)
     except ValueError as exc:
         _add_error(result, "profile_selection", profile, str(exc))
         return None, selected_from_progress
-    if not os.path.isfile(candidate) or not profile.lower().endswith(".md"):
+    if not os.path.isfile(candidate) or os.path.basename(profile) != profile_layout_contract.PROFILE_MANIFEST_NAME:
         _add_error(result, "profile_selection", profile,
-                   "must identify a Markdown Profile manifest")
+                   "must identify a structured Profile manifest")
         return None, selected_from_progress
     return candidate, selected_from_progress
 
@@ -515,10 +365,6 @@ def _authorized_profile_view(root, profile, result,
                 "metadata_execution_contract_fingerprint":
                     evaluation.metadata_execution_contract.
                         contract_fingerprint,
-                "_manifest_slot_paths": tuple(sorted(
-                    (edge.owner_id, edge.path)
-                    for edge in admission.contract.dependency_edges
-                    if edge.kind == "manifest-slot")),
                 "_contract": admission.contract,
                 "_metadata_execution_contract":
                     evaluation.metadata_execution_contract,
@@ -550,181 +396,46 @@ def _profile_view_currency_errors(root, profile_view):
         root, profile_view)
 
 
-def _typed_slot_path(root, profile_view, slot_name, result):
-    paths = dict(profile_view.get("_manifest_slot_paths") or ()) \
-        if isinstance(profile_view, dict) else {}
-    relative = paths.get(slot_name)
-    if not isinstance(relative, str) or not relative:
+def _typed_slot_document(profile_view, slot_name, result):
+    """Project a named slot from the already-authorized structured model."""
+    contract = profile_view.get("_contract") if isinstance(profile_view, dict) else None
+    if not isinstance(contract, profile_contract.ProfileContract) or not contract.valid:
         _add_error(result, "profile_binding",
                    result.get("profile_manifest") or "<unresolved>",
-                   "authorized profile-load view has no typed %s edge" %
-                   slot_name)
+                   "Profile slot access requires the formal authorized model")
         return None
-    return os.path.join(root, *relative.split("/"))
-
-
-def _typed_slot_text(profile_view, slot_name, result):
-    """Read one slot from the immutable snapshot that authorized the view."""
-    paths = dict(profile_view.get("_manifest_slot_paths") or ()) \
-        if isinstance(profile_view, dict) else {}
-    relative = paths.get(slot_name)
-    snapshot = profile_view.get("_profile_snapshot") \
-        if isinstance(profile_view, dict) else None
-    if not isinstance(snapshot, kblib.RepositoryTreeSnapshot):
-        _add_error(result, "profile_binding",
-                   result.get("profile_manifest") or "<unresolved>",
-                   "authorized profile-load view has no immutable snapshot")
-        return None
-    try:
-        return snapshot.read_text(relative)
-    except (FileNotFoundError, UnicodeError, TypeError, ValueError) as exc:
-        _add_error(result, "profile_binding", relative or slot_name,
-                   "cannot read %s from the authorized Profile snapshot: %s" %
-                   (slot_name, exc))
-        return None
+    document = contract.slot_document(slot_name)
+    if document is None:
+        _add_error(result, "profile_binding", contract.manifest_repo_path,
+                   "authorized model has no %s slot" % slot_name)
+    return document
 
 
 def _role_ids(root, profile_view, result):
-    role_path = _typed_slot_path(
-        root, profile_view, ROLE_SLOT_NAME, result)
-    if role_path is None:
+    """Use the role identities already linked by the Profile owner."""
+    contract = profile_view.get("_contract")
+    if not isinstance(contract, profile_contract.ProfileContract) or not contract.valid:
+        _add_error(result, "pass_authority",
+                   result.get("profile_manifest") or "<unresolved>",
+                   "Role Registry requires the formal authorized model")
         return set()
-    role_target = _relative(root, role_path)
-    text = _typed_slot_text(profile_view, ROLE_SLOT_NAME, result)
-    if text is None:
-        return set()
-    roles = set()
-    for group in _table_groups(list(_unfenced_lines(text))):
-        if len(group) < 2:
-            continue
-        header = tuple(_value(cell) for cell in group[0][1])
-        separator = group[1][1]
-        if (not header or len(separator) != len(header) or
-                not all(SEPARATOR_RE.fullmatch(cell.strip())
-                        for cell in separator)):
-            continue
-        if header[0] not in ("Kernel role", "Role ID"):
-            continue
-        for _, cells in group[2:]:
-            if len(cells) != len(header):
-                continue
-            raw = cells[0].strip()
-            code = re.search(r"`([^`]+)`", raw)
-            role = code.group(1).strip() if code else _value(raw)
-            if role:
-                roles.add(role)
-    if not roles:
-        _add_error(result, "pass_authority", role_target,
-                   "Role Registry exposes no role IDs")
-    return roles
+    return set(contract.role_ids)
 
 
 def _validate_slot(
-        text, target, profile_view, root, result, contract_values=None):
+        document, target, profile_view, root, result, contract_values=None):
     contract_values = _result_contract_values(result, contract_values)
-    try:
-        document = kblib.parse_yaml_subset(text)
-    except kblib.YamlSubsetError as exc:
-        _add_error(result, "slot_yaml_parse", target, str(exc))
-        return None
     envelope, issues = \
         corpus_planning_contract.validate_corpus_planning_envelope(
             document, contract_values=contract_values)
 
-    def issue_target(path):
-        if not path:
-            return target
-        if path[0] == "capability_scale" and len(path) >= 2 and \
-                isinstance(path[1], int):
-            value = "%s:capability_scale[%d]" % (target, path[1])
-            if len(path) >= 3:
-                value += ":" + str(path[2])
-            return value
-        return target + ":" + ".".join(str(item) for item in path)
-
-    for issue in issues:
-        code = issue["code"]
-        path = issue.get("path") or ()
-        label = issue_target(path)
-        if code == "mapping_type":
-            _add_error(result, "yaml_contract", label, "must be a mapping")
-        elif code == "missing_fields":
-            _add_error(result, "yaml_contract", label,
-                       "missing field(s): %s" % ", ".join(issue["fields"]))
-        elif code == "unsupported_fields":
-            _add_error(
-                result, "yaml_contract", label,
-                "unsupported field(s): %s" % ", ".join(issue["fields"]))
-        elif code == "schema_version":
-            _add_error(result, "slot_yaml_contract", target,
-                       "schema_version must be integer 1")
-        elif code == "scale_list":
-            _add_error(result, "yaml_type", label, "must be a list")
-        elif code == "applicability_state":
-            _add_error(result, "applicability", label,
-                       "must be exactly %s or %s" % (
-                           contract_values["configured_state"],
-                           contract_values["inactive_state"]))
-        elif code == "configured_reason":
-            _add_error(result, "applicability", label,
-                       "configured requires null reason")
-        elif code == "inactive_reason":
-            _add_error(result, "applicability", label,
-                       "not-applicable requires a non-empty string reason")
-        elif code == "configured_artifact_path":
-            raw = issue.get("value")
-            if not isinstance(raw, str):
-                details = "must be a string path"
-            elif not raw.strip() or raw.strip() == "None":
-                details = "must be an explicit repository-relative path"
-            else:
-                details = "must end with .yaml"
-            _add_error(result, "path", label, details)
-        elif code == "artifact_bindings_distinct":
-            _add_error(result, "artifact_bindings", target,
-                       "the three artifact roles must bind distinct files")
-        elif code == "inactive_artifacts":
-            for field in issue["fields"]:
-                _add_error(result, "inactive_shape",
-                           target + ":artifact_bindings." + field,
-                           "not-applicable requires null")
-        elif code == "inactive_scale":
-            _add_error(result, "inactive_shape", target + ":capability_scale",
-                       "not-applicable requires an empty list")
-        elif code == "inactive_authority":
-            for field in issue["fields"]:
-                _add_error(result, "inactive_shape",
-                           target + ":pass_authority." + field,
-                           "not-applicable requires null")
-        elif code == "configured_scale_empty":
-            _add_error(result, "capability_scale", target,
-                       "configured requires at least one scale item")
-        elif code == "scale_rank_type":
-            _add_error(result, "capability_scale", label,
-                       "must be a non-negative integer")
-        elif code == "scale_rank_position":
-            _add_error(result, "capability_scale", label,
-                       "must equal its zero-based list position %d" %
-                       issue["index"])
-        elif code in ("scale_value_type", "scale_predicate_type",
-                      "authority_role_type", "authority_decision_type"):
-            _add_error(result, "yaml_type", label, "must be a string")
-        elif code in ("scale_value_empty", "scale_predicate_empty",
-                      "authority_role_empty", "authority_decision_empty"):
-            _add_error(result, "yaml_value", label, "must be non-empty")
-        elif code == "scale_value_duplicate":
-            _add_error(result, "capability_scale", label,
-                       "duplicate scale value: %s" % issue["value"])
-        elif code == "scale_target_eligible_type":
-            _add_error(result, "capability_scale", label, "must be boolean")
-        elif code == "configured_target_eligible":
-            _add_error(
-                result, "capability_scale", target,
-                "configured scale requires at least one target-eligible item")
-        elif code == "authority_decision_scope":
-            _add_error(result, "pass_authority", label,
-                       "must be exactly %s" %
-                       contract_values["semantic_acceptance_scope"])
+    if issues:
+        for issue in issues:
+            selector = ".".join(str(item) for item in issue.get("path", ()))
+            _add_error(result, "profile_slot_contract",
+                       target + ("#" + selector if selector else ""),
+                       str(issue))
+        return None
 
     mode = envelope["mode"]
     reason = envelope["reason"]
@@ -762,22 +473,8 @@ def _validate_slot(
                    "the three artifact roles must bind distinct files")
 
     scale = envelope["scale"]
-    for index, row in enumerate(scale):
-        row_target = "%s:capability_scale[%d]" % (target, index)
-        for field in ("value", "predicate"):
-            if "TODO(profile)" in row.get(field, ""):
-                _add_error(result, "template_sentinel",
-                           row_target + ":" + field,
-                           "must replace TODO(profile) before validation")
-
     role = envelope["authority"].get("role_id", "")
     decision = envelope["authority"].get("decision_scope_id")
-    for field, value in (("role_id", role),
-                         ("decision_scope_id", decision)):
-        if isinstance(value, str) and "TODO(profile)" in value:
-            _add_error(result, "template_sentinel",
-                       target + ":pass_authority." + field,
-                       "must replace TODO(profile) before validation")
     registry_roles = _role_ids(root, profile_view, result)
     if role and role not in registry_roles:
         _add_error(result, "pass_authority",
@@ -789,57 +486,35 @@ def _validate_slot(
 
 
 def _validate_profile_scope(root, profile_view, result):
-    scope_path = _typed_slot_path(
-        root, profile_view, SCOPE_SLOT_NAME, result)
-    if scope_path is None:
-        return {"path": None, "layers": []}
-    target = _relative(root, scope_path)
-    text = _typed_slot_text(profile_view, SCOPE_SLOT_NAME, result)
-    if text is None:
+    target = profile_view["selected_profile_manifest"]
+    document = _typed_slot_document(profile_view, SCOPE_SLOT_NAME, result)
+    if document is None:
         return {"path": target, "layers": []}
-    sections = _h2_sections(
-        text, ("Logical Architecture",), target, result,
-        allow_extras=True)
-    if "Logical Architecture" not in sections:
-        return {"path": target, "layers": []}
-    rows = _parse_table(
-        sections["Logical Architecture"], SCOPE_LAYER_HEADERS,
-        "%s#Logical Architecture" % target, result)
-    if not rows:
-        _add_error(result, "profile_scope", target,
-                   "Logical Architecture must declare at least one layer")
+    rows = document["logical_architecture"]
     layers = []
     by_id = {}
     for index, row in enumerate(rows):
-        layer_id = row["Stable Layer ID"]
-        row_target = "%s:layer-row-%d" % (target, index + 1)
+        layer_id = row["layer_id"]
+        row_target = "%s#slots.profile-scope.logical_architecture[%d]" % (
+            target, index)
         _valid_id(layer_id, row_target, result)
         if layer_id in by_id:
             _add_error(result, "profile_scope", row_target,
                        "duplicate Stable Layer ID: %s" % layer_id)
-        directory_values = _parse_list(
-            row["Repository-relative directories"],
-            row_target + ":directories", result, allow_none=False)
         directories = []
-        for raw in directory_values:
+        for raw in row["directories"]:
             directory = _resolve_path(
-                root, raw, row_target + ":directories", result,
-                directory=True)
-            _reject_runtime_path(directory, row_target + ":directories",
-                                 result)
+                root, raw, row_target + ".directories", result, directory=True)
+            _reject_runtime_path(directory, row_target + ".directories", result)
             if directory:
                 directories.append(directory)
-        responsibility = row["Single layer responsibility"]
-        if not responsibility or "TODO(profile)" in responsibility:
-            _add_error(result, "profile_scope", row_target,
-                       "single layer responsibility must be explicit")
         record = {
             "id": layer_id, "directories": directories,
-            "responsibility": responsibility,
+            "responsibility": row["responsibility"],
         }
         layers.append(record)
         by_id.setdefault(layer_id, record)
-    return {"path": target, "layers": layers, "text": text}
+    return {"path": target, "layers": layers}
 
 
 def _validate_global_map(
@@ -1307,9 +982,8 @@ def planning_artifact_paths(result, *, contract_values=None):
     """Return every explicit path that makes a batch planning-affected.
 
     The selected Profile manifest is included because it owns the slot
-    bindings: changing only that file can redirect Profile Scope or Corpus
-    Planning without changing the previously bound files.  In addition to the
-    manifest, slot, and three artifacts, the affected set contains only paths
+    values: changing that file can change Profile Scope or Corpus Planning.
+    In addition to the manifest and three artifacts, the affected set contains only paths
     that the validator parsed from explicit planning relations: Global Map
     entries, Matrix canonical/evidence paths, and Gap promoted/evidence paths.
     No prose, backlink, similarity, or inferred dependency expands this set.
@@ -1518,6 +1192,9 @@ def receipt_binding(result, *, repository_snapshot_sha256=None,
             "_authorized_profile_view"]["profile_contract_fingerprint"],
         "profile_load_inputs_sha256": result[
             "_authorized_profile_view"]["profile_load_inputs_sha256"],
+        # These existing evidence fields name the real source container.
+        # Embedded slot identity is carried by the typed contract fingerprint;
+        # no consumer reads this path as an independent slot document.
         "corpus_planning_slot_path": result.get("slot_path"),
         "corpus_planning_slot_sha256":
             _profile_snapshot_file_sha256(
@@ -1657,10 +1334,6 @@ def current_freshness_binding(root, selected_profile_manifest, *, task_id,
         "runtime": None,
         "errors": [],
     }
-    contract_values = _load_current_contract_context(root, result)
-    if contract_values is None:
-        raise ValueError("; ".join(
-            _display_error(error) for error in result["errors"]))
     manifest_path, profile_view, _ = _authorized_profile_view(
         root, selected_profile_manifest, result,
         authorized_profile_view=authorized_profile_view)
@@ -1669,19 +1342,19 @@ def current_freshness_binding(root, selected_profile_manifest, *, task_id,
             _display_error(error) for error in result["errors"]))
     result["_authorized_profile_view"] = profile_view
     result["profile_manifest"] = _relative(root, manifest_path)
-    slot_path = _typed_slot_path(
-        root, profile_view, contract_values["slot_name"], result)
-    if slot_path is None:
+    contract_values = _load_current_contract_context(root, result)
+    if contract_values is None:
         raise ValueError("; ".join(
             _display_error(error) for error in result["errors"]))
-    result["slot_path"] = _relative(root, slot_path)
-    slot_text = _typed_slot_text(
+    result["slot_path"] = result["profile_manifest"]
+    slot_document = _typed_slot_document(
         profile_view, contract_values["slot_name"], result)
-    if slot_text is None:
+    if slot_document is None:
         raise ValueError("; ".join(
             _display_error(error) for error in result["errors"]))
     slot = _validate_slot(
-        slot_text, result["slot_path"], profile_view, root, result,
+        slot_document, result["profile_manifest"] + "#slots.corpus-planning",
+        profile_view, root, result,
         contract_values=contract_values)
     result["slot"] = slot
     if slot:
@@ -2124,10 +1797,6 @@ def validate_corpus_plan(root, profile=None, *, authorized_profile_view=None,
     if not os.path.isdir(root):
         _add_error(result, "root", root, "repository root is not a directory")
         return result
-    contract_values = _load_current_contract_context(root, result)
-    if contract_values is None:
-        return result
-
     manifest_path, profile_view, _ = _authorized_profile_view(
         root, profile, result,
         authorized_profile_view=authorized_profile_view)
@@ -2135,18 +1804,18 @@ def validate_corpus_plan(root, profile=None, *, authorized_profile_view=None,
         return result
     result["_authorized_profile_view"] = profile_view
     result["profile_manifest"] = _relative(root, manifest_path)
-    slot_path = _typed_slot_path(
-        root, profile_view, contract_values["slot_name"], result)
-    if slot_path is None:
+    contract_values = _load_current_contract_context(root, result)
+    if contract_values is None:
         return result
-    result["slot_path"] = _relative(root, slot_path)
-    slot_text = _typed_slot_text(
+    result["slot_path"] = result["profile_manifest"]
+    slot_document = _typed_slot_document(
         profile_view, contract_values["slot_name"], result)
-    if slot_text is None:
+    if slot_document is None:
         return result
 
     slot = _validate_slot(
-        slot_text, result["slot_path"], profile_view, root, result,
+        slot_document, result["profile_manifest"] + "#slots.corpus-planning",
+        profile_view, root, result,
         contract_values=contract_values)
     result["slot"] = slot
     if slot:

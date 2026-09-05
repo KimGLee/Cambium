@@ -294,7 +294,7 @@ def _registry_row(rule_id, registry, root=None):
 
 
 def resolve_obligation(root, plan, obligation_id, registry=None,
-                       control_registry=None, profile=None):
+                       control_registry=None, evaluation=None):
     """Resolve one required plan row back to its unchanged registry source."""
     registry = registry or load_registry(root)
     control_registry = control_registry or load_control_registry(root)
@@ -324,7 +324,7 @@ def resolve_obligation(root, plan, obligation_id, registry=None,
             changed_scope_evidence_contract.PROFILE_SCAN_EXTENSION):
         contract, scan, _spec = changed_scope_evidence_contract.\
             authorized_profile_scan(
-                plan, obligation, root=root, contract=profile)
+                plan, obligation, root=root, evaluation=evaluation)
         point = changed_scope_evidence_contract.profile_scan_extension_point(
             registry, root)
         if obligation.get("evidence_kind") != point["evidence_kind"]:
@@ -839,7 +839,7 @@ def validate_candidate_set_record_for_context(record, context):
     changed_scope_evidence_contract.validate_candidate_set_record_for_plan(
         record, context["plan"], context["plan_sha256"],
         context["obligation"], context["registry"], root=context["root"],
-        contract=context["profile_contract"])
+        evaluation=context["profile_view"]["_evaluation"])
     metadata_gate_runtime.validate_registered_scan_input_binding(
         context["root"], context["profile_view"], context["scan"], record,
         expected_repository_snapshot=record["artifact_fingerprint"],
@@ -899,7 +899,7 @@ def existing_candidate_set_record(context):
             changed_scope_evidence_contract.validate_candidate_set_record_for_plan(
                 record, context["plan"], context["plan_sha256"],
                 context["obligation"], context["registry"],
-                root=context["root"], contract=context["profile_contract"]),
+                root=context["root"], evaluation=context["profile_view"]["_evaluation"]),
         validate_current=lambda record:
             validate_candidate_set_record_for_context(record, context),
         label="AuditPlan obligation %s candidate-set evidence" %
@@ -960,7 +960,7 @@ def _context(root_arg, batch_id, plan_path, obligation_id):
         if isinstance(profile_view, dict) else None
     obligation, row, trace = resolve_obligation(
         root, stage["plan"], obligation_id, registry, control_registry,
-        profile)
+        profile_view.get("_evaluation") if isinstance(profile_view, dict) else None)
     frozen = audit_producer_runtime.freeze_manifest_pages(root, result, item)
     target_matches = [page for page in frozen
                       if page.path == obligation["target"]]

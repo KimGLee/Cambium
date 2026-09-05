@@ -50,6 +50,7 @@ from Tools.execution.task_runtime import queue_runtime
 import Tools.governance.control.contract_exception_policy as contract_exception_policy
 import Tools.platform.common.kblib as kblib
 import Tools.governance.profile.profile_contract as profile_contract
+import Tools.governance.profile.profile_admission as profile_admission
 import Tools.governance.profile.profile_layout_contract as profile_layout_contract
 import Tools.execution.task_runtime.runtime_paths as runtime_paths
 from Tools.platform.agent_interface import compile_cli_contract
@@ -174,44 +175,33 @@ def _boundary_findings(root, manifest):
     return findings, []
 
 
-def _effective_policy(root, manifest):
-    """Resolve the selected Profile's optional quota policy, or fail closed.
+def _profile_admission(root, manifest):
+    admission, errors = profile_admission.admit_profile(root, os.path.dirname(manifest))
+    if admission is None or admission.manifest_repo_path != manifest:
+        raise RunnerError("selected Profile failed profile-load: %s" % "; ".join(errors))
+    return admission
 
-    ``Registration: None`` is a fingerprinted inactive state. Configured
-    values and their fingerprint are handed to ``check_vocab`` from the same
-    resolver batch close uses, so the two consumers cannot silently compare
-    the corpus against different policies.
-    """
-    manifest_path = os.path.join(root, manifest)
-    manifest_text = kblib.read_text(manifest_path)
-    bindings = kblib.profile_slot_bindings(manifest_text)
-    binding = (bindings.get("Priority Rubric") or "").strip("`").strip()
-    if not binding:
-        raise RunnerError("the selected Profile binds no Priority Rubric "
-                          "slot; K00/07 places optional quota registration "
-                          "there")
-    rubric_path = os.path.join(os.path.dirname(manifest_path), binding)
-    rubric_text = kblib.read_text(rubric_path)
-    policy, fingerprint, errors = (
-        contract_exception_policy.effective_priority_policy(rubric_text))
+
+def _effective_policy(root, manifest, *, admission=None):
+    """Resolve optional quota from one fully admitted typed Profile."""
+    admission = admission or _profile_admission(root, manifest)
+    registry = contract_exception_policy.load_policy_registry(
+        root, text=admission.evaluation.normative_snapshots[
+            contract_exception_policy.POLICY_REGISTRY_PATH].read_text(),
+        require_owner_files=False)
+    policy, fingerprint, errors = contract_exception_policy.effective_priority_policy(
+        admission.slot_document("Priority Rubric"), registry=registry)
     if errors or fingerprint is None:
-        raise RunnerError(
-            "the selected Profile's Priority Rubric does not resolve:\n  %s"
-            % "\n  ".join(errors[:5]))
+        raise RunnerError("Priority Rubric does not resolve: %s" % "; ".join(errors))
     return policy, fingerprint
 
 
-def _residual_scan_command(root, manifest):
-    """Compile the profile's registered scan, or explain why there is none."""
-    contract = profile_contract.load_profile_contract(root, manifest)
-    if not contract.authorized:
-        raise RunnerError(
-            "profile contract is not authorized: %s" %
-            profile_contract.format_diagnostics(contract.diagnostics))
-    if contract.required_scan is None:
+def _residual_scan_command(root, manifest, *, admission=None):
+    """Compile the scan from the same admitted model as other sweep inputs."""
+    admission = admission or _profile_admission(root, manifest)
+    if admission.contract.required_scan is None:
         return None
-    return list(profile_contract.compile_registered_scan_command(
-        root, contract))
+    return list(profile_contract.compile_registered_scan_command(root, admission.contract))
 
 
 def _recipes(root, manifest, excludes):
@@ -239,7 +229,8 @@ def _recipes(root, manifest, excludes):
     for value in vocab_excludes:
         vocab_exclude_args.extend(["--exclude", value])
     python = _python()
-    policy, policy_fingerprint = _effective_policy(root, manifest)
+    admission = _profile_admission(root, manifest)
+    policy, policy_fingerprint = _effective_policy(root, manifest, admission=admission)
     vocab_command = [
         python, _tool_path("check_vocab"), root, *vocab_exclude_args]
     if policy["enabled"]:
@@ -278,7 +269,7 @@ def _recipes(root, manifest, excludes):
             python, _tool_path("check_boundary_contract"), root,
             "--profile", os.path.join(root, profile_dir), *exclude_args],
     }
-    residual = _residual_scan_command(root, manifest)
+    residual = _residual_scan_command(root, manifest, admission=admission)
     if residual is not None:
         recipes[("check_residual_content", "*")] = residual
     else:
@@ -308,8 +299,7 @@ def _preflight_commands(root, manifest):
             python, _tool_path("stamp_cards"), root, "--check"]),
         ("compiled-currentness", "compose_vocab --check", [
             python, _tool_path("compose_vocab"),
-            "--extensions",
-            os.path.join(profile_dir, "vocabulary-extensions.yaml"),
+            "--profile", os.path.join(root, manifest),
             "--output", os.path.join(
                 root, runtime_paths.VOCAB_ARTIFACT_PATH),
             "--check"]),

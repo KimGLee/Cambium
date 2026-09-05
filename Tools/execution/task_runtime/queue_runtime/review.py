@@ -497,11 +497,11 @@ def batch_review_judgment_errors(result, item, wrapper_receipt):
         return errors
 
     view = result.get("_profile_authorized_view") or {}
-    contract = view.get("_contract")
-    if contract is None or not getattr(contract, "authorized", False):
-        errors.append(
-            "%s judgment validation requires one authorized typed Profile "
-            "contract" % item_id)
+    from Tools.governance.profile.profile_admission import contract_from_admitted_view
+    try:
+        contract = contract_from_admitted_view(result["root"], view)
+    except ValueError as exc:
+        errors.append("%s judgment validation requires admitted Profile context: %s" % (item_id, exc))
         return errors
     wrapper = wrapper_receipt or {}
     try:

@@ -6,7 +6,7 @@ schema_version: 2
 state_revision: 1
 status: approved
 effective_date: TODO(standards-adoption)
-selected_profile_manifest: "profiles/my-profile/profile.md"
+selected_profile_manifest: "profiles/my-profile/profile.toml"
 latest_adoption_receipt: TODO(standards-adoption)
 upstream_source_ref: TODO(standards-adoption)
 # Sole Standards identity: the full commit SHA resolved from the adopted

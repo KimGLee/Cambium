@@ -3,7 +3,7 @@ task_id: fixture-task
 updated_at: 2026-08-04T01:00:00Z
 scope_version: s1
 upstream_revision_id: 0123456789abcdef0123456789abcdef01234567
-selected_profile_manifest: profiles/test-profile/profile.md
+selected_profile_manifest: profiles/test-profile/profile.toml
 batch_specs:
   - id: B1
     family: Core

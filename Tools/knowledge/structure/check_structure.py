@@ -240,29 +240,18 @@ def run(root, profile_override, receipts_path):
         findings.add("structure-profile-load", ACTIVE_STATE_PATH, "fail",
                      error)
     registry = None
-    registry_path = None
+    registry_rel = None
     if admission is not None:
-        registry_path, error = profile_admission.require_slot(
+        _registry_value, error = profile_admission.require_slot(
             admission, STRUCTURE_SLOT)
         if error:
             findings.add("structure-slot", STRUCTURE_SLOT, "fail", error)
-    if registry_path is not None:
-        if not registry_path.lower().endswith(".yaml"):
-            findings.add("structure-slot", STRUCTURE_SLOT, "fail",
-                         "Structure Registry must bind a restricted-YAML "
-                         ".yaml file")
         else:
-            try:
-                registry = kblib.parse_yaml_subset(
-                    admission.slot_text(STRUCTURE_SLOT))
-            except (UnicodeError, kblib.YamlSubsetError) as exc:
-                findings.add("structure-registry", STRUCTURE_SLOT, "fail",
-                             "cannot parse the registry: %s" % exc)
+            registry = admission.slot_document(STRUCTURE_SLOT)
+            registry_rel = admission.manifest_repo_path + "#slots.structure-registry"
 
     state = None
     if registry is not None:
-        registry_rel = os.path.relpath(registry_path, root).replace(
-            os.sep, "/")
         for check, target, details in \
                 kblib.validate_structure_registry_shape(
                     registry, registry_rel):
@@ -283,32 +272,28 @@ def run(root, profile_override, receipts_path):
 
         # Profile Scope layer directories.
         scope_layers = {}
-        scope_path, error = profile_admission.require_slot(
+        scope, error = profile_admission.require_slot(
             admission, SCOPE_SLOT)
         if error:
             findings.add("structure-slot", SCOPE_SLOT, "fail", error)
-        if scope_path is not None:
-            scope_layers = kblib.profile_scope_layers(
-                admission.slot_text(SCOPE_SLOT))
+        if scope is not None:
+            scope_layers = {row["layer_id"]: tuple(row["directories"])
+                            for row in scope["logical_architecture"]}
             if not scope_layers:
                 findings.add(
                     "structure-scope", SCOPE_SLOT, "fail",
-                    "no Logical Architecture layer table found in the "
+                    "no Logical Architecture layers found in the "
                     "Profile Scope; layer membership cannot be resolved")
         all_layer_dirs = {d for dirs in scope_layers.values() for d in dirs}
 
         # Corpus Planning / Global Map context.
         cp_state, gm_ids = None, None
-        cp_path, error = profile_admission.require_slot(
+        cp_slot, error = profile_admission.require_slot(
             admission, CORPUS_SLOT)
         if error:
             findings.add("structure-slot", CORPUS_SLOT, "fail", error)
-        if cp_path is not None:
-            try:
-                cp_data = kblib.parse_yaml_subset(
-                    admission.slot_text(CORPUS_SLOT))
-            except (UnicodeError, kblib.YamlSubsetError):
-                cp_data = None
+        if cp_slot is not None:
+            cp_data = admission.slot_document(CORPUS_SLOT)
             applicability = cp_data.get("applicability") \
                 if isinstance(cp_data, dict) else None
             cp_state = applicability.get("state") \

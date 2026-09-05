@@ -203,6 +203,26 @@ capabilities:
         catalog_lifecycle: [hot, historical, cold]
         reference_source_kind: none
 
+  - capability_id: profile-rendering-evidence-v1
+    kind: producer
+    capability_version: 1.0.0
+    implementation_owner: Tools/knowledge/rendering/record_profile_rendering.py
+    invocation_owner: Tools/record_profile_rendering.py
+    writers: []
+    checkers: []
+    consumers:
+      - Tools/execution/audit/audit_producer_chain.py
+      - Tools/execution/audit/audit_evidence_runtime.py
+      - Tools/execution/audit/audit_execution_runtime.py
+      - Tools/execution/audit/complete_audit_receipt.py
+      - Tools/execution/task_runtime/task_runtime_runner.py
+    operations: []
+    receipt_contracts:
+      - receipt_type_id: profile-rendering-evidence-v1
+        validator_owner: Tools.knowledge.rendering.profile_rendering_evidence_contract:current_receipt_errors
+        catalog_lifecycle: [hot, historical, cold]
+        reference_source_kind: none
+
   - capability_id: audit-receipt-producer-v1
     kind: producer
     capability_version: 1.0.0

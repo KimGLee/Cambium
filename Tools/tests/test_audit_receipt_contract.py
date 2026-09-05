@@ -32,7 +32,7 @@ def valid_receipt():
         "opening_transition_receipt": "audit-update_queue-open-1",
         "upstream_revision_id": "a" * 40,
         "active_standards_sha256": "sha256:" + "2" * 64,
-        "selected_profile_manifest": "profiles/example/profile.md",
+        "selected_profile_manifest": "profiles/example/profile.toml",
         "profile_snapshot_sha256": "sha256:" + "3" * 64,
         "profile_contract_fingerprint": "sha256:" + "4" * 64,
         "due_stage": "pre-merge",

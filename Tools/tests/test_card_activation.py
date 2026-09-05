@@ -12,6 +12,7 @@ from pathlib import Path
 import sys
 import tempfile
 import unittest
+from unittest import mock
 
 
 TOOLS = Path(__file__).resolve().parents[1]
@@ -19,6 +20,7 @@ sys.path.insert(0, str(TOOLS.parent))
 
 import Tools.execution.context_delivery.card_activation as card_activation
 import Tools.execution.context_delivery.read_set_contract as read_set_contract
+from Tools.governance.profile import check_profile
 from Tools.execution.task_runtime.queue_check_receipt import make_check_receipt
 from Tools.tests.fixtures.contract.card_activation_objects import (
     current_activation_context,
@@ -113,17 +115,28 @@ class CardActivationIntegrationTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.temporary = tempfile.TemporaryDirectory()
+        cls.addClassCleanup(cls.temporary.cleanup)
         cls.root = Path(cls.temporary.name).resolve() / "repo"
-        progress, item, cls.runtime = install_checkpoint(cls.root)
-        cls.context = card_activation.build_activation_context(
-            cls.root,
-            progress,
-            item,
-            runtime_state=cls.runtime)
+        with mock.patch.object(check_profile, "evaluate_profile_load",
+                               wraps=check_profile.evaluate_profile_load) as evaluate:
+            progress, item, cls.runtime = install_checkpoint(cls.root)
+        cls.profile_load_count = evaluate.call_count
+        with mock.patch.object(check_profile, "evaluate_profile_load",
+                               side_effect=AssertionError("activation must reuse admission")):
+            cls.context = card_activation.build_activation_context(
+                cls.root, progress, item, runtime_state=cls.runtime)
 
-    @classmethod
-    def tearDownClass(cls):
-        cls.temporary.cleanup()
+    def test_activation_reuses_one_real_profile_admission(self):
+        view = self.runtime["_profile_authorized_view"]
+        self.assertEqual(1, self.profile_load_count)
+        self.assertTrue(view["_evaluation"].authorized)
+        self.assertIs(view["_evaluation"].contract, view["_contract"])
+        invalid = {**self.runtime, "_profile_authorized_view": {
+            **view, "_evaluation": view["_contract"]}}
+        with self.assertRaises(card_activation.ActivationError):
+            card_activation.build_activation_context(
+                self.root, self.runtime["progress"], self.runtime["items_by_id"]["B1"],
+                runtime_state=invalid)
 
     def test_static_runtime_checkpoint_connects_activation_to_gate_receipt(self):
         receipt = make_check_receipt(

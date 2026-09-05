@@ -30,7 +30,7 @@ import Tools.execution.task_runtime.queue_runtime.gate_registry as gate_registry
 IDENTITY = {
     "task_id": "fixture-task",
     "upstream_revision_id": "a" * 40,
-    "selected_profile_manifest": "profiles/fixture/profile.md",
+    "selected_profile_manifest": "profiles/fixture/profile.toml",
 }
 
 
@@ -257,11 +257,11 @@ class RuntimeReceiptIdentityTests(unittest.TestCase):
             partial.parent.mkdir(parents=True)
             partial.write_text(kblib.canonical_yaml({
                 "task_id": "partial-task",
-                "selected_profile_manifest": "profiles/p/profile.md",
+                "selected_profile_manifest": "profiles/p/profile.toml",
             }), encoding="utf-8")
             self.assertEqual(
                 {"task_id": "partial-task",
-                 "selected_profile_manifest": "profiles/p/profile.md"},
+                 "selected_profile_manifest": "profiles/p/profile.toml"},
                 kblib.runtime_receipt_identity(root / "partial"))
 
             malformed = root / "malformed" / ".cambium/state/required_queue.yaml"

@@ -10,7 +10,6 @@ no caller can reach the filesystem by a route that skipped it.
 import os
 import stat
 
-import Tools.governance.profile.check_profile as check_profile
 import Tools.platform.common.kblib as kblib
 import Tools.execution.task_runtime.runtime_paths as runtime_paths
 
@@ -95,7 +94,7 @@ def normalized_repository_path(value):
     """Normalize one declared repository-relative path for set comparison."""
     if not isinstance(value, str):
         return None
-    value = check_profile.unbacktick(value).strip()
+    value = value.strip()
     while value.startswith("./"):
         value = value[2:]
     value = value.strip("/")

@@ -12,6 +12,7 @@ import unittest
 
 from Tools.execution.context_delivery import read_set_contract
 from Tools.execution.task_runtime.queue_runtime import task_contract
+from Tools.governance.profile import profile_codec
 from Tools.platform.common import kblib
 
 
@@ -139,12 +140,12 @@ class ReadSetLoadClosureIntegrationTests(unittest.TestCase):
 
             profile = root / "profiles/test"
             profile.mkdir(parents=True)
-            manifest = profile / "profile.md"
-            manifest.write_text(
-                "# Test Profile\n\n## Profile Identity\n\n"
-                "- `profile_id`: `test`\n",
-                encoding="utf-8",
-            )
+            manifest = profile / "profile.toml"
+            # Discovery needs only the identity locator, not full Profile
+            # answers, a Profile-load Gate, or adoption state.
+            manifest.write_bytes(profile_codec.dumps_profile({
+                "schema_version": 1, "profile_id": "test",
+            }))
             supplemental = profile / "P Supplemental Read Set.md"
             declaration = _declaration("R01")
             declaration.update({
@@ -158,7 +159,7 @@ class ReadSetLoadClosureIntegrationTests(unittest.TestCase):
 
             read_sets, modules, invalid, errors = (
                 task_contract.read_set_load_closure(
-                    root, [], "profiles/test/profile.md",
+                    root, [], "profiles/test/profile.toml",
                     ["P:test:supplemental"]))
             self.assertEqual(
                 {"profiles/test/P Supplemental Read Set.md"}, read_sets)
@@ -176,7 +177,7 @@ class ReadSetLoadClosureIntegrationTests(unittest.TestCase):
             )
             _read_sets, _modules, _invalid, errors = (
                 task_contract.read_set_load_closure(
-                    root, [], "profiles/test/profile.md",
+                    root, [], "profiles/test/profile.toml",
                     ["P:test:supplemental"]))
             self.assertTrue(
                 any("declaration fields differ" in error for error in errors),

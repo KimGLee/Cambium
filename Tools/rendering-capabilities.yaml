@@ -1,0 +1,16 @@
+schema_version: 1
+
+# Tool-owned executable selectors and accepted output forms. Profile binds
+# these stable capabilities; executable locations and versions belong to Host
+# bindings and the renderer's pinned dependency lock, not to Profile policy.
+capabilities:
+  - capability_id: static-markdown-render-v1
+    implementation_path: Tools/knowledge/rendering/static_render_runtime.py
+    selector_id: remark-commonmark-gfm-math-v1
+    acceptance_bindings:
+      - construct: mermaid-fence
+        acceptance: mermaid-svg
+      - construct: dollar-math
+        acceptance: katex-html-mathml
+      - construct: outer-pipe-markdown-table
+        acceptance: wrap-or-scroll-table

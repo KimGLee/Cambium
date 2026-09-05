@@ -274,6 +274,9 @@ class StructureRegistryFilesystemIntegrationTests(unittest.TestCase):
         fixture = StructureRegistryFixture()
         self.addCleanup(fixture.cleanup)
         base = configured_registry()
+        self.assertTrue((fixture.root / fixture.MANIFEST).is_file())
+        self.assertFalse((fixture.profile / "structure-registry.yaml").exists())
+        self.assertFalse((fixture.profile / "scope-and-architecture.md").exists())
 
         completed = fixture.run_cli()
         self.assertEqual(
@@ -282,21 +285,21 @@ class StructureRegistryFilesystemIntegrationTests(unittest.TestCase):
         self.assertIn("units=2 modules=1 support_layers=2", completed.stdout)
 
         with fixture.override({
-                fixture.REGISTRY:
-                    kblib.canonical_yaml(not_applicable_registry())}):
+                fixture.MANIFEST:
+                    fixture.manifest_with_registry(not_applicable_registry())}):
             self.assert_run(fixture, 0, "state=not-applicable")
 
         heading = copy.deepcopy(base)
         heading["units"][0]["roles"]["sequence"]["heading"] = \
             "Missing Order"
         with fixture.override({
-                fixture.REGISTRY: kblib.canonical_yaml(heading)}):
+                fixture.MANIFEST: fixture.manifest_with_registry(heading)}):
             self.assert_run(fixture, 1, "'Missing Order' not found")
 
         entry_type = copy.deepcopy(base)
         entry_type["units"][0]["entry"]["expected_type"] = "roadmap"
         with fixture.override({
-                fixture.REGISTRY: kblib.canonical_yaml(entry_type)}):
+                fixture.MANIFEST: fixture.manifest_with_registry(entry_type)}):
             self.assert_run(fixture, 1, "expected 'roadmap'")
 
         scope = copy.deepcopy(base)
@@ -308,7 +311,7 @@ class StructureRegistryFilesystemIntegrationTests(unittest.TestCase):
             },
         })
         with fixture.override({
-                fixture.REGISTRY: kblib.canonical_yaml(scope),
+                fixture.MANIFEST: fixture.manifest_with_registry(scope),
                 "Elsewhere/Overview.md": "---\ntype: overview\n---\n# Elsewhere\n",
         }):
             self.assert_run(fixture, 1, "registered layer directories")
@@ -322,7 +325,7 @@ class StructureRegistryFilesystemIntegrationTests(unittest.TestCase):
             },
         })
         with fixture.override({
-                fixture.REGISTRY: kblib.canonical_yaml(parent),
+                fixture.MANIFEST: fixture.manifest_with_registry(parent),
                 "Cases/Stray/Entry.md":
                     "---\ntype: system-design\n---\n# Stray\n",
         }):
@@ -352,7 +355,7 @@ class StructureRegistryFilesystemIntegrationTests(unittest.TestCase):
             "  - path: \"Domain/Domain Overview.md\"\n"
             "    structural_unit: U-GHOST\n")
         with fixture.override({
-                fixture.REGISTRY: kblib.canonical_yaml(global_map),
+                fixture.MANIFEST: fixture.manifest_with_registry(global_map),
                 ".cambium/state/coverage_ledger.yaml": coverage,
         }):
             self.assert_run(

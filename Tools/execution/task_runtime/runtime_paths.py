@@ -207,6 +207,8 @@ RUNTIME_OBJECTS = {
         EVIDENCE, child_path(RECEIPT_ROOT, "changed-scope-evidence.jsonl")),
     "rendering-verification-receipts": RuntimeObject(
         EVIDENCE, child_path(RECEIPT_ROOT, "rendering-verification.jsonl")),
+    "profile-rendering-receipts": RuntimeObject(
+        EVIDENCE, child_path(RECEIPT_ROOT, "profile-rendering.jsonl")),
     "audit-receipt-register": RuntimeObject(
         EVIDENCE, child_path(RECEIPT_ROOT, "audit-receipts.jsonl")),
     "terminal-audit-receipts": RuntimeObject(
@@ -434,6 +436,7 @@ CHANGED_SCOPE_EVIDENCE_RECEIPT_PATH = path_for(
     "changed-scope-evidence-receipts")
 RENDERING_VERIFICATION_RECEIPT_PATH = path_for(
     "rendering-verification-receipts")
+PROFILE_RENDERING_RECEIPT_PATH = path_for("profile-rendering-receipts")
 AUDIT_RECEIPT_REGISTER_PATH = path_for("audit-receipt-register")
 TERMINAL_AUDIT_RECEIPT_PATH = path_for("terminal-audit-receipts")
 GATE_RESULT_RECEIPT_PATH = path_for("gate-result-receipts")

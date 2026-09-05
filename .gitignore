@@ -5,6 +5,7 @@ __pycache__/
 .cambium/**/*.tmp
 .cambium/**/.cambium-write-*
 .cambium-init-*
+Tools/knowledge/rendering/static_renderer/node_modules/
 
 # Local process records are not part of the public distribution. Public
 # README media belongs under assets/readme/ instead.

@@ -10,8 +10,10 @@ consumption remain with their respective owners.
 """
 
 from contextlib import redirect_stdout
+from copy import deepcopy
 import io
 from pathlib import Path
+import shutil
 import unittest
 from unittest import mock
 
@@ -19,11 +21,12 @@ from Tools.execution.task_runtime import queue_runtime
 from Tools.governance.control import run_gates
 from Tools.platform.agent_interface import compile_cli_contract
 from Tools.platform.agent_interface import tool_availability
+from Tools.tests.support.profile_contract_fixture import CurrentProfileContractFixture
+from Tools.tests.fixtures.contract.priority_quota_objects import CONFIGURED_PRIORITY_QUOTA_RUBRIC
 
 
 REPOSITORY = Path(__file__).resolve().parents[2]
-EXAMPLE_PROFILE = "profiles/examples/agent-atlas/profile.md"
-CONFIGURED_PROFILE = "profiles/examples/worked-planning/profile.md"
+EXAMPLE_PROFILE = "profiles/examples/agent-atlas/profile.toml"
 
 
 class RunGatesContractTests(unittest.TestCase):
@@ -31,12 +34,22 @@ class RunGatesContractTests(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls):
+        owner = unittest.TestCase()
+        cls.addClassCleanup(owner.doCleanups)
+        cls.fixture = CurrentProfileContractFixture(owner)
+        cls.profile_root = str(cls.fixture.root)
+        cls.manifest = "profiles/test-profile/profile.toml"
+        # Recipe construction resolves the registered implementation through
+        # its actual public adapter; this does not execute the scan command.
+        shutil.copy2(
+            REPOSITORY / "Tools/check_residual_content.py",
+            cls.fixture.root / "Tools/check_residual_content.py")
         cls.registry, errors = queue_runtime.standards_gate_registry(
             str(REPOSITORY))
         if errors:
             raise AssertionError("\n".join(errors))
         cls.recipes = run_gates._recipes(
-            str(REPOSITORY), EXAMPLE_PROFILE, [])
+            cls.profile_root, cls.manifest, [])
         cls.interface_contract = compile_cli_contract.compile_contract(
             str(REPOSITORY), tool_availability.SOURCE_DISTRIBUTION)
         cls.transaction_writers = \
@@ -107,8 +120,17 @@ class RunGatesContractTests(unittest.TestCase):
                 "check_vocab", "priority-quota-distribution", "*")])
 
     def test_profile_configured_projects_the_exact_pair_to_one_command(self):
-        recipes = run_gates._recipes(
-            str(REPOSITORY), CONFIGURED_PROFILE, [])
+        rubric = self.fixture.slot("priority-rubric")
+        original = deepcopy(rubric["priority_quota"])
+        quota = deepcopy(CONFIGURED_PRIORITY_QUOTA_RUBRIC["priority_quota"])
+        quota["items"][0]["maximum_share"] = 0.1
+        rubric["priority_quota"] = quota
+        self.fixture.save()
+        try:
+            recipes = run_gates._recipes(self.profile_root, self.manifest, [])
+        finally:
+            rubric["priority_quota"] = original
+            self.fixture.save()
         command = recipes[(
             "check_vocab", "priority-quota-distribution", "*")]
 
@@ -122,6 +144,12 @@ class RunGatesContractTests(unittest.TestCase):
             "30.0", command[command.index("--quota-p1") + 1])
         fingerprint = command[command.index("--policy-fingerprint") + 1]
         self.assertRegex(fingerprint, r"^sha256:[0-9a-f]{64}$")
+
+    def test_recipe_construction_reuses_one_formal_admission(self):
+        with mock.patch.object(
+                run_gates, "_profile_admission", wraps=run_gates._profile_admission) as admit:
+            run_gates._recipes(self.profile_root, self.manifest, [])
+        admit.assert_called_once_with(self.profile_root, self.manifest)
 
     def test_missing_runnable_producer_recipe_fails_closed(self):
         registry = {
@@ -143,7 +171,7 @@ class RunGatesContractTests(unittest.TestCase):
     def test_preflight_projection_target_comes_from_profile_location(self):
         cases = (
             (EXAMPLE_PROFILE, tool_availability.SOURCE_DISTRIBUTION),
-            ("profiles/selected/profile.md",
+            ("profiles/selected/profile.toml",
              tool_availability.CARRIED_RUNTIME),
         )
         for manifest, expected_target in cases:
@@ -189,7 +217,7 @@ class RunGatesDispatchIntegrationTests(unittest.TestCase):
                 run_gates.queue_runtime, "gate_registry_producer_errors",
                 return_value=[]), mock.patch.object(
                 run_gates, "_selected_profile",
-                return_value="profiles/selected/profile.md"), \
+                return_value="profiles/selected/profile.toml"), \
                 mock.patch.object(
                     run_gates, "_recipes",
                     return_value={("shared_producer", "*"): command}), \

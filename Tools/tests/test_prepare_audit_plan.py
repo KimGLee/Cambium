@@ -37,6 +37,15 @@ def raw(name):
 
 class AuditPlanExporterTests(unittest.TestCase):
 
+    def setUp(self):
+        # The exporter owns plan composition over an admitted view, not the
+        # Profile Gate. Exact Gate/view identity has integration owner tests.
+        from Tools.governance.profile import profile_admission
+        boundary = mock.patch.object(profile_admission, "contract_from_admitted_view",
+            side_effect=lambda root, view: view["_contract"])
+        boundary.start()
+        self.addCleanup(boundary.stop)
+
     @classmethod
     def setUpClass(cls):
         cls.batch_registry = raw("batch-review-obligation-registry.yaml")
@@ -95,11 +104,11 @@ class AuditPlanExporterTests(unittest.TestCase):
                 pass_authority_role_id="executor",
             ))
         return SimpleNamespace(
-            authorized=True,
-            manifest_repo_path="profiles/fixture/profile.md",
+            valid=True,
+            manifest_repo_path="profiles/fixture/profile.toml",
             profile_contract_fingerprint=SHA_C,
-            scan_registry_path="profiles/fixture/registered-scans.md",
-            routing_registry_path="profiles/fixture/routing-and-gates.md",
+            scan_registry_path="profiles/fixture/profile.toml",
+            routing_registry_path="profiles/fixture/profile.toml",
             extension_dimensions=(),
             judgment_items=tuple(judgments),
             registered_scans=tuple(scans),
@@ -112,6 +121,7 @@ class AuditPlanExporterTests(unittest.TestCase):
         paths = sorted(tiers)
         frozen = tuple(self.frozen(path) for path in paths)
         result = {
+            "root": str(REPOSITORY),
             "coverage": {"pages": [
                 {"path": path, "tier": tiers[path],
                  "authoring_status": "drafted"}
@@ -129,7 +139,7 @@ class AuditPlanExporterTests(unittest.TestCase):
             "progress_ledger_sha256": SHA_D,
         }
         profile = {
-            "selected_profile_manifest": "profiles/fixture/profile.md",
+            "selected_profile_manifest": "profiles/fixture/profile.toml",
             "profile_snapshot_sha256": SHA_B,
             "profile_contract_fingerprint": SHA_C,
         }

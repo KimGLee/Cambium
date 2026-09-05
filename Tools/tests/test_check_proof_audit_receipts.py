@@ -199,7 +199,7 @@ class TerminalProofAuditReceiptConsumerIntegrationTests(unittest.TestCase):
             "opening_transition_receipt": "open-1",
             "upstream_revision_id": FIXTURE_UPSTREAM_REVISION,
             "active_standards_sha256": SHA_A,
-            "selected_profile_manifest": "profiles/test/profile.md",
+            "selected_profile_manifest": "profiles/test/profile.toml",
             "profile_snapshot_sha256": SHA_B,
             "profile_contract_fingerprint": SHA_C,
         }
@@ -666,7 +666,7 @@ class TerminalProofAssemblerUnitTests(unittest.TestCase):
                     "scope_version": "scope-1",
                     "contract_version": "contract-1",
                     "upstream_revision_id": FIXTURE_UPSTREAM_REVISION,
-                    "selected_profile_manifest": "profiles/test/profile.md",
+                    "selected_profile_manifest": "profiles/test/profile.toml",
                     "selected_route_ids": ["R01", "R08", "R12"],
                     "selected_card_paths": ["Card/R01.md"],
                     "selected_profile_route_ids": [],

@@ -1,6 +1,8 @@
 # Answer Patterns
 
-Shapes harvested from the shipped examples (`profiles/examples/agent-atlas/`, `profiles/examples/worked-planning/`) and from the Agent Systems Atlas adopter's field experience. **A pattern is a shape, never an answer**: instantiate it with this corpus's own content, and do not reuse an example's identity, paths, or scale of ambition. These patterns only help discuss candidate answers for the single `profiles/_template/` candidate template; they do not add defaults or another template tier. The interview determines the required depth and the user confirms each answer.
+Shapes harvested from the shipped examples (`profiles/examples/agent-atlas/profile.toml`, `profiles/examples/worked-planning/profile.toml`) and from the Agent Systems Atlas adopter's field experience. **A pattern is a shape, never an answer**: discuss this corpus's own content, without reusing an example's identity, paths, or scale of ambition. These patterns support the single empty `profiles/_template/profile.toml` candidate; they add neither defaults nor another template tier. The interview determines the depth, the user confirms decisions, and the agent records answers through the [candidate Tools](README.md#agent-read-edit-and-review). The user does not need to copy snippets or author TOML.
+
+The following natural-language patterns illustrate possible content, not executable predicates or new obligations. Their destination is the corresponding semantic field under `slots.<slot-id>`; Kernel contracts define legality, and the Tool owns serialization. A discussed pattern is neither a complete Profile nor authorization to adopt it.
 
 ## 1. One-line Knowledge Spine (Q9)
 
@@ -16,11 +18,11 @@ For a personal or operational corpus: register `<maintainer>-observation` — wh
 
 ## 4. Six-class Research Source Taxonomy (Q7, research corpora)
 
-official / standard / paper / book / ecosystem-implementation / community, each with its own pinning rule (release or commit; edition and section; DOI and version; publication year; repo commit; corroboration state). Near-verbatim reusable for any research-flavored corpus; only the storage paths are local.
+official / standard / paper / book / ecosystem-implementation / community, each with its own pinning rule (release or commit; edition and section; DOI and version; publication year; repo commit; corroboration state). Discuss which classes actually serve this corpus; neither all six classes nor these pinning choices are defaults.
 
 ## 5. Capability Scale 0-4 (corpus-planning expansion)
 
-`0 Missing / 1 Outline / 2 Core / 3 System / 4 Defensible`, with `target_eligible` false below 2. Domain-free; adopt as-is or rename values, keep ranks contiguous from 0.
+`0 Missing / 1 Outline / 2 Core / 3 System / 4 Defensible`, with `target_eligible` false below 2, is one example to discuss. Confirm the corpus's own labels and target threshold; contiguous ranks from 0 follow the existing Corpus Planning contract, not this pattern. Store ranks as integers and `target_eligible` as a boolean.
 
 ## 6. Readiness Axis Three-piece (expression-layer expansion)
 
@@ -36,9 +38,9 @@ Body prose defaults to the body language; a foreign-language term appears only i
 
 ## 9. Volatility Domains And Section-role Display (C2)
 
-`volatility_defaults` maps the corpus's real stable domain IDs to `fast`, `slow`, or `stable`. The template's `general: slow` is only a pre-filled proposal: confirm it only for a genuinely undivided corpus; otherwise rename or split it to match the confirmed domains without inventing a second domain taxonomy.
+`slots.vocabulary-extensions.volatility_defaults` maps the corpus's real stable domain IDs to `fast`, `slow`, or `stable`. An illustrative `general = "slow"` is not prefilled in the empty candidate: discuss it only for a genuinely undivided corpus; otherwise use the confirmed domain IDs without inventing a second domain taxonomy.
 
-Metadata Contract `section_roles` is the sole machine-readable binding for the Kernel roles `sources` and `related`. For each role actually used by the corpus, record its accepted reader-facing title or titles and only the bounded aliases that existing content or a confirmed migration requires. Language Contract states the human-facing language and display policy; it does not repeat the `section_roles` mapping.
+`slots.metadata-contract.section_roles` is the sole instance binding for the Kernel roles `sources` and `related`. For each role actually used by the corpus, record its accepted reader-facing title or titles and only the bounded aliases that existing content or a confirmed migration requires. Language Contract states the human-facing language and display policy; it does not repeat the `section_roles` mapping.
 
 ## Also Available As Worked Examples
 

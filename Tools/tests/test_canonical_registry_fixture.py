@@ -10,9 +10,8 @@ import unittest
 from Tools.platform.distribution import module_boundary_facts
 from Tools.tests.support.canonical_registry_fixture import (
     COMPONENT_MACHINE_REGISTRY_PATHS,
-    ISOLATED_TOOL_REGISTRY_PATHS,
-    KERNEL_MACHINE_REGISTRY_PATHS,
     contract_exception_owner_paths,
+    isolated_tool_registry_paths,
     install_isolated_tool_registry_bundle,
 )
 
@@ -26,9 +25,11 @@ class CanonicalRegistryFixtureTests(unittest.TestCase):
         actual = tuple(sorted(
             path.relative_to(REPOSITORY).as_posix()
             for path in (REPOSITORY / "kernel").rglob("*")
-            if path.is_file() and path.suffix in (".json", ".yaml", ".yml")))
+            if path.is_file() and path.suffix in (".json", ".yaml", ".yml", ".cue")))
+        expected = tuple(path for path in isolated_tool_registry_paths()
+                         if path.startswith("kernel/"))
         self.assertEqual(
-            actual, tuple(sorted(KERNEL_MACHINE_REGISTRY_PATHS)),
+            actual, expected,
             "a Kernel machine authority was added or removed without updating "
             "the single isolated-fixture bundle manifest")
 
@@ -47,7 +48,7 @@ class CanonicalRegistryFixtureTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
             installed = install_isolated_tool_registry_bundle(root)
-            expected = (ISOLATED_TOOL_REGISTRY_PATHS +
+            expected = (isolated_tool_registry_paths() +
                         contract_exception_owner_paths())
             self.assertEqual(expected, installed)
             for relative in installed:
@@ -55,6 +56,8 @@ class CanonicalRegistryFixtureTests(unittest.TestCase):
                     self.assertEqual(
                         (REPOSITORY / relative).read_bytes(),
                         (root / relative).read_bytes())
+            self.assertFalse((root / "profiles").exists())
+            self.assertFalse((root / ".cambium").exists())
 
     def test_representative_isolated_import_closure_uses_the_bundle(self):
         """Every newly registry-backed Tool family imports from scratch."""
@@ -70,8 +73,10 @@ class CanonicalRegistryFixtureTests(unittest.TestCase):
             install_isolated_tool_registry_bundle(root)
             environment = dict(os.environ)
             environment["PYTHONPATH"] = str(root / "Tools")
+            environment["CAMBIUM_CUE"] = str(root / "unavailable-cue")
+            environment["PYTHONDONTWRITEBYTECODE"] = "1"
             completed = subprocess.run(
-                [sys.executable, "-c",
+                [sys.executable, "-S", "-c",
                  "import check_profile, check_batch_close, check_queue, "
                  "execution.planning.apply_task_plan"],
                 cwd=str(root), env=environment, capture_output=True,
@@ -79,6 +84,8 @@ class CanonicalRegistryFixtureTests(unittest.TestCase):
             self.assertEqual(
                 0, completed.returncode,
                 completed.stdout + completed.stderr)
+            self.assertFalse((root / "profiles").exists())
+            self.assertFalse((root / ".cambium").exists())
 
 
 if __name__ == "__main__":

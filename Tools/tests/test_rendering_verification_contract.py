@@ -21,11 +21,177 @@ import Tools.execution.audit.complete_audit_receipt as complete_audit_receipt  #
 import Tools.platform.common.kblib as kblib  # noqa: E402
 import Tools.knowledge.rendering.record_rendering_verification as producer  # noqa: E402
 import Tools.knowledge.rendering.rendering_verification_contract as contract  # noqa: E402
+import Tools.knowledge.rendering.profile_rendering_evidence_contract as profile_evidence  # noqa: E402
+import Tools.knowledge.rendering.record_profile_rendering as profile_producer  # noqa: E402
+import Tools.knowledge.rendering.static_render_runtime as static_render_runtime  # noqa: E402
+from Tools.governance.profile.rendering_contract import RenderingContract, RenderingRule  # noqa: E402
 from Tools.tests.support.profile_fixture import FIXTURE_UPSTREAM_REVISION  # noqa: E402
 
 
 SHA_A = "sha256:" + "a" * 64
 SHA_B = "sha256:" + "b" * 64
+
+
+class ProfileRenderingEvidenceTests(unittest.TestCase):
+    """The binding owner never substitutes a record shape for compiler proof."""
+
+    def setUp(self):
+        self.text = "# Diagram\n\n```mermaid\ngraph LR\n A-->B\n```\n"
+        self.rule = RenderingRule("profile-mermaid", "mermaid-fence",
+                                  "static-markdown-render-v1", "mermaid-svg")
+        self.profile = SimpleNamespace(fingerprint=SHA_A, rendering_contract=RenderingContract(
+            "configured", (self.rule,), "profiles/test/profile.toml", SHA_A))
+        self.evaluation = object()
+        # Isolate compiler/report acceptance with an admitted machine input.
+        # The real Gate and stale-snapshot boundary have Profile owner tests.
+        admitted = SimpleNamespace(contract=self.profile, evaluation=self.evaluation,
+                                   profile_snapshot_sha256=SHA_A)
+        boundary = mock.patch.object(profile_evidence, "load_profile_admission",
+                                     return_value=admitted)
+        boundary.start()
+        self.addCleanup(boundary.stop)
+        chain_boundary = mock.patch(
+            "Tools.governance.profile.profile_admission.admission_from_evaluation",
+            return_value=(admitted, []))
+        chain_boundary.start()
+        self.addCleanup(chain_boundary.stop)
+
+    def _record(self):
+        spec = audit_obligation_projection.profile_rendering_specs(self.profile, REPOSITORY)[0]
+        obligation = audit_obligation_projection.required_obligation(
+            audit_obligation_projection.resolve_obligation_definition(spec, "Topics/A.md"))
+        plan = RenderingVerificationContractTests().plan(obligation)
+        report = {
+            "schema_version": 1, "target": "Topics/A.md",
+            "source_sha256": kblib.sha256_bytes(self.text),
+            "selector_id": static_render_runtime.SELECTOR_ID,
+            "bindings_sha256": SHA_A, "runtime_fingerprint": {},
+            "runtime_sha256": SHA_B,
+            "constructs": [{"kind": "mermaid-fence", "acceptance": "mermaid-svg"}],
+            "artifacts": [], "result": "pass", "diagnostics": [],
+        }
+        report["report_sha256"] = kblib.sha256_bytes(kblib.canonical_json_bytes(report))
+        page = audit_producer_runtime.FrozenPage(
+            "Topics/A.md", kblib.sha256_bytes(self.text), SHA_B,
+            SimpleNamespace(read_text=lambda: self.text))
+        # Renderer execution/DOM tests belong to static_render_runtime. This
+        # unit fixture isolates the report's independent plan/currentness seam.
+        with mock.patch.object(static_render_runtime, "select_constructs", return_value=("mermaid-fence",)), \
+                mock.patch.object(static_render_runtime, "validate_render_result", return_value=[]):
+            record = profile_producer.build_record(
+                root=REPOSITORY, plan=plan, plan_sha256=audit_plan_contract.plan_sha256(plan),
+                obligation=obligation, evaluation=self.evaluation, page=page, report=report)
+        return record, plan, obligation
+
+    def test_profile_rules_project_blocking_receipts_without_changing_base(self):
+        before = audit_obligation_projection.base_obligation_specs(REPOSITORY)
+        specs = audit_obligation_projection.profile_rendering_specs(self.profile, REPOSITORY)
+        self.assertEqual(1, len(specs))
+        row = specs[0]
+        self.assertEqual(("profile-extension", "rendering", "audit-receipt", "pre-merge", False),
+                         (row["owner_kind"], row["dimension"], row["evidence_kind"],
+                          row["due_stage"], row["nonblocking"]))
+        self.assertEqual(before, audit_obligation_projection.base_obligation_specs(REPOSITORY))
+        self.assertNotIn(self.rule.rule_id, {value["owner_rule_id"] for value in before})
+
+    def test_unconfigured_plain_profile_needs_no_renderer_but_retains_known_gap(self):
+        with mock.patch.object(static_render_runtime, "select_constructs") as selector:
+            self.assertEqual({"A.md": ()}, profile_evidence.require_bindings(
+                [("A.md", "# Plain\n")], None, root=REPOSITORY))
+            with self.assertRaisesRegex(ValueError, "contract-gap/HOLD"):
+                profile_evidence.require_bindings([("A.md", self.text)], None, root=REPOSITORY)
+        selector.assert_not_called()
+
+    def test_configured_math_without_its_profile_rule_remains_a_gap(self):
+        with mock.patch.object(static_render_runtime, "select_constructs", return_value=("dollar-math",)):
+            with self.assertRaisesRegex(ValueError, "dollar-math"):
+                profile_evidence.require_bindings(
+                    [("A.md", "$x$")], self.profile, root=REPOSITORY)
+
+    def test_unconfigured_dollar_candidate_uses_ast_and_missing_math_binding_holds(self):
+        with mock.patch.object(static_render_runtime, "select_constructs", return_value=("dollar-math",)) as selector:
+            with self.assertRaisesRegex(ValueError, "contract-gap/HOLD.*dollar-math"):
+                profile_evidence.require_bindings(
+                    [("A.md", "$x$")], None, root=REPOSITORY)
+        selector.assert_called_once_with("$x$", root=REPOSITORY)
+
+    def test_unconfigured_dollar_candidate_is_not_itself_a_math_verdict(self):
+        with mock.patch.object(static_render_runtime, "select_constructs", return_value=()) as selector:
+            self.assertEqual({"A.md": ()}, profile_evidence.require_bindings(
+                [("A.md", "`$x$` costs $5")], None, root=REPOSITORY))
+        selector.assert_called_once_with("`$x$` costs $5", root=REPOSITORY)
+
+    def test_unconfigured_dollar_candidate_cannot_pass_without_parser(self):
+        with mock.patch.object(static_render_runtime, "select_constructs", side_effect=ValueError("renderer Host unavailable")):
+            with self.assertRaisesRegex(ValueError, "renderer Host unavailable"):
+                profile_evidence.require_bindings(
+                    [("A.md", "$x$")], None, root=REPOSITORY)
+
+    def test_frozen_plan_requires_exact_current_rendering_applicability(self):
+        _record, plan, _obligation = self._record()
+        before = copy.deepcopy(plan)
+        with mock.patch.object(static_render_runtime, "select_constructs", return_value=("mermaid-fence",)):
+            self.assertEqual({"Topics/A.md": ("mermaid-fence",)},
+                profile_evidence.require_plan_applicability(
+                    plan, [("Topics/A.md", self.text)], self.profile, root=REPOSITORY))
+        self.assertEqual(before, plan)
+
+    def test_newly_applicable_registered_construct_cannot_bypass_frozen_plan(self):
+        _record, plan, _obligation = self._record()
+        math = RenderingRule("profile-math", "dollar-math",
+                             "static-markdown-render-v1", "katex-html-mathml")
+        profile = SimpleNamespace(rendering_contract=RenderingContract(
+            "configured", (self.rule, math), "profiles/test/rendering-contract.yaml", SHA_A))
+        before = copy.deepcopy(plan)
+        with mock.patch.object(static_render_runtime, "select_constructs", return_value=("mermaid-fence", "dollar-math")):
+            with self.assertRaisesRegex(ValueError, "missing=.*profile-math"):
+                profile_evidence.require_plan_applicability(
+                    plan, [("Topics/A.md", self.text + "$x$")], profile, root=REPOSITORY)
+        self.assertEqual(before, plan)
+
+    def test_removed_construct_does_not_silently_drop_frozen_obligation(self):
+        _record, plan, _obligation = self._record()
+        before = copy.deepcopy(plan)
+        with mock.patch.object(static_render_runtime, "select_constructs", return_value=()):
+            with self.assertRaisesRegex(ValueError, "obsolete=.*profile-mermaid"):
+                profile_evidence.require_plan_applicability(
+                    plan, [("Topics/A.md", "# Plain\n")], self.profile, root=REPOSITORY)
+        self.assertEqual(before, plan)
+
+    def test_finalizer_and_consumer_both_reject_compiler_invalid_artifacts(self):
+        record, plan, obligation = self._record()
+        digest = audit_plan_contract.plan_sha256(plan)
+        self.assertEqual([], profile_evidence.current_receipt_errors(record))
+        result = {"root": str(REPOSITORY), "current_receipt_catalog": {
+            record["receipt_id"]: ("fixture", record)},
+            "_profile_authorized_view": {"_contract": self.profile,
+                                         "_evaluation": self.evaluation}}
+        completed = complete_audit_receipt.build_audit_receipt(
+            plan=plan, plan_sha256=digest, obligation=obligation, evidence=record)
+        with mock.patch.object(kblib, "repository_target_snapshot", return_value=SimpleNamespace(
+                    exists=True, read_text=lambda: self.text)), \
+                mock.patch.object(static_render_runtime, "select_constructs", return_value=("mermaid-fence",)), \
+                mock.patch.object(static_render_runtime, "validate_render_result", return_value=["compiler artifact is invalid"]) as validator:
+            with self.assertRaisesRegex(ValueError, "compiler artifact is invalid"):
+                complete_audit_receipt._producer_evidence(
+                    str(REPOSITORY), result, record["receipt_id"], plan, digest, obligation)
+            errors = audit_evidence_runtime._producer_evidence_errors(
+                str(REPOSITORY), result["current_receipt_catalog"], plan, digest,
+                obligation, completed, result=result)
+        self.assertIn("compiler artifact is invalid", " ".join(errors))
+        self.assertEqual(2, validator.call_count)
+
+    def test_report_and_source_drift_cannot_reuse_current_evidence(self):
+        record, plan, obligation = self._record()
+        changed = copy.deepcopy(record)
+        changed["render_report"]["target"] = "Topics/B.md"
+        self.assertIn("render_report.report_sha256", profile_evidence.current_receipt_errors(changed))
+        with mock.patch.object(static_render_runtime, "select_constructs", return_value=("mermaid-fence",)), \
+                mock.patch.object(static_render_runtime, "validate_render_result", return_value=[]):
+            with self.assertRaisesRegex(ValueError, "artifact_fingerprint"):
+                profile_evidence.validate_record_for_obligation(
+                    record, plan, audit_plan_contract.plan_sha256(plan), obligation,
+                    root=REPOSITORY, evaluation=self.evaluation, text=self.text + "changed\n")
 
 
 class RenderingVerificationContractTests(unittest.TestCase):
@@ -50,7 +216,7 @@ class RenderingVerificationContractTests(unittest.TestCase):
             "required_queue_sha256": SHA_A,
             "upstream_revision_id": FIXTURE_UPSTREAM_REVISION,
             "active_standards_sha256": SHA_A,
-            "selected_profile_manifest": "profiles/test/profile.md",
+            "selected_profile_manifest": "profiles/test/profile.toml",
             "profile_snapshot_sha256": SHA_A,
             "profile_contract_fingerprint": SHA_A,
             "opening_transition_receipt": "audit-update_queue-open-1",

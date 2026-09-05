@@ -43,7 +43,7 @@ from Tools.tests.support.profile_fixture import (  # noqa: E402
 
 
 TASK_ID = "new-task"
-PROFILE = "profiles/sample/profile.md"
+PROFILE = "profiles/sample/profile.toml"
 PLAN_RELATIVE = ".cambium/deltas/task-plans/TP-001.yaml"
 DIGEST = "sha256:" + "1" * 64
 R01_CARD = "Card/R01 Core Bootstrap Card.md"

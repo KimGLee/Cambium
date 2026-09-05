@@ -212,7 +212,7 @@ class RepositoryStructureUnitTests(unittest.TestCase):
                     repository_structure.Path, "read_bytes",
                     autospec=True, side_effect=read_bytes):
             result = repository_structure.check_repository_structure(
-                "/workspace", "profiles/selected/profile.md")
+                "/workspace", "profiles/selected/profile.toml")
 
         details = "\n".join(result["errors"])
         self.assertIn("profiles/selected/invalid.yaml", details)
@@ -264,13 +264,13 @@ class RepositoryStructureCliIntegrationTests(unittest.TestCase):
                 contextlib.redirect_stdout(output):
             result = repository_structure.main([
                 "/workspace", "--profile-manifest",
-                "profiles/selected/profile.md",
+                "profiles/selected/profile.toml",
             ])
 
         self.assertEqual(0, result)
         self.assertEqual("structural_errors = 0\n", output.getvalue())
         check.assert_called_once_with(
-            "/workspace", "profiles/selected/profile.md")
+            "/workspace", "profiles/selected/profile.toml")
         mkdir.assert_not_called()
 
 

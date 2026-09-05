@@ -122,6 +122,17 @@ base_rules:
 # target dimension, candidate boundary, and acceptance owner; none is promoted
 # into the Kernel base list above.
 extension_points:
+  - extension_point_id: k12-02-profile-rendering
+    applicability: selected-profile-registers-rendering-contract
+    producer_capability: profile-rendering-evidence-v1
+    producer_check_binding: profile-registration
+    evidence_role: emits
+    evidence_kind: audit-receipt
+    dimension: null
+    dimension_binding: profile-registration
+    consumer_gate_id: batch-review
+    due_stage: pre-merge
+    nonblocking: false
   - extension_point_id: k12-05-registered-scan
     applicability: selected-profile-registers-changed-scope-candidate-scan
     producer_capability: registered-scan-v1

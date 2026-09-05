@@ -99,6 +99,12 @@ jobs:
         with:
           python-version: ${{ matrix.python-version }}
 
+      - name: Install the pinned Profile toolchain
+        run: |
+          python -m pip install --disable-pip-version-check -r Tools/requirements-profile.txt
+          python .github/scripts/install_cue.py --destination "$RUNNER_TEMP/cambium-profile-cue"
+          echo "CAMBIUM_CUE=$RUNNER_TEMP/cambium-profile-cue/cue" >> "$GITHUB_ENV"
+
       - name: Run deterministic verification
         run: make check
 
@@ -132,6 +138,36 @@ jobs:
         uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: ${{ matrix.python-version }}
+
+      - name: Install the pinned Profile toolchain
+        run: |
+          python -m pip install --disable-pip-version-check -r Tools/requirements-profile.txt
+          python .github/scripts/install_cue.py --destination "$RUNNER_TEMP/cambium-profile-cue"
+          echo "CAMBIUM_CUE=$RUNNER_TEMP/cambium-profile-cue/cue" >> "$GITHUB_ENV"
+
+      - name: Set up rendering Node
+        if: ${{ contains(format(',{0},', matrix.test-files), ',test_deterministic_rendering_contract.py,') }}
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: "24"
+          package-manager-cache: false
+
+      - name: Bind the pinned static-rendering Host
+        if: ${{ contains(format(',{0},', matrix.test-files), ',test_deterministic_rendering_contract.py,') }}
+        run: |
+          renderer_workspace="$RUNNER_TEMP/cambium-static-renderer"
+          mkdir -p "$renderer_workspace"
+          cp Tools/knowledge/rendering/static_renderer/package.json Tools/knowledge/rendering/static_renderer/package-lock.json "$renderer_workspace/"
+          npm ci --prefix "$renderer_workspace" --ignore-scripts --no-audit --no-fund
+          export PLAYWRIGHT_BROWSERS_PATH="$renderer_workspace/browsers"
+          node "$renderer_workspace/node_modules/playwright-core/cli.js" install --with-deps chromium
+          renderer_node="$(node -p 'process.execPath')"
+          renderer_browser="$(node -e 'console.log(require(process.argv[1]).chromium.executablePath())' "$renderer_workspace/node_modules/playwright-core")"
+          test -x "$renderer_node"
+          test -x "$renderer_browser"
+          printf 'CAMBIUM_RENDER_NODE=%s\n' "$renderer_node" >> "$GITHUB_ENV"
+          printf 'CAMBIUM_RENDER_BROWSER=%s\n' "$renderer_browser" >> "$GITHUB_ENV"
+          printf 'CAMBIUM_RENDER_NODE_MODULES=%s\n' "$renderer_workspace/node_modules" >> "$GITHUB_ENV"
 
       - name: Run required unit tests
         env:

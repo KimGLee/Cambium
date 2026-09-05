@@ -1113,12 +1113,12 @@ class PathCapabilityIsolationTests(ArgvTests):
             source, "read", "snapshot")
         admitted = distribution.workspace / "profile"
         admitted.mkdir()
-        (admitted / "profile.md").write_text("manifest", encoding="utf-8")
+        (admitted / "profile.toml").write_text("manifest", encoding="utf-8")
         (admitted / "slot.md").write_text("admitted", encoding="utf-8")
         displaced = distribution.workspace / "profile-admitted"
         outside = Path(self.dist._tmp.name) / "outside-profile"
         outside.mkdir()
-        (outside / "profile.md").write_text("outside", encoding="utf-8")
+        (outside / "profile.toml").write_text("outside", encoding="utf-8")
         (outside / "slot.md").write_text("outside", encoding="utf-8")
 
         def mutate():
@@ -1126,7 +1126,7 @@ class PathCapabilityIsolationTests(ArgvTests):
             admitted.symlink_to(outside, target_is_directory=True)
 
         with self._swap_during_spawn(mutate):
-            response = self.call(server, "profile/profile.md")
+            response = self.call(server, "profile/profile.toml")
 
         self.assertIn("result", response, response)
         payload = response["result"]["structuredContent"]["stdout_json"]

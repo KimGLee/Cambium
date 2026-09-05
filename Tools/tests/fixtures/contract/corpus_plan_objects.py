@@ -1,79 +1,47 @@
-"""Minimal current Corpus Planning objects for contract tests.
+"""Minimal typed Profile inputs and real Corpus Planning artifact bytes.
 
-These are stable example values, not a second field registry. Production
-contracts remain the owner of every field, state, and accepted value.
+These are example values, not a second field registry. Profile values stay
+dictionaries; only the separate YAML planning artifacts below use text.
 """
 
-MANIFEST = """# Test Profile
+CONFIGURED_SLOT = {
+    "schema_version": 1,
+    "applicability": {"state": "configured"},
+    "artifact_bindings": {
+        "global_map": "planning/global-map.yaml",
+        "capability_matrix": "planning/capability-matrix.yaml",
+        "gap_register": "planning/gap-register.yaml"},
+    "capability_scale": [
+        {"rank": 0, "value": "Missing", "predicate": "No canonical owner exists.",
+         "target_eligible": False},
+        {"rank": 1, "value": "Core",
+         "predicate": "Core explanation has accepted evidence.",
+         "target_eligible": True},
+        {"rank": 2, "value": "Defensible",
+         "predicate": "Evidence can withstand challenge.",
+         "target_eligible": True}],
+    "pass_authority": {
+        "role_id": "stopper", "decision_scope_id": "corpus-plan-semantic-acceptance"},
+}
 
-## Profile Identity
+INACTIVE_SLOT = {
+    "schema_version": 1,
+    "applicability": {
+        "state": "not-applicable",
+        "reason": "this bounded task neither needs nor changes corpus-wide planning artifacts"},
+    "artifact_bindings": {}, "capability_scale": [], "pass_authority": {},
+}
 
-- `profile_id`: `test-profile`
+SCOPE = {"logical_architecture": [{
+    "layer_id": "L1", "directories": ["Topics"],
+    "responsibility": "Canonical topic pages."}]}
 
-## Implemented Slots
+ROLES = {"process_roles": {"stopper": "Human authority"}}
 
-- `Profile Scope`: `scope-and-architecture.md`
-- `Corpus Planning`: `corpus-planning.yaml`
-- `Role Registry`: `roles.md`
-"""
-
-SCOPE = """# Scope And Architecture
-
-## Logical Architecture
-
-| Stable Layer ID | Repository-relative directories | Single layer responsibility |
-|---|---|---|
-| `L1` | `Topics` | Canonical topic pages. |
-"""
-
-ROLES = """# Role Registry
-
-## Process Roles
-
-| Kernel role | Bound actor or system ID/name |
-|---|---|
-| `stopper` | Human authority |
-"""
-
-CONFIGURED_SLOT = """schema_version: 1
-applicability:
-  state: configured
-  reason: null
-artifact_bindings:
-  global_map: planning/global-map.yaml
-  capability_matrix: planning/capability-matrix.yaml
-  gap_register: planning/gap-register.yaml
-capability_scale:
-  - rank: 0
-    value: Missing
-    predicate: No canonical owner exists.
-    target_eligible: false
-  - rank: 1
-    value: Core
-    predicate: Core explanation has accepted evidence.
-    target_eligible: true
-  - rank: 2
-    value: Defensible
-    predicate: Evidence can withstand challenge.
-    target_eligible: true
-pass_authority:
-  role_id: stopper
-  decision_scope_id: corpus-plan-semantic-acceptance
-"""
-
-INACTIVE_SLOT = """schema_version: 1
-applicability:
-  state: not-applicable
-  reason: this bounded task neither needs nor changes corpus-wide planning artifacts
-artifact_bindings:
-  global_map: null
-  capability_matrix: null
-  gap_register: null
-capability_scale: []
-pass_authority:
-  role_id: null
-  decision_scope_id: null
-"""
+MANIFEST = {"schema_version": 1, "profile_id": "test-profile", "slots": {
+    "profile-scope": SCOPE, "role-registry": ROLES,
+    "corpus-planning": CONFIGURED_SLOT,
+}}
 
 GLOBAL_MAP = """schema_version: 1
 entries:

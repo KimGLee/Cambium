@@ -33,7 +33,7 @@ def resolution_route(status):
     return audit_lifecycle_contract.resolution_route(status)
 
 
-def producer_route(obligation, *, root=None):
+def producer_route(obligation, *, root=None, evaluation=None):
     """Return the sole execution route for one frozen obligation.
 
     This is an implementation projection, not an obligation registry.  The
@@ -50,10 +50,10 @@ def producer_route(obligation, *, root=None):
     if kind == "audit-receipt":
         try:
             chain = (audit_producer_chain.precursor_chain_for_spec(
-                         obligation, root=root)
+                         obligation, root=root, evaluation=evaluation)
                      if "spec_id" in obligation else
                      audit_producer_chain.precursor_chain_for_obligation(
-                         obligation, root=root))
+                         obligation, root=root, evaluation=evaluation))
             return chain["execution_route"]
         except audit_producer_chain.AuditProducerChainError:
             return None
@@ -158,7 +158,8 @@ def _catalog_record(result, receipt_id):
 def _substantive_review_step(result, item, status, obligation, *, prior=None,
                              chain=None):
     chain = chain or audit_producer_chain.precursor_chain_for_obligation(
-        obligation, root=result["root"])
+        obligation, root=result["root"],
+        evaluation=(result.get("_profile_authorized_view") or {}).get("_evaluation"))
     if chain["execution_route"] != "substantive-review":
         raise audit_producer_chain.AuditProducerChainError(
             "obligation is not a substantive-review producer chain")
@@ -208,7 +209,8 @@ def _substantive_review_step(result, item, status, obligation, *, prior=None,
 
 def _missing_step(result, item, status, obligation):
     arguments = _base_arguments(item, status, obligation)
-    route = producer_route(obligation, root=result["root"])
+    evaluation = (result.get("_profile_authorized_view") or {}).get("_evaluation")
+    route = producer_route(obligation, root=result["root"], evaluation=evaluation)
     capability = obligation.get("producer_capability")
     evidence_kind = obligation.get("evidence_kind")
 
@@ -220,10 +222,10 @@ def _missing_step(result, item, status, obligation):
 
     if route in {
             "substantive-review", "rendering-verification",
-            "deterministic-audit-precursor"}:
+            "deterministic-audit-precursor", "profile-rendering"}:
         try:
             chain = audit_producer_chain.precursor_chain_for_obligation(
-                obligation, root=result["root"])
+                obligation, root=result["root"], evaluation=evaluation)
         except audit_producer_chain.AuditProducerChainError as exc:
             return _repair(
                 item, status, obligation, "unmapped-audit-producer",
@@ -433,7 +435,8 @@ def next_stage_step(result, item, due_stage, required_state=None):
             prior = _catalog_record(result, row.get("evidence_ref"))
             try:
                 chain = audit_producer_chain.precursor_chain_for_obligation(
-                    obligation, root=result["root"])
+                    obligation, root=result["root"],
+                    evaluation=(result.get("_profile_authorized_view") or {}).get("_evaluation"))
             except audit_producer_chain.AuditProducerChainError:
                 chain = None
             if (not isinstance(prior, dict) or not isinstance(chain, dict) or

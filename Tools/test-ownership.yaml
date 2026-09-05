@@ -442,7 +442,7 @@ tests:
         owner_contract_symbol: audit_evidence_runtime.stage_evidence_closure
         parallel_safe: true
       - selector: TerminalDimensionEvidenceProjectionTests.*
-        level: contract
+        level: integration
         semantics: terminal_plan_bound_dimension_evidence_projection
         owner_contract_symbol: audit_evidence_runtime.terminal_dimension_evidence
         parallel_safe: true
@@ -849,35 +849,35 @@ tests:
         parallel_safe: true
   - path: Tools/tests/test_check_profile.py
     owner: Tools/governance/profile/check_profile.py
-    level: contract
+    level: integration
     lifecycle: current
     disposition: keep
     semantics: profile_load_checker_predicates
     owner_contract_symbol: check_profile.main
     parallel_safe: true
     overrides:
-      - selector: ExecutionDefaultContractTests.*
+      - selector: ExecutionDefaultContractTests.test_registered_value_domains_resolve_to_one_checker_predicate
         level: contract
         semantics: profile_execution_default_parser_and_value_domains
         owner_contract_symbol: check_profile.VALUE_DOMAINS
         parallel_safe: true
-      - selector: ProfileParserUnitTests.test_binding_section_obeys_markdown_authority_boundaries
-        level: unit
-        semantics: profile_manifest_binding_section_parser
-        owner_contract_symbol: check_profile.parse_bindings
+      - selector: ExecutionDefaultContractTests.test_value_domain_predicates_are_one_table_driven_contract
+        level: contract
+        semantics: profile_execution_default_value_domain_boundaries
+        owner_contract_symbol: check_profile.VALUE_DOMAINS
         parallel_safe: true
-      - selector: ProfileParserUnitTests.test_declarations_consume_only_supplied_snapshot_bytes
-        level: unit
-        semantics: profile_declaration_snapshot_parser
-        owner_contract_symbol: check_profile.profile_declarations
+      - selector: ExecutionDefaultContractTests.test_typed_override_values_keep_the_registry_boundary
+        level: integration
+        semantics: profile_override_through_complete_load_evaluation
+        owner_contract_symbol: check_profile.evaluate_profile_load
         parallel_safe: true
-      - selector: ProfileParserUnitTests.test_sentinel_scan_reads_only_the_supplied_closure
-        level: unit
-        semantics: profile_sentinel_snapshot_scan
-        owner_contract_symbol: check_profile.scan_sentinel
+      - selector: ProfileClosureContractTests.*
+        level: integration
+        semantics: profile_load_uses_only_declared_answer_closure
+        owner_contract_symbol: check_profile.evaluate_profile_load
         parallel_safe: true
       - selector: CorpusPlanningSlotContractTests.*
-        level: contract
+        level: integration
         semantics: configured_profile_slot_defers_corpus_artifact_resolution
         owner_contract_symbol: check_profile.validate_corpus_planning_slot
         parallel_safe: true
@@ -886,7 +886,7 @@ tests:
         semantics: check_profile_finding_classification
         owner_contract_symbol: check_profile.FINDING_CATEGORIES
         parallel_safe: true
-      - selector: ProfileCliTransportTests.*
+      - selector: ProfileReportContractTests.*
         level: integration
         semantics: check_profile_typed_contract_json_cli_seam
         owner_contract_symbol: check_profile.main
@@ -1251,6 +1251,17 @@ tests:
     disposition: keep
     semantics: deterministic_rendering_contract
     parallel_safe: true
+    overrides:
+      - selector: StaticRenderingRuntimeBoundaryTests.*
+        owner: Tools/knowledge/rendering/static_render_runtime.py
+        level: contract
+        semantics: renderer_host_binding_fail_closed
+        parallel_safe: true
+      - selector: StaticRenderingActualExecutionTests.*
+        owner: Tools/knowledge/rendering/static_render_runtime.py
+        level: integration
+        semantics: real_offline_compiler_artifact_acceptance
+        parallel_safe: true
   - path: Tools/tests/test_duplicate_check.py
     owner: Tools/knowledge/content/duplicate_check.py
     level: unit
@@ -1376,6 +1387,14 @@ tests:
         semantics: initial_task_plan_receipt_reference_required
         owner_contract_symbol: task_contract.initial_task_plan_receipt_errors
         parallel_safe: true
+  - path: Tools/tests/test_install_profile_toolchain.py
+    owner: Tools/platform/distribution/install_profile_toolchain.py
+    level: contract
+    lifecycle: current
+    disposition: keep
+    semantics: pinned_profile_toolchain_installation_without_global_mutation
+    owner_contract_symbol: install_profile_toolchain.main
+    parallel_safe: true
   - path: Tools/tests/test_issue_owner.py
     owner: Tools/module-boundaries.yaml
     level: unit
@@ -1725,18 +1744,12 @@ tests:
     parallel_safe: true
   - path: Tools/tests/test_profile_admission.py
     owner: Tools/governance/profile/profile_admission.py
-    level: contract
+    level: integration
     lifecycle: current
     disposition: keep
     semantics: profile_admission_snapshot_adapter
     owner_contract_symbol: profile_admission.admission_from_evaluation
     parallel_safe: true
-    overrides:
-      - selector: ProfileSelectionIntegrationTests.*
-        level: integration
-        semantics: profile_admission_active_selection_currentness
-        owner_contract_symbol: profile_admission.admit_profile
-        parallel_safe: true
   - path: Tools/tests/test_profile_batch_judgment_contract.py
     owner: Tools/governance/profile/profile_batch_judgment_contract.py
     level: contract
@@ -1744,61 +1757,33 @@ tests:
     disposition: keep
     semantics: profile_batch_judgment_contract
     parallel_safe: true
+  - path: Tools/tests/test_profile_candidate.py
+    owner: Tools/governance/profile/profile_candidate.py
+    level: unit
+    lifecycle: current
+    disposition: keep
+    semantics: candidate_stable_identity_edit_and_read_without_adoption
+    owner_contract_symbol: profile_candidate.apply_edits
+    parallel_safe: true
+    overrides:
+      - selector: CandidateEditIntegrationTests.*
+        level: integration
+        semantics: candidate_cue_validated_afterimage_publication_and_currentness
+        owner_contract_symbol: profile_candidate.edit_candidate
+        parallel_safe: true
   - path: Tools/tests/test_profile_contract.py
     owner: Tools/governance/profile/profile_contract.py
-    level: contract
+    level: integration
     lifecycle: current
     disposition: keep
     semantics: current_profile_typed_machine_contract
     owner_contract_symbol: profile_contract.load_profile_contract
     parallel_safe: true
     overrides:
-      - selector: ProfileMachineOwnerUnitTests.test_interface_slots_and_scan_capabilities_derive_from_current_owners
-        level: unit
+      - selector: ProfileMachineOwnerTests.*
+        level: contract
         semantics: profile_interface_and_scan_registry_owner_projection
         owner_contract_symbol: profile_contract.profile_interface_slots
-        parallel_safe: true
-      - selector: ProfileMachineOwnerUnitTests.test_unknown_machine_fields_are_rejected_by_their_closed_parsers
-        level: unit
-        semantics: profile_machine_closed_field_predicates
-        owner_contract_symbol: profile_contract.profile_interface_slots
-        parallel_safe: true
-      - selector: ExpressionStatusProjectionContractTests.*
-        level: contract
-        semantics: profile_expression_status_target_projection
-        owner_contract_symbol: profile_contract.expression_status_target_projection
-        parallel_safe: true
-      - selector: ExpressionArtifactRegistryContractTests.test_runtime_hub_consumer_uses_only_the_typed_projection
-        owner: Tools/execution/task_runtime/queue_runtime/control_plane.py
-        level: contract
-        semantics: expression_hub_typed_profile_projection_connection
-        owner_contract_symbol: control_plane.profile_hub_paths
-        parallel_safe: true
-      - selector: ExpressionArtifactRegistryContractTests.test_agent_atlas_example_projects_its_registered_interview_hub
-        owner: Tools/execution/task_runtime/queue_runtime/control_plane.py
-        level: contract
-        semantics: agent_atlas_expression_hub_typed_profile_projection
-        owner_contract_symbol: control_plane.profile_hub_paths
-        parallel_safe: true
-      - selector: ProfileVolatilityDefaultsContractTests.*
-        level: contract
-        semantics: profile_volatility_defaults_typed_projection
-        owner_contract_symbol: profile_contract.volatility_defaults_projection
-        parallel_safe: true
-      - selector: ProfileExtensionDimensionContractTests.*
-        level: contract
-        semantics: profile_extension_dimension_kernel_projection
-        owner_contract_symbol: profile_contract.EXTENSION_TARGETS
-        parallel_safe: true
-      - selector: ProfileExtensionGateContractTests.*
-        level: contract
-        semantics: profile_extension_gate_typed_closure
-        owner_contract_symbol: profile_contract.load_profile_contract
-        parallel_safe: true
-      - selector: ProfileTypedClosureContractTests.*
-        level: contract
-        semantics: profile_slot_and_dependency_typed_closure
-        owner_contract_symbol: profile_contract.load_profile_contract
         parallel_safe: true
   - path: Tools/tests/test_profile_evidence_projection.py
     owner: Tools/governance/profile/profile_contract.py
@@ -1822,6 +1807,14 @@ tests:
     semantics: current_template_to_initial_profile_adoption_e2e
     owner_contract_symbol: apply_profile_adoption.main
     parallel_safe: false
+  - path: Tools/tests/test_profile_format.py
+    owner: Tools/governance/profile/profile_codec.py
+    level: unit
+    lifecycle: current
+    disposition: keep
+    semantics: lossless_deterministic_toml_codec_without_policy_defaults
+    owner_contract_symbol: profile_codec.dumps_profile
+    parallel_safe: true
   - path: Tools/tests/test_profile_onboarding_status.py
     owner: Tools/governance/profile/profile_onboarding_status.py
     level: contract
@@ -2249,6 +2242,12 @@ tests:
     disposition: keep
     semantics: rendering_verification_contract
     parallel_safe: true
+    overrides:
+      - selector: ProfileRenderingEvidenceTests.*
+        owner: Tools/knowledge/rendering/profile_rendering_evidence_contract.py
+        level: contract
+        semantics: profile_rendering_plan_producer_and_consumer_binding
+        parallel_safe: true
   - path: Tools/tests/test_required_queue_e2e.py
     owner: kernel/K13 Task Runtime and Execution Control/runtime-state-model.json
     level: e2e
@@ -2280,7 +2279,7 @@ tests:
     parallel_safe: false
   - path: Tools/tests/test_run_gates.py
     owner: Tools/governance/control/run_gates.py
-    level: contract
+    level: integration
     lifecycle: current
     disposition: keep
     semantics: gate_registry_to_unique_dispatch_projection
@@ -2466,15 +2465,15 @@ tests:
       - selector: ScaffoldPredicateUnitTests.test_manifest_entries_accept_only_canonical_relative_paths
         level: unit
         semantics: scaffold_manifest_relative_path_predicate
-        owner_contract_symbol: scaffold_profile._canonical_manifest_entry
+        owner_contract_symbol: scaffold_profile._relative
         parallel_safe: true
       - selector: ScaffoldManifestContractTests.*
         level: contract
         semantics: scaffold_manifest_plan_and_conflict_contract
         owner_contract_symbol: scaffold_profile.build_plan
         parallel_safe: true
-      - selector: ScaffoldWriterSlowTests.*
-        level: slow
+      - selector: ScaffoldPublicationContractTests.*
+        level: integration
         semantics: scaffold_writer_security_race_and_cleanup
         owner_contract_symbol: scaffold_profile.apply_plan
         parallel_safe: false
@@ -2620,12 +2619,27 @@ tests:
         owner_contract_symbol: task_runtime_runner._await_terminal_audit
         parallel_safe: true
   - path: Tools/tests/test_template_parity.py
-    owner: profiles/template-files.yaml
+    owner: Tools/governance/profile/profile_schema_projection.py
     level: integration
     lifecycle: current
     disposition: keep
-    semantics: template_parity
+    semantics: profile_owner_projection_and_authoring_join
+    owner_contract_symbol: profile_schema_projection.check_profile_schema_projections
     parallel_safe: false
+    overrides:
+      - selector: TemplateParityTests.test_empty_template_is_a_draft_without_policy_or_adoption_state
+        owner: profiles/template-files.yaml
+        semantics: unique_empty_candidate_template
+      - selector: TemplateParityTests.test_interview_uses_semantic_paths_and_covers_every_registered_slot
+        owner: profiles/interview.yaml
+        semantics: interview_to_semantic_slot_coverage
+      - selector: TemplateParityTests.test_examples_obey_current_contracts_without_becoming_template_defaults
+        owner: Tools/governance/profile/profile_contract.py
+        semantics: examples_obey_current_owner_without_becoming_defaults
+      - selector: TemplateParityTests.test_cue_*
+        owner: Tools/governance/profile/profile_cue.py
+        semantics: isolated_current_profile_evaluator_without_remote_resolution
+        owner_contract_symbol: profile_cue.validate_profile
   - path: Tools/tests/test_test_catalog.py
     owner: Tools/platform/distribution/test_catalog.py
     level: contract
@@ -2724,6 +2738,12 @@ tests:
         level: unit
         semantics: closed_coverage_projection
         owner_contract_symbol: update_queue._project_closed_coverage
+        parallel_safe: true
+      - selector: StandardsRevalidationConsumptionTests.*
+        owner: Tools/execution/task_runtime/queue_runtime/revalidation.py
+        level: unit
+        semantics: standards_revalidation_aggregate_consumption_replay
+        owner_contract_symbol: revalidation.consumed_standards_revalidation_keys
         parallel_safe: true
       - selector: OpenWriterIntegrationTests.*
         level: integration
@@ -2949,7 +2969,7 @@ fixtures:
     lifecycle: current
   - path: Tools/tests/fixtures/contract/priority_quota_objects.py
     owner: kernel/K00 Standards Control/contract-exception-policy-base.yaml
-    purpose: Minimal current None and Configured Profile forms for priority-quota contract tests
+    purpose: Minimal typed inactive and configured priority-quota values without runtime construction
     lifecycle: current
   - path: Tools/tests/fixtures/integration/card_activation_checkpoint.py
     owner: Tools/execution/context_delivery/card_activation.py
@@ -3039,37 +3059,21 @@ fixtures:
     owner: Tools/knowledge/metadata/metadata_page_state_contract.py
     purpose: Current governed page-state sample B
     lifecycle: current
-  - path: Tools/tests/fixtures/runtime_state/valid/profiles/test-profile/profile.md
+  - path: Tools/tests/fixtures/runtime_state/valid/profiles/test-profile/profile.toml
     owner: Tools/governance/profile/profile_contract.py
-    purpose: Current selected Profile manifest
+    purpose: Current identity-only Profile checkpoint, not Profile-load evidence
     lifecycle: current
-  - path: Tools/tests/fixtures/synthetic_profile/corpus-planning.yaml
-    owner: kernel/K02 Knowledge Work Construction/corpus-planning-contract.yaml
-    purpose: Current synthetic Profile Corpus Planning binding
-    lifecycle: current
-  - path: Tools/tests/fixtures/synthetic_profile/metadata-contract.yaml
+  - path: Tools/tests/fixtures/synthetic_profile/policies/synthetic-predicate.md
     owner: Tools/governance/profile/profile_contract.py
-    purpose: Current synthetic Profile metadata binding
+    purpose: Independent semantic predicate body referenced by typed fixture answers
     lifecycle: current
-  - path: Tools/tests/fixtures/synthetic_profile/profile.md
+  - path: Tools/tests/fixtures/synthetic_profile/policies/residual-disposition.md
     owner: Tools/governance/profile/profile_contract.py
-    purpose: Current synthetic Profile manifest
+    purpose: Independent residual disposition body referenced by typed fixture answers
     lifecycle: current
   - path: Tools/tests/fixtures/synthetic_profile/scan-configs/residual-scan.yaml
     owner: Tools/governance/profile/profile_contract.py
     purpose: Current synthetic Profile scan binding
-    lifecycle: current
-  - path: Tools/tests/fixtures/synthetic_profile/slots.md
-    owner: Tools/governance/profile/profile_contract.py
-    purpose: Current synthetic Profile slot binding
-    lifecycle: current
-  - path: Tools/tests/fixtures/synthetic_profile/structure-registry.yaml
-    owner: Tools/governance/profile/profile_contract.py
-    purpose: Current synthetic Profile structure binding
-    lifecycle: current
-  - path: Tools/tests/fixtures/synthetic_profile/vocabulary-extensions.yaml
-    owner: Tools/governance/profile/profile_contract.py
-    purpose: Current synthetic Profile vocabulary binding
     lifecycle: current
   - path: Tools/tests/host_conformance_probe.py
     owner: Tools/host-conformance.yaml
@@ -3104,7 +3108,7 @@ fixtures:
     purpose: In-memory current producer outputs for onboarding status decisions
     lifecycle: current
   - path: Tools/tests/support/profile_template_fixture.py
-    owner: profiles/_template/profile.md
+    owner: profiles/_template/profile.toml
     purpose: Filled candidate derived from the one canonical Profile template
     lifecycle: current
   - path: Tools/tests/support/scaffold_profile_fixture.py

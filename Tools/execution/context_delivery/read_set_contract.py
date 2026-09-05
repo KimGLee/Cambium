@@ -20,6 +20,7 @@ from pathlib import Path
 import re
 
 import Tools.platform.common.kblib as kblib
+from Tools.governance.profile import profile_codec, profile_layout_contract
 from Tools.platform.repository import repository as tool_repository
 from Tools.platform.repository import path_contract as repository_path_contract
 
@@ -336,25 +337,16 @@ def discover_profile(root, selected_profile_manifest):
     registry; tables, headings, Wiki Links, and other prose are ignored.
     """
     schema = load_schema(root)
-    _safe_relative_path(
-        selected_profile_manifest, "selected Profile manifest", suffix=".md")
     try:
-        manifest_path = kblib.repository_path(
-            root, selected_profile_manifest, must_exist=True,
-            reject_symlink=True)
-        manifest_text = kblib.read_text(manifest_path)
+        location = profile_layout_contract.parse_profile_manifest_path(selected_profile_manifest)
+        snapshot = kblib.repository_file_snapshot(
+            root, selected_profile_manifest, singly_linked=True)
+        document = profile_codec.loads_profile(snapshot.data)
+        profile_id = profile_layout_contract.validate_manifest_identity(document, location)
     except (OSError, UnicodeError, ValueError) as exc:
         raise ReadSetContractError(
-            "selected Profile manifest is unsafe or unreadable: %s" % exc)
-    profile_directory = Path(selected_profile_manifest).parent.as_posix()
-    directory_name = Path(profile_directory).name
-    profile_id, identity_errors = kblib.profile_identity(
-        manifest_text, directory_name)
-    if identity_errors or not profile_id:
-        details = "; ".join(error[1] for error in identity_errors)
-        raise ReadSetContractError(
-            "selected Profile identity is invalid: %s" %
-            (details or "missing profile_id"))
+            "selected Profile manifest identity is unsafe or invalid: %s" % exc)
+    profile_directory = location.directory
     directory = Path(root).resolve() / profile_directory
     if not directory.is_dir() or directory.is_symlink():
         raise ReadSetContractError(

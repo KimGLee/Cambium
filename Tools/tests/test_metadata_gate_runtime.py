@@ -59,7 +59,7 @@ def _gate(producer_kind="manual-attestation"):
 def _context(root="/not-accessed", gate=None, page_snapshot=None):
     gate = gate or _gate()
     profile_view = {
-        "selected_profile_manifest": "profiles/sample/profile.md",
+        "selected_profile_manifest": "profiles/sample/profile.toml",
         "profile_snapshot_sha256": "sha256:" + "1" * 64,
         "profile_contract_fingerprint": "sha256:" + "2" * 64,
         "profile_load_inputs_sha256": "sha256:" + "3" * 64,
@@ -127,7 +127,7 @@ class MetadataGateEvidenceContractTests(unittest.TestCase):
             ("tool_version", "9.0.0"),
             ("check", "other-check"),
             ("requested_completion_value", "rejected"),
-            ("selected_profile_manifest", "profiles/other/profile.md"),
+            ("selected_profile_manifest", "profiles/other/profile.toml"),
         )
         for field, value in mutations:
             with self.subTest(field=field):
@@ -147,7 +147,7 @@ class MetadataGateEvidenceContractTests(unittest.TestCase):
                 context, "rejected", "release-reviewer", "passes")
 
     def test_runtime_and_authority_views_must_be_the_same_admission_pair(self):
-        profile_view = {"selected_profile_manifest": "profiles/p/profile.md"}
+        profile_view = {"selected_profile_manifest": "profiles/p/profile.toml"}
         active_view = {"active_standards_sha256": "sha256:" + "c" * 64}
         runtime = {
             "_profile_authorized_view": profile_view,

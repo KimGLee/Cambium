@@ -1,0 +1,1291 @@
+# Example Profile answers. This example is not selected or an adoption certificate.
+profile_id = "agent-atlas"
+schema_version = 1
+
+[execution_default_overrides]
+
+[slots.audit-dimension-registry.extension_dimensions]
+items = []
+mode = "none"
+
+[[slots.audit-dimension-registry.judgment_items]]
+audit_layer = "Single Note Review"
+audit_object = "One page of a registered foundation class satisfies the Profile foundation-depth predicate."
+dimension_id = "content_and_depth"
+evidence_role = "emits"
+item_id = "agent-atlas-foundation-depth"
+predicate_owner = "profiles/examples/agent-atlas/profile.toml#slots.profile-scope.foundation_depth_requirements"
+
+[[slots.audit-dimension-registry.judgment_items]]
+audit_layer = "Batch Review"
+audit_object = "Every candidate reported by the registered residual scan has an accepted disposition."
+dimension_id = "coverage_and_integration"
+evidence_role = "emits"
+item_id = "agent-atlas-residual-disposition"
+predicate_owner = "profiles/examples/agent-atlas/policies/residual-disposition.md#Residual Disposition"
+
+[slots.audit-dimension-registry.residual_disposition]
+body_ref = "profiles/examples/agent-atlas/policies/residual-disposition.md#Residual Disposition"
+
+[slots.corpus-planning]
+schema_version = 1
+
+[slots.corpus-planning.applicability]
+state = "configured"
+
+[slots.corpus-planning.artifact_bindings]
+capability_matrix = "Corpus Planning/capability_matrix.yaml"
+gap_register = "Corpus Planning/gap_register.yaml"
+global_map = "Corpus Planning/global_map.yaml"
+
+[[slots.corpus-planning.capability_scale]]
+predicate = "No canonical owner exists."
+rank = 0
+target_eligible = false
+value = "0 Missing"
+
+[[slots.corpus-planning.capability_scale]]
+predicate = "A definition or outline exists, but mechanism and boundaries are incomplete."
+rank = 1
+target_eligible = false
+value = "1 Outline"
+
+[[slots.corpus-planning.capability_scale]]
+predicate = "The canonical owner explains the core mechanism and common decision boundary."
+rank = 2
+target_eligible = true
+value = "2 Core"
+
+[[slots.corpus-planning.capability_scale]]
+predicate = "The capability connects interfaces, state, failures, and evaluation through a system path."
+rank = 3
+target_eligible = true
+value = "3 System"
+
+[[slots.corpus-planning.capability_scale]]
+predicate = "The capability has a complete evidence chain for its bounded claims."
+rank = 4
+target_eligible = true
+value = "4 Defensible"
+
+[slots.corpus-planning.pass_authority]
+decision_scope_id = "corpus-plan-semantic-acceptance"
+role_id = "stopper"
+
+[slots.escalation-policy.escalation_triggers]
+items = []
+mode = "none"
+
+[[slots.expression-layer-entry.artifact_contracts]]
+body_ref = "profiles/examples/agent-atlas/policies/expression-contracts.md#Interview Topic Guide Contract"
+contract_id = "agent-atlas-interview-topic-guide"
+
+[[slots.expression-layer-entry.artifact_contracts]]
+body_ref = "profiles/examples/agent-atlas/policies/expression-contracts.md#Interview Roadmap Contract"
+contract_id = "agent-atlas-interview-roadmap"
+
+[[slots.expression-layer-entry.artifact_contracts]]
+body_ref = "profiles/examples/agent-atlas/policies/expression-contracts.md#Interview Cheat Sheet Contract"
+contract_id = "agent-atlas-interview-cheat-sheet"
+
+[slots.expression-layer-entry.registered_artifacts]
+mode = "configured"
+
+[[slots.expression-layer-entry.registered_artifacts.items]]
+artifact_id = "agent-atlas-interview-topic-guide"
+artifact_type = "interview-topic-guide"
+contract_ref = "profiles/examples/agent-atlas/policies/expression-contracts.md#Interview Topic Guide Contract"
+dependency_map = "Interview Preparation/Interview Overview.md"
+entry_point = "Interview Preparation/Topic Guides"
+label = "Interview Topic Guide"
+metadata_fields = [
+    "interview_guide",
+    "canonical_bindings",
+]
+revalidation_trigger = "Its canonical knowledge binding or supporting evidence changes."
+
+[[slots.expression-layer-entry.registered_artifacts.items]]
+artifact_id = "agent-atlas-interview-roadmap"
+artifact_type = "roadmap"
+contract_ref = "profiles/examples/agent-atlas/policies/expression-contracts.md#Interview Roadmap Contract"
+dependency_map = "Interview Preparation/Interview Overview.md"
+entry_point = "Interview Preparation/Roadmaps"
+label = "Interview Roadmap"
+metadata_fields = [
+    "canonical_bindings",
+]
+revalidation_trigger = "Its ordered topic set or prerequisite relation changes."
+
+[[slots.expression-layer-entry.registered_artifacts.items]]
+artifact_id = "agent-atlas-interview-cheat-sheet"
+artifact_type = "cheat-sheet"
+contract_ref = "profiles/examples/agent-atlas/policies/expression-contracts.md#Interview Cheat Sheet Contract"
+dependency_map = "Interview Preparation/Interview Overview.md"
+entry_point = "Interview Preparation/Cheat Sheets"
+label = "Interview Cheat Sheet"
+metadata_fields = [
+    "canonical_bindings",
+]
+revalidation_trigger = "A summarized canonical owner changes."
+
+[slots.language-contract]
+content_length_unit = "characters"
+
+[slots.language-contract.canonical_naming]
+folders = "English Title Case with spaces; preserve official casing."
+image_assets = "Lowercase English kebab-case; use the owning page slug as the prefix when practical."
+pages = "English Title Case or official casing with spaces."
+term_notes = "The most common official English term or industry-standard acronym, using conventional casing and punctuation."
+
+[slots.language-contract.formatting_migration_invalidations]
+items = []
+mode = "none"
+
+[slots.language-contract.language_routing]
+body_language = "Simplified Chinese (`zh-Hans`)."
+external_names = "Keep the official product, project, model, protocol, organization, or publication name unchanged."
+machine_identifiers = "Keep identifiers, commands, fields, paths, formulas, and configuration literals exact and format them as code."
+proper_names = "Preserve the official name and add a concise Chinese explanation at first meaningful use when needed."
+
+[slots.language-contract.language_routing.secondary_language]
+mode = "configured"
+rule = "English preserves official external identities, source-language claims, and machine interfaces; Chinese is the canonical explanatory language."
+
+[slots.language-contract.scoped_anti_pattern_extensions]
+items = []
+mode = "none"
+
+[slots.language-contract.terminology_and_display]
+abbreviations = "Expand once on first use per page, with a Chinese explanation when needed; use the abbreviation thereafter."
+aliases = "Include the official full form, accepted acronym, common Chinese name, and materially distinct established synonyms."
+display_order = "Present the Chinese explanation around the preserved official or machine identity."
+file_annotations = "None — file names carry only the canonical title."
+headings = "Use concise stable headings; explanatory labels are Chinese, while official identities remain unchanged."
+
+[slots.metadata-contract]
+applicability_differences = []
+schema_version = 1
+
+[slots.metadata-contract.applicability]
+state = "configured"
+
+[[slots.metadata-contract.extension_fields]]
+field = "interview_guide"
+mode = "optional"
+owner = "profiles/examples/agent-atlas/profile.toml#slots.expression-layer-entry"
+shape = "path"
+
+[[slots.metadata-contract.extension_fields]]
+field = "case_class"
+mode = "conditional"
+owner = "profiles/examples/agent-atlas/profile.toml#slots.profile-scope"
+shape = "nonempty-string"
+
+[[slots.metadata-contract.extension_fields.condition.all]]
+field = "type"
+in = [
+    "case-study",
+]
+
+[[slots.metadata-contract.extension_fields]]
+field = "source_class"
+mode = "conditional"
+owner = "profiles/examples/agent-atlas/profile.toml#slots.source-policy"
+shape = "nonempty-string"
+
+[[slots.metadata-contract.extension_fields.condition.all]]
+field = "type"
+in = [
+    "source-note",
+]
+
+[[slots.metadata-contract.relationship_extensions]]
+direction = "expression-to-canonical"
+field = "canonical_bindings"
+mode = "optional"
+owner = "profiles/examples/agent-atlas/profile.toml#slots.expression-layer-entry"
+shape = "list-of-paths"
+target = "page"
+
+[[slots.metadata-contract.section_roles]]
+aliases = [
+    "Sources",
+]
+owner = "profiles/examples/agent-atlas/profile.toml#slots.language-contract"
+role = "sources"
+titles = [
+    "Sources（来源）",
+    "来源",
+]
+
+[[slots.metadata-contract.section_roles]]
+aliases = [
+    "Related",
+    "Related（相关内容）",
+]
+owner = "profiles/examples/agent-atlas/profile.toml#slots.language-contract"
+role = "related"
+titles = [
+    "Related（相关）",
+    "相关",
+]
+
+[slots.priority-rubric.priority_quota]
+items = []
+mode = "none"
+
+[slots.priority-rubric.profile_owned_grant_criteria.P0]
+mode = "configured"
+predicate = "The page's exact repository-relative path appears in `canonical_markdown_paths` for at least one `P0` capability in the Profile-bound Capability Matrix, and that capability is necessary to satisfy a declared Atlas goal. If a page qualifies for both P0 and P1, P0 takes precedence."
+protected_capability = "The reader can understand, design, verify, operate, diagnose, and recover the core end-to-end Agent and Harness system described by Atlas."
+
+[slots.priority-rubric.profile_owned_grant_criteria.P1]
+mode = "configured"
+predicate = "The page is not P0 and its exact repository-relative path either appears in `canonical_markdown_paths` for a `P1` capability, appears in `evidence_paths` for a `P0` capability, or is the canonical page of a Global Map entry whose typed dependency directly feeds an entry used by a `P0` capability through `prerequisite-for`, `evidence-input-to`, `control-input-to`, `system-input-to`, or `canonical-source-for`. A derived Expression artifact or its readiness is not a grant condition."
+protected_capability = "The reader can explain and defend the mechanisms, prerequisites, evidence, tradeoffs, failure modes, safety boundaries, and evaluation methods that directly support those core capabilities."
+
+[[slots.profile-scope.content_priority_factors]]
+factor = "Knowledge required to design, execute, verify, or recover an end-to-end Agent or LLM system."
+rank = 1
+
+[[slots.profile-scope.content_priority_factors]]
+factor = "Foundations and source evidence needed to explain the system's behavior, limits, and tradeoffs."
+rank = 2
+
+[[slots.profile-scope.content_priority_factors]]
+factor = "Everything else in scope."
+rank = 3
+
+[slots.profile-scope.dependency_ordered_build_sequence]
+items = []
+mode = "not-applicable"
+reason = "Atlas is an existing corpus; work order belongs to each confirmed Task Plan rather than to the stable Profile."
+
+[slots.profile-scope.excluded_scope]
+mode = "configured"
+
+[[slots.profile-scope.excluded_scope.items]]
+content = "Archive/"
+handling = "Historical material; re-admit only through a later confirmed task."
+
+[[slots.profile-scope.excluded_scope.items]]
+content = ".obsidian/"
+handling = "Knowledge-host configuration, not canonical knowledge content."
+
+[[slots.profile-scope.excluded_scope.items]]
+content = "Embedded Cambium standards snapshots"
+handling = "Use the adopted public components instead of an in-corpus copy."
+
+[[slots.profile-scope.excluded_scope.items]]
+content = "Python Algorithm Agent Training/"
+handling = "Separate training curriculum outside the current Atlas scope."
+
+[[slots.profile-scope.foundation_depth_requirements]]
+page_class = "Mathematical or statistical mechanism"
+predicate = "Defines its terms and assumptions, explains the governing relation, gives a concrete example, and states a boundary or failure condition."
+
+[[slots.profile-scope.foundation_depth_requirements]]
+page_class = "ML, DL, LLM, Retrieval, or RAG mechanism"
+predicate = "Explains the mechanism, required inputs or state, evaluation method, failure modes, and when to use it."
+
+[[slots.profile-scope.foundation_depth_requirements]]
+page_class = "Agent or execution-system mechanism"
+predicate = "Explains its interfaces, state changes, controls, evidence, and recovery boundary."
+
+[slots.profile-scope.goal]
+readers = [
+    "Agent and LLM Systems Engineer candidates, working engineers, and technical reviewers.",
+]
+statement = "Build a Chinese-first, source-traceable knowledge base for understanding, designing, evaluating, operating, and explaining Agent and LLM systems."
+
+[slots.profile-scope.knowledge_spine]
+locator = "Repository-relative directory identifies the layer; page metadata and explicit links identify the page role and dependencies."
+organizing_logic = "Foundations → model behavior → Agent behavior → production system → evaluation and recovery; sources and synthesis supply evidence, while cases and interview artifacts consume it."
+
+[[slots.profile-scope.logical_architecture]]
+directories = [
+    "Modeling Fundamentals",
+    "Machine Learning Knowledge",
+    "Deep Learning Knowledge",
+    "LLM Knowledge",
+]
+layer_id = "L-FOUNDATION"
+responsibility = "Reusable mathematical, data, model, training, inference, retrieval, and grounding knowledge."
+
+[[slots.profile-scope.logical_architecture]]
+directories = [
+    "Agent Knowledge",
+]
+layer_id = "L-AGENT"
+responsibility = "Agent behavior and execution-system knowledge."
+
+[[slots.profile-scope.logical_architecture]]
+directories = [
+    "AI Systems Engineering",
+]
+layer_id = "L-PRODUCTION"
+responsibility = "Production architecture, evaluation, operations, reliability, safety, cost, and capacity."
+
+[[slots.profile-scope.logical_architecture]]
+directories = [
+    "Industry Cases",
+]
+layer_id = "L-CASES"
+responsibility = "Bounded real-system cases and their evidence."
+
+[[slots.profile-scope.logical_architecture]]
+directories = [
+    "Knowledge Sources",
+]
+layer_id = "L-SOURCES"
+responsibility = "External-source records and their bounded claims."
+
+[[slots.profile-scope.logical_architecture]]
+directories = [
+    "Research Synthesis",
+]
+layer_id = "L-SYNTHESIS"
+responsibility = "Cross-source comparison and synthesis."
+
+[[slots.profile-scope.logical_architecture]]
+directories = [
+    "Interview Preparation",
+]
+layer_id = "L-INTERVIEW"
+responsibility = "Reader-facing interview preparation derived from canonical knowledge."
+
+[[slots.profile-scope.new_page_placement_rule]]
+fallback = false
+layer_id = "L-SOURCES"
+predicate = "The page records one external source."
+
+[[slots.profile-scope.new_page_placement_rule]]
+fallback = false
+layer_id = "L-SYNTHESIS"
+predicate = "The page synthesizes two or more sources."
+
+[[slots.profile-scope.new_page_placement_rule]]
+fallback = false
+layer_id = "L-INTERVIEW"
+predicate = "The Expression Layer Predicate is true."
+
+[[slots.profile-scope.new_page_placement_rule]]
+fallback = false
+layer_id = "L-CASES"
+predicate = "The page is a bounded real-system case."
+
+[[slots.profile-scope.new_page_placement_rule]]
+fallback = false
+layer_id = "L-PRODUCTION"
+predicate = "The page owns production architecture or operation."
+
+[[slots.profile-scope.new_page_placement_rule]]
+fallback = false
+layer_id = "L-AGENT"
+predicate = "The page owns Agent behavior or execution-system knowledge."
+
+[[slots.profile-scope.new_page_placement_rule]]
+fallback = true
+layer_id = "L-FOUNDATION"
+predicate = "Otherwise"
+
+[[slots.profile-scope.placement_layer_registrations]]
+role_id = "Shared Foundation Layer"
+
+[slots.profile-scope.placement_layer_registrations.binding]
+kind = "layer"
+layer_id = "L-FOUNDATION"
+
+[[slots.profile-scope.placement_layer_registrations]]
+role_id = "Production Systems Layer"
+
+[slots.profile-scope.placement_layer_registrations.binding]
+kind = "layer"
+layer_id = "L-PRODUCTION"
+
+[[slots.profile-scope.placement_layer_registrations]]
+role_id = "Cross-domain Concepts Layer"
+
+[slots.profile-scope.placement_layer_registrations.binding]
+kind = "fallback"
+layer_id = "L-FOUNDATION"
+
+[[slots.profile-scope.placement_layer_registrations]]
+role_id = "Expression Layer Predicate"
+
+[slots.profile-scope.placement_layer_registrations.binding]
+kind = "predicate"
+predicate = "The page is an Interview Topic Guide, Roadmap, or Cheat Sheet under `Interview Preparation`."
+
+[[slots.profile-scope.placement_layer_registrations]]
+role_id = "Case Study Layer"
+
+[slots.profile-scope.placement_layer_registrations.binding]
+kind = "layer"
+layer_id = "L-CASES"
+
+[[slots.profile-scope.placement_layer_registrations]]
+role_id = "Source Note Layer"
+
+[slots.profile-scope.placement_layer_registrations.binding]
+kind = "layer"
+layer_id = "L-SOURCES"
+
+[[slots.profile-scope.placement_layer_registrations]]
+role_id = "Research Synthesis Layer"
+
+[slots.profile-scope.placement_layer_registrations.binding]
+kind = "layer"
+layer_id = "L-SYNTHESIS"
+
+[slots.profile-scope.production_system_reasoning_applicability]
+mode = "configured"
+
+[[slots.profile-scope.production_system_reasoning_applicability.items]]
+predicate = "A page under `Agent Knowledge`, `AI Systems Engineering`, or `Industry Cases` that claims an executable system path, operational behavior, metric, control, side effect, or recovery outcome."
+
+[slots.profile-scope.representative_sample_plan]
+mode = "configured"
+
+[[slots.profile-scope.representative_sample_plan.items]]
+note_type = "Foundation"
+selection_predicate = "One page that exposes assumptions, mechanism, evaluation, and a failure boundary."
+
+[[slots.profile-scope.representative_sample_plan.items]]
+note_type = "Agent or execution system"
+selection_predicate = "One page that connects intent, execution, evidence, and recovery."
+
+[[slots.profile-scope.representative_sample_plan.items]]
+note_type = "Production system"
+selection_predicate = "One page that covers interfaces, state, observability, reliability, and rollback."
+
+[[slots.profile-scope.representative_sample_plan.items]]
+note_type = "Source or synthesis"
+selection_predicate = "One source record and one synthesis that demonstrate claim traceability."
+
+[[slots.profile-scope.representative_sample_plan.items]]
+note_type = "Interview artifact"
+selection_predicate = "One artifact that resolves to its canonical knowledge owners."
+
+[[slots.profile-scope.terminology_structure]]
+boundary = "Include when a stable definition or mechanism needs a reusable owner."
+layer_id = "L-FOUNDATION"
+term_class = "Reusable modeling, ML, DL, LLM, retrieval, or grounding terms"
+
+[[slots.profile-scope.terminology_structure]]
+boundary = "Include Agent-specific semantics; production deployment remains in `L-PRODUCTION`."
+layer_id = "L-AGENT"
+term_class = "Agent behavior or execution-system terms"
+
+[[slots.profile-scope.terminology_structure]]
+boundary = "Include cross-component operational semantics without duplicating foundation or Agent owners."
+layer_id = "L-PRODUCTION"
+term_class = "Production, evaluation, reliability, safety, cost, or capacity terms"
+
+[[slots.registered-scan-registry.scan_registrations]]
+activation_role = "K12/09 item 6 — residual-content scan"
+candidate_predicate = "Markdown outside `Interview Preparation` containing registered interview-answer markers is a candidate only."
+configuration_ref = "profiles/examples/agent-atlas/scan-configs/residual-scan.yaml"
+judgment_item_id = "agent-atlas-residual-disposition"
+scan_id = "agent-atlas-residual-content"
+scope = "Repository root, excluding control-plane and Profile Scope exclusions"
+verifier_capability = "residual-content-scan-v1"
+
+[slots.rendering-contract]
+registration = "none"
+rules = []
+schema_version = 1
+
+[slots.role-registry.extension_roles]
+items = []
+mode = "none"
+
+[slots.role-registry.knowledge_host]
+host = "Agent Systems Atlas Obsidian vault"
+ui = "Obsidian desktop UI"
+
+[slots.role-registry.metric_traceability_roles]
+items = []
+mode = "not-applicable"
+reason = "Atlas does not maintain a Profile-owned evaluation-execution record model. External metrics and quantitative claims follow Kernel evidence rules and this Profile's Source Policy, including source identity, version or retrieval date, and the bounded claim they support."
+
+[slots.role-registry.process_roles]
+executor = "Authorized Agent"
+gatekeeper = "User"
+proposer = "Assisting Agent"
+stopper = "User"
+
+[slots.routing-and-gate-registry.additional_l_tier_triggers]
+items = []
+mode = "none"
+
+[slots.routing-and-gate-registry.batch_review_requirements]
+items = []
+mode = "none"
+
+[slots.routing-and-gate-registry.extension_gates]
+items = []
+mode = "none"
+
+[slots.routing-and-gate-registry.specialized_audit_invariants]
+items = []
+mode = "none"
+
+[slots.routing-and-gate-registry.supplemental_routes]
+items = []
+mode = "none"
+
+[slots.source-policy.domain_comparison_rules]
+items = []
+mode = "none"
+
+[slots.source-policy.provenance_extensions]
+items = []
+mode = "none"
+
+[[slots.source-policy.source_authority]]
+claim_class = "Official product, API, implementation, architecture, policy, or incident claims."
+location = "Knowledge Sources/Official Engineering"
+rank = 1
+source_id = "ATLAS-OFFICIAL"
+version_policy = "Record the available release, model, API version, commit, and retrieval date."
+
+[[slots.source-policy.source_authority]]
+claim_class = "Requirements stated by a named standard or specification."
+location = "Knowledge Sources/Standards"
+rank = 2
+source_id = "ATLAS-STANDARD"
+version_policy = "Record document identifier, edition or draft, section, and publication date."
+
+[[slots.source-policy.source_authority]]
+claim_class = "Methods, experiments, results, and limitations reported by a paper."
+location = "Knowledge Sources/Papers"
+rank = 3
+source_id = "ATLAS-PAPER"
+version_policy = "Record DOI or archive version and publication date; pin linked code or data when relevant."
+
+[[slots.source-policy.source_authority]]
+claim_class = "Theory or synthesis within a named edition and chapter."
+location = "Knowledge Sources/Books"
+rank = 4
+source_id = "ATLAS-BOOK"
+version_policy = "Record title, edition, chapter, and publication year."
+
+[[slots.source-policy.source_authority]]
+claim_class = "Observable behavior of a named implementation."
+location = "Knowledge Sources/Ecosystem Implementations"
+rank = 5
+source_id = "ATLAS-IMPLEMENTATION"
+version_policy = "Record release or commit and verification date."
+
+[[slots.source-policy.source_authority]]
+claim_class = "Bounded observations or reports that do not independently establish a general mechanism."
+location = "Knowledge Sources/Community Engineering"
+rank = 6
+source_id = "ATLAS-COMMUNITY"
+version_policy = "Record author, publication revision, and retrieval date."
+
+[[slots.source-policy.staleness_triggers]]
+affected_scope = "The source record and claims that depend on it."
+event = "A source reaches its review date, disappears, or changes without a stable version pin."
+
+[[slots.source-policy.staleness_triggers]]
+affected_scope = "Provider-specific behavior and comparisons using that configuration."
+event = "A provider changes an API, model, tool contract, policy, limit, or lifecycle state."
+
+[[slots.source-policy.staleness_triggers]]
+affected_scope = "Claims and conclusions bound to that version."
+event = "A standard, paper, code release, or dataset is corrected, withdrawn, or superseded."
+
+[[slots.source-policy.staleness_triggers]]
+affected_scope = "The measurement and comparisons using the previous tested-system identity."
+event = "An evaluation changes its sample, model, tools, policy, environment, grader, or aggregation."
+
+[[slots.source-policy.verification_entry_points]]
+claim_class = "Provider or project behavior"
+freshness = "Exact release or retrieval date."
+source_id = "ATLAS-OFFICIAL"
+verification = "Apply K06/03 and K07/01–K07/04 to the exact `ATLAS-OFFICIAL` source location registered by Atlas."
+
+[[slots.source-policy.verification_entry_points]]
+claim_class = "Protocol, schema, security, or measurement requirement"
+freshness = "Exact edition, draft, or section."
+source_id = "ATLAS-STANDARD"
+verification = "Verify the original numbered section and document status."
+
+[[slots.source-policy.verification_entry_points]]
+claim_class = "Scientific or quantitative result"
+freshness = "Published or archive version; pin code and data when used."
+source_id = "ATLAS-PAPER"
+verification = "Verify method, sample, result, and limitation in the cited version."
+
+[[slots.source-policy.verification_entry_points]]
+claim_class = "Implementation behavior"
+freshness = "Exact release or commit."
+source_id = "ATLAS-IMPLEMENTATION"
+verification = "Verify the pinned source or a reproducible example."
+
+[slots.structure-registry]
+schema_version = 2
+
+[slots.structure-registry.applicability]
+state = "configured"
+
+[[slots.structure-registry.support_layers]]
+global_map_entry = "E-CASES"
+layer_id = "L-CASES"
+layout = "grouped"
+role = "cases"
+root = "Industry Cases"
+
+[slots.structure-registry.support_layers.bindings]
+evidence_binding_owner = "kernel/K08 Metadata and Status/08 Relationship Metadata Contract.md"
+
+[slots.structure-registry.support_layers.coverage]
+generator_capability = "structure-coverage-projection-v1"
+inputs_owner = "Corpus Planning/capability_matrix.yaml"
+mode = "derived"
+
+[slots.structure-registry.support_layers.entry]
+expected_type = "overview"
+path = "Industry Cases/Industry Cases Overview.md"
+
+[slots.structure-registry.support_layers.taxonomy]
+axis = "evidence-form"
+classes = [
+    { class = "reported-system", directory = "Industry Cases/Reported Systems" },
+    { class = "controlled-study", directory = "Industry Cases/Controlled Studies" },
+    { class = "composite-reconstruction", directory = "Industry Cases/Composite Reconstructions" },
+]
+page_field = "case_class"
+
+[[slots.structure-registry.support_layers]]
+global_map_entry = "E-SOURCES"
+layer_id = "L-SOURCES"
+layout = "grouped"
+role = "sources"
+root = "Knowledge Sources"
+
+[slots.structure-registry.support_layers.bindings]
+authority_taxonomy_ref = "profiles/examples/agent-atlas/profile.toml#slots.source-policy"
+freshness_policy_ref = "profiles/examples/agent-atlas/profile.toml#slots.source-policy"
+index_mode = "derived"
+intake_policy_ref = "profiles/examples/agent-atlas/profile.toml#slots.source-policy"
+
+[slots.structure-registry.support_layers.coverage]
+generator_capability = "structure-coverage-projection-v1"
+inputs_owner = "Corpus Planning/capability_matrix.yaml"
+mode = "derived"
+
+[slots.structure-registry.support_layers.entry]
+expected_type = "overview"
+path = "Knowledge Sources/Knowledge Sources Overview.md"
+
+[slots.structure-registry.support_layers.taxonomy]
+axis = "source-authority"
+page_field = "source_class"
+
+[[slots.structure-registry.support_layers.taxonomy.classes]]
+class = "official-engineering"
+directory = "Knowledge Sources/Official Engineering"
+
+[[slots.structure-registry.support_layers.taxonomy.classes]]
+class = "paper"
+directory = "Knowledge Sources/Papers"
+
+[[slots.structure-registry.support_layers.taxonomy.classes]]
+class = "standard"
+directory = "Knowledge Sources/Standards"
+
+[[slots.structure-registry.support_layers.taxonomy.classes]]
+class = "book"
+directory = "Knowledge Sources/Books"
+
+[[slots.structure-registry.support_layers.taxonomy.classes]]
+class = "ecosystem-implementation"
+directory = "Knowledge Sources/Ecosystem Implementations"
+
+[[slots.structure-registry.support_layers.taxonomy.classes]]
+class = "community-engineering"
+directory = "Knowledge Sources/Community Engineering"
+
+[[slots.structure-registry.support_layers]]
+global_map_entry = "E-SYNTHESIS"
+layer_id = "L-SYNTHESIS"
+layout = "flat"
+role = "synthesis"
+root = "Research Synthesis"
+
+[slots.structure-registry.support_layers.bindings]
+promotion_policy_ref = "kernel/K06 Knowledge Intake and Evolution/03 Source-to-Knowledge Pipeline.md"
+question_identity_field = "claim_scope"
+
+[slots.structure-registry.support_layers.coverage]
+generator_capability = "structure-coverage-projection-v1"
+inputs_owner = "Corpus Planning/capability_matrix.yaml"
+mode = "derived"
+
+[slots.structure-registry.support_layers.entry]
+expected_type = "overview"
+path = "Research Synthesis/Research Synthesis Overview.md"
+
+[[slots.structure-registry.support_layers]]
+global_map_entry = "E-INTERVIEW"
+layer_id = "L-INTERVIEW"
+layout = "grouped"
+role = "expression"
+root = "Interview Preparation"
+
+[slots.structure-registry.support_layers.bindings]
+artifact_registry_ref = "profiles/examples/agent-atlas/profile.toml#slots.expression-layer-entry"
+preparation_route_ref = "Interview Preparation/Interview Overview.md"
+
+[slots.structure-registry.support_layers.bindings.readiness_projection]
+mode = "not-applicable"
+reason = "This Profile does not register an interview-readiness state."
+
+[slots.structure-registry.support_layers.coverage]
+generator_capability = "structure-coverage-projection-v1"
+inputs_owner = "Corpus Planning/capability_matrix.yaml"
+mode = "derived"
+
+[slots.structure-registry.support_layers.entry]
+expected_type = "roadmap"
+path = "Interview Preparation/Interview Overview.md"
+
+[slots.structure-registry.support_layers.taxonomy]
+axis = "artifact-kind"
+classes = [
+    { class = "interview-topic-guide", directory = "Interview Preparation/Topic Guides" },
+    { class = "roadmap", directory = "Interview Preparation/Roadmaps" },
+    { class = "cheat-sheet", directory = "Interview Preparation/Cheat Sheets" },
+]
+page_field = "type"
+
+[[slots.structure-registry.units]]
+global_map_entry = "E-MODELING"
+id = "U-MODELING"
+kind = "domain"
+root = "Modeling Fundamentals"
+
+[slots.structure-registry.units.entry]
+expected_type = "overview"
+path = "Modeling Fundamentals/Modeling Fundamentals Overview.md"
+
+[slots.structure-registry.units.roles.coverage]
+generator_capability = "structure-coverage-projection-v1"
+heading = "Coverage Reader View"
+inputs_owner = "Corpus Planning/capability_matrix.yaml"
+mode = "derived"
+path = "Modeling Fundamentals/Modeling Fundamentals Overview.md"
+
+[slots.structure-registry.units.roles.expression]
+mode = "not-applicable"
+reason = "Expression artifacts are not registered as structural roles of this domain."
+
+[slots.structure-registry.units.roles.quick_reference]
+mode = "not-applicable"
+reason = "No separate quick-reference role is maintained for this domain."
+
+[slots.structure-registry.units.roles.sequence]
+heading = "Prerequisite Map"
+mode = "embedded"
+path = "Modeling Fundamentals/Modeling Fundamentals Overview.md"
+
+[[slots.structure-registry.units]]
+global_map_entry = "E-ML"
+id = "U-ML"
+kind = "domain"
+root = "Machine Learning Knowledge"
+
+[slots.structure-registry.units.entry]
+expected_type = "overview"
+path = "Machine Learning Knowledge/Machine Learning Overview.md"
+
+[slots.structure-registry.units.roles.coverage]
+generator_capability = "structure-coverage-projection-v1"
+heading = "Coverage Reader View（Coverage 读者视图）"
+inputs_owner = "Corpus Planning/capability_matrix.yaml"
+mode = "derived"
+path = "Machine Learning Knowledge/Machine Learning Overview.md"
+
+[slots.structure-registry.units.roles.expression]
+mode = "not-applicable"
+reason = "Expression artifacts are not registered as structural roles of this domain."
+
+[slots.structure-registry.units.roles.quick_reference]
+mode = "standalone"
+path = "Machine Learning Knowledge/Algorithms/ML Algorithms Checklist.md"
+
+[slots.structure-registry.units.roles.sequence]
+heading = "Prerequisite Map（前置依赖图）"
+mode = "embedded"
+path = "Machine Learning Knowledge/Machine Learning Overview.md"
+
+[[slots.structure-registry.units]]
+global_map_entry = "E-DL"
+id = "U-DL"
+kind = "domain"
+root = "Deep Learning Knowledge"
+
+[slots.structure-registry.units.entry]
+expected_type = "overview"
+path = "Deep Learning Knowledge/Deep Learning Overview.md"
+
+[slots.structure-registry.units.roles.coverage]
+generator_capability = "structure-coverage-projection-v1"
+heading = "Coverage Reader View（Coverage 读者视图）"
+inputs_owner = "Corpus Planning/capability_matrix.yaml"
+mode = "derived"
+path = "Deep Learning Knowledge/Deep Learning Overview.md"
+
+[slots.structure-registry.units.roles.expression]
+mode = "not-applicable"
+reason = "Expression artifacts are not registered as structural roles of this domain."
+
+[slots.structure-registry.units.roles.quick_reference]
+mode = "not-applicable"
+reason = "No separate quick-reference role is maintained for this domain."
+
+[slots.structure-registry.units.roles.sequence]
+heading = "Prerequisite Map（前置依赖图）"
+mode = "embedded"
+path = "Deep Learning Knowledge/Deep Learning Overview.md"
+
+[[slots.structure-registry.units]]
+global_map_entry = "E-LLM"
+id = "U-LLM"
+kind = "domain"
+root = "LLM Knowledge"
+
+[slots.structure-registry.units.entry]
+expected_type = "overview"
+path = "LLM Knowledge/LLM Overview.md"
+
+[slots.structure-registry.units.roles.coverage]
+generator_capability = "structure-coverage-projection-v1"
+heading = "Coverage Reader View（覆盖状态读者视图）"
+inputs_owner = "Corpus Planning/capability_matrix.yaml"
+mode = "derived"
+path = "LLM Knowledge/LLM Overview.md"
+
+[slots.structure-registry.units.roles.expression]
+mode = "not-applicable"
+reason = "Expression artifacts are not registered as structural roles of this domain."
+
+[slots.structure-registry.units.roles.quick_reference]
+mode = "not-applicable"
+reason = "No separate quick-reference role is maintained for this domain."
+
+[slots.structure-registry.units.roles.sequence]
+heading = "Prerequisite And Lifecycle Flow（前置与生命周期）"
+mode = "embedded"
+path = "LLM Knowledge/LLM Overview.md"
+
+[[slots.structure-registry.units]]
+global_map_entry = "E-AGENT"
+id = "U-AGENT"
+kind = "domain"
+root = "Agent Knowledge"
+
+[slots.structure-registry.units.entry]
+expected_type = "overview"
+path = "Agent Knowledge/Agent Overview.md"
+
+[slots.structure-registry.units.roles.coverage]
+generator_capability = "structure-coverage-projection-v1"
+heading = "Coverage Reader View（Coverage 读者视图）"
+inputs_owner = "Corpus Planning/capability_matrix.yaml"
+mode = "derived"
+path = "Agent Knowledge/Agent Overview.md"
+
+[slots.structure-registry.units.roles.expression]
+mode = "not-applicable"
+reason = "Expression artifacts are not registered as structural roles of this domain."
+
+[slots.structure-registry.units.roles.quick_reference]
+mode = "not-applicable"
+reason = "No separate quick-reference role is maintained for this domain."
+
+[slots.structure-registry.units.roles.sequence]
+heading = "Reader Route（读者路线）"
+mode = "embedded"
+path = "Agent Knowledge/Agent Overview.md"
+
+[[slots.structure-registry.units]]
+global_map_entry = "E-AI-SYSTEMS"
+id = "U-AISE"
+kind = "domain"
+root = "AI Systems Engineering"
+
+[slots.structure-registry.units.entry]
+expected_type = "overview"
+path = "AI Systems Engineering/AI Systems Engineering Overview.md"
+
+[slots.structure-registry.units.roles.coverage]
+generator_capability = "structure-coverage-projection-v1"
+heading = "Coverage Reader View"
+inputs_owner = "Corpus Planning/capability_matrix.yaml"
+mode = "derived"
+path = "AI Systems Engineering/AI Systems Engineering Overview.md"
+
+[slots.structure-registry.units.roles.expression]
+mode = "not-applicable"
+reason = "Expression artifacts are not registered as structural roles of this domain."
+
+[slots.structure-registry.units.roles.quick_reference]
+mode = "not-applicable"
+reason = "No separate quick-reference role is maintained for this domain."
+
+[slots.structure-registry.units.roles.sequence]
+heading = "Study Order"
+mode = "embedded"
+path = "AI Systems Engineering/AI Systems Engineering Overview.md"
+
+[[slots.structure-registry.units]]
+global_map_entry = "E-RAG"
+id = "U-LLM-RAG"
+kind = "module"
+parent = "U-LLM"
+root = "LLM Knowledge/Retrieval"
+
+[slots.structure-registry.units.entry]
+expected_type = "system-design"
+path = "LLM Knowledge/Retrieval/RAG Pipeline.md"
+
+[slots.structure-registry.units.roles.coverage]
+mode = "not-applicable"
+reason = "The parent domain's derived view presents this module."
+
+[slots.structure-registry.units.roles.expression]
+mode = "not-applicable"
+reason = "No separate expression role is registered for this module."
+
+[slots.structure-registry.units.roles.quick_reference]
+mode = "not-applicable"
+reason = "The parent entry routes to this module."
+
+[slots.structure-registry.units.roles.sequence]
+mode = "not-applicable"
+reason = "The parent domain's lifecycle flow covers reading order."
+
+[[slots.structure-registry.units]]
+global_map_entry = "E-HARNESS"
+id = "U-AGENT-HARNESS"
+kind = "module"
+parent = "U-AGENT"
+root = "Agent Knowledge/Harness"
+
+[slots.structure-registry.units.entry]
+expected_type = "system-design"
+path = "Agent Knowledge/Harness/Agent Harness.md"
+
+[slots.structure-registry.units.roles.coverage]
+mode = "not-applicable"
+reason = "The parent domain's derived view presents this module."
+
+[slots.structure-registry.units.roles.expression]
+mode = "not-applicable"
+reason = "No separate expression role is registered for this module."
+
+[slots.structure-registry.units.roles.quick_reference]
+mode = "not-applicable"
+reason = "The parent entry routes to this module."
+
+[slots.structure-registry.units.roles.sequence]
+mode = "not-applicable"
+reason = "The parent domain's sequence covers reading order."
+
+[[slots.structure-registry.units]]
+global_map_entry = "E-MEMORY"
+id = "U-AGENT-MEMORY"
+kind = "module"
+parent = "U-AGENT"
+root = "Agent Knowledge/Memory"
+
+[slots.structure-registry.units.entry]
+expected_type = "roadmap"
+path = "Agent Knowledge/Memory/Memory Overview.md"
+
+[slots.structure-registry.units.roles.coverage]
+mode = "not-applicable"
+reason = "The parent domain's derived view presents this module."
+
+[slots.structure-registry.units.roles.expression]
+mode = "not-applicable"
+reason = "No separate expression role is registered for this module."
+
+[slots.structure-registry.units.roles.quick_reference]
+mode = "not-applicable"
+reason = "The parent entry routes to this module."
+
+[slots.structure-registry.units.roles.sequence]
+mode = "not-applicable"
+reason = "The parent domain's sequence covers reading order."
+
+[[slots.structure-registry.units]]
+global_map_entry = "E-LONG-HORIZON"
+id = "U-AGENT-LONG-HORIZON"
+kind = "module"
+parent = "U-AGENT"
+root = "Agent Knowledge/Reliability"
+
+[slots.structure-registry.units.entry]
+expected_type = "overview"
+path = "Agent Knowledge/Reliability/Long-Horizon Agent Reliability Overview.md"
+
+[slots.structure-registry.units.roles.coverage]
+mode = "not-applicable"
+reason = "The parent domain's derived view presents this module."
+
+[slots.structure-registry.units.roles.expression]
+mode = "not-applicable"
+reason = "No separate expression role is registered for this module."
+
+[slots.structure-registry.units.roles.quick_reference]
+mode = "not-applicable"
+reason = "The parent entry routes to this module."
+
+[slots.structure-registry.units.roles.sequence]
+mode = "not-applicable"
+reason = "The parent domain's sequence covers reading order."
+
+[[slots.structure-registry.units]]
+global_map_entry = "E-OPERATIONS"
+id = "U-AISE-OPERATIONS"
+kind = "module"
+parent = "U-AISE"
+root = "AI Systems Engineering/Operations"
+
+[slots.structure-registry.units.entry]
+expected_type = "overview"
+path = "AI Systems Engineering/Operations/Agent Production Operations Overview.md"
+
+[slots.structure-registry.units.roles.coverage]
+mode = "not-applicable"
+reason = "The parent domain's derived view presents this module."
+
+[slots.structure-registry.units.roles.expression]
+mode = "not-applicable"
+reason = "No separate expression role is registered for this module."
+
+[slots.structure-registry.units.roles.quick_reference]
+mode = "not-applicable"
+reason = "The parent entry routes to this module."
+
+[slots.structure-registry.units.roles.sequence]
+mode = "not-applicable"
+reason = "The parent domain's sequence covers reading order."
+
+[[slots.structure-registry.units]]
+global_map_entry = "E-CACHE"
+id = "U-AISE-CACHE"
+kind = "module"
+parent = "U-AISE"
+root = "AI Systems Engineering/Caching"
+
+[slots.structure-registry.units.entry]
+expected_type = "overview"
+path = "AI Systems Engineering/Caching/Cache Management Overview.md"
+
+[slots.structure-registry.units.roles.coverage]
+mode = "not-applicable"
+reason = "The parent domain's derived view presents this module."
+
+[slots.structure-registry.units.roles.expression]
+mode = "not-applicable"
+reason = "No separate expression role is registered for this module."
+
+[slots.structure-registry.units.roles.quick_reference]
+mode = "not-applicable"
+reason = "The parent entry routes to this module."
+
+[slots.structure-registry.units.roles.sequence]
+mode = "not-applicable"
+reason = "The parent domain's sequence covers reading order."
+
+[[slots.structure-registry.units]]
+global_map_entry = "E-PRODUCTION-RAG"
+id = "U-AISE-RAG"
+kind = "module"
+parent = "U-AISE"
+root = "AI Systems Engineering/RAG"
+
+[slots.structure-registry.units.entry]
+expected_type = "overview"
+path = "AI Systems Engineering/RAG/RAG Production System Overview.md"
+
+[slots.structure-registry.units.roles.coverage]
+mode = "not-applicable"
+reason = "The parent domain's derived view presents this module."
+
+[slots.structure-registry.units.roles.expression]
+mode = "not-applicable"
+reason = "No separate expression role is registered for this module."
+
+[slots.structure-registry.units.roles.quick_reference]
+mode = "not-applicable"
+reason = "The parent entry routes to this module."
+
+[slots.structure-registry.units.roles.sequence]
+mode = "not-applicable"
+reason = "The parent domain's sequence covers reading order."
+
+[[slots.structure-registry.units]]
+global_map_entry = "E-COST-CAPACITY"
+id = "U-AISE-COST-CAPACITY"
+kind = "module"
+parent = "U-AISE"
+root = "AI Systems Engineering/Cost and Capacity"
+
+[slots.structure-registry.units.entry]
+expected_type = "overview"
+path = "AI Systems Engineering/Cost and Capacity/AI Cost and Capacity Engineering Overview.md"
+
+[slots.structure-registry.units.roles.coverage]
+mode = "not-applicable"
+reason = "The parent domain's derived view presents this module."
+
+[slots.structure-registry.units.roles.expression]
+mode = "not-applicable"
+reason = "No separate expression role is registered for this module."
+
+[slots.structure-registry.units.roles.quick_reference]
+mode = "not-applicable"
+reason = "The parent entry routes to this module."
+
+[slots.structure-registry.units.roles.sequence]
+mode = "not-applicable"
+reason = "The parent domain's sequence covers reading order."
+
+[[slots.structure-registry.units]]
+global_map_entry = "E-DATA-FEEDBACK"
+id = "U-AISE-DATA-FEEDBACK"
+kind = "module"
+parent = "U-AISE"
+root = "AI Systems Engineering/Data and Feedback"
+
+[slots.structure-registry.units.entry]
+expected_type = "overview"
+path = "AI Systems Engineering/Data and Feedback/Agent Data Feedback and Learning System Overview.md"
+
+[slots.structure-registry.units.roles.coverage]
+mode = "not-applicable"
+reason = "The parent domain's derived view presents this module."
+
+[slots.structure-registry.units.roles.expression]
+mode = "not-applicable"
+reason = "No separate expression role is registered for this module."
+
+[slots.structure-registry.units.roles.quick_reference]
+mode = "not-applicable"
+reason = "The parent entry routes to this module."
+
+[slots.structure-registry.units.roles.sequence]
+mode = "not-applicable"
+reason = "The parent domain's sequence covers reading order."
+
+[[slots.structure-registry.units]]
+global_map_entry = "E-TOOLS-MCP"
+id = "U-AISE-TOOLS-MCP"
+kind = "module"
+parent = "U-AISE"
+root = "AI Systems Engineering/Tools and MCP"
+
+[slots.structure-registry.units.entry]
+expected_type = "system-design"
+path = "AI Systems Engineering/Tools and MCP/Tool and MCP Trust Boundary Overview.md"
+
+[slots.structure-registry.units.roles.coverage]
+mode = "not-applicable"
+reason = "The parent domain's derived view presents this module."
+
+[slots.structure-registry.units.roles.expression]
+mode = "not-applicable"
+reason = "No separate expression role is registered for this module."
+
+[slots.structure-registry.units.roles.quick_reference]
+mode = "not-applicable"
+reason = "The parent entry routes to this module."
+
+[slots.structure-registry.units.roles.sequence]
+mode = "not-applicable"
+reason = "The parent domain's sequence covers reading order."
+
+[[slots.structure-registry.units]]
+global_map_entry = "E-EVALUATION"
+id = "U-AISE-EVALUATION"
+kind = "module"
+parent = "U-AISE"
+root = "AI Systems Engineering/Evaluation"
+
+[slots.structure-registry.units.entry]
+expected_type = "overview"
+path = "AI Systems Engineering/Evaluation/Evaluation Overview.md"
+
+[slots.structure-registry.units.roles.coverage]
+mode = "not-applicable"
+reason = "The parent domain's derived view presents this module."
+
+[slots.structure-registry.units.roles.expression]
+mode = "not-applicable"
+reason = "No separate expression role is registered for this module."
+
+[slots.structure-registry.units.roles.quick_reference]
+mode = "not-applicable"
+reason = "The parent entry routes to this module."
+
+[slots.structure-registry.units.roles.sequence]
+mode = "not-applicable"
+reason = "The parent domain's sequence covers reading order."
+
+[slots.vocabulary-extensions]
+schema_version = 1
+
+[slots.vocabulary-extensions.fields.case_class]
+owner = "profiles/examples/agent-atlas/profile.toml#slots.profile-scope"
+values = [
+    "reported-system",
+    "controlled-study",
+    "composite-reconstruction",
+]
+
+[slots.vocabulary-extensions.fields.scope]
+values = [
+    "interview-only",
+]
+
+[slots.vocabulary-extensions.fields.source_class]
+owner = "profiles/examples/agent-atlas/profile.toml#slots.source-policy"
+values = [
+    "official-engineering",
+    "paper",
+    "standard",
+    "book",
+    "ecosystem-implementation",
+    "community-engineering",
+]
+
+[slots.vocabulary-extensions.fields.type]
+values = [
+    "interview-topic-guide",
+    "roadmap",
+]
+
+[slots.vocabulary-extensions.frontmatter_extensions]
+fields = [
+    "interview_guide",
+]
+
+[slots.vocabulary-extensions.volatility_defaults]
+agent = "fast"
+ai-systems = "slow"
+deep-learning = "slow"
+evaluation = "fast"
+interview = "slow"
+knowledge-management = "slow"
+llm = "fast"
+machine-learning = "slow"
+modeling-fundamentals = "stable"
+retrieval-rag = "fast"
+safety-governance = "fast"

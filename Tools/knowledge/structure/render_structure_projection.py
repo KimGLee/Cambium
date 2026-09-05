@@ -59,16 +59,11 @@ END = "<!-- structure-projection:end -->"
 
 
 def registry_document(admission, errors):
-    path, error = profile_admission.require_slot(admission, STRUCTURE_SLOT)
+    _slot, error = profile_admission.require_slot(admission, STRUCTURE_SLOT)
     if error:
         errors.append(error)
         return None
-    try:
-        return kblib.parse_yaml_subset(
-            admission.slot_text(STRUCTURE_SLOT))
-    except (OSError, UnicodeError, kblib.YamlSubsetError) as exc:
-        errors.append("cannot parse the registry: %s" % exc)
-        return None
+    return admission.slot_document(STRUCTURE_SLOT)
 
 
 def projection_capability(root, errors):

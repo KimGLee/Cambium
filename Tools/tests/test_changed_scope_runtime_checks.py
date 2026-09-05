@@ -226,8 +226,7 @@ class FrozenTaskContractReferenceTests(unittest.TestCase):
                 ROOT, progress, item, runtime)
 
         build.assert_called_once_with(
-            ROOT, progress, item, runtime_state=runtime,
-            profile_contract=None)
+            ROOT, progress, item, runtime_state=runtime)
         read_set_findings.assert_called_once_with(ROOT, progress["contract"])
         self.assertEqual("pass", passed["result"])
         self.assertEqual(["B1", "T1"], passed["scope"]["targets"])
