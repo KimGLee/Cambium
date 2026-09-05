@@ -5,6 +5,7 @@ from types import SimpleNamespace
 import sys
 import tempfile
 import unittest
+from unittest import mock
 
 
 TOOLS = Path(__file__).resolve().parents[1]
@@ -39,7 +40,24 @@ class PostDeltaCloseConsumerTests(unittest.TestCase):
             evidence_role="emits",
         )
         self.profile = SimpleNamespace(
-            required_scan=scan, judgment_items=(judgment,))
+            required_scan=scan, judgment_items=(judgment,), fingerprint=SHA_A,
+            extension_gates=())
+        self.evaluation = object()
+        # This suite owns the post-Delta evidence closure, not Profile
+        # admission. Supply its admitted input at that explicit boundary.
+        admission_boundary = mock.patch.object(close_gate, "_admitted_profile",
+            return_value=SimpleNamespace(
+                contract=self.profile, manifest_repo_path="profiles/test/profile.toml",
+                profile_snapshot_sha256=SHA_A, evaluation=SimpleNamespace(
+                    summary_receipt={
+                        "selected_profile_manifest": "profiles/test/profile.toml",
+                        "profile_snapshot_sha256": SHA_A,
+                        "profile_contract_fingerprint": SHA_A,
+                        "profile_load_inputs_sha256": SHA_A},
+                    metadata_execution_contract=SimpleNamespace(contract_fingerprint=SHA_A),
+                    profile_load_inputs_sha256=SHA_A)))
+        admission_boundary.start()
+        self.addCleanup(admission_boundary.stop)
         self._install_closure(
             tuple(batch_close_contract.CLOSED_LIST_MEMBER_ROWS))
 
@@ -88,7 +106,7 @@ class PostDeltaCloseConsumerTests(unittest.TestCase):
             "opening_transition_receipt": "open-b1",
             "upstream_revision_id": FIXTURE_UPSTREAM_REVISION,
             "active_standards_sha256": SHA_B,
-            "selected_profile_manifest": "profiles/test/profile.md",
+            "selected_profile_manifest": "profiles/test/profile.toml",
             "profile_snapshot_sha256": SHA_C,
             "profile_contract_fingerprint": SHA_D,
             "obligations": obligations,
@@ -300,7 +318,7 @@ class PostDeltaCloseConsumerTests(unittest.TestCase):
             delta_apply_receipt="delta-apply-1",
             work_spec_path=work_spec_path,
             work_spec_sha256=work_spec_sha256,
-            authorized_profile_contract=self.profile,
+            profile_evaluation=self.evaluation,
             current_repository_snapshot_sha256=SHA_F,
             historical=False)
 
@@ -366,7 +384,7 @@ class PostDeltaCloseConsumerTests(unittest.TestCase):
             merged_snapshot_sha256=SHA_F,
             receipt_version=check_batch_close.TOOL_VERSION,
             root=root,
-            authorized_profile_contract=self.profile, historical=False)
+            profile_evaluation=self.evaluation, historical=False)
 
     def test_adopter_registry_root_is_shared_by_plan_producer_and_consumer(self):
         with tempfile.TemporaryDirectory() as temporary:

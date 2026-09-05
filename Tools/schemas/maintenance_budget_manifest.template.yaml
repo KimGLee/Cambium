@@ -15,7 +15,7 @@ task_id: "kb-maint-2026-xx"
 run_id: "maint-2026-xx-r1"
 scope_version: "s1"
 upstream_revision_id: ""
-selected_profile_manifest: "profiles/my-profile/profile.md"
+selected_profile_manifest: "profiles/my-profile/profile.toml"
 # Null on the first run. A later run names the prior maintenance-completion
 # receipt whose candidate-state projection supplies previous_deferred_runs.
 previous_maintenance_completion_receipt: null

@@ -1,0 +1,488 @@
+# Example Profile answers. This example is not selected or an adoption certificate.
+profile_id = "worked-planning"
+schema_version = 1
+
+[execution_default_overrides]
+concurrency_cap = 1
+
+[slots.audit-dimension-registry.extension_dimensions]
+items = []
+mode = "none"
+
+[[slots.audit-dimension-registry.judgment_items]]
+audit_layer = "Module Review"
+audit_object = "The foundation pages one procedure depends on satisfy the registered depth predicate."
+dimension_id = "content_and_depth"
+evidence_role = "emits"
+item_id = "worked-planning-foundation-depth"
+predicate_owner = "profiles/examples/worked-planning/profile.toml#slots.profile-scope.foundation_depth_requirements"
+
+[[slots.audit-dimension-registry.judgment_items]]
+audit_layer = "Batch Review"
+audit_object = "Every service-case-structure candidate the registered scan reports outside the case layer has an accepted disposition."
+dimension_id = "coverage_and_integration"
+evidence_role = "emits"
+item_id = "worked-planning-case-residual-disposition"
+predicate_owner = "profiles/examples/worked-planning/policies/residual-disposition.md#Case Residual Disposition"
+
+[[slots.audit-dimension-registry.judgment_items]]
+audit_layer = "Module Review"
+audit_object = "Every Capability Matrix row above the lowest scale rank names evidence paths that resolve in the reviewed snapshot."
+dimension_id = "source_and_currentness"
+evidence_role = "consumes"
+item_id = "worked-planning-capability-evidence-resolves"
+predicate_owner = "profiles/examples/worked-planning/policies/residual-disposition.md#Capability Evidence Resolves"
+
+[[slots.audit-dimension-registry.judgment_items]]
+audit_layer = "Module Review"
+audit_object = "Pages quoting a figure from a superseded document revision are raised as review candidates."
+dimension_id = "source_and_currentness"
+evidence_role = "triggers"
+item_id = "worked-planning-source-revision-drift"
+predicate_owner = "profiles/examples/worked-planning/policies/residual-disposition.md#Source Revision Drift"
+
+[slots.audit-dimension-registry.residual_disposition]
+body_ref = "profiles/examples/worked-planning/policies/residual-disposition.md#Residual Disposition"
+
+[slots.corpus-planning]
+schema_version = 1
+
+[slots.corpus-planning.applicability]
+state = "configured"
+
+[slots.corpus-planning.artifact_bindings]
+capability_matrix = "profiles/examples/worked-planning/planning/capability_matrix.yaml"
+gap_register = "profiles/examples/worked-planning/planning/gap_register.yaml"
+global_map = "profiles/examples/worked-planning/planning/global_map.yaml"
+
+[[slots.corpus-planning.capability_scale]]
+predicate = "No page owns the capability; a volunteer has to ask someone."
+rank = 0
+target_eligible = false
+value = "0 Absent"
+
+[[slots.corpus-planning.capability_scale]]
+predicate = "A page names the decision but does not carry enough to act on unattended."
+rank = 1
+target_eligible = false
+value = "1 Outline"
+
+[[slots.corpus-planning.capability_scale]]
+predicate = "A trained volunteer can complete the work unattended and reach the page's own finish condition."
+rank = 2
+target_eligible = true
+value = "2 Working"
+
+[[slots.corpus-planning.capability_scale]]
+predicate = "The capability's figures trace to a named source revision and at least one completed case retains the measurements that back it."
+rank = 3
+target_eligible = true
+value = "3 Verified"
+
+[slots.corpus-planning.pass_authority]
+decision_scope_id = "corpus-plan-semantic-acceptance"
+role_id = "service-lead"
+
+[slots.escalation-policy.escalation_triggers]
+items = []
+mode = "none"
+
+[slots.expression-layer-entry]
+artifact_contracts = []
+
+[slots.expression-layer-entry.registered_artifacts]
+items = []
+mode = "none"
+
+[slots.language-contract]
+content_length_unit = "words"
+
+[slots.language-contract.canonical_naming]
+folders = "English, Title Case, spaces."
+image_assets = "English, lowercase, hyphens; the owning page's slug is the prefix."
+pages = "English, Title Case, spaces."
+term_notes = "English, Title Case, spaces; the manufacturer's casing wins when it differs."
+
+[slots.language-contract.formatting_migration_invalidations]
+items = []
+mode = "none"
+
+[slots.language-contract.language_routing]
+body_language = "English (`en`)."
+external_names = "The product name exactly as printed on the service document, followed by the workshop's shelf label in parentheses on first use per page."
+machine_identifiers = "Part numbers, document revisions, and tool sizes appear in backticks and are never re-cased."
+proper_names = "The manufacturer's own spelling everywhere, including headings and tables."
+
+[slots.language-contract.language_routing.secondary_language]
+mode = "none"
+
+[slots.language-contract.scoped_anti_pattern_extensions]
+items = []
+mode = "none"
+
+[slots.language-contract.terminology_and_display]
+abbreviations = "Expanded once per page on first use, then the abbreviation alone."
+aliases = "The shelf label and the printed product name are both registered as aliases."
+display_order = "What is being decided, how it is observed, what is done, how the result is checked."
+file_annotations = "None — the file name carries the title only."
+headings = "Sentence case, no trailing punctuation."
+
+[slots.metadata-contract]
+applicability_differences = []
+extension_fields = []
+relationship_extensions = []
+schema_version = 1
+section_roles = []
+
+[slots.metadata-contract.applicability]
+state = "kernel-defaults"
+
+[slots.priority-rubric.priority_quota]
+mode = "configured"
+
+[[slots.priority-rubric.priority_quota.items]]
+maximum_share = 0.1
+priority = "P0"
+rationale = "A service corpus keeps its always-verified core deliberately small; ten percent of the pages carry the procedures a mechanic opens with a customer waiting"
+
+[[slots.priority-rubric.priority_quota.items]]
+maximum_share = 0.3
+priority = "P1"
+rationale = "The workshop reserves a bounded supporting tier for evidence and operating context while keeping supplementary P2 material as the corpus majority"
+
+[slots.priority-rubric.profile_owned_grant_criteria.P0]
+mode = "configured"
+predicate = "The page is named as a canonical path by a `P0` capability in the Capability Matrix, and a volunteer cannot reach that capability's finish condition without it."
+protected_capability = "A trained volunteer completes a member's service unattended in the session it was booked for."
+
+[slots.priority-rubric.profile_owned_grant_criteria.P1]
+mode = "configured"
+predicate = "The page is named by a `P1` capability, or it is the source note a `P0` capability quotes its published figures from."
+protected_capability = "The workshop can still stand behind a quoted figure at the next service, up to one document revision later."
+
+[[slots.profile-scope.content_priority_factors]]
+factor = "A volunteer is standing at the bench with a member's wheel and needs the answer now."
+rank = 1
+
+[[slots.profile-scope.content_priority_factors]]
+factor = "The answer commits the workshop to a part order or to a figure it must stand behind."
+rank = 2
+
+[[slots.profile-scope.content_priority_factors]]
+factor = "The answer explains why an existing procedure is written the way it is."
+rank = 3
+
+[slots.profile-scope.dependency_ordered_build_sequence]
+mode = "configured"
+
+[[slots.profile-scope.dependency_ordered_build_sequence.items]]
+depends_on = []
+output = "The distinctions every procedure page may assume."
+stage = "Foundation concepts a decision depends on"
+
+[[slots.profile-scope.dependency_ordered_build_sequence.items]]
+depends_on = [
+    "Stage 1",
+]
+output = "Procedures a trained volunteer can follow unattended."
+stage = "Bench procedures with finish conditions"
+
+[[slots.profile-scope.dependency_ordered_build_sequence.items]]
+depends_on = [
+    "Stage 2",
+]
+output = "Every quoted figure traced to a document revision."
+stage = "Source notes naming canonical documents"
+
+[[slots.profile-scope.dependency_ordered_build_sequence.items]]
+depends_on = [
+    "Stages 2 and 3",
+]
+output = "Evidence that closes the capability's evidence requirement."
+stage = "Worked service cases with retained measurements"
+
+[slots.profile-scope.excluded_scope]
+mode = "configured"
+
+[[slots.profile-scope.excluded_scope.items]]
+content = "Frame and fork structural repair."
+handling = "Referred out; the workshop does not perform it and keeps no guidance for it."
+
+[[slots.profile-scope.excluded_scope.items]]
+content = "Member records, membership fees, and rota scheduling."
+handling = "The workshop's separate administrative system."
+
+[[slots.profile-scope.foundation_depth_requirements]]
+page_class = "A page a procedure depends on for a decision."
+predicate = "The page states the distinction being made, how a volunteer observes it at the bench, what downstream decision changes because of it, and which source note is canonical for its published figures."
+
+[slots.profile-scope.goal]
+readers = [
+    "Trained workshop volunteers, and the service lead who accepts their work.",
+]
+statement = "Let any trained volunteer at a community bicycle workshop decide, perform, and stand behind a wheel service without asking the one person who has done it before."
+
+[slots.profile-scope.knowledge_spine]
+locator = "The Global Map entry's typed dependency edges; every page is the downstream end of at least one."
+organizing_logic = "Concept, then procedure that applies it, then case that evidences it, with source notes naming what each figure is quoted from."
+
+[[slots.profile-scope.logical_architecture]]
+directories = [
+    "profiles/examples/worked-planning/corpus/Foundations",
+]
+layer_id = "L-FOUNDATION"
+responsibility = "Own the concepts a service decision depends on, independent of any one procedure."
+
+[[slots.profile-scope.logical_architecture]]
+directories = [
+    "profiles/examples/worked-planning/corpus/Procedures",
+]
+layer_id = "L-PROCEDURE"
+responsibility = "Own the bench procedures, each with its own finish condition."
+
+[[slots.profile-scope.logical_architecture]]
+directories = [
+    "profiles/examples/worked-planning/corpus/Service Cases",
+]
+layer_id = "L-CASES"
+responsibility = "Own completed services as worked cases with retained measurements."
+
+[[slots.profile-scope.logical_architecture]]
+directories = [
+    "profiles/examples/worked-planning/corpus/Source Notes",
+]
+layer_id = "L-SOURCES"
+responsibility = "Own which external documents are canonical and what each is canonical for."
+
+[[slots.profile-scope.new_page_placement_rule]]
+fallback = false
+layer_id = "L-CASES"
+predicate = "The page records one completed service on one member's machine."
+
+[[slots.profile-scope.new_page_placement_rule]]
+fallback = false
+layer_id = "L-SOURCES"
+predicate = "The page states what an external document is canonical for."
+
+[[slots.profile-scope.new_page_placement_rule]]
+fallback = false
+layer_id = "L-PROCEDURE"
+predicate = "The page ends in a bench finish condition."
+
+[[slots.profile-scope.new_page_placement_rule]]
+fallback = true
+layer_id = "L-FOUNDATION"
+predicate = "Otherwise"
+
+[[slots.profile-scope.placement_layer_registrations]]
+role_id = "Shared Foundation Layer"
+
+[slots.profile-scope.placement_layer_registrations.binding]
+kind = "layer"
+layer_id = "L-FOUNDATION"
+
+[[slots.profile-scope.placement_layer_registrations]]
+role_id = "Production Systems Layer"
+
+[slots.profile-scope.placement_layer_registrations.binding]
+kind = "layer"
+layer_id = "L-PROCEDURE"
+
+[[slots.profile-scope.placement_layer_registrations]]
+role_id = "Cross-domain Concepts Layer"
+
+[slots.profile-scope.placement_layer_registrations.binding]
+kind = "fallback"
+layer_id = "L-FOUNDATION"
+
+[[slots.profile-scope.placement_layer_registrations]]
+role_id = "Expression Layer Predicate"
+
+[slots.profile-scope.placement_layer_registrations.binding]
+kind = "predicate"
+predicate = "always false"
+
+[[slots.profile-scope.placement_layer_registrations]]
+role_id = "Case Study Layer"
+
+[slots.profile-scope.placement_layer_registrations.binding]
+kind = "layer"
+layer_id = "L-CASES"
+
+[[slots.profile-scope.placement_layer_registrations]]
+role_id = "Source Note Layer"
+
+[slots.profile-scope.placement_layer_registrations.binding]
+kind = "layer"
+layer_id = "L-SOURCES"
+
+[[slots.profile-scope.placement_layer_registrations]]
+role_id = "Research Synthesis Layer"
+
+[slots.profile-scope.placement_layer_registrations.binding]
+kind = "fallback"
+layer_id = "L-FOUNDATION"
+
+[slots.profile-scope.production_system_reasoning_applicability]
+mode = "configured"
+
+[[slots.profile-scope.production_system_reasoning_applicability.items]]
+predicate = "The page describes a bench procedure whose failure modes, tool dependencies, and finish condition must hold across volunteers and sessions."
+
+[slots.profile-scope.representative_sample_plan]
+mode = "configured"
+
+[[slots.profile-scope.representative_sample_plan.items]]
+note_type = "Bench procedure"
+selection_predicate = "The procedure most recently run by a volunteer who had not run it before."
+
+[[slots.profile-scope.representative_sample_plan.items]]
+note_type = "Service case"
+selection_predicate = "The most recent case whose retained measurements are cited as evidence by a capability."
+
+[[slots.profile-scope.terminology_structure]]
+boundary = "Included when two procedures depend on the same distinction; excluded when only one procedure uses the word and its meaning is local to that bench step."
+layer_id = "L-FOUNDATION"
+term_class = "Bearing families and wheel-geometry terms used by more than one procedure."
+
+[[slots.registered-scan-registry.scan_registrations]]
+activation_role = "K12/09 item 6 — residual-content scan"
+candidate_predicate = "A Markdown file outside the case layer is a candidate when it declares `type: service-case`, carries a `Service Case Log` heading, or carries at least two distinct case-only structure headings. The scan is candidate-only; adjudication belongs to `worked-planning-case-residual-disposition`."
+configuration_ref = "profiles/examples/worked-planning/scan-configs/residual-scan.yaml"
+judgment_item_id = "worked-planning-case-residual-disposition"
+scan_id = "worked-planning-case-residuals"
+scope = "Run from the vault root; the profile-owned configuration accepts the case layer as the only root where service-case structure belongs and excludes the control plane."
+verifier_capability = "residual-content-scan-v1"
+
+[slots.rendering-contract]
+registration = "none"
+rules = []
+schema_version = 1
+
+[slots.role-registry.extension_roles]
+mode = "configured"
+
+[[slots.role-registry.extension_roles.items]]
+actor = "The service lead named on the shift rota"
+responsibility = "Accept or reject semantic capability acceptance for the corpus plan, and sign the workshop's finish condition on a member's service."
+role_id = "service-lead"
+
+[slots.role-registry.knowledge_host]
+host = "Shared Markdown folder on the workshop machine"
+ui = "The workshop machine's Markdown editor"
+
+[slots.role-registry.metric_traceability_roles]
+items = []
+mode = "not-applicable"
+reason = "this corpus reports no evaluated metric; its numbers are published figures quoted from a named document revision or single measurements retained on a service case."
+
+[slots.role-registry.process_roles]
+executor = "Workshop volunteer on shift"
+gatekeeper = "Service lead on shift"
+proposer = "Workshop volunteer on shift"
+stopper = "Workshop coordinator"
+
+[slots.routing-and-gate-registry.additional_l_tier_triggers]
+items = []
+mode = "none"
+
+[slots.routing-and-gate-registry.batch_review_requirements]
+items = []
+mode = "none"
+
+[slots.routing-and-gate-registry.extension_gates]
+items = []
+mode = "none"
+
+[slots.routing-and-gate-registry.specialized_audit_invariants]
+items = []
+mode = "none"
+
+[slots.routing-and-gate-registry.supplemental_routes]
+items = []
+mode = "none"
+
+[slots.source-policy.domain_comparison_rules]
+mode = "configured"
+
+[[slots.source-policy.domain_comparison_rules.items]]
+condition = "A retained bench measurement disagrees with a published figure."
+rule = "The published figure stays canonical; the measurement is retained with its date and the disagreement is recorded as a gap candidate rather than silently resolved."
+
+[[slots.source-policy.domain_comparison_rules.items]]
+condition = "Two held document revisions give different figures for the same hub family."
+rule = "The newer revision is canonical from its arrival date; pages quoting the older revision are listed for re-check before the newer figure is adopted."
+
+[slots.source-policy.provenance_extensions]
+items = []
+mode = "none"
+
+[[slots.source-policy.source_authority]]
+claim_class = "Torque figures, preload rules, and the published service sequence for that hub family."
+location = "the manufacturer service manual held in the workshop for each stocked hub family."
+rank = 1
+source_id = "hub-service-manual"
+version_policy = "The revision printed on the manual's cover."
+
+[[slots.source-policy.source_authority]]
+claim_class = "Published maximum spoke tension and the rim's effective diameter."
+location = "the rim manufacturer's technical sheet for a stocked rim."
+rank = 2
+source_id = "rim-tech-sheet"
+version_policy = "The sheet's publication date."
+
+[[slots.source-policy.source_authority]]
+claim_class = "What was actually observed on one wheel on one date."
+location = "a measurement retained on a completed service case."
+rank = 3
+source_id = "bench-measurement"
+version_policy = "The service date recorded on the case page."
+
+[[slots.source-policy.staleness_triggers]]
+affected_scope = "Every quoted torque or preload figure whose page names the superseded revision, and every service case whose parts or tooling assumptions came from it."
+event = "A newer service manual revision reaches the workshop."
+
+[[slots.source-policy.staleness_triggers]]
+affected_scope = "The working range on the spoke tension page and any capability whose evidence depends on it."
+event = "A new rim model enters stock."
+
+[[slots.source-policy.verification_entry_points]]
+claim_class = "A torque or preload figure quoted by a procedure page."
+freshness = "Re-check whenever a newer revision reaches the workshop."
+source_id = "hub-service-manual"
+verification = "Open the manual revision named on the page and read the figure from its own table."
+
+[[slots.source-policy.verification_entry_points]]
+claim_class = "A maximum-tension figure used to derive a working range."
+freshness = "Re-check per rim model when stock changes."
+source_id = "rim-tech-sheet"
+verification = "Read the published maximum from the sheet for that exact rim model."
+
+[[slots.source-policy.verification_entry_points]]
+claim_class = "A claim about how long a service takes."
+freshness = "24 months."
+source_id = "bench-measurement"
+verification = "Read the retained bench time from the cited service case."
+
+[slots.structure-registry]
+schema_version = 2
+support_layers = []
+units = []
+
+[slots.structure-registry.applicability]
+reason = "A bounded single-service corpus of six pages in four Profile Scope layers; no directory passes the K01/05 module admission test (no canonical entry pages, no independently maintained or audited sub-responsibility), and the support directories are already covered by layer registrations and the Global Map."
+state = "not-applicable"
+
+[slots.vocabulary-extensions]
+schema_version = 1
+
+[slots.vocabulary-extensions.fields.type]
+values = [
+    "service-case",
+]
+
+[slots.vocabulary-extensions.frontmatter_extensions]
+fields = []
+
+[slots.vocabulary-extensions.volatility_defaults]
+wheel-service = "slow"

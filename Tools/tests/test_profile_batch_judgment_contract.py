@@ -17,7 +17,6 @@ import Tools.execution.audit.audit_evidence_runtime as audit_evidence_runtime
 import Tools.execution.audit.audit_plan_contract as audit_plan_contract
 import Tools.execution.evidence.receipt_type_contract as receipt_type_contract
 import Tools.governance.profile.profile_batch_judgment_contract as contract_module
-import Tools.governance.profile.profile_contract as profile_contract
 import Tools.execution.audit.record_batch_judgment as record_batch_judgment
 from Tools.tests.support.profile_fixture import FIXTURE_UPSTREAM_REVISION
 
@@ -32,9 +31,8 @@ SHA_E = "sha256:" + "e" * 64
 class ProfileBatchJudgmentContractTests(unittest.TestCase):
 
     def test_profile_plan_and_receipt_registry_share_one_current_identity(self):
-        self.assertEqual(
-            frozenset((contract_module.RECORD_KIND,)),
-            profile_contract.BATCH_REVIEW_RECEIPT_SCHEMAS)
+        # Kernel CUE owns the admissible Profile receipt-schema values;
+        # Profile integration tests verify instance answers with real CUE.
         plan_contract = audit_plan_contract.load_contract(TOOLS.parent)
         self.assertIn(
             contract_module.RECORD_KIND,
@@ -51,6 +49,13 @@ class ProfileBatchJudgmentContractTests(unittest.TestCase):
             registration.validator_owner)
 
     def setUp(self):
+        # This suite owns judgment record semantics. Full Profile admission
+        # is covered by its integration owner; reuse a local admitted model.
+        from Tools.governance.profile import profile_admission
+        boundary = mock.patch.object(profile_admission, "contract_from_admitted_view",
+            side_effect=lambda root, view: view["_contract"])
+        boundary.start()
+        self.addCleanup(boundary.stop)
         self.requirement = SimpleNamespace(
             judgment_item_id="fixture-depth",
             target_selector="each-manifest-page",
@@ -67,7 +72,7 @@ class ProfileBatchJudgmentContractTests(unittest.TestCase):
             evidence_role="emits",
         )
         self.contract = SimpleNamespace(
-            authorized=True,
+            valid=True,
             batch_review_requirements=(self.requirement,),
             judgment_items=(self.judgment,),
         )
@@ -91,7 +96,7 @@ class ProfileBatchJudgmentContractTests(unittest.TestCase):
             "opening_transition_receipt": "opening-1",
             "upstream_revision_id": FIXTURE_UPSTREAM_REVISION,
             "active_standards_sha256": SHA_A,
-            "selected_profile_manifest": "profiles/fixture/profile.md",
+            "selected_profile_manifest": "profiles/fixture/profile.toml",
             "profile_snapshot_sha256": SHA_B,
             "profile_contract_fingerprint": SHA_C,
             "obligations": [self.obligation],

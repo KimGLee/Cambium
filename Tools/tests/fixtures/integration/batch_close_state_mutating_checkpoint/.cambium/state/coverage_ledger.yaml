@@ -3,7 +3,7 @@ task_id: fixture-task
 updated_at: 2026-08-05T00:00:00Z
 scope_version: s1
 upstream_revision_id: 0123456789abcdef0123456789abcdef01234567
-selected_profile_manifest: profiles/test-profile/profile.md
+selected_profile_manifest: profiles/test-profile/profile.toml
 batch_specs:
   - id: B1
     family: Core
@@ -39,7 +39,7 @@ pages:
     reentry_condition: null
     authoring_status: drafted
     gate_receipts:
-      - audit-record_batch_page_review-20260904T175429Z-4a470e3f9dae4958800c409ab74aab48-0001
+      - audit-record_batch_page_review-20260905T064737Z-12c24a0e88bf4c68bb6dd365e1cdad1a-0001
     property_state: {}
   - path: Topics/B.md
     coverage_disposition: required

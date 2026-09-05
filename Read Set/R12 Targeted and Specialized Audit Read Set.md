@@ -22,6 +22,7 @@ load_edges:
       - kernel/K12 Quality Assurance/batch-review-obligation-registry.yaml
       - kernel/K12 Quality Assurance/changed-scope-check-registry.yaml
       - kernel/K12 Quality Assurance/deterministic-rendering-contract.yaml
+      - kernel/K12 Quality Assurance/profile-rendering-contract.yaml
       - kernel/K12 Quality Assurance/rendering-verification-contract.yaml
       - kernel/K12 Quality Assurance/substantive-review-contract.yaml
     read_sets:

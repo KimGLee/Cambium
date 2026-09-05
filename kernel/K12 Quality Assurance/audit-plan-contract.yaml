@@ -164,6 +164,7 @@ owner_kind_values:
 kernel_extension_point_values:
   - k12-14-batch-review-requirement
   - k12-05-registered-scan
+  - k12-02-profile-rendering
 
 fingerprint_binding_values:
   - evidence-time

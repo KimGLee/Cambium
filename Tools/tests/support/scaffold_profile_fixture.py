@@ -10,6 +10,8 @@ import sys
 import tempfile
 
 import Tools.governance.profile.scaffold_profile as scaffold_profile
+import Tools.governance.profile.profile_codec as profile_codec
+import Tools.governance.profile.profile_layout_contract as profile_layout_contract
 
 
 REPOSITORY = Path(__file__).resolve().parents[3]
@@ -77,10 +79,16 @@ class ScaffoldProfileFixture:
             path.relative_to(self.destination).as_posix()
             for path in self.destination.rglob("*") if path.is_file())
 
+    def candidate_document(self):
+        """Read the mechanical candidate without evaluating or adopting it."""
+        return profile_codec.loads_profile((
+            self.destination / profile_layout_contract.PROFILE_MANIFEST_NAME
+        ).read_bytes())
+
     def staging_paths(self):
         return sorted(
             path for path in (self.root / "profiles").iterdir()
-            if path.name.startswith(".scaffold-"))
+            if path.name.startswith(".profile-candidate-"))
 
 
 __all__ = ["ScaffoldProfileFixture"]

@@ -1,27 +1,35 @@
-"""In-memory producer outputs for Profile onboarding decision tests."""
+"""In-memory draft producer outputs for onboarding decision tests.
 
-from dataclasses import dataclass, field
+These objects are producer checkpoints, not complete Profiles or Gate
+evaluations. The status projector remains real; only its upstream reads are
+replaced. No fixture can manufacture a pass/admission result.
+"""
+
+from dataclasses import dataclass, field, replace
+from pathlib import Path
 from typing import Optional
 from unittest import mock
 
+import Tools.governance.profile.profile_contract as profile_contract
+import Tools.governance.profile.profile_layout_contract as profile_layout_contract
 import Tools.governance.profile.profile_onboarding_status as onboarding
 
 
-PASSING_PROFILE_LOAD = {
-    "result": "pass",
-    "mechanical": 0,
-    "semantic_unresolved": 0,
-}
-FAILING_PROFILE_LOAD = {
-    "result": "fail",
-    "mechanical": 1,
-    "semantic_unresolved": 2,
-}
+READY_DRAFT = profile_contract.ProfileDraft(
+    profile_id="candidate", manifest_repo_path="profiles/candidate/profile.toml",
+    slot_values={}, diagnostics=(), unresolved_items=(), ready=True)
+INCOMPLETE_DRAFT = replace(
+    READY_DRAFT, ready=False,
+    unresolved_items=("slots.profile-scope.goal", "slots.role-registry.process_roles"))
+INVALID_DRAFT = replace(
+    READY_DRAFT, ready=False, diagnostics=(profile_contract.Diagnostic(
+        "profile-draft-shape", "profiles/candidate/profile.toml",
+        "slots.profile-scope.goal.statement must be a string"),))
 
 
 @dataclass
 class OnboardingScenario:
-    """Supply already-owned inputs to the deterministic status projector."""
+    """Supply one typed draft output per candidate to the real projector."""
 
     adopting_root: bool = True
     standards_state: str = "pre-adoption"
@@ -30,8 +38,7 @@ class OnboardingScenario:
     standards_problems: list = field(default_factory=list)
     candidates: tuple = ()
     candidate_ids: dict = field(default_factory=dict)
-    sentinel_counts: dict = field(default_factory=dict)
-    profile_loads: dict = field(default_factory=dict)
+    drafts: dict = field(default_factory=dict)
     planning_state: str = "not-applicable"
     corpus_pages: int = 0
     runtime_present: bool = False
@@ -44,65 +51,48 @@ class OnboardingScenario:
             return None
         return {
             "effective_date": "2026-08-13",
-            "selected_profile_manifest": "profiles/candidate/profile.md",
+            "selected_profile_manifest": "profiles/candidate/profile.toml",
             "status": "approved",
             "upstream_revision_id": "a" * 40,
         }
 
     def derive(self, targeted_id=None):
-        def directory_exists(_path):
-            return self.adopting_root
-
-        def candidate_id(_root, name):
-            return self.candidate_ids.get(name, name)
-
-        def sentinels(path, _sentinel):
-            name = str(path).rstrip("/").rsplit("/", 1)[-1]
-            return self.sentinel_counts.get(name, 0)
-
-        def profile_load(_root, name):
-            return dict(self.profile_loads.get(
-                name, PASSING_PROFILE_LOAD))
+        def candidate_draft(_root, directory):
+            name = Path(directory).name
+            draft = self.drafts.get(name, READY_DRAFT)
+            if not isinstance(draft, profile_contract.ProfileDraft):
+                raise TypeError("onboarding fixture requires a ProfileDraft output")
+            slots = {key: draft.slot_document(key) for key in draft.slot_values}
+            slots["corpus-planning"] = {
+                "applicability": {"state": self.planning_state}}
+            return replace(
+                draft, profile_id=self.candidate_ids.get(name, name),
+                manifest_repo_path="profiles/%s/%s" % (
+                    name, profile_layout_contract.PROFILE_MANIFEST_NAME),
+                slot_values=slots)
 
         with mock.patch.object(
-                onboarding.os.path, "isdir", side_effect=directory_exists), \
+                onboarding.os.path, "isdir", return_value=self.adopting_root), \
                 mock.patch.object(
                     onboarding, "standards_view", return_value=(
-                        self.standards_state,
-                        self._standards_values(),
+                        self.standards_state, self._standards_values(),
                         list(self.standards_uninstantiated),
                         list(self.standards_problems))), \
-                mock.patch.object(
-                    onboarding, "unfilled_sentinel",
-                    return_value="TODO(profile)"), \
                 mock.patch.object(
                     onboarding, "candidate_directories",
                     return_value=list(self.candidates)), \
                 mock.patch.object(
-                    onboarding, "candidate_profile_id",
-                    side_effect=candidate_id), \
+                    onboarding, "_candidate_draft", side_effect=candidate_draft), \
                 mock.patch.object(
-                    onboarding, "sentinel_count", side_effect=sentinels), \
-                mock.patch.object(
-                    onboarding, "evaluate_candidate",
-                    side_effect=profile_load), \
-                mock.patch.object(
-                    onboarding, "corpus_planning_state",
-                    return_value=self.planning_state), \
-                mock.patch.object(
-                    onboarding, "corpus_page_count",
-                    return_value=self.corpus_pages), \
+                    onboarding, "corpus_page_count", return_value=self.corpus_pages), \
                 mock.patch.object(
                     onboarding, "runtime_view", return_value={
                         "present": self.runtime_present,
                         "state_has_content": self.runtime_has_content,
                     }):
-            return onboarding.derive_status(
-                "/synthetic/adopter", targeted_id)
+            return onboarding.derive_status("/synthetic/adopter", targeted_id)
 
 
 __all__ = [
-    "FAILING_PROFILE_LOAD",
-    "OnboardingScenario",
-    "PASSING_PROFILE_LOAD",
+    "INCOMPLETE_DRAFT", "INVALID_DRAFT", "OnboardingScenario", "READY_DRAFT",
 ]

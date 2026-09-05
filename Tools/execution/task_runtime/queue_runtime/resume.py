@@ -271,8 +271,8 @@ def batch_close_recovery_inventory(result):
             profile_load_inputs_sha256=(result.get(
                 "_profile_authorized_view") or {}).get(
                     "profile_load_inputs_sha256"),
-            authorized_profile_contract=(result.get(
-                "_profile_authorized_view") or {}).get("_contract"),
+            profile_evaluation=(result.get(
+                "_profile_authorized_view") or {}).get("_evaluation"),
             current_repository_snapshot_sha256=snapshot,
         ))
         entry = {

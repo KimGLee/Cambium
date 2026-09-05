@@ -19,6 +19,7 @@ import Tools.knowledge.rendering.deterministic_rendering_contract as determinist
 import Tools.governance.profile.profile_batch_judgment_contract as profile_batch_judgment_contract
 import Tools.platform.common.kblib as kblib
 import Tools.knowledge.rendering.rendering_verification_contract as rendering_verification_contract
+import Tools.knowledge.rendering.profile_rendering_evidence_contract as profile_rendering
 import Tools.execution.audit.substantive_review_contract as substantive_review_contract
 from Tools.platform.common.primitives import require_trimmed_string
 
@@ -456,6 +457,7 @@ def profile_extension_specs(contract, root=None):
     Profile's legal extension closure.
     """
     specs = []
+    specs.extend(profile_rendering_specs(contract, root=root))
     for scan in getattr(contract, "registered_scans", ()):
         if scan.required_for_k12_item_6:
             continue
@@ -495,6 +497,38 @@ def profile_extension_specs(contract, root=None):
             "fingerprint_binding": projection["fingerprint_binding"],
             "nonblocking": False,
         })
+    return tuple(specs)
+
+
+def profile_rendering_specs(contract, root=None):
+    """Project typed Profile predicates through the rendering extension."""
+    rendering = profile_rendering.rendering_contract(contract)
+    if rendering is None:
+        return ()
+    registry = load_changed_scope_registry(root)
+    points = [row for row in registry["extension_points"]
+              if row["extension_point_id"] == profile_rendering.EXTENSION_POINT]
+    if len(points) != 1:
+        raise ValueError("Profile rendering requires its registered extension point")
+    point = points[0]
+    specs = []
+    for rule in rendering.rules:
+        specs.append(_spec(
+            spec_id="profile-rendering:%s" % rule.rule_id,
+            source_registry=rendering.source_path, source_entry_id=rule.rule_id,
+            owner_kind="profile-extension", owner_rule_id=rule.rule_id,
+            kernel_extension_point=profile_rendering.EXTENSION_POINT,
+            target_source="changed-scope", tier=None,
+            applicability=rule.construct, partition="changed-scope-deterministic",
+            trigger_partition_mappings=(), due_stage=point["due_stage"],
+            evidence_role=point["evidence_role"], evidence_kind=point["evidence_kind"],
+            dimension="rendering", dimension_binding="fixed",
+            acceptance_predicate=rule.rule_id,
+            producer_capability=point["producer_capability"],
+            producer_gate_id=point.get("producer_gate_id"),
+            producer_check=profile_rendering.CHECK,
+            consumer_gate_id=point["consumer_gate_id"],
+            fingerprint_binding="evidence-time", nonblocking=point["nonblocking"]))
     return tuple(specs)
 
 

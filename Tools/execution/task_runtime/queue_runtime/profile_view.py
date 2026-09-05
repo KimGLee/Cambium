@@ -13,6 +13,7 @@ import Tools.governance.profile.check_profile as check_profile
 import Tools.platform.common.kblib as kblib
 import Tools.governance.control.metadata_execution_contract as metadata_execution_contract
 import Tools.governance.profile.profile_contract as profile_contract
+import Tools.governance.profile.profile_codec as profile_codec
 import Tools.governance.profile.profile_layout_contract as profile_layout_contract
 import Tools.governance.standards.standards_state as standards_state
 
@@ -54,66 +55,25 @@ def _selected_profile_manifest_envelope_errors(profile):
 
 
 def selected_profile_manifest_errors(root, profile):
-    """Reject template/example/unfilled manifests as runtime identities.
+    """Check a current-format identity without pretending it is admission.
 
-    Full profile quality remains owned by ``check_profile.py``.  This small
-    persistent guard enforces the mechanical facts a resumed Queue must never
-    forget: the selected package is an adopter-owned profile ID, not a shipped
-    form/example, and its identity/sentinel state is instantiated.
+    Corrective adoption may inspect this identity while a current reference
+    closure is invalid. Only the full profile-load producer can authorize a
+    model for normal runtime consumption.
     """
-    if not nonempty_string(profile):
-        return ["selected_profile_manifest must be instantiated"]
-    try:
-        location = profile_layout_contract.parse_profile_manifest_path(profile)
-    except profile_layout_contract.ProfileLayoutError:
-        return ["selected_profile_manifest must be %s/<id>/%s" %
-                (profile_layout_contract.PROFILES_DIRECTORY,
-                 profile_layout_contract.PROFILE_MANIFEST_NAME)]
-    if location.example:
-        return ["selected_profile_manifest must be %s/<id>/%s" %
-                (profile_layout_contract.PROFILES_DIRECTORY,
-                 profile_layout_contract.PROFILE_MANIFEST_NAME)]
-    errors = []
-    profile_id = location.profile_id
-    reserved = set(profile_layout_contract.RESERVED_PROFILE_IDS)
-    sentinel = "TODO(profile)"
-    defaults_path = os.path.join(
-        os.path.realpath(os.path.abspath(root)),
-        "Tools/schemas/execution_defaults.template.yaml",
-    )
-    if os.path.isfile(defaults_path):
-        try:
-            defaults = kblib.load_yaml_file(defaults_path)
-            reserved.update(str(value) for value in
-                            (defaults.get("reserved_profile_ids") or []))
-            sentinel = str(defaults.get("unfilled_sentinel") or sentinel)
-        except (OSError, ValueError, kblib.YamlSubsetError) as exc:
-            errors.append("selected profile default registry is unreadable: %s" %
-                          exc)
-    if not location.selectable or profile_id in reserved:
-        errors.append("selected_profile_manifest uses reserved/non-runnable "
-                      "profile id %r" % profile_id)
-    try:
-        profile_snapshot = kblib.repository_tree_snapshot(
-            root, os.path.dirname(profile))
-        manifest_text = profile_snapshot.read_text(profile)
-    except (OSError, UnicodeError, ValueError) as exc:
-        errors.append("selected_profile_manifest is unsafe or missing: %s" % exc)
+    errors = _selected_profile_manifest_envelope_errors(profile)
+    if errors:
         return errors
-    _, identity_errors = kblib.profile_identity(
-        manifest_text, profile_id, reserved)
-    for _, details in identity_errors:
-        errors.append("selected profile identity: %s" % details)
+    location = profile_layout_contract.parse_profile_manifest_path(profile)
     try:
-        hits, _, _ = check_profile.scan_sentinel(profile_snapshot, sentinel)
-    except (OSError, UnicodeError) as exc:
-        errors.append("selected profile cannot be scanned for unfilled "
-                      "sentinels: %s" % exc)
-    else:
-        if hits:
-            sample = ", ".join("%s:%d" % hit for hit in hits[:3])
-            errors.append("selected profile is not runnable; unfilled sentinel "
-                          "%r remains at %s" % (sentinel, sample))
+        snapshot = kblib.repository_tree_snapshot(root, os.path.dirname(profile))
+        document = profile_codec.loads_profile(snapshot.read_bytes(profile))
+    except (OSError, UnicodeError, ValueError) as exc:
+        return ["selected Profile identity cannot be read: %s" % exc]
+    if document.get("profile_id") != location.profile_id:
+        errors.append("selected Profile identity differs from its candidate directory")
+    if document.get("schema_version") != 1:
+        errors.append("selected Profile does not use the current structured contract")
     return errors
 
 
@@ -121,9 +81,8 @@ def profile_load_authorized_view(root, profile):
     """Run ``profile-load`` once and retain its snapshot-bound consumer view.
 
     The public evidence fields bind the selected manifest, complete Profile
-    tree, and typed dependency graph.  ``_manifest_slot_paths`` is an internal
-    projection of that *same* authorized contract; it lets runtime consumers
-    locate a slot without reparsing the manifest under a later revision.
+    closure and typed dependency graph. Slot and record consumers read the
+    same immutable ``_contract``; there is no parallel slot-path projection.
 
     ``evaluate_profile_load`` returns the Profile contract, compiled metadata
     contract, snapshot, fingerprints, and summary from one producer
@@ -165,8 +124,8 @@ def profile_load_authorized_view(root, profile):
     metadata_contract = evaluation.metadata_execution_contract
     summary = evaluation.summary_receipt
     if (not isinstance(contract,
-                       check_profile.profile_contract.ProfileContract) or
-            not contract.authorized):
+                       profile_contract.ProfileContract) or
+            not contract.valid):
         return None, ["profile-load pass exposed no authorized typed contract"]
     if not isinstance(summary, dict):
         return None, ["profile-load pass exposed no summary receipt"]
@@ -223,29 +182,12 @@ def profile_load_authorized_view(root, profile):
             return None, ["profile-load summary %s differs from the "
                           "authorized evaluation" % field]
 
-    slot_paths = {}
-    for edge in contract.dependency_edges:
-        if edge.kind != "manifest-slot":
-            continue
-        if (not nonempty_string(edge.owner_id) or
-                not nonempty_string(edge.path)):
-            return None, ["profile-load authorized a malformed manifest-slot "
-                          "dependency edge"]
-        if edge.owner_id in slot_paths:
-            return None, ["profile-load authorized duplicate manifest-slot "
-                          "dependency edges for %r" % edge.owner_id]
-        slot_paths[edge.owner_id] = edge.path
-    if EXPRESSION_LAYER_SLOT not in slot_paths:
-        return None, ["profile-load authorized no manifest-slot dependency "
-                      "edge for %s" % EXPRESSION_LAYER_SLOT]
-
     return {
         "selected_profile_manifest": profile,
         "profile_snapshot_sha256": snapshot,
         "profile_contract_fingerprint": fingerprint,
         "profile_load_inputs_sha256": inputs_fingerprint,
         "metadata_execution_contract_fingerprint": metadata_fingerprint,
-        "_manifest_slot_paths": tuple(sorted(slot_paths.items())),
         "_contract": contract,
         "_metadata_execution_contract": metadata_contract,
         "_profile_snapshot": bound_snapshot,
@@ -362,7 +304,7 @@ def profile_view_snapshot_error(root, authorized_view, phase):
     expected_inputs = authorized_view.get("profile_load_inputs_sha256")
     try:
         _snapshots, actual_inputs = \
-            check_profile.canonical_profile_load_inputs(root)
+            evaluation.rebind_normative_inputs(root)
     except (OSError, ValueError) as exc:
         return ("canonical profile-load inputs cannot be rebound %s "
                 "Expression hub derivation: %s" % (phase, exc))
@@ -404,8 +346,8 @@ def authorized_profile_view_errors(root, profile_manifest, authorized_view):
                       "fingerprint")
 
     contract = authorized_view.get("_contract")
-    contract_type = check_profile.profile_contract.ProfileContract
-    if not isinstance(contract, contract_type) or not contract.authorized:
+    contract_type = profile_contract.ProfileContract
+    if not isinstance(contract, contract_type) or not contract.valid:
         errors.append("authorized Profile view has no authorized typed "
                       "contract object")
         contract = None
@@ -465,33 +407,6 @@ def authorized_profile_view_errors(root, profile_manifest, authorized_view):
                 metadata_contract):
             errors.append("authorized Profile metadata contract differs from "
                           "its producer evaluation object")
-
-    projected_pairs = ()
-    try:
-        projected_pairs = tuple(authorized_view["_manifest_slot_paths"])
-        projected = dict(projected_pairs)
-        if (len(projected) != len(projected_pairs) or
-                any(not nonempty_string(key) or
-                    not nonempty_string(value)
-                    for key, value in projected_pairs)):
-            raise ValueError("malformed or duplicate manifest-slot edge")
-    except (KeyError, TypeError, ValueError):
-        errors.append("authorized Profile view has no immutable manifest-slot "
-                      "projection")
-        projected = {}
-
-    if contract is not None:
-        contract_pairs = tuple(sorted(
-            (edge.owner_id, edge.path)
-            for edge in contract.dependency_edges
-            if edge.kind == "manifest-slot"
-        ))
-        if projected_pairs != contract_pairs:
-            errors.append("authorized Profile manifest-slot projection differs "
-                          "from its typed contract")
-    if not nonempty_string(projected.get(EXPRESSION_LAYER_SLOT)):
-        errors.append("authorized Profile view has no %s path" %
-                      EXPRESSION_LAYER_SLOT)
 
     if not errors:
         snapshot_error = profile_view_snapshot_error(

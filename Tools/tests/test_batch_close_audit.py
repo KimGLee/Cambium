@@ -76,7 +76,7 @@ class PostDeltaAuditClosureTests(unittest.TestCase):
             "opening_transition_receipt": "opening-b1",
             "upstream_revision_id": FIXTURE_UPSTREAM_REVISION,
             "active_standards_sha256": SHA_B,
-            "selected_profile_manifest": "profiles/test/profile.md",
+            "selected_profile_manifest": "profiles/test/profile.toml",
             "profile_snapshot_sha256": SHA_C,
             "profile_contract_fingerprint": SHA_D,
             "contract_snapshot_sha256": SHA_E,

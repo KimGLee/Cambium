@@ -19,6 +19,7 @@ import Tools.execution.audit.changed_scope_evidence_contract as changed_scope_ev
 import Tools.execution.evidence.evidence_attempt_runtime as evidence_attempt_runtime
 import Tools.platform.common.kblib as kblib
 import Tools.knowledge.rendering.rendering_verification_contract as rendering_verification_contract
+import Tools.knowledge.rendering.profile_rendering_evidence_contract as profile_rendering
 import Tools.execution.task_runtime.runtime_paths as runtime_paths
 import Tools.execution.audit.substantive_review_contract as substantive_review_contract
 from Tools.platform.common import reporting
@@ -76,7 +77,8 @@ def _producer_evidence(root, result, receipt_id, plan, plan_sha256,
         evidence, plan, plan_sha256, obligation)
     try:
         chain = audit_producer_chain.require_precursor_record(
-            evidence, obligation, root=root)
+            evidence, obligation, root=root,
+            evaluation=(result.get("_profile_authorized_view") or {}).get("_evaluation"))
     except audit_producer_chain.AuditProducerChainError as exc:
         raise audit_producer_runtime.AuditProducerError(str(exc)) from exc
     expected = {
@@ -116,6 +118,13 @@ def _producer_evidence(root, result, receipt_id, plan, plan_sha256,
                 audit_producer_runtime.obligation_contract_fingerprint(
                     plan, obligation):
             mismatches.append("contract_fingerprint")
+    elif chain["execution_route"] == "profile-rendering":
+        try:
+            profile_rendering.validate_record_for_obligation(
+                evidence, plan, plan_sha256, obligation, root=root,
+                evaluation=(result.get("_profile_authorized_view") or {}).get("_evaluation"))
+        except (OSError, TypeError, UnicodeError, ValueError, RuntimeError) as exc:
+            mismatches.append("Profile rendering evidence: %s" % exc)
     elif chain["execution_route"] == "rendering-verification":
         try:
             if not frozen:

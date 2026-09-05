@@ -21,7 +21,7 @@ Method:
   generated example and is never an input to this Gate;
 - a missing or empty proof field -> fail (Terminal Proof incomplete);
 - selected_profile_manifest must be one exact
-  profiles/<profile_id>/profile.md path; with --root one shared
+  profiles/<profile_id>/profile.toml path; with --root one shared
   ``profile-load`` evaluation must authorize the full Profile, supplies the
   profile ID used for supplemental-route checks, and binds the Profile-tree
   snapshot, typed-contract fingerprint, and canonical load-input fingerprint

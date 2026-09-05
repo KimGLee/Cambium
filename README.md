@@ -55,7 +55,7 @@ This repository is intentionally uninstantiated. It contains one candidate Profi
 
 Cambium currently provides:
 
-- a single pre-closed profile template, a safe scaffolder, a machine-readable adoption interview, a read-only onboarding status view, and profile checks;
+- one empty TOML Profile candidate, Agent-assisted interviews, safe creation and snapshot-bound editing tools, read-only review/status views, and CUE-backed Profile checks;
 - persistent Coverage, Required Queue, and Progress state for resumable work;
 - deterministic task and batch transitions, controlled Amendments, active-task Standards adoption, interruption recovery, and build or maintenance closure;
 - append-only receipts and Terminal Proof bindings;
@@ -113,6 +113,8 @@ Do not edit canonical state by hand. Use the owning writer so revisions, hashes,
 
 Adoption creates and approves one profile for one repository. Copying a template or example does not select it.
 
+Run the authoring workflow from a Cambium source checkout after the [isolated Profile toolchain setup](Tools/README.md#profile-toolchain). The assisting agent runs the commands below; the user supplies and confirms repository decisions, without manually copying template files or writing TOML.
+
 ### 1. Create a candidate profile
 
 ```text
@@ -120,18 +122,20 @@ python3 Tools/scaffold_profile.py . --profile-id my-profile
 python3 Tools/scaffold_profile.py . --profile-id my-profile --apply
 ```
 
-The first command is a dry run. The second copies only the version-controlled whitelist and refuses to overwrite an existing candidate.
+The first command is a dry run. The second creates `profiles/my-profile/profile.toml` with the confirmed identity and empty slots, copies only the declared supporting files, and refuses to overwrite an existing candidate. It makes no policy choice and performs no adoption.
 
 ### 2. Answer the open decisions and validate
 
-Use [profiles/interview.yaml](profiles/interview.yaml) with an assisting agent, or fill the same contract by hand. The common slot interface belongs to the Kernel and is defined by [K00/19](kernel/K00%20Standards%20Control/19%20Profile%20Extension%20Interface.md) and its machine-readable registry; [profiles/README.md](profiles/README.md) is the candidate workflow guide.
+The assisting agent uses [profiles/interview.yaml](profiles/interview.yaml) to discuss the repository's needs and `Tools/profile_candidate.py` to read, preview, edit, and render the candidate. User answers live once in `profile.toml`; independently referenced policy bodies retain their own owner. [profiles/README.md](profiles/README.md) describes the exact workflow and snapshot preconditions.
+
+The Kernel owns slot meaning and legal values through [K00/19](kernel/K00%20Standards%20Control/19%20Profile%20Extension%20Interface.md) and domain-owned contracts. Tools own TOML encoding—including the root version, `slots` packaging, and draft-validation entry point—plus file layout, evaluation, and presentation. Existing domain YAML contracts remain sole owners where other consumers need them; their CUE projections are generated and checked, not parallel handwritten rules.
 
 ```text
 python3 Tools/profile_onboarding_status.py . --profile-id my-profile --json
 python3 Tools/check_profile.py profiles/my-profile
 ```
 
-The template pre-closes choices that have a safe legal default. The remaining questions require operator-confirmed repository decisions. An agent may prepare a candidate, but may not approve it or invent domain policy.
+Unanswered draft fields remain unanswered: omission is not agreement to disable an option or inherit a default. Existing legal defaults still apply where the completed contract permits them, but do not prove user confirmation. Mechanical validity, user confirmation, and adoption are separate; a rendered view or successful check never selects the Profile.
 
 ### 3. Approve the profile through R09
 

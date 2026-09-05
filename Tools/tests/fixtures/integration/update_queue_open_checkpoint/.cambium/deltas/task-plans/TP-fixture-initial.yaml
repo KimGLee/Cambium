@@ -11,7 +11,7 @@ contract_after:
   scope_version: s1
   concurrency_cap: 2
   upstream_revision_id: 0123456789abcdef0123456789abcdef01234567
-  selected_profile_manifest: profiles/test-profile/profile.md
+  selected_profile_manifest: profiles/test-profile/profile.toml
   selected_route_ids:
     - R01
     - R03

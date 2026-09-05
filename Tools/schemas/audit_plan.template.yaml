@@ -12,7 +12,7 @@ required_queue_sha256: sha256:11111111111111111111111111111111111111111111111111
 # approved upstream commit before using this example as input.
 upstream_revision_id: "0123456789abcdef0123456789abcdef01234567"
 active_standards_sha256: sha256:2222222222222222222222222222222222222222222222222222222222222222
-selected_profile_manifest: profiles/example/profile.md
+selected_profile_manifest: profiles/example/profile.toml
 profile_snapshot_sha256: sha256:3333333333333333333333333333333333333333333333333333333333333333
 profile_contract_fingerprint: sha256:4444444444444444444444444444444444444444444444444444444444444444
 opening_transition_receipt: audit-update_queue-example-open

@@ -105,23 +105,18 @@ def compose(root, base_path, rel_path, sources_role_path, admission):
         sources_role_path, errors, "sources-role base",
         kernel_snapshots[sources_role_path].read_text()) \
         if sources_role_path in kernel_snapshots else None
-    contract_path, error = profile_admission.require_slot(
+    _contract_value, error = profile_admission.require_slot(
         admission, METADATA_SLOT)
     if error:
         errors.append(error)
-    vocab_path, error = profile_admission.require_slot(admission, VOCAB_SLOT)
+    _vocab_value, error = profile_admission.require_slot(admission, VOCAB_SLOT)
     if error:
         errors.append(error)
-    contract = load_yaml(
-        contract_path, errors, "Metadata Contract",
-        admission.slot_text(METADATA_SLOT)) \
-        if contract_path else None
-    vocab = load_yaml(
-        vocab_path, errors, "Vocabulary Extensions",
-        admission.slot_text(VOCAB_SLOT)) \
-        if vocab_path else None
     if errors:
         return None, None, errors
+    contract = admission.slot_document(METADATA_SLOT)
+    vocab = admission.slot_document(VOCAB_SLOT)
+    contract_path = vocab_path = admission.source_path
 
     if not isinstance(base, dict) or \
             not isinstance(base.get("fields"), dict):
@@ -264,8 +259,8 @@ def compose(root, base_path, rel_path, sources_role_path, admission):
         base_path: kernel_snapshots[base_path].data,
         rel_path: kernel_snapshots[rel_path].data,
         sources_role_path: kernel_snapshots[sources_role_path].data,
-        contract_path: admission.slot_bytes.get(METADATA_SLOT),
-        vocab_path: admission.slot_bytes.get(VOCAB_SLOT),
+        contract_path: admission.evaluation.profile_snapshot.read_bytes(
+            admission.manifest_repo_path),
     }
     for label, path in (("applicability-base", base_path),
                         ("relationship-base", rel_path),

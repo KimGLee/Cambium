@@ -68,7 +68,7 @@ class BatchPageReviewProducerTests(unittest.TestCase):
             "required_queue_sha256": SHA_A,
             "upstream_revision_id": "standards-test",
             "active_standards_sha256": SHA_A,
-            "selected_profile_manifest": "profiles/test/profile.md",
+            "selected_profile_manifest": "profiles/test/profile.toml",
             "profile_snapshot_sha256": SHA_B,
             "profile_contract_fingerprint": SHA_C,
             "opening_transition_receipt": "audit-update_queue-open-1",

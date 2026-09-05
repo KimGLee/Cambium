@@ -6,6 +6,7 @@ admission checkpoint.
 """
 
 import contextlib
+import copy
 import io
 import tempfile
 import unittest
@@ -16,11 +17,13 @@ from pathlib import Path
 import Tools.governance.control.metadata_execution_contract as \
     metadata_execution_contract
 import Tools.governance.profile.profile_admission as profile_admission
+import Tools.governance.profile.profile_codec as profile_codec
 import Tools.knowledge.metadata.check_page_contract as check_page_contract
 import Tools.knowledge.metadata.compose_page_contract as compose_page_contract
 import Tools.knowledge.metadata.metadata_property_state as \
     metadata_property_state
 from Tools.platform.common import reporting
+from Tools.platform.common import kblib
 
 
 APPLICABILITY_BASE = """schema_version: 1
@@ -113,71 +116,60 @@ relationships:
     shape: list-of-paths
 """
 
-VOCAB = """schema_version: 1
-frontmatter_extensions:
-  fields: []
-"""
+VOCAB = {"schema_version": 1, "frontmatter_extensions": {"fields": []}}
 
-CONTRACT_DEFAULTS = """schema_version: 1
-applicability:
-  state: kernel-defaults
-applicability_differences: []
-extension_fields: []
-relationship_extensions: []
-section_roles: []
-"""
+CONTRACT_DEFAULTS = {
+    "schema_version": 1,
+    "applicability": {"state": "kernel-defaults"},
+    "applicability_differences": [], "extension_fields": [],
+    "relationship_extensions": [], "section_roles": [],
+}
 
-CONTRACT_CONFIGURED = """schema_version: 1
-applicability:
-  state: configured
-applicability_differences:
-  - field: last_verified
-    mode: required
-extension_fields:
-  - field: card_binding
-    mode: optional
-    shape: path
-    owner: "scope.md"
-relationship_extensions: []
-section_roles: []
-"""
+CONTRACT_CONFIGURED = {
+    **CONTRACT_DEFAULTS,
+    "applicability": {"state": "configured"},
+    "applicability_differences": [
+        {"field": "last_verified", "mode": "required"}],
+    "extension_fields": [
+        {"field": "card_binding", "mode": "optional", "shape": "path",
+         "owner": "scope.md"}],
+}
 
 
 class StaticAdmission:
-    """Compiler input adapter containing only typed immutable slot bytes."""
+    """Local compiler checkpoint, not evidence of a Profile-load Gate."""
 
     def __init__(self, root):
         self.root = str(root)
         self.active_state_repo_path = None
-        self.manifest_repo_path = "profile/profile.md"
+        self.manifest_repo_path = "profiles/fixture/profile.toml"
+        self.source_path = str(root / self.manifest_repo_path)
         self.contract = SimpleNamespace(
-            profile_repo_dir="profile", extension_gates=())
+            profile_repo_dir="profiles/fixture", extension_gates=())
+        snapshot = kblib.repository_tree_snapshot(
+            str(root), "profiles/fixture")
+        self.document = profile_codec.loads_profile(
+            snapshot.read_bytes(self.manifest_repo_path).decode("utf-8"))
         self.evaluation = SimpleNamespace(
+            profile_snapshot=snapshot,
             profile_snapshot_sha256="sha256:" + "1" * 64,
             profile_contract_fingerprint="sha256:" + "2" * 64,
             profile_load_inputs_sha256="sha256:" + "3" * 64,
         )
-        self.slot_paths = {
-            compose_page_contract.METADATA_SLOT:
-                str(root / "profile/metadata-contract.yaml"),
-            compose_page_contract.VOCAB_SLOT:
-                str(root / "profile/vocabulary-extensions.yaml"),
-        }
-        self.slot_bytes = {
-            name: Path(path).read_bytes()
-            for name, path in self.slot_paths.items()
-        }
 
-    def slot_path(self, name):
-        return self.slot_paths.get(name)
+    def slot(self, name):
+        identity = {
+            compose_page_contract.METADATA_SLOT: "metadata-contract",
+            compose_page_contract.VOCAB_SLOT: "vocabulary-extensions",
+        }[name]
+        return copy.deepcopy(self.document["slots"][identity])
 
-    def slot_text(self, name):
-        value = self.slot_bytes.get(name)
-        return None if value is None else value.decode("utf-8")
+    def slot_document(self, name):
+        return self.slot(name)
 
 
 @contextlib.contextmanager
-def compiler_workspace(contract_text=CONTRACT_DEFAULTS):
+def compiler_workspace(contract_document=CONTRACT_DEFAULTS):
     """Yield one typed compiler checkpoint with no adopter runtime."""
     with tempfile.TemporaryDirectory() as workspace:
         root = Path(workspace)
@@ -185,8 +177,11 @@ def compiler_workspace(contract_text=CONTRACT_DEFAULTS):
             "kernel/applicability-base.yaml": APPLICABILITY_BASE,
             "kernel/relationship-base.yaml": RELATIONSHIP_BASE,
             "kernel/sources-role-base.yaml": SOURCES_ROLE_BASE,
-            "profile/metadata-contract.yaml": contract_text,
-            "profile/vocabulary-extensions.yaml": VOCAB,
+            "profiles/fixture/profile.toml": profile_codec.dumps_profile({
+                "schema_version": 1, "profile_id": "fixture",
+                "slots": {"metadata-contract": contract_document,
+                          "vocabulary-extensions": VOCAB},
+            }).decode("utf-8"),
         }
         for relative, text in inputs.items():
             path = root / relative
@@ -376,20 +371,18 @@ class PageContractContractTests(unittest.TestCase):
             "profile", configured["fields"]["card_binding"]["origin"])
 
     def test_compiler_rejects_non_tightening_unknown_and_duplicate_fields(self):
-        cases = (
-            (CONTRACT_CONFIGURED.replace(
-                "  - field: last_verified\n    mode: required",
-                "  - field: type\n    mode: conditional\n"
-                "    condition:\n      all:\n        - field: type\n"
-                "          in:\n            - concept"),
-             "not a tightening"),
-            (CONTRACT_CONFIGURED.replace(
-                "field: last_verified", "field: unheard_of"),
-             "does not name a kernel base field"),
-            (CONTRACT_CONFIGURED.replace(
-                "field: card_binding", "field: aliases"),
-             "declared twice"),
-        )
+        relaxed = copy.deepcopy(CONTRACT_CONFIGURED)
+        relaxed["applicability_differences"] = [{
+            "field": "type", "mode": "conditional",
+            "condition": {"all": [{"field": "type", "in": ["concept"]}]},
+        }]
+        unknown = copy.deepcopy(CONTRACT_CONFIGURED)
+        unknown["applicability_differences"][0]["field"] = "unheard_of"
+        duplicate = copy.deepcopy(CONTRACT_CONFIGURED)
+        duplicate["extension_fields"][0]["field"] = "aliases"
+        cases = ((relaxed, "not a tightening"),
+                 (unknown, "does not name a kernel base field"),
+                 (duplicate, "declared twice"))
         for contract, expected in cases:
             _text, _compiled, errors = compile_contract(contract)
             with self.subTest(expected=expected):
@@ -418,7 +411,7 @@ def run_acceptance(root, admission, contract_text, *, strict=False):
                 return_value=()),
             contextlib.redirect_stdout(output)):
         code = check_page_contract.run(
-            str(root), "profile", "compiled-page-contract.yaml",
+            str(root), "profiles/fixture", "compiled-page-contract.yaml",
             "Domain", (), strict, None,
             authorized_admission=admission,
         )
@@ -520,7 +513,7 @@ class PageContractIntegrationTests(unittest.TestCase):
                         "profile_gate_projection_rules", return_value=()),
                     contextlib.redirect_stdout(output)):
                 code = check_page_contract.run(
-                    str(root), "profile", str(artifact), "Domain", (),
+                    str(root), "profiles/fixture", str(artifact), "Domain", (),
                     False, None, authorized_admission=admission)
 
         self.assertEqual(0, code, output.getvalue())

@@ -196,14 +196,18 @@ def profile_scan_selector(scan):
     return selector
 
 
-def _profile_scan_owner(plan, owner_rule_id, root=None, contract=None):
+def _profile_scan_owner(plan, owner_rule_id, root=None, evaluation=None):
     root = repository_source_root(__file__, root)
-    if contract is None:
-        contract = profile_contract.load_profile_contract(
-            root, plan.get("selected_profile_manifest"))
-    if not getattr(contract, "authorized", False):
+    from Tools.governance.profile import profile_admission
+    admission, errors = profile_admission.admit_profile_manifest(
+        root, plan.get("selected_profile_manifest"), evaluation=evaluation)
+    if errors:
         raise ChangedScopeEvidenceContractError(
-            "selected Profile contract is not authorized")
+            "selected Profile failed admission: " + "; ".join(errors))
+    contract = admission.contract
+    if admission.profile_snapshot_sha256 != plan.get("profile_snapshot_sha256"):
+        raise ChangedScopeEvidenceContractError(
+            "selected Profile snapshot differs from AuditPlan")
     expected_profile = {
         "manifest_repo_path": plan.get("selected_profile_manifest"),
         "profile_contract_fingerprint":
@@ -225,7 +229,7 @@ def _profile_scan_owner(plan, owner_rule_id, root=None, contract=None):
     return root, contract, matches[0]
 
 
-def authorized_profile_scan(plan, obligation, root=None, contract=None):
+def authorized_profile_scan(plan, obligation, root=None, evaluation=None):
     """Resolve one Profile extension row and its sole admitted scan owner."""
     if (obligation.get("owner_kind") != "profile-extension" or
             obligation.get("kernel_extension_point") !=
@@ -233,7 +237,7 @@ def authorized_profile_scan(plan, obligation, root=None, contract=None):
         raise ChangedScopeEvidenceContractError(
             "obligation is not a K12/05 Profile registered-scan extension")
     root, contract, scan = _profile_scan_owner(
-        plan, obligation.get("owner_rule_id"), root, contract)
+        plan, obligation.get("owner_rule_id"), root, evaluation)
     try:
         spec = audit_obligation_projection.profile_registered_scan_spec(
             contract, scan, root=root)
@@ -699,7 +703,7 @@ def validate_direct_record_for_plan(
 
 
 def validate_candidate_set_record(
-        record, registry=None, root=None, contract=None):
+        record, registry=None, root=None, evaluation=None):
     """Validate one dimensionless, plan-bound Profile candidate set."""
     root = repository_source_root(__file__, root)
     registry = registry or load_registry(root)
@@ -722,7 +726,7 @@ def validate_candidate_set_record(
         field: record.get(field) for field in PLAN_BINDING_FIELDS
     }
     root, contract, scan = _profile_scan_owner(
-        pseudo_plan, record.get("owner_rule_id"), root, contract)
+        pseudo_plan, record.get("owner_rule_id"), root, evaluation)
     try:
         spec = audit_obligation_projection.profile_registered_scan_spec(
             contract, scan, root=root, registry=registry)
@@ -848,13 +852,20 @@ def validate_candidate_set_record(
 
 def validate_candidate_set_record_for_plan(
         record, plan, plan_sha256, obligation, registry=None, *, root=None,
-        contract=None):
+        evaluation=None):
     """Bind one Profile candidate set to its exact immutable AuditPlan row."""
     root = repository_source_root(__file__, root)
     registry = registry or load_registry(root)
-    validate_candidate_set_record(record, registry, root, contract)
+    if evaluation is None:
+        from Tools.governance.profile import profile_admission
+        admission, errors = profile_admission.admit_profile_manifest(
+            root, plan.get("selected_profile_manifest"))
+        if errors:
+            raise ChangedScopeEvidenceContractError("; ".join(errors))
+        evaluation = admission.evaluation
+    validate_candidate_set_record(record, registry, root, evaluation)
     _profile, scan, _spec = authorized_profile_scan(
-        plan, obligation, root, contract)
+        plan, obligation, root, evaluation)
     expected = {field: plan[field] for field in PLAN_BINDING_FIELDS}
     expected.update({
         "plan_id": plan["plan_id"],
@@ -1080,7 +1091,7 @@ def validate_audit_producer_record_for_plan(
 def validate_record_for_plan(
         record, plan, plan_sha256, obligation, registry=None,
         control_registry=None, *, root=None, artifact_fingerprint=None,
-        contract=None):
+        evaluation=None):
     """Consumer entry point for either changed-scope evidence variant."""
     if not isinstance(record, dict):
         raise ChangedScopeEvidenceContractError(
@@ -1094,7 +1105,7 @@ def validate_record_for_plan(
     if kind == "candidate-set-receipt":
         return validate_candidate_set_record_for_plan(
             record, plan, plan_sha256, obligation, registry,
-            root=root, contract=contract)
+            root=root, evaluation=evaluation)
     if kind == "gate-receipt":
         return validate_direct_record_for_plan(
             record, plan, plan_sha256, obligation, registry,

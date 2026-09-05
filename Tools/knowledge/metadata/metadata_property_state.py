@@ -94,7 +94,7 @@ def gate_projection_rule(field, allowed_values):
 
 def profile_gate_projection_rules(root, extension_gates,
                                   metadata_contract=None, *,
-                                  authorized_profile_contract=None):
+                                  typed_profile_contract=None):
     """Compose Core page rules with every typed Profile Gate enum.
 
     All Profile-managed page copies participate in the semantic fingerprint,
@@ -103,19 +103,20 @@ def profile_gate_projection_rules(root, extension_gates,
     their enums are unioned into one deterministic projection rule while each
     transition still validates its own narrower Gate enum at consumption.
     """
-    profile_contract = authorized_profile_contract
+    profile_contract = typed_profile_contract
     if (profile_contract is None or
-            not getattr(profile_contract, "authorized", False)):
+            not getattr(profile_contract, "valid", False)):
         raise ValueError(
-            "Profile Gate projection requires one authorized typed Profile "
+            "Profile Gate projection requires one valid typed Profile "
             "contract")
     authorized_gates = tuple(getattr(
         profile_contract, "extension_gates", ()))
     if tuple(extension_gates) != authorized_gates:
         raise ValueError(
             "Profile Gate rules differ from the authorized typed contract")
-    contract = metadata_contract or \
-        metadata_execution_contract.load_metadata_execution_contract(root)
+    contract = metadata_contract
+    if not isinstance(contract, metadata_execution_contract.CompiledMetadataExecutionContract):
+        raise ValueError("pure Profile projection requires its explicit compiled metadata input")
     return metadata_execution_contract.compose_profile_projection_rules(
         contract, profile_contract)
 
@@ -128,8 +129,8 @@ def authorized_profile_projection_rules(root, profile_view):
     validation compose Core rules with the *same* typed
     ``extension_gates`` contract instead of growing parallel Profile parsers.
     """
-    contract = profile_view.get("_contract") if isinstance(
-        profile_view, dict) else None
+    from Tools.governance.profile.profile_admission import contract_from_admitted_view
+    contract = contract_from_admitted_view(root, profile_view)
     extension_gates = getattr(contract, "extension_gates", None)
     if extension_gates is None:
         raise ValueError(
@@ -149,7 +150,7 @@ def authorized_profile_projection_rules(root, profile_view):
             "from its admitted object")
     return metadata_contract, profile_gate_projection_rules(
         root, extension_gates, metadata_contract=metadata_contract,
-        authorized_profile_contract=contract)
+        typed_profile_contract=contract)
 
 
 def _page_rows(coverage):

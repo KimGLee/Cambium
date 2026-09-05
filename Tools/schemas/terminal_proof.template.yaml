@@ -14,7 +14,7 @@ queue_check_receipt: audit-check_queue-20260721T000000Z-111111111111111111111111
 corpus_plan_check_receipt: audit-check_corpus_plan-20260721T000000Z-22222222222222222222222222222222-0001
 corpus_plan_semantic_acceptance_receipt: null
 upstream_revision_id: 23456789abcdef0123456789abcdef0123456789
-selected_profile_manifest: profiles/example/profile.md
+selected_profile_manifest: profiles/example/profile.toml
 selected_route_ids:
   - R01
   - R08

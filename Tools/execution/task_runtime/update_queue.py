@@ -61,15 +61,13 @@ def _metadata_projection_context(result):
     view = result.get("_profile_authorized_view")
     if not isinstance(view, dict):
         raise ValueError("runtime has no authorized Profile view")
-    profile = view.get("_contract")
-    if (profile is None or
-            getattr(profile, "authorized", False) is not True):
-        raise ValueError("runtime Profile contract is not authorized")
+    from Tools.governance.profile.profile_admission import contract_from_admitted_view
+    profile = contract_from_admitted_view(result["root"], view)
     contract = queue_runtime.runtime_metadata_execution_contract(result)
     rules = metadata_property_state.profile_gate_projection_rules(
         result["root"], profile.extension_gates,
         metadata_contract=contract,
-        authorized_profile_contract=profile)
+        typed_profile_contract=profile)
     return view, profile, contract, rules
 
 
@@ -780,9 +778,7 @@ def _transition_item(item, args, result):
                 "profile_load_inputs_sha256"),
             metadata_execution_contract_fingerprint=result[
                 "_metadata_contract"].contract_fingerprint,
-            authorized_profile_contract=result[
-                "_profile_authorized_view"]["_contract"],
-            authorized_metadata_contract=result["_metadata_contract"],
+            profile_evaluation=result["_profile_authorized_view"]["_evaluation"],
             corpus_plan_required=corpus_plan_required,
             corpus_plan_triggers=corpus_plan_triggers,
             corpus_plan_expected_binding=corpus_plan_expected_binding,
@@ -1535,8 +1531,7 @@ def _run(args, produced):
                             "profile_load_inputs_sha256"),
                         metadata_execution_contract_fingerprint=
                             metadata_contract.contract_fingerprint,
-                        authorized_profile_contract=profile_contract,
-                        authorized_metadata_contract=metadata_contract,
+                        profile_evaluation=profile_view.get("_evaluation"),
                         corpus_plan_required=locked_corpus_required,
                         corpus_plan_triggers=locked_corpus_triggers,
                         corpus_plan_expected_binding=locked_corpus_binding,

@@ -11,12 +11,14 @@ from unittest import mock
 
 import Tools.governance.profile.apply_profile_adoption as apply_profile_adoption
 import Tools.governance.profile.check_profile as check_profile
+import Tools.governance.profile.profile_layout_contract as profile_layout_contract
 import Tools.governance.profile.scaffold_profile as scaffold_profile
 import Tools.governance.standards.standards_state as standards_state
 import Tools.platform.common.kblib as kblib
 import Tools.platform.distribution.module_boundary_facts as module_boundary_facts
 import Tools.platform.distribution.upstream_identity as upstream_identity
 import Tools.tests.support.profile_load_fixture as profile_load_fixture
+from Tools.tests.support.profile_contract_fixture import write_profile_document
 from Tools.tests.support.profile_template_fixture import (
     ORIENTATION,
     TEMPLATE,
@@ -29,7 +31,8 @@ REPOSITORY = Path(__file__).resolve().parents[3]
 TOOLS = REPOSITORY / "Tools"
 GOVERNANCE = "kernel/K00 Standards Control/03 Standards Governance.md"
 PROFILE_ID = "cand"
-MANIFEST = "profiles/%s/profile.md" % PROFILE_ID
+MANIFEST = "profiles/%s/%s" % (
+    PROFILE_ID, profile_layout_contract.PROFILE_MANIFEST_NAME)
 PLAN_RELATIVE = "adoption-plans/PA-001.yaml"
 UPSTREAM_REF = "HEAD"
 UPSTREAM_REVISION = upstream_identity.resolve_revision(REPOSITORY, UPSTREAM_REF)
@@ -69,12 +72,12 @@ def build_writer_checkpoint(target):
     governance.write_bytes((REPOSITORY / GOVERNANCE).read_bytes())
     profile = target / "profiles" / PROFILE_ID
     profile.mkdir(parents=True)
-    (profile / "profile.md").write_text(
-        "# Writer checkpoint\n\n- profile_id: `%s`\n" % PROFILE_ID,
-        encoding="utf-8",
-    )
-    (profile / "corpus-planning.yaml").write_text(
-        'reason: "Confirmed writer checkpoint."\n', encoding="utf-8")
+    write_profile_document(profile, {
+        "schema_version": 1, "profile_id": PROFILE_ID,
+        "slots": {"corpus-planning": {
+            "applicability": {"state": "not-applicable",
+                              "reason": "Confirmed writer checkpoint."}}},
+    })
     tools = target / "Tools"
     tools.mkdir()
     for script in ("compose_vocab.py", "compose_page_contract.py"):
@@ -92,10 +95,7 @@ def clone_writer_checkpoint(source, target):
 
 def _writer_profile_bytes(root):
     root = Path(root)
-    return b"\0".join((
-        (root / MANIFEST).read_bytes(),
-        (root / "profiles" / PROFILE_ID / "corpus-planning.yaml").read_bytes(),
-    ))
+    return (root / MANIFEST).read_bytes()
 
 
 def writer_evaluation_of(root):

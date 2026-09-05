@@ -3,6 +3,6 @@ state_revision: 1
 upstream_revision_id: 0123456789abcdef0123456789abcdef01234567
 status: approved
 effective_date: 2026-08-01
-selected_profile_manifest: profiles/test-profile/profile.md
+selected_profile_manifest: profiles/test-profile/profile.toml
 latest_adoption_receipt: audit-fixture-standards-adoption
 upstream_source_ref: fixture://cambium

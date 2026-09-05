@@ -1,4 +1,4 @@
-schema_version: 2
+schema_version: 3
 registry_id: contract-exception-policy
 
 # This is the sole machine authority for the Kernel policies that may be
@@ -21,9 +21,10 @@ families:
       maximum_exclusive: 100
       joint_maximum_exclusive: 100
     profile_resolution:
-      section: Priority Quota
-      registration_none: None
-      registration_configured: Configured
+      slot_id: priority-rubric
+      extension_point: priority-quota
+      inactive_state: none
+      configured_state: configured
       remainder_class: P2
     policies:
       - policy_id: priority_quota.P0

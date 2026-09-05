@@ -1,19 +1,20 @@
 """Minimal current-contract repository checkpoint for Card activation.
 
-The checkpoint contains only the three serialized-form contracts consumed by
-the activation producer, one R01 Card/Read Set pair, one source leaf, and one
-selected Profile identity.  It deliberately starts after runtime validation:
-Queue, Profile, and Standards authority are supplied as an already-validated
-in-memory view, so this fixture never replays adoption or Task lifecycle work.
+The checkpoint installs the current Profile owner inputs and evaluates one
+minimal complete Profile through the real profile-load Gate. It then joins
+that admitted view to a local R01 Card/Read Set pair and fixed Queue/Standards
+inputs. It never replays adoption or Task lifecycle work.
 """
 
 from pathlib import Path
 import shutil
 
 import Tools.execution.context_delivery.card_activation as card_activation
-import Tools.governance.profile.profile_contract as profile_contract
 import Tools.platform.common.kblib as kblib
 import Tools.platform.distribution.stamp_cards as stamp_cards
+from Tools.execution.task_runtime.queue_runtime import profile_view
+from Tools.tests.support.profile_contract_fixture import install_profile_package
+from Tools.tests.support.profile_load_fixture import install_current_profile_load_inputs
 
 
 REPOSITORY = Path(__file__).resolve().parents[4]
@@ -24,7 +25,7 @@ CONTRACT_FILES = (
 )
 CARD_PATH = "Card/R01 Fixture Card.md"
 READ_SET_PATH = "Read Set/R01 Fixture Read Set.md"
-PROFILE_PATH = "profiles/test/profile.md"
+PROFILE_PATH = "profiles/test/profile.toml"
 
 
 def _write(root, relative, text):
@@ -37,32 +38,11 @@ def _sha(label):
     return kblib.sha256_bytes(label.encode("utf-8"))
 
 
-def _profile(root):
-    manifest = root / PROFILE_PATH
-    return profile_contract.ProfileContract(
-        root=str(root),
-        manifest_path=str(manifest),
-        manifest_repo_path=PROFILE_PATH,
-        profile_root=str(manifest.parent),
-        profile_repo_dir="profiles/test",
-        audit_registry_path=None,
-        scan_registry_path=None,
-        routing_registry_path=None,
-        extension_registration=None,
-        extension_dimensions=(),
-        judgment_items=(),
-        registered_scans=(),
-        extension_gate_registration=None,
-        extension_gates=(),
-        dependency_edges=(),
-        source_cells=(),
-        diagnostics=(),
-    )
-
-
 def install_checkpoint(root):
-    """Install and return one already-valid activation input checkpoint."""
+    """Return one Card checkpoint containing an actual admitted Profile view."""
     root = Path(root).resolve()
+    install_current_profile_load_inputs(root)
+    install_profile_package((root / PROFILE_PATH).parent, profile_id="test")
     for relative in CONTRACT_FILES:
         target = root / relative
         target.parent.mkdir(parents=True, exist_ok=True)
@@ -121,14 +101,9 @@ def install_checkpoint(root):
     })
     _write(root, CARD_PATH,
            "---\n%s---\n%s" % (kblib.canonical_yaml(card), body))
-    _write(
-        root,
-        PROFILE_PATH,
-        "# Test Profile\n\n## Profile Identity\n\n"
-        "- `profile_id`: `test`\n",
-    )
-
-    contract = _profile(root)
+    admitted_profile, errors = profile_view.profile_load_authorized_view(root, PROFILE_PATH)
+    if errors:
+        raise AssertionError("Card checkpoint Profile failed admission: " + "; ".join(errors))
     progress = {
         "task_id": "TASK-1",
         "contract": {
@@ -158,12 +133,7 @@ def install_checkpoint(root):
             kblib.canonical_yaml(progress)),
         "progress": progress,
         "items_by_id": {"B1": item},
-        "_profile_authorized_view": {
-            "profile_snapshot_sha256": _sha("profile-snapshot"),
-            "profile_contract_fingerprint": _sha("profile-contract"),
-            "profile_load_inputs_sha256": _sha("profile-load-inputs"),
-            "_contract": contract,
-        },
+        "_profile_authorized_view": admitted_profile,
         "_active_standards_authorized_view": {
             "active_standards_sha256": _sha("active-standards"),
         },

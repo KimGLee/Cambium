@@ -40,7 +40,7 @@ _RUNTIME_PAGE_FIELDS = frozenset((
 
 
 def confirmed_initial_task_plan(*, upstream_revision_id,
-                                profile_manifest="profiles/sample/profile.md",
+                                profile_manifest="profiles/sample/profile.toml",
                                 task_id="new-task",
                                 plan_id=FIXTURE_PLAN_ID,
                                 objective="Exercise safe runtime publication",

@@ -723,44 +723,19 @@ def _profile_scan_command(root, evaluation):
     return command, expected
 
 
-def _rubric_text_for(evaluation):
-    contract = evaluation.contract
-    snapshot = evaluation.profile_snapshot
-    manifest_text = snapshot.read_text(contract.manifest_repo_path)
-    bindings = kblib.profile_slot_bindings(manifest_text)
-    binding = (bindings.get("Priority Rubric") or "").strip("`").strip()
-    if not binding:
-        raise ValueError("the selected Profile binds no Priority Rubric slot")
-    return snapshot.read_text(
-        "%s/%s" % (contract.profile_repo_dir.rstrip("/"), binding))
-
-
 def _priority_policy(evaluation):
-    """Resolve the optional quota policy from the Priority Rubric slot.
-
-    K00/07 owns the quota model and the selected Profile owns any configured
-    values. ``Registration: None`` resolves to a fingerprinted inactive
-    policy, not hidden Kernel defaults. This consumer reads the same slot bytes
-    through the same resolver the profile-load Gate validates.
-    """
+    """Consume the admitted typed quota and its frozen policy owner."""
     if not evaluation.authorized:
-        raise ValueError("priority policy requires one authorized profile-load")
-    contract = evaluation.contract
-    snapshot = evaluation.profile_snapshot
-    manifest_text = snapshot.read_text(contract.manifest_repo_path)
-    bindings = kblib.profile_slot_bindings(manifest_text)
-    binding = (bindings.get("Priority Rubric") or "").strip("`").strip()
-    if not binding:
-        raise ValueError("the selected Profile binds no Priority Rubric slot")
-    rubric_repo_path = "%s/%s" % (contract.profile_repo_dir.rstrip("/"),
-                                  binding)
-    rubric_text = snapshot.read_text(rubric_repo_path)
-    policy, fingerprint, errors = (
-        contract_exception_policy.effective_priority_policy(rubric_text))
+        raise ValueError("priority policy requires an authorized profile-load")
+    registry = contract_exception_policy.load_policy_registry(
+        evaluation.contract.root,
+        text=evaluation.normative_snapshots[
+            contract_exception_policy.POLICY_REGISTRY_PATH].read_text(),
+        require_owner_files=False)
+    policy, fingerprint, errors = contract_exception_policy.effective_priority_policy(
+        evaluation.contract.slot_document("Priority Rubric"), registry=registry)
     if errors or fingerprint is None:
-        raise ValueError(
-            "the Priority Rubric quota registration does not resolve: %s" %
-            "; ".join(errors))
+        raise ValueError("Priority Rubric does not resolve: %s" % "; ".join(errors))
     return policy, fingerprint
 
 
@@ -1571,7 +1546,7 @@ def _main(argv=None):
                     metadata_property_state.profile_gate_projection_rules(
                         root, profile_view["_contract"].extension_gates,
                         metadata_contract=metadata_contract,
-                        authorized_profile_contract=
+                        typed_profile_contract=
                             profile_view["_contract"])
                 active_standards_view = runtime.get(
                     "_active_standards_authorized_view") or {}
@@ -2122,8 +2097,7 @@ def _main(argv=None):
                     "profile_load_inputs_sha256"),
                 metadata_execution_contract_fingerprint=
                     metadata_contract.contract_fingerprint,
-                authorized_profile_contract=profile_view.get("_contract"),
-                authorized_metadata_contract=metadata_contract,
+                profile_evaluation=profile_view.get("_evaluation"),
                 authorized_page_semantic_fingerprints=
                     page_semantic_fingerprints,
                 corpus_plan_required=corpus_plan_check["required"],
@@ -2205,8 +2179,7 @@ def _main(argv=None):
                     "profile_load_inputs_sha256"),
                 metadata_execution_contract_fingerprint=
                     metadata_contract.contract_fingerprint,
-                authorized_profile_contract=profile_view.get("_contract"),
-                authorized_metadata_contract=metadata_contract,
+                profile_evaluation=profile_view.get("_evaluation"),
                 authorized_page_semantic_fingerprints=
                     page_semantic_fingerprints,
                 corpus_plan_required=corpus_plan_check["required"],

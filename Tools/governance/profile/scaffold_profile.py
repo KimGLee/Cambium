@@ -1,462 +1,214 @@
 #!/usr/bin/env python3
-"""Safe candidate-profile scaffolder.
+"""Create a non-authorizing structured Profile candidate for an interview.
 
-Copy `profiles/_template` to `profiles/<profile-id>` using the exact
-version-controlled whitelist in `profiles/template-files.yaml`, and perform
-only the mechanical derivations that are pure functions of the profile id:
-
-* `profile.md` — `profile_id` becomes the requested slug;
-* `registries/registered-scans.md` — the Profile configuration reference is
-  materialized with this candidate's own path
-  (`profiles/<profile-id>/scan-configs/residual-scan.yaml`), leaving the
-  Stable Scan ID and every other semantic answer as the unfilled sentinel;
-* `registries/audit-dimensions.md` — both predicate-owner cells become this
-  candidate's own repository-relative paths with their `#heading` fragments
-  (`.../scope-and-architecture.md#Foundation Depth Requirements` and
-  `.../registries/audit-dimensions.md#Residual Disposition`), exactly as the
-  template README's materialization checklist and the `self_path_rewrites`
-  block of `profiles/interview.yaml` derive them.
-
-Every rewrite is anchored to the exact template text and fails closed when
-the anchor is missing or ambiguous (template drift is an error, never a
-silent skip). Semantic `TODO(profile)` sentinels are left untouched: the
-scaffolded candidate is EXPECTED to still fail `check_profile.py` until the
-interview answers are filled in.
-
-The whitelist is authoritative: the tool never walks the template directory,
-so junk files there are never copied; a whitelisted file that is missing or a
-symlink in the template is an error. The destination must not exist in any
-form — directory (even empty), regular file, or symlink each refuse
-distinctly; nothing is ever merged or overwritten. Apply stages into a
-dot-prefixed temporary directory inside `profiles/` and publishes with one
-`os.rename`; any failure (including interruption) removes the staging tree.
-
-This tool never touches `kernel/` (including `K00 Standards Control/03
-Standards Governance.md`), never creates `.cambium/`, writes no receipt, and
-never selects or adopts the candidate; selection remains R09 adoption.
-
-Dry-run is the default; `--apply` performs the write. Exit codes follow the
-writer-tool convention (`init_state.py`): 0 = success (dry-run or applied),
-1 = refusal or failure.
-
-Usage: python3 Tools/scaffold_profile.py <root> --profile-id <slug>
-       [--apply] [--json]
+The only semantic input is the explicitly supplied Profile identity. The
+current template supplies allowed support files and an empty TOML skeleton;
+no unanswered field is filled with a policy, inactive choice, or placeholder.
+Creation does not select a Profile, create runtime state, or issue a Receipt.
 """
 
+import ctypes
+import errno
 import json
 import os
-import re
 import shutil
 import sys
+import tempfile
 
 import Tools.platform.common.kblib as kblib
+import Tools.governance.profile.profile_codec as profile_codec
 import Tools.governance.profile.profile_layout_contract as profile_layout_contract
 
 TOOL = "scaffold_profile"
-TOOL_VERSION = "1.0.0"
-
-MANIFEST_RELATIVE = "%s/template-files.yaml" % (
-    profile_layout_contract.PROFILES_DIRECTORY)
+TOOL_VERSION = "2.0.0"
+MANIFEST_RELATIVE = "profiles/template-files.yaml"
 TEMPLATE_RELATIVE = profile_layout_contract.profile_relative(
     profile_layout_contract.TEMPLATE_PROFILE_ID)
-SENTINEL = "TODO(profile)"
-SLUG_RE = re.compile(r"[a-z0-9][a-z0-9_-]*\Z")
-MANIFEST_FIELDS = frozenset((
-    "template_manifest_version", "source", "copy", "orientation_not_copied",
-))
-
-# Derived rewrite targets that must therefore be part of the copied package.
-SCAN_CONFIG_RELATIVE = "scan-configs/residual-scan.yaml"
-FOUNDATION_OWNER_FILE = "scope-and-architecture.md"
-FOUNDATION_OWNER_HEADING = "Foundation Depth Requirements"
-RESIDUAL_OWNER_FILE = "registries/audit-dimensions.md"
-RESIDUAL_OWNER_HEADING = "Residual Disposition"
 
 
-class ScaffoldRefusal(Exception):
-    """A deterministic validation refusal; nothing was written."""
+class ScaffoldRefusal(ValueError):
+    """Candidate creation was refused without selecting any Profile."""
 
 
-def derived_rewrites(profile_id):
-    """The anchored mechanical substitutions for one candidate profile.
-
-    Each entry is ``(template-relative file, exact old text, new text)``.
-    The old text must occur exactly once in the copied file. Only values
-    that are pure functions of the profile id are derived; every semantic
-    ``TODO(profile)`` cell is preserved byte-for-byte.
-    """
-    profile_dir = profile_layout_contract.profile_relative(profile_id)
-    return (
-        # Identity: the one TODO(profile) cell under `## Profile Identity`.
-        (profile_layout_contract.PROFILE_MANIFEST_NAME,
-         "- `profile_id`: `TODO(profile)`",
-         "- `profile_id`: `%s`" % profile_id),
-        # Registered scan row: materialize the template's stable package-local
-        # configuration reference as this candidate's repository-relative
-        # path. The verifier is selected by stable Tool capability ID; the
-        # Profile carries no executable command.
-        ("registries/registered-scans.md",
-         "| TODO(profile) | `K12/09 item 6 — residual-content scan` "
-         "| TODO(profile) | `residual-content-scan-v1` "
-         "| `scan-configs/residual-scan.yaml` "
-         "| TODO(profile) | TODO(profile) |",
-         "| TODO(profile) | `K12/09 item 6 — residual-content scan` "
-         "| TODO(profile) | `residual-content-scan-v1` | `%s/%s` "
-         "| TODO(profile) | TODO(profile) |"
-         % (profile_dir, SCAN_CONFIG_RELATIVE)),
-        # Foundation judgment item: predicate-owner cell (interview
-        # self_path_rewrites: "foundation item predicate owner"). The item
-        # ID cell stays a semantic sentinel.
-        ("registries/audit-dimensions.md",
-         "| TODO(profile) | `content_and_depth` | `Single Note Review` "
-         "| One page of the registered foundation class satisfies the "
-         "registered foundation-depth predicate. | `emits` "
-         "| TODO(profile) |",
-         "| TODO(profile) | `content_and_depth` | `Single Note Review` "
-         "| One page of the registered foundation class satisfies the "
-         "registered foundation-depth predicate. | `emits` "
-         "| `%s/%s#%s` |"
-         % (profile_dir, FOUNDATION_OWNER_FILE, FOUNDATION_OWNER_HEADING)),
-        # Residual judgment item: predicate-owner cell (interview
-        # self_path_rewrites: "residual item predicate owner").
-        ("registries/audit-dimensions.md",
-         "| TODO(profile) | `coverage_and_integration` | `Batch Review` "
-         "| Every candidate the registered residual scan reports outside "
-         "its accepted roots has an accepted disposition. | `emits` "
-         "| TODO(profile) |",
-         "| TODO(profile) | `coverage_and_integration` | `Batch Review` "
-         "| Every candidate the registered residual scan reports outside "
-         "its accepted roots has an accepted disposition. | `emits` "
-         "| `%s/%s#%s` |"
-         % (profile_dir, RESIDUAL_OWNER_FILE, RESIDUAL_OWNER_HEADING)),
-    )
+class ScaffoldPublicationUncertain(OSError):
+    """Publication happened, but the resulting candidate was not verified."""
 
 
-def _canonical_manifest_entry(value, label):
-    """One canonical template-relative file path from the copy manifest."""
-    if not isinstance(value, str) or not value:
-        raise ScaffoldRefusal(
-            "%s entries must be non-empty strings; found %r" % (label, value))
-    if value != value.strip():
-        raise ScaffoldRefusal(
-            "%s entry %r has leading or trailing whitespace" % (label, value))
-    if "\\" in value or "\x00" in value:
-        raise ScaffoldRefusal(
-            "%s entry %r must use canonical `/` separators" % (label, value))
-    if os.path.isabs(value):
-        raise ScaffoldRefusal(
-            "%s entry %r must be template-relative" % (label, value))
-    if any(part in ("", ".", "..") for part in value.split("/")):
-        raise ScaffoldRefusal(
-            "%s entry %r must not contain empty, `.` or `..` segments"
-            % (label, value))
+def _relative(value):
+    if (not isinstance(value, str) or value != value.strip() or
+            "\\" in value or "\x00" in value or
+            any(part in ("", ".", "..") for part in value.split("/"))):
+        raise ScaffoldRefusal("template entries must be canonical relative file paths")
     return value
 
 
 def load_manifest(root):
-    """Parse and validate profiles/template-files.yaml; return the two lists."""
-    path = os.path.join(root, *MANIFEST_RELATIVE.split("/"))
-    if not os.path.isfile(path):
-        raise ScaffoldRefusal(
-            "root has no %s; the exact-copy whitelist is required"
-            % MANIFEST_RELATIVE)
-    try:
-        with open(path, encoding="utf-8", errors="strict") as handle:
-            data = kblib.parse_yaml_subset(handle.read())
-    except (OSError, UnicodeError, kblib.YamlSubsetError) as exc:
-        raise ScaffoldRefusal(
-            "cannot read/parse %s: %s" % (MANIFEST_RELATIVE, exc))
-    if not isinstance(data, dict):
-        raise ScaffoldRefusal("%s must be a mapping" % MANIFEST_RELATIVE)
-    missing = sorted(MANIFEST_FIELDS - set(data))
-    extra = sorted(set(data) - MANIFEST_FIELDS)
-    if missing or extra:
-        raise ScaffoldRefusal(
-            "%s must contain exactly %s; missing=%s extra=%s"
-            % (MANIFEST_RELATIVE, sorted(MANIFEST_FIELDS), missing, extra))
-    if data.get("template_manifest_version") != 1:
-        raise ScaffoldRefusal(
-            "%s template_manifest_version must be integer 1"
-            % MANIFEST_RELATIVE)
-    if data.get("source") != TEMPLATE_RELATIVE:
-        raise ScaffoldRefusal(
-            "%s source must be exactly %r" % (MANIFEST_RELATIVE,
-                                              TEMPLATE_RELATIVE))
-    lists = {}
-    for key in ("copy", "orientation_not_copied"):
-        value = data.get(key)
-        if not isinstance(value, list) or not value:
-            raise ScaffoldRefusal(
-                "%s `%s` must be a non-empty list" % (MANIFEST_RELATIVE, key))
-        lists[key] = [_canonical_manifest_entry(item, key) for item in value]
-    combined = lists["copy"] + lists["orientation_not_copied"]
-    duplicates = sorted({item for item in combined
-                         if combined.count(item) > 1})
-    if duplicates:
-        raise ScaffoldRefusal(
-            "%s lists a path more than once (a file is copied or "
-            "orientation, never both): %s" % (MANIFEST_RELATIVE, duplicates))
-    return lists["copy"], lists["orientation_not_copied"]
+    snapshot = kblib.repository_file_snapshot(root, MANIFEST_RELATIVE, singly_linked=True)
+    document = kblib.parse_yaml_subset(snapshot.read_text())
+    expected = {"template_manifest_version", "source", "copy", "orientation_not_copied"}
+    if (not isinstance(document, dict) or set(document) != expected or
+            document["template_manifest_version"] != 2 or
+            document["source"] != TEMPLATE_RELATIVE):
+        raise ScaffoldRefusal("template-files must use the current structured candidate contract")
+    for name in ("copy", "orientation_not_copied"):
+        if not isinstance(document[name], list):
+            raise ScaffoldRefusal("template %s must be a list" % name)
+    copied = [_relative(value) for value in document["copy"]]
+    orientation = [_relative(value) for value in document["orientation_not_copied"]]
+    if len(set(copied + orientation)) != len(copied + orientation):
+        raise ScaffoldRefusal("template paths cannot be duplicated across classifications")
+    if profile_layout_contract.PROFILE_MANIFEST_NAME not in copied:
+        raise ScaffoldRefusal("template must include the unique Profile TOML entry")
+    return copied, orientation
 
 
 def validate_profile_id(profile_id):
-    if not isinstance(profile_id, str) or not SLUG_RE.fullmatch(profile_id):
-        raise ScaffoldRefusal(
-            "--profile-id %r must fully match [a-z0-9][a-z0-9_-]*"
-            % (profile_id,))
-    if profile_id in profile_layout_contract.RESERVED_PROFILE_IDS:
-        raise ScaffoldRefusal(
-            "--profile-id %r is reserved and cannot name a candidate profile"
-            % profile_id)
+    relative = profile_layout_contract.profile_relative(profile_id)
+    try:
+        profile_layout_contract.validate_selectable_profile_manifest_path(
+            relative + "/" + profile_layout_contract.PROFILE_MANIFEST_NAME)
+    except profile_layout_contract.ProfileLayoutError as exc:
+        raise ScaffoldRefusal(str(exc)) from exc
 
 
 def destination_conflict(destination):
-    """A distinct refusal reason when the destination exists in any form."""
-    if os.path.islink(destination):
-        return ("destination %s already exists as a symlink; refusing to "
-                "follow, merge, or overwrite it" % destination)
-    if os.path.isdir(destination):
-        return ("destination %s already exists as a directory (even an "
-                "empty one is refused); never merged, never overwritten"
-                % destination)
     if os.path.lexists(destination):
-        return ("destination %s already exists as a file; a candidate "
-                "profile must be a fresh directory" % destination)
+        return "candidate destination already exists; it will not be merged or overwritten"
     return None
 
 
-def _heading_count(text, heading):
-    needle = "## %s" % heading
-    return sum(1 for line in text.splitlines() if line.strip() == needle)
-
-
 def build_plan(root, profile_id):
-    """Read the template through the whitelist and derive the rewrites.
-
-    Read-only: returns the complete in-memory candidate. ``files`` maps each
-    template-relative path to its final bytes; ``rewrites`` records each
-    applied (file, old, new) anchor.
-    """
-    template_dir = os.path.join(root, *TEMPLATE_RELATIVE.split("/"))
-    if not os.path.isdir(template_dir):
-        raise ScaffoldRefusal(
-            "root has no %s directory to scaffold from" % TEMPLATE_RELATIVE)
-    copy_list, orientation = load_manifest(root)
     validate_profile_id(profile_id)
-
-    rewrites = derived_rewrites(profile_id)
-    rewrite_files = {relative for relative, _old, _new in rewrites}
-    for relative in sorted(rewrite_files | {SCAN_CONFIG_RELATIVE,
-                                            FOUNDATION_OWNER_FILE,
-                                            RESIDUAL_OWNER_FILE}):
-        if relative not in copy_list:
-            raise ScaffoldRefusal(
-                "manifest drift: derived rewrites require %r in the "
-                "`copy:` whitelist of %s" % (relative, MANIFEST_RELATIVE))
-
+    copied, orientation = load_manifest(root)
     files = {}
-    for relative in copy_list:
-        source = os.path.join(template_dir, *relative.split("/"))
-        if os.path.islink(source):
-            raise ScaffoldRefusal(
-                "whitelisted template file is a symlink and cannot be "
-                "copied: %s/%s" % (TEMPLATE_RELATIVE, relative))
-        if not os.path.isfile(source):
-            raise ScaffoldRefusal(
-                "manifest drift: whitelisted template file is missing: "
-                "%s/%s" % (TEMPLATE_RELATIVE, relative))
-        with open(source, "rb") as handle:
-            files[relative] = handle.read()
-
-    applied = []
-    for relative, old, new in rewrites:
-        try:
-            text = files[relative].decode("utf-8", errors="strict")
-        except UnicodeError as exc:
-            raise ScaffoldRefusal(
-                "template drift: %s/%s is not strict UTF-8: %s"
-                % (TEMPLATE_RELATIVE, relative, exc))
-        count = text.count(old)
-        if count != 1:
-            raise ScaffoldRefusal(
-                "template drift: rewrite anchor occurs %d time(s) instead "
-                "of exactly once in %s/%s: %r"
-                % (count, TEMPLATE_RELATIVE, relative, old))
-        files[relative] = text.replace(old, new, 1).encode("utf-8")
-        applied.append({"file": relative, "old": old, "new": new})
-
-    # The derived predicate-owner paths carry `#heading` fragments; fail
-    # closed now if the template no longer carries those headings exactly
-    # once, rather than shipping a candidate whose mechanical paths dangle.
-    for relative, heading in (
-            (FOUNDATION_OWNER_FILE, FOUNDATION_OWNER_HEADING),
-            (RESIDUAL_OWNER_FILE, RESIDUAL_OWNER_HEADING)):
-        count = _heading_count(
-            files[relative].decode("utf-8", errors="strict"), heading)
-        if count != 1:
-            raise ScaffoldRefusal(
-                "template drift: `## %s` occurs %d time(s) instead of "
-                "exactly once in %s/%s" % (heading, count,
-                                           TEMPLATE_RELATIVE, relative))
-
-    return {
-        "copy": list(copy_list),
-        "orientation_not_copied": list(orientation),
-        "files": files,
-        "rewrites": applied,
-    }
+    for relative in copied:
+        snapshot = kblib.repository_file_snapshot(
+            root, TEMPLATE_RELATIVE + "/" + relative, singly_linked=True)
+        files[relative] = snapshot.data
+    manifest = profile_layout_contract.PROFILE_MANIFEST_NAME
+    skeleton = profile_codec.loads_profile(files[manifest])
+    # A candidate skeleton must not smuggle example/default policy choices
+    # into an interview. Support files remain unreferenced until explicitly
+    # selected by the user's answers.
+    if (set(skeleton) - {"schema_version", "profile_id", "slots", "execution_default_overrides"}
+            or type(skeleton.get("schema_version")) is not int
+            or skeleton["schema_version"] != 1
+            or skeleton.get("profile_id") not in (None, profile_layout_contract.TEMPLATE_PROFILE_ID)):
+        raise ScaffoldRefusal("candidate template has an invalid identity or encoding envelope")
+    if skeleton.get("slots") != {} or skeleton.get(
+            "execution_default_overrides") not in ({}, None):
+        raise ScaffoldRefusal("candidate template must not prefill semantic slot answers")
+    candidate = {"schema_version": 1, "profile_id": profile_id, "slots": {}}
+    files[manifest] = profile_codec.dumps_profile(candidate)
+    return {"copy": copied, "orientation_not_copied": orientation,
+            "files": files, "derived_identity": profile_id}
 
 
-def stage_candidate(staging, plan):
-    """Write the complete candidate into a not-yet-public staging tree."""
-    for relative in plan["copy"]:
-        target = os.path.join(staging, *relative.split("/"))
-        os.makedirs(os.path.dirname(target), exist_ok=True)
-        with open(target, "xb") as handle:
-            handle.write(plan["files"][relative])
-
-
-def publish_candidate(staging, destination):
-    """Existence re-check immediately followed by one rename; never merge."""
-    conflict = destination_conflict(destination)
-    if conflict is not None:
-        raise ScaffoldRefusal(conflict)
-    os.rename(staging, destination)
+def _publish_directory(staging, destination):
+    """Publish once without replacing a concurrent directory or symlink."""
+    if sys.platform == "win32":
+        os.rename(staging, destination)  # Windows refuses an existing target.
+        return
+    library = ctypes.CDLL(None, use_errno=True)
+    if sys.platform == "darwin":
+        operation = library.renamex_np
+        operation.argtypes = [ctypes.c_char_p, ctypes.c_char_p, ctypes.c_uint]
+        operation.restype = ctypes.c_int
+        result = operation(os.fsencode(staging), os.fsencode(destination), 4)
+    elif sys.platform.startswith("linux") and hasattr(library, "renameat2"):
+        operation = library.renameat2
+        operation.argtypes = [ctypes.c_int, ctypes.c_char_p, ctypes.c_int,
+                              ctypes.c_char_p, ctypes.c_uint]
+        operation.restype = ctypes.c_int
+        result = operation(-100, os.fsencode(staging), -100,
+                           os.fsencode(destination), 1)
+    else:
+        raise ScaffoldRefusal("this host lacks no-replace directory publication")
+    if result:
+        error = ctypes.get_errno()
+        if error in (errno.EEXIST, errno.ENOTEMPTY):
+            raise ScaffoldRefusal("candidate destination appeared before publication")
+        raise OSError(error, os.strerror(error), destination)
 
 
 def apply_plan(root, profile_id, plan):
-    """Stage inside profiles/ and publish; remove staging on any failure."""
-    profiles_dir = os.path.join(
-        root, profile_layout_contract.PROFILES_DIRECTORY)
-    destination = os.path.join(profiles_dir, profile_id)
-    staging = os.path.join(
-        profiles_dir, ".scaffold-%s-%d" % (profile_id, os.getpid()))
-    os.mkdir(staging)
+    directory = os.path.join(root, profile_layout_contract.PROFILES_DIRECTORY)
+    # Bind the existing parent to the declared repository, not a symlink.
+    kblib.repository_path(root, profile_layout_contract.PROFILES_DIRECTORY,
+                          must_exist=True, reject_symlink=True)
+    destination = os.path.join(directory, profile_id)
+    conflict = destination_conflict(destination)
+    if conflict:
+        raise ScaffoldRefusal(conflict)
+    staging = tempfile.mkdtemp(prefix=".profile-candidate-", dir=directory)
     published = False
     try:
-        stage_candidate(staging, plan)
-        publish_candidate(staging, destination)
+        for relative, data in plan["files"].items():
+            target = os.path.join(staging, *relative.split("/"))
+            os.makedirs(os.path.dirname(target), exist_ok=True)
+            with open(target, "xb") as handle:
+                handle.write(data)
+                handle.flush()
+                os.fsync(handle.fileno())
+        _publish_directory(staging, destination)
         published = True
+        for relative, expected in plan["files"].items():
+            actual = kblib.repository_file_snapshot(
+                root, profile_layout_contract.profile_relative(profile_id) + "/" + relative,
+                singly_linked=True)
+            if actual.data != expected:
+                raise ScaffoldRefusal("published candidate changed before resulting-state verification")
+    except (OSError, ValueError) as exc:
+        if published:
+            raise ScaffoldPublicationUncertain(
+                "candidate was published but its resulting state is unverified: %s" % exc) from exc
+        raise
     finally:
-        if not published and os.path.lexists(staging):
+        if not published:
             shutil.rmtree(staging)
 
 
 def main(argv=None):
-    parser = kblib.ArgumentParser(
-        description="Scaffold a candidate profile from profiles/_template "
-                    "using the exact-copy whitelist in %s" % MANIFEST_RELATIVE)
-    parser.add_argument("root", help="repository root containing profiles/")
-    parser.add_argument("--profile-id", required=True,
-                        help="candidate profile slug matching "
-                             "[a-z0-9][a-z0-9_-]* (equals the directory name)")
-    parser.add_argument("--apply", action="store_true",
-                        help="create the candidate; without it the plan is "
-                             "reported and nothing is written")
-    parser.add_argument("--json", action="store_true",
-                        help="emit the plan/result as one JSON document")
+    parser = kblib.ArgumentParser(description=__doc__)
+    parser.add_argument("root", help="repository root containing the unique Profile template")
+    parser.add_argument("--profile-id", required=True, help="explicitly confirmed candidate identity")
+    parser.add_argument("--apply", action="store_true", help="create the candidate; otherwise report only")
+    parser.add_argument("--json", action="store_true", help="emit the structured result")
     args = parser.parse_args(argv)
-
-    report = {
-        "tool": TOOL,
-        "tool_version": TOOL_VERSION,
-        "profile_id": args.profile_id,
-        "destination": profile_layout_contract.profile_relative(
-            args.profile_id),
-        "apply": bool(args.apply),
-        "created": False,
-        "result": None,
-        "error": None,
-        "files": [],
-        "orientation_not_copied": [],
-        "rewrites": [],
-        "conflict": None,
-    }
-
-    def emit(exit_code):
-        if args.json:
-            print(json.dumps(report, ensure_ascii=False, sort_keys=True,
-                             indent=2))
-        return exit_code
-
-    def refuse(message):
-        report["result"] = "refused"
-        report["error"] = message
-        if not args.json:
-            print("[FAIL] %s; nothing was written" % message)
-        return emit(1)
-
     root = os.path.realpath(os.path.abspath(args.root))
-    if not os.path.isdir(root):
-        return refuse("root is not an existing directory: %s" % args.root)
-
+    report = {"tool": TOOL, "tool_version": TOOL_VERSION, "profile_id": args.profile_id,
+              "destination": profile_layout_contract.profile_relative(args.profile_id),
+              "apply": args.apply, "created": False, "resulting_state_verified": False,
+              "files": [], "result": "refused", "error": None}
     try:
+        if not os.path.isdir(root):
+            raise ScaffoldRefusal("root is not an existing repository directory")
         plan = build_plan(root, args.profile_id)
-    except ScaffoldRefusal as exc:
-        return refuse(str(exc))
-
-    destination = os.path.join(
-        root, profile_layout_contract.PROFILES_DIRECTORY, args.profile_id)
-    report["files"] = ["%s/%s" % (
-        profile_layout_contract.profile_relative(args.profile_id), relative)
-                       for relative in plan["copy"]]
-    report["orientation_not_copied"] = plan["orientation_not_copied"]
-    report["rewrites"] = plan["rewrites"]
-    report["conflict"] = destination_conflict(destination)
-
-    if not args.json:
-        print("scaffold plan for profiles/%s (from %s, whitelist %s):"
-              % (args.profile_id, TEMPLATE_RELATIVE, MANIFEST_RELATIVE))
-        for path in report["files"]:
-            print("  create %s" % path)
-        print("orientation files not copied (template documentation, "
-              "never profile policy):")
-        for relative in plan["orientation_not_copied"]:
-            print("  %s/%s" % (TEMPLATE_RELATIVE, relative))
-        print("derived mechanical rewrites (semantic %s answers are left "
-              "in place):" % SENTINEL)
-        for rewrite in plan["rewrites"]:
-            print("  %s:" % rewrite["file"])
-            print("    - %s" % rewrite["old"])
-            print("    + %s" % rewrite["new"])
-
-    if report["conflict"] is not None:
-        return refuse(report["conflict"])
-
-    if not args.apply:
-        report["result"] = "dry-run"
-        if not args.json:
-            print("dry run; add --apply to create the candidate")
-        return emit(0)
-
-    try:
-        apply_plan(root, args.profile_id, plan)
-    except ScaffoldRefusal as exc:
-        return refuse(str(exc))
-    except (OSError, UnicodeError) as exc:
-        report["result"] = "failed"
+        report["files"] = [report["destination"] + "/" + name for name in plan["copy"]]
+        report["orientation_not_copied"] = plan["orientation_not_copied"]
+        conflict = destination_conflict(os.path.join(root, report["destination"]))
+        if conflict:
+            raise ScaffoldRefusal(conflict)
+        if args.apply:
+            apply_plan(root, args.profile_id, plan)
+        report.update(result="created" if args.apply else "dry-run", created=args.apply,
+                      resulting_state_verified=args.apply,
+                      next_action="complete-profile-interview")
+        code = 0
+    except ScaffoldPublicationUncertain as exc:
+        report.update(result="uncertain", created=True, error=str(exc),
+                      next_action="inspect-published-candidate")
+        code = 1
+    except (OSError, ValueError, UnicodeError) as exc:
         report["error"] = str(exc)
-        if not args.json:
-            print("[FAIL] scaffolding stopped: %s; no candidate was "
-                  "published" % exc)
-        return emit(1)
-
-    report["created"] = True
-    report["result"] = "created"
-    report["next"] = ("candidate created; complete the interview "
-                      "(profiles/interview.yaml), then run check_profile")
-    if not args.json:
-        print("[PASS] candidate created at profiles/%s; complete the "
-              "interview (profiles/interview.yaml), then run:"
-              % args.profile_id)
-        print("  python3 Tools/check_profile.py profiles/%s"
-              % args.profile_id)
-        print("The candidate still carries its semantic %s answers, so "
-              "check_profile is EXPECTED to fail until the interview is "
-              "complete. Scaffolding neither selects nor adopts a profile; "
-              "selection remains R09 adoption." % SENTINEL)
-    return emit(0)
+        code = 1
+    if args.json:
+        print(json.dumps(report, ensure_ascii=False, sort_keys=True, indent=2))
+    else:
+        print("%s: %s" % (TOOL, report["result"]))
+        print(report["error"] or "Candidate is not adopted; continue the Profile interview.")
+    return code
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    raise SystemExit(main())

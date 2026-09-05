@@ -68,12 +68,13 @@ check:
 	PYTHONDONTWRITEBYTECODE=1 $(PYTHON) Tools/check_kernel_size.py .
 	PYTHONDONTWRITEBYTECODE=1 $(PYTHON) Tools/stamp_cards.py . --check
 	PYTHONDONTWRITEBYTECODE=1 $(PYTHON) Tools/metadata_execution_contract.py --root . --check
+	PYTHONDONTWRITEBYTECODE=1 $(PYTHON) -m Tools.governance.profile.profile_schema_projection --root . --check
 	PYTHONDONTWRITEBYTECODE=1 $(PYTHON) Tools/compile_cli_contract.py . --check --projection-target source-distribution
 	PYTHONDONTWRITEBYTECODE=1 $(PYTHON) Tools/render_interface_projection.py . --check
 	PYTHONDONTWRITEBYTECODE=1 $(PYTHON) Tools/render_host_configs.py . --check
 	PYTHONDONTWRITEBYTECODE=1 $(PYTHON) Tools/check_moc.py .
 	PYTHONDONTWRITEBYTECODE=1 $(PYTHON) Tools/check_profile.py $(PROFILE)
-	PYTHONDONTWRITEBYTECODE=1 $(PYTHON) Tools/check_repository_structure.py . --profile-manifest "$(PROFILE)/profile.md"
+	PYTHONDONTWRITEBYTECODE=1 $(PYTHON) Tools/check_repository_structure.py . --profile-manifest "$(PROFILE)/profile.toml"
 	PYTHONDONTWRITEBYTECODE=1 $(PYTHON) Tools/generate_tool_catalog.py . --check
 	PYTHONDONTWRITEBYTECODE=1 $(PYTHON) Tools/generate_test_catalog.py . --check
 

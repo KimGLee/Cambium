@@ -18,12 +18,14 @@ from Tools.execution.planning import check_corpus_plan
 from Tools.execution.planning import record_corpus_acceptance as recorder
 from Tools.execution.task_runtime import queue_runtime
 from Tools.platform.common import kblib
+from Tools.governance.profile import profile_codec
+from Tools.tests.fixtures.contract.corpus_plan_objects import MANIFEST
 
 
 PLAN_RELATIVE = ".cambium/deltas/corpus-plan-acceptances/CPA-001.yaml"
-PROFILE_MANIFEST = "profiles/test-profile/profile.md"
-CORPUS_SLOT = "profiles/test-profile/corpus-planning.yaml"
-PROFILE_SCOPE = "profiles/test-profile/scope-and-architecture.md"
+PROFILE_MANIFEST = "profiles/test-profile/profile.toml"
+CORPUS_SLOT = PROFILE_MANIFEST
+PROFILE_SCOPE = PROFILE_MANIFEST
 GLOBAL_MAP = "planning/global-map.yaml"
 CAPABILITY_MATRIX = "planning/capability-matrix.yaml"
 GAP_REGISTER = "planning/gap-register.yaml"
@@ -54,10 +56,10 @@ class CorpusAcceptanceProjectionContractTests(unittest.TestCase):
         structural = {"receipt_id": "audit-structural-current"}
         binding = {
             "selected_profile_manifest":
-                "profiles/test-profile/profile.md",
+                "profiles/test-profile/profile.toml",
         }
         result = {
-            "profile_manifest": "profiles/test-profile/profile.md",
+            "profile_manifest": "profiles/test-profile/profile.toml",
             "root": None,
         }
         with self.subTest(decision="accepted"):
@@ -104,9 +106,8 @@ class RecordCorpusAcceptanceIntegrationTests(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
         self.root = Path(self.tmp.name).resolve()
-        self._write(PROFILE_MANIFEST, "# Test Profile\n")
-        self._write(CORPUS_SLOT, "schema_version: 1\n")
-        self._write(PROFILE_SCOPE, "# Scope\n")
+        self._write(PROFILE_MANIFEST,
+                    profile_codec.dumps_profile(MANIFEST).decode("utf-8"))
         self._write(GLOBAL_MAP, "schema_version: 1\nentries: []\n")
         self._write(
             CAPABILITY_MATRIX,

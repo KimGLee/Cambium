@@ -30,8 +30,9 @@ from Tools.tests.fixtures.e2e import RequiredQueueE2EScenarioCase
 class RequiredQueueLifecycleEndToEndTests(RequiredQueueE2EScenarioCase):
     """One representative real lifecycle through Terminal Proof."""
 
+    START_SCENARIO = "terminal-base"
+
     def test_real_terminal_proof_receipt_completes_task(self):
-        self.install_terminal_proof_environment()
         self.merge_and_close("B1", "Topics/A.md")
         self.merge_and_close("B2", "Topics/B.md")
         # Terminal Gate receipts and full dimension AuditReceipts have

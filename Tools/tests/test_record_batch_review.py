@@ -20,6 +20,13 @@ class RecordBatchReviewBuilderTests(unittest.TestCase):
     """The producer builds the exact sets its transition consumers accept."""
 
     def setUp(self):
+        # Isolate review record construction from the separately tested
+        # profile-load Gate and runtime lifecycle.
+        from Tools.governance.profile import profile_admission
+        boundary = mock.patch.object(profile_admission, "contract_from_admitted_view",
+            side_effect=lambda root, view: view["_contract"])
+        boundary.start()
+        self.addCleanup(boundary.stop)
         self.requirement = SimpleNamespace(
             judgment_item_id="fixture-depth",
             target_selector="batch",
@@ -31,7 +38,7 @@ class RecordBatchReviewBuilderTests(unittest.TestCase):
             pass_authority_role_id="reviewer",
         )
         self.contract = SimpleNamespace(
-            authorized=True,
+            valid=True,
             batch_review_requirements=(self.requirement,),
         )
         self.item = {
@@ -141,7 +148,7 @@ class RecordBatchReviewBuilderTests(unittest.TestCase):
             "invalidated_by": None,
             "task_id": "task-1",
             "upstream_revision_id": FIXTURE_UPSTREAM_REVISION,
-            "selected_profile_manifest": "profiles/fixture/profile.md",
+            "selected_profile_manifest": "profiles/fixture/profile.toml",
         }
 
     def build(self):

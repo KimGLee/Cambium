@@ -219,10 +219,8 @@ def main(argv=None):
                              "; ".join(runtime["errors"]))
         authority = runtime_authority.runtime_authority_context(runtime)
         view = runtime.get("_profile_authorized_view") or {}
-        contract = view.get("_contract")
-        if contract is None or not getattr(contract, "authorized", False):
-            raise ValueError(
-                "runtime has no authorized typed Profile contract")
+        from Tools.governance.profile.profile_admission import contract_from_admitted_view
+        contract = contract_from_admitted_view(root, view)
         item = (runtime.get("items_by_id") or {}).get(args.batch)
         if not isinstance(item, dict):
             raise ValueError("batch %s is not in the Required Queue" %
@@ -276,11 +274,7 @@ def main(argv=None):
                     "batch %s is no longer in the Required Queue" %
                     args.batch)
             locked_view = locked.get("_profile_authorized_view") or {}
-            locked_contract = locked_view.get("_contract")
-            if locked_contract is None or not getattr(
-                    locked_contract, "authorized", False):
-                raise ValueError(
-                    "runtime has no authorized typed Profile contract")
+            locked_contract = contract_from_admitted_view(root, locked_view)
             locked_plan, locked_plan_sha256 = _current_plan(
                 locked, locked_item)
             return (locked_item, locked_view, locked_contract,

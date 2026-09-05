@@ -213,12 +213,12 @@ class ProfileLayoutContractTests(unittest.TestCase):
 
         candidate = profile_layout_contract.\
             validate_selectable_profile_manifest_path(
-                "profiles/candidate/profile.md")
+                "profiles/candidate/profile.toml")
         self.assertEqual("candidate", candidate.profile_id)
         self.assertTrue(candidate.selectable)
 
         example = profile_layout_contract.parse_profile_manifest_path(
-            "profiles/examples/worked-planning/profile.md")
+            "profiles/examples/worked-planning/profile.toml")
         self.assertEqual("worked-planning", example.profile_id)
         self.assertTrue(example.example)
         self.assertFalse(example.selectable)
@@ -237,7 +237,7 @@ class ProfileLayoutContractTests(unittest.TestCase):
 
         with self.assertRaises(profile_layout_contract.ProfileLayoutError):
             profile_layout_contract.parse_profile_manifest_path(
-                "profiles/examples/profile.md")
+                "profiles/examples/profile.toml")
 
     def test_direct_consumers_use_the_owner_reserved_namespace_set(self):
         with tempfile.TemporaryDirectory() as temporary:

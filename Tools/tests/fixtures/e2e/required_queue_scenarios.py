@@ -91,8 +91,8 @@ def generate_required_queue_checkpoint(scenario, destination, manifest_path):
     try:
         if scenario == "terminal-closed":
             driver = RequiredQueueLifecycleDriver(methodName="runTest")
+            driver.START_SCENARIO = "terminal-base"
             driver.setUp()
-            driver.install_terminal_proof_environment()
             driver.merge_and_close("B1", "Topics/A.md")
             driver.merge_and_close("B2", "Topics/B.md")
             root = driver.root

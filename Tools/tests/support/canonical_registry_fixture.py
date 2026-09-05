@@ -1,10 +1,11 @@
-"""Install the Kernel machine registries needed by isolated Tool fixtures.
+"""Install declared machine metadata needed by isolated Tool imports.
 
 Scratch repositories execute copied production modules.  Those modules must
 load the same Kernel-owned machine authorities as a real distribution; a
 fixture-local fallback or a Python copy of their semantic values would hide a
-broken distribution.  Keep the file membership in this one test-only
-manifest, and let every isolated bundle install it through the helper below.
+broken distribution. Keep base registry membership in this one test-only
+manifest, and derive Profile shape sources from their production declaration.
+This closes imports; it neither loads a Profile instance nor creates evidence.
 
 The contract-exception registry additionally validates that each declared
 Markdown owner exists.  Those owner pages are therefore dependency closure,
@@ -25,9 +26,8 @@ if str(TOOLS) not in sys.path:
 import Tools.platform.common.kblib as kblib  # noqa: E402
 
 
-# The complete Kernel machine-authority bundle shipped by this distribution.
-# A coverage test compares this manifest with the live Kernel tree so adding a
-# registry cannot silently leave isolated Tool executions on a partial bundle.
+# Base Kernel JSON/YAML authorities. Profile CUE sources join this bundle via
+# their declared shape-input owner below, without a second list of CUE paths.
 KERNEL_MACHINE_REGISTRY_PATHS = (
     "kernel/K00 Standards Control/contract-exception-policy-base.yaml",
     "kernel/K00 Standards Control/control-registry.yaml",
@@ -49,6 +49,7 @@ KERNEL_MACHINE_REGISTRY_PATHS = (
     "kernel/K12 Quality Assurance/batch-review-obligation-registry.yaml",
     "kernel/K12 Quality Assurance/changed-scope-check-registry.yaml",
     "kernel/K12 Quality Assurance/deterministic-rendering-contract.yaml",
+    "kernel/K12 Quality Assurance/profile-rendering-contract.yaml",
     "kernel/K12 Quality Assurance/rendering-verification-contract.yaml",
     "kernel/K12 Quality Assurance/substantive-review-contract.yaml",
     "kernel/K12 Quality Assurance/terminal-proof-contract.yaml",
@@ -109,9 +110,18 @@ def contract_exception_owner_paths():
     return tuple(sorted(owners))
 
 
+def isolated_tool_registry_paths():
+    """Derive non-Python import metadata without evaluating any Profile."""
+    from Tools.governance.profile.profile_contract import profile_draft_inputs
+
+    return tuple(sorted(
+        set(ISOLATED_TOOL_REGISTRY_PATHS) |
+        set(profile_draft_inputs(REPOSITORY))))
+
+
 def install_isolated_tool_registry_bundle(root):
     """Copy all registries needed by copied Tools and their owner closure."""
-    installed = ISOLATED_TOOL_REGISTRY_PATHS + \
+    installed = isolated_tool_registry_paths() + \
         contract_exception_owner_paths()
     for relative in installed:
         _copy_repository_file(root, relative)
@@ -125,5 +135,6 @@ __all__ = [
     "KERNEL_MACHINE_REGISTRY_PATHS",
     "TOOL_MACHINE_REGISTRY_PATHS",
     "contract_exception_owner_paths",
+    "isolated_tool_registry_paths",
     "install_isolated_tool_registry_bundle",
 ]

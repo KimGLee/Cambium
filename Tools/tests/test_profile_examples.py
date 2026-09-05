@@ -1,11 +1,9 @@
 """Re-validate every published profile example against the current tools.
 
-`profiles/examples/*` are non-normative reference cases, but nothing else in
-the distribution re-checks them: `check_profile.py` is not a registered gate,
-the examples are not in any Card's `source_files`, and the public repository is
-intentionally uninstantiated, so there is no `upstream_revision_id` for an example
-to bind to.  An interface, kernel, or tool change can therefore leave a
-published example stale while every deterministic check stays green.
+`profiles/examples/*` are non-normative reference cases. The public repository
+is intentionally uninstantiated: validating example data does not select the
+example, create adopter state, or confirm its answers. Owner changes must not
+silently leave these advertised reference cases stale.
 
 This module closes that hole with the only binding the repository actually
 carries: each example README declares a `## Validation Provenance` table naming
@@ -19,8 +17,11 @@ ID.  It also judges no answer -- an example passing here is structurally valid,
 not necessarily well answered.
 """
 
+import contextlib
+import io
+import os
 import re
-import subprocess
+import shlex
 import sys
 import unittest
 from pathlib import Path
@@ -36,12 +37,16 @@ if str(REPOSITORY) not in sys.path:
     sys.path.insert(0, str(REPOSITORY))
 
 import Tools.platform.agent_interface.entrypoint_loader as entrypoint_loader  # noqa: E402
+import Tools.governance.profile.profile_layout_contract as profile_layout_contract  # noqa: E402
+import Tools.platform.common.kblib as kblib  # noqa: E402
+from Tools.tests.support.profile_template_fixture import SCAN_CONFIG  # noqa: E402
 
 
 def example_directories():
     """Every published example package, identified by its manifest."""
     return sorted(
-        path.parent for path in EXAMPLES.glob("*/profile.md")
+        path.parent for path in EXAMPLES.glob(
+            "*/" + profile_layout_contract.PROFILE_MANIFEST_NAME)
     )
 
 
@@ -88,7 +93,7 @@ class ProfileExampleProvenance(unittest.TestCase):
     def test_examples_exist(self):
         self.assertTrue(
             example_directories(),
-            "profiles/examples/ has no package with a profile.md; a validation "
+            "profiles/examples/ has no package with a profile.toml; a validation "
             "sweep with nothing to check is an invocation error, never a pass",
         )
 
@@ -161,7 +166,7 @@ class ProfileExampleProvenance(unittest.TestCase):
                 (directory / "README.md").read_text(encoding="utf-8"))
             for row in rows:
                 validator = unbacktick(row["Validator"])
-                command = unbacktick(row["Command"]).split()
+                command = shlex.split(unbacktick(row["Command"]))
                 self.assertEqual(command[0], "python3")
                 expected = unbacktick(row["Expected result"])
                 match = re.fullmatch(r"exit (\d+)", expected)
@@ -172,15 +177,23 @@ class ProfileExampleProvenance(unittest.TestCase):
                     % (directory.name, expected),
                 )
                 with self.subTest(example=directory.name, tool=validator):
-                    completed = subprocess.run(
-                        [sys.executable] + command[1:],
-                        cwd=str(REPOSITORY), capture_output=True, text=True)
+                    self.assertEqual("Tools/%s.py" % validator, command[1])
+                    implementation = entrypoint_loader.load_tool_implementation(
+                        validator, TOOLS)
+                    captured = io.StringIO()
+                    previous = os.getcwd()
+                    try:
+                        os.chdir(REPOSITORY)
+                        with contextlib.redirect_stdout(captured), \
+                                contextlib.redirect_stderr(captured):
+                            code = implementation.main(command[2:])
+                    finally:
+                        os.chdir(previous)
                     self.assertEqual(
-                        completed.returncode, int(match.group(1)),
-                        "%s: `%s` exited %d\n%s%s"
+                        code, int(match.group(1)),
+                        "%s: `%s` exited %d\n%s"
                         % (directory.name, " ".join(command),
-                           completed.returncode, completed.stdout,
-                           completed.stderr),
+                           code, captured.getvalue()),
                     )
 
 
@@ -220,79 +233,24 @@ class ResidualPathSetContract(unittest.TestCase):
                     self.module.validate_path_sets(allowed, excluded)
 
 
-class TemplateScaffold(unittest.TestCase):
-    """The scaffolding an adopter copies must stay complete and unfilled."""
+class ResidualScanFixtureContract(unittest.TestCase):
+    """Explicit fixture parameters must remain a runnable owned matcher input."""
 
-    TEMPLATE = REPOSITORY / "profiles" / "_template"
-
-    def test_template_ships_a_scan_config_scaffold(self):
-        scaffold = self.TEMPLATE / "scan-configs" / "residual-scan.yaml"
-        self.assertTrue(
-            scaffold.is_file(),
-            "the Registered Scan Registry slot is Required, so _template must "
-            "ship the profile-owned scan configuration it tells adopters to "
-            "fill; without it a copied profile passes check_profile.py with no "
-            "runnable verifier",
-        )
-        text = scaffold.read_text(encoding="utf-8")
-        self.assertIn(
-            "TODO(profile)", text,
-            "the scaffold must retain the unfilled sentinel so check_profile.py "
-            "fails until the adopter fills it",
-        )
-        registry = (self.TEMPLATE / "registries" / "registered-scans.md"
-                    ).read_text(encoding="utf-8")
-        self.assertIn(
-            "`scan-configs/residual-scan.yaml`",
-            registry,
-            "the Registered Scan Registry template must name the exact scaffold "
-            "path, not just 'copy it into the filled profile'",
-        )
-        self.assertNotIn(
-            "python3", registry,
-            "the Profile binds a stable Tool capability and configuration; it "
-            "must not regain ownership of an executable command",
-        )
-
-    def test_filled_scaffold_shape_survives_the_matcher_contract(self):
-        """A faithfully filled scaffold must load and be able to fire."""
+    def test_explicit_scan_answers_survive_the_matcher_contract(self):
+        import tempfile
         module = load_residual_module()
-
-        scaffold = (self.TEMPLATE / "scan-configs" / "residual-scan.yaml"
-                    ).read_text(encoding="utf-8")
-        answers = iter(["Accepted Root", "accepted-type", "Accepted Heading",
-                        "Weak One", "Weak Two", "Accepted Heading"])
-        # An adopter replaces the sentinels that carry values; the ones inside
-        # comments go away with the comment.
-        filled = "\n".join(
-            line if line.lstrip().startswith("#")
-            else re.sub(r"TODO\(profile\)", lambda _m: next(answers), line)
-            for line in scaffold.splitlines()
+        with tempfile.TemporaryDirectory() as temporary:
+            path = Path(temporary) / "residual-scan.yaml"
+            path.write_text(kblib.canonical_yaml(SCAN_CONFIG), encoding="utf-8")
+            config, _fingerprint = module.load_config(str(path))
+        pages = (
+            "---\ntype: daily-log\n---\n\n# Page\n",
+            "# Page\n\n## Daily Log Entry\n\ntext\n",
+            "# Page\n\n## Scratch\n\na\n\n## To Sort\n\nb\n",
         )
-        self.assertEqual(
-            list(answers), [],
-            "the scaffold's value sentinels no longer match this test's answer "
-            "set; update both together",
-        )
-
-        with self.subTest("loads"):
-            import tempfile
-            with tempfile.TemporaryDirectory() as tmp:
-                path = Path(tmp) / "residual-scan.yaml"
-                path.write_text(filled, encoding="utf-8")
-                config, _fingerprint = module.load_config(str(path))
-        with self.subTest("can fire"):
-            page = "---\ntype: accepted-type\n---\n\n# Page\n"
-            self.assertTrue(
-                module.classify(page, config),
-                "a page carrying the filled scaffold's own frontmatter value "
-                "must be recognised, or the configuration is inert and "
-                "check_residual_content.py fails the run",
-            )
-            headings = "# Page\n\n## Accepted Heading\n\ntext\n"
-            self.assertTrue(module.classify(headings, config))
-            combination = "# Page\n\n## Weak One\n\na\n\n## Weak Two\n\nb\n"
-            self.assertTrue(module.classify(combination, config))
+        for page in pages:
+            with self.subTest(page=page):
+                self.assertTrue(module.classify(page, config))
 
 
 if __name__ == "__main__":

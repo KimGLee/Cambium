@@ -23,7 +23,7 @@ The current user-facing capability summary lives in [README.md](README.md). This
 
 | Capability | State | Short version |
 |---|---|---|
-| Profile onboarding reform | Complete | One pre-closed template, scaffolder, interview contract, status view, checks, and end-to-end tests ship |
+| Profile onboarding reform | Complete | One empty TOML candidate, Agent interview guidance, snapshot-bound authoring tools, CUE-backed checks, and separate adoption ship |
 | Component responsibility realignment | Complete | Governance owners are distinct; stable Tool commands now front physically separated, checked Area/Domain implementations |
 | Persistent task and Queue runtime | Complete | Coverage, Required Queue, Progress, controlled writers, receipts, recovery, and closure paths ship |
 | Workflow progression MVP | Complete | Exact candidate carry, bounded delegated Amendments, and routed-gap settlement ship |
@@ -77,7 +77,7 @@ Cambium's existing capabilities now follow one explicit responsibility split:
 - `kernel/` owns common governance semantics, invariants, state meanings, extension points, and the minimum implementation-independent contracts;
 - `Card/` owns short, curated action checklists for routes or phases selected elsewhere; Cards are non-authoritative projections and are not described as deterministically compiled when their semantic compression is curated;
 - `Read Set/` owns machine-resolvable direct and conditional loading edges; its indexes are generated navigation rather than route or loading authority;
-- a selected Profile owns only confirmed repository-specific values, while the common Profile interface is a Kernel-owned machine registry;
+- a selected Profile owns only confirmed repository-specific values; Kernel domain contracts own their meaning and legal values, while Tools own TOML encoding, source-file mapping, evaluation, and presentation;
 - `Tools/` owns deterministic algorithms, capability implementations, engineering contracts, generators, and controlled writers; and
 - adopter-owned `.cambium/` holds current values, bound operational inputs, evidence, recovery state, transient work, and rebuildable projections.
 
@@ -89,20 +89,23 @@ This completion is a responsibility correction, not the later architecture redes
 
 ### Profile Onboarding Reform
 
-Cambium now ships one template rather than “minimal” and “full” template families. The template pre-closes switches that have a safe legal exit state and leaves repository-specific decisions open.
+Cambium now ships one empty candidate template rather than “minimal” and “full” template families. Each candidate has a single `profiles/<profile-id>/profile.toml` answer entry point. Missing draft answers remain unresolved; they are not inferred agreement to inactive states or defaults.
 
 The shipped flow includes:
 
 - `profiles/template-files.yaml` as the exact-copy whitelist;
 - `Tools/scaffold_profile.py` for safe candidate creation;
-- `profiles/interview.yaml` as the machine-readable question contract;
+- `profiles/interview.yaml` as Tool-owned question guidance mapped to semantic answer paths;
+- `Tools/profile_candidate.py` for snapshot-bound read/edit/render, so an assisting agent can prepare and show answers without asking the user to copy files or author TOML;
 - `Tools/profile_onboarding_status.py` as a read-only state and `next_action` view;
-- `Tools/check_profile.py` for structural and dependency validation;
+- `Tools/check_profile.py` for CUE shape/legal-value checks and owner-derived dependency validation;
 - end-to-end fixtures for existing and empty corpora.
 
-An assisting agent may prepare a candidate. It may not approve the Profile, select it, or infer unconfirmed domain policy.
+Kernel contracts remain the semantic owners. Existing domain YAML owners retain their other consumers; deterministic, checked CUE projections do not become second handwritten standards. Tool-owned encoding binds contract IDs to physical sources and the fixed evaluator toolchain. Natural-language answers stay data, not executable rules.
 
-The former target of “at most 15 operator decisions in 30 minutes” is now a product-experience measurement, not an implementation claim. It remains unproven until measured with real adopters. An automated interview runner is a possible convenience layer, not a missing governance mechanism.
+An assisting agent may prepare a candidate, but cannot infer unconfirmed domain policy. Mechanical validity, user confirmation, and R09 adoption remain separate. Read-only views and authoring operations do not change the current selection. The authoring kit remains source-distribution material; adopted runtimes retain the validation and adoption machinery.
+
+The former target of “at most 15 operator decisions in 30 minutes” is now a product-experience measurement, not an implementation claim. It remains unproven until measured with real adopters. Agent-callable authoring is shipped; a standalone conversational interview UI or scheduler is not.
 
 ### Persistent Runtime And Workflow Progression
 

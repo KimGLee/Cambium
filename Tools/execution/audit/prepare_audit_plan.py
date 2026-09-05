@@ -18,6 +18,7 @@ import Tools.execution.audit.audit_plan_contract as audit_plan_contract
 import Tools.execution.audit.audit_producer_runtime as audit_producer_runtime
 import Tools.execution.audit.batch_review_obligation_contract as batch_review_obligation_contract
 import Tools.knowledge.rendering.changed_scope_rendering_checks as changed_scope_rendering_checks
+import Tools.knowledge.rendering.profile_rendering_evidence_contract as profile_rendering
 import Tools.knowledge.metadata.freshness_engine as freshness_engine
 import Tools.platform.common.kblib as kblib
 import Tools.knowledge.structure.markdown_structure_checks as markdown_structure_checks
@@ -238,10 +239,11 @@ def _m_review_trigger(row, page, *, rereview_marked=False):
 
 def _authorized_profile_contract(result, bindings):
     view = result.get("_profile_authorized_view")
-    contract = view.get("_contract") if isinstance(view, dict) else None
-    if contract is None or not getattr(contract, "authorized", False):
-        raise audit_producer_runtime.AuditProducerError(
-            "AuditPlan projection requires an authorized typed Profile")
+    from Tools.governance.profile.profile_admission import contract_from_admitted_view
+    try:
+        contract = contract_from_admitted_view(result["root"], view)
+    except ValueError as exc:
+        raise audit_producer_runtime.AuditProducerError(str(exc)) from exc
     if getattr(contract, "manifest_repo_path", None) != \
             bindings["selected_profile_manifest"]:
         raise audit_producer_runtime.AuditProducerError(
@@ -323,22 +325,20 @@ def _has_markdown_table(page):
         page.snapshot.read_text())
 
 
-def _profile_rendering_contract_gap_targets(frozen):
-    """Return complex constructs that cannot yet be bound by typed Profile.
+def _profile_rendering_contract_gap_targets(frozen, contract=None, root=None):
+    """Return constructs lacking a configured typed Profile rule.
 
-    Cambium currently exposes no typed Profile Rendering Contract slot.  File
-    presence, prose, or a Host capability therefore cannot be treated as a
-    valid binding.  Only constructs whose selector is already machine-owned by
-    a Kernel base predicate can enter this decision.  Formula, image, embed,
-    asset, and callout syntax remains an explicitly reported contract-design
-    gap; this Tool does not guess that applicability from bytes.  Pages without
-    a selector-owned construct remain not-applicable to this limited route;
-    pages with one HOLD plan publication until the typed extension exists.
+    Unconfigured Profiles retain the existing selector-owned gap boundary.
+    Configured Profiles use their registered parser, including its explicit
+    math grammar, without promoting those choices into Kernel base rules.
     """
-    return changed_scope_rendering_checks.\
-        profile_rendering_contract_gap_targets(
+    try:
+        profile_rendering.require_bindings(
             ((page.path, page.snapshot.read_text()) for page in frozen),
-            contract_is_bound_and_valid=False)
+            contract, root=root)
+    except ProfileRenderingContractGap as exc:
+        return tuple((row["target"], tuple(row["constructs"])) for row in exc.targets)
+    return ()
 
 
 def _changed_scope_targets(spec, *, item, frozen, coverage):
@@ -417,7 +417,7 @@ def _project_obligations(root, result, item, frozen, generated_at,
             ", ".join(invalid))
 
     contract = _authorized_profile_contract(result, profile)
-    rendering_gaps = _profile_rendering_contract_gap_targets(frozen)
+    rendering_gaps = _profile_rendering_contract_gap_targets(frozen, contract, root)
     if rendering_gaps:
         raise ProfileRenderingContractGap(rendering_gaps)
     try:
@@ -521,6 +521,11 @@ def _project_obligations(root, result, item, frozen, generated_at,
     for spec in extensions:
         if spec["kernel_extension_point"] == _PROFILE_SCAN_EXTENSION:
             targets = (_BATCH_SCOPE_TARGET,)
+        elif spec["kernel_extension_point"] == profile_rendering.EXTENSION_POINT:
+            targets = tuple(page.path for page in frozen
+                            if spec["applicability"] in
+                            profile_rendering.selected_constructs(
+                                page.snapshot.read_text(), contract, root=root))
         elif spec["kernel_extension_point"] == _PROFILE_REVIEW_EXTENSION:
             try:
                 expanded = profile_batch_judgment_contract.\
@@ -648,9 +653,9 @@ def require_plan_current(plan, root, result, item, activation, frozen=None):
         raise audit_producer_runtime.AuditProducerError(
             "AuditPlan contract_snapshot_sha256 does not bind its current "
             "registered definitions")
-    changed_scope_rendering_checks.require_profile_rendering_contract_state(
+    profile_rendering.require_plan_applicability(plan,
         ((page.path, page.snapshot.read_text()) for page in frozen),
-        contract_is_bound_and_valid=False)
+        contract, root=root)
     return frozen
 
 

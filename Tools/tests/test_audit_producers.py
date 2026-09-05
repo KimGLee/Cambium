@@ -47,7 +47,7 @@ class AuditProducerTests(unittest.TestCase):
             "required_queue_sha256": SHA_A,
             "upstream_revision_id": "standards-test",
             "active_standards_sha256": SHA_A,
-            "selected_profile_manifest": "profiles/test/profile.md",
+            "selected_profile_manifest": "profiles/test/profile.toml",
             "profile_snapshot_sha256": SHA_A,
             "profile_contract_fingerprint": SHA_A,
             "opening_transition_receipt": "audit-open",
@@ -102,8 +102,8 @@ class AuditProducerTests(unittest.TestCase):
             candidate_predicate="fixture residual predicate",
         )
         contract = SimpleNamespace(
-            authorized=True,
-            manifest_repo_path="profiles/test/profile.md",
+            valid=True,
+            manifest_repo_path="profiles/test/profile.toml",
             profile_contract_fingerprint=SHA_A,
             extension_dimensions=(),
             judgment_items=(SimpleNamespace(
@@ -117,6 +117,7 @@ class AuditProducerTests(unittest.TestCase):
             batch_review_requirements=(),
         )
         result = {
+            "root": str(REPOSITORY),
             "coverage": {"pages": [
                 {"path": "L.md", "tier": "L",
                  "authoring_status": "unassessed", "property_state": {}},
@@ -136,7 +137,7 @@ class AuditProducerTests(unittest.TestCase):
             "progress_ledger_sha256": SHA_A,
         }
         profile = {
-            "selected_profile_manifest": "profiles/test/profile.md",
+            "selected_profile_manifest": "profiles/test/profile.toml",
             "profile_snapshot_sha256": SHA_A,
             "profile_contract_fingerprint": SHA_A,
         }
@@ -162,7 +163,11 @@ class AuditProducerTests(unittest.TestCase):
                                 return_value=opening), mock.patch.object(
                                     prepare_audit_plan,
                                     "_changed_scope_targets",
-                                    return_value=((), None)):
+                                    return_value=((), None)), mock.patch(
+                                        "Tools.governance.profile.profile_admission.contract_from_admitted_view",
+                                        return_value=contract):
+            # This test owns obligation projection from an admitted model;
+            # real Gate and view binding are covered by admission integration.
             plan, _ = prepare_audit_plan.build_plan(
                 str(REPOSITORY), result, item, activation,
                 generated_at="2026-08-28T00:00:00Z")

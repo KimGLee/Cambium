@@ -29,7 +29,7 @@ upstream_revision_id_after: TODO(profile-adoption)
 # sole admissible current-state status.
 standards_status_after: approved
 standards_effective_date_after: TODO(profile-adoption)
-selected_profile_manifest_after: "profiles/my-profile/profile.md"
+selected_profile_manifest_after: "profiles/my-profile/profile.toml"
 # profile-revision only; initial adoption declares the absence explicitly with
 # a null pair -- an old profile does not exist and is not a prerequisite.
 upstream_revision_id_before: null

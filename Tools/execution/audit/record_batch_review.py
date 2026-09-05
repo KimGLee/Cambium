@@ -43,10 +43,8 @@ def _managed_candidate_delta(root, result, item):
 def _current_judgment_receipts(result, item, audit_binding):
     """Delegate the complete live-current judgment set to its sole resolver."""
     view = result.get("_profile_authorized_view") or {}
-    contract = view.get("_contract")
-    if contract is None or not getattr(contract, "authorized", False):
-        raise ValueError(
-            "batch review requires one authorized typed Profile contract")
+    from Tools.governance.profile.profile_admission import contract_from_admitted_view
+    contract = contract_from_admitted_view(result["root"], view)
     plan = profile_batch_judgment_contract.load_bound_plan(
         result["root"], audit_binding["audit_plan_path"],
         audit_binding["audit_plan_id"],

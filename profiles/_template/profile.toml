@@ -1,0 +1,5 @@
+# Empty candidate; the creation Tool binds the confirmed profile_id.
+# Missing answers are unresolved, never implicit inactive policies.
+schema_version = 1
+
+[slots]

@@ -92,6 +92,10 @@ distribution_only:
     reason: "stable public command for the profile-creation kit; profiles/_template and profiles/template-files.yaml are both distribution-only, so the route cannot serve an adopted runtime"
   - path: Tools/governance/profile/scaffold_profile.py
     reason: "implementation behind the distribution-only scaffold_profile command; carrying it after its template and public route are omitted leaves unreachable profile-authoring code"
+  - path: Tools/profile_candidate.py
+    reason: "candidate authoring command in the distribution's interview kit; it neither loads current runtime authority nor performs adoption"
+  - path: Tools/governance/profile/profile_candidate.py
+    reason: "implementation of the distribution-only candidate reader and editor; runtime consumers use the shipped typed model and admission interfaces instead"
   - path: profiles/interview.yaml
     reason: "the fill contract for a scaffolded candidate profile; profile_onboarding_status.py reaches it only in its pre-adoption state 5, and its rule 2 gives an existing runtime precedence forever, so an adopted corpus cannot arrive at it -- a profile revision over a live runtime is a Standards revision under K12/10 and never re-enters the interview"
   - path: profiles/answer-patterns.md

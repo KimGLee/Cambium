@@ -57,7 +57,7 @@ Card 是经过人工策划的简短检查单，不是路线本身，也不是规
 
 Cambium 当前提供：
 
-- 一份默认关闭可选项的 Profile 模板、安全的 Profile 脚手架、机器可读的采用访谈、只读的入门状态检查和 Profile 校验；
+- 一份空白 TOML 候选 Profile、Agent 辅助访谈、安全创建与绑定快照的编辑工具、只读审阅和状态视图，以及基于 CUE 的 Profile 校验；
 - 可持久保存的 Coverage、Required Queue 和 Progress 状态，使长期任务能够恢复；
 - 确定性的任务与批次状态转换、受控 Amendment、活动任务的 Standards 采用、中断恢复，以及 build 或 maintenance 两种完成路径；
 - 只追加的 receipt 和 Terminal Proof 绑定；
@@ -115,6 +115,8 @@ Cambium 当前不包含：
 
 采用过程的目标，是为一个仓库创建并批准唯一一个 Profile。复制模板或示例并不等于选定 Profile。
 
+先在 Cambium 源码工作区完成[隔离的 Profile 工具链安装](Tools/README.md#profile-toolchain)，再进行以下作者工作流。下面的命令由辅助 Agent 执行；用户只需讨论和确认仓库自己的决定，不必手动复制模板文件或填写 TOML。
+
 ### 1. 创建候选 Profile
 
 ```text
@@ -122,18 +124,20 @@ python3 Tools/scaffold_profile.py . --profile-id my-profile
 python3 Tools/scaffold_profile.py . --profile-id my-profile --apply
 ```
 
-第一条命令只预览，不写文件。第二条命令只复制版本控制白名单中的文件；如果目标已经存在，它会拒绝覆盖。
+第一条命令只预览，不写文件。第二条命令创建 `profiles/my-profile/profile.toml`，填入已确认的身份并保留空 slot，只复制已声明的辅助文件；目标已存在时拒绝覆盖。它不替用户决定政策，也不执行采纳。
 
 ### 2. 回答开放问题并校验
 
-可以让 Agent 按 [profiles/interview.yaml](profiles/interview.yaml) 协助访谈，也可以手工填写同一份合同。通用 slot 接口属于 Kernel，由 [K00/19](kernel/K00%20Standards%20Control/19%20Profile%20Extension%20Interface.md) 及其机器注册表定义；[profiles/README.md](profiles/README.md) 只说明候选 Profile 的操作流程。
+Agent 按 [profiles/interview.yaml](profiles/interview.yaml) 讨论仓库的实际需要，通过 `Tools/profile_candidate.py` 读取、预览、编辑和呈现候选答案。答案只在 `profile.toml` 中保存一份；独立引用的政策正文仍保留自己的唯一归属。准确操作与快照前置条件见 [profiles/README.md](profiles/README.md)。
+
+Kernel 通过 [K00/19](kernel/K00%20Standards%20Control/19%20Profile%20Extension%20Interface.md) 和各领域合同拥有 slot 含义与合法值；Tool 拥有 TOML 编码，包括根版本、`slots` 包装和草稿校验入口，以及文件布局、求值和展示。仍有其他消费者使用的领域 YAML 合同继续作为唯一权威，其 CUE 投影由工具生成并校验，不另抄一套手写规则。
 
 ```text
 python3 Tools/profile_onboarding_status.py . --profile-id my-profile --json
 python3 Tools/check_profile.py profiles/my-profile
 ```
 
-模板已经预先关闭有安全默认值的选项。剩余问题都需要操作者确认仓库的真实情况。 Agent 可以准备候选答案，但不能批准 Profile，也不能自行发明领域政策。
+草稿缺项就表示尚未回答，不表示同意关闭某项或继承默认值。正式合同允许的既有默认值仍然有效，但它们不能证明用户已经确认。机器校验、用户确认和采纳是三个不同步骤；审阅视图或检查通过都不会选定 Profile。
 
 ### 3. 通过 R09 批准 Profile
 

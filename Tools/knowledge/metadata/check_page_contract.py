@@ -272,7 +272,7 @@ def run(root, profile_override, contract_path, scope, excludes, strict,
                 metadata_property_state.profile_gate_projection_rules(
                     root, admission.contract.extension_gates,
                     metadata_contract=metadata_contract,
-                    authorized_profile_contract=admission.contract)
+                    typed_profile_contract=admission.contract)
             projection_rule_by_field = {
                 rule["field"]: rule for rule in projection_rules
             }

@@ -179,7 +179,7 @@ class TerminalRuntimeClosureTests(unittest.TestCase):
             "scope_version": "s1",
             "contract_version": "c1",
             "upstream_revision_id": "cambium-test-v1",
-            "selected_profile_manifest": "profiles/test/profile.md",
+            "selected_profile_manifest": "profiles/test/profile.toml",
             "coverage_ledger_sha256": "sha256:" + "2" * 64,
             "progress_ledger_sha256": "sha256:" + "3" * 64,
             **self.load_contract,
@@ -192,7 +192,7 @@ class TerminalRuntimeClosureTests(unittest.TestCase):
                 "scope_version": "s1",
                 "contract_version": "c1",
                 "upstream_revision_id": "cambium-test-v1",
-                "selected_profile_manifest": "profiles/test/profile.md",
+                "selected_profile_manifest": "profiles/test/profile.toml",
                 **self.load_contract,
             },
             "amendments": [],
@@ -202,7 +202,7 @@ class TerminalRuntimeClosureTests(unittest.TestCase):
             "task_id": "task-1",
             "scope_version": "s1",
             "upstream_revision_id": "cambium-test-v1",
-            "selected_profile_manifest": "profiles/test/profile.md",
+            "selected_profile_manifest": "profiles/test/profile.toml",
             "open_gaps": [],
         }
 
@@ -297,7 +297,7 @@ class TerminalRuntimeClosureTests(unittest.TestCase):
         self.assertIn("proof-progress-fingerprint-mismatch", progress_checks)
         self.assertIn("proof-coverage-fingerprint-mismatch", coverage_checks)
         self.coverage["scope_version"] = "s0"
-        self.coverage["selected_profile_manifest"] = "profiles/other/profile.md"
+        self.coverage["selected_profile_manifest"] = "profiles/other/profile.toml"
         self.coverage["open_gaps"] = [{"page": "Topics/Missing.md"}]
         checks = self.checks(check_proof._validate_terminal_coverage_state(
             self.proof, self.progress, self.coverage
@@ -325,7 +325,7 @@ class QueueProofLiveLinkageTests(unittest.TestCase):
             "queue_revision": 2,
             "state_revision": 7,
             "upstream_revision_id": "cambium-test-v1",
-            "selected_profile_manifest": "profiles/test/profile.md",
+            "selected_profile_manifest": "profiles/test/profile.toml",
             "required_queue": [
                 {"id": "B1", "state": "closed"},
             ],
@@ -350,7 +350,7 @@ class QueueProofLiveLinkageTests(unittest.TestCase):
             "contract": {
                 "scope_version": "s1",
                 "upstream_revision_id": "cambium-test-v1",
-                "selected_profile_manifest": "profiles/test/profile.md",
+                "selected_profile_manifest": "profiles/test/profile.toml",
             },
         }
         self.receipt = queue_check_receipt.make_check_receipt(
@@ -371,7 +371,7 @@ class QueueProofLiveLinkageTests(unittest.TestCase):
             "task_id": "task-1",
             "scope_version": "s1",
             "upstream_revision_id": "cambium-test-v1",
-            "selected_profile_manifest": "profiles/test/profile.md",
+            "selected_profile_manifest": "profiles/test/profile.toml",
             "required_queue_path": check_proof.CANONICAL_QUEUE_PATH,
             "queue_revision": 2,
             "queue_state_revision": 7,

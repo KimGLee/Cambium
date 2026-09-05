@@ -22,6 +22,7 @@ import Tools.platform.agent_interface.agent_interface_contract as agent_interfac
 import Tools.platform.common.kblib as kblib
 import Tools.governance.profile.profile_layout_contract as profile_layout_contract
 import Tools.governance.profile.profile_batch_judgment_contract as profile_batch_judgment_contract
+from Tools.governance.profile.profile_admission import contract_from_admitted_view
 import Tools.execution.context_delivery.read_set_contract as read_set_contract
 import Tools.platform.distribution.stamp_cards as stamp_cards
 
@@ -480,19 +481,15 @@ def review_requirement_set_sha256(records):
 
 
 def build_activation_context(root, progress, item, *, runtime_state,
-                             execution_context_id=None,
-                             profile_contract=None):
+                             execution_context_id=None):
     """Return receipt extension fields for one exact activation delivery."""
     contract, contract_sha = _contract_fingerprint(progress)
     runtime_bindings = _runtime_bindings(runtime_state)
-    if profile_contract is None:
-        view = runtime_state.get("_profile_authorized_view")
-        profile_contract = (view or {}).get("_contract") if isinstance(
-            view, dict) else None
-    if profile_contract is None or not getattr(
-            profile_contract, "authorized", False):
-        raise ActivationError(
-            "activation requires one authorized typed Profile contract")
+    try:
+        profile_contract = contract_from_admitted_view(
+            root, runtime_state.get("_profile_authorized_view"))
+    except ValueError as exc:
+        raise ActivationError(str(exc)) from exc
     batch_id = item.get("id") if isinstance(item, dict) else None
     if not isinstance(batch_id, str) or not batch_id:
         raise ActivationError("activation batch has no id")

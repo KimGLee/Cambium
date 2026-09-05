@@ -69,9 +69,9 @@ def expand_requirements(contract, item):
     """
     batch_id = item.get("id") if isinstance(item, dict) else None
     require_trimmed_string(batch_id, "review expansion batch id")
-    if contract is None or not getattr(contract, "authorized", False):
+    if contract is None or not getattr(contract, "valid", False):
         raise ValueError(
-            "review expansion requires one authorized typed Profile contract")
+            "review expansion requires one valid typed Profile contract")
     manifest = item.get("manifest")
     if (not isinstance(manifest, list) or
             any(not isinstance(page, str) or not page for page in manifest)):
@@ -313,6 +313,9 @@ def receipt_binding_errors(root, plan, plan_sha256, contract, item, receipt,
                 judgment_item(contract, required.judgment_item_id)),
         }
         if require_current:
+            from Tools.governance.profile.profile_admission import contract_from_admitted_view
+            if contract_from_admitted_view(root, profile_view) is not contract:
+                raise ValueError("current review uses a different Profile than its Gate evaluation")
             fingerprints["artifact_fingerprint"] = artifact_fingerprint(
                 root, item, required, receipt.get("target"))
     except (OSError, TypeError, UnicodeError, ValueError) as exc:

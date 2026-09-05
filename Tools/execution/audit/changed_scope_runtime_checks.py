@@ -368,8 +368,7 @@ def coverage_routing_state(coverage, queue, targets=None):
         COVERAGE_RULE_ID, scope, diagnostics, counts))
 
 
-def frozen_task_contract_references(root, progress, item, runtime_state,
-                                    profile_contract=None):
+def frozen_task_contract_references(root, progress, item, runtime_state):
     """Validate frozen component references through their canonical parsers.
 
     Card/route/Profile-Read-Set references are checked by the same activation
@@ -389,8 +388,7 @@ def frozen_task_contract_references(root, progress, item, runtime_state,
     context = None
     try:
         context = card_activation.build_activation_context(
-            root, progress, item, runtime_state=runtime_state,
-            profile_contract=profile_contract)
+            root, progress, item, runtime_state=runtime_state)
         context_errors = card_activation.activation_context_errors(context)
         for index, error in enumerate(context_errors):
             diagnostics.append(_diagnostic(

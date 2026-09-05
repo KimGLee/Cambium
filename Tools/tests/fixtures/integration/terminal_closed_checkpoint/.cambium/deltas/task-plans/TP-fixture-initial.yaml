@@ -11,22 +11,21 @@ contract_after:
   scope_version: s1
   concurrency_cap: 2
   upstream_revision_id: 0123456789abcdef0123456789abcdef01234567
-  selected_profile_manifest: profiles/test-profile/profile.md
+  selected_profile_manifest: profiles/test-profile/profile.toml
   selected_route_ids:
     - R01
     - R03
-    - R07
+    - R08
+    - R12
   selected_card_paths:
     - Card/R01 Core Bootstrap Card.md
     - Card/R03 Module Build Card.md
-    - Card/R07 Long-running Execution Card.md
+    - Card/R08 Fixture Card.md
+    - Card/R12 Fixture Card.md
   selected_profile_route_ids: []
-  selected_read_sets:
-    - Read Set/R01 Core Bootstrap Read Set.md
-    - Read Set/R03 Module Build Read Set.md
-    - Read Set/R07 Long-running Execution Read Set.md
+  selected_read_sets: []
   loaded_module_paths:
-    - kernel/K03 Fixture/01 Conditional Review.md
+    - kernel/K13 Task Runtime and Execution Control/08 Required Queue Contract and Lifecycle.md
   minimum_run_until: ""
   checkpoint_at: ""
   hard_stop_at: ""

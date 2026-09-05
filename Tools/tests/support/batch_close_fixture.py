@@ -27,6 +27,7 @@ import Tools.platform.common.kblib as kblib
 import Tools.governance.control.metadata_execution_contract as metadata_execution_contract
 import Tools.platform.distribution.module_boundary_facts as module_boundary_facts
 import Tools.governance.profile.profile_admission as profile_admission
+from Tools.governance.profile import profile_codec
 import Tools.execution.task_runtime.runtime_paths as runtime_paths
 from Tools.tests.support.profile_fixture import (
     install_loadable_profile,
@@ -100,8 +101,7 @@ class BatchCloseRuntimeActions:
                 view["profile_load_inputs_sha256"],
             "metadata_execution_contract_fingerprint":
                 contract.contract_fingerprint,
-            "authorized_profile_contract": view["_contract"],
-            "authorized_metadata_contract": contract,
+            "profile_evaluation": view["_evaluation"],
             "current_repository_snapshot_sha256":
                 kblib.repository_snapshot_sha256(self.root),
             "historical": False,
@@ -142,51 +142,27 @@ class CheckBatchCloseFixture(BatchCloseRuntimeActions, unittest.TestCase):
 
     def configure_batch_close_profile(self, root, profile):
         """Finalize this scenario's Profile before its single adoption."""
-        # The shared Profile fixture owns the complete current form and its
-        # directory tree.  This scenario only replaces two existing slot
-        # values with the batch-close-specific judgment and scan contracts;
-        # it must not recreate the form or retain the retired slots.md bridge.
-        audit_registry = profile / "registries/audit-dimensions.md"
-        registry = profile / "registries/registered-scans.md"
-        for slot in (audit_registry, registry):
-            if not slot.is_file():
-                raise AssertionError(
-                    "shared Profile fixture omitted required slot: %s" %
-                    slot.relative_to(self.root))
-        audit_registry.write_text(
-            "# Audit Dimension Registry\n\n"
-            "## Extension Dimensions\n\n"
-            "- Registration: None\n\n"
-            "| Dimension ID | Target list(s): `review`, `receipt`, or "
-            "`review + receipt` | Meaning |\n"
-            "|---|---|---|\n\n"
-            "## Judgment Items\n\n"
-            "| Stable Judgment Item ID | Base or registered receipt "
-            "Dimension ID | Exact kernel audit-layer name | Bounded audit "
-            "object one run proves | Evidence role: `emits`, `consumes`, "
-            "or `triggers` | Predicate owner (repo-relative path; optional "
-            "`#heading`) |\n"
-            "|---|---|---|---|---|---|\n"
-            "| `fixture-item` | `coverage_and_integration` | `Batch Review` "
-            "| The fixture scan candidates have accepted dispositions. | "
-            "`emits` | `profiles/test-profile/registries/"
-            "audit-dimensions.md#Residual Disposition` |\n\n"
-            "## Residual Disposition\n\n"
-            "The fixture verifier reports residual candidates.\n",
-            encoding="utf-8",
-        )
-        registry.write_text(
-            "# Registered Scan Registry\n\n## Scan Registrations\n\n"
-            "| Stable Scan ID | Activation role | Whole-corpus scope/root | "
-            "Verifier capability ID | Profile configuration reference or "
-            "`None` | Candidate predicate/boundary | "
-            "Judgment Item ID reference |\n"
-            "|---|---|---|---|---|---|---|\n"
-            "| `fixture-residuals` | `K12/09 item 6 — residual-content scan` | "
-            "Whole repository | `fixture-residual-scan-v1` | `None` | "
-            "candidate-only | `fixture-item` |\n",
-            encoding="utf-8",
-        )
+        # The shared fixture owns the complete answer object. This scenario
+        # changes only its residual judgment and scan; foundation obligations
+        # remain the same typed records supplied by that owner.
+        manifest_path = profile / "profile.toml"
+        document = profile_codec.loads_profile(manifest_path.read_bytes())
+        audit = document["slots"]["audit-dimension-registry"]
+        residual = next(
+            item for item in audit["judgment_items"]
+            if item["item_id"] == "test-profile-residual-disposition")
+        residual.update({
+            "item_id": "fixture-item",
+            "audit_object": "The fixture scan candidates have accepted dispositions.",
+        })
+        document["slots"]["registered-scan-registry"]["scan_registrations"] = [{
+            "scan_id": "fixture-residuals",
+            "activation_role": "K12/09 item 6 — residual-content scan",
+            "scope": "Whole repository",
+            "verifier_capability": "fixture-residual-scan-v1",
+            "candidate_predicate": "candidate-only",
+            "judgment_item_id": "fixture-item",
+        }]
         tools = root / "Tools"
         tools.mkdir(exist_ok=True)
         (tools / "schemas").mkdir(exist_ok=True)
@@ -248,11 +224,9 @@ class CheckBatchCloseFixture(BatchCloseRuntimeActions, unittest.TestCase):
             "kernel/K08 Metadata and Status/vocabulary-base.yaml")
         (root / vocab_base).parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(TOOLS.parent / vocab_base, root / vocab_base)
-        vocabulary_path = profile / "vocabulary-extensions.yaml"
-        vocabulary = kblib.load_yaml_file(vocabulary_path)
-        vocabulary["volatility_defaults"] = {"fixture": "stable"}
-        vocabulary_path.write_text(
-            kblib.canonical_yaml(vocabulary), encoding="utf-8")
+        document["slots"]["vocabulary-extensions"]["volatility_defaults"] = {
+            "fixture": "stable"}
+        manifest_path.write_bytes(profile_codec.dumps_profile(document))
         admission, admission_errors = profile_admission.admit_profile(
             root, profile)
         self.assertEqual([], admission_errors)

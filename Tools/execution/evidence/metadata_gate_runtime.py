@@ -167,7 +167,7 @@ def _projection_rules(metadata_contract, profile_contract):
     return metadata_property_state.profile_gate_projection_rules(
         profile_contract.root, profile_contract.extension_gates,
         metadata_contract=metadata_contract,
-        authorized_profile_contract=profile_contract)
+        typed_profile_contract=profile_contract)
 
 
 def _require_capability_linkage(root, gate):
@@ -661,9 +661,8 @@ def load_gate_context(root, gate_id, page_path, *, runtime, authority,
     require_paired_authority(runtime, authority)
 
     profile_view = authority.get("profile_view") or {}
-    contract = profile_view.get("_contract")
-    if contract is None or not getattr(contract, "authorized", False):
-        raise ValueError("runtime exposes no authorized typed Profile contract")
+    from Tools.governance.profile.profile_admission import contract_from_admitted_view
+    contract = contract_from_admitted_view(canonical_root, profile_view)
     gate = _exact_gate(contract, gate_id)
     _require_capability_linkage(canonical_root, gate)
 

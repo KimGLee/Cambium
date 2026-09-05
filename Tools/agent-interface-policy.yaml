@@ -180,6 +180,16 @@ path_overrides:
     constraint: namespace
     runtime_path_id: audit-plan-root
     suffixes: [.yaml]
+  - tool: record_profile_rendering
+    argument: plan
+    constraint: namespace
+    runtime_path_id: audit-plan-root
+    suffixes: [.yaml]
+  - tool: record_profile_rendering
+    argument: receipts
+    constraint: exact
+    runtime_path_id: profile-rendering-receipts
+    suffixes: []
   - tool: record_rendering_verification
     argument: receipts
     constraint: exact
@@ -279,6 +289,10 @@ path_activation_overrides:
     active_when_any: [apply]
     inactive_when_any: []
   - tool: record_rendering_verification
+    argument: receipts
+    active_when_any: [apply]
+    inactive_when_any: []
+  - tool: record_profile_rendering
     argument: receipts
     active_when_any: [apply]
     inactive_when_any: []
@@ -555,7 +569,7 @@ tools:
     workspace_argument: null
     workspace_access: null
     value_arguments: [check]
-    read_paths: [base, extensions]
+    read_paths: [base, profile]
     write_paths: []
     read_write_paths: [output]
     external_write: none
@@ -646,6 +660,15 @@ tools:
     workspace_access: read
     value_arguments: [suite, python, jobs, list_only]
     read_paths: []
+    write_paths: []
+    read_write_paths: []
+    external_write: none
+  - tool: profile_candidate
+    exposure: mcp
+    workspace_argument: root
+    workspace_access: write
+    value_arguments: [profile_id, mode, selector, expected_snapshot_sha256, apply, json]
+    read_paths: [edits]
     write_paths: []
     read_write_paths: []
     external_write: none
@@ -744,6 +767,15 @@ tools:
     workspace_argument: root
     workspace_access: write
     value_arguments: [batch, obligation_id, rendering_mode, visual_trigger, unresolved_question, verification_target, verification_result, apply]
+    read_paths: [plan]
+    write_paths: [receipts]
+    read_write_paths: []
+    external_write: none
+  - tool: record_profile_rendering
+    exposure: mcp
+    workspace_argument: root
+    workspace_access: write
+    value_arguments: [batch, obligation_id, apply]
     read_paths: [plan]
     write_paths: [receipts]
     read_write_paths: []

@@ -191,7 +191,7 @@ class BatchCloseRecoveryProjectionTests(unittest.TestCase):
                 "task_id": "TASK-1",
                 "queue_revision": 4,
                 "state_revision": 7,
-                "selected_profile_manifest": "profiles/test/profile.md",
+                "selected_profile_manifest": "profiles/test/profile.toml",
             },
             "queue_sha256": "sha256:queue",
             "coverage_sha256": "sha256:coverage",

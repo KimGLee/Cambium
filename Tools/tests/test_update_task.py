@@ -71,7 +71,7 @@ def transition_result(*, task_state="planned", checkpoint=None,
             },
             "contract": {
                 "completion_semantics": completion_semantics,
-                "selected_profile_manifest": "profiles/test/profile.md",
+                "selected_profile_manifest": "profiles/test/profile.toml",
             },
         },
         "queue": {
@@ -152,7 +152,7 @@ class TaskTransitionProjectionUnitTests(unittest.TestCase):
             "terminal_proof_path": ".cambium/receipts/proof.yaml",
             "terminal_proof_sha256": _sha("d"),
             "queue_check_receipt": "audit-queue-complete",
-            "selected_profile_manifest": "profiles/test/profile.md",
+            "selected_profile_manifest": "profiles/test/profile.toml",
             "profile_snapshot_sha256": _sha("e"),
             "profile_contract_fingerprint": _sha("f"),
             "profile_load_inputs_sha256": _sha("1"),
@@ -403,7 +403,7 @@ class BuildCompletionPublicationRecoverySlowTests(CurrentRuntimeCase):
     def replace_profile_with_valid_revision(self):
         owner = (
             self.root /
-            "profiles/test-profile/registries/audit-dimensions.md"
+            "profiles/test-profile/policies/residual-disposition.md"
         )
         text = owner.read_text(encoding="utf-8")
         before = "The fixture accepts no production candidate;"

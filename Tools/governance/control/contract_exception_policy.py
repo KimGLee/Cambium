@@ -14,6 +14,9 @@ Runtime consumers resolve the current policy directly from this registry.
 from Tools.platform.repository.repository import repository_source_root
 
 import json
+from collections.abc import Mapping
+from decimal import Decimal
+import math
 import os
 from pathlib import Path, PurePosixPath
 import re
@@ -73,9 +76,9 @@ def policy_registry_records(document, *, root=None,
     _closed_mapping(
         document, {"schema_version", "registry_id", "families"},
         "contract-exception policy registry")
-    if document.get("schema_version") != 2:
+    if document.get("schema_version") != 3:
         raise ValueError(
-            "contract-exception policy registry schema_version must be 2")
+            "contract-exception policy registry schema_version must be 3")
     if document.get("registry_id") != "contract-exception-policy":
         raise ValueError(
             "contract-exception policy registry has the wrong registry_id")
@@ -147,13 +150,12 @@ def policy_registry_records(document, *, root=None,
 
         resolution = family.get("profile_resolution")
         _closed_mapping(resolution, {
-            "section", "registration_none", "registration_configured",
+            "slot_id", "extension_point", "inactive_state", "configured_state",
             "remainder_class",
         }, "%s profile_resolution" % label)
         for field, value in resolution.items():
             _nonempty(value, "%s profile_resolution %s" % (label, field))
-        if resolution["registration_none"] == \
-                resolution["registration_configured"]:
+        if resolution["inactive_state"] == resolution["configured_state"]:
             raise ValueError(
                 "%s registration states must be distinct" % label)
 
@@ -220,133 +222,60 @@ _SHIPPED_POLICY_REGISTRY = load_policy_registry()
 POLICY_REGISTRY = policy_registry_records(_SHIPPED_POLICY_REGISTRY)
 _PRIORITY_FAMILY = _family(
     _SHIPPED_POLICY_REGISTRY, "profile-priority-quota")
-PRIORITY_QUOTA_SECTION = _PRIORITY_FAMILY["profile_resolution"]["section"]
-PRIORITY_QUOTA_NONE = \
-    _PRIORITY_FAMILY["profile_resolution"]["registration_none"]
-PRIORITY_QUOTA_CONFIGURED = \
-    _PRIORITY_FAMILY["profile_resolution"]["registration_configured"]
 _PRIORITY_POLICIES = tuple(_PRIORITY_FAMILY["policies"])
 
 
-def priority_quota_policy(rubric_text, registry=None):
-    """Read the Priority Rubric slot's quota registration, K00/07.
+def priority_quota_policy(rubric, registry=None):
+    """Resolve the typed optional quota extension through its unique owner.
 
-    Returns ``((p0, p1), configured, errors)`` when configured, and
-    ``((), False, errors)`` when the slot explicitly selects no quota. One
-    reader owns the long-lived quota truth: the profile-load Gate validates
-    through it and the batch-close consumer resolves through it, so the two
-    can never disagree about what the slot declares. ``Registration: None``
-    leaves quota enforcement inactive. ``Configured`` requires one row for every
-    registered quota class, a nonempty rationale, and values inside the
-    registry's individual and joint domains so the registered remainder class
-    stays reachable.
+    Profile storage uses a fractional share; the existing exception policy
+    contract continues to use percentages. Conversion is mechanical and does
+    not introduce a default quota. Incomplete or malformed records fail closed.
     """
     registry = registry or _SHIPPED_POLICY_REGISTRY
     family = _family(registry, "profile-priority-quota")
     resolution = family["profile_resolution"]
-    section = resolution["section"]
-    registration_none = resolution["registration_none"]
-    registration_configured = resolution["registration_configured"]
-    policies = tuple(family["policies"])
-    classes = tuple(row["quota_class"] for row in policies)
+    classes = tuple(row["quota_class"] for row in family["policies"])
     domain = family["limit_domain"]
-    minimum = domain["minimum_inclusive"]
-    maximum = domain["maximum_exclusive"]
-    joint_maximum = domain["joint_maximum_exclusive"]
-    remainder_class = resolution["remainder_class"]
-
-    errors = []
-    inside = False
-    declaration = None
-    rows = []
-    for _line_number, line in kblib.markdown_authority_lines(
-            rubric_text or ""):
-        heading = kblib.markdown_atx_heading(line)
-        if heading is not None:
-            if inside and heading[0] <= 2:
-                break
-            inside = (heading[0] == 2 and
-                      heading[1] == section)
+    quota = rubric.get("priority_quota") if isinstance(rubric, Mapping) else None
+    if not isinstance(quota, Mapping):
+        return (), False, ["Priority Rubric requires an explicit priority_quota object"]
+    mode = quota.get("mode")
+    items = quota.get("items")
+    if set(quota) != {"mode", "items"} or not isinstance(items, (list, tuple)):
+        return (), False, ["priority_quota requires exactly mode and typed items"]
+    if mode == resolution["inactive_state"]:
+        return (), False, ([] if not items else ["inactive quota cannot retain active items"])
+    if mode != resolution["configured_state"]:
+        return (), False, ["priority_quota has no legal explicit registration mode"]
+    values, errors = {}, []
+    for row in items:
+        if not isinstance(row, Mapping) or set(row) != {"priority", "maximum_share", "rationale"}:
+            errors.append("quota items require priority, maximum_share, and rationale")
             continue
-        if not inside:
+        priority = row["priority"]
+        if priority not in classes or priority in values:
+            errors.append("unknown or duplicate quota class %r" % priority)
             continue
-        stripped = line.strip()
-        match = re.fullmatch(r"-\s+Registration:\s*(.+)", stripped)
-        if match:
-            declaration = match.group(1).strip()
+        raw = row["maximum_share"]
+        if type(raw) not in (int, float) or not math.isfinite(raw):
+            errors.append("quota maximum_share must be a finite fractional number")
             continue
-        if stripped.startswith("|") and stripped.endswith("|"):
-            cells = [cell.strip() for cell in stripped.strip("|").split("|")]
-            if all(set(cell) <= {"-", ":", " "} for cell in cells):
-                continue
-            rows.append(cells)
-    if declaration is None:
-        errors.append(
-            "the %s section must declare `- Registration: %s` (no quota) or "
-            "`- Registration: %s`" %
-            (section, registration_none, registration_configured))
-        return (), False, errors
-    if declaration == registration_none:
-        data_rows = rows[1:] if rows else []
-        if data_rows:
-            errors.append(
-                "Registration: %s leaves active quota rows behind; remove "
-                "them so the single declaration is authoritative" %
-                registration_none)
-        return (), False, errors
-    if declaration != registration_configured:
-        errors.append(
-            "%s declaration %r is invalid; use `%s` or `%s`" %
-            (section, declaration, registration_none,
-             registration_configured))
-        return (), False, errors
-
-    values = {}
-    data_rows = rows[1:] if rows else []
-    for cells in data_rows:
-        if len(cells) != 3 or not all(cells):
-            errors.append(
-                "a %s quota row must carry exactly class, maximum share, "
-                "and a nonempty rationale; found %r" %
-                (registration_configured, cells))
+        share = float(Decimal(str(raw)) * 100)
+        if not domain["minimum_inclusive"] <= share < domain["maximum_exclusive"]:
+            errors.append("%s maximum_share is outside the Kernel quota domain" % priority)
             continue
-        cls = cells[0].strip("`").strip()
-        if cls not in classes:
-            errors.append("quota class %r is not %s" %
-                          (cls, " or ".join(classes)))
+        if not isinstance(row["rationale"], str) or not row["rationale"].strip():
+            errors.append("%s quota rationale must be non-empty" % priority)
             continue
-        if cls in values:
-            errors.append("quota class %s is declared twice" % cls)
-            continue
-        raw = cells[1].strip("`").strip()
-        number = raw[:-1].strip() if raw.endswith("%") else raw
-        try:
-            share = float(number)
-        except ValueError:
-            errors.append(
-                "%s maximum share %r is not a number, optionally followed "
-                "by %%" % (cls, raw))
-            continue
-        if not minimum <= share < maximum:
-            errors.append(
-                "%s maximum share must be at least %s and under %s" %
-                (cls, minimum, maximum))
-            continue
-        values[cls] = share
-    missing = sorted(set(classes) - set(values))
+        values[priority] = share
+    missing = set(classes) - set(values)
     if missing:
-        errors.append(
-            "%s must declare every quota class; missing %s" %
-            (registration_configured, ", ".join(missing)))
+        errors.append("configured quota is missing classes %s" % ", ".join(sorted(missing)))
         return (), False, errors
-    joint = sum(values[quota_class] for quota_class in classes)
-    if joint >= joint_maximum:
-        errors.append(
-            "the two quota shares sum to %.1f%%; K00/07 requires the pair to "
-            "stay strictly below %s so the %s remainder class stays "
-            "non-empty" % (joint, joint_maximum, remainder_class))
-    return tuple(values[quota_class] for quota_class in classes), True, errors
-
+    if sum(values.values()) >= domain["joint_maximum_exclusive"]:
+        errors.append("configured quota shares leave no %s remainder" % resolution["remainder_class"])
+    return tuple(values[priority] for priority in classes), True, errors
 
 PRIORITY_QUOTA_POLICY_IDS = frozenset(
     policy_id for policy_id, entry in POLICY_REGISTRY.items()
@@ -355,7 +284,7 @@ PRIORITY_QUOTA_PROTOCOL_VERSION = \
     _PRIORITY_FAMILY["fingerprint_payload"]["protocol_version"]
 
 
-def effective_priority_policy(rubric_text, registry=None):
+def effective_priority_policy(rubric, registry=None):
     """Resolve the one effective quota policy and its canonical fingerprint.
 
     Everything an authorization decision depends on is folded into one object
@@ -375,7 +304,7 @@ def effective_priority_policy(rubric_text, registry=None):
     rows = tuple(family["policies"])
     payload_contract = family["fingerprint_payload"]
     values, configured, errors = priority_quota_policy(
-        rubric_text, registry=registry)
+        rubric, registry=registry)
     resolved = ({
         row["policy_id"]: values[index]
         for index, row in enumerate(rows)
@@ -396,7 +325,7 @@ def effective_priority_policy(rubric_text, registry=None):
     return policy, kblib.sha256_bytes(payload), errors
 
 
-def effective_policy_for(policy_id, rubric_text=None, registry=None):
+def effective_policy_for(policy_id, rubric=None, registry=None):
     """Resolve the effective policy object for one registered policy.
 
     One dispatcher so every consumer -- the amendment writer, the runtime
@@ -411,11 +340,11 @@ def effective_policy_for(policy_id, rubric_text=None, registry=None):
     records = policy_registry_records(registry)
     priority_ids = frozenset(records)
     if policy_id in priority_ids:
-        if rubric_text is None:
+        if rubric is None:
             return None, None, [
                 "%s is a Profile-configured policy; its Priority Rubric "
-                "bytes are required to resolve it" % policy_id]
-        return effective_priority_policy(rubric_text, registry=registry)
+                "typed values are required to resolve it" % policy_id]
+        return effective_priority_policy(rubric, registry=registry)
     return None, None, [
         "%r is not in the closed policy registry" % policy_id]
 

@@ -10,12 +10,13 @@ or expose a CLI.
 """
 
 from dataclasses import dataclass
+from collections.abc import Mapping
 import re
 from typing import Optional
 
 
 PROFILES_DIRECTORY = "profiles"
-PROFILE_MANIFEST_NAME = "profile.md"
+PROFILE_MANIFEST_NAME = "profile.toml"
 TEMPLATE_PROFILE_ID = "_template"
 EXAMPLES_PROFILE_ID = "examples"
 TEMPLATE_PROFILE_IDS = frozenset((TEMPLATE_PROFILE_ID,))
@@ -46,6 +47,22 @@ class ProfileManifestLocation:
     @property
     def example(self):
         return self.reserved_namespace == EXAMPLES_PROFILE_ID
+
+
+def validate_manifest_identity(document, location):
+    """Validate only the encoding/identity envelope, never Profile admission.
+
+    A Read Set locator can use this identity without turning discovery into
+    policy validation or selection. Full Profile consumers still require the
+    shared profile-load evaluation.
+    """
+    if not isinstance(location, ProfileManifestLocation) or not isinstance(document, Mapping):
+        raise ProfileLayoutError("identity requires a parsed manifest location and object")
+    if type(document.get("schema_version")) is not int or document["schema_version"] != 1:
+        raise ProfileLayoutError("Profile must use the current structured encoding version")
+    if document.get("profile_id") != location.profile_id:
+        raise ProfileLayoutError("Profile identity must equal its canonical directory identity")
+    return location.profile_id
 
 
 def profile_relative(profile_id):

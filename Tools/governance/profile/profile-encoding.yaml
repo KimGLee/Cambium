@@ -1,0 +1,67 @@
+# Tool-owned Profile encoding, source discovery, and implementation bindings.
+# Contract membership and semantic owners come from the Kernel interface.
+# No source location or projection may add a policy, default, or activation.
+schema_version: 1
+entrypoint: profile.toml
+document_schema_version: 1
+slot_container: slots
+cue_definitions:
+  profile: '#Profile'
+  draft: '#ProfileDraft'
+encoding_cue_sources:
+- Tools/governance/profile/profile-document.cue
+policy_reference_fragment: slots.<slot_id>.<semantic_field>
+capability_bindings:
+  producer_capability_by_kind:
+    deterministic: registered-scan-v1
+    manual-attestation: manual-attestation-v1
+  receipt_schema_by_kind:
+    deterministic: deterministic-gate-result-v1
+    manual-attestation: manual-gate-attestation-v1
+  field_gate_consumer_operation: typed-field-metadata-transition
+  non_field_gate_consumer_operation: non-field-transition
+  profile_extension_enum_projection_operation: profile-extension-enum-owner-projection-v1
+  profile_extension_enum_writer_capability: project-page-state-v2
+interface_id: cambium-profile-interface
+cue_sources:
+- contract_id: cambium-profile-interface-v1
+  path: kernel/K00 Standards Control/profile-interface.cue
+- contract_id: cambium-profile-governance-v1
+  path: kernel/K00 Standards Control/profile-governance.cue
+- contract_id: cambium-profile-scope-v1
+  path: kernel/K01 Scope and Architecture/profile-scope.cue
+- contract_id: cambium-profile-source-policy-v1
+  path: kernel/K07 Sources and Accuracy/profile-source-policy.cue
+- contract_id: cambium-profile-language-v1
+  path: kernel/K10 Writing and Formatting/profile-language.cue
+- contract_id: cambium-profile-expression-v1
+  path: kernel/K11 Expression Layer/profile-expression.cue
+- contract_id: cambium-profile-audit-v1
+  path: kernel/K12 Quality Assurance/profile-audit.cue
+- contract_id: cambium-profile-escalation-v1
+  path: kernel/K13 Task Runtime and Execution Control/profile-escalation.cue
+- contract_id: cambium-corpus-planning-contract
+  path: kernel/K02 Knowledge Work Construction/corpus-planning-contract.profile-projection.cue
+  projection_of: kernel/K02 Knowledge Work Construction/corpus-planning-contract.yaml
+- contract_id: structure-registry-shape-v2
+  path: kernel/K01 Scope and Architecture/structure-registry-contract.profile-projection.cue
+  projection_of: kernel/K01 Scope and Architecture/structure-registry-contract.yaml
+- contract_id: metadata-contract-shape-v1
+  path: kernel/K08 Metadata and Status/metadata-profile-contract.profile-projection.cue
+  projection_of: kernel/K08 Metadata and Status/metadata-profile-contract.yaml
+- contract_id: vocabulary-extensions-shape-v1
+  path: kernel/K08 Metadata and Status/vocabulary-extensions-contract.profile-projection.cue
+  projection_of: kernel/K08 Metadata and Status/vocabulary-extensions-contract.yaml
+- contract_id: cambium-profile-rendering-contract
+  path: kernel/K12 Quality Assurance/profile-rendering-contract.profile-projection.cue
+  projection_of: kernel/K12 Quality Assurance/profile-rendering-contract.yaml
+- contract_id: cambium-audit-dimension-base
+  path: kernel/K12 Quality Assurance/audit-dimension-base.profile-projection.cue
+  projection_of: kernel/K12 Quality Assurance/audit-dimension-base.yaml
+registry_references:
+  audit_dimension_base: kernel/K12 Quality Assurance/audit-dimension-base.yaml
+  corpus_planning_contract: kernel/K02 Knowledge Work Construction/corpus-planning-contract.yaml
+  metadata_profile_contract: kernel/K08 Metadata and Status/metadata-profile-contract.yaml
+  structure_registry_contract: kernel/K01 Scope and Architecture/structure-registry-contract.yaml
+  vocabulary_extensions_contract: kernel/K08 Metadata and Status/vocabulary-extensions-contract.yaml
+  profile_rendering_contract: kernel/K12 Quality Assurance/profile-rendering-contract.yaml

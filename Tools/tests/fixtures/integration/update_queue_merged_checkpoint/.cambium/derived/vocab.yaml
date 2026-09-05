@@ -1,7 +1,7 @@
 # Generated artifact -- do not edit directly.
 # Inputs:
 #   base:       kernel/K08 Metadata and Status/vocabulary-base.yaml (sha256: a06ae7ff3c76c6e78c954f0345010cdc1fd1054b8667bd21cd5cc2c0d7b80f4c)
-#   extensions: profiles/test-profile/vocabulary-extensions.yaml (sha256: ee1dcddf720bfc013ed396592a8e6b5b1aad889fe09fe21caf8ec0ad203aff5c)
+#   extensions: profiles/test-profile/profile.toml (sha256: 7cecb279fc6d7bf6a07a7c300691c6388688c4b61d372e43d3bff8b96e9835b7)
 # Merge rule: root keys follow the fixed base key order; for each
 #   field, kernel values come first and profile additions are
 #   appended in source order, deduplicated; extensions must not
@@ -15,7 +15,7 @@ profile_id: "test-profile"
 composition_policy: "append-only-profile-extensions"
 compiled_from:
   kernel: "kernel/K08 Metadata and Status/vocabulary-base.yaml"
-  profile: "profiles/test-profile/vocabulary-extensions.yaml"
+  profile: "profiles/test-profile/profile.toml"
 frontmatter_extensions:
   fields: []
 fields:
@@ -44,7 +44,7 @@ fields:
       - "card-index"
   domain:
     owner: "kernel/K08 Metadata and Status/01 Frontmatter and Core Vocabularies.md#Domain Vocabulary"
-    extension_owner: "profiles/test-profile/vocabulary-extensions.yaml"
+    extension_owner: "profiles/test-profile/profile.toml"
     values:
       - "general"
   scope:

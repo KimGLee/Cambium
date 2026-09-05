@@ -110,7 +110,7 @@ class PhasedReadbackUnitTests(unittest.TestCase):
         self.assertTrue(queue_runtime.batch_touches_control_plane(
             {"manifest": ["Topics/A.md", "kernel/K00 Standards.md"]}))
         self.assertTrue(queue_runtime.batch_touches_control_plane(
-            {"manifest": ["profiles/adopter/profile.md"]}))
+            {"manifest": ["profiles/adopter/profile.toml"]}))
 
 
 class PhasedReadbackContractTests(unittest.TestCase):

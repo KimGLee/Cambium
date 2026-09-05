@@ -9,12 +9,12 @@ writer checkpoints replace per-method full-repository construction.
 
 import json
 from pathlib import Path
-import re
 import tempfile
 import unittest
 from unittest import mock
 
 import Tools.governance.profile.apply_profile_adoption as apply_profile_adoption
+import Tools.governance.profile.profile_codec as profile_codec
 from Tools.tests.support.profile_adoption_fixture import (
     GOVERNANCE,
     MANIFEST,
@@ -43,10 +43,10 @@ def contract_plan(branch=apply_profile_adoption.BRANCH_INITIAL):
         "upstream_revision_id_after": "a" * 40,
         "standards_status_after": "approved",
         "standards_effective_date_after": "2026-08-13",
-        "selected_profile_manifest_after": "profiles/cand/profile.md",
+        "selected_profile_manifest_after": MANIFEST,
         "upstream_revision_id_before": None if initial else "a" * 40,
         "selected_profile_manifest_before": (
-            None if initial else "profiles/cand/profile.md"),
+            None if initial else MANIFEST),
         "change_summary": "Adopt one confirmed Profile",
         "changed_predicates": [],
         "adoption_requirement": "none",
@@ -86,15 +86,11 @@ def commit_rows(root):
 
 def mutate_candidate(root):
     """Change candidate bytes without making the Profile unloadable."""
-    path = Path(root) / "profiles" / PROFILE_ID / "corpus-planning.yaml"
-    text = path.read_text(encoding="utf-8")
-    match = re.search(r"reason: (.+)", text)
-    path.write_text(
-        text.replace(
-            match.group(0),
-            'reason: "Corpus refounded; planning deferred."', 1),
-        encoding="utf-8",
-    )
+    path = Path(root) / MANIFEST
+    document = profile_codec.loads_profile(path.read_bytes())
+    document["slots"]["corpus-planning"]["applicability"]["reason"] = (
+        "Corpus refounded; planning deferred.")
+    path.write_bytes(profile_codec.dumps_profile(document))
 
 
 class ProfileAdoptionContractTests(unittest.TestCase):

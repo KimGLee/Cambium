@@ -11,13 +11,14 @@ from unittest import mock
 
 import Tools.execution.task_runtime.runtime_paths as runtime_paths
 import Tools.governance.profile.profile_contract as profile_contract
+import Tools.governance.profile.profile_codec as profile_codec
 import Tools.platform.common.kblib as kblib
 import Tools.knowledge.metadata.check_vocab as check_vocab
 import Tools.knowledge.metadata.compose_vocab as compose_vocab
 
 
 BASE_PATH = compose_vocab.DEFAULT_BASE
-EXTENSION_PATH = "profiles/fixture/vocabulary-extensions.yaml"
+EXTENSION_PATH = "profiles/fixture/profile.toml"
 
 
 def base_document():
@@ -56,8 +57,8 @@ class FixtureAdmission:
     def __init__(self, root, extension_bytes):
         self.root = str(Path(root).resolve())
         self.profile_id = "fixture"
-        self.manifest_repo_path = "profiles/fixture/profile.md"
-        self.slot_bytes = {"Vocabulary Extensions": extension_bytes}
+        self.manifest_repo_path = "profiles/fixture/profile.toml"
+        self.document = profile_codec.loads_profile(extension_bytes)
         self.contract = profile_contract.ProfileContract(
             root=self.root,
             manifest_path=str(Path(self.root) / self.manifest_repo_path),
@@ -79,25 +80,26 @@ class FixtureAdmission:
             volatility_defaults=(("general", "slow"),),
         )
         self.evaluation = SimpleNamespace(
+            profile_snapshot=kblib.repository_tree_snapshot(
+                self.root, "profiles/fixture"),
             profile_snapshot_sha256="sha256:" + "1" * 64,
             profile_contract_fingerprint="sha256:" + "2" * 64,
             profile_load_inputs_sha256="sha256:" + "3" * 64,
         )
 
-    def slot_text(self, name):
-        return self.slot_bytes[name].decode("utf-8")
-
-    def slot_path(self, name):
+    def slot_document(self, name):
         if name != "Vocabulary Extensions":
-            return None
-        return str(Path(self.root) / EXTENSION_PATH)
+            raise KeyError(name)
+        return copy.deepcopy(self.document["slots"]["vocabulary-extensions"])
 
 
 def install_sources(root):
     root = Path(root)
     base_bytes = kblib.canonical_yaml(base_document()).encode("utf-8")
-    extension_bytes = kblib.canonical_yaml(
-        extension_document()).encode("utf-8")
+    extension_bytes = profile_codec.dumps_profile({
+        "schema_version": 1, "profile_id": "fixture",
+        "slots": {"vocabulary-extensions": extension_document()},
+    })
     base = root / BASE_PATH
     extension = root / EXTENSION_PATH
     base.parent.mkdir(parents=True, exist_ok=True)
@@ -163,8 +165,9 @@ class VocabularyArtifactIdentityContractTests(unittest.TestCase):
                     base.write_bytes(changed_base or original_base)
                     extension.write_bytes(
                         changed_extension or original_extension)
-                    admission.slot_bytes["Vocabulary Extensions"] = \
-                        changed_extension or original_extension
+                    admission.evaluation.profile_snapshot = \
+                        kblib.repository_tree_snapshot(
+                            str(root), "profiles/fixture")
                     artifact.write_bytes(changed_artifact)
 
                     stale = compose_vocab.artifact_currency_errors(

@@ -1,129 +1,80 @@
-"""Owned tests for the current Corpus Planning checker.
+"""Corpus Planning predicates and one formally admitted Profile checkpoint.
 
-The Profile envelope, Corpus Planning registry, acceptance writer, close gate,
-and Terminal Proof have separate test owners. This suite owns only the checker
-predicates, artifact relationships, promotion handoff, and one already-
-authorized Profile/runtime checkpoint through the Receipt consumer. No test
-constructs a Task or Batch lifecycle.
+Artifact relationships and receipt freshness are exercised without creating a
+Task. Private pure projections use typed linker output checkpoints; the
+public validator and receipt path use a real Profile-load evaluation.
 """
 
+from copy import deepcopy
 from pathlib import Path
-import shutil
-import tempfile
 import unittest
 from unittest import mock
 
 from Tools.execution.planning import check_corpus_plan, corpus_planning_contract
 from Tools.execution.task_runtime import queue_runtime
+from Tools.governance.profile import profile_contract
 from Tools.platform.common import kblib
 from Tools.tests.fixtures.contract.corpus_plan_objects import (
-    CONFIGURED_SLOT,
-    GAPS,
-    GLOBAL_MAP,
-    INACTIVE_SLOT,
-    MANIFEST,
-    MATRIX,
-    ROLES,
-    SCOPE,
+    CONFIGURED_SLOT, GAPS, GLOBAL_MAP, INACTIVE_SLOT, MATRIX, ROLES, SCOPE,
 )
+from Tools.tests.support.profile_contract_fixture import CurrentProfileContractFixture
 
 
-PROFILE_MANIFEST = "profiles/test-profile/profile.md"
-CORPUS_SLOT = "profiles/test-profile/corpus-planning.yaml"
-PROFILE_SCOPE = "profiles/test-profile/scope-and-architecture.md"
-ROLE_REGISTRY = "profiles/test-profile/roles.md"
+PROFILE_MANIFEST = "profiles/test-profile/profile.toml"
 REPOSITORY = Path(__file__).resolve().parents[2]
 
 
-def sha256_fixture(character):
-    return "sha256:" + character * 64
+def typed_projection_checkpoint(*, slot=CONFIGURED_SLOT, scope=SCOPE, roles=ROLES):
+    """Minimal linker output for private pure projections, never an admission."""
+    return profile_contract.ProfileContract(
+        root="/repo", manifest_path="/repo/" + PROFILE_MANIFEST,
+        manifest_repo_path=PROFILE_MANIFEST, profile_root="/repo/profiles/test-profile",
+        profile_repo_dir="profiles/test-profile", audit_registry_path=None,
+        scan_registry_path=None, routing_registry_path=None,
+        extension_registration="none", extension_dimensions=(), judgment_items=(),
+        registered_scans=(), extension_gate_registration="none", extension_gates=(),
+        dependency_edges=(), source_cells=(), diagnostics=(), profile_id="test-profile",
+        slot_values={"corpus-planning": deepcopy(slot), "profile-scope": deepcopy(scope),
+                     "role-registry": deepcopy(roles)},
+        role_ids=frozenset(roles["process_roles"]))
 
 
 class MinimalCorpusPlanFixture:
-    """One minimal filesystem contract fixture shared by this test module.
-
-    It contains only the exact Profile projection, planning artifacts, pages,
-    and runtime byte bindings consumed by ``check_corpus_plan``. The
-    authorized view and runtime result are supplied as already-validated
-    checkpoints, so this fixture never adopts a Profile or builds Task/Queue/
-    Batch history.
-    """
-
-    @classmethod
-    def setUpClass(cls):
-        super().setUpClass()
-        cls._temporary = tempfile.TemporaryDirectory()
-        cls.root = Path(cls._temporary.name).resolve()
-
-    @classmethod
-    def tearDownClass(cls):
-        try:
-            cls._temporary.cleanup()
-        finally:
-            super().tearDownClass()
+    """Real Profile evaluation plus one already-materialized runtime read result."""
 
     def setUp(self):
         super().setUp()
-        for relative in (
-                "profiles/test-profile", "planning", "Topics",
-                ".cambium/state"):
-            (self.root / relative).mkdir(parents=True, exist_ok=True)
-        owner_relative = \
-            corpus_planning_contract.CORPUS_PLANNING_CONTRACT_PATH
-        owner_target = self.root / owner_relative
-        owner_target.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copy2(REPOSITORY / owner_relative, owner_target)
-        for removable in ("Other", ".cambium/evidence.json"):
-            candidate = self.root / removable
-            if candidate.is_dir():
-                shutil.rmtree(candidate)
-            elif candidate.exists():
-                candidate.unlink()
-        for candidate in (
-                self.root / "planning/Outside.md",
-                self.root / ".cambium/runtime-page.md"):
-            if candidate.exists():
-                candidate.unlink()
-
-        self.write_text(PROFILE_MANIFEST, MANIFEST)
-        self.write_text(CORPUS_SLOT, CONFIGURED_SLOT)
-        self.write_text(PROFILE_SCOPE, SCOPE)
-        self.write_text(ROLE_REGISTRY, ROLES)
-        self.write_text("planning/global-map.yaml", GLOBAL_MAP)
-        self.write_text("planning/capability-matrix.yaml", MATRIX)
-        self.write_text("planning/gap-register.yaml", GAPS)
-        self.write_text("Topics/A.md", "# A\n")
-        self.write_text("Topics/B.md", "# B\n")
-
+        self.profile_fixture = CurrentProfileContractFixture(self)
+        self.root = self.profile_fixture.root
+        self.profile_fixture.document["slots"]["corpus-planning"] = deepcopy(CONFIGURED_SLOT)
+        scope = self.profile_fixture.slot("profile-scope")
+        scope.update(deepcopy(SCOPE))
+        for row in scope["placement_layer_registrations"]:
+            if row["binding"]["kind"] != "predicate":
+                row["binding"]["layer_id"] = "L1"
+        for key in ("new_page_placement_rule", "terminology_structure"):
+            for row in scope[key]:
+                row["layer_id"] = "L1"
+        self.profile_fixture.save()
         for relative, text in (
+                ("planning/global-map.yaml", GLOBAL_MAP),
+                ("planning/capability-matrix.yaml", MATRIX),
+                ("planning/gap-register.yaml", GAPS),
+                ("Topics/A.md", "# A\n"), ("Topics/B.md", "# B\n"),
                 (queue_runtime.COVERAGE_PATH, "coverage checkpoint\n"),
                 (queue_runtime.QUEUE_PATH, "queue checkpoint\n"),
                 (queue_runtime.PROGRESS_PATH, "progress checkpoint\n")):
             self.write_text(relative, text)
-
         self.runtime = {
-            "errors": [],
-            "current_receipt_catalog": {},
+            "errors": [], "current_receipt_catalog": {},
             "coverage": {"pages": [{
-                "path": "Topics/B.md",
-                "coverage_disposition": "required",
-                "next_batch": "B2",
-            }]},
+                "path": "Topics/B.md", "coverage_disposition": "required", "next_batch": "B2"}]},
             "queue": {
-                "task_id": "TASK-1",
-                "queue_revision": 1,
-                "state_revision": 1,
+                "task_id": "TASK-1", "queue_revision": 1, "state_revision": 1,
                 "selected_profile_manifest": PROFILE_MANIFEST,
-                "required_queue": [{
-                    "id": "B2",
-                    "state": "open",
-                    "manifest": ["Topics/B.md"],
-                }],
-            },
+                "required_queue": [{"id": "B2", "state": "open", "manifest": ["Topics/B.md"]}]},
             "progress": {"contract": {
-                "selected_profile_manifest": PROFILE_MANIFEST,
-                "selected_route_ids": ["R13"],
-            }},
+                "selected_profile_manifest": PROFILE_MANIFEST, "selected_route_ids": ["R13"]}},
             "coverage_sha256": self.file_sha(queue_runtime.COVERAGE_PATH),
             "queue_sha256": self.file_sha(queue_runtime.QUEUE_PATH),
             "progress_sha256": self.file_sha(queue_runtime.PROGRESS_PATH),
@@ -139,43 +90,18 @@ class MinimalCorpusPlanFixture:
         return kblib.repository_file_snapshot(
             self.root, relative, singly_linked=True).sha256
 
-    def profile_view(self, *, slot=CONFIGURED_SLOT, scope=SCOPE, roles=ROLES):
-        files = {
-            PROFILE_MANIFEST: MANIFEST.encode("utf-8"),
-            CORPUS_SLOT: slot.encode("utf-8"),
-            PROFILE_SCOPE: scope.encode("utf-8"),
-            ROLE_REGISTRY: roles.encode("utf-8"),
-        }
-        snapshot = kblib.RepositoryTreeSnapshot(
-            str(self.root), "profiles/test-profile",
-            sha256_fixture("1"), files)
-        return {
-            "selected_profile_manifest": PROFILE_MANIFEST,
-            "profile_snapshot_sha256": snapshot.sha256,
-            "profile_contract_fingerprint": sha256_fixture("2"),
-            "profile_load_inputs_sha256": sha256_fixture("3"),
-            "_manifest_slot_paths": (
-                ("Corpus Planning", CORPUS_SLOT),
-                ("Profile Scope", PROFILE_SCOPE),
-                ("Role Registry", ROLE_REGISTRY),
-            ),
-            "_profile_snapshot": snapshot,
-        }
+    def profile_view(self):
+        view, errors = queue_runtime.profile_load_authorized_view(
+            self.root, PROFILE_MANIFEST)
+        self.assertEqual([], errors)
+        self.assertIsNotNone(view)
+        return view
 
     def validate_current_plan(self):
         view = self.profile_view()
-        with mock.patch.object(
-                check_corpus_plan.queue_runtime,
-                "authorized_profile_view_errors", return_value=[]), \
-                mock.patch.object(
-                    check_corpus_plan, "runtime",
-                    return_value=self.runtime), \
-                mock.patch.object(
-                    check_corpus_plan, "_profile_view_currency_errors",
-                    return_value=[]):
+        with mock.patch.object(check_corpus_plan, "runtime", return_value=self.runtime):
             return check_corpus_plan.validate_corpus_plan(
-                self.root, profile=PROFILE_MANIFEST,
-                authorized_profile_view=view)
+                self.root, profile=PROFILE_MANIFEST, authorized_profile_view=view)
 
     @property
     def global_map(self):
@@ -183,114 +109,75 @@ class MinimalCorpusPlanFixture:
 
 
 class CorpusPlanObjectFixture:
-    """In-memory artifacts for pure checker predicates."""
+    """In-memory artifact inputs to private checker predicates."""
 
     root = Path("/repo")
 
     @property
     def profile_scope(self):
         return {
-            "path": PROFILE_SCOPE,
-            "layers": [{
-                "id": "L1",
-                "directories": [{
-                    "value": "Topics",
-                    "path": "/repo/Topics",
-                }],
-                "responsibility": "Canonical topic pages.",
-            }],
+            "path": PROFILE_MANIFEST,
+            "layers": [{"id": "L1",
+                        "directories": [{"value": "Topics", "path": "/repo/Topics"}],
+                        "responsibility": "Canonical topic pages."}],
         }
 
     @property
     def scale(self):
-        return kblib.parse_yaml_subset(CONFIGURED_SLOT)["capability_scale"]
+        return deepcopy(CONFIGURED_SLOT["capability_scale"])
 
     @property
     def runtime(self):
         return {
             "errors": [],
             "coverage": {"pages": [{
-                "path": "Topics/B.md",
-                "coverage_disposition": "required",
-                "next_batch": "B2",
-            }]},
+                "path": "Topics/B.md", "coverage_disposition": "required", "next_batch": "B2"}]},
             "queue": {"required_queue": [{
-                "id": "B2", "state": "open",
-                "manifest": ["Topics/B.md"],
-            }]},
+                "id": "B2", "state": "open", "manifest": ["Topics/B.md"]}]},
         }
 
     @staticmethod
     def binding(relative, text):
-        return {
-            "value": relative,
-            "_snapshot": kblib.RepositoryFileSnapshot(
-                "/repo/" + relative, relative, text.encode("utf-8")),
-        }
+        return {"value": relative, "_snapshot": kblib.RepositoryFileSnapshot(
+            "/repo/" + relative, relative, text.encode("utf-8"))}
 
     @staticmethod
     def resolved_path(_root, raw, label, result, *, must_exist=True,
                       markdown=False, yaml_file=False, directory=False):
         del must_exist, directory
         if not isinstance(raw, str):
-            check_corpus_plan._add_error(
-                result, "path", label, "must be a string path")
+            check_corpus_plan._add_error(result, "path", label, "must be a string path")
             return None
-        value = raw.strip().strip("`")
+        value = raw
         if markdown and not value.lower().endswith(".md"):
-            check_corpus_plan._add_error(
-                result, "path", label, "must end with .md")
+            check_corpus_plan._add_error(result, "path", label, "must end with .md")
             return None
         if yaml_file and not value.lower().endswith(".yaml"):
-            check_corpus_plan._add_error(
-                result, "path", label, "must end with .yaml")
+            check_corpus_plan._add_error(result, "path", label, "must end with .yaml")
             return None
         return {"value": value, "path": "/repo/" + value}
 
-    def profile_view(self, *, scope=SCOPE):
-        snapshot = kblib.RepositoryTreeSnapshot(
-            "/repo", "profiles/test-profile", sha256_fixture("1"), {
-                PROFILE_MANIFEST: MANIFEST.encode("utf-8"),
-                CORPUS_SLOT: CONFIGURED_SLOT.encode("utf-8"),
-                PROFILE_SCOPE: scope.encode("utf-8"),
-                ROLE_REGISTRY: ROLES.encode("utf-8"),
-            })
-        return {
-            "selected_profile_manifest": PROFILE_MANIFEST,
-            "_manifest_slot_paths": (
-                ("Corpus Planning", CORPUS_SLOT),
-                ("Profile Scope", PROFILE_SCOPE),
-                ("Role Registry", ROLE_REGISTRY),
-            ),
-            "_profile_snapshot": snapshot,
-        }
+    def profile_view(self, *, scope=SCOPE, slot=CONFIGURED_SLOT):
+        return {"selected_profile_manifest": PROFILE_MANIFEST,
+                "_contract": typed_projection_checkpoint(scope=scope, slot=slot)}
 
     def validate_artifacts(self, *, global_map=GLOBAL_MAP, matrix=MATRIX,
                            gaps=GAPS, scale=None, runtime=None):
         result = {"errors": []}
-        with mock.patch.object(
-                check_corpus_plan, "_resolve_path",
-                side_effect=self.resolved_path):
+        with mock.patch.object(check_corpus_plan, "_resolve_path",
+                               side_effect=self.resolved_path):
             parsed_map = check_corpus_plan._validate_global_map(
-                self.root,
-                self.binding("planning/global-map.yaml", global_map),
+                self.root, self.binding("planning/global-map.yaml", global_map),
                 self.profile_scope, result)
             parsed_matrix = check_corpus_plan._validate_matrix(
-                self.root,
-                self.binding("planning/capability-matrix.yaml", matrix),
-                self.scale if scale is None else scale,
-                parsed_map, result)
+                self.root, self.binding("planning/capability-matrix.yaml", matrix),
+                self.scale if scale is None else scale, parsed_map, result)
             parsed_gaps = check_corpus_plan._validate_gap_register(
-                self.root,
-                self.binding("planning/gap-register.yaml", gaps),
+                self.root, self.binding("planning/gap-register.yaml", gaps),
                 parsed_map, parsed_matrix,
                 self.runtime if runtime is None else runtime, result)
-        return {
-            "errors": result["errors"],
-            "global_map": parsed_map,
-            "matrix": parsed_matrix,
-            "gap_register": parsed_gaps,
-        }
+        return {"errors": result["errors"], "global_map": parsed_map,
+                "matrix": parsed_matrix, "gap_register": parsed_gaps}
 
     @staticmethod
     def assert_error(result, fragment):
@@ -457,10 +344,7 @@ class CorpusPlanPipelineIntegrationTests(
         self.assertEqual("not-recorded",
                          projection["semantic_acceptance"]["status"])
 
-        with mock.patch.object(
-                check_corpus_plan, "_profile_view_currency_errors",
-                return_value=[]):
-            receipt = check_corpus_plan.make_pass_receipt(result)
+        receipt = check_corpus_plan.make_pass_receipt(result)
         self.assertEqual(
             [], check_corpus_plan.current_gate_receipt_errors(receipt))
         self.assertEqual(
@@ -469,11 +353,8 @@ class CorpusPlanPipelineIntegrationTests(
 
         self.global_map.write_bytes(
             self.global_map.read_bytes() + b"\n# changed bytes\n")
-        with mock.patch.object(
-                check_corpus_plan, "_profile_view_currency_errors",
-                return_value=[]):
-            with self.assertRaisesRegex(ValueError, "Global Map changed"):
-                check_corpus_plan.receipt_binding(result)
+        with self.assertRaisesRegex(ValueError, "Global Map changed"):
+            check_corpus_plan.receipt_binding(result)
 
     def test_k02_owner_mutation_invalidates_the_bound_validation_result(self):
         result = self.validate_current_plan()
@@ -482,17 +363,14 @@ class CorpusPlanPipelineIntegrationTests(
             corpus_planning_contract.CORPUS_PLANNING_CONTRACT_PATH
         owner.write_bytes(owner.read_bytes() + b"\n# changed bytes\n")
 
-        with mock.patch.object(
-                check_corpus_plan, "_profile_view_currency_errors",
-                return_value=[]):
-            with self.assertRaisesRegex(
-                    ValueError, "K02 Corpus Planning contract changed"):
-                check_corpus_plan.receipt_binding(result)
+        with self.assertRaisesRegex(
+                ValueError, "K02 Corpus Planning contract changed"):
+            check_corpus_plan.receipt_binding(result)
 
 
 class CorpusPlanSlotAdapterContractTests(
         CorpusPlanObjectFixture, unittest.TestCase):
-    def validate_slot(self, text, *, view=None):
+    def validate_slot(self, document, *, view=None):
         result = {"profile_manifest": PROFILE_MANIFEST, "errors": []}
         def snapshot(_root, relative, singly_linked=True):
             del singly_linked
@@ -504,43 +382,42 @@ class CorpusPlanSlotAdapterContractTests(
                 side_effect=self.resolved_path), mock.patch.object(
                     check_corpus_plan.kblib, "repository_file_snapshot",
                     side_effect=snapshot):
+            typed = typed_projection_checkpoint(slot=document)
             slot = check_corpus_plan._validate_slot(
-                text, CORPUS_SLOT, view or self.profile_view(),
+                typed.slot_document("corpus-planning"),
+                PROFILE_MANIFEST + "#slots.corpus-planning",
+                view or self.profile_view(),
                 self.root, result)
         return result, slot
 
-    def test_slot_adapter_enforces_paths_role_sentinels_and_inactive_shape(self):
+    def test_slot_adapter_enforces_paths_roles_and_explicit_inactive_shape(self):
         inactive_result, inactive = self.validate_slot(INACTIVE_SLOT)
         self.assertEqual([], inactive_result["errors"])
         self.assertEqual(("not-applicable", {}, []), (
             inactive["mode"], inactive["bindings"], inactive["authorities"]))
 
         cases = (
-            (CONFIGURED_SLOT.replace(
-                "planning/global-map.yaml",
-                ".cambium/reports/global-map.yaml"),
+            (lambda slot: slot["artifact_bindings"].__setitem__(
+                "global_map", ".cambium/reports/global-map.yaml"),
              "may not be inside .cambium"),
-            (CONFIGURED_SLOT.replace(
-                "  role_id: stopper", "  role_id: unknown-role"),
+            (lambda slot: slot["pass_authority"].__setitem__(
+                "role_id", "unknown-role"),
              "not registered"),
-            (CONFIGURED_SLOT.replace(
-                "Core explanation has accepted evidence.", "TODO(profile)"),
-             "must replace TODO(profile)"),
         )
-        for text, expected in cases:
+        for mutate, expected in cases:
             with self.subTest(expected=expected):
-                result, _slot = self.validate_slot(text)
+                document = deepcopy(CONFIGURED_SLOT)
+                mutate(document)
+                result, _slot = self.validate_slot(document)
                 self.assert_error(result, expected)
 
 
 class CorpusPlanProfileScopeContractTests(
         CorpusPlanObjectFixture, unittest.TestCase):
     def test_scope_projection_enforces_identity_and_directory_membership(self):
-        duplicate = SCOPE.replace(
-            "| `L1` | `Topics` | Canonical topic pages. |",
-            "| `L1` | `Topics` | Canonical topic pages. |\n"
-            "| `L1` | `Topics` | Duplicate topic pages. |",
-        )
+        duplicate = deepcopy(SCOPE)
+        duplicate["logical_architecture"].append(
+            deepcopy(duplicate["logical_architecture"][0]))
         result = {"profile_manifest": PROFILE_MANIFEST, "errors": []}
         with mock.patch.object(
                 check_corpus_plan, "_resolve_path",
@@ -549,9 +426,8 @@ class CorpusPlanProfileScopeContractTests(
                 self.root, self.profile_view(scope=duplicate), result)
         self.assert_error(result, "duplicate Stable Layer ID")
 
-        multiple = SCOPE.replace(
-            "`Topics` | Canonical topic pages.",
-            "`Topics`; `Other` | Canonical topic pages.")
+        multiple = deepcopy(SCOPE)
+        multiple["logical_architecture"][0]["directories"].append("Other")
         result = {"profile_manifest": PROFILE_MANIFEST, "errors": []}
         with mock.patch.object(
                 check_corpus_plan, "_resolve_path",

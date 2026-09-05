@@ -87,7 +87,7 @@ class ChangedScopeEvidenceFixtures:
             "upstream_revision_id": "K-1",
             "active_standards_sha256": digest("standards"),
             "selected_profile_manifest":
-                "profiles/test-profile/profile.md",
+                "profiles/test-profile/profile.toml",
             "profile_snapshot_sha256": digest("profile"),
             "profile_contract_fingerprint": digest("profile-contract"),
             "obligations": [obligation],
@@ -220,8 +220,8 @@ class ChangedScopeEvidenceFixtures:
             config_dependency=None,
         )
         profile = types.SimpleNamespace(
-            authorized=True,
-            manifest_repo_path="profiles/test-profile/profile.md",
+            valid=True,
+            manifest_repo_path="profiles/test-profile/profile.toml",
             profile_contract_fingerprint=digest("profile-contract"),
             scan_registry_path="profiles/test-profile/registered-scans.md",
             registered_scans=(scan,),
@@ -247,9 +247,21 @@ class ChangedScopeEvidenceFixtures:
         plan["selected_profile_manifest"] = profile.manifest_repo_path
         plan["profile_contract_fingerprint"] = \
             profile.profile_contract_fingerprint
+        # This suite owns record acceptance, not the Profile Gate. The real
+        # admission and compilation-vs-authorization seam is tested by the
+        # Profile owner suites; bind a local admitted input at that boundary.
+        from Tools.governance.profile import profile_admission
+        evaluation = object()
+        admitted = types.SimpleNamespace(
+            contract=profile, evaluation=evaluation,
+            profile_snapshot_sha256=plan["profile_snapshot_sha256"])
+        boundary = mock.patch.object(profile_admission, "admit_profile_manifest",
+                                     return_value=(admitted, []))
+        boundary.start()
+        self.addCleanup(boundary.stop)
         owner_obligation, owner, trace = producer.resolve_obligation(
             ROOT, plan, obligation["obligation_id"], self.registry,
-            self.control, profile)
+            self.control, evaluation)
         self.assertEqual(obligation, owner_obligation)
         self.assertIs(scan, owner)
         entrypoint = profile_contract.registered_scan_entrypoint(ROOT, scan)
@@ -282,7 +294,7 @@ class ChangedScopeEvidenceFixtures:
             "repository_snapshot_sha256": digest("repository"),
             "output": "",
         }
-        profile_view = {"_contract": profile}
+        profile_view = {"_contract": profile, "_evaluation": evaluation}
         context = {
             "root": ROOT,
             "result": {
@@ -298,6 +310,7 @@ class ChangedScopeEvidenceFixtures:
             "trace": trace,
             "profile_view": profile_view,
             "profile_contract": profile,
+            "profile_evaluation": evaluation,
             "scan": scan,
         }
         with mock.patch.object(
@@ -350,7 +363,7 @@ class ChangedScopeEvidenceContractTests(
             ("direct", direct, direct["artifact_fingerprint"], None),
             ("audit-precursor", precursor, None, None),
             ("profile-candidate", candidate, None,
-             candidate["profile_contract"]),
+             candidate["profile_evaluation"]),
         )
         for label, case, artifact, profile in cases:
             with self.subTest(kind=label):
@@ -358,7 +371,7 @@ class ChangedScopeEvidenceContractTests(
                     case["record"], case["plan"], case["plan_sha256"],
                     case["obligation"], self.registry, self.control,
                     root=ROOT, artifact_fingerprint=artifact,
-                    contract=profile)
+                    evaluation=profile)
                 self.assertIs(case["record"], observed)
 
     def test_record_identity_and_content_drift_matrix_fails_closed(self):
@@ -385,7 +398,7 @@ class ChangedScopeEvidenceContractTests(
             ("candidate-source", forged_candidate,
              lambda value: contract.validate_candidate_set_record(
                  value, self.registry, ROOT,
-                 candidate["profile_contract"])),
+                 candidate["profile_evaluation"])),
         )
         for label, record, validate in cases:
             with self.subTest(case=label), self.assertRaises(
@@ -400,7 +413,7 @@ class ChangedScopeEvidenceContractTests(
             ("direct", direct, direct["artifact_fingerprint"], None),
             ("audit-precursor", precursor, None, None),
             ("profile-candidate", candidate, None,
-             candidate["profile_contract"]),
+             candidate["profile_evaluation"]),
         )
         for label, case, artifact, profile in cases:
             changed = copy.deepcopy(case["obligation"])
@@ -410,7 +423,7 @@ class ChangedScopeEvidenceContractTests(
                 contract.validate_record_for_plan(
                     case["record"], case["plan"], case["plan_sha256"],
                     changed, self.registry, self.control, root=ROOT,
-                    artifact_fingerprint=artifact, contract=profile)
+                    artifact_fingerprint=artifact, evaluation=profile)
 
     def test_gate_adapter_selects_one_scoped_registered_gate(self):
         case = self.direct_case(check_vocab.GATE_ID)

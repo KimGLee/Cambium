@@ -4,7 +4,7 @@ scope_version: s1
 queue_revision: 2
 state_revision: 1
 upstream_revision_id: 0123456789abcdef0123456789abcdef01234567
-selected_profile_manifest: profiles/test-profile/profile.md
+selected_profile_manifest: profiles/test-profile/profile.toml
 required_queue:
   - id: B1
     family: Core
@@ -21,9 +21,9 @@ required_queue:
     state: open
     hold_state: none
     opened_at: 2026-08-04T01:00:00Z
-    activation_receipt: audit-check_queue-20260904T175802Z-31c4f9af6cd742859ff4b8d7071f2c40-0001
+    activation_receipt: audit-check_queue-20260905T064757Z-4112ccbfaa2f4a0aa6d7405e5b497939-0001
     transition_receipts:
-      - audit-update_queue-20260904T175802Z-a35632aa34c34676a1a2be7673e5437a-0001
+      - audit-update_queue-20260905T064757Z-b028fc4aabc24fdc8074e8a969fd8545-0001
   - id: B2
     family: Core
     order: 2

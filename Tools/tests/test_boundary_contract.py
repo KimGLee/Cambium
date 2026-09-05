@@ -187,7 +187,7 @@ class BoundaryGateIntegrationTests(unittest.TestCase):
             alpha.write_text(ALPHA, encoding="utf-8")
             beta.write_text(BETA, encoding="utf-8")
             admission = SimpleNamespace(
-                manifest_repo_path="profiles/fixture/profile.md")
+                manifest_repo_path="profiles/fixture/profile.toml")
             snapshot = _ContractSnapshot()
             patches = (
                 mock.patch.object(

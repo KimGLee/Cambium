@@ -240,6 +240,18 @@ def _compact_attestation_errors(attestation, attestation_id, item_id,
     return errors
 
 
+def _admitted_profile(root, evaluation):
+    """Resolve one existing Gate result without independently loading policy."""
+    from Tools.governance.profile.profile_admission import admission_from_evaluation
+    effective_root = root or getattr(getattr(evaluation, "contract", None), "root", None)
+    if effective_root is None:
+        raise ValueError("current close acceptance requires a profile-load evaluation")
+    admission, errors = admission_from_evaluation(effective_root, evaluation)
+    if errors:
+        raise ValueError("; ".join(errors))
+    return admission
+
+
 def _page_review_acceptance_errors(
         catalog, aggregate, aggregate_id, *, item_id, task_id, manifest,
         integrator_id, reviewer_id, attestation_id, merged_snapshot_sha256,
@@ -247,8 +259,7 @@ def _page_review_acceptance_errors(
         profile_snapshot_sha256=None, profile_contract_fingerprint=None,
         profile_load_inputs_sha256=None,
         metadata_execution_contract_fingerprint=None,
-        authorized_profile_contract=None,
-        authorized_metadata_contract=None,
+        profile_evaluation=None,
         authorized_page_semantic_fingerprints=None):
     """Validate the current exact per-page review-evidence subgraph.
 
@@ -373,40 +384,18 @@ def _page_review_acceptance_errors(
                 label)
         else:
             try:
-                contract = authorized_metadata_contract
-                if contract is None:
-                    contract = metadata_execution_contract.\
-                        load_metadata_execution_contract(root)
-                elif not isinstance(
-                        contract,
-                        metadata_execution_contract.
-                        CompiledMetadataExecutionContract):
-                    raise ValueError(
-                        "authorized metadata contract has the wrong type")
+                admission = _admitted_profile(root, profile_evaluation)
+                typed_profile = admission.contract
+                contract = admission.evaluation.metadata_execution_contract
                 live_metadata_fingerprint = contract.contract_fingerprint
-                extension_gates = getattr(
-                    authorized_profile_contract, "extension_gates", None)
-                if extension_gates is None:
-                    raise ValueError(
-                        "no authorized typed Profile contract was supplied")
-                if (getattr(authorized_profile_contract, "authorized", False)
-                        is not True or
-                        getattr(
-                            authorized_profile_contract,
-                            "manifest_repo_path", None) !=
-                        profile_bindings["selected_profile_manifest"] or
-                        getattr(
-                            authorized_profile_contract,
-                            "profile_contract_fingerprint", None) !=
-                        profile_bindings["profile_contract_fingerprint"]):
-                    raise ValueError(
-                        "typed Profile contract does not match the exact "
-                        "authorized fingerprint")
-                projection_rules = metadata_property_state.\
-                    profile_gate_projection_rules(
-                        root, extension_gates, metadata_contract=contract,
-                        authorized_profile_contract=
-                            authorized_profile_contract)
+                expected_identity = {
+                    name: admission.evaluation.summary_receipt[name]
+                    for name in profile_contract.PROFILE_LOAD_EVIDENCE_FIELDS}
+                if profile_bindings != expected_identity:
+                    raise ValueError("close evidence differs from the exact profile-load evaluation")
+                projection_rules = metadata_property_state.profile_gate_projection_rules(
+                    root, typed_profile.extension_gates, metadata_contract=contract,
+                    typed_profile_contract=typed_profile)
             except (OSError, UnicodeError, ValueError) as exc:
                 errors.append(
                     "%s cannot authorize current metadata/Profile execution "
@@ -554,7 +543,7 @@ def _catalog_record(catalog, receipt_id, label, errors, *, expected_path=None):
 def _post_delta_close_evidence_errors(
         catalog, aggregate, global_review, attestation, *, item_id, task_id,
         merged_snapshot_sha256, receipt_version,
-        root=None, authorized_profile_contract=None, historical=False):
+        root=None, profile_evaluation=None, historical=False):
     """Consume the exact heterogeneous K12/09 closure of this contract.
 
     This validates bytes already named by the aggregate.  It deliberately does
@@ -672,7 +661,7 @@ def _post_delta_close_evidence_errors(
     if not historical:
         try:
             expected_profile_dimension = _profile_registered_close_dimension(
-                authorized_profile_contract)
+                _admitted_profile(root, profile_evaluation).contract)
         except ValueError as exc:
             errors.append("%s cannot bind K12/09 item 6: %s" % (label, exc))
 
@@ -769,9 +758,8 @@ def close_gate_receipt_errors(catalog, receipt_id, *, item_id, task_id,
                               profile_contract_fingerprint=None,
                               profile_load_inputs_sha256=None,
                               metadata_execution_contract_fingerprint=None,
-                              authorized_profile_contract=None,
-                              authorized_metadata_contract=None,
-                              authorized_page_semantic_fingerprints=None,
+                              profile_evaluation=None,
+                                                    authorized_page_semantic_fingerprints=None,
                               corpus_plan_required=None,
                               corpus_plan_triggers=None,
                               corpus_plan_expected_binding=None,
@@ -1070,8 +1058,7 @@ def close_gate_receipt_errors(catalog, receipt_id, *, item_id, task_id,
         profile_load_inputs_sha256=profile_load_inputs_sha256,
         metadata_execution_contract_fingerprint=
             metadata_execution_contract_fingerprint,
-        authorized_profile_contract=authorized_profile_contract,
-        authorized_metadata_contract=authorized_metadata_contract,
+        profile_evaluation=profile_evaluation,
         authorized_page_semantic_fingerprints=
             authorized_page_semantic_fingerprints,
     )
@@ -1098,7 +1085,7 @@ def close_gate_receipt_errors(catalog, receipt_id, *, item_id, task_id,
         merged_snapshot_sha256=merged_snapshot_sha256,
         receipt_version=receipt_version,
         root=root,
-        authorized_profile_contract=authorized_profile_contract,
+        profile_evaluation=profile_evaluation,
         historical=historical)
     errors.extend(post_delta_errors)
     if len(evidence_ids) != len(set(evidence_ids)):
