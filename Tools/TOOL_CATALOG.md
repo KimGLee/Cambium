@@ -10,9 +10,9 @@ Regenerate with `python3 Tools/generate_tool_catalog.py .`. Verify without writi
 | Source | Exact-byte SHA-256 |
 |---|---|
 | `Tools/tool-taxonomy.yaml` | `sha256:44c6a46acf604ab28023a4028fb026bf11b01582093450bd113ff3527c95998f` |
-| `Tools/module-boundaries.yaml` | `sha256:b28fa4453c2f99acacca9234221c902a0b0cfc0e4a3e1b5850505fd335511e80` |
-| `Tools/agent-interface-policy.yaml` | `sha256:85035ffce6ff8425fdec1eddf170a3f2ed92b3d8c30ef9a747308933586f8d54` |
-| `Tools/operation-capabilities.yaml` | `sha256:b552dc1740f4c0cf281fd2b3b049fde9a5a1080bf7d63f9cb42ade41ca75d2a7` |
+| `Tools/module-boundaries.yaml` | `sha256:09bc4520214f913dc429791f35cacceb5f3d0109fe41475d198832f7be5d5457` |
+| `Tools/agent-interface-policy.yaml` | `sha256:fc3170ca859a95ec95290fef9ef9e631a641d78d32e8017b3c09060935125092` |
+| `Tools/operation-capabilities.yaml` | `sha256:840cf7be38dfcec9c2f013e9f7ef78fca7558a179eb89e961b92ff984e0e441b` |
 
 Static consumption, private access, and dependency facts come from `Tools/platform/distribution/module_boundary_facts.py` over shipped production Python modules; its excluded directories are `__pycache__`, `compiled`, `schemas`, `tests`. CLI and MCP exposure and the shared Host transport come only from `Tools/agent-interface-policy.yaml`. The static Python scan deliberately excludes `subprocess-cli`, `registry-driven-dynamic-import`; registered capability relationships and MCP subprocess routes are listed separately below rather than being mislabeled as Python symbol imports.
 
@@ -20,16 +20,16 @@ Static consumption, private access, and dependency facts come from `Tools/platfo
 
 | Measure | Count |
 |---|---|
-| shipped modules | 248 |
-| source cli tools | 64 |
-| declared cli tools | 64 |
+| shipped modules | 250 |
+| source cli tools | 65 |
+| declared cli tools | 65 |
 | mcp tools | 48 |
 | host transports | 1 |
-| static public api symbols | 1430 |
-| declared unused static public apis | 59 |
-| declared public apis without observed consumers | 18 |
-| registered capability relationships | 141 |
-| registered symbol relationships | 75 |
+| static public api symbols | 1439 |
+| declared unused static public apis | 60 |
+| declared public apis without observed consumers | 19 |
+| registered capability relationships | 143 |
+| registered symbol relationships | 76 |
 | source public exports | 302 |
 | source public exports undeclared | 0 |
 | declared transport consumptions | 48 |
@@ -361,7 +361,7 @@ One deterministic use case that composes domain contracts and infrastructure.
 |---|---|---|---|---|
 | `governance.profile.apply_profile_adoption` | `Tools/governance/profile/apply_profile_adoption.py` | python-module | `governance / profile / application` | static Python (1 symbols / 1 consumers) |
 | `governance.profile.check_profile` | `Tools/governance/profile/check_profile.py` | python-module | `governance / profile / application` | static Python (8 symbols / 7 consumers), registered Python symbol (2 consumers) |
-| `governance.profile.profile_admission` | `Tools/governance/profile/profile_admission.py` | python-module | `governance / profile / application` | static Python (8 symbols / 27 consumers) |
+| `governance.profile.profile_admission` | `Tools/governance/profile/profile_admission.py` | python-module | `governance / profile / application` | static Python (8 symbols / 28 consumers) |
 | `governance.profile.profile_candidate` | `Tools/governance/profile/profile_candidate.py` | python-module | `governance / profile / application` | static Python (1 symbols / 1 consumers) |
 | `governance.profile.profile_onboarding_status` | `Tools/governance/profile/profile_onboarding_status.py` | python-module | `governance / profile / application` | static Python (1 symbols / 1 consumers) |
 | `governance.profile.scaffold_profile` | `Tools/governance/profile/scaffold_profile.py` | python-module | `governance / profile / application` | static Python (1 symbols / 1 consumers) |
@@ -515,7 +515,7 @@ Machine-contract loading, closed validation, pure projection, and stable predica
 |---|---|---|---|---|
 | `knowledge.rendering.changed_scope_rendering_checks` | `Tools/knowledge/rendering/changed_scope_rendering_checks.py` | python-module | `knowledge / rendering / contract` | static Python (5 symbols / 4 consumers) |
 | `knowledge.rendering.deterministic_rendering_contract` | `Tools/knowledge/rendering/deterministic_rendering_contract.py` | python-module | `knowledge / rendering / contract` | static Python (4 symbols / 1 consumers) |
-| `knowledge.rendering.profile_rendering_evidence_contract` | `Tools/knowledge/rendering/profile_rendering_evidence_contract.py` | python-module | `knowledge / rendering / contract` | static Python (16 symbols / 6 consumers), registered Python symbol (1 consumers) |
+| `knowledge.rendering.profile_rendering_evidence_contract` | `Tools/knowledge/rendering/profile_rendering_evidence_contract.py` | python-module | `knowledge / rendering / contract` | static Python (16 symbols / 7 consumers), registered Python symbol (1 consumers) |
 | `knowledge.rendering.rendering_verification_contract` | `Tools/knowledge/rendering/rendering_verification_contract.py` | python-module | `knowledge / rendering / contract` | static Python (12 symbols / 7 consumers), registered Python symbol (1 consumers) |
 
 ##### Layer: `entrypoint`
@@ -533,7 +533,7 @@ Repository IO, serialization, locking, transport, generation, and other Tool-own
 
 | Module | Path | Type | Responsibility class | Interface exposure |
 |---|---|---|---|---|
-| `knowledge.rendering.static_render_runtime` | `Tools/knowledge/rendering/static_render_runtime.py` | python-module | `knowledge / rendering / infrastructure` | static Python (3 symbols / 2 consumers) |
+| `knowledge.rendering.static_render_runtime` | `Tools/knowledge/rendering/static_render_runtime.py` | python-module | `knowledge / rendering / infrastructure` | static Python (10 symbols / 5 consumers) |
 
 #### Domain: `structure`
 
@@ -635,7 +635,7 @@ Repository IO, serialization, locking, transport, generation, and other Tool-own
 
 | Module | Path | Type | Responsibility class | Interface exposure |
 |---|---|---|---|---|
-| `platform.common.kblib` | `Tools/platform/common/kblib.py` | python-module | `platform / common / infrastructure` | static Python (82 symbols / 144 consumers) |
+| `platform.common.kblib` | `Tools/platform/common/kblib.py` | python-module | `platform / common / infrastructure` | static Python (82 symbols / 145 consumers) |
 | `platform.common.primitives` | `Tools/platform/common/primitives.py` | python-module | `platform / common / infrastructure` | static Python (6 symbols / 37 consumers) |
 | `platform.common.receipts` | `Tools/platform/common/receipts.py` | python-module | `platform / common / infrastructure` | static Python (1 symbols / 2 consumers) |
 | `platform.common.reporting` | `Tools/platform/common/reporting.py` | python-module | `platform / common / infrastructure` | static Python (9 symbols / 35 consumers) |
@@ -668,6 +668,7 @@ Stable CLI or MCP adapter; parsing and presentation stay thin.
 | `generate_test_catalog` | `Tools/generate_test_catalog.py` | python-module | `platform / distribution / entrypoint` | CLI |
 | `generate_tool_catalog` | `Tools/generate_tool_catalog.py` | python-module | `platform / distribution / entrypoint` | CLI |
 | `module_boundary_report` | `Tools/module_boundary_report.py` | python-module | `platform / distribution / entrypoint` | CLI |
+| `prepare_rendering_runtime` | `Tools/prepare_rendering_runtime.py` | python-module | `platform / distribution / entrypoint` | CLI |
 | `run_tests` | `Tools/run_tests.py` | python-module | `platform / distribution / entrypoint` | CLI |
 | `stamp_cards` | `Tools/stamp_cards.py` | python-module | `platform / distribution / entrypoint` | CLI |
 
@@ -679,6 +680,7 @@ Repository IO, serialization, locking, transport, generation, and other Tool-own
 |---|---|---|---|---|
 | `platform.distribution.install_profile_toolchain` | `Tools/platform/distribution/install_profile_toolchain.py` | python-module | `platform / distribution / infrastructure` | none observed |
 | `platform.distribution.module_boundary_facts` | `Tools/platform/distribution/module_boundary_facts.py` | python-module | `platform / distribution / infrastructure` | static Python (11 symbols / 3 consumers) |
+| `platform.distribution.prepare_rendering_runtime` | `Tools/platform/distribution/prepare_rendering_runtime.py` | python-module | `platform / distribution / infrastructure` | static Python (1 symbols / 1 consumers), registered capability (1 capabilities / 2 consumers), registered Python symbol (1 consumers) |
 | `platform.distribution.upstream_identity` | `Tools/platform/distribution/upstream_identity.py` | python-module | `platform / distribution / infrastructure` | static Python (3 symbols / 5 consumers) |
 
 #### Domain: `repository`
@@ -1606,7 +1608,7 @@ Repository IO, serialization, locking, transport, generation, and other Tool-own
 | `governance.profile.profile_admission.admission_from_evaluation` | `execution.audit.audit_producer_chain`, `execution.audit.check_batch_close`, `execution.task_runtime.queue_runtime.close_gate` | declared |
 | `governance.profile.profile_admission.admit_profile` | `execution.planning.check_corpus_plan`, `execution.task_runtime.apply_contract_amendment`, `governance.control.run_gates`, `knowledge.metadata.check_freshness`, `knowledge.metadata.check_page_contract`, `knowledge.metadata.check_vocab`, `knowledge.metadata.compose_page_contract`, `knowledge.metadata.compose_vocab`, `knowledge.rendering.profile_rendering_evidence_contract`, `knowledge.structure.check_boundary_contract`, `knowledge.structure.check_structure`, `knowledge.structure.render_boundary_projection`, `knowledge.structure.render_structure_projection` | declared |
 | `governance.profile.profile_admission.admit_profile_manifest` | `execution.audit.changed_scope_evidence_contract`, `knowledge.rendering.profile_rendering_evidence_contract` | declared |
-| `governance.profile.profile_admission.contract_from_admitted_view` | `execution.audit.audit_evidence_runtime`, `execution.audit.prepare_audit_plan`, `execution.audit.record_batch_judgment`, `execution.audit.record_batch_review`, `execution.context_delivery.card_activation`, `execution.evidence.metadata_gate_runtime`, `execution.task_runtime.queue_runtime.review`, `execution.task_runtime.update_queue`, `governance.profile.profile_batch_judgment_contract`, `knowledge.metadata.metadata_property_state` | declared |
+| `governance.profile.profile_admission.contract_from_admitted_view` | `execution.audit.audit_evidence_runtime`, `execution.audit.prepare_audit_plan`, `execution.audit.record_batch_judgment`, `execution.audit.record_batch_review`, `execution.context_delivery.card_activation`, `execution.evidence.metadata_gate_runtime`, `execution.task_runtime.queue_runtime.review`, `execution.task_runtime.task_runtime_runner`, `execution.task_runtime.update_queue`, `governance.profile.profile_batch_judgment_contract`, `knowledge.metadata.metadata_property_state` | declared |
 | `governance.profile.profile_admission.currency_errors` | `knowledge.metadata.check_page_contract`, `knowledge.metadata.compose_page_contract`, `knowledge.metadata.compose_vocab`, `knowledge.structure.check_boundary_contract`, `knowledge.structure.check_structure`, `knowledge.structure.render_boundary_projection`, `knowledge.structure.render_structure_projection` | declared |
 | `governance.profile.profile_admission.require_slot` | `knowledge.metadata.compose_page_contract`, `knowledge.metadata.compose_vocab`, `knowledge.structure.check_structure`, `knowledge.structure.render_structure_projection` | declared |
 | `governance.profile.profile_admission.scope_directories` | `knowledge.metadata.check_page_contract`, `knowledge.structure.check_boundary_contract`, `knowledge.structure.render_boundary_projection` | declared |
@@ -1819,7 +1821,7 @@ Repository IO, serialization, locking, transport, generation, and other Tool-own
 | `knowledge.rendering.profile_rendering_evidence_contract.rendering_contract` | `execution.audit.audit_obligation_projection`, `knowledge.rendering.record_profile_rendering` | declared |
 | `knowledge.rendering.profile_rendering_evidence_contract.rendering_source` | `knowledge.rendering.record_profile_rendering` | declared |
 | `knowledge.rendering.profile_rendering_evidence_contract.report_dependency_fingerprint` | `knowledge.rendering.record_profile_rendering` | declared |
-| `knowledge.rendering.profile_rendering_evidence_contract.require_bindings` | `execution.audit.prepare_audit_plan`, `knowledge.rendering.record_profile_rendering` | declared |
+| `knowledge.rendering.profile_rendering_evidence_contract.require_bindings` | `execution.audit.prepare_audit_plan`, `execution.task_runtime.task_runtime_runner`, `knowledge.rendering.record_profile_rendering` | declared |
 | `knowledge.rendering.profile_rendering_evidence_contract.require_plan_applicability` | `execution.audit.audit_evidence_runtime`, `execution.audit.prepare_audit_plan` | declared |
 | `knowledge.rendering.profile_rendering_evidence_contract.rule_for_obligation` | `knowledge.rendering.record_profile_rendering` | declared |
 | `knowledge.rendering.profile_rendering_evidence_contract.selected_constructs` | `execution.audit.prepare_audit_plan` | declared |
@@ -1838,9 +1840,16 @@ Repository IO, serialization, locking, transport, generation, and other Tool-own
 | `knowledge.rendering.rendering_verification_contract.validate_contract` | `execution.audit.audit_obligation_projection`, `execution.audit.audit_producer_chain`, `execution.audit.record_changed_scope_evidence`, `knowledge.rendering.deterministic_rendering_contract`, `knowledge.rendering.record_rendering_verification` | declared |
 | `knowledge.rendering.rendering_verification_contract.validate_record` | `knowledge.rendering.record_rendering_verification` | declared |
 | `knowledge.rendering.rendering_verification_contract.validate_record_for_obligation` | `execution.audit.audit_evidence_runtime`, `execution.audit.complete_audit_receipt`, `knowledge.rendering.record_rendering_verification` | declared |
+| `knowledge.rendering.static_render_runtime.RUNTIME_ENV_KEYS` | `platform.agent_interface.render_host_configs` | declared |
+| `knowledge.rendering.static_render_runtime.StaticRenderRuntimeError` | `execution.task_runtime.task_runtime_runner`, `platform.agent_interface.render_host_configs`, `platform.distribution.prepare_rendering_runtime` | declared |
+| `knowledge.rendering.static_render_runtime.default_runtime_bindings_path` | `platform.distribution.prepare_rendering_runtime` | declared |
+| `knowledge.rendering.static_render_runtime.probe_runtime` | `execution.task_runtime.task_runtime_runner`, `platform.distribution.prepare_rendering_runtime` | declared |
+| `knowledge.rendering.static_render_runtime.read_runtime_bindings` | `platform.agent_interface.render_host_configs`, `platform.distribution.prepare_rendering_runtime` | declared |
 | `knowledge.rendering.static_render_runtime.render_page` | `knowledge.rendering.record_profile_rendering` | declared |
+| `knowledge.rendering.static_render_runtime.runtime_requirements` | `platform.distribution.prepare_rendering_runtime` | declared |
 | `knowledge.rendering.static_render_runtime.select_constructs` | `knowledge.rendering.profile_rendering_evidence_contract` | declared |
 | `knowledge.rendering.static_render_runtime.validate_render_result` | `knowledge.rendering.profile_rendering_evidence_contract` | declared |
+| `knowledge.rendering.static_render_runtime.verify_runtime_bindings` | `platform.distribution.prepare_rendering_runtime` | declared |
 | `knowledge.structure.boundary_contract.boundary_block_from_text` | `knowledge.structure.check_boundary_contract`, `knowledge.structure.render_boundary_projection` | declared |
 | `knowledge.structure.boundary_contract.projection_labels_from_text` | `knowledge.structure.check_boundary_contract`, `knowledge.structure.render_boundary_projection` | declared |
 | `knowledge.structure.boundary_contract.projection_marker_pair` | `knowledge.structure.check_boundary_contract`, `knowledge.structure.render_boundary_projection` | declared |
@@ -1968,12 +1977,12 @@ Repository IO, serialization, locking, transport, generation, and other Tool-own
 | `platform.common.kblib.repository_parent_tree_snapshot` | `execution.planning.check_corpus_plan` | declared |
 | `platform.common.kblib.repository_path` | `execution.audit.check_batch_close`, `execution.context_delivery.card_contract`, `execution.context_delivery.read_set_contract`, `execution.planning.check_corpus_plan`, `execution.task_runtime.apply_delta`, `execution.task_runtime.queue_runtime.adoption`, `execution.task_runtime.queue_runtime.control_plane`, `execution.task_runtime.queue_runtime.repofs`, `execution.task_runtime.queue_runtime.task_contract`, `execution.task_runtime.task_runtime_runner`, `governance.control.control_registry_contract`, `governance.profile.apply_profile_adoption`, `governance.profile.profile_candidate`, `governance.profile.scaffold_profile`, `knowledge.content.maintenance_candidates`, `knowledge.metadata.check_freshness`, `platform.distribution.check_kernel_size`, `platform.distribution.stamp_cards`, `platform.distribution.upstream_component_boundary` | declared |
 | `platform.common.kblib.repository_snapshot_sha256` | `execution.audit.assemble_terminal_proof`, `execution.audit.changed_scope_evidence_runtime`, `execution.audit.check_batch_close`, `execution.audit.check_proof`, `execution.evidence.metadata_gate_runtime`, `execution.evidence.record_gate_result`, `execution.planning.check_corpus_plan`, `execution.planning.record_corpus_acceptance`, `execution.task_runtime.queue_check_receipt`, `execution.task_runtime.queue_runtime.locks`, `execution.task_runtime.queue_runtime.resume`, `execution.task_runtime.queue_runtime.revalidation`, `execution.task_runtime.update_queue`, `execution.task_runtime.update_task`, `knowledge.metadata.apply_metadata_transition` | declared |
-| `platform.common.kblib.repository_target_snapshot` | `execution.audit.audit_evidence_runtime`, `execution.audit.audit_producer_runtime`, `execution.audit.check_batch_close`, `execution.audit.record_batch_page_review`, `execution.context_delivery.card_activation`, `execution.evidence.metadata_gate_runtime`, `execution.task_runtime.candidate_delta_runtime`, `execution.task_runtime.queue_runtime.close_gate`, `execution.task_runtime.queue_runtime.property_state`, `governance.profile.profile_batch_judgment_contract`, `knowledge.metadata.apply_metadata_transition`, `knowledge.metadata.check_freshness`, `knowledge.metadata.metadata_page_state_contract`, `knowledge.metadata.metadata_property_state`, `knowledge.metadata.project_page_state`, `knowledge.rendering.profile_rendering_evidence_contract` | declared |
+| `platform.common.kblib.repository_target_snapshot` | `execution.audit.audit_evidence_runtime`, `execution.audit.audit_producer_runtime`, `execution.audit.check_batch_close`, `execution.audit.record_batch_page_review`, `execution.context_delivery.card_activation`, `execution.evidence.metadata_gate_runtime`, `execution.task_runtime.candidate_delta_runtime`, `execution.task_runtime.queue_runtime.close_gate`, `execution.task_runtime.queue_runtime.property_state`, `execution.task_runtime.task_runtime_runner`, `governance.profile.profile_batch_judgment_contract`, `knowledge.metadata.apply_metadata_transition`, `knowledge.metadata.check_freshness`, `knowledge.metadata.metadata_page_state_contract`, `knowledge.metadata.metadata_property_state`, `knowledge.metadata.project_page_state`, `knowledge.rendering.profile_rendering_evidence_contract` | declared |
 | `platform.common.kblib.repository_tree_sha256` | `execution.task_runtime.queue_runtime.adoption` | declared |
 | `platform.common.kblib.repository_tree_snapshot` | `execution.evidence.metadata_gate_runtime`, `execution.planning.check_corpus_plan`, `execution.task_runtime.queue_runtime.profile_view`, `governance.control.run_gates`, `governance.profile.check_profile`, `governance.profile.profile_admission`, `governance.profile.profile_candidate`, `governance.profile.profile_contract`, `knowledge.metadata.check_freshness` | declared |
 | `platform.common.kblib.retained_tree_contains` | `execution.planning.check_corpus_plan`, `governance.control.run_gates` | declared |
 | `platform.common.kblib.retained_tree_is_bound` | `governance.profile.check_profile`, `governance.profile.profile_admission`, `governance.profile.profile_contract` | declared |
-| `platform.common.kblib.run_cambium_subprocess` | `execution.audit.check_batch_close`, `execution.audit.record_changed_scope_evidence`, `execution.evidence.metadata_gate_runtime`, `execution.task_runtime.task_runtime_runner`, `governance.control.run_gates`, `governance.profile.apply_profile_adoption`, `governance.profile.profile_cue`, `knowledge.rendering.static_render_runtime`, `platform.distribution.install_profile_toolchain`, `platform.distribution.module_boundary_report`, `platform.distribution.test_runner`, `platform.distribution.upstream_component_boundary`, `platform.distribution.upstream_identity` | declared |
+| `platform.common.kblib.run_cambium_subprocess` | `execution.audit.check_batch_close`, `execution.audit.record_changed_scope_evidence`, `execution.evidence.metadata_gate_runtime`, `execution.task_runtime.task_runtime_runner`, `governance.control.run_gates`, `governance.profile.apply_profile_adoption`, `governance.profile.profile_cue`, `knowledge.rendering.static_render_runtime`, `platform.distribution.install_profile_toolchain`, `platform.distribution.module_boundary_report`, `platform.distribution.prepare_rendering_runtime`, `platform.distribution.test_runner`, `platform.distribution.upstream_component_boundary`, `platform.distribution.upstream_identity` | declared |
 | `platform.common.kblib.runtime_receipt_identity` | `governance.profile.check_profile` | declared |
 | `platform.common.kblib.runtime_write_lock` | `execution.audit.check_batch_close`, `execution.audit.complete_audit_receipt`, `execution.audit.prepare_audit_plan`, `execution.audit.record_batch_page_review`, `execution.audit.record_changed_scope_evidence`, `execution.audit.record_substantive_review`, `execution.evidence.manual_attestation`, `execution.evidence.record_gate_result`, `execution.evidence.seal_receipts`, `execution.planning.compile_queue`, `execution.task_runtime.apply_amendment`, `execution.task_runtime.apply_contract_amendment`, `execution.task_runtime.apply_delta`, `execution.task_runtime.register_amendment`, `execution.task_runtime.update_queue`, `execution.task_runtime.update_task`, `governance.standards.adopt_standards`, `knowledge.metadata.apply_metadata_transition`, `knowledge.metadata.project_page_state`, `knowledge.rendering.record_profile_rendering`, `knowledge.rendering.record_rendering_verification` | declared |
 | `platform.common.kblib.sha256_bytes` | `execution.audit.assemble_terminal_proof`, `execution.audit.audit_evidence_runtime`, `execution.audit.audit_fingerprint`, `execution.audit.audit_obligation_projection`, `execution.audit.audit_plan_contract`, `execution.audit.audit_producer_runtime`, `execution.audit.batch_close_audit`, `execution.audit.batch_review_obligation_contract`, `execution.audit.changed_scope_evidence_contract`, `execution.audit.changed_scope_evidence_runtime`, `execution.audit.check_batch_close`, `execution.audit.check_proof`, `execution.audit.prepare_audit_plan`, `execution.audit.record_changed_scope_evidence`, `execution.context_delivery.card_activation`, `execution.evidence.metadata_gate_runtime`, `execution.evidence.seal_receipts`, `execution.planning.apply_task_plan`, `execution.planning.check_corpus_plan`, `execution.planning.compile_queue`, `execution.task_runtime.amendment_policy`, `execution.task_runtime.apply_amendment`, `execution.task_runtime.apply_contract_amendment`, `execution.task_runtime.apply_delta`, `execution.task_runtime.candidate_delta_runtime`, `execution.task_runtime.init_state`, `execution.task_runtime.queue_runtime.close_gate`, `execution.task_runtime.queue_runtime.property_state`, `execution.task_runtime.queue_runtime.receipts`, `execution.task_runtime.queue_runtime.review`, `execution.task_runtime.queue_runtime.runtime`, `execution.task_runtime.queue_runtime.task_contract`, `execution.task_runtime.register_amendment`, `execution.task_runtime.runtime_state_io`, `execution.task_runtime.update_queue`, `execution.task_runtime.update_task`, `governance.control.contract_exception_policy`, `governance.control.metadata_execution_contract`, `governance.profile.apply_profile_adoption`, `governance.profile.check_profile`, `governance.profile.profile_batch_judgment_contract`, `governance.profile.profile_contract`, `governance.profile.rendering_contract`, `governance.standards.adopt_standards`, `governance.standards.standards_state`, `knowledge.content.maintenance_candidates`, `knowledge.metadata.apply_metadata_transition`, `knowledge.metadata.check_freshness`, `knowledge.metadata.freshness_receipt_contract`, `knowledge.metadata.metadata_property_state`, `knowledge.metadata.project_page_state`, `knowledge.rendering.profile_rendering_evidence_contract`, `knowledge.rendering.rendering_verification_contract`, `platform.agent_interface.compile_cli_contract`, `platform.agent_interface.render_host_configs`, `platform.agent_interface.render_interface_projection`, `platform.agent_interface.tool_availability`, `platform.distribution.check_upstream_components`, `platform.distribution.tool_catalog` | declared |
@@ -2020,6 +2029,7 @@ Repository IO, serialization, locking, transport, generation, and other Tool-own
 | `platform.distribution.module_boundary_facts.strongly_connected` | `platform.distribution.module_boundary_report`, `platform.distribution.tool_catalog` | declared |
 | `platform.distribution.module_boundary_report.main` | `module_boundary_report` | declared |
 | `platform.distribution.module_boundary_report.manifest_errors` | `platform.distribution.tool_catalog` | declared |
+| `platform.distribution.prepare_rendering_runtime.main` | `prepare_rendering_runtime` | declared |
 | `platform.distribution.stamp_cards.card_body_digest` | `execution.context_delivery.card_activation` | declared |
 | `platform.distribution.stamp_cards.discover_cards` | `execution.audit.check_proof`, `execution.context_delivery.card_activation`, `execution.planning.apply_task_plan` | declared |
 | `platform.distribution.stamp_cards.main` | `stamp_cards` | declared |
@@ -2095,6 +2105,7 @@ Repository IO, serialization, locking, transport, generation, and other Tool-own
 | `ordinary-queue-transition-v1` | `entrypoint-main` | `execution.task_runtime.update_queue.main` | `update_queue` |
 | `profile-rendering-evidence-v1` | `entrypoint-main` | `knowledge.rendering.record_profile_rendering.main` | `record_profile_rendering` |
 | `registered-scan-v1` | `entrypoint-main` | `execution.evidence.record_gate_result.main` | `record_gate_result` |
+| `rendering-runtime-preparation-v1` | `entrypoint-main` | `platform.distribution.prepare_rendering_runtime.main` | `prepare_rendering_runtime` |
 | `required-queue-gate-v1` | `entrypoint-main` | `execution.task_runtime.check_queue.main` | `check_queue` |
 | `required-queue-materialization-v1` | `entrypoint-main` | `execution.planning.compile_queue.main` | `compile_queue` |
 | `same-scope-queue-replan-v1` | `entrypoint-main` | `execution.planning.compile_queue.main` | `compile_queue` |
@@ -2485,6 +2496,7 @@ Repository IO, serialization, locking, transport, generation, and other Tool-own
 | `platform.common.kblib` | `validate_metadata_profile_contract` |
 | `platform.common.kblib` | `validate_structure_registry_contract` |
 | `platform.distribution.install_profile_toolchain` | `main` |
+| `platform.distribution.prepare_rendering_runtime` | `prepare_runtime` |
 
 ## Registered capability relationships
 
@@ -2601,6 +2613,8 @@ Repository IO, serialization, locking, transport, generation, and other Tool-own
 | `registered-scan-v1` | `producer` | `execution.evidence.record_gate_result` | `consumer` | `execution.audit.record_changed_scope_evidence` | no |
 | `registered-scan-v1` | `producer` | `execution.evidence.record_gate_result` | `consumer` | `knowledge.metadata.apply_metadata_transition` | no |
 | `registered-scan-v1` | `producer` | `execution.evidence.record_gate_result` | `invocation-owner` | `record_gate_result` | no |
+| `rendering-runtime-preparation-v1` | `producer` | `platform.distribution.prepare_rendering_runtime` | `consumer` | `execution.task_runtime.task_runtime_runner` | no |
+| `rendering-runtime-preparation-v1` | `producer` | `platform.distribution.prepare_rendering_runtime` | `invocation-owner` | `prepare_rendering_runtime` | no |
 | `required-queue-gate-v1` | `producer` | `execution.task_runtime.check_queue` | `consumer` | `execution.task_runtime.task_runtime_runner` | no |
 | `required-queue-gate-v1` | `producer` | `execution.task_runtime.check_queue` | `consumer` | `execution.task_runtime.update_queue` | no |
 | `required-queue-gate-v1` | `producer` | `execution.task_runtime.check_queue` | `consumer` | `execution.task_runtime.update_task` | no |
@@ -2730,6 +2744,7 @@ Repository IO, serialization, locking, transport, generation, and other Tool-own
 | `metadata_execution_contract` | yes | yes | no | none | `cli-only` | `write` | `none` |
 | `module_boundary_report` | yes | yes | no | none | `cli-only` | `write` | `temporary-git-worktree` |
 | `prepare_audit_plan` | yes | yes | yes | via:cambium-mcp-stdio | `mcp` | `write` | `none` |
+| `prepare_rendering_runtime` | yes | yes | no | none | `cli-only` | `read` | `authorized-host-rendering-cache` |
 | `profile_candidate` | yes | yes | yes | via:cambium-mcp-stdio | `mcp` | `write` | `none` |
 | `profile_onboarding_status` | yes | yes | yes | via:cambium-mcp-stdio | `mcp` | `read` | `none` |
 | `project_page_state` | yes | yes | yes | via:cambium-mcp-stdio | `mcp` | `write` | `none` |

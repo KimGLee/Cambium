@@ -15,6 +15,17 @@
 schema_version: 3
 
 capabilities:
+  - capability_id: rendering-runtime-preparation-v1
+    kind: producer
+    capability_version: 1.0.0
+    implementation_owner: Tools/platform/distribution/prepare_rendering_runtime.py
+    invocation_owner: Tools/prepare_rendering_runtime.py
+    writers: []
+    checkers: []
+    consumers:
+      - Tools/execution/task_runtime/task_runtime_runner.py
+    operations: []
+
   - capability_id: project-page-state-v2
     kind: writer
     capability_version: 2.0.0

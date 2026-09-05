@@ -4,7 +4,8 @@
 This suite owns only the planner's path classification and affected Tool test
 closure. Test discovery/catalog correctness, test execution, Git transport,
 repository-layout inspection, workflow output rendering, and shard balancing
-have separate owners and are not replayed here.
+have separate owners and are not replayed here. The CI execution adapter is
+tested only for delegation to that shared runner.
 """
 
 import importlib.util
@@ -192,6 +193,28 @@ class ToolDependencyImpactContractTests(CiImpactFixture):
         with mock.patch.object(ci_impact, "MAX_SELECTIVE_TESTS", 1):
             overwide = self.plan(("M", "Tools/alpha.py", ""))
         self.assertEqual("full", overwide["mode"])
+
+
+class SelectedTestRunnerDelegationContractTests(unittest.TestCase):
+
+    def test_ci_delegates_exact_files_and_failure_to_catalog_runner(self):
+        names = ["test_alpha.py", "test_beta.py"]
+        with mock.patch.object(ci_impact, "validate_selected_tests", return_value=names), \
+                mock.patch.object(ci_impact.test_runner, "main", return_value=7) as dispatch:
+            result = ci_impact.run_selected_tests(ROOT, ",".join(names))
+        self.assertEqual(7, result)
+        self.assertEqual([
+            "full", "--root", str(ROOT), "--python", ci_impact.sys.executable,
+            "--test-files", ",".join(names), "--jobs", "2",
+        ], dispatch.call_args.args[0])
+
+    def test_ci_exposes_explicit_jobs_without_changing_selection(self):
+        with mock.patch.object(ci_impact, "run_selected_tests", return_value=0) as run:
+            result = ci_impact.main([
+                "run-tests", "--root", str(ROOT), "--tests", "test_alpha.py",
+                "--jobs", "1"])
+        self.assertEqual(0, result)
+        run.assert_called_once_with(ROOT, "test_alpha.py", 1)
 
 
 if __name__ == "__main__":

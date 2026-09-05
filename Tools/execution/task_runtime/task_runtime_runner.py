@@ -23,6 +23,9 @@ import Tools.platform.agent_interface.compile_cli_contract as compile_cli_contra
 import Tools.platform.agent_interface.entrypoint_loader as entrypoint_loader
 import Tools.platform.agent_interface.tool_availability as tool_availability
 import Tools.governance.control.metadata_execution_contract as metadata_execution_contract
+import Tools.governance.profile.profile_admission as profile_admission
+import Tools.knowledge.rendering.profile_rendering_evidence_contract as profile_rendering
+import Tools.knowledge.rendering.static_render_runtime as static_render_runtime
 from Tools.execution.task_runtime import queue_runtime
 import Tools.execution.task_runtime.queue_runtime.gate_registry as gate_registry
 import Tools.execution.task_runtime.runtime_paths as runtime_paths
@@ -466,6 +469,9 @@ def _resume_materialize_required_queue(result, route, _parameters, token):
 
 def _resume_activate_ready_batch(result, route, parameters, _token):
     batch_id = parameters["batch_ids"].split(",", 1)[0]
+    boundary = _rendering_boundary(result, batch_id)
+    if boundary is not None:
+        return boundary
     return _invoke(
         result, "activate-ready-batch", _route_capability(route),
         {"batch": batch_id}, "earliest-required-batch-is-ready",
@@ -518,6 +524,9 @@ def _resume_standards_revalidation(result, route, parameters, token):
             target={"batch_id": batch_id})
     item = (result.get("items_by_id") or {}).get(batch_id) or {}
     if item.get("state") == "queued":
+        boundary = _rendering_boundary(result, batch_id)
+        if boundary is not None:
+            return boundary
         return _invoke(
             result, "activate-revalidated-batch", _route_capability(route, 2), {
                 "batch": batch_id,
@@ -833,8 +842,81 @@ def _registered_gate_predicate(root, gate_id, *, extra=None):
     return matches
 
 
+def _rendering_boundary(result, batch_id):
+    """Check this batch's existing rendering seam without publishing evidence.
+
+    The Profile owner supplies the already-admitted model, and the rendering
+    owner alone selects constructs and checks their bindings. Missing future
+    pages remain the existing admission/authoring owners' concern. This is a
+    Host prerequisite, not an AuditPlan, successful check, or new Queue state.
+    """
+    root = result["root"]
+    item = (result.get("items_by_id") or {}).get(batch_id) or {}
+    manifest = item.get("manifest")
+    if not isinstance(manifest, list):
+        raise RunnerError("rendering preflight requires an admitted batch manifest")
+    profile = profile_admission.contract_from_admitted_view(
+        root, result.get("_profile_authorized_view"))
+    pages = []
+    for relative in manifest:
+        snapshot = kblib.repository_target_snapshot(
+            root, relative, suffixes=(".md", ".MD"), singly_linked=True)
+        if snapshot.exists:
+            pages.append((relative, snapshot.read_text()))
+    try:
+        selected = profile_rendering.require_bindings(pages, profile, root=root)
+    except static_render_runtime.StaticRenderRuntimeError as exc:
+        probe = static_render_runtime.probe_runtime(root, require_browser=False)
+        if probe["result"] == "ready":
+            return _repair(result, "rendering-selector-failed", target={
+                "batch_id": batch_id, "diagnostics": [str(exc)]})
+        return _await_rendering_runtime(result, batch_id, probe, False)
+    except ValueError as exc:
+        return _repair(result, "profile-rendering-contract-gap", target={
+            "batch_id": batch_id, "diagnostics": [str(exc)]})
+    if not any(selected.values()):
+        return None
+    probe = static_render_runtime.probe_runtime(root, require_browser=True)
+    if probe["result"] != "ready":
+        return _await_rendering_runtime(result, batch_id, probe, True)
+    return None
+
+
+def _await_rendering_runtime(result, batch_id, probe, require_browser):
+    route = task_runtime_action.action_route("prepare-rendering-runtime")
+    capability = _route_capability(route)
+    return _await(result, "await-host", route.token_template, {
+        "host_preparation": {
+            "capability_id": capability,
+            "tool": _capability_tool(result, capability),
+            "arguments": {"require_browser": require_browser, "json": True},
+            "instruction": (
+                "Inspect first; apply preparation only with Host authorization, "
+                "then query the Runner again. A supplied ready assertion is "
+                "not accepted."),
+        },
+    }, "rendering-runtime-not-ready", target={
+        "batch_id": batch_id, "runtime_result": probe["result"],
+        "diagnostics": probe["findings"],
+    })
+
+
+def _require_rendering_ready(result, batch_id):
+    boundary = _rendering_boundary(result, batch_id)
+    if boundary is not None:
+        raise RunnerError("batch activation prerequisite: " +
+                          json.dumps(boundary, ensure_ascii=False, sort_keys=True))
+
+
 def _activate_ready_batch(root, batch_id, *,
                           standards_revalidation_receipt=None):
+    before = runtime_validation.validate_runtime(root)
+    if before.get("errors"):
+        raise RunnerError("runtime invalid before activation: %s" %
+                          "; ".join(before["errors"]))
+    # Recheck at execution before even the admission Receipt is written. An
+    # earlier next_action observation is not a durable Host readiness claim.
+    _require_rendering_ready(before, batch_id)
     route = task_runtime_action.action_route("activate-ready-batch")
     receipt_path = ACTIVATION_RECEIPT_TEMPLATE % batch_id.lower()
     checked = _run_command(
@@ -857,6 +939,7 @@ def _activate_ready_batch(root, batch_id, *,
         raise RunnerError(
             "runtime changed after activation Gate: %s" %
             "; ".join(result["errors"]))
+    _require_rendering_ready(result, batch_id)
     arguments = {
         "id": batch_id,
         "transition": "open",

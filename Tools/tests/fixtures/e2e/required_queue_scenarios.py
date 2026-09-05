@@ -29,10 +29,43 @@ from Tools.tests.support.required_queue_fixture import (
 )
 
 
+def _portable_receipt_diagnostics(root):
+    """Project optional Host diagnostics, not evidence, in generated test data.
+
+    The production member contract does not consume source_command. Keep its
+    diagnostic presence without publishing a developer's interpreter, checkout
+    or temporary directory. This function never operates on adopter history;
+    the E2E generator invokes it only on its disposable fixture after-image.
+    """
+    from Tools.execution.audit.batch_close_contract import (
+        MEMBER_RECEIPT_TYPE_ID, current_receipt_errors,
+    )
+
+    for path in sorted((root / ".cambium/receipts").rglob("*.jsonl")):
+        changed = False
+        output = []
+        for line in path.read_text(encoding="utf-8").splitlines(keepends=True):
+            if not line.strip():
+                output.append(line)
+                continue
+            record = json.loads(line)
+            if "source_command" in record:
+                if record.get("receipt_type_id") != MEMBER_RECEIPT_TYPE_ID or current_receipt_errors(record):
+                    raise AssertionError("unexpected source_command owner in generated checkpoint")
+                record["source_command"] = ["<host-execution-command>"]
+                output.append(json.dumps(record, sort_keys=True, separators=(",", ":")) + "\n")
+                changed = True
+            else:
+                output.append(line)
+        if changed:
+            path.write_text("".join(output), encoding="utf-8")
+
+
 def write_validated_checkpoint_directory(
         root, destination, manifest_path, *, checkpoint_id, scenario,
         dependency_builder=PROFILE_DEPENDENCY_BUILDER):
     """Copy E2E-produced bytes and write their reproducible manifest."""
+    _portable_receipt_diagnostics(root)
     result = runtime_validation.validate_runtime(root)
     if result["errors"]:
         raise AssertionError(

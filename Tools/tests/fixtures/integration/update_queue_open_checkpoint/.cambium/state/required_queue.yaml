@@ -21,9 +21,9 @@ required_queue:
     state: open
     hold_state: none
     opened_at: 2026-08-04T01:00:00Z
-    activation_receipt: audit-check_queue-20260905T064757Z-4112ccbfaa2f4a0aa6d7405e5b497939-0001
+    activation_receipt: audit-check_queue-20260905T103055Z-b645c13a16404aa887d521c4ad965ca6-0001
     transition_receipts:
-      - audit-update_queue-20260905T064757Z-b028fc4aabc24fdc8074e8a969fd8545-0001
+      - audit-update_queue-20260905T103055Z-3b0d2929ff5046ce80fb22b1a4aa6546-0001
   - id: B2
     family: Core
     order: 2

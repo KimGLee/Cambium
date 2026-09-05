@@ -397,7 +397,8 @@ class TaskRuntimeActionTests(unittest.TestCase):
                 runner.queue_runtime, "resume_next_action",
                 return_value=resume_token), mock.patch.object(
                     runner, "_current_standards_revalidation_aggregate",
-                    return_value="aggregate-001"):
+                    return_value="aggregate-001"), mock.patch.object(
+                        runner, "_rendering_boundary", return_value=None):
             activate = runner._resume_action(queued)
         self.assertEqual(
             ("invoke", "activate-revalidated-batch", "run_task"),

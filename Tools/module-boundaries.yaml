@@ -2270,9 +2270,16 @@ modules:
     domain: rendering
     layer: infrastructure
     public:
+      - RUNTIME_ENV_KEYS
+      - StaticRenderRuntimeError
+      - default_runtime_bindings_path
+      - probe_runtime
+      - read_runtime_bindings
       - render_page
+      - runtime_requirements
       - select_constructs
       - validate_render_result
+      - verify_runtime_bindings
   - module: knowledge.structure.boundary_contract
     path: Tools/knowledge/structure/boundary_contract.py
     area: knowledge
@@ -2673,6 +2680,14 @@ modules:
     layer: application
     public:
       - main
+  - module: platform.distribution.prepare_rendering_runtime
+    path: Tools/platform/distribution/prepare_rendering_runtime.py
+    area: platform
+    domain: distribution
+    layer: infrastructure
+    public:
+      - main
+      - prepare_runtime
   - module: platform.distribution.upstream_component_boundary
     path: Tools/platform/distribution/upstream_component_boundary.py
     area: platform
@@ -2753,6 +2768,12 @@ modules:
     path: Tools/prepare_audit_plan.py
     area: execution
     domain: audit
+    layer: entrypoint
+    public: []
+  - module: prepare_rendering_runtime
+    path: Tools/prepare_rendering_runtime.py
+    area: platform
+    domain: distribution
     layer: entrypoint
     public: []
   - module: profile_candidate

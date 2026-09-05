@@ -116,6 +116,7 @@ import Tools.platform.agent_interface.agent_interface_contract as agent_interfac
 import Tools.platform.common.kblib as kblib  # noqa: E402
 import Tools.execution.task_runtime.runtime_paths as runtime_paths  # noqa: E402
 import Tools.platform.agent_interface.tool_availability as tool_availability  # noqa: E402
+import Tools.knowledge.rendering.static_render_runtime as static_render_runtime  # noqa: E402
 from Tools.platform.repository.repository import (  # noqa: E402
     file_bytes_sha256,
     repository_relative_spelling,
@@ -306,6 +307,9 @@ def invocation(context, check=False):
         replacement = bound.get(placeholder, placeholder)
         if replacement != placeholder:
             parts.append("%s %s" % (flag, shlex.quote(replacement)))
+    if context.get("runtime_bindings_path"):
+        parts.append("--runtime-bindings %s" %
+                     shlex.quote(context["runtime_bindings_path"]))
     return " ".join(parts)
 
 CWD_NOTE = (
@@ -497,6 +501,24 @@ FIELD_SOURCES.update(_server_paths(
      "reconnect.initialDelayMs", "reconnect.maxDelayMs")))
 
 
+def runtime_field_sources():
+    """Optional Host fields consume the rendering owner's validated bindings."""
+    prefixes = (
+        "claude-code.document.mcpServers.%s.env" % SERVER_NAME,
+        "kimi-code.document.mcpServers.%s.env" % SERVER_NAME,
+        "codex.document.mcp_servers.%s.env" % SERVER_NAME,
+        "dsh-env.document",
+    )
+    return {
+        "%s.%s" % (prefix, name):
+            "Tools/knowledge/rendering/static_render_runtime.py: "
+            "read_runtime_bindings validates --runtime-bindings; "
+            "Host-local rendering paths do not alter governance rules"
+        for prefix in prefixes
+        for name in static_render_runtime.RUNTIME_ENV_KEYS
+    }
+
+
 class RenderError(Exception):
     """The evidence for this run is unreliable; it must exit 1."""
 
@@ -663,7 +685,11 @@ def server_body(context, include_env=True, include_resilience=False):
         resilience = MCP_SERVER[RESILIENCE_FIELD]
         for key, value in resilience.items():
             body[key] = dict(value) if isinstance(value, dict) else value
-    return substitute(body, context["bindings"])
+    body = substitute(body, context["bindings"])
+    if include_env:
+        # These are already-validated literal paths, not template tokens.
+        body[ENV_FIELD].update(context.get("runtime_environment", {}))
+    return body
 
 
 def header_lines(host, context):
@@ -686,6 +712,10 @@ def header_lines(host, context):
                      % SERVER_ENTRY_POINT)
     lines.append("source: %s" % context["source"])
     lines.append("source_hash: %s" % context["source_hash"])
+    if context.get("runtime_bindings_path"):
+        lines.append("runtime bindings: %s" % context["runtime_bindings_path"])
+        lines.append("runtime bindings hash: %s" %
+                     context["runtime_bindings_hash"])
     lines.append("regenerate: %s" % invocation(context))
     lines.append("verify: %s" % invocation(context, check=True))
     paragraphs = [MANUAL_STEPS[host]]
@@ -1069,7 +1099,7 @@ def unbound_field_paths(products):
     found = set()
     for host, product in products:
         found |= artifact_field_paths(product, host)
-    return sorted(found - set(FIELD_SOURCES))
+    return sorted(found - set(FIELD_SOURCES) - set(runtime_field_sources()))
 
 
 def forbidden_document_keys(products):
@@ -1117,10 +1147,11 @@ def name_violations(name):
 
 
 def print_sources():
+    sources = {**FIELD_SOURCES, **runtime_field_sources()}
     print("%s: %d rendered field path(s), each bound to a declaration source"
-          % (TOOL, len(FIELD_SOURCES)))
-    for path in sorted(FIELD_SOURCES):
-        print("  %s\n      <- %s" % (path, FIELD_SOURCES[path]))
+          % (TOOL, len(sources)))
+    for path in sorted(sources):
+        print("  %s\n      <- %s" % (path, sources[path]))
 
 
 def entry_point_note(root):
@@ -1169,6 +1200,11 @@ def main(argv=None):
         help="absolute path of the corpus repository this registration is "
              "bound to; substituted for %s (default: leave the placeholder)"
              % WORKSPACE_PLACEHOLDER)
+    parser.add_argument(
+        "--runtime-bindings", default=None,
+        help="absolute path to Host rendering bindings produced by "
+             "prepare_rendering_runtime; validate and project this explicit "
+             "input without discovering or installing dependencies")
     mode = parser.add_mutually_exclusive_group()
     mode.add_argument(
         "--check", action="store_true",
@@ -1189,7 +1225,8 @@ def main(argv=None):
         return fail("root is not a directory: %s" % args.root)
 
     for label, value in (("--distribution-root", args.distribution_root),
-                         ("--workspace-root", args.workspace_root)):
+                         ("--workspace-root", args.workspace_root),
+                         ("--runtime-bindings", args.runtime_bindings)):
         if value is not None and not os.path.isabs(value):
             parser.error(
                 "%s must be an absolute path: a host starts this server from "
@@ -1279,6 +1316,20 @@ def main(argv=None):
             "unsafe host-config output: installation and MCP transport "
             "configuration must remain outside %s"
             % runtime_paths.RUNTIME_ROOT)
+    if args.runtime_bindings and (
+            not args.output_dir or not args.distribution_root or
+            not args.workspace_root or path_is_within(
+                output_dir, os.path.join(root, DEFAULT_OUTPUT_DIR))):
+        return fail(
+            "Host runtime bindings require explicit distribution/workspace "
+            "roots and a separate Host staging output; machine-local paths "
+            "must not enter tracked source-distribution templates")
+    if args.runtime_bindings and os.path.realpath(args.distribution_root) != \
+            os.path.realpath(root):
+        return fail(
+            "--runtime-bindings must be validated by the same distribution "
+            "root that launches the server; root and --distribution-root "
+            "must name the same checkout")
     if args.projection_target == tool_availability.CARRIED_RUNTIME:
         protected_outputs = {
             os.path.realpath(os.path.join(candidate, DEFAULT_OUTPUT_DIR))
@@ -1290,6 +1341,16 @@ def main(argv=None):
                 "unsafe carried-runtime host-config output: the tracked "
                 "source-distribution products under %s cannot be overwritten"
                 % DEFAULT_OUTPUT_DIR)
+
+    runtime_environment = {}
+    runtime_bindings_hash = None
+    if args.runtime_bindings:
+        try:
+            runtime_bindings_hash = file_bytes_sha256(args.runtime_bindings)
+            runtime_environment = static_render_runtime.read_runtime_bindings(
+                root, args.runtime_bindings)
+        except (OSError, static_render_runtime.StaticRenderRuntimeError) as exc:
+            return fail("unreliable Host runtime bindings: %s" % exc)
 
     bindings = (
         (PROJECTION_PATH_PLACEHOLDER, projection_path_binding(
@@ -1307,6 +1368,9 @@ def main(argv=None):
         "root": root,
         "output_dir": output_dir,
         "bindings": bindings,
+        "runtime_environment": runtime_environment,
+        "runtime_bindings_path": args.runtime_bindings,
+        "runtime_bindings_hash": runtime_bindings_hash,
         # Named so a header speaks only of the placeholders its own file
         # still carries; a bound render says nothing about substitution.
         "unsubstituted": tuple(
@@ -1365,6 +1429,14 @@ def main(argv=None):
             "it (%s -> %s); nothing was written and no verdict is reported"
             % (repository_relative_spelling(root, projection_path),
                projection_hash, recheck))
+    if args.runtime_bindings:
+        try:
+            binding_recheck = file_bytes_sha256(args.runtime_bindings)
+        except OSError as exc:
+            return fail("Host runtime bindings became unreadable: %s" % exc)
+        if binding_recheck != runtime_bindings_hash:
+            return fail("Host runtime bindings changed during rendering; "
+                        "nothing was written and no verdict is reported")
 
     note = entry_point_note(args.distribution_root or root)
     if note:

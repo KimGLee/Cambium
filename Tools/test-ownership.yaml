@@ -990,6 +990,9 @@ tests:
     owner_contract_symbol: ci_impact.plan_changes
     parallel_safe: true
     overrides:
+      - selector: SelectedTestRunnerDelegationContractTests.*
+        semantics: ci_exact_selection_delegates_to_catalog_execution_owner
+        owner_contract_symbol: ci_impact.run_selected_tests
       - selector: ToolDependencyImpactContractTests.*
         level: contract
         semantics: changed_tool_reverse_test_closure
@@ -1394,6 +1397,14 @@ tests:
     disposition: keep
     semantics: pinned_profile_toolchain_installation_without_global_mutation
     owner_contract_symbol: install_profile_toolchain.main
+    parallel_safe: true
+  - path: Tools/tests/test_prepare_rendering_runtime.py
+    owner: Tools/platform/distribution/prepare_rendering_runtime.py
+    level: contract
+    lifecycle: current
+    disposition: keep
+    semantics: locked_host_preparation_without_corpus_or_runtime_mutation
+    owner_contract_symbol: prepare_rendering_runtime.prepare_runtime
     parallel_safe: true
   - path: Tools/tests/test_issue_owner.py
     owner: Tools/module-boundaries.yaml
@@ -2649,6 +2660,10 @@ tests:
     owner_contract_symbol: test_catalog.build_catalog
     parallel_safe: true
     overrides:
+      - selector: TestRunnerSelectionContractTests.*
+        owner: Tools/platform/distribution/test_runner.py
+        semantics: exact_file_selection_preserves_catalog_levels_and_isolation
+        owner_contract_symbol: test_runner.select_test_ids
       - selector: TestCatalogProjectionIntegrationTests.*
         level: integration
         semantics: test_catalog_repository_projection_freshness
