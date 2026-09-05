@@ -26,12 +26,14 @@ import Tools.execution.audit.changed_scope_evidence_contract as contract
 import Tools.execution.audit.changed_scope_runtime_checks as runtime_checks
 import Tools.execution.audit.complete_audit_receipt as complete_audit_receipt
 import Tools.execution.audit.record_changed_scope_evidence as producer
+from Tools.execution.task_runtime.queue_runtime import profile_view
 import Tools.execution.evidence.metadata_gate_runtime as metadata_gate_runtime
 import Tools.governance.profile.profile_contract as profile_contract
 import Tools.knowledge.content.check_links as check_links
 import Tools.knowledge.metadata.check_page_contract as check_page_contract
 import Tools.knowledge.metadata.check_vocab as check_vocab
 import Tools.platform.common.kblib as kblib
+from Tools.tests.support.profile_contract_fixture import CurrentProfileContractFixture
 
 
 def digest(label):
@@ -187,10 +189,13 @@ class ChangedScopeEvidenceFixtures:
             "coverage_sha256": digest("coverage"),
             "queue_sha256": digest("queue"),
         }
+        item = {"id": "B-1", "state": "open",
+                "manifest": ["Topics/Changed.md"]}
+        result["items_by_id"] = {item["id"]: item}
         context = {
             "root": ROOT,
             "result": result,
-            "item": {"id": "B-1", "manifest": ["Topics/Changed.md"]},
+            "item": item,
             "plan": plan,
             "plan_sha256": digest("plan"),
             "registry": self.registry,
@@ -466,8 +471,9 @@ class ChangedScopeEvidenceIntegrationTests(
 
         precursor = self.audit_precursor_case()
         catalog = {precursor["record"]["receipt_id"]: precursor["record"]}
+        precursor["result"]["current_receipt_catalog"] = catalog
         observed = complete_audit_receipt._producer_evidence(
-            ROOT, {"current_receipt_catalog": catalog},
+            ROOT, precursor["result"],
             precursor["record"]["receipt_id"], precursor["plan"],
             precursor["plan_sha256"], precursor["obligation"],
             precursor["frozen"])
@@ -482,6 +488,180 @@ class ChangedScopeEvidenceIntegrationTests(
                 ROOT, candidate["plan"], candidate["plan_sha256"],
                 candidate["obligation"], candidate["record"],
                 candidate["result"]))
+
+    def current_input_case(self, rule_id):
+        """Bind an isolated real page and Profile without replaying a task."""
+        fixture = CurrentProfileContractFixture(self)
+        root = str(fixture.root)
+        target = "Topics/Changed.md"
+        page = fixture.root / target
+        page.parent.mkdir(parents=True, exist_ok=True)
+        page.write_text("# Changed\n\nBody.\n", encoding="utf-8")
+        view, errors = profile_view.profile_load_authorized_view(
+            root, fixture.manifest.relative_to(fixture.root).as_posix())
+        self.assertEqual([], errors)
+        item = {"id": "B-1", "state": "open", "manifest": [target]}
+        obligation = self.obligation_for_rule(
+            rule_id, item["id"] if rule_id == runtime_checks.TASK_CONTRACT_RULE_ID
+            else target)
+        plan = self.plan_for(obligation)
+        plan.update({field: view[field]
+                     for field in profile_contract.PROFILE_LOAD_EVIDENCE_FIELDS
+                     if field in plan})
+        result = {
+            "root": root,
+            "_profile_authorized_view": view,
+            "items_by_id": {item["id"]: item},
+            "current_receipt_catalog": {},
+            "progress": {"contract": {}},
+            "coverage": {"pages": [{
+                "path": target, "coverage_disposition": "required",
+                "authoring_status": "drafted", "batch": item["id"],
+                "next_batch": item["id"], "deferred_reason": None,
+            }]},
+            "queue": {
+                "task_id": plan["task_id"], "queue_revision": 1,
+                "state_revision": 1, "required_queue": [item],
+            },
+        }
+        self.refresh_runtime_fingerprints(result)
+        frozen = audit_producer_runtime.freeze_manifest_pages(root, result, item)
+        return {
+            "root": root, "result": result, "item": item,
+            "plan": plan, "plan_sha256": digest("plan"),
+            "obligation": obligation, "frozen": frozen,
+            "registry": self.registry, "control_registry": self.control,
+            "row": self.row_for_rule(rule_id),
+            "trace": self.trace_for_rule(rule_id), "fixture": fixture,
+        }
+
+    @staticmethod
+    def refresh_runtime_fingerprints(result):
+        for name in ("progress", "coverage", "queue"):
+            result[name + "_sha256"] = kblib.sha256_bytes(
+                kblib.canonical_json_bytes(result[name]))
+
+    def assert_input_change_allows_successor(self, case, change_input,
+                                           changed_binding_field):
+        """Exercise one append-only producer/completer/consumer checkpoint."""
+        result = case["result"]
+        catalog = result["current_receipt_catalog"]
+        plan, plan_sha256, obligation = (
+            case["plan"], case["plan_sha256"], case["obligation"])
+
+        def current_final():
+            return complete_audit_receipt.current_audit_receipt_attempt(
+                result, plan, plan_sha256, obligation, case["frozen"],
+                case["root"])
+
+        def resolution():
+            return audit_evidence_runtime._required_obligation_resolution(
+                result, case["item"], plan, plan_sha256, catalog, obligation,
+                require_current=True)
+
+        def precursor(seq):
+            record = producer.build_audit_producer_record(
+                context=case, check_result=producer._runtime_check_result(case),
+                seq=seq)
+            catalog[record["receipt_id"]] = record
+            return record
+
+        def finalize(record, seq):
+            evidence = complete_audit_receipt._producer_evidence(
+                case["root"], result, record["receipt_id"], plan,
+                plan_sha256, obligation, case["frozen"])
+            completed = complete_audit_receipt.build_audit_receipt(
+                plan=plan, plan_sha256=plan_sha256,
+                obligation=obligation, evidence=evidence, seq=seq)
+            catalog[completed["receipt_id"]] = completed
+            return completed
+
+        old = precursor(1)
+        old_final = finalize(old, 1)
+        before_records = kblib.canonical_json_bytes([old, old_final])
+        before_plan = kblib.canonical_json_bytes(plan)
+        page_artifact = audit_producer_runtime.page_artifact_fingerprint(
+            case["frozen"][0])
+        self.assertIs(old, producer.existing_audit_producer_record(case))
+        self.assertIs(old_final, current_final())
+        self.assertEqual("satisfied", resolution()["status"])
+
+        change_input()
+        self.assertIsNone(producer.existing_audit_producer_record(case))
+        stale_resolution = resolution()
+        self.assertEqual("missing", stale_resolution["status"])
+        self.assertEqual({"stale"}, {
+            attempt["state"] for attempt in stale_resolution["attempts"]})
+        # This is the regression: a stale final must not reserve completion.
+        self.assertIsNone(current_final())
+        with self.assertRaises(audit_producer_runtime.AuditProducerError):
+            complete_audit_receipt._producer_evidence(
+                case["root"], result, old["receipt_id"], plan,
+                plan_sha256, obligation, case["frozen"])
+
+        new = precursor(2)
+        self.assertEqual(old["artifact_fingerprint"], new["artifact_fingerprint"])
+        self.assertEqual(old["check_result"], new["check_result"])
+        self.assertNotEqual(old["dependency_fingerprint"],
+                            new["dependency_fingerprint"])
+        for field in old["input_binding"]:
+            assertion = (self.assertNotEqual if field == changed_binding_field
+                         else self.assertEqual)
+            assertion(old["input_binding"][field], new["input_binding"][field])
+        self.assertIs(new, producer.existing_audit_producer_record(case))
+        ready = resolution()
+        self.assertEqual("ready-for-completion", ready["status"])
+        self.assertIs(new, ready["record"])
+        self.assertIsNone(current_final())
+
+        new_final = finalize(new, 2)
+        for _ in range(2):
+            self.assertIs(new, producer.existing_audit_producer_record(case))
+            self.assertIs(new_final, current_final())
+            satisfied = resolution()
+            self.assertEqual("satisfied", satisfied["status"])
+            self.assertIs(new_final, satisfied["record"])
+        self.assertEqual(4, len(catalog))
+        self.assertEqual(before_records,
+                         kblib.canonical_json_bytes([old, old_final]))
+        self.assertEqual(before_plan, kblib.canonical_json_bytes(plan))
+        current_pages = audit_producer_runtime.freeze_manifest_pages(
+            case["root"], result, case["item"])
+        self.assertEqual(page_artifact,
+                         audit_producer_runtime.page_artifact_fingerprint(
+                             current_pages[0]))
+
+    def test_repository_change_retries_batch_target_without_artifact_drift(self):
+        # Card delivery and Read Set parsing have their own owner tests. Keep
+        # those inputs valid while exercising their real changed-scope wrapper.
+        with mock.patch.object(
+                runtime_checks.card_activation, "build_activation_context",
+                return_value={"activation_protocol": "current"}), \
+                mock.patch.object(
+                    runtime_checks.card_activation, "activation_context_errors",
+                    return_value=[]), \
+                mock.patch.object(
+                    runtime_checks, "live_read_set_load_findings",
+                    return_value=([], [])):
+            case = self.current_input_case(runtime_checks.TASK_CONTRACT_RULE_ID)
+            dependency = case["fixture"].root / "Topics/Dependency.md"
+            dependency.write_text("# Dependency\n\nBefore.\n", encoding="utf-8")
+            self.assert_input_change_allows_successor(
+                case, lambda: dependency.write_text(
+                    "# Dependency\n\nAfter.\n", encoding="utf-8"),
+                "repository_snapshot_sha256")
+
+    def test_runtime_change_retries_page_target_without_artifact_drift(self):
+        case = self.current_input_case(runtime_checks.COVERAGE_RULE_ID)
+
+        def change_routing_inputs():
+            result = case["result"]
+            result["coverage"]["pages"][0]["authoring_status"] = "reviewed"
+            result["queue"]["queue_revision"] += 1
+            self.refresh_runtime_fingerprints(result)
+
+        self.assert_input_change_allows_successor(
+            case, change_routing_inputs, "runtime_input_sha256")
 
 
 if __name__ == "__main__":

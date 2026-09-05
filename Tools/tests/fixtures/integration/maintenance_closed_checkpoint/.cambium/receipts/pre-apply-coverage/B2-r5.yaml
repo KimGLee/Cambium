@@ -1,6 +1,6 @@
 schema_version: 2
 task_id: fixture-task
-updated_at: 2026-09-05T10:32:41Z
+updated_at: 2026-09-05T15:14:09Z
 scope_version: s1
 upstream_revision_id: 0123456789abcdef0123456789abcdef01234567
 selected_profile_manifest: profiles/test-profile/profile.toml
@@ -61,12 +61,12 @@ pages:
     reentry_condition: null
     authoring_status: reviewed
     gate_receipts:
-      - audit-record_batch_page_review-20260905T103218Z-ef129b55349e48aeb11f18f6c472a1b3-0001
-      - audit-check_batch_close-20260905T103237Z-73e6addeace64967a17af44585a7fad4-0010
+      - audit-record_batch_page_review-20260905T151344Z-b6e038417d434e7eb871d7b8aa739991-0001
+      - audit-check_batch_close-20260905T151405Z-21ae6134e9bf4dfeb74a975c109f919f-0010
     property_state:
       last_reviewed:
         value: 2026-09-05
-        evidence_receipt: audit-check_batch_close-20260905T103237Z-73e6addeace64967a17af44585a7fad4-0010
+        evidence_receipt: audit-check_batch_close-20260905T151405Z-21ae6134e9bf4dfeb74a975c109f919f-0010
         content_fingerprint: sha256:bbff007034a2d19522a357b835a062f22948721d86bb2cc2f8997f18510e365f
   - path: Topics/B.md
     coverage_disposition: required

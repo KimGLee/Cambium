@@ -77,7 +77,7 @@ One deterministic use case that composes domain contracts and infrastructure.
 | `execution.audit.audit_evidence_runtime` | `Tools/execution/audit/audit_evidence_runtime.py` | python-module | `execution / audit / application` | static Python (12 symbols / 14 consumers) |
 | `execution.audit.audit_execution_runtime` | `Tools/execution/audit/audit_execution_runtime.py` | python-module | `execution / audit / application` | static Python (1 symbols / 1 consumers) |
 | `execution.audit.audit_producer_runtime` | `Tools/execution/audit/audit_producer_runtime.py` | python-module | `execution / audit / application` | static Python (23 symbols / 9 consumers) |
-| `execution.audit.changed_scope_evidence_runtime` | `Tools/execution/audit/changed_scope_evidence_runtime.py` | python-module | `execution / audit / application` | static Python (3 symbols / 2 consumers) |
+| `execution.audit.changed_scope_evidence_runtime` | `Tools/execution/audit/changed_scope_evidence_runtime.py` | python-module | `execution / audit / application` | static Python (3 symbols / 3 consumers) |
 | `execution.audit.check_batch_close` | `Tools/execution/audit/check_batch_close.py` | python-module | `execution / audit / application` | static Python (1 symbols / 1 consumers), registered capability (1 capabilities / 4 consumers), registered Python symbol (1 consumers) |
 | `execution.audit.check_proof` | `Tools/execution/audit/check_proof.py` | python-module | `execution / audit / application` | static Python (1 symbols / 1 consumers), registered capability (1 capabilities / 3 consumers), registered Python symbol (1 consumers) |
 | `execution.audit.complete_audit_receipt` | `Tools/execution/audit/complete_audit_receipt.py` | python-module | `execution / audit / application` | static Python (1 symbols / 1 consumers), registered capability (1 capabilities / 7 consumers), registered Python symbol (1 consumers) |
@@ -107,7 +107,7 @@ Machine-contract loading, closed validation, pure projection, and stable predica
 | `execution.audit.batch_close_contract` | `Tools/execution/audit/batch_close_contract.py` | python-module | `execution / audit / contract` | static Python (13 symbols / 4 consumers), registered Python symbol (1 consumers) |
 | `execution.audit.batch_review_obligation_contract` | `Tools/execution/audit/batch_review_obligation_contract.py` | python-module | `execution / audit / contract` | static Python (19 symbols / 5 consumers), registered Python symbol (1 consumers) |
 | `execution.audit.batch_review_receipt_contract` | `Tools/execution/audit/batch_review_receipt_contract.py` | python-module | `execution / audit / contract` | static Python (6 symbols / 4 consumers), registered Python symbol (1 consumers) |
-| `execution.audit.changed_scope_evidence_contract` | `Tools/execution/audit/changed_scope_evidence_contract.py` | python-module | `execution / audit / contract` | static Python (34 symbols / 5 consumers), registered Python symbol (1 consumers) |
+| `execution.audit.changed_scope_evidence_contract` | `Tools/execution/audit/changed_scope_evidence_contract.py` | python-module | `execution / audit / contract` | static Python (34 symbols / 4 consumers), registered Python symbol (1 consumers) |
 | `execution.audit.changed_scope_runtime_checks` | `Tools/execution/audit/changed_scope_runtime_checks.py` | python-module | `execution / audit / contract` | static Python (6 symbols / 2 consumers) |
 | `execution.audit.substantive_review_contract` | `Tools/execution/audit/substantive_review_contract.py` | python-module | `execution / audit / contract` | static Python (8 symbols / 5 consumers), registered Python symbol (1 consumers) |
 | `execution.audit.terminal_proof_contract` | `Tools/execution/audit/terminal_proof_contract.py` | python-module | `execution / audit / contract` | static Python (13 symbols / 4 consumers), registered Python symbol (1 consumers) |
@@ -878,10 +878,10 @@ Repository IO, serialization, locking, transport, generation, and other Tool-own
 | `execution.audit.changed_scope_evidence_contract.validate_candidate_set_record_for_plan` | `execution.audit.record_changed_scope_evidence` | declared |
 | `execution.audit.changed_scope_evidence_contract.validate_direct_record` | `execution.audit.record_changed_scope_evidence` | declared |
 | `execution.audit.changed_scope_evidence_contract.validate_direct_record_for_plan` | `execution.audit.record_changed_scope_evidence` | declared |
-| `execution.audit.changed_scope_evidence_contract.validate_record_for_plan` | `execution.audit.audit_evidence_runtime`, `execution.audit.complete_audit_receipt` | declared |
+| `execution.audit.changed_scope_evidence_contract.validate_record_for_plan` | `execution.audit.audit_evidence_runtime` | declared |
 | `execution.audit.changed_scope_evidence_runtime.pure_check_result` | `execution.audit.record_changed_scope_evidence` | declared |
 | `execution.audit.changed_scope_evidence_runtime.pure_input_binding` | `execution.audit.record_changed_scope_evidence` | declared |
-| `execution.audit.changed_scope_evidence_runtime.validate_current_record` | `execution.audit.audit_evidence_runtime`, `execution.audit.record_changed_scope_evidence` | declared |
+| `execution.audit.changed_scope_evidence_runtime.validate_current_record` | `execution.audit.audit_evidence_runtime`, `execution.audit.complete_audit_receipt`, `execution.audit.record_changed_scope_evidence` | declared |
 | `execution.audit.changed_scope_runtime_checks.COVERAGE_RULE_ID` | `execution.audit.changed_scope_evidence_contract`, `execution.audit.changed_scope_evidence_runtime` | declared |
 | `execution.audit.changed_scope_runtime_checks.GUIDANCE_RULE_ID` | `execution.audit.changed_scope_evidence_contract`, `execution.audit.changed_scope_evidence_runtime` | declared |
 | `execution.audit.changed_scope_runtime_checks.TASK_CONTRACT_RULE_ID` | `execution.audit.changed_scope_evidence_contract`, `execution.audit.changed_scope_evidence_runtime` | declared |
@@ -2317,10 +2317,10 @@ Repository IO, serialization, locking, transport, generation, and other Tool-own
 | `execution.audit.changed_scope_evidence_contract.validate_candidate_set_record_for_plan` | yes | `execution.audit.record_changed_scope_evidence` |
 | `execution.audit.changed_scope_evidence_contract.validate_direct_record` | yes | `execution.audit.record_changed_scope_evidence` |
 | `execution.audit.changed_scope_evidence_contract.validate_direct_record_for_plan` | yes | `execution.audit.record_changed_scope_evidence` |
-| `execution.audit.changed_scope_evidence_contract.validate_record_for_plan` | yes | `execution.audit.audit_evidence_runtime`, `execution.audit.complete_audit_receipt` |
+| `execution.audit.changed_scope_evidence_contract.validate_record_for_plan` | yes | `execution.audit.audit_evidence_runtime` |
 | `execution.audit.changed_scope_evidence_runtime.pure_check_result` | yes | `execution.audit.record_changed_scope_evidence` |
 | `execution.audit.changed_scope_evidence_runtime.pure_input_binding` | yes | `execution.audit.record_changed_scope_evidence` |
-| `execution.audit.changed_scope_evidence_runtime.validate_current_record` | yes | `execution.audit.audit_evidence_runtime`, `execution.audit.record_changed_scope_evidence` |
+| `execution.audit.changed_scope_evidence_runtime.validate_current_record` | yes | `execution.audit.audit_evidence_runtime`, `execution.audit.complete_audit_receipt`, `execution.audit.record_changed_scope_evidence` |
 | `execution.audit.changed_scope_runtime_checks.COVERAGE_RULE_ID` | yes | `execution.audit.changed_scope_evidence_contract`, `execution.audit.changed_scope_evidence_runtime` |
 | `execution.audit.changed_scope_runtime_checks.GUIDANCE_RULE_ID` | yes | `execution.audit.changed_scope_evidence_contract`, `execution.audit.changed_scope_evidence_runtime` |
 | `execution.audit.changed_scope_runtime_checks.TASK_CONTRACT_RULE_ID` | yes | `execution.audit.changed_scope_evidence_contract`, `execution.audit.changed_scope_evidence_runtime` |

@@ -15,7 +15,7 @@ import Tools.execution.audit.audit_producer_chain as audit_producer_chain
 import Tools.execution.audit.audit_producer_runtime as audit_producer_runtime
 import Tools.execution.audit.audit_receipt_contract as audit_receipt_contract
 import Tools.execution.audit.audit_receipt_finalizer as audit_receipt_finalizer
-import Tools.execution.audit.changed_scope_evidence_contract as changed_scope_evidence_contract
+import Tools.execution.audit.changed_scope_evidence_runtime as changed_scope_evidence_runtime
 import Tools.execution.evidence.evidence_attempt_runtime as evidence_attempt_runtime
 import Tools.platform.common.kblib as kblib
 import Tools.knowledge.rendering.rendering_verification_contract as rendering_verification_contract
@@ -145,19 +145,14 @@ def _producer_evidence(root, result, receipt_id, plan, plan_sha256,
             mismatches.append("rendering-verification contract: %s" % exc)
     elif chain["execution_route"] == "deterministic-audit-precursor":
         try:
-            current_artifact = None
-            target_pages = [page for page in (frozen or ())
-                            if page.path == obligation.get("target")]
-            if target_pages:
-                if len(target_pages) != 1:
-                    raise ValueError(
-                        "changed-scope target repeats in frozen manifest")
-                current_artifact = \
-                    audit_producer_runtime.page_artifact_fingerprint(
-                        target_pages[0])
-            changed_scope_evidence_contract.validate_record_for_plan(
-                evidence, plan, plan_sha256, obligation, root=root,
-                artifact_fingerprint=current_artifact)
+            item = (result.get("items_by_id") or {}).get(plan["batch_id"])
+            if not isinstance(item, dict):
+                raise ValueError(
+                    "changed-scope currentness requires the current batch")
+            changed_scope_evidence_runtime.validate_current_record(
+                evidence, root=root, result=result, item=item,
+                plan=plan, plan_sha256=plan_sha256,
+                obligation=obligation, frozen=frozen)
         except (OSError, TypeError, UnicodeError, ValueError,
                 kblib.YamlSubsetError) as exc:
             mismatches.append("changed-scope evidence contract: %s" % exc)

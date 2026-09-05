@@ -154,7 +154,7 @@ source_files:
   - Tools/stamp_cards.py
   - Tools/update_queue.py
   - Tools/update_task.py
-source_hash: sha256:6e72b843c720c1218078a3329c85c1e33be126a879a7973778d395f6713ca290
+source_hash: sha256:940f0657c50a4a98e761357b5aac0dcc1b08f4770ee0904cdfbfaadd7199cf3f
 agent_interface_policy:
   path: Tools/agent-interface-policy.yaml
   sha256: sha256:fc3170ca859a95ec95290fef9ef9e631a641d78d32e8017b3c09060935125092
@@ -3945,7 +3945,7 @@ tools:
     source_hash: sha256:c6689b1638e5592ea2756bef0107062c8cdd60735659820621683482aa362bbc
     implementation_module: Tools.execution.audit.complete_audit_receipt
     implementation_path: Tools/execution/audit/complete_audit_receipt.py
-    implementation_source_hash: sha256:7b766372c4e7f8f13ca9d6219e4408b98361c5a70ebc028b4866a716b149107a
+    implementation_source_hash: sha256:eb5c2be3ff8634ea543b7e236dee7513efb437b9e86627341a723175972a3c00
     description: Complete one plan obligation into a full AuditReceipt
     arguments:
       - dest: root
@@ -4029,7 +4029,7 @@ tools:
     receipt_extensions_extraction: complete
     receipt_extension_sources:
       - path: Tools/execution/audit/complete_audit_receipt.py
-        sha256: sha256:7b766372c4e7f8f13ca9d6219e4408b98361c5a70ebc028b4866a716b149107a
+        sha256: sha256:eb5c2be3ff8634ea543b7e236dee7513efb437b9e86627341a723175972a3c00
       - path: Tools/platform/common/kblib.py
         sha256: sha256:2a76a741123287ccb918edeb577e3cc0eec28475bb7e5c3fa3fcda8920b11335
     agent_interface:
