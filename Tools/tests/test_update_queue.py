@@ -26,6 +26,8 @@ import Tools.execution.audit.check_batch_close as check_batch_close  # noqa: E40
 import Tools.execution.task_runtime.check_queue as check_queue  # noqa: E402
 import Tools.execution.task_runtime.runtime_validation as runtime_validation  # noqa: E402
 import Tools.execution.task_runtime.update_queue as update_queue  # noqa: E402
+import Tools.execution.task_runtime.update_task as update_task  # noqa: E402
+import Tools.execution.task_runtime.queue_runtime.revalidation as revalidation  # noqa: E402
 import Tools.platform.common.kblib as kblib  # noqa: E402
 from Tools.tests.fixtures.integration.update_queue_checkpoints import (  # noqa: E402
     install_update_queue_checkpoint,
@@ -173,10 +175,175 @@ class UpdateQueueProjectionUnitTests(unittest.TestCase):
             )
 
 
+class StandardsRevalidationConsumptionTests(unittest.TestCase):
+    """Only admission or an evidenced hold discharge consumes an aggregate."""
+
+    def consumed(self, edges, *, aggregate_changes=None):
+        aggregate = {
+            "receipt_id": "aggregate", "result": "pass",
+            "invalidated_by": None, "tool": queue_runtime.TOOL,
+            "tool_version": queue_runtime.TOOL_VERSION,
+            "check": "required_queue", "batch_id": "B1",
+            "queue_check_mode": "require-revalidation:B1",
+            "revalidation_bindings": [{
+                "adoption_id": "SA-1", "boundary_id": "INV-1",
+                "required_gate_id": "batch-close",
+            }],
+        }
+        aggregate.update(aggregate_changes or {})
+        catalog = {"aggregate": ("fixture", aggregate)}
+        ids = []
+        for index, (before, after, hold_before, hold_after, consumes) in \
+                enumerate(edges):
+            receipt_id = "transition-%d" % index
+            transition = {
+                "receipt_id": receipt_id,
+                "before_state": before, "after_state": after,
+                "before_hold_state": hold_before,
+                "after_hold_state": hold_after,
+            }
+            if consumes:
+                transition.update({
+                    "standards_revalidation_receipt": "aggregate",
+                    "evidence_receipt": "aggregate",
+                })
+            ids.append(receipt_id)
+            catalog[receipt_id] = ("fixture", transition)
+        return revalidation.consumed_standards_revalidation_keys(
+            {"id": "B1", "transition_receipts": ids}, catalog)
+
+    def test_admission_consumes_without_a_prior_revalidation_hold(self):
+        for hold in ("none", "confirmation-required"):
+            with self.subTest(hold=hold):
+                self.assertEqual({("SA-1", "INV-1", "batch-close")},
+                                 self.consumed([
+                                     ("queued", "open", hold, "none", True),
+                                 ]))
+
+    def test_evidenced_hold_discharge_retains_its_existing_replay(self):
+        for intermediate in (None, "paused", "blocked"):
+            with self.subTest(intermediate=intermediate):
+                edges = [("open", "open", "none",
+                          "revalidation-required", False)]
+                before = "revalidation-required"
+                if intermediate is not None:
+                    edges.append(("open", "open", before,
+                                  intermediate, False))
+                    before = intermediate
+                edges.append(("open", "open", before, "none", True))
+                self.assertEqual({("SA-1", "INV-1", "batch-close")},
+                                 self.consumed(edges))
+
+    def test_other_edges_cannot_consume_an_aggregate(self):
+        edges = (
+            ("open", "open", "none", "none", True),
+            ("open", "open", "paused", "none", True),
+            ("merge-ready", "open", "none", "none", True),
+            ("queued", "queued", "none", "none", True),
+            ("queued", "open", "blocked", "none", True),
+            ("queued", "open", "none", "paused", True),
+            ("queued", "open", "none", "none", False),
+        )
+        for edge in edges:
+            with self.subTest(edge=edge):
+                self.assertEqual(set(), self.consumed([edge]))
+
+    def test_admission_still_requires_current_matching_aggregate_evidence(self):
+        for change in (
+                {"result": "fail"}, {"invalidated_by": "SA-2"},
+                {"tool": "other"}, {"tool_version": "retired"},
+                {"check": "other"}, {"batch_id": "B2"},
+                {"queue_check_mode": "require-revalidation:B2"}):
+            with self.subTest(change=change):
+                self.assertEqual(set(), self.consumed([
+                    ("queued", "open", "none", "none", True),
+                ], aggregate_changes=change))
+
+
 class OpenWriterIntegrationTests(_CheckpointCase):
     """One public CLI/JSON probe connects the ready gate to the writer."""
 
     CHECKPOINT = "planning-ready"
+
+    def test_revalidated_admission_consumes_the_real_deferred_aggregate(self):
+        # The checkpoint is already planning-ready.  Supply only the upstream
+        # adoption owner's frozen requirement; the aggregate producer, writer,
+        # proposed-state validation and persisted replay below are all real.
+        # Revalidation requires an active task.  Pause/resume through its owner
+        # while B1 stays queued; do not replay the Task Plan or any batch work.
+        for transition in ("paused", "active"):
+            stdout, stderr = io.StringIO(), io.StringIO()
+            with redirect_stdout(stdout), redirect_stderr(stderr):
+                code = update_task.main([
+                    str(self.root), "--transition", transition,
+                    "--checkpoint-summary", "Resume before batch revalidation",
+                    "--expected-progress-sha256", kblib.sha256_file(
+                        self.root / queue_runtime.PROGRESS_PATH),
+                    "--expected-queue-sha256", kblib.sha256_file(
+                        self.root / queue_runtime.QUEUE_PATH),
+                    "--actor-role", "integrator", "--apply",
+                ])
+            self.assertEqual(0, code, stdout.getvalue() + stderr.getvalue())
+        requirements = {"B1": [{
+            "adoption_id": "SA-1", "boundary_id": "INV-1",
+            "plan_sha256": "sha256:" + "a" * 64,
+            "adopted_at": "2026-08-04T00:00:00Z",
+            "predicate_ids": ["PRED-1"],
+            "affected_gate_id": "batch-close",
+            "required_gate_id": "batch-close",
+            "mapped_owner_gate_id": "batch-close",
+            "owner_claim_edge": "native-transition",
+            "mapping_protocol_version":
+                revalidation.STANDARDS_REVALIDATION_CAPABILITY_PROTOCOL,
+            "superseded_invalidated_receipt_ids": [],
+        }]}
+        with mock.patch.object(
+                queue_runtime.runtime, "standards_revalidation_requirements",
+                return_value=requirements):
+            stdout, stderr = io.StringIO(), io.StringIO()
+            # Each in-process producer represents its own CLI invocation.
+            with redirect_stdout(stdout), redirect_stderr(stderr), \
+                    mock.patch.object(kblib, "_RECEIPT_RUN_TOKEN", "a" * 32):
+                code = check_queue.main([
+                    str(self.root), "--require-revalidation", "B1",
+                    "--receipts", ".cambium/receipts/revalidation.jsonl",
+                    "--json",
+                ])
+            self.assertEqual(0, code, stdout.getvalue() + stderr.getvalue())
+            aggregate = json.loads(stdout.getvalue())[0]
+            self.assertEqual([], aggregate["due_gate_ids"])
+            self.assertEqual(["batch-close"],
+                             aggregate["deferred_native_owner_gate_ids"])
+            stdout, stderr = io.StringIO(), io.StringIO()
+            with redirect_stdout(stdout), redirect_stderr(stderr), \
+                    mock.patch.object(kblib, "_RECEIPT_RUN_TOKEN", "b" * 32):
+                code = check_queue.main([
+                    str(self.root), "--require-ready", "B1",
+                    "--receipts", ".cambium/receipts/revalidated-ready.jsonl",
+                    "--json",
+                ])
+            self.assertEqual(0, code, stdout.getvalue() + stderr.getvalue())
+            ready = json.loads(stdout.getvalue())[0]
+            revision, fingerprint = self.expected()
+            code, output, errors = _invoke_update_queue(
+                str(self.root), "--id", "B1", "--transition", "open",
+                "--gate-receipt", ready["receipt_id"],
+                "--standards-revalidation-receipt", aggregate["receipt_id"],
+                "--expected-state-revision", revision,
+                "--expected-sha256", fingerprint,
+                "--actor-role", "integrator", "--apply", "--json",
+            )
+            self.assertEqual(0, code, output + errors)
+            result = runtime_validation.validate_runtime(self.root)
+            self.assertEqual([], result["errors"])
+            self.assertEqual({}, result["standards_revalidation_outstanding"])
+            item = result["items_by_id"]["B1"]
+            self.assertEqual(("open", "none"),
+                             (item["state"], item["hold_state"]))
+            transition = result["receipt_catalog"][
+                item["transition_receipts"][-1]][1]
+            self.assertEqual(aggregate["receipt_id"],
+                             transition["standards_revalidation_receipt"])
 
     def test_json_transport_persists_the_current_open_receipt(self):
         revision, fingerprint = self.expected()

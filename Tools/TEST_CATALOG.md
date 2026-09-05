@@ -6,7 +6,7 @@ This file is generated from `Tools/test-ownership.yaml` and static source facts.
 
 | Test modules | Test cases | Fixtures | Fixture bundles | Parallel-safe cases | Test process calls | Fixture process calls | Test full copies | Fixture full copies | Cross-test imports |
 | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| 127 | 1118 | 51 | 8 | 930 | 41 | 11 | 15 | 24 | 0 |
+| 127 | 1123 | 51 | 8 | 934 | 41 | 11 | 15 | 24 | 0 |
 
 ### Method-level transitive exposure
 
@@ -14,14 +14,14 @@ These counts identify test methods whose per-method, per-class, or per-process s
 
 | Process | Temporary resource | File copy | Full repository copy | E2E builder | Full lifecycle |
 | ---: | ---: | ---: | ---: | ---: | ---: |
-| 39 | 271 | 60 | 50 | 2 | 2 |
+| 39 | 272 | 61 | 51 | 2 | 2 |
 
 ## Before and current static baseline
 
 | Metric | Before closure | Current |
 | --- | ---: | ---: |
 | Test modules | 129 | 127 |
-| Test cases | 2543 | 1118 |
+| Test cases | 2543 | 1123 |
 | Process-launch call sites | 192 | 52 |
 | Temporary-resource call sites | 233 | 143 |
 | Full repository copy call sites | 86 | 39 |
@@ -41,9 +41,9 @@ These counts identify test methods whose per-method, per-class, or per-process s
 
 | Level | Definition | Cases |
 | --- | --- | ---: |
-| `unit` | In-process deterministic computation owned by one module. | 371 |
+| `unit` | In-process deterministic computation owned by one module. | 375 |
 | `contract` | Schema, registry, owner, closed-set, or producer-consumer contract. | 523 |
-| `integration` | Adjacent production modules joined in an isolated temporary runtime. | 150 |
+| `integration` | Adjacent production modules joined in an isolated temporary runtime. | 151 |
 | `e2e` | One representative complete current-contract lifecycle. | 4 |
 | `slow` | Real security, concurrency, crash, recovery, or host-isolation behavior. | 69 |
 | `historical-read-only` | Current-contract sealed history that cannot regain current authority. | 1 |
@@ -172,7 +172,7 @@ These counts identify test methods whose per-method, per-class, or per-process s
 | `Tools/tests/test_tool_runtime_reporting.py` | `Tools/platform/common/reporting.py` | `unit` | True | 17 | 0 | 0 | 0 | 0 | 0 |
 | `Tools/tests/test_tool_runtime_repository.py` | `Tools/platform/repository/repository.py` | `unit` | True | 13 | 1 | 0 | 7 | 0 | 0 |
 | `Tools/tests/test_tools_readme_inventory.py` | `Tools/README.md` | `unit` | True | 11 | 0 | 0 | 0 | 0 | 0 |
-| `Tools/tests/test_update_queue.py` | `Tools/execution/task_runtime/update_queue.py` | `integration` | False | 13 | 10 | 4 | 1 | 0 | 0 |
+| `Tools/tests/test_update_queue.py` | `Tools/execution/task_runtime/update_queue.py` | `integration` | False | 18 | 11 | 4 | 1 | 0 | 0 |
 | `Tools/tests/test_update_task.py` | `Tools/execution/task_runtime/update_task.py` | `unit` | True | 11 | 8 | 1 | 3 | 0 | 2 |
 | `Tools/tests/test_upstream_component_boundary.py` | `Tools/platform/distribution/upstream_component_boundary.py` | `contract` | True | 5 | 3 | 1 | 2 | 0 | 0 |
 | `Tools/tests/test_upstream_identity.py` | `Tools/platform/distribution/upstream_identity.py` | `contract` | True | 4 | 1 | 1 | 1 | 0 | 0 |
@@ -197,7 +197,7 @@ Each row is charged once in that test module's child process. `Triggered by` is 
 | `Tools/tests/test_register_amendment.py` | `Tools/tests/test_register_amendment.py:amendment_checkpoint[current]` | 3 | False | 0 | 1 | 7 | 2 |
 | `Tools/tests/test_required_queue_e2e.py` | `Tools/tests/support/required_queue_fixture.py:_template[base]` | 2 | False | 0 | 1 | 7 | 2 |
 | `Tools/tests/test_update_queue.py` | `Tools/tests/fixtures/integration/batch_close_checkpoints.py:_validated_checkpoint_template[dynamic]` | 2 | False | 0 | 2 | 1 | 2 |
-| `Tools/tests/test_update_queue.py` | `Tools/tests/fixtures/integration/update_queue_checkpoints.py:_validated_checkpoint_template[dynamic]` | 8 | False | 0 | 1 | 7 | 2 |
+| `Tools/tests/test_update_queue.py` | `Tools/tests/fixtures/integration/update_queue_checkpoints.py:_validated_checkpoint_template[dynamic]` | 9 | False | 0 | 1 | 7 | 2 |
 | `Tools/tests/test_update_task.py` | `Tools/tests/fixtures/integration/update_queue_checkpoints.py:_validated_checkpoint_template[dynamic]` | 1 | False | 0 | 1 | 7 | 2 |
 | `Tools/tests/test_update_task.py` | `Tools/tests/test_update_task.py:current_runtime_checkpoint[current]` | 4 | False | 0 | 1 | 7 | 2 |
 
@@ -657,7 +657,12 @@ Only mixed test modules need method-level rows. All other cases inherit their mo
 | `test_update_queue.MergeRollbackIntegrationTests.test_preapply_rollback_archives_delta_and_records_invalidation` | `Tools/execution/task_runtime/update_queue.py` | `integration` | False | queue_preapply_rollback_writer |
 | `test_update_queue.OpenWriterCasSlowTests.test_page_change_after_state_write_aborts_without_losing_the_edit` | `Tools/execution/task_runtime/update_queue.py` | `slow` | False | queue_writer_semantic_cas_rollback |
 | `test_update_queue.OpenWriterIntegrationTests.test_json_transport_persists_the_current_open_receipt` | `Tools/execution/task_runtime/update_queue.py` | `integration` | False | queue_open_cli_writer_receipt_readback |
+| `test_update_queue.OpenWriterIntegrationTests.test_revalidated_admission_consumes_the_real_deferred_aggregate` | `Tools/execution/task_runtime/update_queue.py` | `integration` | False | queue_open_cli_writer_receipt_readback |
 | `test_update_queue.ReceiptAppendRecoverySlowTests.test_foreign_append_after_own_receipt_preserves_log_and_lock` | `Tools/execution/task_runtime/update_queue.py` | `slow` | False | queue_writer_receipt_append_recovery |
+| `test_update_queue.StandardsRevalidationConsumptionTests.test_admission_consumes_without_a_prior_revalidation_hold` | `Tools/execution/task_runtime/queue_runtime/revalidation.py` | `unit` | True | standards_revalidation_aggregate_consumption_replay |
+| `test_update_queue.StandardsRevalidationConsumptionTests.test_admission_still_requires_current_matching_aggregate_evidence` | `Tools/execution/task_runtime/queue_runtime/revalidation.py` | `unit` | True | standards_revalidation_aggregate_consumption_replay |
+| `test_update_queue.StandardsRevalidationConsumptionTests.test_evidenced_hold_discharge_retains_its_existing_replay` | `Tools/execution/task_runtime/queue_runtime/revalidation.py` | `unit` | True | standards_revalidation_aggregate_consumption_replay |
+| `test_update_queue.StandardsRevalidationConsumptionTests.test_other_edges_cannot_consume_an_aggregate` | `Tools/execution/task_runtime/queue_runtime/revalidation.py` | `unit` | True | standards_revalidation_aggregate_consumption_replay |
 | `test_update_queue.UpdateQueueCliContractTests.test_cli_requires_one_current_writer_action` | `Tools/execution/task_runtime/update_queue.py` | `contract` | True | current_queue_writer_cli_contract |
 | `test_update_queue.UpdateQueueProjectionUnitTests.test_close_projection_preserves_or_transfers_one_successor` | `Tools/execution/task_runtime/update_queue.py` | `unit` | True | closed_coverage_projection |
 | `test_update_queue.UpdateQueueProjectionUnitTests.test_close_projection_rejects_ambiguous_successors` | `Tools/execution/task_runtime/update_queue.py` | `unit` | True | closed_coverage_projection |
@@ -1761,7 +1766,12 @@ Ownership fields come from `Tools/test-ownership.yaml`; fixture entrypoints and 
 | `test_update_queue.MergeRollbackIntegrationTests.test_preapply_rollback_archives_delta_and_records_invalidation` | `update_queue._transition_item` | `test_update_queue.MergeRollbackIntegrationTests.test_preapply_rollback_archives_delta_and_records_invalidation` | `integration` | — | temp=1, full-copy=1 | — | — | temp=1, copy=7, full-copy=2 | `Tools/tests/fixtures/integration/update_queue_checkpoints.py:_validated_checkpoint_template[dynamic]` | `Tools/tests/fixtures/integration/update_queue_checkpoints.py:install_update_queue_checkpoint` | False | — | `keep` |
 | `test_update_queue.OpenWriterCasSlowTests.test_page_change_after_state_write_aborts_without_losing_the_edit` | `update_queue._run` | `test_update_queue.OpenWriterCasSlowTests.test_page_change_after_state_write_aborts_without_losing_the_edit` | `slow` | — | temp=1, full-copy=1 | — | — | temp=1, copy=7, full-copy=2 | `Tools/tests/fixtures/integration/update_queue_checkpoints.py:_validated_checkpoint_template[dynamic]` | `Tools/tests/fixtures/integration/update_queue_checkpoints.py:install_update_queue_checkpoint` | False | — | `keep` |
 | `test_update_queue.OpenWriterIntegrationTests.test_json_transport_persists_the_current_open_receipt` | `update_queue._run` | `test_update_queue.OpenWriterIntegrationTests.test_json_transport_persists_the_current_open_receipt` | `integration` | proc=1 | temp=1, full-copy=1 | — | — | temp=1, copy=7, full-copy=2 | `Tools/tests/fixtures/integration/update_queue_checkpoints.py:_validated_checkpoint_template[dynamic]` | `Tools/tests/fixtures/integration/update_queue_checkpoints.py:install_update_queue_checkpoint` | False | — | `keep` |
+| `test_update_queue.OpenWriterIntegrationTests.test_revalidated_admission_consumes_the_real_deferred_aggregate` | `update_queue._run` | `test_update_queue.OpenWriterIntegrationTests.test_revalidated_admission_consumes_the_real_deferred_aggregate` | `integration` | — | temp=1, full-copy=1 | — | — | temp=1, copy=7, full-copy=2 | `Tools/tests/fixtures/integration/update_queue_checkpoints.py:_validated_checkpoint_template[dynamic]` | `Tools/tests/fixtures/integration/update_queue_checkpoints.py:install_update_queue_checkpoint` | False | — | `keep` |
 | `test_update_queue.ReceiptAppendRecoverySlowTests.test_foreign_append_after_own_receipt_preserves_log_and_lock` | `update_queue._run` | `test_update_queue.ReceiptAppendRecoverySlowTests.test_foreign_append_after_own_receipt_preserves_log_and_lock` | `slow` | — | temp=1, full-copy=1 | — | — | temp=1, copy=7, full-copy=2 | `Tools/tests/fixtures/integration/update_queue_checkpoints.py:_validated_checkpoint_template[dynamic]` | `Tools/tests/fixtures/integration/update_queue_checkpoints.py:install_update_queue_checkpoint` | False | — | `keep` |
+| `test_update_queue.StandardsRevalidationConsumptionTests.test_admission_consumes_without_a_prior_revalidation_hold` | `revalidation.consumed_standards_revalidation_keys` | `test_update_queue.StandardsRevalidationConsumptionTests.test_admission_consumes_without_a_prior_revalidation_hold` | `unit` | — | — | — | — | — | — | — | False | — | `keep` |
+| `test_update_queue.StandardsRevalidationConsumptionTests.test_admission_still_requires_current_matching_aggregate_evidence` | `revalidation.consumed_standards_revalidation_keys` | `test_update_queue.StandardsRevalidationConsumptionTests.test_admission_still_requires_current_matching_aggregate_evidence` | `unit` | — | — | — | — | — | — | — | False | — | `keep` |
+| `test_update_queue.StandardsRevalidationConsumptionTests.test_evidenced_hold_discharge_retains_its_existing_replay` | `revalidation.consumed_standards_revalidation_keys` | `test_update_queue.StandardsRevalidationConsumptionTests.test_evidenced_hold_discharge_retains_its_existing_replay` | `unit` | — | — | — | — | — | — | — | False | — | `keep` |
+| `test_update_queue.StandardsRevalidationConsumptionTests.test_other_edges_cannot_consume_an_aggregate` | `revalidation.consumed_standards_revalidation_keys` | `test_update_queue.StandardsRevalidationConsumptionTests.test_other_edges_cannot_consume_an_aggregate` | `unit` | — | — | — | — | — | — | — | False | — | `keep` |
 | `test_update_queue.UpdateQueueCliContractTests.test_cli_requires_one_current_writer_action` | `update_queue.main` | `test_update_queue.UpdateQueueCliContractTests.test_cli_requires_one_current_writer_action` | `contract` | — | — | — | — | — | — | — | False | — | `keep` |
 | `test_update_queue.UpdateQueueProjectionUnitTests.test_close_projection_preserves_or_transfers_one_successor` | `update_queue._project_closed_coverage` | `test_update_queue.UpdateQueueProjectionUnitTests.test_close_projection_preserves_or_transfers_one_successor` | `unit` | — | — | — | — | — | — | — | False | — | `keep` |
 | `test_update_queue.UpdateQueueProjectionUnitTests.test_close_projection_rejects_ambiguous_successors` | `update_queue._project_closed_coverage` | `test_update_queue.UpdateQueueProjectionUnitTests.test_close_projection_rejects_ambiguous_successors` | `unit` | — | — | — | — | — | — | — | False | — | `keep` |

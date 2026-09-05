@@ -2725,6 +2725,12 @@ tests:
         semantics: closed_coverage_projection
         owner_contract_symbol: update_queue._project_closed_coverage
         parallel_safe: true
+      - selector: StandardsRevalidationConsumptionTests.*
+        owner: Tools/execution/task_runtime/queue_runtime/revalidation.py
+        level: unit
+        semantics: standards_revalidation_aggregate_consumption_replay
+        owner_contract_symbol: revalidation.consumed_standards_revalidation_keys
+        parallel_safe: true
       - selector: OpenWriterIntegrationTests.*
         level: integration
         semantics: queue_open_cli_writer_receipt_readback
