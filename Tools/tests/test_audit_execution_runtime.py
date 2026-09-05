@@ -90,6 +90,8 @@ class AuditExecutionRuntimeTests(unittest.TestCase):
         self.assertEqual("record-substantive-review", step["token"])
         self.assertIn("verdict", step["required_input"])
         self.assertEqual("record_substantive_review", step["resume_tool"])
+        self.assertEqual(1, step["resume_arguments"]["round"])
+        self.assertNotIn("round_1_receipt_id", step["resume_arguments"])
         self.assert_execution_consumer(step["resume_capability_id"])
 
     def test_existing_precursor_is_completed_not_reproduced(self):
