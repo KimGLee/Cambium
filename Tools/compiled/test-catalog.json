@@ -685,6 +685,7 @@
         "Tools/tests/test_batch_close_audit.py",
         "Tools/tests/test_canonical_registry_fixture.py",
         "Tools/tests/test_card_activation.py",
+        "Tools/tests/test_changed_scope_evidence.py",
         "Tools/tests/test_check_batch_close.py",
         "Tools/tests/test_check_corpus_plan.py",
         "Tools/tests/test_check_profile.py",
@@ -838,6 +839,7 @@
         "Tools/tests/test_audit_evidence_runtime.py",
         "Tools/tests/test_batch_close_audit.py",
         "Tools/tests/test_card_activation.py",
+        "Tools/tests/test_changed_scope_evidence.py",
         "Tools/tests/test_check_batch_close.py",
         "Tools/tests/test_check_corpus_plan.py",
         "Tools/tests/test_check_profile.py",
@@ -936,6 +938,7 @@
         "Tools/tests/test_audit_evidence_runtime.py",
         "Tools/tests/test_batch_close_audit.py",
         "Tools/tests/test_card_activation.py",
+        "Tools/tests/test_changed_scope_evidence.py",
         "Tools/tests/test_check_batch_close.py",
         "Tools/tests/test_check_corpus_plan.py",
         "Tools/tests/test_check_profile.py",
@@ -30307,7 +30310,7 @@
       "semantics": "card_activation_current_contract"
     },
     {
-      "case_count": 7,
+      "case_count": 9,
       "cases": [
         {
           "consumer_only": false,
@@ -31099,6 +31102,232 @@
           "selector": "ChangedScopeEvidenceIntegrationTests.test_current_record_kinds_cross_registered_consumer_boundaries",
           "semantics": "changed_scope_evidence_producer_consumer_seam",
           "test_id": "test_changed_scope_evidence.ChangedScopeEvidenceIntegrationTests.test_current_record_kinds_cross_registered_consumer_boundaries"
+        },
+        {
+          "consumer_only": false,
+          "disposition": "keep",
+          "duplicate_group": null,
+          "effects": {
+            "file_copies": 0,
+            "full_repository_copies": 0,
+            "process_calls": 0,
+            "temp_resources": 0
+          },
+          "execution": {
+            "builder_triggers": [],
+            "e2e_builder_entrypoints": [],
+            "fixture_entrypoints": [],
+            "full_lifecycle": false,
+            "full_lifecycle_entrypoints": [],
+            "lifecycle_signals": [],
+            "recurring_effects": {
+              "file_copies": 0,
+              "full_repository_copies": 0,
+              "process_calls": 0,
+              "temp_resources": 0
+            },
+            "scopes": {
+              "direct_method": {
+                "builder_triggers": [],
+                "e2e_builder_entrypoints": [],
+                "effects": {
+                  "file_copies": 0,
+                  "full_repository_copies": 0,
+                  "process_calls": 0,
+                  "temp_resources": 0
+                },
+                "first_use_builds": {},
+                "fixture_entrypoints": [],
+                "full_lifecycle": false,
+                "full_lifecycle_entrypoints": [],
+                "lifecycle_signals": []
+              },
+              "per_class": {
+                "builder_triggers": [],
+                "e2e_builder_entrypoints": [],
+                "effects": {
+                  "file_copies": 0,
+                  "full_repository_copies": 0,
+                  "process_calls": 0,
+                  "temp_resources": 0
+                },
+                "first_use_builds": {},
+                "fixture_entrypoints": [],
+                "full_lifecycle": false,
+                "full_lifecycle_entrypoints": [],
+                "lifecycle_signals": []
+              },
+              "per_method": {
+                "builder_triggers": [],
+                "e2e_builder_entrypoints": [],
+                "effects": {
+                  "file_copies": 0,
+                  "full_repository_copies": 0,
+                  "process_calls": 0,
+                  "temp_resources": 0
+                },
+                "first_use_builds": {},
+                "fixture_entrypoints": [],
+                "full_lifecycle": false,
+                "full_lifecycle_entrypoints": [],
+                "lifecycle_signals": []
+              },
+              "per_process": {
+                "builder_triggers": [],
+                "e2e_builder_entrypoints": [],
+                "effects": {
+                  "file_copies": 0,
+                  "full_repository_copies": 0,
+                  "process_calls": 0,
+                  "temp_resources": 0
+                },
+                "first_use_builds": {},
+                "fixture_entrypoints": [],
+                "full_lifecycle": false,
+                "full_lifecycle_entrypoints": [],
+                "lifecycle_signals": []
+              }
+            },
+            "transitive_effects": {
+              "file_copies": 0,
+              "full_repository_copies": 0,
+              "process_calls": 0,
+              "temp_resources": 0
+            },
+            "triggered_once_per_process": {
+              "builds": {},
+              "effects": {
+                "file_copies": 0,
+                "full_repository_copies": 0,
+                "process_calls": 0,
+                "temp_resources": 0
+              }
+            }
+          },
+          "level": "integration",
+          "lifecycle": "current",
+          "override": "ChangedScopeEvidenceIntegrationTests.*",
+          "owner": "Tools/execution/audit/changed_scope_evidence_contract.py",
+          "owner_contract_symbol": "changed_scope_evidence_contract.validate_record_for_plan",
+          "parallel_safe": true,
+          "path": "Tools/tests/test_changed_scope_evidence.py",
+          "primary_owner_test": "test_changed_scope_evidence.ChangedScopeEvidenceIntegrationTests.test_repository_change_retries_batch_target_without_artifact_drift",
+          "selector": "ChangedScopeEvidenceIntegrationTests.test_repository_change_retries_batch_target_without_artifact_drift",
+          "semantics": "changed_scope_evidence_producer_consumer_seam",
+          "test_id": "test_changed_scope_evidence.ChangedScopeEvidenceIntegrationTests.test_repository_change_retries_batch_target_without_artifact_drift"
+        },
+        {
+          "consumer_only": false,
+          "disposition": "keep",
+          "duplicate_group": null,
+          "effects": {
+            "file_copies": 0,
+            "full_repository_copies": 0,
+            "process_calls": 0,
+            "temp_resources": 0
+          },
+          "execution": {
+            "builder_triggers": [],
+            "e2e_builder_entrypoints": [],
+            "fixture_entrypoints": [],
+            "full_lifecycle": false,
+            "full_lifecycle_entrypoints": [],
+            "lifecycle_signals": [],
+            "recurring_effects": {
+              "file_copies": 0,
+              "full_repository_copies": 0,
+              "process_calls": 0,
+              "temp_resources": 0
+            },
+            "scopes": {
+              "direct_method": {
+                "builder_triggers": [],
+                "e2e_builder_entrypoints": [],
+                "effects": {
+                  "file_copies": 0,
+                  "full_repository_copies": 0,
+                  "process_calls": 0,
+                  "temp_resources": 0
+                },
+                "first_use_builds": {},
+                "fixture_entrypoints": [],
+                "full_lifecycle": false,
+                "full_lifecycle_entrypoints": [],
+                "lifecycle_signals": []
+              },
+              "per_class": {
+                "builder_triggers": [],
+                "e2e_builder_entrypoints": [],
+                "effects": {
+                  "file_copies": 0,
+                  "full_repository_copies": 0,
+                  "process_calls": 0,
+                  "temp_resources": 0
+                },
+                "first_use_builds": {},
+                "fixture_entrypoints": [],
+                "full_lifecycle": false,
+                "full_lifecycle_entrypoints": [],
+                "lifecycle_signals": []
+              },
+              "per_method": {
+                "builder_triggers": [],
+                "e2e_builder_entrypoints": [],
+                "effects": {
+                  "file_copies": 0,
+                  "full_repository_copies": 0,
+                  "process_calls": 0,
+                  "temp_resources": 0
+                },
+                "first_use_builds": {},
+                "fixture_entrypoints": [],
+                "full_lifecycle": false,
+                "full_lifecycle_entrypoints": [],
+                "lifecycle_signals": []
+              },
+              "per_process": {
+                "builder_triggers": [],
+                "e2e_builder_entrypoints": [],
+                "effects": {
+                  "file_copies": 0,
+                  "full_repository_copies": 0,
+                  "process_calls": 0,
+                  "temp_resources": 0
+                },
+                "first_use_builds": {},
+                "fixture_entrypoints": [],
+                "full_lifecycle": false,
+                "full_lifecycle_entrypoints": [],
+                "lifecycle_signals": []
+              }
+            },
+            "transitive_effects": {
+              "file_copies": 0,
+              "full_repository_copies": 0,
+              "process_calls": 0,
+              "temp_resources": 0
+            },
+            "triggered_once_per_process": {
+              "builds": {},
+              "effects": {
+                "file_copies": 0,
+                "full_repository_copies": 0,
+                "process_calls": 0,
+                "temp_resources": 0
+              }
+            }
+          },
+          "level": "integration",
+          "lifecycle": "current",
+          "override": "ChangedScopeEvidenceIntegrationTests.*",
+          "owner": "Tools/execution/audit/changed_scope_evidence_contract.py",
+          "owner_contract_symbol": "changed_scope_evidence_contract.validate_record_for_plan",
+          "parallel_safe": true,
+          "path": "Tools/tests/test_changed_scope_evidence.py",
+          "primary_owner_test": "test_changed_scope_evidence.ChangedScopeEvidenceIntegrationTests.test_runtime_change_retries_page_target_without_artifact_drift",
+          "selector": "ChangedScopeEvidenceIntegrationTests.test_runtime_change_retries_page_target_without_artifact_drift",
+          "semantics": "changed_scope_evidence_producer_consumer_seam",
+          "test_id": "test_changed_scope_evidence.ChangedScopeEvidenceIntegrationTests.test_runtime_change_retries_page_target_without_artifact_drift"
         }
       ],
       "default_level": "contract",
@@ -31106,7 +31335,7 @@
         "file_copies": 0,
         "full_repository_copies": 0,
         "process_calls": 0,
-        "temp_resources": 0
+        "temp_resources": 1
       },
       "effects": {
         "file_copies": 0,
@@ -31114,7 +31343,11 @@
         "process_calls": 0,
         "temp_resources": 0
       },
-      "fixture_dependencies": [],
+      "fixture_dependencies": [
+        "Tools/tests/support/canonical_registry_fixture.py",
+        "Tools/tests/support/profile_contract_fixture.py",
+        "Tools/tests/support/profile_load_fixture.py"
+      ],
       "lifecycle": "current",
       "override_count": 1,
       "owner": "Tools/execution/audit/changed_scope_evidence_contract.py",
@@ -142014,7 +142247,7 @@
       "contract": 512,
       "e2e": 4,
       "historical-read-only": 1,
-      "integration": 229,
+      "integration": 231,
       "slow": 68,
       "unit": 385
     },
@@ -142027,14 +142260,14 @@
       "temp_resources": 291
     },
     "module_scenario_first_use_builds": 15,
-    "parallel_safe_cases": 997,
+    "parallel_safe_cases": 999,
     "source_effects": {
       "file_copies": 6,
       "full_repository_copies": 15,
       "process_calls": 38,
       "temp_resources": 127
     },
-    "test_cases": 1199,
+    "test_cases": 1201,
     "test_modules": 131
   }
 }
