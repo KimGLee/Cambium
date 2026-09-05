@@ -26,7 +26,6 @@ from pathlib import Path, PurePosixPath
 import re
 import subprocess
 import sys
-import unittest
 
 REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
 TOOLS_ROOT = REPOSITORY_ROOT / "Tools"
@@ -38,6 +37,7 @@ import Tools.execution.context_delivery.card_contract as card_contract  # noqa: 
 import Tools.execution.context_delivery.read_set_contract as read_set_contract  # noqa: E402
 import Tools.governance.profile.profile_layout_contract as profile_layout_contract  # noqa: E402
 import Tools.platform.distribution.module_boundary_facts as module_boundary_facts  # noqa: E402
+import Tools.platform.distribution.test_runner as test_runner  # noqa: E402
 
 
 PYTHON_VERSIONS = ("3.10", "3.14")
@@ -483,21 +483,20 @@ def validate_selected_tests(root, value):
     return names
 
 
-def run_selected_tests(root, value):
+def run_selected_tests(root, value, jobs=2):
+    """Delegate an exact shard to the same catalog runner as local full runs.
+
+    CI owns impact selection, not another loader or isolation policy. The
+    existing runner keeps module-local fixtures together, honors parallel_safe,
+    and reports each module's elapsed time and result.
+    """
     names = validate_selected_tests(root, value)
     root = Path(root).resolve()
-    for import_root in (root, root / "Tools", root / "Tools" / "tests"):
-        import_string = str(import_root)
-        if import_string not in sys.path:
-            sys.path.insert(0, import_string)
-    modules = ["Tools.tests.%s" % Path(name).stem for name in names]
-    print("selected_test_modules = %s" % ",".join(names))
-    suite = unittest.defaultTestLoader.loadTestsFromNames(modules)
-    if suite.countTestCases() == 0:
-        print("ci-impact: selected test modules contain no tests", file=sys.stderr)
-        return 1
-    result = unittest.TextTestRunner(verbosity=1).run(suite)
-    return 0 if result.wasSuccessful() else 1
+    print("selected_test_modules = %s" % ",".join(names), flush=True)
+    return test_runner.main([
+        "full", "--root", str(root), "--python", sys.executable,
+        "--test-files", ",".join(names), "--jobs", str(jobs),
+    ])
 
 
 def _parser():
@@ -518,6 +517,8 @@ def _parser():
     run_parser = subparsers.add_parser("run-tests")
     run_parser.add_argument("--root", default=".")
     run_parser.add_argument("--tests", required=True)
+    run_parser.add_argument("--jobs", type=int, default=2,
+                            help="parallel-safe files per CI shard (default: 2)")
     return parser
 
 
@@ -537,7 +538,7 @@ def main(argv=None):
         return 0
     if args.command == "run-tests":
         try:
-            return run_selected_tests(root, args.tests)
+            return run_selected_tests(root, args.tests, args.jobs)
         except ValueError as error:
             print("ci-impact: %s" % error, file=sys.stderr)
             return 1

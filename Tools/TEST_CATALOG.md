@@ -6,7 +6,7 @@ This file is generated from `Tools/test-ownership.yaml` and static source facts.
 
 | Test modules | Test cases | Fixtures | Fixture bundles | Parallel-safe cases | Test process calls | Fixture process calls | Test full copies | Fixture full copies | Cross-test imports |
 | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| 131 | 1195 | 47 | 8 | 993 | 38 | 11 | 15 | 23 | 0 |
+| 131 | 1199 | 47 | 8 | 997 | 38 | 11 | 15 | 23 | 0 |
 
 ### Method-level transitive exposure
 
@@ -21,7 +21,7 @@ These counts identify test methods whose per-method, per-class, or per-process s
 | Metric | Before closure | Current |
 | --- | ---: | ---: |
 | Test modules | 129 | 131 |
-| Test cases | 2543 | 1195 |
+| Test cases | 2543 | 1199 |
 | Process-launch call sites | 192 | 49 |
 | Temporary-resource call sites | 233 | 144 |
 | Full repository copy call sites | 86 | 38 |
@@ -42,7 +42,7 @@ These counts identify test methods whose per-method, per-class, or per-process s
 | Level | Definition | Cases |
 | --- | --- | ---: |
 | `unit` | In-process deterministic computation owned by one module. | 385 |
-| `contract` | Schema, registry, owner, closed-set, or producer-consumer contract. | 508 |
+| `contract` | Schema, registry, owner, closed-set, or producer-consumer contract. | 512 |
 | `integration` | Adjacent production modules joined in an isolated temporary runtime. | 229 |
 | `e2e` | One representative complete current-contract lifecycle. | 4 |
 | `slow` | Real security, concurrency, crash, recovery, or host-isolation behavior. | 68 |
@@ -92,7 +92,7 @@ These counts identify test methods whose per-method, per-class, or per-process s
 | `Tools/tests/test_check_proof_audit_receipts.py` | `Tools/execution/audit/check_proof.py` | `unit` | True | 8 | 3 | 0 | 1 | 0 | 0 |
 | `Tools/tests/test_check_queue.py` | `Tools/execution/task_runtime/check_queue.py` | `unit` | True | 22 | 6 | 0 | 1 | 0 | 0 |
 | `Tools/tests/test_check_structure.py` | `Tools/platform/common/kblib.py` | `contract` | True | 3 | 2 | 0 | 0 | 0 | 0 |
-| `Tools/tests/test_ci_impact.py` | `.github/scripts/ci_impact.py` | `contract` | True | 8 | 1 | 0 | 1 | 0 | 0 |
+| `Tools/tests/test_ci_impact.py` | `.github/scripts/ci_impact.py` | `contract` | True | 10 | 2 | 0 | 1 | 0 | 0 |
 | `Tools/tests/test_close_gate_post_delta_consumer.py` | `kernel/K12 Quality Assurance/batch-close-closed-list.yaml` | `contract` | True | 11 | 2 | 0 | 1 | 0 | 1 |
 | `Tools/tests/test_compile_cli_contract.py` | `Tools/platform/agent_interface/compile_cli_contract.py` | `contract` | True | 13 | 12 | 0 | 0 | 0 | 0 |
 | `Tools/tests/test_compile_queue.py` | `Tools/execution/planning/compile_queue.py` | `unit` | True | 14 | 10 | 1 | 3 | 1 | 1 |
@@ -169,7 +169,7 @@ These counts identify test methods whose per-method, per-class, or per-process s
 | `Tools/tests/test_task_runtime_identity_field_contract.py` | `kernel/K13 Task Runtime and Execution Control/runtime-state-model.json` | `contract` | True | 3 | 0 | 0 | 0 | 0 | 0 |
 | `Tools/tests/test_task_runtime_runner.py` | `Tools/execution/task_runtime/task_runtime_runner.py` | `unit` | True | 15 | 3 | 0 | 3 | 0 | 0 |
 | `Tools/tests/test_template_parity.py` | `Tools/governance/profile/profile_schema_projection.py` | `integration` | False | 23 | 4 | 1 | 2 | 0 | 0 |
-| `Tools/tests/test_test_catalog.py` | `Tools/platform/distribution/test_catalog.py` | `contract` | True | 11 | 1 | 0 | 1 | 0 | 0 |
+| `Tools/tests/test_test_catalog.py` | `Tools/platform/distribution/test_catalog.py` | `contract` | True | 13 | 2 | 0 | 1 | 0 | 0 |
 | `Tools/tests/test_tool_availability.py` | `Tools/platform/agent_interface/tool_availability.py` | `contract` | True | 5 | 3 | 0 | 1 | 0 | 0 |
 | `Tools/tests/test_tool_catalog.py` | `Tools/platform/distribution/tool_catalog.py` | `contract` | True | 16 | 0 | 0 | 1 | 0 | 0 |
 | `Tools/tests/test_tool_runtime_primitives.py` | `Tools/platform/common/primitives.py` | `unit` | True | 3 | 0 | 0 | 0 | 0 | 0 |
@@ -366,6 +366,8 @@ Only mixed test modules need method-level rows. All other cases inherit their mo
 | `test_check_queue.TaskProgressTerminalStateUnitTests.test_noncomplete_task_cannot_claim_passed_maintenance_completion` | `Tools/execution/task_runtime/queue_runtime/task_progress.py` | `unit` | True | task_progress_terminal_state_contract |
 | `test_check_structure.StructureRegistryFilesystemIntegrationTests.test_current_registry_cli_and_resolution_failures_share_one_checkpoint` | `Tools/knowledge/structure/check_structure.py` | `integration` | False | structure_registry_current_profile_resolution_and_cli_seam |
 | `test_check_structure.StructureRegistryShapeContractTests.test_identity_graph_and_stable_references_fail_closed` | `Tools/platform/common/kblib.py` | `contract` | True | structure_registry_identity_graph_and_reference_contract |
+| `test_ci_impact.SelectedTestRunnerDelegationContractTests.test_ci_delegates_exact_files_and_failure_to_catalog_runner` | `.github/scripts/ci_impact.py` | `contract` | True | ci_exact_selection_delegates_to_catalog_execution_owner |
+| `test_ci_impact.SelectedTestRunnerDelegationContractTests.test_ci_exposes_explicit_jobs_without_changing_selection` | `.github/scripts/ci_impact.py` | `contract` | True | ci_exact_selection_delegates_to_catalog_execution_owner |
 | `test_ci_impact.ToolDependencyImpactContractTests.test_changed_tool_selects_reverse_closure_and_cli_surface` | `.github/scripts/ci_impact.py` | `contract` | True | changed_tool_reverse_test_closure |
 | `test_ci_impact.ToolDependencyImpactContractTests.test_recursive_leaf_and_wrapper_preserve_dependency_direction` | `.github/scripts/ci_impact.py` | `contract` | True | changed_tool_reverse_test_closure |
 | `test_ci_impact.ToolDependencyImpactContractTests.test_uncovered_or_overwide_tool_closure_requires_full` | `.github/scripts/ci_impact.py` | `contract` | True | changed_tool_reverse_test_closure |
@@ -653,6 +655,8 @@ Only mixed test modules need method-level rows. All other cases inherit their mo
 | `test_template_parity.TemplateParityTests.test_examples_obey_current_contracts_without_becoming_template_defaults` | `Tools/governance/profile/profile_contract.py` | `integration` | False | examples_obey_current_owner_without_becoming_defaults |
 | `test_template_parity.TemplateParityTests.test_interview_uses_semantic_paths_and_covers_every_registered_slot` | `profiles/interview.yaml` | `integration` | False | interview_to_semantic_slot_coverage |
 | `test_test_catalog.TestCatalogProjectionIntegrationTests.test_repository_manifest_and_both_projections_are_current` | `Tools/platform/distribution/test_catalog.py` | `integration` | False | test_catalog_repository_projection_freshness |
+| `test_test_catalog.TestRunnerSelectionContractTests.test_file_filter_keeps_all_requested_levels_and_rejects_invalid_files` | `Tools/platform/distribution/test_runner.py` | `contract` | True | exact_file_selection_preserves_catalog_levels_and_isolation |
+| `test_test_catalog.TestRunnerSelectionContractTests.test_selected_module_stays_one_isolated_group_and_honors_parallel_safety` | `Tools/platform/distribution/test_runner.py` | `contract` | True | exact_file_selection_preserves_catalog_levels_and_isolation |
 | `test_tool_availability.AvailabilityPartitionContractTests.test_target_permission_and_missing_module_partition_are_distinct` | `Tools/platform/agent_interface/tool_availability.py` | `contract` | True | target_specific_missing_tool_partition |
 | `test_tool_availability.AvailabilityPartitionContractTests.test_unknown_projection_target_is_refused_before_resolution` | `Tools/platform/agent_interface/tool_availability.py` | `contract` | True | target_specific_missing_tool_partition |
 | `test_tool_availability.BoundaryDeclarationContractTests.test_missing_boundary_list_is_refused` | `Tools/platform/agent_interface/tool_availability.py` | `contract` | True | distribution_boundary_top_level_tool_exclusions |
@@ -1054,6 +1058,8 @@ Ownership fields come from `Tools/test-ownership.yaml`; fixture entrypoints and 
 | `test_ci_impact.ChangedPathImpactContractTests.test_direct_test_and_tools_readme_select_owned_tests` | `ci_impact.plan_changes` | `test_ci_impact.ChangedPathImpactContractTests.test_direct_test_and_tools_readme_select_owned_tests` | `contract` | — | — | temp=1 | — | — | — | — | False | — | `keep` |
 | `test_ci_impact.ChangedPathImpactContractTests.test_event_and_change_boundaries_fail_closed` | `ci_impact.plan_changes` | `test_ci_impact.ChangedPathImpactContractTests.test_event_and_change_boundaries_fail_closed` | `contract` | — | — | temp=1 | — | — | — | — | False | — | `keep` |
 | `test_ci_impact.ChangedPathImpactContractTests.test_shared_authority_and_unclassified_paths_require_full` | `ci_impact.plan_changes` | `test_ci_impact.ChangedPathImpactContractTests.test_shared_authority_and_unclassified_paths_require_full` | `contract` | — | — | temp=1 | — | — | — | — | False | — | `keep` |
+| `test_ci_impact.SelectedTestRunnerDelegationContractTests.test_ci_delegates_exact_files_and_failure_to_catalog_runner` | `ci_impact.run_selected_tests` | `test_ci_impact.SelectedTestRunnerDelegationContractTests.test_ci_delegates_exact_files_and_failure_to_catalog_runner` | `contract` | — | — | — | — | — | — | — | False | — | `keep` |
+| `test_ci_impact.SelectedTestRunnerDelegationContractTests.test_ci_exposes_explicit_jobs_without_changing_selection` | `ci_impact.run_selected_tests` | `test_ci_impact.SelectedTestRunnerDelegationContractTests.test_ci_exposes_explicit_jobs_without_changing_selection` | `contract` | — | — | — | — | — | — | — | False | — | `keep` |
 | `test_ci_impact.ToolDependencyImpactContractTests.test_changed_tool_selects_reverse_closure_and_cli_surface` | `ci_impact.impacted_tool_tests` | `test_ci_impact.ToolDependencyImpactContractTests.test_changed_tool_selects_reverse_closure_and_cli_surface` | `contract` | — | — | temp=1 | — | — | — | — | False | — | `keep` |
 | `test_ci_impact.ToolDependencyImpactContractTests.test_recursive_leaf_and_wrapper_preserve_dependency_direction` | `ci_impact.impacted_tool_tests` | `test_ci_impact.ToolDependencyImpactContractTests.test_recursive_leaf_and_wrapper_preserve_dependency_direction` | `contract` | — | — | temp=1 | — | — | — | — | False | — | `keep` |
 | `test_ci_impact.ToolDependencyImpactContractTests.test_uncovered_or_overwide_tool_closure_requires_full` | `ci_impact.impacted_tool_tests` | `test_ci_impact.ToolDependencyImpactContractTests.test_uncovered_or_overwide_tool_closure_requires_full` | `contract` | — | — | temp=1 | — | — | — | — | False | — | `keep` |
@@ -1775,6 +1781,8 @@ Ownership fields come from `Tools/test-ownership.yaml`; fixture entrypoints and 
 | `test_test_catalog.TestCatalogContractTests.test_transitive_lifecycle_and_scopes_reject_a_fast_classification` | `test_catalog.build_catalog` | `test_test_catalog.TestCatalogContractTests.test_transitive_lifecycle_and_scopes_reject_a_fast_classification` | `contract` | — | — | temp=1 | — | — | — | — | False | — | `keep` |
 | `test_test_catalog.TestCatalogContractTests.test_unknown_ordinary_fixture_still_fails_closed` | `test_catalog.build_catalog` | `test_test_catalog.TestCatalogContractTests.test_unknown_ordinary_fixture_still_fails_closed` | `contract` | — | — | temp=1 | — | — | — | — | False | — | `keep` |
 | `test_test_catalog.TestCatalogProjectionIntegrationTests.test_repository_manifest_and_both_projections_are_current` | `test_catalog.build_catalog` | `test_test_catalog.TestCatalogProjectionIntegrationTests.test_repository_manifest_and_both_projections_are_current` | `integration` | — | — | — | — | — | — | — | False | — | `keep` |
+| `test_test_catalog.TestRunnerSelectionContractTests.test_file_filter_keeps_all_requested_levels_and_rejects_invalid_files` | `test_runner.select_test_ids` | `test_test_catalog.TestRunnerSelectionContractTests.test_file_filter_keeps_all_requested_levels_and_rejects_invalid_files` | `contract` | — | — | — | — | — | — | — | False | — | `keep` |
+| `test_test_catalog.TestRunnerSelectionContractTests.test_selected_module_stays_one_isolated_group_and_honors_parallel_safety` | `test_runner.select_test_ids` | `test_test_catalog.TestRunnerSelectionContractTests.test_selected_module_stays_one_isolated_group_and_honors_parallel_safety` | `contract` | — | — | — | — | — | — | — | False | — | `keep` |
 | `test_tool_availability.AvailabilityPartitionContractTests.test_target_permission_and_missing_module_partition_are_distinct` | `tool_availability.ToolAvailability.partition` | `test_tool_availability.AvailabilityPartitionContractTests.test_target_permission_and_missing_module_partition_are_distinct` | `contract` | — | — | — | — | — | — | — | False | — | `keep` |
 | `test_tool_availability.AvailabilityPartitionContractTests.test_unknown_projection_target_is_refused_before_resolution` | `tool_availability.ToolAvailability.partition` | `test_tool_availability.AvailabilityPartitionContractTests.test_unknown_projection_target_is_refused_before_resolution` | `contract` | — | — | — | — | — | — | — | False | — | `keep` |
 | `test_tool_availability.BoundaryDeclarationContractTests.test_missing_boundary_list_is_refused` | `tool_availability.excluded_tool_modules` | `test_tool_availability.BoundaryDeclarationContractTests.test_missing_boundary_list_is_refused` | `contract` | — | — | — | — | — | — | — | False | — | `keep` |

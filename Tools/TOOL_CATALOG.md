@@ -11,7 +11,7 @@ Regenerate with `python3 Tools/generate_tool_catalog.py .`. Verify without writi
 |---|---|
 | `Tools/tool-taxonomy.yaml` | `sha256:44c6a46acf604ab28023a4028fb026bf11b01582093450bd113ff3527c95998f` |
 | `Tools/module-boundaries.yaml` | `sha256:09bc4520214f913dc429791f35cacceb5f3d0109fe41475d198832f7be5d5457` |
-| `Tools/agent-interface-policy.yaml` | `sha256:ef9d1e486f2cce90bfe7a537f75303e2ee0215040b31f0a560896c117f44ba24` |
+| `Tools/agent-interface-policy.yaml` | `sha256:fc3170ca859a95ec95290fef9ef9e631a641d78d32e8017b3c09060935125092` |
 | `Tools/operation-capabilities.yaml` | `sha256:840cf7be38dfcec9c2f013e9f7ef78fca7558a179eb89e961b92ff984e0e441b` |
 
 Static consumption, private access, and dependency facts come from `Tools/platform/distribution/module_boundary_facts.py` over shipped production Python modules; its excluded directories are `__pycache__`, `compiled`, `schemas`, `tests`. CLI and MCP exposure and the shared Host transport come only from `Tools/agent-interface-policy.yaml`. The static Python scan deliberately excludes `subprocess-cli`, `registry-driven-dynamic-import`; registered capability relationships and MCP subprocess routes are listed separately below rather than being mislabeled as Python symbol imports.

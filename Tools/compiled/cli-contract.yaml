@@ -154,10 +154,10 @@ source_files:
   - Tools/stamp_cards.py
   - Tools/update_queue.py
   - Tools/update_task.py
-source_hash: sha256:f7922489af9390cea5241f322a9e129cdb2657c9dffb0d585c613b90eed17f94
+source_hash: sha256:6e72b843c720c1218078a3329c85c1e33be126a879a7973778d395f6713ca290
 agent_interface_policy:
   path: Tools/agent-interface-policy.yaml
-  sha256: sha256:ef9d1e486f2cce90bfe7a537f75303e2ee0215040b31f0a560896c117f44ba24
+  sha256: sha256:fc3170ca859a95ec95290fef9ef9e631a641d78d32e8017b3c09060935125092
 runtime_path_registry:
   path: Tools/execution/task_runtime/runtime_paths.py
   sha256: sha256:f80bf68ddaf03e87f6e306a39d9095e0a5f6eac56677c69d05c80caf43a19131
@@ -8183,7 +8183,7 @@ tools:
     source_hash: sha256:aee907dd12ee3686b8797504e95599af2396f10ddc5026b895c178e0e0961a4c
     implementation_module: Tools.platform.distribution.test_runner
     implementation_path: Tools/platform/distribution/test_runner.py
-    implementation_source_hash: sha256:7d38431df27b5131635c6d13b6eeccbd49fd0293ca7aabe9612e395a454c74b5
+    implementation_source_hash: sha256:9bbd43319fe9ae3d43801fdf9a55e8b207013f70024483809641586db9368617
     description: Run catalog-owned tests with bounded, file-level isolation. The ownership manifest decides which cases are safe to overlap. One child process always receives every selected case from one test module, so failures remain attributable to a file and module-local process state is never split across workers. Modules not declared ``parallel_safe`` run serially.
     arguments:
       - dest: suite
@@ -8213,6 +8213,17 @@ tools:
         action: store
         type: null
         help: null
+      - dest: test_files
+        option_strings:
+          - --test-files
+        required: false
+        default: null
+        default_type: NoneType
+        choices: null
+        nargs: null
+        action: store
+        type: null
+        help: comma-separated exact catalog test filenames; preserve every selected level and file isolation
       - dest: python
         option_strings:
           - --python
@@ -8251,7 +8262,7 @@ tools:
     receipt_extensions_extraction: complete
     receipt_extension_sources:
       - path: Tools/platform/distribution/test_runner.py
-        sha256: sha256:7d38431df27b5131635c6d13b6eeccbd49fd0293ca7aabe9612e395a454c74b5
+        sha256: sha256:9bbd43319fe9ae3d43801fdf9a55e8b207013f70024483809641586db9368617
     agent_interface:
       exposure: cli-only
       workspace_argument: root
@@ -8261,6 +8272,7 @@ tools:
         - list_only
         - python
         - suite
+        - test_files
       path_arguments: []
       external_write: none
   - tool: scaffold_profile

@@ -658,7 +658,7 @@ tools:
     exposure: cli-only
     workspace_argument: root
     workspace_access: read
-    value_arguments: [suite, python, jobs, list_only]
+    value_arguments: [suite, python, jobs, list_only, test_files]
     read_paths: []
     write_paths: []
     read_write_paths: []

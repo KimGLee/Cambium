@@ -61,12 +61,31 @@ def _catalog(root: pathlib.Path) -> dict:
     return value
 
 
-def select_test_ids(catalog: dict, suite: str) -> list[str]:
+def select_test_ids(catalog: dict, suite: str, test_files: str | None = None) -> list[str]:
+    """Select current cases, optionally restricted to exact catalog files.
+
+    File selection changes neither levels nor the catalog's ``parallel_safe``
+    declarations. It is shared by local use and CI's already-selected shards.
+    """
     selected_levels = set(LEVELS) if suite == "full" else (
         {"unit", "contract"} if suite == "fast" else {suite}
     )
+    names = None
+    if test_files is not None:
+        names = test_files.split(",")
+        available = {pathlib.PurePosixPath(module["path"]).name
+                     for module in catalog["modules"]}
+        if not all(names) or len(names) != len(set(names)):
+            raise TestRunnerError("--test-files must be a nonempty, unique file list")
+        unknown = sorted(set(names) - available)
+        if unknown:
+            raise TestRunnerError("--test-files is absent from the current catalog: %s" %
+                                  ", ".join(unknown))
+        names = set(names)
     selected = []
     for module in catalog["modules"]:
+        if names is not None and pathlib.PurePosixPath(module["path"]).name not in names:
+            continue
         for case in module.get("cases", []):
             if case.get("disposition") == "keep" and case.get("level") in selected_levels:
                 selected.append(case["test_id"])
@@ -258,6 +277,10 @@ def main(argv=None) -> int:
     )
     parser.add_argument("--root", default=".")
     parser.add_argument(
+        "--test-files",
+        help="comma-separated exact catalog test filenames; preserve every selected level and file isolation",
+    )
+    parser.add_argument(
         "--python",
         default=None,
         help="interpreter used to run test files (default: the current interpreter)",
@@ -283,7 +306,14 @@ def main(argv=None) -> int:
     # import a mixed module repeatedly and rebuild the same isolated fixture
     # once per classification, defeating both ownership and runtime closure.
     suite_names = (args.suite,)
-    selections = {suite: select_test_ids(catalog, suite) for suite in suite_names}
+    try:
+        selections = {suite: select_test_ids(catalog, suite, args.test_files)
+                      for suite in suite_names}
+        if args.test_files is not None and not any(selections.values()):
+            raise TestRunnerError("--test-files selects no current cases in this suite")
+    except TestRunnerError as exc:
+        print("test runner: FAIL: %s" % exc, file=sys.stderr)
+        return 1
     if args.list_only:
         for suite in suite_names:
             for test_id in selections[suite]:
@@ -300,7 +330,7 @@ def main(argv=None) -> int:
     selected_total = sum(len(selections[suite]) for suite in suite_names)
     if args.suite == "full":
         level_counts = {
-            level: len(select_test_ids(catalog, level))
+            level: len(select_test_ids(catalog, level, args.test_files))
             for level in LEVELS
         }
         print(

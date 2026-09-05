@@ -169,7 +169,7 @@ jobs:
           printf 'CAMBIUM_RENDER_BROWSER=%s\n' "$renderer_browser" >> "$GITHUB_ENV"
           printf 'CAMBIUM_RENDER_NODE_MODULES=%s\n' "$renderer_workspace/node_modules" >> "$GITHUB_ENV"
 
-      - name: Run required unit tests
+      - name: Run catalog-selected tests
         env:
           TEST_FILES: ${{ matrix.test-files }}
         run: make test-selected PYTHON=python TEST_FILES="$TEST_FILES"

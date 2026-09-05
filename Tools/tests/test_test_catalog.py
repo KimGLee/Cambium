@@ -1,16 +1,67 @@
 """Owner contracts for test discovery, classification, and projections."""
 
 import hashlib
+import io
+from contextlib import redirect_stdout
 import json
 from pathlib import Path
 import tempfile
 import unittest
+from unittest import mock
 
 import Tools.platform.common.kblib as kblib
 from Tools.platform.distribution import test_catalog, test_runner
 
 
 ROOT = Path(__file__).resolve().parents[2]
+
+
+class TestRunnerSelectionContractTests(unittest.TestCase):
+    """Exact CI/local selection and grouping over in-memory owner objects."""
+
+    @staticmethod
+    def catalog():
+        return {"schema_version": 1, "modules": [
+            {"path": "Tools/tests/test_alpha.py", "cases": [
+                {"test_id": "test_alpha.Fast.test_value", "level": "unit",
+                 "disposition": "keep", "parallel_safe": True},
+                {"test_id": "test_alpha.Integration.test_seam", "level": "integration",
+                 "disposition": "keep", "parallel_safe": False},
+            ]},
+            {"path": "Tools/tests/test_beta.py", "cases": [
+                {"test_id": "test_beta.Contract.test_other", "level": "contract",
+                 "disposition": "keep", "parallel_safe": True},
+            ]},
+        ]}
+
+    def test_file_filter_keeps_all_requested_levels_and_rejects_invalid_files(self):
+        catalog = self.catalog()
+        expected = sorted(row["test_id"] for row in catalog["modules"][0]["cases"])
+        self.assertEqual(expected, test_runner.select_test_ids(catalog, "full", "test_alpha.py"))
+        self.assertEqual([expected[0]], test_runner.select_test_ids(catalog, "fast", "test_alpha.py"))
+        for names in ("", "test_alpha.py,", "test_alpha.py,test_alpha.py",
+                      "test_missing.py", "../test_alpha.py"):
+            with self.subTest(names=names), self.assertRaises(test_runner.TestRunnerError):
+                test_runner.select_test_ids(catalog, "full", names)
+
+    def test_selected_module_stays_one_isolated_group_and_honors_parallel_safety(self):
+        def child(group, **_kwargs):
+            return test_runner.GroupResult(group, 0, "", "", 0.01)
+
+        with mock.patch.object(test_runner, "_catalog", return_value=self.catalog()), \
+                mock.patch.object(test_runner, "_run_child", side_effect=child) as run, \
+                redirect_stdout(io.StringIO()) as output:
+            code = test_runner.main([
+                "full", "--root", str(ROOT), "--test-files", "test_alpha.py",
+                "--jobs", "2"])
+        self.assertEqual(0, code)
+        run.assert_called_once()
+        group = run.call_args.args[0]
+        self.assertEqual("test_alpha", group.module)
+        self.assertEqual(2, len(group.test_ids))
+        self.assertFalse(group.parallel_safe)
+        self.assertIn("mode=serial", output.getvalue())
+        self.assertIn("selected=2 completed=2", output.getvalue())
 
 
 class SyntheticCatalogWorkspace:
