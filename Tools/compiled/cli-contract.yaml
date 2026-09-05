@@ -154,7 +154,7 @@ source_files:
   - Tools/stamp_cards.py
   - Tools/update_queue.py
   - Tools/update_task.py
-source_hash: sha256:940f0657c50a4a98e761357b5aac0dcc1b08f4770ee0904cdfbfaadd7199cf3f
+source_hash: sha256:8496d6d1c5303f18bb6decbeecc8ac5a1173b962534e95facc1397181ebd1d3b
 agent_interface_policy:
   path: Tools/agent-interface-policy.yaml
   sha256: sha256:fc3170ca859a95ec95290fef9ef9e631a641d78d32e8017b3c09060935125092
@@ -3439,7 +3439,7 @@ tools:
     source_hash: sha256:e3394f88fa9bb21c3dc83a2f93e0b1fd135edd8d7098aa422b6dbc8891e35777
     implementation_module: Tools.knowledge.metadata.check_vocab
     implementation_path: Tools/knowledge/metadata/check_vocab.py
-    implementation_source_hash: sha256:b13f2a858541b9bf599e0802515107d3a6dc51e70b715643016d72686bae8050
+    implementation_source_hash: sha256:4d079b46e212786e4e053a5c578e1abe7be2571485977595227b88f799ec3c87
     description: Frontmatter controlled-vocabulary check
     arguments:
       - dest: vault_root
@@ -3550,7 +3550,7 @@ tools:
     receipt_extensions_extraction: partial
     receipt_extension_sources:
       - path: Tools/knowledge/metadata/check_vocab.py
-        sha256: sha256:b13f2a858541b9bf599e0802515107d3a6dc51e70b715643016d72686bae8050
+        sha256: sha256:4d079b46e212786e4e053a5c578e1abe7be2571485977595227b88f799ec3c87
     agent_interface:
       exposure: mcp
       workspace_argument: vault_root

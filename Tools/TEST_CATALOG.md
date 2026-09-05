@@ -6,7 +6,7 @@ This file is generated from `Tools/test-ownership.yaml` and static source facts.
 
 | Test modules | Test cases | Fixtures | Fixture bundles | Parallel-safe cases | Test process calls | Fixture process calls | Test full copies | Fixture full copies | Cross-test imports |
 | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| 131 | 1201 | 47 | 8 | 999 | 38 | 11 | 15 | 23 | 0 |
+| 131 | 1202 | 47 | 8 | 1000 | 38 | 11 | 15 | 23 | 0 |
 
 ### Method-level transitive exposure
 
@@ -21,7 +21,7 @@ These counts identify test methods whose per-method, per-class, or per-process s
 | Metric | Before closure | Current |
 | --- | ---: | ---: |
 | Test modules | 129 | 131 |
-| Test cases | 2543 | 1201 |
+| Test cases | 2543 | 1202 |
 | Process-launch call sites | 192 | 49 |
 | Temporary-resource call sites | 233 | 144 |
 | Full repository copy call sites | 86 | 38 |
@@ -42,7 +42,7 @@ These counts identify test methods whose per-method, per-class, or per-process s
 | Level | Definition | Cases |
 | --- | --- | ---: |
 | `unit` | In-process deterministic computation owned by one module. | 385 |
-| `contract` | Schema, registry, owner, closed-set, or producer-consumer contract. | 512 |
+| `contract` | Schema, registry, owner, closed-set, or producer-consumer contract. | 513 |
 | `integration` | Adjacent production modules joined in an isolated temporary runtime. | 231 |
 | `e2e` | One representative complete current-contract lifecycle. | 4 |
 | `slow` | Real security, concurrency, crash, recovery, or host-isolation behavior. | 68 |
@@ -115,7 +115,7 @@ These counts identify test methods whose per-method, per-class, or per-process s
 | `Tools/tests/test_issue_owner.py` | `Tools/module-boundaries.yaml` | `unit` | True | 8 | 0 | 0 | 0 | 0 | 0 |
 | `Tools/tests/test_kblib_yaml.py` | `Tools/platform/common/kblib.py` | `contract` | True | 9 | 0 | 0 | 0 | 0 | 0 |
 | `Tools/tests/test_maintenance_candidates.py` | `Tools/knowledge/content/maintenance_candidates.py` | `unit` | True | 12 | 0 | 0 | 1 | 0 | 0 |
-| `Tools/tests/test_managed_content_scope.py` | `Tools/platform/common/kblib.py` | `contract` | True | 10 | 6 | 2 | 1 | 0 | 0 |
+| `Tools/tests/test_managed_content_scope.py` | `Tools/platform/common/kblib.py` | `contract` | True | 11 | 6 | 2 | 1 | 0 | 0 |
 | `Tools/tests/test_mcp_server.py` | `Tools/platform/agent_interface/mcp_server.py` | `integration` | False | 47 | 17 | 13 | 5 | 1 | 0 |
 | `Tools/tests/test_metadata_contract_projections.py` | `Tools/governance/control/metadata_execution_contract.py` | `contract` | True | 6 | 0 | 0 | 0 | 0 | 0 |
 | `Tools/tests/test_metadata_execution_contract.py` | `Tools/governance/control/metadata_execution_contract.py` | `contract` | True | 5 | 1 | 0 | 1 | 0 | 0 |
@@ -1280,6 +1280,7 @@ Ownership fields come from `Tools/test-ownership.yaml`; fixture entrypoints and 
 | `test_managed_content_scope.RepositoryStructureCliIntegrationTests.test_cli_forwards_profile_reports_verdict_and_creates_no_state` | `repository_structure.main` | `test_managed_content_scope.RepositoryStructureCliIntegrationTests.test_cli_forwards_profile_reports_verdict_and_creates_no_state` | `integration` | — | — | — | — | — | — | — | False | — | `keep` |
 | `test_managed_content_scope.RepositoryStructureUnitTests.test_repository_files_filters_control_state_and_suffixes` | `repository_structure.repository_files` | `test_managed_content_scope.RepositoryStructureUnitTests.test_repository_files_filters_control_state_and_suffixes` | `unit` | — | — | — | — | — | — | — | False | — | `keep` |
 | `test_managed_content_scope.RepositoryStructureUnitTests.test_yaml_scope_is_the_selected_profile_plus_kernel` | `repository_structure.check_repository_structure` | `test_managed_content_scope.RepositoryStructureUnitTests.test_yaml_scope_is_the_selected_profile_plus_kernel` | `unit` | — | — | — | — | — | — | — | False | — | `keep` |
+| `test_managed_content_scope.VocabularyScopeUnitTests.test_scan_files_filters_only_explicit_exclusions` | `kblib.repository_content_files` | `test_managed_content_scope.VocabularyScopeUnitTests.test_scan_files_filters_only_explicit_exclusions` | `contract` | — | — | — | — | — | — | — | False | — | `keep` |
 | `test_mcp_server.ArgvRenderingContractTests.test_declared_order_actions_and_transport_owned_json_render_once` | `cli_argv_rendering_contract` | `test_mcp_server.ArgvRenderingContractTests.test_declared_order_actions_and_transport_owned_json_render_once` | `contract` | — | — | — | — | — | — | — | False | — | `keep` |
 | `test_mcp_server.ArgvRenderingContractTests.test_unrenderable_argument_shapes_share_one_typed_refusal` | `cli_argv_rendering_contract` | `test_mcp_server.ArgvRenderingContractTests.test_unrenderable_argument_shapes_share_one_typed_refusal` | `contract` | — | — | — | — | — | — | — | False | — | `keep` |
 | `test_mcp_server.BindingTests.test_a_platform_without_no_follow_descriptors_refuses_initialize` | `mcp_workspace_descriptor_contract` | `test_mcp_server.BindingTests.test_a_platform_without_no_follow_descriptors_refuses_initialize` | `contract` | — | — | — | — | — | — | — | False | — | `keep` |

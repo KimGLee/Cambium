@@ -166,7 +166,7 @@ def _substantive_review_step(result, item, status, obligation, *, prior=None,
     arguments = _base_arguments(item, status, obligation)
     arguments["page"] = obligation["target"]
     if prior is None:
-        arguments.update({"round": 1, "round_1_receipt_id": None})
+        arguments["round"] = 1
         required_input = {
             "authoring_context_id": "string",
             "reviewer_context_id": "string",
