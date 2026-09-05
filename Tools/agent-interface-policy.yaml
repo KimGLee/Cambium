@@ -807,12 +807,21 @@ tools:
     write_paths: []
     read_write_paths: [scope]
     external_write: none
+  - tool: prepare_rendering_runtime
+    exposure: cli-only
+    workspace_argument: root
+    workspace_access: read
+    value_arguments: [apply, require_browser, json]
+    read_paths: []
+    write_paths: []
+    read_write_paths: []
+    external_write: authorized-host-rendering-cache
   - tool: render_host_configs
     exposure: cli-only
     workspace_argument: root
     workspace_access: read
     value_arguments: [host, projection_target, distribution_root, workspace_root, check, sources]
-    read_paths: [projection]
+    read_paths: [projection, runtime_bindings]
     write_paths: []
     read_write_paths: [output_dir]
     external_write: none

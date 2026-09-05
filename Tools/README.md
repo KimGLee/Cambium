@@ -2,7 +2,7 @@
 
 `Tools/` contains Cambium's deterministic, repeatable, and testable programs. This README is navigation and operating guidance, not a copy of governance rules, state contracts, Cards, or Read Sets.
 
-Most Python mechanics use the standard library. Profile loading also requires the [fixed TOML and CUE toolchain](#profile-toolchain). [Static rendering setup](knowledge/rendering/README.md) covers its optional JavaScript and browser dependencies.
+Most Python mechanics use the standard library. Profile loading requires the [TOML and CUE toolchain](#profile-toolchain). The Agent uses [rendering preparation](prepare_rendering_runtime.py) following the [setup guide](knowledge/rendering/README.md); dependency bindings belong to Host configuration, not Profile or `.cambium`.
 
 ## Responsibility boundary
 

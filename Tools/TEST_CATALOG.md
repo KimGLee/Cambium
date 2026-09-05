@@ -6,7 +6,7 @@ This file is generated from `Tools/test-ownership.yaml` and static source facts.
 
 | Test modules | Test cases | Fixtures | Fixture bundles | Parallel-safe cases | Test process calls | Fixture process calls | Test full copies | Fixture full copies | Cross-test imports |
 | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| 130 | 1177 | 47 | 8 | 978 | 38 | 11 | 15 | 23 | 0 |
+| 131 | 1195 | 47 | 8 | 993 | 38 | 11 | 15 | 23 | 0 |
 
 ### Method-level transitive exposure
 
@@ -14,16 +14,16 @@ These counts identify test methods whose per-method, per-class, or per-process s
 
 | Process | Temporary resource | File copy | Full repository copy | E2E builder | Full lifecycle |
 | ---: | ---: | ---: | ---: | ---: | ---: |
-| 36 | 277 | 67 | 50 | 2 | 2 |
+| 36 | 291 | 74 | 50 | 2 | 2 |
 
 ## Before and current static baseline
 
 | Metric | Before closure | Current |
 | --- | ---: | ---: |
-| Test modules | 129 | 130 |
-| Test cases | 2543 | 1177 |
+| Test modules | 129 | 131 |
+| Test cases | 2543 | 1195 |
 | Process-launch call sites | 192 | 49 |
-| Temporary-resource call sites | 233 | 143 |
+| Temporary-resource call sites | 233 | 144 |
 | Full repository copy call sites | 86 | 38 |
 | Cross-test import sites | 22 | 0 |
 
@@ -41,11 +41,11 @@ These counts identify test methods whose per-method, per-class, or per-process s
 
 | Level | Definition | Cases |
 | --- | --- | ---: |
-| `unit` | In-process deterministic computation owned by one module. | 381 |
-| `contract` | Schema, registry, owner, closed-set, or producer-consumer contract. | 497 |
-| `integration` | Adjacent production modules joined in an isolated temporary runtime. | 227 |
+| `unit` | In-process deterministic computation owned by one module. | 385 |
+| `contract` | Schema, registry, owner, closed-set, or producer-consumer contract. | 508 |
+| `integration` | Adjacent production modules joined in an isolated temporary runtime. | 229 |
 | `e2e` | One representative complete current-contract lifecycle. | 4 |
-| `slow` | Real security, concurrency, crash, recovery, or host-isolation behavior. | 67 |
+| `slow` | Real security, concurrency, crash, recovery, or host-isolation behavior. | 68 |
 | `historical-read-only` | Current-contract sealed history that cannot regain current authority. | 1 |
 
 ## Test modules
@@ -126,6 +126,7 @@ These counts identify test methods whose per-method, per-class, or per-process s
 | `Tools/tests/test_page_frontmatter_contract.py` | `Tools/knowledge/metadata/page_frontmatter_contract.py` | `contract` | True | 2 | 0 | 0 | 2 | 0 | 0 |
 | `Tools/tests/test_phased_readback.py` | `Tools/execution/context_delivery/card_activation.py` | `contract` | True | 8 | 8 | 0 | 1 | 0 | 0 |
 | `Tools/tests/test_prepare_audit_plan.py` | `Tools/execution/audit/prepare_audit_plan.py` | `unit` | True | 16 | 0 | 0 | 0 | 0 | 0 |
+| `Tools/tests/test_prepare_rendering_runtime.py` | `Tools/platform/distribution/prepare_rendering_runtime.py` | `contract` | True | 11 | 0 | 0 | 1 | 1 | 0 |
 | `Tools/tests/test_profile_admission.py` | `Tools/governance/profile/profile_admission.py` | `integration` | True | 17 | 0 | 0 | 0 | 0 | 0 |
 | `Tools/tests/test_profile_batch_judgment_contract.py` | `Tools/governance/profile/profile_batch_judgment_contract.py` | `contract` | True | 10 | 0 | 0 | 1 | 0 | 0 |
 | `Tools/tests/test_profile_candidate.py` | `Tools/governance/profile/profile_candidate.py` | `unit` | True | 8 | 1 | 0 | 1 | 0 | 0 |
@@ -144,7 +145,7 @@ These counts identify test methods whose per-method, per-class, or per-process s
 | `Tools/tests/test_record_batch_review.py` | `Tools/execution/audit/record_batch_review.py` | `unit` | True | 6 | 0 | 0 | 0 | 0 | 0 |
 | `Tools/tests/test_record_corpus_acceptance.py` | `Tools/execution/planning/record_corpus_acceptance.py` | `integration` | True | 2 | 2 | 0 | 1 | 0 | 0 |
 | `Tools/tests/test_register_amendment.py` | `Tools/execution/task_runtime/register_amendment.py` | `integration` | False | 5 | 5 | 1 | 2 | 0 | 2 |
-| `Tools/tests/test_render_host_configs.py` | `Tools/platform/agent_interface/render_host_configs.py` | `integration` | False | 11 | 10 | 1 | 2 | 0 | 0 |
+| `Tools/tests/test_render_host_configs.py` | `Tools/platform/agent_interface/render_host_configs.py` | `integration` | False | 14 | 10 | 1 | 2 | 0 | 0 |
 | `Tools/tests/test_render_interface_projection.py` | `Tools/platform/agent_interface/render_interface_projection.py` | `integration` | False | 10 | 9 | 1 | 1 | 0 | 0 |
 | `Tools/tests/test_render_queue.py` | `Tools/execution/task_runtime/render_queue.py` | `contract` | True | 2 | 1 | 0 | 1 | 0 | 0 |
 | `Tools/tests/test_render_structure_projection.py` | `Tools/knowledge/structure/render_structure_projection.py` | `contract` | True | 3 | 2 | 0 | 1 | 0 | 0 |
@@ -166,7 +167,7 @@ These counts identify test methods whose per-method, per-class, or per-process s
 | `Tools/tests/test_substantive_review_contract.py` | `Tools/execution/audit/substantive_review_contract.py` | `contract` | True | 10 | 0 | 0 | 0 | 0 | 0 |
 | `Tools/tests/test_task_runtime_action.py` | `Tools/execution/task_runtime/task_runtime_action.py` | `unit` | True | 14 | 0 | 0 | 0 | 0 | 0 |
 | `Tools/tests/test_task_runtime_identity_field_contract.py` | `kernel/K13 Task Runtime and Execution Control/runtime-state-model.json` | `contract` | True | 3 | 0 | 0 | 0 | 0 | 0 |
-| `Tools/tests/test_task_runtime_runner.py` | `Tools/execution/task_runtime/task_runtime_runner.py` | `unit` | True | 11 | 3 | 0 | 3 | 0 | 0 |
+| `Tools/tests/test_task_runtime_runner.py` | `Tools/execution/task_runtime/task_runtime_runner.py` | `unit` | True | 15 | 3 | 0 | 3 | 0 | 0 |
 | `Tools/tests/test_template_parity.py` | `Tools/governance/profile/profile_schema_projection.py` | `integration` | False | 23 | 4 | 1 | 2 | 0 | 0 |
 | `Tools/tests/test_test_catalog.py` | `Tools/platform/distribution/test_catalog.py` | `contract` | True | 11 | 1 | 0 | 1 | 0 | 0 |
 | `Tools/tests/test_tool_availability.py` | `Tools/platform/agent_interface/tool_availability.py` | `contract` | True | 5 | 3 | 0 | 1 | 0 | 0 |
@@ -563,6 +564,7 @@ Only mixed test modules need method-level rows. All other cases inherit their mo
 | `test_render_host_configs.HostProductLifecycleTests.test_carried_target_has_one_registered_input_and_external_staging` | `Tools/platform/agent_interface/render_host_configs.py` | `integration` | False | carried_host_product_target_and_staging_boundary |
 | `test_render_host_configs.HostProductLifecycleTests.test_write_check_and_one_upstream_invalidates_every_product` | `Tools/platform/agent_interface/render_host_configs.py` | `integration` | False | host_product_write_check_currentness_lifecycle |
 | `test_render_host_configs.HostProductSlowTests.test_output_staging_cannot_escape_repository_identity` | `Tools/platform/agent_interface/render_host_configs.py` | `slow` | False | host_product_path_identity_and_currentness |
+| `test_render_host_configs.HostProductSlowTests.test_runtime_binding_change_during_read_cannot_publish` | `Tools/platform/agent_interface/render_host_configs.py` | `slow` | False | host_product_path_identity_and_currentness |
 | `test_render_host_configs.HostProductSlowTests.test_upstream_change_during_render_has_no_verdict` | `Tools/platform/agent_interface/render_host_configs.py` | `slow` | False | host_product_path_identity_and_currentness |
 | `test_render_host_configs.HostProductTransportTests.test_public_cli_writes_one_selected_host_product` | `Tools/platform/agent_interface/render_host_configs.py` | `integration` | False | host_product_public_cli_transport |
 | `test_render_host_configs.HostSerializerTests.test_serializer_acceptance_matrix` | `Tools/platform/agent_interface/render_host_configs.py` | `unit` | True | host_product_serializer_acceptance |
@@ -1415,6 +1417,17 @@ Ownership fields come from `Tools/test-ownership.yaml`; fixture entrypoints and 
 | `test_prepare_audit_plan.AuditPlanExporterTests.test_profile_rendering_gap_is_typed_and_carries_exact_targets` | `prepare_audit_plan` | `test_prepare_audit_plan.AuditPlanExporterTests.test_profile_rendering_gap_is_typed_and_carries_exact_targets` | `unit` | — | — | — | — | — | — | — | False | — | `keep` |
 | `test_prepare_audit_plan.AuditPlanExporterTests.test_profile_volatility_defaults_consume_the_typed_profile_view` | `prepare_audit_plan` | `test_prepare_audit_plan.AuditPlanExporterTests.test_profile_volatility_defaults_consume_the_typed_profile_view` | `unit` | — | — | — | — | — | — | — | False | — | `keep` |
 | `test_prepare_audit_plan.AuditPlanExporterTests.test_s_selection_and_plan_ids_are_deterministic` | `prepare_audit_plan` | `test_prepare_audit_plan.AuditPlanExporterTests.test_s_selection_and_plan_ids_are_deterministic` | `unit` | — | — | — | — | — | — | — | False | — | `keep` |
+| `test_prepare_rendering_runtime.RenderingHostPreparationTests.test_binding_schema_staleness_and_repository_location_are_rejected` | `prepare_rendering_runtime.prepare_runtime` | `test_prepare_rendering_runtime.RenderingHostPreparationTests.test_binding_schema_staleness_and_repository_location_are_rejected` | `contract` | copy=1 | temp=1 | — | — | — | — | — | False | — | `keep` |
+| `test_prepare_rendering_runtime.RenderingHostPreparationTests.test_default_probe_does_not_install_or_create_cache` | `prepare_rendering_runtime.prepare_runtime` | `test_prepare_rendering_runtime.RenderingHostPreparationTests.test_default_probe_does_not_install_or_create_cache` | `contract` | — | temp=1 | — | — | — | — | — | False | — | `keep` |
+| `test_prepare_rendering_runtime.RenderingHostPreparationTests.test_explicit_preparation_can_add_browser_to_parser_only_binding` | `prepare_rendering_runtime.prepare_runtime` | `test_prepare_rendering_runtime.RenderingHostPreparationTests.test_explicit_preparation_can_add_browser_to_parser_only_binding` | `contract` | copy=1 | temp=1 | — | — | — | — | — | False | — | `keep` |
+| `test_prepare_rendering_runtime.RenderingHostPreparationTests.test_explicit_valid_binding_precedes_managed_binding_and_bad_explicit_fails_closed` | `prepare_rendering_runtime.prepare_runtime` | `test_prepare_rendering_runtime.RenderingHostPreparationTests.test_explicit_valid_binding_precedes_managed_binding_and_bad_explicit_fails_closed` | `contract` | copy=1 | temp=1 | — | — | — | — | — | False | — | `keep` |
+| `test_prepare_rendering_runtime.RenderingHostPreparationTests.test_failed_smoke_cannot_publish_bindings` | `prepare_rendering_runtime.prepare_runtime` | `test_prepare_rendering_runtime.RenderingHostPreparationTests.test_failed_smoke_cannot_publish_bindings` | `contract` | copy=1 | temp=1 | — | — | — | — | — | False | — | `keep` |
+| `test_prepare_rendering_runtime.RenderingHostPreparationTests.test_locked_install_disables_scripts_uses_fresh_cache_and_smokes_before_publish` | `prepare_rendering_runtime.prepare_runtime` | `test_prepare_rendering_runtime.RenderingHostPreparationTests.test_locked_install_disables_scripts_uses_fresh_cache_and_smokes_before_publish` | `contract` | — | temp=1 | — | — | — | — | — | False | — | `keep` |
+| `test_prepare_rendering_runtime.RenderingHostPreparationTests.test_parser_ready_without_browser_but_rendering_is_not_ready` | `prepare_rendering_runtime.prepare_runtime` | `test_prepare_rendering_runtime.RenderingHostPreparationTests.test_parser_ready_without_browser_but_rendering_is_not_ready` | `contract` | copy=1 | temp=1 | — | — | — | — | — | False | — | `keep` |
+| `test_prepare_rendering_runtime.RenderingHostPreparationTests.test_repeated_preparation_reuses_valid_dependencies_without_npm` | `prepare_rendering_runtime.prepare_runtime` | `test_prepare_rendering_runtime.RenderingHostPreparationTests.test_repeated_preparation_reuses_valid_dependencies_without_npm` | `contract` | copy=1 | temp=1 | — | — | — | — | — | False | — | `keep` |
+| `test_prepare_rendering_runtime.RenderingHostPreparationTests.test_requirements_come_from_registered_capability_and_npm_owner` | `prepare_rendering_runtime.prepare_runtime` | `test_prepare_rendering_runtime.RenderingHostPreparationTests.test_requirements_come_from_registered_capability_and_npm_owner` | `contract` | — | temp=1 | — | — | — | — | — | False | — | `keep` |
+| `test_prepare_rendering_runtime.RenderingHostPreparationTests.test_transitive_dependency_versions_are_verified_not_just_direct_packages` | `prepare_rendering_runtime.prepare_runtime` | `test_prepare_rendering_runtime.RenderingHostPreparationTests.test_transitive_dependency_versions_are_verified_not_just_direct_packages` | `contract` | copy=1 | temp=1 | — | — | — | — | — | False | — | `keep` |
+| `test_prepare_rendering_runtime.RenderingHostPreparationTests.test_unsafe_lock_urls_links_and_integrity_are_rejected` | `prepare_rendering_runtime.prepare_runtime` | `test_prepare_rendering_runtime.RenderingHostPreparationTests.test_unsafe_lock_urls_links_and_integrity_are_rejected` | `contract` | — | temp=1 | — | — | — | — | — | False | — | `keep` |
 | `test_profile_admission.DynamicOwnerSnapshotTests.test_dynamic_owner_change_while_gate_runs_is_rejected` | `profile_admission.admission_from_evaluation` | `test_profile_admission.DynamicOwnerSnapshotTests.test_dynamic_owner_change_while_gate_runs_is_rejected` | `integration` | — | — | — | — | — | — | — | False | — | `keep` |
 | `test_profile_admission.DynamicOwnerSnapshotTests.test_dynamic_owner_is_in_the_same_normative_hash_and_currency_set` | `profile_admission.admission_from_evaluation` | `test_profile_admission.DynamicOwnerSnapshotTests.test_dynamic_owner_is_in_the_same_normative_hash_and_currency_set` | `integration` | — | — | — | — | — | — | — | False | — | `keep` |
 | `test_profile_admission.DynamicOwnerSnapshotTests.test_static_snapshot_missing_owner_never_falls_back_to_live_reads` | `profile_admission.admission_from_evaluation` | `test_profile_admission.DynamicOwnerSnapshotTests.test_static_snapshot_missing_owner_never_falls_back_to_live_reads` | `integration` | — | — | — | — | — | — | — | False | — | `keep` |
@@ -1566,8 +1579,11 @@ Ownership fields come from `Tools/test-ownership.yaml`; fixture entrypoints and 
 | `test_render_host_configs.HostProductContractTests.test_registry_builds_unique_parseable_products` | `render_host_configs.HOSTS` | `test_render_host_configs.HostProductContractTests.test_registry_builds_unique_parseable_products` | `contract` | — | — | — | — | — | — | — | False | — | `keep` |
 | `test_render_host_configs.HostProductLifecycleTests.test_bound_header_replays_the_exact_render_context` | `render_host_configs.main` | `test_render_host_configs.HostProductLifecycleTests.test_bound_header_replays_the_exact_render_context` | `integration` | temp=1 | — | — | — | — | — | — | False | — | `keep` |
 | `test_render_host_configs.HostProductLifecycleTests.test_carried_target_has_one_registered_input_and_external_staging` | `render_host_configs.main` | `test_render_host_configs.HostProductLifecycleTests.test_carried_target_has_one_registered_input_and_external_staging` | `integration` | temp=1 | — | — | — | — | — | — | False | — | `keep` |
+| `test_render_host_configs.HostProductLifecycleTests.test_explicit_runtime_binding_seam_roundtrips_every_host` | `render_host_configs.main` | `test_render_host_configs.HostProductLifecycleTests.test_explicit_runtime_binding_seam_roundtrips_every_host` | `integration` | temp=1 | — | — | — | — | — | — | False | — | `keep` |
+| `test_render_host_configs.HostProductLifecycleTests.test_runtime_input_is_explicit_and_owner_failure_prevents_outputs` | `render_host_configs.main` | `test_render_host_configs.HostProductLifecycleTests.test_runtime_input_is_explicit_and_owner_failure_prevents_outputs` | `integration` | temp=1 | — | — | — | — | — | — | False | — | `keep` |
 | `test_render_host_configs.HostProductLifecycleTests.test_write_check_and_one_upstream_invalidates_every_product` | `render_host_configs.main` | `test_render_host_configs.HostProductLifecycleTests.test_write_check_and_one_upstream_invalidates_every_product` | `integration` | temp=1 | — | — | — | — | — | — | False | — | `keep` |
 | `test_render_host_configs.HostProductSlowTests.test_output_staging_cannot_escape_repository_identity` | `render_host_configs.main` | `test_render_host_configs.HostProductSlowTests.test_output_staging_cannot_escape_repository_identity` | `slow` | temp=1 | — | — | — | — | — | — | False | — | `keep` |
+| `test_render_host_configs.HostProductSlowTests.test_runtime_binding_change_during_read_cannot_publish` | `render_host_configs.main` | `test_render_host_configs.HostProductSlowTests.test_runtime_binding_change_during_read_cannot_publish` | `slow` | temp=1 | — | — | — | — | — | — | False | — | `keep` |
 | `test_render_host_configs.HostProductSlowTests.test_upstream_change_during_render_has_no_verdict` | `render_host_configs.main` | `test_render_host_configs.HostProductSlowTests.test_upstream_change_during_render_has_no_verdict` | `slow` | temp=1 | — | — | — | — | — | — | False | — | `keep` |
 | `test_render_host_configs.HostProductTransportTests.test_public_cli_writes_one_selected_host_product` | `render_host_configs.main` | `test_render_host_configs.HostProductTransportTests.test_public_cli_writes_one_selected_host_product` | `integration` | proc=1, temp=1 | — | — | — | — | — | — | False | — | `keep` |
 | `test_render_host_configs.HostSerializerTests.test_serializer_acceptance_matrix` | `render_host_configs.SERIALIZERS` | `test_render_host_configs.HostSerializerTests.test_serializer_acceptance_matrix` | `unit` | — | — | — | — | — | — | — | False | — | `keep` |
@@ -1710,8 +1726,12 @@ Ownership fields come from `Tools/test-ownership.yaml`; fixture entrypoints and 
 | `test_task_runtime_identity_field_contract.TaskRuntimeIdentityFieldContractTests.test_amendment_bindings_are_derived_from_plan_contract` | `task_runtime_identity_field_contract` | `test_task_runtime_identity_field_contract.TaskRuntimeIdentityFieldContractTests.test_amendment_bindings_are_derived_from_plan_contract` | `contract` | — | — | — | — | — | — | — | False | — | `keep` |
 | `test_task_runtime_identity_field_contract.TaskRuntimeIdentityFieldContractTests.test_current_producers_and_consumers_share_canon_identity` | `task_runtime_identity_field_contract` | `test_task_runtime_identity_field_contract.TaskRuntimeIdentityFieldContractTests.test_current_producers_and_consumers_share_canon_identity` | `contract` | — | — | — | — | — | — | — | False | — | `keep` |
 | `test_task_runtime_identity_field_contract.TaskRuntimeIdentityFieldContractTests.test_delta_consumer_uses_settlement_projection_fields` | `task_runtime_identity_field_contract` | `test_task_runtime_identity_field_contract.TaskRuntimeIdentityFieldContractTests.test_delta_consumer_uses_settlement_projection_fields` | `contract` | — | — | — | — | — | — | — | False | — | `keep` |
+| `test_task_runtime_runner.TaskRuntimeRunnerCheckpointIntegrationTests.test_activation_rechecks_host_before_receipt_and_before_open_writer` | `task_runtime_runner.next_action` | `test_task_runtime_runner.TaskRuntimeRunnerCheckpointIntegrationTests.test_activation_rechecks_host_before_receipt_and_before_open_writer` | `unit` | — | — | — | — | — | — | `Tools/tests/support/task_runtime_object_factory.py:parsed_runtime_state` | False | — | `keep` |
 | `test_task_runtime_runner.TaskRuntimeRunnerCheckpointIntegrationTests.test_execute_dispatches_invoke_and_await_then_returns_readback` | `task_runtime_runner.execute` | `test_task_runtime_runner.TaskRuntimeRunnerCheckpointIntegrationTests.test_execute_dispatches_invoke_and_await_then_returns_readback` | `integration` | — | — | — | — | — | — | `Tools/tests/support/task_runtime_object_factory.py:parsed_runtime_state` | False | — | `keep` |
+| `test_task_runtime_runner.TaskRuntimeRunnerCheckpointIntegrationTests.test_missing_profile_binding_is_not_treated_as_host_readiness` | `task_runtime_runner.next_action` | `test_task_runtime_runner.TaskRuntimeRunnerCheckpointIntegrationTests.test_missing_profile_binding_is_not_treated_as_host_readiness` | `unit` | — | — | — | — | — | — | `Tools/tests/support/task_runtime_object_factory.py:parsed_runtime_state` | False | — | `keep` |
+| `test_task_runtime_runner.TaskRuntimeRunnerCheckpointIntegrationTests.test_rendering_preflight_reuses_admitted_profile_and_selector_owner` | `task_runtime_runner.next_action` | `test_task_runtime_runner.TaskRuntimeRunnerCheckpointIntegrationTests.test_rendering_preflight_reuses_admitted_profile_and_selector_owner` | `unit` | — | — | — | — | — | — | `Tools/tests/support/task_runtime_object_factory.py:parsed_runtime_state` | False | — | `keep` |
 | `test_task_runtime_runner.TaskRuntimeRunnerCheckpointIntegrationTests.test_terminal_chain_orders_producers_consumer_and_closed_readback` | `task_runtime_runner._await_terminal_audit` | `test_task_runtime_runner.TaskRuntimeRunnerCheckpointIntegrationTests.test_terminal_chain_orders_producers_consumer_and_closed_readback` | `integration` | — | — | — | — | — | — | — | False | — | `keep` |
+| `test_task_runtime_runner.TaskRuntimeRunnerCheckpointIntegrationTests.test_unready_selector_stops_next_action_without_evidence_or_writes` | `task_runtime_runner.next_action` | `test_task_runtime_runner.TaskRuntimeRunnerCheckpointIntegrationTests.test_unready_selector_stops_next_action_without_evidence_or_writes` | `unit` | — | — | — | — | — | — | `Tools/tests/support/task_runtime_object_factory.py:parsed_runtime_state` | False | — | `keep` |
 | `test_task_runtime_runner.TaskRuntimeRunnerContractTests.test_command_consumes_compiled_positionals_and_transport_once` | `task_runtime_runner._command` | `test_task_runtime_runner.TaskRuntimeRunnerContractTests.test_command_consumes_compiled_positionals_and_transport_once` | `contract` | — | — | — | — | — | — | — | False | — | `keep` |
 | `test_task_runtime_runner.TaskRuntimeRunnerContractTests.test_contract_is_reloaded_after_each_currentness_check` | `task_runtime_runner._command` | `test_task_runtime_runner.TaskRuntimeRunnerContractTests.test_contract_is_reloaded_after_each_currentness_check` | `contract` | temp=1 | — | — | — | — | — | — | False | — | `keep` |
 | `test_task_runtime_runner.TaskRuntimeRunnerContractTests.test_runner_does_not_fall_back_to_distribution_contract` | `task_runtime_runner._command` | `test_task_runtime_runner.TaskRuntimeRunnerContractTests.test_runner_does_not_fall_back_to_distribution_contract` | `contract` | temp=1 | — | — | — | — | — | — | False | — | `keep` |

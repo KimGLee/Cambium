@@ -5,7 +5,7 @@
 #   policy. A hand edit is reported by --check as a HOLD.
 # regenerate with: python3 Tools/compile_cli_contract.py . --projection-target source-distribution
 # verify with:     python3 Tools/compile_cli_contract.py . --projection-target source-distribution --check
-# `source_hash` covers the policy, runtime path registry, and 64
+# `source_hash` covers the policy, runtime path registry, and 65
 #   CLI tool sources listed under source_files.
 # A positional argument is one whose `option_strings` is empty.
 # `choices` is the admissible SET in canonical order, not the
@@ -118,11 +118,13 @@ source_files:
   - Tools/platform/distribution/check_kernel_size.py
   - Tools/platform/distribution/check_upstream_components.py
   - Tools/platform/distribution/module_boundary_report.py
+  - Tools/platform/distribution/prepare_rendering_runtime.py
   - Tools/platform/distribution/stamp_cards.py
   - Tools/platform/distribution/test_catalog.py
   - Tools/platform/distribution/test_runner.py
   - Tools/platform/distribution/tool_catalog.py
   - Tools/prepare_audit_plan.py
+  - Tools/prepare_rendering_runtime.py
   - Tools/profile_candidate.py
   - Tools/profile_onboarding_status.py
   - Tools/project_page_state.py
@@ -152,10 +154,10 @@ source_files:
   - Tools/stamp_cards.py
   - Tools/update_queue.py
   - Tools/update_task.py
-source_hash: sha256:d0bcaa2b28b72fb3f5d37d7302f49c5db892c78f3f3459e85e21a37449fe8b69
+source_hash: sha256:f7922489af9390cea5241f322a9e129cdb2657c9dffb0d585c613b90eed17f94
 agent_interface_policy:
   path: Tools/agent-interface-policy.yaml
-  sha256: sha256:85035ffce6ff8425fdec1eddf170a3f2ed92b3d8c30ef9a747308933586f8d54
+  sha256: sha256:ef9d1e486f2cce90bfe7a537f75303e2ee0215040b31f0a560896c117f44ba24
 runtime_path_registry:
   path: Tools/execution/task_runtime/runtime_paths.py
   sha256: sha256:f80bf68ddaf03e87f6e306a39d9095e0a5f6eac56677c69d05c80caf43a19131
@@ -199,6 +201,7 @@ included_tools:
   - metadata_execution_contract
   - module_boundary_report
   - prepare_audit_plan
+  - prepare_rendering_runtime
   - profile_candidate
   - profile_onboarding_status
   - project_page_state
@@ -243,7 +246,7 @@ receipt_shape:
     - tool_version
     - invalidated_by
   extension_policy: derived-per-tool-from-implementation-source-closure
-tool_count: 64
+tool_count: 65
 tools:
   - tool: adopt_standards
     module: Tools/adopt_standards.py
@@ -4831,6 +4834,73 @@ tools:
         - batch
       path_arguments: []
       external_write: none
+  - tool: prepare_rendering_runtime
+    module: Tools/prepare_rendering_runtime.py
+    source_hash: sha256:4cc49b3dc7409ecead0ccb860be94d52ba774cecd51715c7f2af683020cdee64
+    implementation_module: Tools.platform.distribution.prepare_rendering_runtime
+    implementation_path: Tools/platform/distribution/prepare_rendering_runtime.py
+    implementation_source_hash: sha256:5e377aafc44ffb73e9dfe85d4b38d0a12a7d224d92cb80eec110eb222b4ac1c6
+    description: Prepare locked rendering dependencies in Host user space, never in a corpus. Discovery is read-only by default. Explicit --apply permits an npm ci with scripts disabled in a fresh cache directory and publishes checked Host bindings. It does not install a system Node/browser, approve policy, or write a Receipt.
+    arguments:
+      - dest: root
+        option_strings: []
+        required: false
+        default: .
+        default_type: str
+        choices: null
+        nargs: "?"
+        action: store
+        type: Path
+        help: null
+      - dest: apply
+        option_strings:
+          - --apply
+        required: false
+        default: false
+        default_type: bool
+        choices: null
+        nargs: 0
+        action: store_true
+        type: null
+        help: Explicitly authorize bounded Host-cache installation
+      - dest: require_browser
+        option_strings:
+          - --require-browser
+        required: false
+        default: false
+        default_type: bool
+        choices: null
+        nargs: 0
+        action: store_true
+        type: null
+        help: Also verify actual browser rendering
+      - dest: json
+        option_strings:
+          - --json
+        required: false
+        default: false
+        default_type: bool
+        choices: null
+        nargs: 0
+        action: store_true
+        type: null
+        help: null
+    mutually_exclusive_groups: []
+    receipt_extensions: []
+    receipt_extensions_extraction: complete
+    receipt_extension_sources:
+      - path: Tools/platform/distribution/prepare_rendering_runtime.py
+        sha256: sha256:5e377aafc44ffb73e9dfe85d4b38d0a12a7d224d92cb80eec110eb222b4ac1c6
+    agent_interface:
+      exposure: cli-only
+      workspace_argument: root
+      workspace_access: read
+      value_arguments:
+        - apply
+        - json
+        - require_browser
+      path_arguments: []
+      external_write: authorized-host-rendering-cache
   - tool: profile_candidate
     module: Tools/profile_candidate.py
     source_hash: sha256:7e20b345e293d9b2c97e84eac19a762586506ff340ca6cd2cbf93758d19f5515
@@ -7457,7 +7527,7 @@ tools:
     source_hash: sha256:1c6e4ed13be8932039c672647b411e7a89a25a93106bc1e013bf5799c69f4c56
     implementation_module: Tools.platform.agent_interface.render_host_configs
     implementation_path: Tools/platform/agent_interface/render_host_configs.py
-    implementation_source_hash: sha256:552432288a552a7b2ea4d7d6a4359e9c681adc98dc755ca23dc86913d664904f
+    implementation_source_hash: sha256:38bbbe9201ad148b98aa51c2fc42f9ed5277e7477682ee0de6bb58b77895c80e
     description: Render the Cambium MCP server's registration and corpus binding into the configuration file each supported host reads.
     arguments:
       - dest: root
@@ -7543,6 +7613,17 @@ tools:
         action: store
         type: null
         help: "absolute path of the corpus repository this registration is bound to; substituted for <CAMBIUM_WORKSPACE_ROOT> (default: leave the placeholder)"
+      - dest: runtime_bindings
+        option_strings:
+          - --runtime-bindings
+        required: false
+        default: null
+        default_type: NoneType
+        choices: null
+        nargs: null
+        action: store
+        type: null
+        help: absolute path to Host rendering bindings produced by prepare_rendering_runtime; validate and project this explicit input without discovering or installing dependencies
       - dest: check
         option_strings:
           - --check
@@ -7574,7 +7655,7 @@ tools:
     receipt_extensions_extraction: complete
     receipt_extension_sources:
       - path: Tools/platform/agent_interface/render_host_configs.py
-        sha256: sha256:552432288a552a7b2ea4d7d6a4359e9c681adc98dc755ca23dc86913d664904f
+        sha256: sha256:38bbbe9201ad148b98aa51c2fc42f9ed5277e7477682ee0de6bb58b77895c80e
     agent_interface:
       exposure: cli-only
       workspace_argument: root
@@ -7597,6 +7678,15 @@ tools:
           active_when_any: []
           inactive_when_any: []
         - argument: projection
+          access: read
+          consumption: snapshot
+          constraint: contained
+          value: null
+          runtime_path_id: null
+          suffixes: []
+          active_when_any: []
+          inactive_when_any: []
+        - argument: runtime_bindings
           access: read
           consumption: snapshot
           constraint: contained
@@ -7964,7 +8054,7 @@ tools:
     source_hash: sha256:321b9c879068af47ec42eb4bbee7d4b3bdfe857b5c441292324363e4580dfa75
     implementation_module: Tools.execution.task_runtime.task_runtime_runner
     implementation_path: Tools/execution/task_runtime/task_runtime_runner.py
-    implementation_source_hash: sha256:c81c5c3ebf659a8bae214de28c7928775841048f8513565674bde61d18e3b196
+    implementation_source_hash: sha256:6e9e5f86de52928f9cae6fff58b783a2a969376f417f16053123be52a3763721
     description: Read the current Task Runtime action, execute that exact action, or advance deterministic actions to the next semantic boundary.
     arguments:
       - dest: root
@@ -8056,7 +8146,7 @@ tools:
     receipt_extensions_extraction: complete
     receipt_extension_sources:
       - path: Tools/execution/task_runtime/task_runtime_runner.py
-        sha256: sha256:c81c5c3ebf659a8bae214de28c7928775841048f8513565674bde61d18e3b196
+        sha256: sha256:6e9e5f86de52928f9cae6fff58b783a2a969376f417f16053123be52a3763721
     agent_interface:
       exposure: mcp
       workspace_argument: root

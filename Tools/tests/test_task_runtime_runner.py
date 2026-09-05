@@ -37,7 +37,8 @@ def resume_action(token, result=None):
             runner.queue_runtime, "resume_next_action",
             return_value=token), mock.patch.object(
                 runner, "_capability_tool", return_value="fixture-tool"):
-        return runner._resume_action(current)
+        with mock.patch.object(runner, "_rendering_boundary", return_value=None):
+            return runner._resume_action(current)
 
 
 def completed(returncode=0, stdout="{}\n", stderr=""):
@@ -70,7 +71,8 @@ class TaskRuntimeRunnerUnitTests(unittest.TestCase):
                         runner.queue_runtime, "resume_next_action",
                         return_value=token), mock.patch.object(
                             runner, "_capability_tool",
-                            return_value="fixture-tool"):
+                            return_value="fixture-tool"), mock.patch.object(
+                                runner, "_rendering_boundary", return_value=None):
                 first = runner.next_action("/fixture")
                 second = runner.next_action("/fixture")
 
@@ -282,6 +284,122 @@ class TaskRuntimeRunnerContractTests(unittest.TestCase):
 
 class TaskRuntimeRunnerCheckpointIntegrationTests(unittest.TestCase):
     """Adjacent dispatch/read-back seams from legal memory checkpoints."""
+
+    def test_rendering_preflight_reuses_admitted_profile_and_selector_owner(self):
+        state = parsed_runtime_state()
+        state["items_by_id"]["B1"]["manifest"] = [
+            "Knowledge/A.md", "Knowledge/Not-written-yet.md"]
+        profile = object()
+        snapshot = SimpleNamespace(exists=True, read_text=lambda: "source")
+        absent = SimpleNamespace(exists=False)
+        ready = {"result": "ready", "bindings": {}, "findings": []}
+        for constructs in ((), ("mermaid",)):
+            with self.subTest(constructs=constructs), mock.patch.object(
+                    runner.profile_admission, "contract_from_admitted_view",
+                    return_value=profile) as admission, mock.patch.object(
+                        runner.kblib, "repository_target_snapshot",
+                        side_effect=(snapshot, absent)), mock.patch.object(
+                            runner.profile_rendering, "require_bindings",
+                            return_value={"Knowledge/A.md": constructs}) as selector, \
+                    mock.patch.object(
+                        runner.static_render_runtime, "probe_runtime",
+                        return_value=ready) as probe:
+                boundary = runner._rendering_boundary(state, "B1")
+            self.assertIsNone(boundary)
+            admission.assert_called_once_with(
+                state["root"], state["_profile_authorized_view"])
+            selector.assert_called_once_with(
+                [("Knowledge/A.md", "source")], profile, root=state["root"])
+            if constructs:
+                probe.assert_called_once_with("/fixture", require_browser=True)
+            else:
+                probe.assert_not_called()
+
+    def test_unready_selector_stops_next_action_without_evidence_or_writes(self):
+        state = parsed_runtime_state()
+        state["items_by_id"]["B1"]["manifest"] = ["Knowledge/A.md"]
+        snapshot = SimpleNamespace(exists=True, read_text=lambda: "$x$")
+        unavailable = {
+            "result": "needs-preparation", "bindings": {},
+            "findings": ["Pinned renderer dependencies absent"],
+        }
+        with mock.patch.object(
+                runner.runtime_validation, "validate_runtime", return_value=state), \
+                mock.patch.object(runner.queue_runtime, "resume_next_action",
+                                  return_value="activate-ready-batch:B1"), \
+                mock.patch.object(runner.profile_admission,
+                                  "contract_from_admitted_view", return_value=object()), \
+                mock.patch.object(runner.kblib, "repository_target_snapshot",
+                                  return_value=snapshot), \
+                mock.patch.object(runner.profile_rendering, "require_bindings",
+                                  side_effect=runner.static_render_runtime.
+                                  StaticRenderRuntimeError("dependencies absent")), \
+                mock.patch.object(runner.static_render_runtime, "probe_runtime",
+                                  return_value=unavailable) as probe, \
+                mock.patch.object(runner, "_capability_tool",
+                                  return_value="prepare_rendering_runtime"), \
+                mock.patch.object(runner, "_run_command") as command:
+            action = runner.next_action("/fixture")
+            self.assertEqual("await-host", action["disposition"])
+            self.assertEqual("prepare-rendering-runtime", action["token"])
+            self.assertEqual("prepare_rendering_runtime",
+                             action["required_input"]["host_preparation"]["tool"])
+            with self.assertRaisesRegex(runner.RunnerError, "unsupported field"):
+                runner._continue_awaited("/fixture", action, {"ready": True})
+            with self.assertRaisesRegex(runner.RunnerError, "resolved outside"):
+                runner._continue_awaited("/fixture", action, {})
+        probe.assert_called_once_with("/fixture", require_browser=False)
+        command.assert_not_called()
+        self.assertEqual("queued", state["items_by_id"]["B1"]["state"])
+
+    def test_missing_profile_binding_is_not_treated_as_host_readiness(self):
+        state = parsed_runtime_state()
+        state["items_by_id"]["B1"]["manifest"] = ["Knowledge/A.md"]
+        snapshot = SimpleNamespace(exists=True, read_text=lambda: "| table |")
+        with mock.patch.object(
+                runner.profile_admission, "contract_from_admitted_view",
+                return_value=object()), mock.patch.object(
+                    runner.kblib, "repository_target_snapshot", return_value=snapshot), \
+                mock.patch.object(runner.profile_rendering, "require_bindings",
+                                  side_effect=ValueError("table contract-gap/HOLD")), \
+                mock.patch.object(runner.static_render_runtime, "probe_runtime") as probe:
+            action = runner._rendering_boundary(state, "B1")
+        self.assertEqual("repair", action["disposition"])
+        self.assertEqual("profile-rendering-contract-gap", action["reason_code"])
+        probe.assert_not_called()
+
+    def test_activation_rechecks_host_before_receipt_and_before_open_writer(self):
+        state = parsed_runtime_state()
+        opened = parsed_runtime_state()
+        opened["items_by_id"]["B1"]["state"] = "open"
+        gate = completed(stdout=json.dumps([{
+            "queue_check_mode": "require-ready:B1", "receipt_id": "ready-1",
+        }]))
+        hold = {"disposition": "await-host", "reason_code": "rendering-runtime-not-ready"}
+        # These checkpoints exercise the Runner seam only. No fixture opens a
+        # real batch or reconstructs any earlier lifecycle to obtain them.
+        for boundaries, expected_commands, succeeds in (
+                ((hold,), 0, False),
+                ((None, hold), 1, False),
+                ((None, None), 2, True)):
+            with self.subTest(boundaries=boundaries), mock.patch.object(
+                    runner.runtime_validation, "validate_runtime",
+                    side_effect=(state, state, opened)), mock.patch.object(
+                        runner, "_rendering_boundary", side_effect=boundaries) as preflight, \
+                    mock.patch.object(runner, "_run_command",
+                                      side_effect=(gate, completed())) as command, \
+                    mock.patch.object(runner.metadata_execution_contract,
+                                      "capability_invocation_tool",
+                                      return_value="existing-tool"):
+                if succeeds:
+                    self.assertEqual(0, runner._activate_ready_batch("/fixture", "B1").returncode)
+                else:
+                    with self.assertRaisesRegex(runner.RunnerError, "activation prerequisite"):
+                        runner._activate_ready_batch("/fixture", "B1")
+            self.assertEqual(expected_commands, command.call_count)
+            self.assertEqual(len(boundaries), preflight.call_count)
+            if succeeds:
+                self.assertEqual("open", command.call_args_list[-1].args[2]["transition"])
 
     def test_execute_dispatches_invoke_and_await_then_returns_readback(self):
         invoke = resume_action("materialize-required-queue")

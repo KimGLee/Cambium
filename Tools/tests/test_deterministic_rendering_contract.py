@@ -80,7 +80,9 @@ class DeterministicRenderingContractTests(unittest.TestCase):
 
 class StaticRenderingRuntimeBoundaryTests(unittest.TestCase):
     def test_missing_host_binding_does_not_become_empty_applicability(self):
-        with mock.patch.dict(os.environ, {}, clear=True):
+        with mock.patch.dict(os.environ, {}, clear=True), \
+                mock.patch.object(static_runtime, "_discover_executable", return_value=[]), \
+                mock.patch.object(static_runtime, "read_runtime_bindings", return_value={}):
             with self.assertRaisesRegex(static_runtime.StaticRenderRuntimeError,
                                         "CAMBIUM_RENDER_NODE"):
                 static_runtime.select_constructs("$x$", root=REPOSITORY)

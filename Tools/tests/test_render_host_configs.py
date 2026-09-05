@@ -18,6 +18,7 @@ import sys
 import tempfile
 from types import SimpleNamespace
 import unittest
+from unittest.mock import patch
 
 
 TOOLS_DIR = Path(__file__).resolve().parents[1]
@@ -379,6 +380,99 @@ class HostProductLifecycleTests(unittest.TestCase):
                 replayed.returncode, 0,
                 "the generated verify command did not reproduce its bytes")
 
+    def test_explicit_runtime_binding_seam_roundtrips_every_host(self):
+        # The runtime owner owns binding validity; this integration test owns
+        # only the validated map -> Host products -> check connection.
+        with temporary_repository() as root:
+            binding = root.parent / "Host bindings.json"
+            binding.write_text("{}\n", encoding="utf-8")
+            output = root / "host-config-staging"
+            arguments = [
+                str(root), "--output-dir", str(output),
+                "--distribution-root", str(root),
+                "--workspace-root", str(root),
+                "--runtime-bindings", str(binding)]
+            environment = {
+                name: str(root.parent / "Host tools" / name)
+                for name in renderer.static_render_runtime.RUNTIME_ENV_KEYS
+            }
+            with patch.object(renderer.static_render_runtime,
+                              "read_runtime_bindings",
+                              return_value=environment) as read:
+                result = run_in_process(*arguments)
+                self.assertEqual(result.returncode, 0,
+                                 result.stdout + result.stderr)
+                read.assert_called_once_with(str(root), str(binding))
+                self.assertEqual(run_in_process(
+                    *arguments, "--check").returncode, 0)
+
+                for host in ("claude-code", "kimi-code"):
+                    document = json.loads((output / renderer.HOSTS[host][
+                        "output"]).read_text(encoding="utf-8"))
+                    actual = document["mcpServers"][renderer.SERVER_NAME]["env"]
+                    self.assertEqual(
+                        {name: actual[name] for name in environment}, environment)
+                codex = (output / renderer.HOSTS["codex"]["output"]).read_text(
+                    encoding="utf-8")
+                verify = next(line.split(": ", 1)[1]
+                              for line in codex.splitlines()
+                              if line.startswith("# verify: "))
+                self.assertIn(str(binding), shlex.split(verify))
+                for host in ("codex", "dsh-env"):
+                    text = (output / renderer.HOSTS[host]["output"]).read_text(
+                        encoding="utf-8")
+                    for name, value in environment.items():
+                        self.assertIn(name, text)
+                        self.assertIn(value, text)
+                registration = (output / renderer.HOSTS[
+                    "dsh-profile-patch"]["output"]).read_text(encoding="utf-8")
+                self.assertNotIn("CAMBIUM_RENDER_NODE =", registration)
+
+                # Same bindings but different source bytes invalidate the
+                # replayable provenance; a hand-edited product is stale too.
+                binding.write_text("{ }\n", encoding="utf-8")
+                self.assertEqual(run_in_process(
+                    *arguments, "--check").returncode, 2)
+                self.assertEqual(run_in_process(*arguments).returncode, 0)
+                (output / renderer.HOSTS["codex"]["output"]).write_text(
+                    codex + " ", encoding="utf-8")
+                self.assertEqual(run_in_process(
+                    *arguments, "--check").returncode, 2)
+
+    def test_runtime_input_is_explicit_and_owner_failure_prevents_outputs(self):
+        with temporary_repository() as root:
+            with patch.object(renderer.static_render_runtime,
+                              "read_runtime_bindings",
+                              side_effect=AssertionError("implicit discovery")):
+                self.assertEqual(run_in_process(str(root)).returncode, 0)
+                self.assertEqual(run_in_process(str(root), "--check").returncode, 0)
+
+            binding = root.parent / "runtime.json"
+            binding.write_text("{}\n", encoding="utf-8")
+            arguments = [str(root), "--runtime-bindings", str(binding)]
+            self.assertEqual(run_in_process(*arguments).returncode, 1)
+            output = root / "host-config-staging"
+            arguments += ["--output-dir", str(output),
+                          "--distribution-root", str(root),
+                          "--workspace-root", str(root)]
+            wrong_owner = list(arguments)
+            wrong_owner[wrong_owner.index("--distribution-root") + 1] = str(
+                root.parent / "different-distribution")
+            result = run_in_process(*wrong_owner)
+            self.assertEqual(result.returncode, 1)
+            self.assertIn("same checkout", result.stdout)
+            self.assertFalse(output.exists())
+            with patch.object(renderer.static_render_runtime,
+                              "read_runtime_bindings",
+                              side_effect=renderer.static_render_runtime.
+                              StaticRenderRuntimeError("unknown binding field")):
+                result = run_in_process(*arguments)
+                self.assertEqual(result.returncode, 1)
+                self.assertIn("unknown binding field", result.stdout)
+                self.assertFalse(output.exists())
+            arguments[arguments.index(str(binding))] = "runtime.json"
+            self.assertEqual(run_in_process(*arguments).returncode, 1)
+
 
 class HostProductSlowTests(unittest.TestCase):
     """Slow: filesystem identity and currentness race boundaries."""
@@ -422,6 +516,27 @@ class HostProductSlowTests(unittest.TestCase):
         with temporary_repository() as root:
             result = run_in_process(str(root), "--check")
         self.assertEqual(result.returncode, 1)
+
+    def test_runtime_binding_change_during_read_cannot_publish(self):
+        with temporary_repository() as root:
+            binding = root.parent / "runtime.json"
+            binding.write_text("{}\n", encoding="utf-8")
+            output = root / "host-config-staging"
+
+            def changed(_root, path):
+                Path(path).write_text("{ }\n", encoding="utf-8")
+                return {}
+
+            with patch.object(renderer.static_render_runtime,
+                              "read_runtime_bindings", side_effect=changed):
+                result = run_in_process(
+                    str(root), "--runtime-bindings", str(binding),
+                    "--output-dir", str(output),
+                    "--distribution-root", str(root),
+                    "--workspace-root", str(root))
+            self.assertEqual(result.returncode, 1)
+            self.assertIn("changed during rendering", result.stdout)
+            self.assertFalse(output.exists())
 
 
 class HostProductTransportTests(unittest.TestCase):

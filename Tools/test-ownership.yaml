@@ -1395,6 +1395,14 @@ tests:
     semantics: pinned_profile_toolchain_installation_without_global_mutation
     owner_contract_symbol: install_profile_toolchain.main
     parallel_safe: true
+  - path: Tools/tests/test_prepare_rendering_runtime.py
+    owner: Tools/platform/distribution/prepare_rendering_runtime.py
+    level: contract
+    lifecycle: current
+    disposition: keep
+    semantics: locked_host_preparation_without_corpus_or_runtime_mutation
+    owner_contract_symbol: prepare_rendering_runtime.prepare_runtime
+    parallel_safe: true
   - path: Tools/tests/test_issue_owner.py
     owner: Tools/module-boundaries.yaml
     level: unit
