@@ -468,9 +468,18 @@ def validate_registry(document):
                     label + ".selector.owner_rule_ids",
                     sorted_unique=True)
             cardinality = selector.get("match_cardinality")
+            kernel_selector = (
+                selector["owner_kind"] == "kernel" and
+                selector["kernel_extension_point"] is None)
+            profile_rendering_selector = (
+                item_id == "m06-triggered-rendering-obligations-applied" and
+                selector["owner_kind"] == "profile-extension" and
+                selector["owner_rule_ids"] is None and
+                selector["kernel_extension_point"] ==
+                "k12-02-profile-rendering" and
+                cardinality == "one-or-more-all-matching-required")
             if (selector["source"] != "audit-plan-obligation-evidence" or
-                    selector["owner_kind"] != "kernel" or
-                    selector["kernel_extension_point"] is not None or
+                    not (kernel_selector or profile_rendering_selector) or
                     selector["partition"] not in plan_contract["partitions"] or
                     selector["due_stage"] not in plan_contract["due_stages"] or
                     selector["target_binding"] != "same-page" or
@@ -863,7 +872,8 @@ def _consumption_dependency_obligations(obligations, spec, target,
             "M consumption selector %s requires exactly one AuditPlan "
             "obligation, found %d" %
             (selector["selector_id"], len(expected)))
-    if cardinality == "one-or-more-all-matching-required" and not expected:
+    if (cardinality == "one-or-more-all-matching-required" and not expected and
+            spec.get("applicability") == "always"):
         raise ValueError(
             "M consumption selector %s matched no required AuditPlan evidence"
             % selector["selector_id"])

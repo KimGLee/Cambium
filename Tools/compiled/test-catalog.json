@@ -52,7 +52,7 @@
       "owner": "Tools/tests/fixtures/e2e/batch_close_scenarios.py",
       "path": "Tools/tests/fixtures/integration/batch_close_applied_checkpoint",
       "purpose": "Generated current-contract applied batch checkpoint for close producer integrations",
-      "tree_sha256": "sha256:00b9d1ace035d6d85329a0da7e9cff2a1ee9601bf668ebecd1b7b272696fbab8"
+      "tree_sha256": "sha256:d16fb2d956078efce8f6662556cb5703fccc3cc45b3e669780b3c8e7e195e5a7"
     },
     {
       "bytes": 110489,
@@ -63,7 +63,7 @@
       "owner": "Tools/tests/fixtures/e2e/batch_close_scenarios.py",
       "path": "Tools/tests/fixtures/integration/batch_close_state_mutating_checkpoint",
       "purpose": "Generated applied checkpoint for the hostile registered-verifier recovery path",
-      "tree_sha256": "sha256:00f122e6077e82b24cb1e57859f1f36baf731e3c96e76bbddf7723585b72b9b0"
+      "tree_sha256": "sha256:775d18606b5c9669fac0842a53d1d5d255bbb7f4b1aa9a602d17b643c061ca93"
     },
     {
       "bytes": 392574,
@@ -74,7 +74,7 @@
       "owner": "Tools/tests/fixtures/e2e/required_queue_scenarios.py",
       "path": "Tools/tests/fixtures/integration/maintenance_closed_checkpoint",
       "purpose": "Generated and validated current-contract maintenance-closed integration checkpoint",
-      "tree_sha256": "sha256:e41ce68b4ab571ad03ddb3af10f5c07f01c9b88a713f3e0245f940bce43ff9a2"
+      "tree_sha256": "sha256:5633e075ef483211c203b95fef84dded3b4af6996890eefb0bbac91db6d983bb"
     },
     {
       "bytes": 385872,
@@ -85,7 +85,7 @@
       "owner": "Tools/tests/fixtures/e2e/required_queue_scenarios.py",
       "path": "Tools/tests/fixtures/integration/terminal_closed_checkpoint",
       "purpose": "Generated current-contract terminal-profile checkpoint with both batches closed",
-      "tree_sha256": "sha256:daae06763f54ebc3032526c35d4d7ec32fdd520d778788744ec70ca0ccda3450"
+      "tree_sha256": "sha256:e3f65baca2d9fa3ae9873b58cfc2c51dda8f7a25902b681bbe96427b48e06b23"
     },
     {
       "bytes": 103690,
@@ -96,7 +96,7 @@
       "owner": "Tools/tests/fixtures/e2e/update_queue_scenarios.py",
       "path": "Tools/tests/fixtures/integration/update_queue_merge_admission_checkpoint",
       "purpose": "Generated current-contract open Queue checkpoint with complete pre-merge evidence",
-      "tree_sha256": "sha256:4ebb5638a4f60b07d8fb5352f295af9a7731e8252b05707ca633886daa4bef44"
+      "tree_sha256": "sha256:3d17f4dda2673a8221f7c83d2fc7671d88d3e7676e4547ca4edc8244a1c95019"
     },
     {
       "bytes": 106198,
@@ -107,7 +107,7 @@
       "owner": "Tools/tests/fixtures/e2e/update_queue_scenarios.py",
       "path": "Tools/tests/fixtures/integration/update_queue_merged_checkpoint",
       "purpose": "Generated and validated current-contract merge-ready Queue integration checkpoint",
-      "tree_sha256": "sha256:9b2317b554995ca145293e92033c63bebf17b6f9abb09898d277c89e0cf4d920"
+      "tree_sha256": "sha256:d2059c8d0762d5eeddeec753079fef9a4f0c1cc72d8965f27202bc97a465b259"
     },
     {
       "bytes": 34560,
@@ -118,7 +118,7 @@
       "owner": "Tools/tests/fixtures/e2e/update_queue_scenarios.py",
       "path": "Tools/tests/fixtures/integration/update_queue_open_checkpoint",
       "purpose": "Generated current-contract open Queue checkpoint before page work begins",
-      "tree_sha256": "sha256:cfbc8afd20134e68d7f5e745823524bd9afae42266444a89254d2553a97b8351"
+      "tree_sha256": "sha256:68c818451ed809fd0380f5cf7fce14a72680dab4cf7611da2a1fd3ee0c96704c"
     },
     {
       "bytes": 29591,
@@ -129,7 +129,7 @@
       "owner": "Tools/tests/fixtures/e2e/update_queue_scenarios.py",
       "path": "Tools/tests/fixtures/integration/update_queue_planning_ready_checkpoint",
       "purpose": "Generated current-contract planning checkpoint with one current ready-gate Receipt",
-      "tree_sha256": "sha256:a93e0c2530eb177237c658578a120f22dd3a0b4378384030cf64d137e5efb65c"
+      "tree_sha256": "sha256:eb943292b29c56d1aa4f049cb330afa93602a37ad36863805533a198d31ebe33"
     }
   ],
   "fixtures": [
@@ -25474,10 +25474,10 @@
           "owner_contract_symbol": "batch_page_review_producer",
           "parallel_safe": true,
           "path": "Tools/tests/test_batch_page_review_producer.py",
-          "primary_owner_test": "test_batch_page_review_producer.BatchPageReviewProducerTests.test_consumption_contract_inventory_is_closed_and_gap_is_conditional",
-          "selector": "BatchPageReviewProducerTests.test_consumption_contract_inventory_is_closed_and_gap_is_conditional",
+          "primary_owner_test": "test_batch_page_review_producer.BatchPageReviewProducerTests.test_consumption_contract_inventory_and_profile_rendering_edge",
+          "selector": "BatchPageReviewProducerTests.test_consumption_contract_inventory_and_profile_rendering_edge",
           "semantics": "batch_page_review_producer",
-          "test_id": "test_batch_page_review_producer.BatchPageReviewProducerTests.test_consumption_contract_inventory_is_closed_and_gap_is_conditional"
+          "test_id": "test_batch_page_review_producer.BatchPageReviewProducerTests.test_consumption_contract_inventory_and_profile_rendering_edge"
         },
         {
           "consumer_only": false,
