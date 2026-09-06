@@ -148,7 +148,7 @@ python3 Tools/apply_profile_adoption.py . --plan <root-relative-plan.yaml> \
 
 Omitting `--apply` previews the transaction. A later Standards/Profile change in an existing runtime uses `adopt_standards.py` and the adoption rules owned by [K12/10](<../kernel/K12 Quality Assurance/10 Standards Version Adoption.md>), not an improvised edit to Profile or `.cambium` files.
 
-The creation/editing kit and interview guidance remain source-distribution material under [`distribution-boundary.yaml`](../distribution-boundary.yaml). For an authorized revision, consult them in a source checkout matching the intended Standards version; do not copy the kit into an adopted runtime or reset onboarding. The typed Profile model, codec, contract evaluator, validation, and adoption tools remain runtime dependencies. The interview and its rendered answers are not a second Profile authority or a `.cambium` questionnaire archive.
+For authorized Profile revisions, use the authoring kit in a matching source checkout; do not copy it into an adopted runtime or reset onboarding. [`distribution-boundary.yaml`](../distribution-boundary.yaml) separates source-only interview tools from runtime validation and adoption dependencies. Rendered answers are not Profile authority.
 
 Standards adoption accepts only component paths and objects defined by the current contract. Retired path layouts, producer-era objects, and old runtime formats remain outside Cambium's runtime space; they are not migrated, parsed, or re-authorized. Adoption writers never modify Card bytes. Curated Card review remains the separate, CLI-only `stamp_cards.py --acknowledge-curated-review` operation.
 
@@ -173,7 +173,7 @@ The main runtime entry points are:
 - [`apply_delta.py`](apply_delta.py): preflight or apply one canonical runtime Delta from `--root` plus its repository-relative Delta path; Coverage is derived from the runtime contract and is not a caller-selected input;
 - [`check_proof.py`](check_proof.py): verify the terminal proof object and its bound state when invoked in root mode.
 
-Task Plan schema v3 removes the former skeleton-state SHA copy and deliberately omits `authoring_status`, `gate_receipts`, and `property_state`. Queue compilation preserves all declared targets, while the first `queued -> open` transition materializes current Coverage for that batch's manifest only. Unopened batches remain planning-only and their knowledge pages are not reset, projected, or treated as currently reviewed.
+Queue compilation preserves declared targets; `queued -> open` materializes current Coverage for that batch only. Unopened batches remain planning-only: their pages are not reset, projected, or treated as reviewed. Task Plans do not supply runtime `authoring_status`, `gate_receipts`, or `property_state`.
 
 Start from the live CLI contracts rather than copying a long example with instance-specific values:
 
@@ -188,23 +188,13 @@ Runtime data belongs under `.cambium/`; do not redirect current state or runtime
 
 ### Audit evidence hand-off
 
-[`audit_evidence_runtime`](execution/audit/audit_evidence_runtime.py) resolves an obligation's complete attempt set for producers, AuditReceipt completion, and stage consumers. It delegates record and relationship rules to the evidence-kind owners; a caller-supplied Receipt ID does not hide competing attempts. Candidate Delta references, pre-merge acceptance, post-Delta closure, and Terminal reconciliation retain their distinct purposes. See [K12/19](<../kernel/K12 Quality Assurance/19 Incremental Audit Planning.md>) for the governing plan lifecycle.
-
-L review and completion share this admission path; M/S review dependencies are validated by [`batch_review_obligation_contract`](execution/audit/batch_review_obligation_contract.py). Direct Gates bind the inputs actually observed by their checker, not only a digest of an earlier passing result. Source pointers and immutable history remain separate from current authorization. The Batch Review wrapper's `activation_receipt_id` identifies its admission Gate; AuditPlan's `opening_transition_receipt` still identifies the actual Queue transition.
-
-`evidence_evaluation` shares mechanical contract projections, record validation, page observations, and catalog indexing only within one read-only evaluation. It does not cache permission or a stage verdict. Producer writers obtain a fresh evaluation from lock-time admission, retain CAS, and read back the exact published records. Do not persist this context or carry it across a write.
+[`audit_evidence_runtime`](execution/audit/audit_evidence_runtime.py) resolves complete attempt sets for producers, completion, and stage consumers; supplying one ID cannot hide conflicts. Evidence-kind owners validate bindings. Stage and history rules remain in [K12/19](<../kernel/K12 Quality Assurance/19 Incremental Audit Planning.md>). `evidence_evaluation` reuses facts only within one read-only evaluation; writers obtain fresh lock-time checks, retain CAS, and read back results.
 
 For an open batch, create its AuditPlan and invoke the producer named by each due obligation:
 
 ```text
 python3 Tools/prepare_audit_plan.py --help
-python3 Tools/record_substantive_review.py --help
-python3 Tools/record_batch_page_review.py --help
-python3 Tools/record_batch_judgment.py --help
-python3 Tools/record_changed_scope_evidence.py --help
-python3 Tools/record_rendering_verification.py --help
 python3 Tools/complete_audit_receipt.py --help
-python3 Tools/record_batch_review.py --help
 ```
 
 Ready obligations may be grouped with repeated `--obligation-id` (paired `--evidence-receipt` for finalization). Existing producers preserve evidence kinds, recheck inputs and serialize `--apply` writes. Batch Review requires pre-merge closure.
