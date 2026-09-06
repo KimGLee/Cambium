@@ -15,6 +15,7 @@ from Tools.platform.agent_interface import render_host_configs as generator
 from Tools.platform.common.host_environment import HostEnvironmentUnavailable
 from Tools.platform.common.host_environment import preparation_failure
 from Tools.knowledge.rendering.static_render_runtime import RUNTIME_ENV_KEYS
+from Tools.execution.task_runtime import runtime_paths
 
 
 def _json_object(pairs):
@@ -136,7 +137,7 @@ def install(host, generated, destination, *, apply=False, expected_before=None, 
     target = Path(destination).absolute()
     if any(p.is_symlink() for p in (target, *target.parents)):
         raise ValueError("Host configuration must not traverse a symlink")
-    if ".cambium" in target.parts:
+    if runtime_paths.RUNTIME_ROOT in target.parts:
         raise ValueError("Host configuration cannot be installed in adopter runtime")
     before_bytes = target.read_bytes() if target.exists() else None
     before = before_bytes.decode("utf-8") if before_bytes is not None else ""

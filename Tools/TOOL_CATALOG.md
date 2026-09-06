@@ -315,7 +315,7 @@ Repository IO, serialization, locking, transport, generation, and other Tool-own
 | `execution.task_runtime.queue_runtime.primitives` | `Tools/execution/task_runtime/queue_runtime/primitives.py` | python-module | `execution / task-runtime / infrastructure` | static Python (7 symbols / 28 consumers) |
 | `execution.task_runtime.queue_runtime.receipts` | `Tools/execution/task_runtime/queue_runtime/receipts.py` | python-module | `execution / task-runtime / infrastructure` | static Python (14 symbols / 24 consumers), registered Python symbol (1 consumers) |
 | `execution.task_runtime.queue_runtime.repofs` | `Tools/execution/task_runtime/queue_runtime/repofs.py` | python-module | `execution / task-runtime / infrastructure` | static Python (3 symbols / 4 consumers) |
-| `execution.task_runtime.runtime_paths` | `Tools/execution/task_runtime/runtime_paths.py` | python-module | `execution / task-runtime / infrastructure` | static Python (72 symbols / 78 consumers) |
+| `execution.task_runtime.runtime_paths` | `Tools/execution/task_runtime/runtime_paths.py` | python-module | `execution / task-runtime / infrastructure` | static Python (72 symbols / 79 consumers) |
 | `execution.task_runtime.runtime_state_io` | `Tools/execution/task_runtime/runtime_state_io.py` | python-module | `execution / task-runtime / infrastructure` | static Python (3 symbols / 2 consumers) |
 
 ### Area: `governance`
@@ -1483,7 +1483,7 @@ Repository IO, serialization, locking, transport, generation, and other Tool-own
 | `execution.task_runtime.runtime_paths.REPORT_ROOT` | `execution.task_runtime.render_queue` | declared |
 | `execution.task_runtime.runtime_paths.REQUIRED_QUEUE_REPORT_PATH` | `execution.task_runtime.render_queue` | declared |
 | `execution.task_runtime.runtime_paths.RUNTIME_OBJECTS` | `execution.evidence.seal_receipts` | declared |
-| `execution.task_runtime.runtime_paths.RUNTIME_ROOT` | `execution.planning.apply_task_plan`, `execution.planning.check_corpus_plan`, `execution.task_runtime.init_state`, `governance.profile.apply_profile_adoption`, `governance.profile.profile_onboarding_status`, `knowledge.metadata.project_page_state`, `knowledge.structure.repository_structure`, `platform.agent_interface.compile_cli_contract`, `platform.agent_interface.render_host_configs`, `platform.common.kblib`, `platform.repository.path_capability` | declared |
+| `execution.task_runtime.runtime_paths.RUNTIME_ROOT` | `execution.planning.apply_task_plan`, `execution.planning.check_corpus_plan`, `execution.task_runtime.init_state`, `governance.profile.apply_profile_adoption`, `governance.profile.profile_onboarding_status`, `knowledge.metadata.project_page_state`, `knowledge.structure.repository_structure`, `platform.agent_interface.compile_cli_contract`, `platform.agent_interface.install_host_config`, `platform.agent_interface.render_host_configs`, `platform.common.kblib`, `platform.repository.path_capability` | declared |
 | `execution.task_runtime.runtime_paths.SEAL_RECEIPT_PATH` | `execution.evidence.seal_receipts` | declared |
 | `execution.task_runtime.runtime_paths.STANDARDS_ADOPTION_DELTA_ROOT` | `execution.task_runtime.queue_runtime.canon`, `governance.profile.apply_profile_adoption`, `governance.standards.adopt_standards` | declared |
 | `execution.task_runtime.runtime_paths.STANDARDS_ADOPTION_RECEIPT_PATH` | `governance.profile.apply_profile_adoption`, `governance.standards.adopt_standards`, `governance.standards.adoption_lineage_contract` | declared |
