@@ -118,7 +118,7 @@ def build_batch_review_receipt(result, item, delta_binding, audit_binding,
         "batch_id": item.get("id"),
         "actor_role": actor_role,
         "attestation_statement": statement,
-        "opening_transition_receipt": activation_id,
+        "activation_receipt_id": activation_id,
         "delta_path": delta_binding["path"],
         "delta_sha256": delta_binding["sha256"],
         "delta_page_receipt_ids": list(
@@ -164,6 +164,7 @@ def validate_batch_review_receipt(result, item, receipt, *,
     errors = queue_review.batch_review_receipt_errors(
         catalog, receipt["receipt_id"], item_id=item.get("id"),
         task_id=(result.get("queue") or {}).get("task_id"),
+        activation_receipt_id=item.get("activation_receipt"),
         delta_page_receipt_ids=(
             delta_binding.get("page_receipt_ids")
             if isinstance(delta_binding, dict) else

@@ -42,7 +42,8 @@ REGISTRY_PATH = audit_obligation_projection.CHANGED_SCOPE_REGISTRY_PATH
 ADAPTER_CAPABILITY_ID = "changed-scope-evidence-adapter-v1"
 TOOL = "record_changed_scope_evidence"
 TOOL_VERSION = "1.0.0"
-DIRECT_RECEIPT_TYPE_ID = "changed-scope-gate-evidence-v2"
+DIRECT_RECEIPT_TYPE_ID = "changed-scope-gate-evidence-v3"
+DIRECT_SCHEMA_VERSION = 3
 CANDIDATE_SET_RECEIPT_TYPE_ID = "changed-scope-candidate-set-v2"
 AUDIT_PRECURSOR_RECEIPT_TYPE_ID = "changed-scope-audit-precursor-v2"
 SCHEMA_VERSION = 2
@@ -73,7 +74,7 @@ DIRECT_RECORD_FIELDS = frozenset((
     "contract_fingerprint", "gate_id", "source_gate_id",
     "source_gate_selector", "source_scope", "source_exit_code",
     "source_summary_receipt_id", "source_receipt_set_sha256",
-    "source_receipts",
+    "source_receipts", "source_input_binding",
 ))
 AUDIT_PRODUCER_RECORD_FIELDS = frozenset((
     "receipt_id", "receipt_type_id", "check", "target", "result", "details", "checked_at",
@@ -391,11 +392,38 @@ def runtime_check_source_sha256(rule_id=None, producer_check=None):
     return kblib.sha256_file(path)
 
 
-def direct_dependency_fingerprint(target, selector, source_receipts):
+_DIRECT_INPUTS = {
+    "wiki-link-integrity": ("wiki-link-input-v1", ("check_inputs_sha256",)),
+    "page-contract": ("profile-page-input-v1", (
+        "profile_load_inputs_sha256", "compiled_page_contract_sha256",
+        "check_inputs_sha256")),
+    "frontmatter-vocabulary": ("profile-vocabulary-input-v1", (
+        "profile_load_inputs_sha256", "compiled_vocab_sha256",
+        "check_inputs_sha256")),
+}
+
+
+def direct_input_binding(gate_id, values):
+    """Project the exact checker-owned dependency values of a direct Gate."""
+    if gate_id not in _DIRECT_INPUTS:
+        raise ChangedScopeEvidenceContractError(
+            "direct Gate has no registered input binding")
+    kind, fields = _DIRECT_INPUTS[gate_id]
+    if not isinstance(values, dict) or any(
+            not isinstance(values.get(field), str) or
+            SHA256_RE.fullmatch(values[field]) is None for field in fields):
+        raise ChangedScopeEvidenceContractError(
+            "direct Gate input binding is incomplete or invalid")
+    return {"input_kind": kind, **{field: values[field] for field in fields}}
+
+
+def direct_dependency_fingerprint(target, selector, source_receipts,
+                                  source_input_binding):
     return kblib.sha256_bytes(kblib.canonical_json_bytes({
         "source_scope": target,
         "source_gate_selector": selector,
         "source_receipts": source_receipts,
+        "source_input_binding": source_input_binding,
     }))
 
 
@@ -555,10 +583,10 @@ def validate_direct_record(record, registry=None, control_registry=None,
     if not isinstance(record, dict) or set(record) != DIRECT_RECORD_FIELDS:
         raise ChangedScopeEvidenceContractError(
             "changed-scope direct record fields are not closed")
-    if record.get("schema_version") != SCHEMA_VERSION:
+    if record.get("schema_version") != DIRECT_SCHEMA_VERSION:
         raise ChangedScopeEvidenceContractError(
             "changed-scope direct record schema_version must be %d" %
-            SCHEMA_VERSION)
+            DIRECT_SCHEMA_VERSION)
     if record.get("receipt_type_id") != DIRECT_RECEIPT_TYPE_ID:
         raise ChangedScopeEvidenceContractError(
             "changed-scope direct receipt_type_id is invalid")
@@ -619,8 +647,15 @@ def validate_direct_record(record, registry=None, control_registry=None,
         kblib.canonical_json_bytes(record["source_receipts"]))
     if record.get("source_receipt_set_sha256") != source_set_sha:
         mismatches.append("source_receipt_set_sha256")
+    binding = direct_input_binding(
+        record["source_gate_id"], record.get("source_input_binding"))
+    if binding != record["source_input_binding"]:
+        mismatches.append("source_input_binding")
+    if record["source_gate_id"] != "wiki-link-integrity" and binding != \
+            direct_input_binding(record["source_gate_id"], summary):
+        mismatches.append("source_input_binding/source_summary")
     dependency = direct_dependency_fingerprint(
-        record["target"], selector, record["source_receipts"])
+        record["target"], selector, record["source_receipts"], binding)
     if record.get("dependency_fingerprint") != dependency:
         mismatches.append("dependency_fingerprint")
     if record.get("result") != summary.get("result"):
@@ -1139,6 +1174,8 @@ __all__ = [
     'CANDIDATE_SET_RECEIPT_TYPE_ID',
     'ChangedScopeEvidenceContractError',
     'DIRECT_RECEIPT_TYPE_ID',
+    'DIRECT_SCHEMA_VERSION',
+    'direct_input_binding',
     'SCHEMA_VERSION',
     'INPUT_BINDING_FIELDS',
     'PLAN_BINDING_FIELDS',

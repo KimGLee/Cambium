@@ -166,20 +166,15 @@ class ProfileRenderingEvidenceTests(unittest.TestCase):
             record["receipt_id"]: ("fixture", record)},
             "_profile_authorized_view": {"_contract": self.profile,
                                          "_evaluation": self.evaluation}}
-        completed = complete_audit_receipt.build_audit_receipt(
-            plan=plan, plan_sha256=digest, obligation=obligation, evidence=record)
+        item = {"id": plan["batch_id"], "manifest": [obligation["target"]]}
+        result["items_by_id"] = {item["id"]: item}
         with mock.patch.object(kblib, "repository_target_snapshot", return_value=SimpleNamespace(
                     exists=True, read_text=lambda: self.text)), \
                 mock.patch.object(static_render_runtime, "select_constructs", return_value=("mermaid-fence",)), \
-                mock.patch.object(static_render_runtime, "validate_render_result", return_value=["compiler artifact is invalid"]) as validator:
+                mock.patch.object(static_render_runtime, "validate_render_result", return_value=["compiler artifact is invalid"]):
             with self.assertRaisesRegex(ValueError, "compiler artifact is invalid"):
-                complete_audit_receipt._producer_evidence(
-                    str(REPOSITORY), result, record["receipt_id"], plan, digest, obligation)
-            errors = audit_evidence_runtime._producer_evidence_errors(
-                str(REPOSITORY), result["current_receipt_catalog"], plan, digest,
-                obligation, completed, result=result)
-        self.assertIn("compiler artifact is invalid", " ".join(errors))
-        self.assertEqual(2, validator.call_count)
+                audit_evidence_runtime.require_completion_evidence(
+                    result, item, plan, digest, obligation, record["receipt_id"])
 
     def test_report_and_source_drift_cannot_reuse_current_evidence(self):
         record, plan, obligation = self._record()
@@ -383,24 +378,27 @@ class RenderingVerificationContractTests(unittest.TestCase):
         evidence, plan, obligation = self.build(
             rendering_mode="deterministic-static")
         plan_sha = audit_plan_contract.plan_sha256(plan)
-        with mock.patch.object(
-                audit_producer_runtime, "receipt_by_id",
-                return_value=evidence):
-            observed = complete_audit_receipt._producer_evidence(
-                str(REPOSITORY), {}, evidence["receipt_id"], plan,
-                plan_sha, obligation, self.frozen())
+        item = {"id": plan["batch_id"], "manifest": [row.path for row in self.frozen()]}
+        result = {"root": str(REPOSITORY), "items_by_id": {item["id"]: item},
+                  "current_receipt_catalog": {evidence["receipt_id"]: evidence}}
+        # This contract test supplies retained page inputs, not a repository.
+        pages = {row.path: row.snapshot.read_text() for row in self.frozen()}
+        snapshots = mock.patch.object(kblib, "repository_target_snapshot",
+            side_effect=lambda root, relative, **kwargs: SimpleNamespace(
+                exists=relative in pages, read_text=lambda: pages[relative]))
+        snapshots.start()
+        self.addCleanup(snapshots.stop)
+        observed, existing = audit_evidence_runtime.require_completion_evidence(
+            result, item, plan, plan_sha, obligation, evidence["receipt_id"])
         self.assertIs(evidence, observed)
+        self.assertIsNone(existing)
 
         drifted = copy.deepcopy(evidence)
         drifted["highest_level"] = 0
-        with mock.patch.object(
-                audit_producer_runtime, "receipt_by_id",
-                return_value=drifted):
-            with self.assertRaisesRegex(
-                    ValueError, "rendering-verification contract"):
-                complete_audit_receipt._producer_evidence(
-                    str(REPOSITORY), {}, drifted["receipt_id"], plan,
-                    plan_sha, obligation, self.frozen())
+        result["current_receipt_catalog"] = {drifted["receipt_id"]: drifted}
+        with self.assertRaisesRegex(ValueError, "rendering-verification contract"):
+            audit_evidence_runtime.require_completion_evidence(
+                result, item, plan, plan_sha, obligation, drifted["receipt_id"])
 
     def test_retry_ignores_stale_rendering_history_but_not_current(self):
         evidence, plan, obligation = self.build(

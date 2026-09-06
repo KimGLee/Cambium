@@ -30,7 +30,7 @@ from Tools.tests.fixtures.e2e import RequiredQueueE2EScenarioCase
 class RequiredQueueLifecycleEndToEndTests(RequiredQueueE2EScenarioCase):
     """One representative real lifecycle through Terminal Proof."""
 
-    START_SCENARIO = "terminal-base"
+    START_SCENARIO = "initial-plan"
 
     def test_real_terminal_proof_receipt_completes_task(self):
         self.merge_and_close("B1", "Topics/A.md")

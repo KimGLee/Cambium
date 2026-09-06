@@ -163,20 +163,20 @@ def _registered_producer(capability_id, capability_document, *, root=None):
     return entry, tool
 
 
-def _record_contract(spec, *, root=None, snapshots=None):
+def _record_contract(spec, *, root=None, snapshots=None, contract_loader=None):
     """Return execution route and intermediate shape from its sole owner."""
     source = spec.get("source_registry")
     if spec.get("kernel_extension_point") == profile_rendering.EXTENSION_POINT:
         return "profile-rendering", profile_rendering.RECORD_KIND
     if source == projection.SUBSTANTIVE_REGISTRY_PATH:
-        contract = substantive.load_contract(root, snapshots=snapshots)
-        substantive.validate_contract(contract)
+        contract = (contract_loader(substantive) if contract_loader else
+                    substantive.load_contract(root, snapshots=snapshots))
         return "substantive-review", contract["record_kind"]
     if source == projection.CHANGED_SCOPE_REGISTRY_PATH:
         if spec.get("owner_rule_id") == \
                 "k12-02-rendering-verification-record":
-            contract = rendering.load_contract(root, snapshots=snapshots)
-            rendering.validate_contract(contract)
+            contract = (contract_loader(rendering) if contract_loader else
+                        rendering.load_contract(root, snapshots=snapshots))
             return "rendering-verification", contract["record_kind"]
         return ("deterministic-audit-precursor",
                 lifecycle.CHANGED_SCOPE_PRECURSOR_RECORD_KIND)
@@ -189,6 +189,12 @@ def precursor_chain_for_spec(spec, *, root=None, snapshots=None, evaluation=None
     """Resolve one validated precursor and its derived finalizer."""
     spec = validated_spec(
         spec, root=root, snapshots=snapshots, evaluation=evaluation)
+    return _chain_for_validated_spec(spec, root=root, snapshots=snapshots)
+
+
+def _chain_for_validated_spec(spec, *, root=None, snapshots=None,
+                              contract_loader=None):
+    """Join an already canonical spec to its installed producer contracts."""
     capability_id = spec.get("producer_capability")
     if capability_id is None or spec.get("producer_gate_id") is not None:
         raise AuditProducerChainError(
@@ -205,7 +211,7 @@ def precursor_chain_for_spec(spec, *, root=None, snapshots=None, evaluation=None
         capability_id, capability_document, root=root)
     _registered_producer(finalizer, capability_document, root=root)
     route, record_kind = _record_contract(
-        spec, root=root, snapshots=snapshots)
+        spec, root=root, snapshots=snapshots, contract_loader=contract_loader)
     chain = {
         "execution_route": route,
         "final_evidence_kind": spec["evidence_kind"],
@@ -221,12 +227,13 @@ def precursor_chain_for_spec(spec, *, root=None, snapshots=None, evaluation=None
 
 
 def precursor_chain_for_obligation(obligation, *, root=None,
-                                    snapshots=None, evaluation=None):
+                                    snapshots=None, evaluation=None,
+                                    contract_loader=None):
     """Validate a frozen obligation and resolve its complete producer chain."""
     spec = validated_spec_for_obligation(
         obligation, root=root, snapshots=snapshots, evaluation=evaluation)
-    return precursor_chain_for_spec(
-        spec, root=root, snapshots=snapshots, evaluation=evaluation)
+    return _chain_for_validated_spec(
+        spec, root=root, snapshots=snapshots, contract_loader=contract_loader)
 
 
 def precursor_record_matches(record, chain):

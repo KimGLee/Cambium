@@ -128,10 +128,6 @@ class AuditReceiptAfterImageContractTests(unittest.TestCase):
         def extra_field(document):
             document["page_artifact_fingerprint"]["extra"] = "invalid"
 
-        def reorder_frontmatter(document):
-            document["page_artifact_fingerprint"][
-                "included_frontmatter_fields"].reverse()
-
         def change_body_binding(document):
             document["page_artifact_fingerprint"][
                 "body_binding"] = "normalized-markdown"
@@ -145,7 +141,7 @@ class AuditReceiptAfterImageContractTests(unittest.TestCase):
                 "page_set_member_fields"].reverse()
 
         for mutate in (
-                extra_field, reorder_frontmatter, change_body_binding,
+                extra_field, change_body_binding,
                 change_path_binding, reorder_member_fields):
             with self.subTest(case=mutate.__name__):
                 document = copy.deepcopy(SOURCE)

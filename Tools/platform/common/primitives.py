@@ -5,7 +5,46 @@ domain contracts that consume them so Coverage planning and Queue validation
 share one implementation without introducing a dependency cycle.
 """
 
+from copy import deepcopy
 import datetime
+import json
+
+
+class _ProjectedDocument(dict):
+    """An explicitly scoped document snapshot, never a cached verdict."""
+
+    def __init__(self, document, validator):
+        super().__init__(deepcopy(document))
+        self._validator = validator
+        self._bytes = self._identity()
+        self._projection = deepcopy(validator(self))
+
+    def _identity(self):
+        return json.dumps(self, ensure_ascii=False, sort_keys=True,
+                          separators=(",", ":"))
+
+
+def validated_document(document, validator, *, cache_projection=False):
+    """Validate through the owner; optionally retain its mechanical projection.
+
+    The caller owns this snapshot's lifetime and must capture a new one at a
+    new input boundary. No path/global cache or authority result is retained.
+    Validators with external dependencies may use retention only when those
+    dependencies belong to the same read-only evaluation.
+    """
+    if cache_projection:
+        return _ProjectedDocument(document, validator)
+    validator(document)
+    return document
+
+
+def document_projection(document, validator):
+    """Reuse only the same owner and exact document; never expose cache values."""
+    if (isinstance(document, _ProjectedDocument) and
+            document._validator is validator and
+            document._bytes == document._identity()):
+        return deepcopy(document._projection)
+    return validator(document)
 
 
 def nonempty_string(value):

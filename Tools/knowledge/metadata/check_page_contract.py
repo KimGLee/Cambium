@@ -135,7 +135,7 @@ def condition_holds(condition, fields):
     return ok
 
 
-def check_shape(root, rel, name, spec, value, report):
+def check_shape(root, rel, name, spec, value, report, *, references=None):
     shape = spec.get("shape")
     if shape == "date":
         if not isinstance(value, str) or not DATE_RE.match(value):
@@ -166,12 +166,20 @@ def check_shape(root, rel, name, spec, value, report):
             target_types = [targets]
         for item in values:
             resolved = repository.resolve_markdown_reference(root, item)
+            actual = (page_frontmatter_contract.page_type(resolved)
+                      if resolved is not None and target_types is not None else None)
+            if references is not None:
+                references.append({
+                    "field": name, "value": item,
+                    "resolved": (os.path.relpath(resolved, root).replace(os.sep, "/")
+                                 if resolved is not None else None),
+                    "target_type": actual,
+                })
             if resolved is None:
                 report("page-contract-target", "%s:%s" % (rel, name),
                        "target %r does not resolve inside the vault"
                        % (item,))
             elif target_types is not None:
-                actual = page_frontmatter_contract.page_type(resolved)
                 if actual not in target_types:
                     report("page-contract-target", "%s:%s" % (rel, name),
                            "target %r has type %r, expected one of %s"
@@ -181,6 +189,77 @@ def check_shape(root, rel, name, spec, value, report):
         # key names (K08/09); only presence and mode are checked here.
         pass
     # nonempty-string and unknown shapes: presence checks already cover them.
+
+
+def page_input_material(root, rel, text, fields, contract, rules, owner_row,
+                        *, references=None):
+    """Project only the page, checked relationships and relevant owner data.
+
+    During checking, references come from check_shape's actual observations.
+    During currentness, that same predicate resolves them without receipts.
+    No global Coverage revision, unrelated rows or target bodies are bound.
+    """
+    if references is None:
+        references = []
+        if isinstance(fields, dict):
+            for name, spec in (contract or {}).items():
+                if (spec.get("mode") not in ("forbidden", "derived") and
+                        fields.get(name) not in (None, "", [])):
+                    check_shape(root, rel, name, spec, fields[name],
+                                lambda *_: None, references=references)
+    planning = coverage_contract.is_complete_planning_page(owner_row)
+    owner_fields = {}
+    if not planning and isinstance(fields, dict):
+        for rule in rules:
+            field = rule["field"]
+            present = False
+            value = None
+            if isinstance(owner_row, dict):
+                if rule.get("source_adapter") == "coverage-row-value-v1":
+                    present, value = field in owner_row, owner_row.get(field)
+                elif rule.get("source_adapter") == "coverage-property-state-v1":
+                    states = owner_row.get("property_state")
+                    value = states.get(field) if isinstance(states, dict) else None
+                    present = value is not None
+            owner_fields[field] = {"present": present, "value": value}
+    return {"path": rel, "page_sha256": kblib.sha256_bytes(text),
+            "references": references,
+            "projection_rules": list(rules) if isinstance(fields, dict) else [],
+            "planning_only": planning if isinstance(fields, dict) else None,
+            "owner_fields": owner_fields}
+
+
+def capture_inputs(root, target, admission, artifact_snapshot):
+    """Rebuild one scoped page Gate's inputs under the admitted contract."""
+    findings = reporting.FindingSet()
+    contract, _roles = load_contract(
+        compose_page_contract.DEFAULT_OUTPUT, findings, artifact_snapshot.read_text())
+    if contract is None:
+        raise ValueError("direct page-contract input has no valid compiled contract")
+    metadata = metadata_execution_contract.load_metadata_execution_contract(root)
+    rules = metadata_property_state.profile_gate_projection_rules(
+        root, admission.contract.extension_gates, metadata_contract=metadata,
+        typed_profile_contract=admission.contract)
+    ledger_path = os.path.join(root, COVERAGE_LEDGER_PATH)
+    ledger = None
+    if os.path.isfile(ledger_path):
+        try:
+            ledger = kblib.parse_yaml_subset(kblib.read_text(ledger_path, errors="replace"))
+        except kblib.YamlSubsetError:
+            pass
+    rows = {str(row["path"]): row for row in (ledger or {}).get("pages") or []
+            if isinstance(row, dict) and row.get("path")}
+    pages = []
+    for path, rel in kblib.iter_md_files(root, scope=target):
+        text = kblib.read_text(path, errors="replace")
+        raw = kblib.extract_frontmatter(text)
+        try:
+            fields = kblib.parse_yaml_subset(raw) if raw is not None else None
+        except kblib.YamlSubsetError:
+            fields = None
+        pages.append(page_input_material(root, rel.replace(os.sep, "/"), text,
+                     fields, contract, rules, rows.get(rel.replace(os.sep, "/"))))
+    return sorted(pages, key=lambda row: row["path"])
 
 
 def check_sources_role(root, rel, text, fields, contract, roles, report):
@@ -327,10 +406,16 @@ def run(root, profile_override, contract_path, scope, excludes, strict,
                      "an invocation error, never a pass")
 
     checked = 0
+    observed_inputs = []
     for path in pages:
         rel = os.path.relpath(path, root).replace(os.sep, "/")
         page_text = kblib.read_text(path, errors="replace")
         raw = kblib.extract_frontmatter(page_text)
+        references = []
+        material = page_input_material(root, rel, page_text, None, contract,
+                                       projection_rules, ledger_dispositions.get(rel),
+                                       references=references)
+        observed_inputs.append(material)
         if raw is None:
             findings.add("page-contract-frontmatter", rel, violation,
                          "no fenced frontmatter; every applicable field "
@@ -348,6 +433,9 @@ def run(root, profile_override, contract_path, scope, excludes, strict,
                          "frontmatter is not a mapping")
             continue
         checked += 1
+        material.update(page_input_material(
+            root, rel, page_text, fields, contract, projection_rules,
+            ledger_dispositions.get(rel), references=references))
 
         def report(check, target, details):
             findings.add(check, target, violation, details)
@@ -392,7 +480,8 @@ def run(root, profile_override, contract_path, scope, excludes, strict,
                        "(K08/06)")
                 continue
             if present and not empty:
-                check_shape(root, rel, name, spec, value, report)
+                check_shape(root, rel, name, spec, value, report,
+                            references=references)
 
         owner_row = ledger_dispositions.get(rel)
         owner_is_planning = coverage_contract.is_complete_planning_page(
@@ -552,6 +641,8 @@ def run(root, profile_override, contract_path, scope, excludes, strict,
                "strict" if strict else "advisory"),
             seq, receipt_type_id=RECEIPT_TYPE_ID, root=root)
         summary["gate_id"] = GATE_ID
+        summary["check_inputs_sha256"] = kblib.sha256_bytes(
+            kblib.canonical_json_bytes(observed_inputs))
         if admission is not None:
             summary.update({
                 "selected_profile_manifest": admission.manifest_repo_path,

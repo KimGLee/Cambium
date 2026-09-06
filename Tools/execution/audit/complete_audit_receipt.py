@@ -10,18 +10,11 @@ import os
 import sys
 
 import Tools.execution.audit.audit_evidence_runtime as audit_evidence_runtime
-import Tools.execution.audit.audit_plan_contract as audit_plan_contract
-import Tools.execution.audit.audit_producer_chain as audit_producer_chain
 import Tools.execution.audit.audit_producer_runtime as audit_producer_runtime
 import Tools.execution.audit.audit_receipt_contract as audit_receipt_contract
 import Tools.execution.audit.audit_receipt_finalizer as audit_receipt_finalizer
-import Tools.execution.audit.changed_scope_evidence_runtime as changed_scope_evidence_runtime
-import Tools.execution.evidence.evidence_attempt_runtime as evidence_attempt_runtime
 import Tools.platform.common.kblib as kblib
-import Tools.knowledge.rendering.rendering_verification_contract as rendering_verification_contract
-import Tools.knowledge.rendering.profile_rendering_evidence_contract as profile_rendering
 import Tools.execution.task_runtime.runtime_paths as runtime_paths
-import Tools.execution.audit.substantive_review_contract as substantive_review_contract
 from Tools.platform.common import reporting
 
 
@@ -61,110 +54,6 @@ def _obligation(plan, obligation_id):
     return row
 
 
-def _producer_evidence(root, result, receipt_id, plan, plan_sha256,
-                       obligation, frozen=None):
-    if (obligation.get("evidence_kind") != "audit-receipt" or
-            obligation.get("evidence_role") != "emits" or
-            obligation.get("dimension") is None):
-        raise audit_producer_runtime.AuditProducerError(
-            "only a dimension-specific AuditReceipt obligation may use the "
-            "AuditReceipt completion producer")
-    evidence = audit_producer_runtime.receipt_by_id(result, receipt_id)
-    if not isinstance(evidence, dict):
-        raise audit_producer_runtime.AuditProducerError(
-            "producer evidence %s is not current" % receipt_id)
-    audit_producer_runtime.validate_obligation_attempt_binding(
-        evidence, plan, plan_sha256, obligation)
-    try:
-        chain = audit_producer_chain.require_precursor_record(
-            evidence, obligation, root=root,
-            evaluation=(result.get("_profile_authorized_view") or {}).get("_evaluation"))
-    except audit_producer_chain.AuditProducerChainError as exc:
-        raise audit_producer_runtime.AuditProducerError(str(exc)) from exc
-    expected = {
-        "check": obligation["producer_check"],
-        "invalidated_by": None,
-    }
-    mismatches = [field for field, value in expected.items()
-                  if evidence.get(field) != value]
-    if mismatches:
-        raise audit_producer_runtime.AuditProducerError(
-            "producer evidence differs from AuditPlan in: %s" %
-            ", ".join(mismatches))
-    if evidence.get("result") != "pass":
-        raise audit_producer_runtime.AuditProducerError(
-            "only a terminal passing producer attempt may be completed into "
-            "the current AuditReceipt")
-    for field in (
-            "artifact_fingerprint", "dependency_fingerprint",
-            "contract_fingerprint"):
-        value = evidence.get(field)
-        if not audit_plan_contract.is_sha256(value):
-            mismatches.append(field)
-    if chain["execution_route"] == "substantive-review":
-        substantive_review_contract.validate_review_receipt(
-            evidence, substantive_review_contract.load_contract(root))
-        target_pages = [page for page in (frozen or ())
-                        if page.path == obligation["target"]]
-        if len(target_pages) != 1 or \
-                evidence.get("artifact_fingerprint") != \
-                audit_producer_runtime.page_artifact_fingerprint(
-                    target_pages[0]):
-            mismatches.append("artifact_fingerprint")
-        if evidence["sources_sha256"] != \
-                evidence.get("dependency_fingerprint"):
-            mismatches.append("dependency_fingerprint")
-        if evidence.get("contract_fingerprint") != \
-                audit_producer_runtime.obligation_contract_fingerprint(
-                    plan, obligation):
-            mismatches.append("contract_fingerprint")
-    elif chain["execution_route"] == "profile-rendering":
-        try:
-            profile_rendering.validate_record_for_obligation(
-                evidence, plan, plan_sha256, obligation, root=root,
-                evaluation=(result.get("_profile_authorized_view") or {}).get("_evaluation"))
-        except (OSError, TypeError, UnicodeError, ValueError, RuntimeError) as exc:
-            mismatches.append("Profile rendering evidence: %s" % exc)
-    elif chain["execution_route"] == "rendering-verification":
-        try:
-            if not frozen:
-                raise ValueError(
-                    "rendering-verification requires the frozen manifest")
-            contract = rendering_verification_contract.load_contract(root)
-            rendering_verification_contract.validate_record_for_obligation(
-                evidence, plan, plan_sha256, obligation, contract)
-            expected_scope = sorted(page.path for page in frozen)
-            if evidence.get("scope") != expected_scope:
-                mismatches.append("scope")
-            if evidence.get("artifact_fingerprint") != \
-                    audit_producer_runtime.page_set_artifact_fingerprint(
-                        frozen):
-                mismatches.append("artifact_fingerprint")
-        except (OSError, TypeError, UnicodeError, ValueError,
-                kblib.YamlSubsetError) as exc:
-            mismatches.append("rendering-verification contract: %s" % exc)
-    elif chain["execution_route"] == "deterministic-audit-precursor":
-        try:
-            item = (result.get("items_by_id") or {}).get(plan["batch_id"])
-            if not isinstance(item, dict):
-                raise ValueError(
-                    "changed-scope currentness requires the current batch")
-            changed_scope_evidence_runtime.validate_current_record(
-                evidence, root=root, result=result, item=item,
-                plan=plan, plan_sha256=plan_sha256,
-                obligation=obligation, frozen=frozen)
-        except (OSError, TypeError, UnicodeError, ValueError,
-                kblib.YamlSubsetError) as exc:
-            mismatches.append("changed-scope evidence contract: %s" % exc)
-    else:
-        mismatches.append("unsupported registered producer chain")
-    if mismatches:
-        raise audit_producer_runtime.AuditProducerError(
-            "producer evidence cannot discharge obligation: %s" %
-            ", ".join(sorted(set(mismatches))))
-    return evidence
-
-
 def build_audit_receipt(*, plan, plan_sha256, obligation, evidence, seq=1):
     """Derive a full receipt without accepting semantic fields from caller."""
     seed = kblib.make_receipt(
@@ -181,71 +70,6 @@ def build_audit_receipt(*, plan, plan_sha256, obligation, evidence, seq=1):
         obligation=obligation,
         evidence=evidence,
     )
-
-def _validate_audit_receipt_attempt_stable(record, plan, plan_sha256,
-                                           obligation, root):
-    audit_receipt_contract.validate_audit_receipt(
-        record, audit_receipt_contract.load_contract(root))
-    audit_producer_runtime.validate_obligation_attempt_binding(
-        record, plan, plan_sha256, obligation)
-    if (record.get("result") != "passed" or
-            record.get("fingerprint_binding") != "evidence-time" or
-            record.get("reused_receipt_id") is not None or
-            record.get("reuse_reason") is not None):
-        raise ValueError(
-            "AuditReceipt completion attempt is not new passing evidence")
-    return record
-
-
-def _validate_audit_receipt_attempt_current(
-        record, root, result, plan, plan_sha256, obligation, frozen):
-    _validate_audit_receipt_attempt_stable(
-        record, plan, plan_sha256, obligation, root)
-    evidence = _producer_evidence(
-        root, result, record["evidence_ref"], plan, plan_sha256,
-        obligation, frozen)
-    scope = sorted(set(
-        (evidence.get("scope") or []) + [obligation["target"]]))
-    expected = {
-        "scope": scope,
-        "artifact_fingerprint": evidence["artifact_fingerprint"],
-        "dependency_fingerprint": evidence["dependency_fingerprint"],
-        "contract_fingerprint": evidence["contract_fingerprint"],
-        "verifier": evidence["tool"],
-        "method": "%s@%s/%s" % (
-            evidence["tool"], evidence["tool_version"], evidence["check"]),
-        "checked_at": evidence["checked_at"],
-    }
-    mismatches = [field for field, value in expected.items()
-                  if record.get(field) != value]
-    if mismatches:
-        raise ValueError(
-            "AuditReceipt attempt differs from current producer evidence in: "
-            "%s" % ", ".join(sorted(mismatches)))
-    return record
-
-
-def current_audit_receipt_attempt(result, plan, plan_sha256, obligation,
-                                  frozen, root):
-    """Return the sole completed receipt still bound to current evidence."""
-    attempts = audit_producer_runtime.obligation_attempt_records(
-        result, plan_id=plan["plan_id"],
-        obligation_id=obligation["obligation_id"],
-        record_kind="audit-receipt")
-    try:
-        return evidence_attempt_runtime.unique_current_attempt(
-            attempts,
-            validate_stable=lambda record:
-                _validate_audit_receipt_attempt_stable(
-                    record, plan, plan_sha256, obligation, root),
-            validate_current=lambda record:
-                _validate_audit_receipt_attempt_current(
-                    record, root, result, plan, plan_sha256, obligation,
-                    frozen),
-            label="AuditPlan obligation %s AuditReceipt completion" %
-                  obligation["obligation_id"])
-    except evidence_attempt_runtime.EvidenceAttemptError as exc:
-        raise audit_producer_runtime.AuditProducerError(str(exc)) from exc
 
 
 def main(argv=None):
@@ -268,6 +92,7 @@ def main(argv=None):
             result, args.batch)
         _absolute, plan, plan_sha256, frozen = _load_current_plan(
             root, args.plan, result, item)
+        result = audit_evidence_runtime.evidence_evaluation(result)
         if len(args.obligation_id) != len(args.evidence_receipt) or len(set(args.obligation_id)) != len(args.obligation_id):
             raise audit_producer_runtime.AuditProducerError("completion requires unique paired obligation/evidence IDs")
         receipt_absolute = audit_producer_runtime.managed_receipt_path(
@@ -275,12 +100,18 @@ def main(argv=None):
         completions = []
         for index, (identity, evidence_id) in enumerate(zip(args.obligation_id, args.evidence_receipt), 1):
             obligation = _obligation(plan, identity)
-            evidence = _producer_evidence(root, result, evidence_id, plan, plan_sha256, obligation, frozen)
-            existing = current_audit_receipt_attempt(result, plan, plan_sha256, obligation, frozen, root)
-            if existing is not None and existing.get("evidence_ref") != evidence["receipt_id"]:
-                raise audit_producer_runtime.AuditProducerError("AuditReceipt obligation already has different current evidence")
+            evidence, existing = audit_evidence_runtime.require_completion_evidence(
+                result, item, plan, plan_sha256, obligation, evidence_id)
             receipt = existing if existing is not None else build_audit_receipt(
                 plan=plan, plan_sha256=plan_sha256, obligation=obligation, evidence=evidence, seq=index)
+            if existing is None:
+                proposed = audit_evidence_runtime.obligation_evidence_resolution(
+                    result, item, plan, plan_sha256, obligation,
+                    proposed_record=receipt)
+                if proposed["status"] != "satisfied":
+                    raise audit_producer_runtime.AuditProducerError(
+                        "proposed AuditReceipt does not discharge its obligation: %s" %
+                        proposed.get("reason"))
             completions.append((obligation, evidence, receipt, existing is None))
         receipts = [row[2] for row in completions]
         pending = [row for row in completions if row[3]]
@@ -337,13 +168,22 @@ def main(argv=None):
                         "resolved AuditPlan changed before evidence publication")
                 audit_producer_runtime.require_pages_current(
                     root, frozen, "before AuditReceipt publication")
-                for obligation, evidence, _, _ in pending:
-                    current_evidence = _producer_evidence(root, locked, evidence["receipt_id"],
-                        plan, plan_sha256, obligation, frozen)
+                locked = audit_evidence_runtime.evidence_evaluation(locked)
+                for obligation, evidence, candidate, _ in pending:
+                    current_evidence, existing = audit_evidence_runtime.require_completion_evidence(
+                        locked, locked_item, plan, plan_sha256, obligation,
+                        evidence["receipt_id"])
                     if current_evidence != evidence:
                         raise audit_producer_runtime.AuditProducerError("producer evidence changed before AuditReceipt publication")
-                    if current_audit_receipt_attempt(locked, plan, plan_sha256, obligation, frozen, root) is not None:
+                    if existing is not None:
                         raise audit_producer_runtime.AuditProducerError("AuditReceipt evidence appeared before publication")
+                    proposed = audit_evidence_runtime.obligation_evidence_resolution(
+                        locked, locked_item, plan, plan_sha256, obligation,
+                        proposed_record=candidate)
+                    if proposed["status"] != "satisfied":
+                        raise audit_producer_runtime.AuditProducerError(
+                            "proposed AuditReceipt does not discharge its obligation: %s" %
+                            proposed.get("reason"))
                 before = kblib.receipt_append_observation(
                     receipt_absolute, new_receipts)
             outcome, error, _ = kblib.write_receipts_observed(

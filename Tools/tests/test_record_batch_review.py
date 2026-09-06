@@ -52,6 +52,13 @@ class RecordBatchReviewBuilderTests(unittest.TestCase):
         expected_sha = card_activation.review_requirement_set_sha256(expected)
         activation = {
             "receipt_id": "activation-1",
+            "tool": record_batch_review.queue_review.TOOL,
+            "tool_version": record_batch_review.queue_review.TOOL_VERSION,
+            "check": record_batch_review.queue_review.GATE_CHECK,
+            "gate_id": "required-queue-admission",
+            "queue_check_mode": "require-ready:B1",
+            "target": record_batch_review.queue_review.QUEUE_PATH,
+            "task_id": "task-1",
             "result": "pass",
             "invalidated_by": None,
             "activation_protocol": card_activation.ACTIVATION_PROTOCOL,
@@ -164,6 +171,8 @@ class RecordBatchReviewBuilderTests(unittest.TestCase):
     def test_builder_derives_and_consumer_accepts_exact_sets(self):
         receipt = self.build()
 
+        self.assertEqual("activation-1", receipt["activation_receipt_id"])
+        self.assertNotIn("opening_transition_receipt", receipt)
         self.assertEqual(["page-1"], receipt["delta_page_receipt_ids"])
         self.assertEqual(["judgment-1"], receipt["judgment_receipt_ids"])
         self.assertEqual(
@@ -181,6 +190,28 @@ class RecordBatchReviewBuilderTests(unittest.TestCase):
             record_batch_review.validate_batch_review_receipt(
                 self.result, self.item, receipt, delta_binding=self.delta,
                 audit_binding=self.audit)
+
+    def test_wrapper_activation_edge_cannot_name_an_opening_transition(self):
+        receipt = self.build()
+        catalog = self.result["current_receipt_catalog"]
+        catalog[receipt["receipt_id"]] = ("wrapper.jsonl", receipt)
+        catalog["opening-1"] = ("transition.jsonl", {
+            "receipt_id": "opening-1", "result": "pass",
+            "invalidated_by": None, "before_state": "queued",
+            "after_state": "open", "task_id": "task-1", "batch_id": "B1",
+        })
+        receipt["activation_receipt_id"] = "opening-1"
+        # Even a matching caller ID cannot turn a state transition into the
+        # typed admission event. Correct type with the wrong identity also
+        # fails, independently of AuditPlan/judgment acceptance.
+        for expected in ("activation-1", "opening-1"):
+            with self.subTest(expected=expected):
+                errors = record_batch_review.queue_review.batch_review_receipt_errors(
+                    catalog, receipt["receipt_id"], item_id="B1", task_id="task-1",
+                    activation_receipt_id=expected,
+                    delta_page_receipt_ids=["page-1"])
+                self.assertTrue(errors)
+                self.assertTrue(any("activation" in error for error in errors))
 
     def test_existing_consumer_rejects_missing_delta_member(self):
         receipt = self.build()

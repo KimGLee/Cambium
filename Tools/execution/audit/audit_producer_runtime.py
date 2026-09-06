@@ -9,7 +9,6 @@ the common compare-and-swap checks needed by the three writers.
 from dataclasses import dataclass
 import json
 import os
-import re
 
 import Tools.execution.task_runtime.queue_runtime.authority as runtime_authority
 import Tools.execution.task_runtime.queue_runtime.profile_view as profile_view
@@ -260,41 +259,6 @@ def page_set_artifact_fingerprint(frozen):
     ])
 
 
-def sources_sha256(text):
-    """Hash the exact authoritative H2 Sources section and no other prose."""
-    lines = text.splitlines(keepends=True)
-    start = None
-    end = len(lines)
-    fenced = False
-    fence_marker = None
-    for index, line in enumerate(lines):
-        stripped = line.lstrip()
-        marker = "```" if stripped.startswith("```") else (
-            "~~~" if stripped.startswith("~~~") else None)
-        if marker is not None:
-            if not fenced:
-                fenced = True
-                fence_marker = marker
-            elif marker == fence_marker:
-                fenced = False
-                fence_marker = None
-            continue
-        if fenced:
-            continue
-        match = re.match(
-            r"^(#{1,6})\s+(.+?)\s*#*\s*$", line.rstrip("\r\n"))
-        if match is None:
-            continue
-        level = len(match.group(1))
-        heading = match.group(2).strip()
-        if start is None and level == 2 and heading.casefold() == "sources":
-            start = index
-            continue
-        if start is not None and level <= 2:
-            end = index
-            break
-    material = "" if start is None else "".join(lines[start:end])
-    return kblib.sha256_bytes(material)
 
 
 def obligation_contract_fingerprint(plan, obligation, *, additional=None):

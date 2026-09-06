@@ -28,6 +28,7 @@ import Tools.execution.audit.audit_producer_runtime as audit_producer_runtime
 import Tools.execution.audit.changed_scope_evidence_contract as changed_scope_evidence_contract
 import Tools.execution.audit.changed_scope_evidence_runtime as changed_scope_evidence_runtime
 import Tools.knowledge.rendering.changed_scope_rendering_checks as changed_scope_rendering_checks
+from Tools.knowledge.content import check_links
 import Tools.execution.evidence.evidence_attempt_runtime as evidence_attempt_runtime
 import Tools.governance.control.metadata_execution_contract as metadata_execution_contract
 import Tools.governance.profile.profile_contract as profile_contract
@@ -415,6 +416,18 @@ def gate_command(root, plan, target, trace):
 
 
 def run_source_gate(root, plan, target, trace):
+    gate = trace["producer_route_id"]
+    if gate == check_links.GATE_ID:
+        # One captured projection drives both the original checker and the
+        # binding. No second scanner or shared CLI stdout state is involved.
+        inputs = check_links.capture_inputs(root, target)
+        receipts, _counts = check_links.evaluate_inputs(inputs, root=root)
+        exit_code, selected = select_source_gate_receipts(receipts, gate)
+        binding = changed_scope_evidence_contract.direct_input_binding(gate, {
+            "check_inputs_sha256": kblib.sha256_bytes(
+                kblib.canonical_json_bytes(inputs)),
+        })
+        return exit_code, selected, binding
     command = gate_command(root, plan, target, trace)
     completed = kblib.run_cambium_subprocess(
         command, cwd=root, text=True, capture_output=True, check=False)
@@ -428,8 +441,14 @@ def run_source_gate(root, plan, target, trace):
     if not isinstance(receipts, list):
         raise ChangedScopeProducerError(
             "scoped Gate JSON output must be one receipt array")
-    return select_source_gate_receipts(
-        receipts, trace["producer_route_id"])
+    exit_code, selected = select_source_gate_receipts(receipts, gate)
+    summaries = [record for record in selected
+                 if record.get("check") == trace["existing_check"]]
+    if len(summaries) != 1:
+        raise ChangedScopeProducerError("direct Gate has no unique input summary")
+    binding = changed_scope_evidence_contract.direct_input_binding(
+        gate, summaries[0])
+    return exit_code, selected, binding
 
 
 def select_source_gate_receipts(receipts, gate_id):
@@ -456,11 +475,6 @@ def select_source_gate_receipts(receipts, gate_id):
     return kblib.exit_code(selected), selected
 
 
-def _dependency_fingerprint(target, selector, source_receipts):
-    return changed_scope_evidence_contract.direct_dependency_fingerprint(
-        target, selector, source_receipts)
-
-
 def _contract_fingerprint(plan, obligation, registry, row, predicate):
     return changed_scope_evidence_contract.direct_contract_fingerprint(
         plan, obligation, registry, row, predicate)
@@ -468,7 +482,8 @@ def _contract_fingerprint(plan, obligation, registry, row, predicate):
 
 def build_direct_record(*, root, plan, plan_sha256, obligation, row, trace,
                         registry, control_registry, frozen,
-                        source_exit_code, source_receipts, seq=1):
+                        source_exit_code, source_receipts,
+                        source_input_binding, seq=1):
     """Bind one exact scoped Gate run without manufacturing a dimension."""
     target = _frozen_target(frozen, obligation["target"])
     predicate = control_registry[trace["producer_route_id"]]
@@ -493,7 +508,7 @@ def build_direct_record(*, root, plan, plan_sha256, obligation, row, trace,
             changed_scope_evidence_contract.DIRECT_RECEIPT_TYPE_ID,
         root=root, identity=identity)
     receipt.update({
-        "schema_version": changed_scope_evidence_contract.SCHEMA_VERSION,
+        "schema_version": changed_scope_evidence_contract.DIRECT_SCHEMA_VERSION,
         "record_kind": row["evidence_kind"],
         "plan_id": plan["plan_id"],
         "audit_plan_sha256": plan_sha256,
@@ -525,8 +540,10 @@ def build_direct_record(*, root, plan, plan_sha256, obligation, row, trace,
         "fingerprint_binding": obligation["fingerprint_binding"],
         "artifact_fingerprint":
             audit_producer_runtime.page_artifact_fingerprint(target),
-        "dependency_fingerprint": _dependency_fingerprint(
-            obligation["target"], selector, source_receipts),
+        "dependency_fingerprint":
+            changed_scope_evidence_contract.direct_dependency_fingerprint(
+                obligation["target"], selector, source_receipts,
+                source_input_binding),
         "contract_fingerprint": _contract_fingerprint(
             plan, obligation, registry, row, predicate),
         "gate_id": trace["producer_route_id"],
@@ -537,8 +554,9 @@ def build_direct_record(*, root, plan, plan_sha256, obligation, row, trace,
         "source_summary_receipt_id": summary["receipt_id"],
         "source_receipt_set_sha256": source_set_sha,
         "source_receipts": source_receipts,
+        "source_input_binding": source_input_binding,
     })
-    validate_direct_record_for_plan(
+    changed_scope_evidence_contract.validate_direct_record_for_plan(
         receipt, plan, plan_sha256, obligation, registry, control_registry,
         audit_producer_runtime.page_artifact_fingerprint(target), root)
     return receipt
@@ -824,17 +842,6 @@ def validate_audit_producer_record_for_context(record, context):
     return record
 
 
-# The producer and both central consumers share these exact shape/plan
-# validators.  Keeping the public names here preserves the CLI/test API while
-# the implementation remains below audit_evidence_runtime in the import graph.
-validate_direct_record = \
-    changed_scope_evidence_contract.validate_direct_record
-validate_direct_record_for_plan = \
-    changed_scope_evidence_contract.validate_direct_record_for_plan
-validate_audit_producer_record = \
-    changed_scope_evidence_contract.validate_audit_producer_record
-
-
 def validate_candidate_set_record_for_context(record, context):
     """Prove one candidate set still matches its plan and executable inputs."""
     changed_scope_evidence_contract.validate_candidate_set_record_for_plan(
@@ -855,12 +862,15 @@ def existing_direct_record(result, plan, plan_sha256, obligation, registry,
         obligation_id=obligation["obligation_id"])
     return evidence_attempt_runtime.unique_current_attempt(
         matches,
-        validate_stable=lambda record: validate_direct_record_for_plan(
+        validate_stable=lambda record: changed_scope_evidence_contract.validate_direct_record_for_plan(
             record, plan, plan_sha256, obligation, registry,
             control_registry, None, result["root"]),
-        validate_current=lambda record: validate_direct_record_for_plan(
-            record, plan, plan_sha256, obligation, registry,
-            control_registry, artifact_fingerprint, result["root"]),
+        validate_current=lambda record:
+            changed_scope_evidence_runtime.validate_current_direct_record(
+                record, root=result["root"], plan=plan,
+                plan_sha256=plan_sha256, obligation=obligation, result=result,
+                registry=registry, control_registry=control_registry,
+                artifact_fingerprint=artifact_fingerprint),
         label="AuditPlan obligation %s direct evidence" %
               obligation["obligation_id"])
 
@@ -937,12 +947,12 @@ def require_exact_evidence_readback(path, receipt, context, *, records=None):
         validate_candidate_set_record_for_context(matches[0], context)
     else:
         page = context.get("target_page")
-        validate_direct_record_for_plan(
-            matches[0], context["plan"], context["plan_sha256"],
-            context["obligation"], context["registry"],
-            context["control_registry"],
-            audit_producer_runtime.page_artifact_fingerprint(page),
-            context["root"])
+        changed_scope_evidence_runtime.validate_current_direct_record(
+            matches[0], root=context["root"], plan=context["plan"],
+            plan_sha256=context["plan_sha256"], obligation=context["obligation"],
+            result=context["result"], registry=context["registry"],
+            control_registry=context["control_registry"],
+            artifact_fingerprint=audit_producer_runtime.page_artifact_fingerprint(page))
     return matches[0]
 
 
@@ -1012,17 +1022,25 @@ def produce_evidence(context, *, seq=1):
         return build_candidate_set_record(
             context=context, scan_result=scan_result, seq=seq)
     if context["trace"]["producer_route_kind"] == "gate":
-        source_exit, source_receipts = run_source_gate(
+        source_exit, source_receipts, source_inputs = run_source_gate(
             context["root"], context["plan"],
             context["obligation"]["target"], context["trace"])
-        return build_direct_record(
+        record = build_direct_record(
             root=context["root"], plan=context["plan"],
             plan_sha256=context["plan_sha256"],
             obligation=context["obligation"], row=context["row"],
             trace=context["trace"], registry=context["registry"],
             control_registry=context["control_registry"],
             frozen=context["frozen"], source_exit_code=source_exit,
-            source_receipts=source_receipts, seq=seq)
+            source_receipts=source_receipts, source_input_binding=source_inputs,
+            seq=seq)
+        return changed_scope_evidence_runtime.validate_current_direct_record(
+            record, root=context["root"], plan=context["plan"],
+            plan_sha256=context["plan_sha256"], obligation=context["obligation"],
+            result=context["result"], registry=context["registry"],
+            control_registry=context["control_registry"],
+            artifact_fingerprint=audit_producer_runtime.page_artifact_fingerprint(
+                context["target_page"]))
     if context["trace"]["adapter_id"].startswith("dedicated-"):
         raise ChangedScopeProducerError(
             "obligation %s is produced only by %s@%s/%s; use that "
@@ -1043,7 +1061,7 @@ def _evidence_exit_code(receipt):
 
 
 def compute_evidence_group(contexts):
-    """Parallelize isolated read-only Gate subprocesses, not writers.
+    """Parallelize isolated read-only Gate computations, not writers.
 
     In-process Profile evaluation keeps its original serial ownership. The
     output order follows AuditPlan selection, not worker completion order.
@@ -1159,10 +1177,21 @@ def main(argv=None):
                     context["root"], context["frozen"],
                     "before changed-scope evidence publication")
                 audit_producer_runtime.require_computation_current(context["root"], locked, binding)
-                for value in pending:
+                for value, new_record in zip(pending, new_receipts):
                     locked_context = _context_with_runtime(value, locked, locked_item, locked_stage)
                     if existing_evidence_record(locked_context) is not None:
                         raise ChangedScopeProducerError("changed-scope evidence appeared before publication")
+                    if new_record["record_kind"] == "gate-receipt":
+                        changed_scope_evidence_runtime.validate_current_direct_record(
+                            new_record, root=context["root"],
+                            plan=locked_stage["plan"],
+                            plan_sha256=locked_stage["audit_plan_sha256"],
+                            obligation=value["obligation"], result=locked,
+                            registry=value["registry"],
+                            control_registry=value["control_registry"],
+                            artifact_fingerprint=
+                                audit_producer_runtime.page_artifact_fingerprint(
+                                    value["target_page"]))
                 before = kblib.receipt_append_observation(
                     receipt_absolute, new_receipts)
             outcome, error, _ = kblib.write_receipts_observed(

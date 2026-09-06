@@ -633,6 +633,7 @@ def _transition_item(item, args, result):
             args.batch_receipt[0], item_id=item["id"],
             task_id=result["queue"].get("task_id"),
             delta_page_receipt_ids=delta_gate_receipts,
+            activation_receipt_id=item.get("activation_receipt"),
         )
         if batch_receipt_errors:
             raise ValueError("invalid batch-review gate: %s" %

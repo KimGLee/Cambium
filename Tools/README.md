@@ -186,6 +186,14 @@ python3 Tools/check_queue.py . --resume-status
 
 Runtime data belongs under `.cambium/`; do not redirect current state or runtime receipts into `Tools/`. Physical path spellings shared by producers and consumers come from [`execution/task_runtime/runtime_paths.py`](execution/task_runtime/runtime_paths.py). Agent-interface policy stores the same source identity as `runtime_path_id`; `compile_cli_contract.py` resolves that ID to the physical `value` in its generated projection and rejects an unknown ID, constraint mismatch, or a second literal runtime-path authority.
 
+### Audit evidence hand-off
+
+[`audit_evidence_runtime`](execution/audit/audit_evidence_runtime.py) resolves an obligation's complete attempt set for producers, AuditReceipt completion, and stage consumers. It delegates record and relationship rules to the evidence-kind owners; a caller-supplied Receipt ID does not hide competing attempts. Candidate Delta references, pre-merge acceptance, post-Delta closure, and Terminal reconciliation retain their distinct purposes. See [K12/19](<../kernel/K12 Quality Assurance/19 Incremental Audit Planning.md>) for the governing plan lifecycle.
+
+L review and completion share this admission path; M/S review dependencies are validated by [`batch_review_obligation_contract`](execution/audit/batch_review_obligation_contract.py). Direct Gates bind the inputs actually observed by their checker, not only a digest of an earlier passing result. Source pointers and immutable history remain separate from current authorization. The Batch Review wrapper's `activation_receipt_id` identifies its admission Gate; AuditPlan's `opening_transition_receipt` still identifies the actual Queue transition.
+
+`evidence_evaluation` shares mechanical contract projections, record validation, page observations, and catalog indexing only within one read-only evaluation. It does not cache permission or a stage verdict. Producer writers obtain a fresh evaluation from lock-time admission, retain CAS, and read back the exact published records. Do not persist this context or carry it across a write.
+
 For an open batch, create its AuditPlan and invoke the producer named by each due obligation:
 
 ```text

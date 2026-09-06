@@ -208,6 +208,7 @@ def _current_batch_review_wrapper(result, item, delta):
         errors = queue_runtime.batch_review_receipt_errors(
             catalog, receipt_id, item_id=item["id"],
             task_id=(result.get("queue") or {}).get("task_id"),
+            activation_receipt_id=item.get("activation_receipt"),
             delta_page_receipt_ids=delta.get("page_receipt_ids") or [])
         errors.extend(queue_runtime.batch_review_judgment_errors(
             result, item, record))

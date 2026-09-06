@@ -17,6 +17,7 @@ sys.path.insert(0, str(TOOLS))
 import Tools.execution.audit.audit_plan_contract as audit_plan_contract  # noqa: E402
 import Tools.execution.audit.audit_obligation_projection as audit_obligation_projection  # noqa: E402
 import Tools.execution.audit.audit_evidence_runtime as audit_evidence_runtime  # noqa: E402
+import Tools.execution.audit.audit_fingerprint as audit_fingerprint
 import Tools.execution.audit.audit_producer_runtime as audit_producer_runtime  # noqa: E402
 import Tools.execution.audit.audit_receipt_contract as audit_receipt_contract  # noqa: E402
 import Tools.execution.audit.batch_review_obligation_contract as contract  # noqa: E402
@@ -485,7 +486,7 @@ class BatchPageReviewProducerTests(unittest.TestCase):
             SHA_B, receipt["semantic_content_fingerprint"])
         self.assertEqual(
             contract.dependency_fingerprint(
-                audit_producer_runtime.sources_sha256(PAGE_TEXT)),
+                audit_fingerprint.sources_sha256(PAGE_TEXT)),
             receipt["dependency_fingerprint"])
         self.assertEqual(
             contract.contract_fingerprint(spec, plan, self.registry),
@@ -555,7 +556,7 @@ class BatchPageReviewProducerTests(unittest.TestCase):
             receipt["consumed_evidence_refs"])
         self.assertEqual(
             contract.dependency_fingerprint(
-                audit_producer_runtime.sources_sha256(PAGE_TEXT),
+                audit_fingerprint.sources_sha256(PAGE_TEXT),
                 dependencies),
             receipt["dependency_fingerprint"])
         catalog = {row["receipt_id"]: row for row in dependencies}
@@ -888,6 +889,18 @@ class BatchPageReviewProducerTests(unittest.TestCase):
                         result, catalog, str(REPOSITORY), plan, plan_sha256,
                         obligation, record),
                     record["item_id"])
+                if record["item_id"] in (
+                        self.registry["m_tier_atomic_items"][0]["item_id"],
+                        "m06-triggered-rendering-obligations-applied"):
+                    # Emitting and not-applicable records still bind Sources;
+                    # neither may bypass dependency verification.
+                    corrupt = copy.deepcopy(record)
+                    corrupt["dependency_fingerprint"] = SHA_C
+                    self.assertTrue(any(
+                        "dependency fingerprint" in error for error in
+                        audit_evidence_runtime._batch_page_binding_errors(
+                            result, catalog, str(REPOSITORY), plan,
+                            plan_sha256, obligation, corrupt)))
             with mock.patch.object(
                     audit_evidence_runtime, "_direct_binding_errors",
                     return_value=[]):
@@ -964,6 +977,24 @@ class BatchPageReviewProducerTests(unittest.TestCase):
                 result, catalog, str(REPOSITORY), plan, plan_sha256,
                 obligation, fingerprint_drift)
             self.assertTrue(any("artifact fingerprint" in row
+                                for row in errors), errors)
+
+            dependency_drift = copy.deepcopy(receipt)
+            dependency_drift["dependency_fingerprint"] = SHA_C
+            errors = audit_evidence_runtime._batch_page_binding_errors(
+                result, catalog, str(REPOSITORY), plan, plan_sha256,
+                obligation, dependency_drift)
+            self.assertTrue(any("dependency fingerprint" in row
+                                for row in errors), errors)
+
+            # Same identity and selector, different consumed bytes. A set of
+            # matching IDs alone cannot establish the original binding.
+            byte_drift = copy.deepcopy(catalog)
+            byte_drift[changed_id]["checked_at"] = "2026-08-30T00:00:00Z"
+            errors = audit_evidence_runtime._batch_page_binding_errors(
+                result, byte_drift, str(REPOSITORY), plan, plan_sha256,
+                obligation, receipt)
+            self.assertTrue(any("dependency fingerprint" in row
                                 for row in errors), errors)
 
     def test_consumption_contract_inventory_and_profile_rendering_edge(self):
@@ -1141,6 +1172,18 @@ class BatchPageReviewProducerTests(unittest.TestCase):
                     str(REPOSITORY), plan,
                     audit_plan_contract.plan_sha256(plan), obligation,
                     receipt))
+            for field, expected_error in (
+                    ("dependency_fingerprint", "dependency fingerprint"),
+                    ("selection_fingerprint", "selection binding")):
+                corrupt = copy.deepcopy(receipt)
+                corrupt[field] = SHA_C
+                errors = audit_evidence_runtime._batch_page_binding_errors(
+                    result, {receipt["receipt_id"]: corrupt},
+                    str(REPOSITORY), plan,
+                    audit_plan_contract.plan_sha256(plan), obligation,
+                    corrupt)
+                self.assertTrue(any(expected_error in row for row in errors),
+                                errors)
 
     def test_runtime_path_is_dedicated_registered_evidence(self):
         self.assertEqual(

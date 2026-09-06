@@ -443,6 +443,7 @@ def item_evidence_errors(item, progress, records, catalog, current_catalog,
                     batch_catalog, receipts[0], item_id=item_id,
                     task_id=queue.get("task_id"),
                     delta_page_receipt_ids=current_delta_gate_receipts,
+                    activation_receipt_id=item.get("activation_receipt"),
                 ))
                 merge_transition = next((
                     candidate for candidate in reversed(transition_history)

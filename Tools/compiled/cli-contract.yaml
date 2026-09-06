@@ -154,7 +154,7 @@ source_files:
   - Tools/stamp_cards.py
   - Tools/update_queue.py
   - Tools/update_task.py
-source_hash: sha256:d18f62f53782f5f513c683f87a686a295ccf3b37ae63d36cc7c6e5fa60dfc6c4
+source_hash: sha256:86b64a33d3fcc46225220f766e6992693da4e80bbcd7e990ea8aef83fcdc4f9a
 agent_interface_policy:
   path: Tools/agent-interface-policy.yaml
   sha256: sha256:fc3170ca859a95ec95290fef9ef9e631a641d78d32e8017b3c09060935125092
@@ -2143,7 +2143,7 @@ tools:
     source_hash: sha256:f26487ca233963d954dab7f8f351a88dfd9abbc220e936c693c25b769eef711f
     implementation_module: Tools.knowledge.content.check_links
     implementation_path: Tools/knowledge/content/check_links.py
-    implementation_source_hash: sha256:fb914c1f6872fe1808e1a75ec954b485560ca9b09f5b16beb25af716c7e65cda
+    implementation_source_hash: sha256:541d62f0a25cd0b20e1ca4551e100451d6315cc12fed51169f6f89a09b2b0521
     description: Wiki link missing/ambiguous/heading check
     arguments:
       - dest: vault_root
@@ -2205,7 +2205,7 @@ tools:
     receipt_extensions_extraction: partial
     receipt_extension_sources:
       - path: Tools/knowledge/content/check_links.py
-        sha256: sha256:fb914c1f6872fe1808e1a75ec954b485560ca9b09f5b16beb25af716c7e65cda
+        sha256: sha256:541d62f0a25cd0b20e1ca4551e100451d6315cc12fed51169f6f89a09b2b0521
     agent_interface:
       exposure: mcp
       workspace_argument: vault_root
@@ -2317,7 +2317,7 @@ tools:
     source_hash: sha256:69b2536b9cb009290b100e54b030e6d10867ea7f9e4d8ddf23e5615e34a888f6
     implementation_module: Tools.knowledge.metadata.check_page_contract
     implementation_path: Tools/knowledge/metadata/check_page_contract.py
-    implementation_source_hash: sha256:c7e307149ad058c8937848e152a01999735d7909c73e54c5fa82f5d38e3a9cd5
+    implementation_source_hash: sha256:2888ee1184e484549cab598fa3518d70dcaf6ecea830c3d3eef6698c14d20c5f
     description: "Validate pages against the compiled frontmatter page contract (gate: page-contract; advisory by default)."
     arguments:
       - dest: vault_root
@@ -2409,6 +2409,7 @@ tools:
         help: write the receipts this run produced to stdout as one canonical JSON array and move the human-readable summary to stderr; receipts written and the exit code are unchanged
     mutually_exclusive_groups: []
     receipt_extensions:
+      - check_inputs_sha256
       - compiled_page_contract_sha256
       - gate_id
       - profile_contract_fingerprint
@@ -2420,7 +2421,7 @@ tools:
     receipt_extensions_extraction: complete
     receipt_extension_sources:
       - path: Tools/knowledge/metadata/check_page_contract.py
-        sha256: sha256:c7e307149ad058c8937848e152a01999735d7909c73e54c5fa82f5d38e3a9cd5
+        sha256: sha256:2888ee1184e484549cab598fa3518d70dcaf6ecea830c3d3eef6698c14d20c5f
       - path: Tools/platform/common/kblib.py
         sha256: sha256:2a76a741123287ccb918edeb577e3cc0eec28475bb7e5c3fa3fcda8920b11335
     agent_interface:
@@ -3439,7 +3440,7 @@ tools:
     source_hash: sha256:e3394f88fa9bb21c3dc83a2f93e0b1fd135edd8d7098aa422b6dbc8891e35777
     implementation_module: Tools.knowledge.metadata.check_vocab
     implementation_path: Tools/knowledge/metadata/check_vocab.py
-    implementation_source_hash: sha256:4d079b46e212786e4e053a5c578e1abe7be2571485977595227b88f799ec3c87
+    implementation_source_hash: sha256:b109af21deffff430587e21aeb76c1d5c6d1964a38e832154754d2554b701568
     description: Frontmatter controlled-vocabulary check
     arguments:
       - dest: vault_root
@@ -3542,6 +3543,7 @@ tools:
         help: write this run's receipt objects to stdout as one canonical JSON array and move the human summary to stderr; receipt writing and exit codes are unchanged
     mutually_exclusive_groups: []
     receipt_extensions:
+      - check_inputs_sha256
       - gate_id
       - policy_fingerprint
       - priority_share
@@ -3550,7 +3552,7 @@ tools:
     receipt_extensions_extraction: partial
     receipt_extension_sources:
       - path: Tools/knowledge/metadata/check_vocab.py
-        sha256: sha256:4d079b46e212786e4e053a5c578e1abe7be2571485977595227b88f799ec3c87
+        sha256: sha256:b109af21deffff430587e21aeb76c1d5c6d1964a38e832154754d2554b701568
     agent_interface:
       exposure: mcp
       workspace_argument: vault_root
@@ -3945,7 +3947,7 @@ tools:
     source_hash: sha256:c6689b1638e5592ea2756bef0107062c8cdd60735659820621683482aa362bbc
     implementation_module: Tools.execution.audit.complete_audit_receipt
     implementation_path: Tools/execution/audit/complete_audit_receipt.py
-    implementation_source_hash: sha256:b32fe8b17b6d9869f5beb8a87c60202a2bb7b177cf00cb8e3ee03e8f769243cd
+    implementation_source_hash: sha256:bcbce3fe739bca3dd80b8d7d774b4ef4c85fd596d1162e2018e5ea496a317e47
     description: Complete one plan obligation into a full AuditReceipt
     arguments:
       - dest: root
@@ -4029,7 +4031,7 @@ tools:
     receipt_extensions_extraction: complete
     receipt_extension_sources:
       - path: Tools/execution/audit/complete_audit_receipt.py
-        sha256: sha256:b32fe8b17b6d9869f5beb8a87c60202a2bb7b177cf00cb8e3ee03e8f769243cd
+        sha256: sha256:bcbce3fe739bca3dd80b8d7d774b4ef4c85fd596d1162e2018e5ea496a317e47
       - path: Tools/platform/common/kblib.py
         sha256: sha256:2a76a741123287ccb918edeb577e3cc0eec28475bb7e5c3fa3fcda8920b11335
     agent_interface:
@@ -5413,7 +5415,7 @@ tools:
     source_hash: sha256:52fc885f88a3c28ced57d1b888736f78a01d3fb29b5fcbfe3ceaeb2232d3509f
     implementation_module: Tools.execution.audit.record_batch_page_review
     implementation_path: Tools/execution/audit/record_batch_page_review.py
-    implementation_source_hash: sha256:5e5fefb7b51f962f9edc788a9b9af67c45f4f7ac37eab47e0916d341f031183d
+    implementation_source_hash: sha256:61b83b48746f63e091ab4f6f2f72703d91a1e2bb0571037313293f94fdee5346
     description: Record one plan-bound Batch Review page judgment
     arguments:
       - dest: root
@@ -5618,7 +5620,7 @@ tools:
     receipt_extensions_extraction: partial
     receipt_extension_sources:
       - path: Tools/execution/audit/record_batch_page_review.py
-        sha256: sha256:5e5fefb7b51f962f9edc788a9b9af67c45f4f7ac37eab47e0916d341f031183d
+        sha256: sha256:61b83b48746f63e091ab4f6f2f72703d91a1e2bb0571037313293f94fdee5346
       - path: Tools/platform/common/kblib.py
         sha256: sha256:2a76a741123287ccb918edeb577e3cc0eec28475bb7e5c3fa3fcda8920b11335
     agent_interface:
@@ -5655,7 +5657,7 @@ tools:
     source_hash: sha256:602ded0d03e38223cc28f3b1ef139266434586b229fa9964cec6aeaa68eb87c2
     implementation_module: Tools.execution.audit.record_batch_review
     implementation_path: Tools/execution/audit/record_batch_review.py
-    implementation_source_hash: sha256:d8e675d082316297703c6be92ddaa16b46425b51778f6097bd42468a95117eb4
+    implementation_source_hash: sha256:50ee5785392b945bd38d96947ec0dd27403a1d66499330ff49fbe41aaade4d71
     description: Record one current, evidence-complete Batch Review wrapper
     arguments:
       - dest: root
@@ -5736,6 +5738,7 @@ tools:
         help: write the applied wrapper as one JSON array
     mutually_exclusive_groups: []
     receipt_extensions:
+      - activation_receipt_id
       - actor_role
       - attestation_statement
       - audit_evidence_bindings
@@ -5750,7 +5753,6 @@ tools:
       - gate_id
       - judgment_receipt_ids
       - judgment_record_set_sha256
-      - opening_transition_receipt
       - review_requirement_set_sha256
       - selected_profile_manifest
       - task_id
@@ -5758,7 +5760,7 @@ tools:
     receipt_extensions_extraction: partial
     receipt_extension_sources:
       - path: Tools/execution/audit/record_batch_review.py
-        sha256: sha256:d8e675d082316297703c6be92ddaa16b46425b51778f6097bd42468a95117eb4
+        sha256: sha256:50ee5785392b945bd38d96947ec0dd27403a1d66499330ff49fbe41aaade4d71
       - path: Tools/platform/common/kblib.py
         sha256: sha256:2a76a741123287ccb918edeb577e3cc0eec28475bb7e5c3fa3fcda8920b11335
     agent_interface:
@@ -5788,7 +5790,7 @@ tools:
     source_hash: sha256:8340ff288c48bfe7bef06b963072286279f42dc81c4fd20669523469a99c1f41
     implementation_module: Tools.execution.audit.record_changed_scope_evidence
     implementation_path: Tools/execution/audit/record_changed_scope_evidence.py
-    implementation_source_hash: sha256:d3b3fb6a8f0d99aab152e0349c55d86007bd3a96ca0849f49647ad320f363cbc
+    implementation_source_hash: sha256:1a212125ee7a4f7a3c959b050f79bd8a6ff22ca641abdfe7eee38399ec79bb87
     description: Record exact plan-bound K12/05 changed-scope evidence
     arguments:
       - dest: root
@@ -5919,6 +5921,7 @@ tools:
       - source_exit_code
       - source_gate_id
       - source_gate_selector
+      - source_input_binding
       - source_receipt_set_sha256
       - source_receipts
       - source_scan_selector
@@ -5929,7 +5932,7 @@ tools:
     receipt_extensions_extraction: complete
     receipt_extension_sources:
       - path: Tools/execution/audit/record_changed_scope_evidence.py
-        sha256: sha256:d3b3fb6a8f0d99aab152e0349c55d86007bd3a96ca0849f49647ad320f363cbc
+        sha256: sha256:1a212125ee7a4f7a3c959b050f79bd8a6ff22ca641abdfe7eee38399ec79bb87
       - path: Tools/platform/common/kblib.py
         sha256: sha256:2a76a741123287ccb918edeb577e3cc0eec28475bb7e5c3fa3fcda8920b11335
     agent_interface:
@@ -6871,7 +6874,7 @@ tools:
     source_hash: sha256:92c096085c0ce20630da08a3610ed020a10ca70a0e2b4c39cbe9b41fa1a46e45
     implementation_module: Tools.execution.audit.record_substantive_review
     implementation_path: Tools/execution/audit/record_substantive_review.py
-    implementation_source_hash: sha256:4eaf14c94f727c4040784137e567b5e8438ec649f1c01b1ecba17cddf66daae8
+    implementation_source_hash: sha256:4438de0b2753078f1e7c749988a7d9e0eb515f648dc64d24f483a65b77303c99
     description: Record one plan-bound substantive correctness review
     arguments:
       - dest: root
@@ -7076,7 +7079,7 @@ tools:
     receipt_extensions_extraction: complete
     receipt_extension_sources:
       - path: Tools/execution/audit/record_substantive_review.py
-        sha256: sha256:4eaf14c94f727c4040784137e567b5e8438ec649f1c01b1ecba17cddf66daae8
+        sha256: sha256:4438de0b2753078f1e7c749988a7d9e0eb515f648dc64d24f483a65b77303c99
       - path: Tools/platform/common/kblib.py
         sha256: sha256:2a76a741123287ccb918edeb577e3cc0eec28475bb7e5c3fa3fcda8920b11335
     agent_interface:
@@ -8054,7 +8057,7 @@ tools:
     source_hash: sha256:321b9c879068af47ec42eb4bbee7d4b3bdfe857b5c441292324363e4580dfa75
     implementation_module: Tools.execution.task_runtime.task_runtime_runner
     implementation_path: Tools/execution/task_runtime/task_runtime_runner.py
-    implementation_source_hash: sha256:98be7f1481b22c644f51778c1077d6a6dc4282383bba26ade32472d30b5b3a72
+    implementation_source_hash: sha256:4a430f1d07ec387d330d9fd065ebf1e2a977f418d4996f4c7e85d33ec2a8ee61
     description: Read the current Task Runtime action, execute that exact action, or advance deterministic actions to the next semantic boundary.
     arguments:
       - dest: root
@@ -8146,7 +8149,7 @@ tools:
     receipt_extensions_extraction: complete
     receipt_extension_sources:
       - path: Tools/execution/task_runtime/task_runtime_runner.py
-        sha256: sha256:98be7f1481b22c644f51778c1077d6a6dc4282383bba26ade32472d30b5b3a72
+        sha256: sha256:4a430f1d07ec387d330d9fd065ebf1e2a977f418d4996f4c7e85d33ec2a8ee61
     agent_interface:
       exposure: mcp
       workspace_argument: root
@@ -8518,7 +8521,7 @@ tools:
     source_hash: sha256:3f20f9f64b52bb8437231d10b6ceb8b2ebefeee535655cbcd864e89c3e3963dc
     implementation_module: Tools.execution.task_runtime.update_queue
     implementation_path: Tools/execution/task_runtime/update_queue.py
-    implementation_source_hash: sha256:aa2e7dcafa62f64ac5dbe0f30362c0d9e4bea1e2bb63d69e56071ddcd05f8ce7
+    implementation_source_hash: sha256:44c45e8059b164cf9f370778c3db6d7ae2d726c1286bf04b28c8dba80fe8e401
     description: Apply one Required Queue transition
     arguments:
       - dest: root
@@ -8773,7 +8776,7 @@ tools:
     receipt_extensions_extraction: partial
     receipt_extension_sources:
       - path: Tools/execution/task_runtime/update_queue.py
-        sha256: sha256:aa2e7dcafa62f64ac5dbe0f30362c0d9e4bea1e2bb63d69e56071ddcd05f8ce7
+        sha256: sha256:44c45e8059b164cf9f370778c3db6d7ae2d726c1286bf04b28c8dba80fe8e401
     agent_interface:
       exposure: mcp
       workspace_argument: root

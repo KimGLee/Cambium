@@ -8,7 +8,7 @@ the wrapper into a second owner of those records.
 
 import Tools.execution.task_runtime.queue_runtime.canon as queue_canon
 
-RECEIPT_TYPE_ID = "batch-review-wrapper-v1"
+RECEIPT_TYPE_ID = "batch-review-wrapper-v2"
 PRODUCER_TOOL = queue_canon.MANUAL_ATTESTATION_TOOL
 PRODUCER_TOOL_VERSION = queue_canon.MANUAL_ATTESTATION_TOOL_VERSION
 PRODUCER_CHECK = "batch_gate"
@@ -19,7 +19,7 @@ RECEIPT_FIELDS = frozenset({
     "details", "checked_at", "tool", "tool_version", "invalidated_by",
     "task_id", "upstream_revision_id", "selected_profile_manifest",
     "gate_id", "batch_id", "actor_role", "attestation_statement",
-    "opening_transition_receipt", "delta_path", "delta_sha256",
+    "activation_receipt_id", "delta_path", "delta_sha256",
     "delta_page_receipt_ids", "audit_plan_id", "audit_plan_path",
     "audit_plan_sha256", "audit_evidence_bindings",
     "audit_evidence_set_sha256", "audit_evidence_reconciliation",
@@ -53,7 +53,7 @@ def current_receipt_errors(record, *, root=None):
         errors.append("target")
     for field in (
             "receipt_id", "target", "batch_id", "details", "checked_at",
-            "attestation_statement", "opening_transition_receipt",
+            "attestation_statement", "activation_receipt_id",
             "delta_path", "delta_sha256", "audit_plan_id",
             "audit_plan_path", "audit_plan_sha256",
             "audit_evidence_set_sha256",

@@ -1661,6 +1661,11 @@ tests:
         semantics: page_contract_condition_predicate
         owner_contract_symbol: check_page_contract.condition_holds
         parallel_safe: true
+      - selector: PageContractUnitTests.test_input_projection_binds_only_relevant_coverage_owner_values
+        level: unit
+        semantics: page_contract_current_input_binding
+        owner_contract_symbol: check_page_contract.page_input_material
+        parallel_safe: true
       - selector: PageContractAcceptanceTests.*
         level: contract
         semantics: page_contract_field_mode_and_unknown_acceptance

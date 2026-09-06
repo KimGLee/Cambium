@@ -201,6 +201,19 @@ def main(argv=None, *, authorized_admission=None):
     return _JSON_REPORTER.run(reported_run)
 
 
+def input_projection(pages):
+    """Own the scoped field input, independently of page body or rendering."""
+    return [{"path": rel.replace(os.sep, "/"),
+             "frontmatter": kblib.extract_frontmatter(text)}
+            for rel, text in sorted(pages)]
+
+
+def capture_inputs(root, target):
+    return input_projection([
+        (rel, kblib.read_text(path, errors="replace"))
+        for path, rel in _scan_files(root, target, [])])
+
+
 def _run(args, produced, authorized_admission):
     """Execute one already-parsed invocation; ``produced`` collects receipts.
 
@@ -309,10 +322,12 @@ def _run(args, produced, authorized_admission):
         print("check_vocab: scanned 0 file(s) — FAIL: effective scan set is empty")
         kblib.write_receipts(args.receipts, receipts)
         return _finish(receipts)
+    observed_pages = []
     for full, rel in scan_files:
         rel_disp = rel.replace(os.sep, "/")
         counts["files"] += 1
         text = kblib.read_text(full, errors="replace")
+        observed_pages.append((rel, text))
         fm_text = kblib.extract_frontmatter(text)
         if fm_text is None:
             counts["no_frontmatter"] += 1
@@ -380,6 +395,8 @@ def _run(args, produced, authorized_admission):
             "(unknown_value=0; missingness belongs to the page contract)",
             seq, root=args.vault_root)
         _summary["priority_shares"] = priority_shares
+        _summary["check_inputs_sha256"] = kblib.sha256_bytes(
+            kblib.canonical_json_bytes(input_projection(observed_pages)))
         receipts.append(_summary)
 
     if admission is not None:

@@ -12,6 +12,32 @@ import Tools.platform.common.primitives as platform_primitives  # noqa: E402
 
 
 class SharedPrimitiveTests(unittest.TestCase):
+    def test_document_projection_is_scoped_by_owner_and_exact_bytes(self):
+        calls = []
+        def owner(document):
+            calls.append(document["value"])
+            if type(document["value"]) is not int:
+                raise ValueError("integer required")
+            return {"values": [document["value"]]}
+        original = {"value": 1}
+        snapshot = platform_primitives.validated_document(
+            original, owner, cache_projection=True)
+        original["value"] = 2
+        projected = platform_primitives.document_projection(snapshot, owner)
+        projected["values"].append(99)
+        self.assertEqual({"values": [1]},
+            platform_primitives.document_projection(snapshot, owner))
+        self.assertEqual([1], calls)
+        self.assertEqual("different-owner",
+            platform_primitives.document_projection(snapshot, lambda _: "different-owner"))
+        snapshot["value"] = True  # bool == 1 must not match the captured bytes.
+        with self.assertRaisesRegex(ValueError, "integer required"):
+            platform_primitives.document_projection(snapshot, owner)
+        uncached = platform_primitives.validated_document(original, owner)
+        self.assertIs(original, uncached)
+        platform_primitives.document_projection(uncached, owner)
+        self.assertEqual([1, True, 2, 2], calls)
+
     def test_catalog_record_only_unwraps_the_two_supported_shapes(self):
         record = {"receipt_id": "R-1"}
         self.assertIs(record, platform_primitives.catalog_record(record))

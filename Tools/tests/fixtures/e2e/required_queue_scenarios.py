@@ -6,6 +6,7 @@ once; unlike the former E2E ``setUp`` it never creates a disposable base tree
 and then immediately replaces it with a second scenario copy.
 """
 
+import copy
 import json
 from pathlib import Path
 import shutil
@@ -13,6 +14,12 @@ import tempfile
 import unittest
 
 import Tools.execution.task_runtime.runtime_validation as runtime_validation
+from Tools.execution.task_runtime import runtime_paths
+from Tools.platform.common import kblib
+from Tools.tests.support.initial_task_plan_fixture import confirmed_initial_task_plan
+from Tools.tests.support.profile_fixture import (
+    FIXTURE_UPSTREAM_REVISION, install_loadable_profile,
+)
 from Tools.tests.fixtures.integration.checkpoint_contract import (
     PERSISTED_PATHS,
     PROFILE_DEPENDENCY_BUILDER,
@@ -26,7 +33,71 @@ from Tools.tests.support.required_queue_fixture import (
     RequiredQueueFixture,
     RequiredQueueLifecycleDriver,
     _template,
+    install_terminal_proof_dependencies,
 )
+
+
+def initialize_task_plan_scenario(walker):
+    """Publish real initial planning and Queue transactions in an empty root.
+
+    Only Profile/Standards adoption uses its existing fixture owner. Task,
+    Coverage, Queue and their Receipts do not exist until their actual writer
+    runs. This prologue belongs exclusively to the representative E2E.
+    """
+    walker.root.mkdir(parents=True)
+    install_loadable_profile(walker.root, before_adoption=lambda root, _profile:
+                             install_terminal_proof_dependencies(root))
+    walker.write_plain_s_audit_pages()
+    plan = confirmed_initial_task_plan(
+        upstream_revision_id=FIXTURE_UPSTREAM_REVISION,
+        profile_manifest="profiles/test-profile/profile.toml",
+        task_id="fixture-task", plan_id="TP-e2e-initial",
+        objective="Complete fixture Required Queue batches with durable evidence.",
+        exclusions=["Do not modify profile policy."])
+    plan["contract_after"]["selected_route_ids"] = ["R01", "R03", "R08", "R12"]
+    page_base = plan["planned_work"]["pages"][0]
+    batch_base = plan["planned_work"]["batch_specs"][0]
+    plan["planned_work"] = {"pages": [], "batch_specs": []}
+    for order, name in enumerate(("A", "B"), 1):
+        path, batch_id = "Topics/%s.md" % name, "B%d" % order
+        plan["planned_work"]["pages"].append({
+            **copy.deepcopy(page_base), "path": path, "canonical_owner": path,
+            "tier": "S", "priority": "P2", "next_batch": batch_id,
+            "prerequisites": [] if order == 1 else ["Topics/A.md"],
+        })
+        plan["planned_work"]["batch_specs"].append({
+            **copy.deepcopy(batch_base), "id": batch_id, "family": "Core",
+            "order_hint": order, "source_route": "R03",
+            "depends_on": [] if order == 1 else ["B1"],
+        })
+    plan_path = runtime_paths.TASK_PLAN_DELTA_ROOT + "/" + plan["plan_id"] + ".yaml"
+    absolute = walker.root / plan_path
+    absolute.parent.mkdir(parents=True, exist_ok=True)
+    absolute.write_text(kblib.canonical_yaml(plan), encoding="utf-8")
+    for path in (runtime_paths.QUEUE_PATH, runtime_paths.COVERAGE_PATH,
+                 runtime_paths.PROGRESS_PATH):
+        walker.assertFalse((walker.root / path).exists(), path)
+    initialized = walker.run_tool("init_state.py", "--plan", plan_path, "--apply", "--json")
+    walker.assertEqual(0, initialized.returncode, initialized.stdout)
+    queue = kblib.load_yaml_file(walker.root / runtime_paths.QUEUE_PATH)
+    progress = kblib.load_yaml_file(walker.root / runtime_paths.PROGRESS_PATH)
+    planning_receipt = progress["initial_task_plan_receipt"]
+    walker.assertEqual([], queue["required_queue"])
+    materialized = walker.run_tool(
+        "compile_queue.py", "--apply", "--actor-role", "integrator", "--json",
+        "--expected-queue-revision", str(queue["queue_revision"]),
+        "--expected-state-revision", str(queue["state_revision"]),
+        "--expected-sha256", kblib.sha256_file(walker.root / runtime_paths.QUEUE_PATH),
+        "--expected-coverage-sha256", kblib.sha256_file(walker.root / runtime_paths.COVERAGE_PATH),
+        "--expected-progress-sha256", kblib.sha256_file(walker.root / runtime_paths.PROGRESS_PATH))
+    walker.assertEqual(0, materialized.returncode, materialized.stdout)
+    result = runtime_validation.validate_runtime(walker.root)
+    walker.assertEqual([], result["errors"])
+    walker.assertEqual(planning_receipt, result["progress"]["initial_task_plan_receipt"])
+    walker.assertEqual([("B1", "queued"), ("B2", "queued")],
+        [(row["id"], row["state"]) for row in result["queue"]["required_queue"]])
+    walker.compose_page_inputs()
+    return {"initial_task_plan_receipt": planning_receipt, "initial_task_plan_path": plan_path}
 
 
 def _portable_receipt_diagnostics(root):
@@ -155,5 +226,8 @@ class RequiredQueueE2EScenarioCase(RequiredQueueFixture,
         self.temporary = tempfile.TemporaryDirectory()
         self.addCleanup(self.temporary.cleanup)
         self.root = Path(self.temporary.name) / "repo"
+        if self.START_SCENARIO == "initial-plan":
+            self.scenario = initialize_task_plan_scenario(self)
+            return
         start_root, self.scenario = _template(self.START_SCENARIO)
         shutil.copytree(start_root, self.root)
