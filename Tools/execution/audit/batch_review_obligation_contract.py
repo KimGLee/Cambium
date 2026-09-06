@@ -928,8 +928,15 @@ def resolve_consumed_evidence(plan, plan_sha256, spec, target, catalog,
     target = require_trimmed_string(target, "consumption target")
     if not isinstance(catalog, dict):
         raise ValueError("current evidence catalog must be a mapping")
+    refs = _string_list(
+        list(referenced_receipt_ids or ()), "consumed evidence references",
+        allow_empty=True, sorted_unique=True)
     if current_receipt_ids is None:
-        current_ids = None
+        # Construction and stable-history validation prove the exact evidence
+        # set recorded by this immutable consumer.  Unreferenced predecessor
+        # attempts remain valid history; without a live-currentness view they
+        # must not be reinterpreted as competing current evidence.
+        current_ids = frozenset(refs)
     else:
         if (not isinstance(current_receipt_ids,
                            (set, frozenset, list, tuple)) or
@@ -944,9 +951,6 @@ def resolve_consumed_evidence(plan, plan_sha256, spec, target, catalog,
             raise ValueError(
                 "current receipt IDs must be non-empty unique strings")
         current_ids = frozenset(current_values)
-    refs = _string_list(
-        list(referenced_receipt_ids or ()), "consumed evidence references",
-        allow_empty=True, sorted_unique=True)
     if spec.get("tier") != "M":
         if refs:
             raise ValueError("sampled S evidence cannot consume evidence")
