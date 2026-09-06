@@ -13,17 +13,17 @@ import os
 from pathlib import Path
 import platform
 import tarfile
-import urllib.request
 import zipfile
 
 from Tools.platform.common import kblib
+from Tools.platform.common import locked_download
+from Tools.platform.common.host_environment import HostEnvironmentUnavailable
+from Tools.platform.common import host_toolchain
 
 
-def main(argv=None):
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--destination", required=True, type=Path)
-    args = parser.parse_args(argv)
-    root = Path(__file__).resolve().parents[3]
+def install_cue(destination, *, root=None):
+    """Shared CLI/Host provider; no Profile parsing or adoption prerequisite."""
+    root = Path(root) if root is not None else Path(__file__).resolve().parents[3]
     contract = json.loads((root / "Tools/governance/profile/cue-toolchain.json").read_text())
     system = platform.system().lower()
     architecture = {"aarch64": "arm64", "arm64": "arm64",
@@ -31,40 +31,42 @@ def main(argv=None):
     target = "%s_%s" % (system, architecture)
     expected = contract["archives"].get(target)
     if expected is None:
-        parser.error("no pinned CUE archive for %s" % target)
+        raise ValueError("no pinned CUE archive for %s" % target)
     version = contract["version"]
     suffix = "zip" if system == "windows" else "tar.gz"
     executable = "cue.exe" if system == "windows" else "cue"
-    destination = args.destination.absolute()
+    destination = Path(destination).absolute()
+    if any(path.is_symlink() for path in (destination, *destination.parents)):
+        raise ValueError("CUE destination must not traverse symlinks")
     destination.mkdir(parents=True, exist_ok=True)
     output = destination / executable
     if output.exists() or output.is_symlink():
         if output.is_symlink() or not output.is_file():
-            parser.error("existing target is not a regular executable")
+            raise ValueError("existing target is not a regular executable")
         result = kblib.run_cambium_subprocess([str(output), "version"], capture_output=True, text=True, timeout=15)
-        if (result.returncode or not result.stdout.splitlines()
-                or result.stdout.splitlines()[0] != "cue version " + version):
-            parser.error("existing CUE has a different version; choose a new destination")
-        print(output)
-        return 0
+        if result.returncode or not host_toolchain.cue_version_matches(result.stdout, version):
+            raise ValueError("existing CUE has a different version; choose a new destination")
+        return str(output)
     archive = "cue_%s_%s.%s" % (version, target, suffix)
     url = "%s/%s/%s" % (contract["release_base"], version, archive)
-    with urllib.request.urlopen(url, timeout=60) as response:
-        data = response.read(32 * 1024 * 1024 + 1)
+    if contract["release_base"] != "https://github.com/cue-lang/cue/releases/download":
+        raise ValueError("CUE archive source must be the pinned official release source")
+    data = locked_download.download({"url": url}, capability_id="host-environment-preparation-v1",
+        limit=32 * 1024 * 1024, redirect_hosts=("release-assets.githubusercontent.com",))
     if len(data) > 32 * 1024 * 1024 or hashlib.sha256(data).hexdigest() != expected:
-        parser.error("CUE archive checksum does not match the pinned Tool contract")
+        raise ValueError("CUE archive checksum does not match the pinned Tool contract")
     if suffix == "zip":
         with zipfile.ZipFile(io.BytesIO(data)) as package:
             matches = [name for name in package.namelist() if name == executable]
             if len(matches) != 1:
-                parser.error("CUE archive must contain exactly one executable")
+                raise ValueError("CUE archive must contain exactly one executable")
             content = package.read(matches[0])
     else:
         with tarfile.open(fileobj=io.BytesIO(data), mode="r:gz") as package:
             matches = [member for member in package.getmembers()
                        if member.name == executable and member.isfile()]
             if len(matches) != 1:
-                parser.error("CUE archive must contain exactly one regular executable")
+                raise ValueError("CUE archive must contain exactly one regular executable")
             content = package.extractfile(matches[0]).read()
     # O_EXCL prevents overwriting another installer or a user-owned target.
     descriptor = os.open(output, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o755)
@@ -72,7 +74,19 @@ def main(argv=None):
         handle.write(content)
         handle.flush()
         os.fsync(handle.fileno())
-    print(output)
+    # Re-enter the same read-only verifier; a successful write is not proof
+    # that this platform can execute the prepared evaluator.
+    return install_cue(destination, root=root)
+
+
+def main(argv=None):
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--destination", required=True, type=Path)
+    args = parser.parse_args(argv)
+    try:
+        print(install_cue(args.destination))
+    except (OSError, ValueError, HostEnvironmentUnavailable) as exc:
+        parser.error(str(exc))
     return 0
 
 

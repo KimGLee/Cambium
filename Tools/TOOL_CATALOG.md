@@ -10,9 +10,9 @@ Regenerate with `python3 Tools/generate_tool_catalog.py .`. Verify without writi
 | Source | Exact-byte SHA-256 |
 |---|---|
 | `Tools/tool-taxonomy.yaml` | `sha256:44c6a46acf604ab28023a4028fb026bf11b01582093450bd113ff3527c95998f` |
-| `Tools/module-boundaries.yaml` | `sha256:f9c73b6d0f65ca72a5916e04d412168dbc2352be5c94505fbf8060971f665615` |
-| `Tools/agent-interface-policy.yaml` | `sha256:fc3170ca859a95ec95290fef9ef9e631a641d78d32e8017b3c09060935125092` |
-| `Tools/operation-capabilities.yaml` | `sha256:bc8590eb420ee79bbcef4798ac346d1f9c74f35b1793db7c00f2c5bef3d89c66` |
+| `Tools/module-boundaries.yaml` | `sha256:c123692ce0d383aad9c7d778fa09329a09ac823896b0bb839e9302da654398c4` |
+| `Tools/agent-interface-policy.yaml` | `sha256:0ee59a2d3ed75c54632a979f64d0b8046a31df6d8644b3b0ffd2c10bc0cff441` |
+| `Tools/operation-capabilities.yaml` | `sha256:8d982ad398f424e5421dd3d4dabd5a0d6177bbed13ef9de692867f70be7b111e` |
 
 Static consumption, private access, and dependency facts come from `Tools/platform/distribution/module_boundary_facts.py` over shipped production Python modules; its excluded directories are `__pycache__`, `compiled`, `schemas`, `tests`. CLI and MCP exposure and the shared Host transport come only from `Tools/agent-interface-policy.yaml`. The static Python scan deliberately excludes `subprocess-cli`, `registry-driven-dynamic-import`; registered capability relationships and MCP subprocess routes are listed separately below rather than being mislabeled as Python symbol imports.
 
@@ -20,19 +20,19 @@ Static consumption, private access, and dependency facts come from `Tools/platfo
 
 | Measure | Count |
 |---|---|
-| shipped modules | 250 |
-| source cli tools | 65 |
-| declared cli tools | 65 |
-| mcp tools | 48 |
+| shipped modules | 260 |
+| source cli tools | 67 |
+| declared cli tools | 67 |
+| mcp tools | 49 |
 | host transports | 1 |
-| static public api symbols | 1460 |
-| declared unused static public apis | 64 |
-| declared public apis without observed consumers | 23 |
-| registered capability relationships | 143 |
-| registered symbol relationships | 76 |
-| source public exports | 308 |
+| static public api symbols | 1491 |
+| declared unused static public apis | 63 |
+| declared public apis without observed consumers | 22 |
+| registered capability relationships | 146 |
+| registered symbol relationships | 78 |
+| source public exports | 329 |
 | source public exports undeclared | 0 |
-| declared transport consumptions | 48 |
+| declared transport consumptions | 49 |
 | static private consumptions | 0 |
 | missing private exceptions | 0 |
 | unclassified modules | 0 |
@@ -315,7 +315,7 @@ Repository IO, serialization, locking, transport, generation, and other Tool-own
 | `execution.task_runtime.queue_runtime.primitives` | `Tools/execution/task_runtime/queue_runtime/primitives.py` | python-module | `execution / task-runtime / infrastructure` | static Python (7 symbols / 28 consumers) |
 | `execution.task_runtime.queue_runtime.receipts` | `Tools/execution/task_runtime/queue_runtime/receipts.py` | python-module | `execution / task-runtime / infrastructure` | static Python (14 symbols / 24 consumers), registered Python symbol (1 consumers) |
 | `execution.task_runtime.queue_runtime.repofs` | `Tools/execution/task_runtime/queue_runtime/repofs.py` | python-module | `execution / task-runtime / infrastructure` | static Python (3 symbols / 4 consumers) |
-| `execution.task_runtime.runtime_paths` | `Tools/execution/task_runtime/runtime_paths.py` | python-module | `execution / task-runtime / infrastructure` | static Python (72 symbols / 78 consumers) |
+| `execution.task_runtime.runtime_paths` | `Tools/execution/task_runtime/runtime_paths.py` | python-module | `execution / task-runtime / infrastructure` | static Python (72 symbols / 79 consumers) |
 | `execution.task_runtime.runtime_state_io` | `Tools/execution/task_runtime/runtime_state_io.py` | python-module | `execution / task-runtime / infrastructure` | static Python (3 symbols / 2 consumers) |
 
 ### Area: `governance`
@@ -533,7 +533,7 @@ Repository IO, serialization, locking, transport, generation, and other Tool-own
 
 | Module | Path | Type | Responsibility class | Interface exposure |
 |---|---|---|---|---|
-| `knowledge.rendering.static_render_runtime` | `Tools/knowledge/rendering/static_render_runtime.py` | python-module | `knowledge / rendering / infrastructure` | static Python (11 symbols / 5 consumers) |
+| `knowledge.rendering.static_render_runtime` | `Tools/knowledge/rendering/static_render_runtime.py` | python-module | `knowledge / rendering / infrastructure` | static Python (13 symbols / 7 consumers) |
 
 #### Domain: `structure`
 
@@ -585,8 +585,9 @@ One deterministic use case that composes domain contracts and infrastructure.
 | Module | Path | Type | Responsibility class | Interface exposure |
 |---|---|---|---|---|
 | `platform.agent_interface.compile_cli_contract` | `Tools/platform/agent_interface/compile_cli_contract.py` | python-module | `platform / agent-interface / application` | static Python (5 symbols / 3 consumers) |
+| `platform.agent_interface.inspect_host` | `Tools/platform/agent_interface/inspect_host.py` | python-module | `platform / agent-interface / application` | static Python (1 symbols / 1 consumers), registered capability (1 capabilities / 1 consumers), registered Python symbol (1 consumers) |
 | `platform.agent_interface.mcp_server` | `Tools/platform/agent_interface/mcp_server.py` | python-module | `platform / agent-interface / application` | none observed |
-| `platform.agent_interface.render_host_configs` | `Tools/platform/agent_interface/render_host_configs.py` | python-module | `platform / agent-interface / application` | static Python (1 symbols / 1 consumers) |
+| `platform.agent_interface.render_host_configs` | `Tools/platform/agent_interface/render_host_configs.py` | python-module | `platform / agent-interface / application` | static Python (5 symbols / 3 consumers) |
 | `platform.agent_interface.render_interface_projection` | `Tools/platform/agent_interface/render_interface_projection.py` | python-module | `platform / agent-interface / application` | static Python (1 symbols / 1 consumers) |
 
 ##### Layer: `contract`
@@ -597,7 +598,7 @@ Machine-contract loading, closed validation, pure projection, and stable predica
 |---|---|---|---|---|
 | `platform.agent_interface.agent_interface_contract` | `Tools/platform/agent_interface/agent_interface_contract.py` | python-module | `platform / agent-interface / contract` | static Python (13 symbols / 9 consumers) |
 | `platform.agent_interface.agent_interface_policy` | `Tools/platform/agent_interface/agent_interface_policy.py` | python-module | `platform / agent-interface / contract` | static Python (5 symbols / 3 consumers) |
-| `platform.agent_interface.tool_availability` | `Tools/platform/agent_interface/tool_availability.py` | python-module | `platform / agent-interface / contract` | static Python (5 symbols / 5 consumers) |
+| `platform.agent_interface.tool_availability` | `Tools/platform/agent_interface/tool_availability.py` | python-module | `platform / agent-interface / contract` | static Python (5 symbols / 6 consumers) |
 
 ##### Layer: `entrypoint`
 
@@ -606,6 +607,7 @@ Stable CLI or MCP adapter; parsing and presentation stay thin.
 | Module | Path | Type | Responsibility class | Interface exposure |
 |---|---|---|---|---|
 | `compile_cli_contract` | `Tools/compile_cli_contract.py` | python-module | `platform / agent-interface / entrypoint` | CLI |
+| `inspect_host` | `Tools/inspect_host.py` | python-module | `platform / agent-interface / entrypoint` | CLI, MCP tool (via:cambium-mcp-stdio) |
 | `mcp_server` | `Tools/mcp_server.py` | python-module | `platform / agent-interface / entrypoint` | MCP Host transport (shared-bridge:cambium-mcp-stdio) |
 | `render_host_configs` | `Tools/render_host_configs.py` | python-module | `platform / agent-interface / entrypoint` | CLI |
 | `render_interface_projection` | `Tools/render_interface_projection.py` | python-module | `platform / agent-interface / entrypoint` | CLI |
@@ -618,6 +620,7 @@ Repository IO, serialization, locking, transport, generation, and other Tool-own
 |---|---|---|---|---|
 | `platform.agent_interface.cli_argv_renderer` | `Tools/platform/agent_interface/cli_argv_renderer.py` | python-module | `platform / agent-interface / infrastructure` | static Python (11 symbols / 3 consumers) |
 | `platform.agent_interface.entrypoint_loader` | `Tools/platform/agent_interface/entrypoint_loader.py` | python-module | `platform / agent-interface / infrastructure` | static Python (6 symbols / 7 consumers) |
+| `platform.agent_interface.install_host_config` | `Tools/platform/agent_interface/install_host_config.py` | python-module | `platform / agent-interface / infrastructure` | static Python (1 symbols / 1 consumers) |
 
 #### Domain: `common`
 
@@ -627,6 +630,7 @@ Machine-contract loading, closed validation, pure projection, and stable predica
 
 | Module | Path | Type | Responsibility class | Interface exposure |
 |---|---|---|---|---|
+| `platform.common.host_environment` | `Tools/platform/common/host_environment.py` | python-module | `platform / common / contract` | static Python (4 symbols / 13 consumers) |
 | `platform.common.implementation_marker` | `Tools/platform/common/implementation_marker.py` | python-module | `platform / common / contract` | static Python (4 symbols / 2 consumers) |
 
 ##### Layer: `infrastructure`
@@ -635,10 +639,12 @@ Repository IO, serialization, locking, transport, generation, and other Tool-own
 
 | Module | Path | Type | Responsibility class | Interface exposure |
 |---|---|---|---|---|
-| `platform.common.kblib` | `Tools/platform/common/kblib.py` | python-module | `platform / common / infrastructure` | static Python (82 symbols / 145 consumers) |
+| `platform.common.host_toolchain` | `Tools/platform/common/host_toolchain.py` | python-module | `platform / common / infrastructure` | static Python (11 symbols / 6 consumers) |
+| `platform.common.kblib` | `Tools/platform/common/kblib.py` | python-module | `platform / common / infrastructure` | static Python (82 symbols / 149 consumers) |
+| `platform.common.locked_download` | `Tools/platform/common/locked_download.py` | python-module | `platform / common / infrastructure` | static Python (1 symbols / 2 consumers) |
 | `platform.common.primitives` | `Tools/platform/common/primitives.py` | python-module | `platform / common / infrastructure` | static Python (8 symbols / 37 consumers) |
 | `platform.common.receipts` | `Tools/platform/common/receipts.py` | python-module | `platform / common / infrastructure` | static Python (1 symbols / 2 consumers) |
-| `platform.common.reporting` | `Tools/platform/common/reporting.py` | python-module | `platform / common / infrastructure` | static Python (9 symbols / 35 consumers) |
+| `platform.common.reporting` | `Tools/platform/common/reporting.py` | python-module | `platform / common / infrastructure` | static Python (10 symbols / 82 consumers) |
 
 #### Domain: `distribution`
 
@@ -651,6 +657,7 @@ One deterministic use case that composes domain contracts and infrastructure.
 | `platform.distribution.check_kernel_size` | `Tools/platform/distribution/check_kernel_size.py` | python-module | `platform / distribution / application` | static Python (1 symbols / 1 consumers) |
 | `platform.distribution.check_upstream_components` | `Tools/platform/distribution/check_upstream_components.py` | python-module | `platform / distribution / application` | static Python (1 symbols / 1 consumers) |
 | `platform.distribution.module_boundary_report` | `Tools/platform/distribution/module_boundary_report.py` | python-module | `platform / distribution / application` | static Python (2 symbols / 2 consumers) |
+| `platform.distribution.prepare_host` | `Tools/platform/distribution/prepare_host.py` | python-module | `platform / distribution / application` | static Python (1 symbols / 1 consumers), registered capability (1 capabilities / 2 consumers), registered Python symbol (1 consumers) |
 | `platform.distribution.stamp_cards` | `Tools/platform/distribution/stamp_cards.py` | python-module | `platform / distribution / application` | static Python (4 symbols / 4 consumers), registered capability (1 capabilities / 2 consumers) |
 | `platform.distribution.test_catalog` | `Tools/platform/distribution/test_catalog.py` | python-module | `platform / distribution / application` | static Python (3 symbols / 2 consumers) |
 | `platform.distribution.test_runner` | `Tools/platform/distribution/test_runner.py` | python-module | `platform / distribution / application` | static Python (1 symbols / 1 consumers) |
@@ -668,6 +675,7 @@ Stable CLI or MCP adapter; parsing and presentation stay thin.
 | `generate_test_catalog` | `Tools/generate_test_catalog.py` | python-module | `platform / distribution / entrypoint` | CLI |
 | `generate_tool_catalog` | `Tools/generate_tool_catalog.py` | python-module | `platform / distribution / entrypoint` | CLI |
 | `module_boundary_report` | `Tools/module_boundary_report.py` | python-module | `platform / distribution / entrypoint` | CLI |
+| `prepare_host` | `Tools/prepare_host.py` | python-module | `platform / distribution / entrypoint` | CLI |
 | `prepare_rendering_runtime` | `Tools/prepare_rendering_runtime.py` | python-module | `platform / distribution / entrypoint` | CLI |
 | `run_tests` | `Tools/run_tests.py` | python-module | `platform / distribution / entrypoint` | CLI |
 | `stamp_cards` | `Tools/stamp_cards.py` | python-module | `platform / distribution / entrypoint` | CLI |
@@ -678,9 +686,11 @@ Repository IO, serialization, locking, transport, generation, and other Tool-own
 
 | Module | Path | Type | Responsibility class | Interface exposure |
 |---|---|---|---|---|
-| `platform.distribution.install_profile_toolchain` | `Tools/platform/distribution/install_profile_toolchain.py` | python-module | `platform / distribution / infrastructure` | none observed |
+| `platform.distribution.install_profile_toolchain` | `Tools/platform/distribution/install_profile_toolchain.py` | python-module | `platform / distribution / infrastructure` | static Python (1 symbols / 1 consumers) |
 | `platform.distribution.module_boundary_facts` | `Tools/platform/distribution/module_boundary_facts.py` | python-module | `platform / distribution / infrastructure` | static Python (11 symbols / 3 consumers) |
-| `platform.distribution.prepare_rendering_runtime` | `Tools/platform/distribution/prepare_rendering_runtime.py` | python-module | `platform / distribution / infrastructure` | static Python (1 symbols / 1 consumers), registered capability (1 capabilities / 2 consumers), registered Python symbol (1 consumers) |
+| `platform.distribution.node_runtime` | `Tools/platform/distribution/node_runtime.py` | python-module | `platform / distribution / infrastructure` | static Python (3 symbols / 1 consumers) |
+| `platform.distribution.prepare_host_toolchain` | `Tools/platform/distribution/prepare_host_toolchain.py` | python-module | `platform / distribution / infrastructure` | static Python (1 symbols / 1 consumers) |
+| `platform.distribution.prepare_rendering_runtime` | `Tools/platform/distribution/prepare_rendering_runtime.py` | python-module | `platform / distribution / infrastructure` | static Python (2 symbols / 2 consumers), registered capability (1 capabilities / 2 consumers), registered Python symbol (1 consumers) |
 | `platform.distribution.upstream_identity` | `Tools/platform/distribution/upstream_identity.py` | python-module | `platform / distribution / infrastructure` | static Python (3 symbols / 5 consumers) |
 
 #### Domain: `repository`
@@ -1473,7 +1483,7 @@ Repository IO, serialization, locking, transport, generation, and other Tool-own
 | `execution.task_runtime.runtime_paths.REPORT_ROOT` | `execution.task_runtime.render_queue` | declared |
 | `execution.task_runtime.runtime_paths.REQUIRED_QUEUE_REPORT_PATH` | `execution.task_runtime.render_queue` | declared |
 | `execution.task_runtime.runtime_paths.RUNTIME_OBJECTS` | `execution.evidence.seal_receipts` | declared |
-| `execution.task_runtime.runtime_paths.RUNTIME_ROOT` | `execution.planning.apply_task_plan`, `execution.planning.check_corpus_plan`, `execution.task_runtime.init_state`, `governance.profile.apply_profile_adoption`, `governance.profile.profile_onboarding_status`, `knowledge.metadata.project_page_state`, `knowledge.structure.repository_structure`, `platform.agent_interface.compile_cli_contract`, `platform.agent_interface.render_host_configs`, `platform.common.kblib`, `platform.repository.path_capability` | declared |
+| `execution.task_runtime.runtime_paths.RUNTIME_ROOT` | `execution.planning.apply_task_plan`, `execution.planning.check_corpus_plan`, `execution.task_runtime.init_state`, `governance.profile.apply_profile_adoption`, `governance.profile.profile_onboarding_status`, `knowledge.metadata.project_page_state`, `knowledge.structure.repository_structure`, `platform.agent_interface.compile_cli_contract`, `platform.agent_interface.install_host_config`, `platform.agent_interface.render_host_configs`, `platform.common.kblib`, `platform.repository.path_capability` | declared |
 | `execution.task_runtime.runtime_paths.SEAL_RECEIPT_PATH` | `execution.evidence.seal_receipts` | declared |
 | `execution.task_runtime.runtime_paths.STANDARDS_ADOPTION_DELTA_ROOT` | `execution.task_runtime.queue_runtime.canon`, `governance.profile.apply_profile_adoption`, `governance.standards.adopt_standards` | declared |
 | `execution.task_runtime.runtime_paths.STANDARDS_ADOPTION_RECEIPT_PATH` | `governance.profile.apply_profile_adoption`, `governance.standards.adopt_standards`, `governance.standards.adoption_lineage_contract` | declared |
@@ -1854,12 +1864,14 @@ Repository IO, serialization, locking, transport, generation, and other Tool-own
 | `knowledge.rendering.rendering_verification_contract.validate_contract` | `execution.audit.audit_obligation_projection`, `execution.audit.record_changed_scope_evidence`, `knowledge.rendering.deterministic_rendering_contract`, `knowledge.rendering.record_rendering_verification` | declared |
 | `knowledge.rendering.rendering_verification_contract.validate_record` | `knowledge.rendering.record_rendering_verification` | declared |
 | `knowledge.rendering.rendering_verification_contract.validate_record_for_obligation` | `execution.audit.audit_evidence_runtime`, `knowledge.rendering.record_rendering_verification` | declared |
-| `knowledge.rendering.static_render_runtime.RUNTIME_ENV_KEYS` | `platform.agent_interface.render_host_configs` | declared |
+| `knowledge.rendering.static_render_runtime.RUNTIME_ENV_KEYS` | `platform.agent_interface.install_host_config`, `platform.agent_interface.render_host_configs` | declared |
 | `knowledge.rendering.static_render_runtime.StaticRenderRuntimeError` | `execution.task_runtime.task_runtime_runner`, `platform.agent_interface.render_host_configs`, `platform.distribution.prepare_rendering_runtime` | declared |
+| `knowledge.rendering.static_render_runtime.binding_document` | `platform.distribution.prepare_rendering_runtime` | declared |
 | `knowledge.rendering.static_render_runtime.default_runtime_bindings_path` | `platform.distribution.prepare_rendering_runtime` | declared |
-| `knowledge.rendering.static_render_runtime.probe_runtime` | `execution.task_runtime.task_runtime_runner`, `platform.distribution.prepare_rendering_runtime` | declared |
+| `knowledge.rendering.static_render_runtime.probe_runtime` | `execution.task_runtime.task_runtime_runner`, `platform.agent_interface.inspect_host`, `platform.distribution.prepare_rendering_runtime` | declared |
 | `knowledge.rendering.static_render_runtime.read_runtime_bindings` | `platform.agent_interface.render_host_configs`, `platform.distribution.prepare_rendering_runtime` | declared |
 | `knowledge.rendering.static_render_runtime.render_pages` | `knowledge.rendering.record_profile_rendering` | declared |
+| `knowledge.rendering.static_render_runtime.rendering_request` | `platform.agent_interface.inspect_host`, `platform.distribution.prepare_rendering_runtime` | declared |
 | `knowledge.rendering.static_render_runtime.requires_browser` | `execution.task_runtime.task_runtime_runner` | declared |
 | `knowledge.rendering.static_render_runtime.runtime_requirements` | `platform.distribution.prepare_rendering_runtime` | declared |
 | `knowledge.rendering.static_render_runtime.select_constructs` | `knowledge.rendering.profile_rendering_evidence_contract` | declared |
@@ -1920,13 +1932,34 @@ Repository IO, serialization, locking, transport, generation, and other Tool-own
 | `platform.agent_interface.entrypoint_loader.discover_entrypoints` | `platform.agent_interface.compile_cli_contract` | declared |
 | `platform.agent_interface.entrypoint_loader.entrypoint_for_implementation_path` | `governance.profile.profile_contract` | declared |
 | `platform.agent_interface.entrypoint_loader.load_tool_implementation` | `execution.audit.record_changed_scope_evidence`, `execution.task_runtime.queue_runtime.gate_registry` | declared |
-| `platform.agent_interface.render_host_configs.main` | `render_host_configs` | declared |
+| `platform.agent_interface.inspect_host.main` | `inspect_host` | declared |
+| `platform.agent_interface.install_host_config.install` | `platform.distribution.prepare_host` | declared |
+| `platform.agent_interface.render_host_configs.HOSTS` | `platform.agent_interface.install_host_config`, `platform.distribution.prepare_host` | declared |
+| `platform.agent_interface.render_host_configs.SERVER_NAME` | `platform.agent_interface.install_host_config` | declared |
+| `platform.agent_interface.render_host_configs.dotenv_lines` | `platform.agent_interface.install_host_config` | declared |
+| `platform.agent_interface.render_host_configs.main` | `platform.distribution.prepare_host`, `render_host_configs` | declared |
+| `platform.agent_interface.render_host_configs.parse_dotenv` | `platform.agent_interface.install_host_config` | declared |
 | `platform.agent_interface.render_interface_projection.main` | `render_interface_projection` | declared |
 | `platform.agent_interface.tool_availability.AvailabilityError` | `platform.agent_interface.compile_cli_contract` | declared |
-| `platform.agent_interface.tool_availability.CARRIED_RUNTIME` | `execution.task_runtime.task_runtime_runner`, `governance.control.run_gates`, `platform.agent_interface.compile_cli_contract`, `platform.agent_interface.render_host_configs`, `platform.agent_interface.render_interface_projection` | declared |
-| `platform.agent_interface.tool_availability.PROJECTION_TARGETS` | `platform.agent_interface.compile_cli_contract`, `platform.agent_interface.render_host_configs`, `platform.agent_interface.render_interface_projection` | declared |
-| `platform.agent_interface.tool_availability.SOURCE_DISTRIBUTION` | `governance.control.run_gates`, `platform.agent_interface.compile_cli_contract`, `platform.agent_interface.render_host_configs`, `platform.agent_interface.render_interface_projection` | declared |
+| `platform.agent_interface.tool_availability.CARRIED_RUNTIME` | `execution.task_runtime.task_runtime_runner`, `governance.control.run_gates`, `platform.agent_interface.compile_cli_contract`, `platform.agent_interface.render_host_configs`, `platform.agent_interface.render_interface_projection`, `platform.distribution.prepare_host` | declared |
+| `platform.agent_interface.tool_availability.PROJECTION_TARGETS` | `platform.agent_interface.compile_cli_contract`, `platform.agent_interface.render_host_configs`, `platform.agent_interface.render_interface_projection`, `platform.distribution.prepare_host` | declared |
+| `platform.agent_interface.tool_availability.SOURCE_DISTRIBUTION` | `governance.control.run_gates`, `platform.agent_interface.compile_cli_contract`, `platform.agent_interface.render_host_configs`, `platform.agent_interface.render_interface_projection`, `platform.distribution.prepare_host` | declared |
 | `platform.agent_interface.tool_availability.resolve` | `platform.agent_interface.compile_cli_contract` | declared |
+| `platform.common.host_environment.HostEnvironmentUnavailable` | `execution.task_runtime.task_runtime_runner`, `governance.profile.profile_cue`, `knowledge.rendering.static_render_runtime`, `platform.agent_interface.inspect_host`, `platform.agent_interface.install_host_config`, `platform.common.host_toolchain`, `platform.common.locked_download`, `platform.common.reporting`, `platform.distribution.install_profile_toolchain`, `platform.distribution.node_runtime`, `platform.distribution.prepare_host`, `platform.distribution.prepare_host_toolchain`, `platform.distribution.prepare_rendering_runtime` | declared |
+| `platform.common.host_environment.PREPARATION_CAPABILITY_ID` | `platform.common.host_toolchain` | declared |
+| `platform.common.host_environment.preparation_failure` | `platform.agent_interface.install_host_config`, `platform.distribution.prepare_host`, `platform.distribution.prepare_host_toolchain`, `platform.distribution.prepare_rendering_runtime` | declared |
+| `platform.common.host_environment.preparation_request` | `execution.task_runtime.task_runtime_runner`, `platform.common.reporting` | declared |
+| `platform.common.host_toolchain.CAPABILITY_ID` | `platform.distribution.prepare_host`, `platform.distribution.prepare_host_toolchain` | declared |
+| `platform.common.host_toolchain.CUE_ENV` | `platform.agent_interface.render_host_configs`, `platform.distribution.prepare_host` | declared |
+| `platform.common.host_toolchain.binding_document` | `platform.distribution.prepare_host_toolchain` | declared |
+| `platform.common.host_toolchain.binding_path` | `platform.distribution.prepare_host`, `platform.distribution.prepare_host_toolchain` | declared |
+| `platform.common.host_toolchain.cue_unavailable` | `governance.profile.profile_cue` | declared |
+| `platform.common.host_toolchain.cue_version_matches` | `governance.profile.profile_cue`, `platform.distribution.install_profile_toolchain` | declared |
+| `platform.common.host_toolchain.observe` | `platform.agent_interface.inspect_host`, `platform.agent_interface.render_host_configs`, `platform.distribution.prepare_host_toolchain` | declared |
+| `platform.common.host_toolchain.requirements` | `platform.distribution.prepare_host_toolchain` | declared |
+| `platform.common.host_toolchain.select_cue` | `governance.profile.profile_cue` | declared |
+| `platform.common.host_toolchain.verify_cue` | `platform.distribution.prepare_host_toolchain` | declared |
+| `platform.common.host_toolchain.verify_python` | `platform.distribution.prepare_host_toolchain` | declared |
 | `platform.common.implementation_marker.IMPLEMENTATION_MARKER` | `platform.agent_interface.entrypoint_loader` | declared |
 | `platform.common.implementation_marker.ImplementationMarkerError` | `platform.agent_interface.entrypoint_loader` | declared |
 | `platform.common.implementation_marker.parse_implementation_module` | `platform.agent_interface.entrypoint_loader`, `platform.distribution.module_boundary_facts` | declared |
@@ -1997,7 +2030,7 @@ Repository IO, serialization, locking, transport, generation, and other Tool-own
 | `platform.common.kblib.repository_tree_snapshot` | `execution.evidence.metadata_gate_runtime`, `execution.planning.check_corpus_plan`, `execution.task_runtime.queue_runtime.profile_view`, `governance.control.run_gates`, `governance.profile.check_profile`, `governance.profile.profile_admission`, `governance.profile.profile_candidate`, `governance.profile.profile_contract`, `knowledge.metadata.check_freshness` | declared |
 | `platform.common.kblib.retained_tree_contains` | `execution.planning.check_corpus_plan`, `governance.control.run_gates` | declared |
 | `platform.common.kblib.retained_tree_is_bound` | `governance.profile.check_profile`, `governance.profile.profile_admission`, `governance.profile.profile_contract` | declared |
-| `platform.common.kblib.run_cambium_subprocess` | `execution.audit.check_batch_close`, `execution.audit.record_changed_scope_evidence`, `execution.evidence.metadata_gate_runtime`, `execution.task_runtime.task_runtime_runner`, `governance.control.run_gates`, `governance.profile.apply_profile_adoption`, `governance.profile.profile_cue`, `knowledge.rendering.static_render_runtime`, `platform.distribution.install_profile_toolchain`, `platform.distribution.module_boundary_report`, `platform.distribution.prepare_rendering_runtime`, `platform.distribution.test_runner`, `platform.distribution.upstream_component_boundary`, `platform.distribution.upstream_identity` | declared |
+| `platform.common.kblib.run_cambium_subprocess` | `execution.audit.check_batch_close`, `execution.audit.record_changed_scope_evidence`, `execution.evidence.metadata_gate_runtime`, `execution.task_runtime.task_runtime_runner`, `governance.control.run_gates`, `governance.profile.apply_profile_adoption`, `governance.profile.profile_cue`, `knowledge.rendering.static_render_runtime`, `platform.common.host_toolchain`, `platform.distribution.install_profile_toolchain`, `platform.distribution.module_boundary_report`, `platform.distribution.node_runtime`, `platform.distribution.prepare_host`, `platform.distribution.prepare_host_toolchain`, `platform.distribution.prepare_rendering_runtime`, `platform.distribution.test_runner`, `platform.distribution.upstream_component_boundary`, `platform.distribution.upstream_identity` | declared |
 | `platform.common.kblib.runtime_receipt_identity` | `governance.profile.check_profile` | declared |
 | `platform.common.kblib.runtime_write_lock` | `execution.audit.check_batch_close`, `execution.audit.complete_audit_receipt`, `execution.audit.prepare_audit_plan`, `execution.audit.record_batch_page_review`, `execution.audit.record_changed_scope_evidence`, `execution.audit.record_substantive_review`, `execution.evidence.manual_attestation`, `execution.evidence.record_gate_result`, `execution.evidence.seal_receipts`, `execution.planning.compile_queue`, `execution.task_runtime.apply_amendment`, `execution.task_runtime.apply_contract_amendment`, `execution.task_runtime.apply_delta`, `execution.task_runtime.register_amendment`, `execution.task_runtime.update_queue`, `execution.task_runtime.update_task`, `governance.standards.adopt_standards`, `knowledge.metadata.apply_metadata_transition`, `knowledge.metadata.project_page_state`, `knowledge.rendering.record_profile_rendering`, `knowledge.rendering.record_rendering_verification` | declared |
 | `platform.common.kblib.sha256_bytes` | `execution.audit.assemble_terminal_proof`, `execution.audit.audit_evidence_runtime`, `execution.audit.audit_fingerprint`, `execution.audit.audit_obligation_projection`, `execution.audit.audit_plan_contract`, `execution.audit.audit_producer_runtime`, `execution.audit.batch_close_audit`, `execution.audit.batch_review_obligation_contract`, `execution.audit.changed_scope_evidence_contract`, `execution.audit.changed_scope_evidence_runtime`, `execution.audit.check_batch_close`, `execution.audit.check_proof`, `execution.audit.prepare_audit_plan`, `execution.audit.record_changed_scope_evidence`, `execution.context_delivery.card_activation`, `execution.evidence.metadata_gate_runtime`, `execution.evidence.seal_receipts`, `execution.planning.apply_task_plan`, `execution.planning.check_corpus_plan`, `execution.planning.compile_queue`, `execution.task_runtime.amendment_policy`, `execution.task_runtime.apply_amendment`, `execution.task_runtime.apply_contract_amendment`, `execution.task_runtime.apply_delta`, `execution.task_runtime.candidate_delta_runtime`, `execution.task_runtime.init_state`, `execution.task_runtime.queue_runtime.close_gate`, `execution.task_runtime.queue_runtime.property_state`, `execution.task_runtime.queue_runtime.receipts`, `execution.task_runtime.queue_runtime.review`, `execution.task_runtime.queue_runtime.runtime`, `execution.task_runtime.queue_runtime.task_contract`, `execution.task_runtime.register_amendment`, `execution.task_runtime.runtime_state_io`, `execution.task_runtime.update_queue`, `execution.task_runtime.update_task`, `governance.control.contract_exception_policy`, `governance.control.metadata_execution_contract`, `governance.profile.apply_profile_adoption`, `governance.profile.check_profile`, `governance.profile.profile_batch_judgment_contract`, `governance.profile.profile_contract`, `governance.profile.rendering_contract`, `governance.standards.adopt_standards`, `governance.standards.standards_state`, `knowledge.content.maintenance_candidates`, `knowledge.metadata.apply_metadata_transition`, `knowledge.metadata.check_freshness`, `knowledge.metadata.check_page_contract`, `knowledge.metadata.check_vocab`, `knowledge.metadata.freshness_receipt_contract`, `knowledge.metadata.metadata_property_state`, `knowledge.metadata.project_page_state`, `knowledge.rendering.profile_rendering_evidence_contract`, `knowledge.rendering.rendering_verification_contract`, `platform.agent_interface.compile_cli_contract`, `platform.agent_interface.render_host_configs`, `platform.agent_interface.render_interface_projection`, `platform.agent_interface.tool_availability`, `platform.distribution.check_upstream_components`, `platform.distribution.tool_catalog` | declared |
@@ -2013,6 +2046,7 @@ Repository IO, serialization, locking, transport, generation, and other Tool-own
 | `platform.common.kblib.validate_structure_registry_shape` | `governance.profile.profile_contract`, `knowledge.structure.check_structure` | declared |
 | `platform.common.kblib.write_receipts` | `execution.audit.check_proof`, `execution.planning.check_corpus_plan`, `execution.task_runtime.apply_delta`, `execution.task_runtime.check_queue`, `execution.task_runtime.record_maintenance_evidence`, `execution.task_runtime.update_queue`, `execution.task_runtime.update_task`, `governance.profile.check_profile`, `knowledge.content.check_links`, `knowledge.content.check_residual_content`, `knowledge.content.duplicate_check`, `knowledge.metadata.check_freshness`, `knowledge.metadata.check_page_contract`, `knowledge.metadata.check_vocab`, `knowledge.structure.check_boundary_contract`, `knowledge.structure.check_moc`, `knowledge.structure.check_structure` | declared |
 | `platform.common.kblib.write_receipts_observed` | `execution.audit.check_batch_close`, `execution.audit.complete_audit_receipt`, `execution.audit.record_batch_page_review`, `execution.audit.record_changed_scope_evidence`, `execution.audit.record_substantive_review`, `execution.evidence.manual_attestation`, `execution.evidence.record_gate_result`, `execution.evidence.seal_receipts`, `execution.planning.compile_queue`, `execution.planning.record_corpus_acceptance`, `execution.task_runtime.apply_amendment`, `execution.task_runtime.apply_contract_amendment`, `execution.task_runtime.register_amendment`, `execution.task_runtime.update_task`, `governance.profile.apply_profile_adoption`, `governance.standards.adopt_standards`, `knowledge.metadata.apply_metadata_transition`, `knowledge.rendering.record_profile_rendering`, `knowledge.rendering.record_rendering_verification` | declared |
+| `platform.common.locked_download.download` | `platform.distribution.install_profile_toolchain`, `platform.distribution.node_runtime` | declared |
 | `platform.common.primitives.catalog_receipt` | `execution.audit.check_proof`, `execution.planning.check_corpus_plan` | declared |
 | `platform.common.primitives.catalog_record` | `execution.audit.assemble_terminal_proof`, `execution.audit.audit_evidence_runtime`, `execution.audit.audit_execution_runtime`, `execution.audit.batch_review_obligation_contract`, `execution.audit.check_batch_close`, `execution.audit.record_changed_scope_evidence`, `execution.task_runtime.queue_runtime.review`, `execution.task_runtime.task_runtime_runner`, `governance.profile.profile_batch_judgment_contract`, `knowledge.rendering.record_rendering_verification` | declared |
 | `platform.common.primitives.document_projection` | `execution.audit.audit_receipt_contract`, `execution.audit.batch_review_obligation_contract`, `execution.audit.substantive_review_contract`, `knowledge.rendering.rendering_verification_contract` | declared |
@@ -2028,11 +2062,13 @@ Repository IO, serialization, locking, transport, generation, and other Tool-own
 | `platform.common.reporting.JSON_RECEIPT_SUMMARY_HELP` | `knowledge.content.check_residual_content`, `knowledge.metadata.check_vocab` | declared |
 | `platform.common.reporting.JsonReceiptCollector` | `execution.evidence.seal_receipts`, `execution.planning.compile_queue`, `execution.task_runtime.apply_amendment`, `execution.task_runtime.apply_contract_amendment`, `execution.task_runtime.apply_delta`, `execution.task_runtime.init_state`, `governance.standards.adopt_standards`, `knowledge.content.check_residual_content`, `knowledge.content.duplicate_check`, `knowledge.metadata.check_freshness`, `knowledge.metadata.check_vocab`, `knowledge.structure.check_moc` | declared |
 | `platform.common.reporting.RedirectedJsonReceipts` | `execution.audit.check_batch_close`, `execution.audit.check_proof`, `knowledge.content.check_links`, `knowledge.metadata.check_page_contract`, `knowledge.structure.check_boundary_contract`, `knowledge.structure.check_structure` | declared |
+| `platform.common.reporting.host_environment_boundary` | `adopt_standards`, `apply_amendment`, `apply_contract_amendment`, `apply_delta`, `apply_metadata_transition`, `apply_profile_adoption`, `assemble_terminal_proof`, `check_batch_close`, `check_boundary_contract`, `check_corpus_plan`, `check_freshness`, `check_page_contract`, `check_profile`, `check_proof`, `check_queue`, `check_structure`, `check_vocab`, `compile_queue`, `complete_audit_receipt`, `compose_page_contract`, `compose_vocab`, `execution.task_runtime.task_runtime_runner`, `init_state`, `prepare_audit_plan`, `profile_candidate`, `profile_onboarding_status`, `publish_delta`, `record_batch_judgment`, `record_batch_page_review`, `record_batch_review`, `record_changed_scope_evidence`, `record_corpus_acceptance`, `record_gate_attestation`, `record_gate_result`, `record_maintenance_evidence`, `record_profile_rendering`, `record_rendering_verification`, `record_substantive_review`, `register_amendment`, `render_boundary_projection`, `render_host_configs`, `render_queue`, `render_structure_projection`, `run_gates`, `run_task`, `seal_receipts`, `update_queue`, `update_task` | declared |
 | `platform.common.reporting.run_redirected_json` | `execution.audit.check_batch_close`, `execution.audit.check_proof`, `knowledge.content.check_links`, `knowledge.metadata.check_page_contract`, `knowledge.structure.check_boundary_contract`, `knowledge.structure.check_structure` | declared |
 | `platform.common.reporting.write_canonical_json` | `execution.audit.assemble_terminal_proof`, `execution.audit.complete_audit_receipt`, `execution.audit.prepare_audit_plan`, `execution.audit.record_batch_page_review`, `execution.audit.record_batch_review`, `execution.audit.record_changed_scope_evidence`, `execution.audit.record_substantive_review`, `execution.evidence.record_gate_attestation`, `execution.planning.record_corpus_acceptance`, `execution.task_runtime.task_runtime_runner`, `knowledge.rendering.record_profile_rendering`, `knowledge.rendering.record_rendering_verification` | declared |
 | `platform.common.reporting.write_canonical_json_array` | `execution.task_runtime.check_queue`, `execution.task_runtime.record_maintenance_evidence`, `execution.task_runtime.register_amendment`, `execution.task_runtime.update_queue`, `execution.task_runtime.update_task` | declared |
 | `platform.distribution.check_kernel_size.main` | `check_kernel_size` | declared |
 | `platform.distribution.check_upstream_components.main` | `check_upstream_components` | declared |
+| `platform.distribution.install_profile_toolchain.install_cue` | `platform.distribution.prepare_host_toolchain` | declared |
 | `platform.distribution.module_boundary_facts.EXCLUDED_CONSUMPTION_FORMS` | `platform.distribution.tool_catalog` | declared |
 | `platform.distribution.module_boundary_facts.EXCLUDED_DIRS` | `platform.distribution.tool_catalog` | declared |
 | `platform.distribution.module_boundary_facts.cli_modules` | `platform.distribution.tool_catalog` | declared |
@@ -2046,7 +2082,13 @@ Repository IO, serialization, locking, transport, generation, and other Tool-own
 | `platform.distribution.module_boundary_facts.strongly_connected` | `platform.distribution.module_boundary_report`, `platform.distribution.tool_catalog` | declared |
 | `platform.distribution.module_boundary_report.main` | `module_boundary_report` | declared |
 | `platform.distribution.module_boundary_report.manifest_errors` | `platform.distribution.tool_catalog` | declared |
+| `platform.distribution.node_runtime.node_requirement` | `platform.distribution.prepare_rendering_runtime` | declared |
+| `platform.distribution.node_runtime.npm_cli` | `platform.distribution.prepare_rendering_runtime` | declared |
+| `platform.distribution.node_runtime.prepare_node` | `platform.distribution.prepare_rendering_runtime` | declared |
+| `platform.distribution.prepare_host.main` | `prepare_host` | declared |
+| `platform.distribution.prepare_host_toolchain.prepare` | `platform.distribution.prepare_host` | declared |
 | `platform.distribution.prepare_rendering_runtime.main` | `prepare_rendering_runtime` | declared |
+| `platform.distribution.prepare_rendering_runtime.prepare_runtime` | `platform.distribution.prepare_host` | declared |
 | `platform.distribution.stamp_cards.card_body_digest` | `execution.context_delivery.card_activation` | declared |
 | `platform.distribution.stamp_cards.discover_cards` | `execution.audit.check_proof`, `execution.context_delivery.card_activation`, `execution.planning.apply_task_plan` | declared |
 | `platform.distribution.stamp_cards.main` | `stamp_cards` | declared |
@@ -2118,6 +2160,8 @@ Repository IO, serialization, locking, transport, generation, and other Tool-own
 | `corpus-plan-structure-gate-v1` | `entrypoint-main` | `execution.planning.check_corpus_plan.main` | `check_corpus_plan` |
 | `coverage-delta-application-v1` | `entrypoint-main` | `execution.task_runtime.apply_delta.main` | `apply_delta` |
 | `dedicated-rendering-verification-v1` | `entrypoint-main` | `knowledge.rendering.record_rendering_verification.main` | `record_rendering_verification` |
+| `host-environment-observation-v1` | `entrypoint-main` | `platform.agent_interface.inspect_host.main` | `inspect_host` |
+| `host-environment-preparation-v1` | `entrypoint-main` | `platform.distribution.prepare_host.main` | `prepare_host` |
 | `maintenance-evidence-producer-v1` | `entrypoint-main` | `execution.task_runtime.record_maintenance_evidence.main` | `record_maintenance_evidence` |
 | `ordinary-queue-transition-v1` | `entrypoint-main` | `execution.task_runtime.update_queue.main` | `update_queue` |
 | `profile-rendering-evidence-v1` | `entrypoint-main` | `knowledge.rendering.record_profile_rendering.main` | `record_profile_rendering` |
@@ -2490,11 +2534,32 @@ Repository IO, serialization, locking, transport, generation, and other Tool-own
 | `platform.agent_interface.entrypoint_loader.capture_argument_parser` | yes | `execution.audit.record_changed_scope_evidence`, `platform.agent_interface.compile_cli_contract` |
 | `platform.agent_interface.entrypoint_loader.entrypoint_for_implementation_path` | yes | `governance.profile.profile_contract` |
 | `platform.agent_interface.entrypoint_loader.load_tool_implementation` | yes | `execution.audit.record_changed_scope_evidence`, `execution.task_runtime.queue_runtime.gate_registry` |
+| `platform.agent_interface.install_host_config.install` | yes | `platform.distribution.prepare_host` |
+| `platform.common.host_environment.PREPARATION_CAPABILITY_ID` | yes | `platform.common.host_toolchain` |
+| `platform.common.host_environment.HostEnvironmentUnavailable` | yes | `execution.task_runtime.task_runtime_runner`, `governance.profile.profile_cue`, `knowledge.rendering.static_render_runtime`, `platform.agent_interface.inspect_host`, `platform.agent_interface.install_host_config`, `platform.common.host_toolchain`, `platform.common.locked_download`, `platform.common.reporting`, `platform.distribution.install_profile_toolchain`, `platform.distribution.node_runtime`, `platform.distribution.prepare_host`, `platform.distribution.prepare_host_toolchain`, `platform.distribution.prepare_rendering_runtime` |
+| `platform.common.host_environment.preparation_failure` | yes | `platform.agent_interface.install_host_config`, `platform.distribution.prepare_host`, `platform.distribution.prepare_host_toolchain`, `platform.distribution.prepare_rendering_runtime` |
+| `platform.common.host_environment.preparation_request` | yes | `execution.task_runtime.task_runtime_runner`, `platform.common.reporting` |
+| `platform.common.host_toolchain.CAPABILITY_ID` | yes | `platform.distribution.prepare_host`, `platform.distribution.prepare_host_toolchain` |
+| `platform.common.host_toolchain.CUE_ENV` | yes | `platform.agent_interface.render_host_configs`, `platform.distribution.prepare_host` |
+| `platform.common.host_toolchain.requirements` | yes | `platform.distribution.prepare_host_toolchain` |
+| `platform.common.host_toolchain.binding_path` | yes | `platform.distribution.prepare_host`, `platform.distribution.prepare_host_toolchain` |
+| `platform.common.host_toolchain.binding_document` | yes | `platform.distribution.prepare_host_toolchain` |
+| `platform.common.host_toolchain.verify_python` | yes | `platform.distribution.prepare_host_toolchain` |
+| `platform.common.host_toolchain.verify_cue` | yes | `platform.distribution.prepare_host_toolchain` |
+| `platform.common.host_toolchain.cue_version_matches` | yes | `governance.profile.profile_cue`, `platform.distribution.install_profile_toolchain` |
+| `platform.common.host_toolchain.cue_unavailable` | yes | `governance.profile.profile_cue` |
+| `platform.common.host_toolchain.select_cue` | yes | `governance.profile.profile_cue` |
+| `platform.common.host_toolchain.observe` | yes | `platform.agent_interface.inspect_host`, `platform.agent_interface.render_host_configs`, `platform.distribution.prepare_host_toolchain` |
 | `platform.common.implementation_marker.IMPLEMENTATION_MARKER` | yes | `platform.agent_interface.entrypoint_loader` |
 | `platform.common.implementation_marker.ImplementationMarkerError` | yes | `platform.agent_interface.entrypoint_loader` |
 | `platform.common.implementation_marker.parse_implementation_module` | yes | `platform.agent_interface.entrypoint_loader`, `platform.distribution.module_boundary_facts` |
 | `platform.common.implementation_marker.parse_implementation_module_source` | yes | `platform.agent_interface.entrypoint_loader` |
+| `platform.common.locked_download.download` | yes | `platform.distribution.install_profile_toolchain`, `platform.distribution.node_runtime` |
 | `platform.common.receipts.make_gate_receipt` | yes | `knowledge.content.check_links`, `knowledge.metadata.check_vocab` |
+| `platform.distribution.node_runtime.node_requirement` | yes | `platform.distribution.prepare_rendering_runtime` |
+| `platform.distribution.node_runtime.npm_cli` | yes | `platform.distribution.prepare_rendering_runtime` |
+| `platform.distribution.node_runtime.prepare_node` | yes | `platform.distribution.prepare_rendering_runtime` |
+| `platform.distribution.prepare_host_toolchain.prepare` | yes | `platform.distribution.prepare_host` |
 | `platform.repository.path_contract.canonical_repository_relative_path` | yes | `execution.audit.audit_fingerprint`, `execution.audit.terminal_proof_contract`, `execution.context_delivery.read_set_contract`, `execution.task_runtime.task_runtime_runner`, `governance.profile.profile_contract`, `governance.profile.rendering_contract`, `knowledge.metadata.freshness_receipt_contract`, `platform.common.kblib`, `platform.distribution.check_kernel_size`, `platform.distribution.stamp_cards`, `platform.distribution.upstream_component_boundary` |
 
 ## Declared public APIs without observed consumers
@@ -2523,7 +2588,6 @@ Repository IO, serialization, locking, transport, generation, and other Tool-own
 | `platform.common.kblib` | `validate_metadata_profile_contract` |
 | `platform.common.kblib` | `validate_structure_registry_contract` |
 | `platform.distribution.install_profile_toolchain` | `main` |
-| `platform.distribution.prepare_rendering_runtime` | `prepare_runtime` |
 
 ## Registered capability relationships
 
@@ -2600,6 +2664,9 @@ Repository IO, serialization, locking, transport, generation, and other Tool-own
 | `deterministic-gate-result-v1` | `receipt-schema` | `execution.evidence.metadata_gate_runtime` | `checker` | `execution.task_runtime.check_queue` | no |
 | `deterministic-gate-result-v1` | `receipt-schema` | `execution.evidence.metadata_gate_runtime` | `consumer` | `execution.evidence.record_gate_result` | no |
 | `deterministic-gate-result-v1` | `receipt-schema` | `execution.evidence.metadata_gate_runtime` | `consumer` | `knowledge.metadata.apply_metadata_transition` | no |
+| `host-environment-observation-v1` | `consumer` | `platform.agent_interface.inspect_host` | `invocation-owner` | `inspect_host` | no |
+| `host-environment-preparation-v1` | `producer` | `platform.distribution.prepare_host` | `consumer` | `execution.task_runtime.task_runtime_runner` | no |
+| `host-environment-preparation-v1` | `producer` | `platform.distribution.prepare_host` | `invocation-owner` | `prepare_host` | no |
 | `maintenance-evidence-producer-v1` | `producer` | `execution.task_runtime.record_maintenance_evidence` | `checker` | `execution.task_runtime.check_queue` | no |
 | `maintenance-evidence-producer-v1` | `producer` | `execution.task_runtime.record_maintenance_evidence` | `consumer` | `execution.task_runtime.queue_runtime.maintenance` | no |
 | `maintenance-evidence-producer-v1` | `producer` | `execution.task_runtime.record_maintenance_evidence` | `consumer` | `execution.task_runtime.task_runtime_runner` | no |
@@ -2640,7 +2707,7 @@ Repository IO, serialization, locking, transport, generation, and other Tool-own
 | `registered-scan-v1` | `producer` | `execution.evidence.record_gate_result` | `consumer` | `execution.audit.record_changed_scope_evidence` | no |
 | `registered-scan-v1` | `producer` | `execution.evidence.record_gate_result` | `consumer` | `knowledge.metadata.apply_metadata_transition` | no |
 | `registered-scan-v1` | `producer` | `execution.evidence.record_gate_result` | `invocation-owner` | `record_gate_result` | no |
-| `rendering-runtime-preparation-v1` | `producer` | `platform.distribution.prepare_rendering_runtime` | `consumer` | `execution.task_runtime.task_runtime_runner` | no |
+| `rendering-runtime-preparation-v1` | `producer` | `platform.distribution.prepare_rendering_runtime` | `consumer` | `platform.distribution.prepare_host` | no |
 | `rendering-runtime-preparation-v1` | `producer` | `platform.distribution.prepare_rendering_runtime` | `invocation-owner` | `prepare_rendering_runtime` | no |
 | `required-queue-gate-v1` | `producer` | `execution.task_runtime.check_queue` | `consumer` | `execution.task_runtime.task_runtime_runner` | no |
 | `required-queue-gate-v1` | `producer` | `execution.task_runtime.check_queue` | `consumer` | `execution.task_runtime.update_queue` | no |
@@ -2699,6 +2766,7 @@ Repository IO, serialization, locking, transport, generation, and other Tool-own
 | `complete_audit_receipt` | `mcp_server` | `cambium-mcp-stdio` | `mcp-subprocess` |
 | `duplicate_check` | `mcp_server` | `cambium-mcp-stdio` | `mcp-subprocess` |
 | `init_state` | `mcp_server` | `cambium-mcp-stdio` | `mcp-subprocess` |
+| `inspect_host` | `mcp_server` | `cambium-mcp-stdio` | `mcp-subprocess` |
 | `prepare_audit_plan` | `mcp_server` | `cambium-mcp-stdio` | `mcp-subprocess` |
 | `profile_candidate` | `mcp_server` | `cambium-mcp-stdio` | `mcp-subprocess` |
 | `profile_onboarding_status` | `mcp_server` | `cambium-mcp-stdio` | `mcp-subprocess` |
@@ -2768,9 +2836,11 @@ Repository IO, serialization, locking, transport, generation, and other Tool-own
 | `generate_test_catalog` | yes | yes | no | none | `cli-only` | `write` | `none` |
 | `generate_tool_catalog` | yes | yes | no | none | `cli-only` | `write` | `none` |
 | `init_state` | yes | yes | yes | via:cambium-mcp-stdio | `mcp` | `write` | `none` |
+| `inspect_host` | yes | yes | yes | via:cambium-mcp-stdio | `mcp` | `read` | `none` |
 | `metadata_execution_contract` | yes | yes | no | none | `cli-only` | `write` | `none` |
 | `module_boundary_report` | yes | yes | no | none | `cli-only` | `write` | `temporary-git-worktree` |
 | `prepare_audit_plan` | yes | yes | yes | via:cambium-mcp-stdio | `mcp` | `write` | `none` |
+| `prepare_host` | yes | yes | no | none | `cli-only` | `write` | `authorized-host-environment-and-configuration` |
 | `prepare_rendering_runtime` | yes | yes | no | none | `cli-only` | `read` | `authorized-host-rendering-cache` |
 | `profile_candidate` | yes | yes | yes | via:cambium-mcp-stdio | `mcp` | `write` | `none` |
 | `profile_onboarding_status` | yes | yes | yes | via:cambium-mcp-stdio | `mcp` | `read` | `none` |

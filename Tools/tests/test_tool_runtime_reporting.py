@@ -1,5 +1,6 @@
 import contextlib
 import io
+import json
 import os
 import sys
 import unittest
@@ -10,9 +11,37 @@ sys.path.insert(0, TOOLS)
 
 from Tools.platform.common import reporting  # noqa: E402
 from Tools.platform.agent_interface import entrypoint_loader  # noqa: E402
+from Tools.platform.common.host_environment import HostEnvironmentUnavailable
 
 
 class CanonicalJsonOutputTests(unittest.TestCase):
+    def test_host_handoff_is_not_a_receipt_or_a_claim_that_nothing_was_written(self):
+        failure = HostEnvironmentUnavailable("compiler unavailable", capability_id="render",
+                                             code="execution-unavailable")
+        @reporting.host_environment_boundary
+        def operation():
+            raise failure
+        output = io.StringIO()
+        with contextlib.redirect_stdout(output):
+            self.assertEqual(1, operation())
+        result = json.loads(output.getvalue())
+        self.assertEqual("await-host", result["status"])
+        self.assertEqual(failure.diagnostic(), result["host_environment"])
+        self.assertIsNone(result["host_preparation"]["arguments"])
+        @reporting.host_environment_boundary
+        def after_output():
+            print("earlier operation output")
+            raise failure
+        output = io.StringIO()
+        with contextlib.redirect_stdout(output):
+            self.assertEqual(1, after_output())
+        self.assertEqual("earlier operation output\n", json.loads(output.getvalue())["prior_output"])
+        @reporting.host_environment_boundary
+        def invalid():
+            raise ValueError("invalid evidence")
+        with self.assertRaisesRegex(ValueError, "invalid evidence"):
+            invalid()
+
     def test_writer_preserves_the_exact_canonical_stdout_bytes(self):
         output = io.StringIO()
         payload = {"z": [2, 1], "a": {"value": "文字"}}

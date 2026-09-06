@@ -13,11 +13,12 @@ import hashlib
 import json
 import os
 from pathlib import Path
-import shutil
 import subprocess
 import tempfile
 
 from Tools.platform.common import kblib
+from Tools.platform.common import host_toolchain
+from Tools.platform.common.host_environment import HostEnvironmentUnavailable
 
 
 @dataclass(frozen=True)
@@ -32,11 +33,16 @@ def toolchain_contract():
 
 
 def _binary_identity(toolchain):
-    selected = os.environ.get("CAMBIUM_CUE") or shutil.which("cue")
+    selected = host_toolchain.select_cue(Path(__file__).resolve().parents[3])
     if not selected:
-        raise ValueError("CUE unavailable; install the pinned toolchain and set CAMBIUM_CUE")
-    path = Path(selected).resolve(strict=True)
-    stat = path.stat()
+        raise host_toolchain.cue_unavailable("CUE unavailable; prepare the Host toolchain",
+            code="cue-unavailable", resource="cue")
+    try:
+        path = Path(selected).resolve(strict=True)
+        stat = path.stat()
+    except OSError as exc:
+        raise host_toolchain.cue_unavailable("CUE executable unavailable",
+            code="cue-unavailable", resource=selected) from exc
     return (str(path), stat.st_dev, stat.st_ino, stat.st_size, stat.st_mtime_ns,
             stat.st_ctime_ns, toolchain["version"])
 
@@ -49,8 +55,9 @@ def _verified_binary(identity):
             [path, "version"], cwd=directory,
             env=_isolated_environment(Path(directory)),
             capture_output=True, text=True, timeout=15)
-    if result.returncode or not result.stdout.splitlines() or result.stdout.splitlines()[0] != "cue version " + version:
-        raise ValueError("Profile requires CUE %s; evaluator version did not match" % version)
+    if result.returncode or not host_toolchain.cue_version_matches(result.stdout, version):
+        raise host_toolchain.cue_unavailable("Profile requires CUE %s; evaluator version did not match" % version,
+            code="cue-version-mismatch", resource=path)
     return path
 
 
@@ -126,5 +133,8 @@ def validate_profile(document, contract_sources, *, draft=False, toolchain=None)
                         for path, text in sorted(contract_sources.items()))
         pinned = toolchain if toolchain is not None else toolchain_contract()
         return _evaluate(_binary_identity(pinned), sources, data, bool(draft))
-    except (OSError, ValueError, TypeError, KeyError, UnicodeError, subprocess.TimeoutExpired) as exc:
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        raise host_toolchain.cue_unavailable("CUE evaluation could not execute: %s" % exc,
+            code="cue-execution-unavailable", resource="cue") from exc
+    except (ValueError, TypeError, KeyError, UnicodeError) as exc:
         return CueValidation(False, ("CUE evaluation unavailable or invalid: %s" % exc,))

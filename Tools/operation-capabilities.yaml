@@ -15,6 +15,27 @@
 schema_version: 3
 
 capabilities:
+  - capability_id: host-environment-preparation-v1
+    kind: producer
+    capability_version: 1.0.0
+    implementation_owner: Tools/platform/distribution/prepare_host.py
+    invocation_owner: Tools/prepare_host.py
+    writers: []
+    checkers: []
+    consumers:
+      - Tools/execution/task_runtime/task_runtime_runner.py
+    operations: []
+
+  - capability_id: host-environment-observation-v1
+    kind: consumer
+    capability_version: 1.0.0
+    implementation_owner: Tools/platform/agent_interface/inspect_host.py
+    invocation_owner: Tools/inspect_host.py
+    writers: []
+    checkers: []
+    consumers: []
+    operations: []
+
   - capability_id: rendering-runtime-preparation-v1
     kind: producer
     capability_version: 1.0.0
@@ -23,7 +44,7 @@ capabilities:
     writers: []
     checkers: []
     consumers:
-      - Tools/execution/task_runtime/task_runtime_runner.py
+      - Tools/platform/distribution/prepare_host.py
     operations: []
 
   - capability_id: project-page-state-v2

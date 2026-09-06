@@ -12,6 +12,9 @@ from Tools.knowledge.metadata.compose_vocab import main as _main
 
 IMPLEMENTATION_MODULE = "Tools.knowledge.metadata.compose_vocab"
 
+from Tools.platform.common.reporting import host_environment_boundary as _host_environment_boundary
+
+@_host_environment_boundary
 def main(argv=None):
     return _main(argv)
 

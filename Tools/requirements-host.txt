@@ -1,0 +1,2 @@
+# Host configuration editing only; not a Profile codec or governance contract.
+tomlkit==0.13.3

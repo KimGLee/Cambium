@@ -26,7 +26,7 @@ class ProfileToolchainInstallationContractTests(unittest.TestCase):
     def setUp(self):
         holder = tempfile.TemporaryDirectory()
         self.addCleanup(holder.cleanup)
-        self.root = Path(holder.name)
+        self.root = Path(holder.name).resolve()
         self.destination = self.root / "toolchain"
         self.binary = self.destination / "cue"
         self.contract = json.loads((
@@ -55,7 +55,7 @@ class ProfileToolchainInstallationContractTests(unittest.TestCase):
                 installer.kblib, "run_cambium_subprocess",
                 return_value=SimpleNamespace(
                     returncode=0, stdout="cue version " + self.contract["version"] + "\n")) as probe, \
-                mock.patch.object(installer.urllib.request, "urlopen") as download:
+                mock.patch.object(installer.locked_download, "download") as download:
             self.assertEqual(0, self.invoke())
         probe.assert_called_once_with(
             [str(self.binary), "version"], capture_output=True, text=True, timeout=15)
@@ -69,7 +69,7 @@ class ProfileToolchainInstallationContractTests(unittest.TestCase):
             with self.subTest(code=code, output=output), mock.patch.object(
                     installer.kblib, "run_cambium_subprocess",
                     return_value=SimpleNamespace(returncode=code, stdout=output)), \
-                    mock.patch.object(installer.urllib.request, "urlopen") as download:
+                    mock.patch.object(installer.locked_download, "download") as download:
                 with self.assertRaises(SystemExit):
                     self.invoke()
                 download.assert_not_called()
@@ -79,7 +79,7 @@ class ProfileToolchainInstallationContractTests(unittest.TestCase):
         self.destination.mkdir()
         self.binary.symlink_to(self.root / "missing")
         with mock.patch.object(installer.kblib, "run_cambium_subprocess") as probe, \
-                mock.patch.object(installer.urllib.request, "urlopen") as download:
+                mock.patch.object(installer.locked_download, "download") as download:
             with self.assertRaises(SystemExit):
                 self.invoke()
         probe.assert_not_called()
@@ -88,7 +88,7 @@ class ProfileToolchainInstallationContractTests(unittest.TestCase):
 
     def test_unpinned_platform_is_rejected_before_target_creation(self):
         with mock.patch.object(installer.platform, "machine", return_value="unknown"), \
-                mock.patch.object(installer.urllib.request, "urlopen") as download:
+                mock.patch.object(installer.locked_download, "download") as download:
             with self.assertRaises(SystemExit):
                 self.invoke()
         download.assert_not_called()
@@ -96,7 +96,7 @@ class ProfileToolchainInstallationContractTests(unittest.TestCase):
 
     def test_archive_checksum_failure_cannot_publish_an_executable(self):
         with mock.patch.object(
-                installer.urllib.request, "urlopen", return_value=io.BytesIO(b"untrusted archive")):
+                installer.locked_download, "download", return_value=b"untrusted archive"):
             with self.assertRaises(SystemExit):
                 self.invoke()
         self.assertFalse(self.binary.exists())

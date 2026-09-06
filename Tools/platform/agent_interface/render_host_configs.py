@@ -114,6 +114,7 @@ REPO_ROOT = repository_source_root(__file__)
 import Tools.platform.agent_interface.agent_interface_policy as agent_interface_policy  # noqa: E402
 import Tools.platform.agent_interface.agent_interface_contract as agent_interface_contract  # noqa: E402
 import Tools.platform.common.kblib as kblib  # noqa: E402
+from Tools.platform.common import host_toolchain
 import Tools.execution.task_runtime.runtime_paths as runtime_paths  # noqa: E402
 import Tools.platform.agent_interface.tool_availability as tool_availability  # noqa: E402
 import Tools.knowledge.rendering.static_render_runtime as static_render_runtime  # noqa: E402
@@ -310,6 +311,8 @@ def invocation(context, check=False):
     if context.get("runtime_bindings_path"):
         parts.append("--runtime-bindings %s" %
                      shlex.quote(context["runtime_bindings_path"]))
+    if context.get("toolchain_bindings_path"):
+        parts.append("--toolchain-bindings %s" % shlex.quote(context["toolchain_bindings_path"]))
     return " ".join(parts)
 
 CWD_NOTE = (
@@ -509,7 +512,7 @@ def runtime_field_sources():
         "codex.document.mcp_servers.%s.env" % SERVER_NAME,
         "dsh-env.document",
     )
-    return {
+    sources = {
         "%s.%s" % (prefix, name):
             "Tools/knowledge/rendering/static_render_runtime.py: "
             "read_runtime_bindings validates --runtime-bindings; "
@@ -517,6 +520,13 @@ def runtime_field_sources():
         for prefix in prefixes
         for name in static_render_runtime.RUNTIME_ENV_KEYS
     }
+    sources.update({"%s.%s" % (prefix, host_toolchain.CUE_ENV):
+        "Tools/platform/common/host_toolchain.py: validated --toolchain-bindings evaluator"
+        for prefix in prefixes})
+    sources.update({prefix.removesuffix(".env") + ".command":
+        "agent interface transport command; optional host_toolchain validated --toolchain-bindings Python"
+        for prefix in prefixes if prefix.endswith(".env")})
+    return sources
 
 
 class RenderError(Exception):
@@ -686,6 +696,8 @@ def server_body(context, include_env=True, include_resilience=False):
         for key, value in resilience.items():
             body[key] = dict(value) if isinstance(value, dict) else value
     body = substitute(body, context["bindings"])
+    if context.get("host_python"):
+        body["command"] = context["host_python"]
     if include_env:
         # These are already-validated literal paths, not template tokens.
         body[ENV_FIELD].update(context.get("runtime_environment", {}))
@@ -1205,6 +1217,8 @@ def main(argv=None):
         help="absolute path to Host rendering bindings produced by "
              "prepare_rendering_runtime; validate and project this explicit "
              "input without discovering or installing dependencies")
+    parser.add_argument("--toolchain-bindings", default=None,
+                        help="Verified Host Python/CUE binding; requires explicit roots and Host staging")
     mode = parser.add_mutually_exclusive_group()
     mode.add_argument(
         "--check", action="store_true",
@@ -1226,7 +1240,8 @@ def main(argv=None):
 
     for label, value in (("--distribution-root", args.distribution_root),
                          ("--workspace-root", args.workspace_root),
-                         ("--runtime-bindings", args.runtime_bindings)):
+                         ("--runtime-bindings", args.runtime_bindings),
+                         ("--toolchain-bindings", args.toolchain_bindings)):
         if value is not None and not os.path.isabs(value):
             parser.error(
                 "%s must be an absolute path: a host starts this server from "
@@ -1316,7 +1331,7 @@ def main(argv=None):
             "unsafe host-config output: installation and MCP transport "
             "configuration must remain outside %s"
             % runtime_paths.RUNTIME_ROOT)
-    if args.runtime_bindings and (
+    if (args.runtime_bindings or args.toolchain_bindings) and (
             not args.output_dir or not args.distribution_root or
             not args.workspace_root or path_is_within(
                 output_dir, os.path.join(root, DEFAULT_OUTPUT_DIR))):
@@ -1324,7 +1339,7 @@ def main(argv=None):
             "Host runtime bindings require explicit distribution/workspace "
             "roots and a separate Host staging output; machine-local paths "
             "must not enter tracked source-distribution templates")
-    if args.runtime_bindings and os.path.realpath(args.distribution_root) != \
+    if (args.runtime_bindings or args.toolchain_bindings) and os.path.realpath(args.distribution_root) != \
             os.path.realpath(root):
         return fail(
             "--runtime-bindings must be validated by the same distribution "
@@ -1344,11 +1359,23 @@ def main(argv=None):
 
     runtime_environment = {}
     runtime_bindings_hash = None
+    toolchain_bindings_hash = None
+    host_python = None
+    if args.toolchain_bindings:
+        try:
+            toolchain_bindings_hash = file_bytes_sha256(args.toolchain_bindings)
+            observed = host_toolchain.observe(root, path=args.toolchain_bindings)
+            if observed["result"] != "ready":
+                return fail("Host toolchain bindings cannot execute: " + str(observed["diagnostics"]))
+            host_python = observed["bindings"]["python"]
+            runtime_environment[host_toolchain.CUE_ENV] = observed["bindings"]["cue"]
+        except (OSError, ValueError) as exc:
+            return fail("Unreliable Host toolchain bindings: " + str(exc))
     if args.runtime_bindings:
         try:
             runtime_bindings_hash = file_bytes_sha256(args.runtime_bindings)
-            runtime_environment = static_render_runtime.read_runtime_bindings(
-                root, args.runtime_bindings)
+            runtime_environment.update(static_render_runtime.read_runtime_bindings(
+                root, args.runtime_bindings))
         except (OSError, static_render_runtime.StaticRenderRuntimeError) as exc:
             return fail("unreliable Host runtime bindings: %s" % exc)
 
@@ -1369,8 +1396,11 @@ def main(argv=None):
         "output_dir": output_dir,
         "bindings": bindings,
         "runtime_environment": runtime_environment,
+        "host_python": host_python,
         "runtime_bindings_path": args.runtime_bindings,
         "runtime_bindings_hash": runtime_bindings_hash,
+        "toolchain_bindings_path": args.toolchain_bindings,
+        "toolchain_bindings_hash": toolchain_bindings_hash,
         # Named so a header speaks only of the placeholders its own file
         # still carries; a bound render says nothing about substitution.
         "unsubstituted": tuple(
@@ -1437,6 +1467,14 @@ def main(argv=None):
         if binding_recheck != runtime_bindings_hash:
             return fail("Host runtime bindings changed during rendering; "
                         "nothing was written and no verdict is reported")
+
+    if args.toolchain_bindings:
+        try:
+            if file_bytes_sha256(args.toolchain_bindings) != toolchain_bindings_hash or \
+                    host_toolchain.observe(root, path=args.toolchain_bindings) != observed:
+                return fail("Host toolchain bindings or selected resources changed during rendering; nothing was written")
+        except (OSError, ValueError) as exc:
+            return fail("Host toolchain bindings became unreadable: %s" % exc)
 
     note = entry_point_note(args.distribution_root or root)
     if note:

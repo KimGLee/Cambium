@@ -30,6 +30,7 @@ import Tools.platform.common.kblib as kblib  # noqa: E402
 import Tools.platform.agent_interface.agent_interface_policy as agent_interface_policy  # noqa: E402
 import Tools.platform.agent_interface.render_host_configs as renderer  # noqa: E402
 import Tools.platform.agent_interface.tool_availability as tool_availability  # noqa: E402
+from Tools.platform.agent_interface import install_host_config
 
 
 def run_in_process(*arguments):
@@ -42,6 +43,66 @@ def run_in_process(*arguments):
             code = int(exc.code)
     return SimpleNamespace(
         returncode=code, stdout=stdout.getvalue(), stderr=stderr.getvalue())
+
+
+class HostInstallationTests(unittest.TestCase):
+    """The installation seam owns preservation, not product field definitions."""
+
+    def test_json_preserves_other_servers_unknown_settings_and_explicit_python_cue(self):
+        before = {"theme": "dark", "mcpServers": {
+            "other": {"command": "other"}, renderer.SERVER_NAME: {
+                "command": "/user/python", "timeout": 99, "env": {"CAMBIUM_CUE": "/user/cue", "SECRET_REF": "keep", "CAMBIUM_RENDER_BROWSER": "/old/browser"}}}}
+        generated = json.dumps({"mcpServers": {renderer.SERVER_NAME: {
+            "command": "/prepared/python", "args": ["mcp.py"], "env": {"CAMBIUM_CUE": "/prepared/cue", "CAMBIUM_WORKSPACE_ROOT": "/corpus"}}}})
+        merged = json.loads(install_host_config.merge_product("claude-code", json.dumps(before), generated))
+        self.assertEqual(before["mcpServers"]["other"], merged["mcpServers"]["other"])
+        server = merged["mcpServers"][renderer.SERVER_NAME]
+        self.assertEqual("/user/python", server["command"])
+        self.assertEqual("/user/cue", server["env"]["CAMBIUM_CUE"])
+        self.assertEqual("keep", server["env"]["SECRET_REF"])
+        self.assertEqual(99, server["timeout"])
+        self.assertEqual("/old/browser", server["env"]["CAMBIUM_RENDER_BROWSER"])
+        replaced = json.loads(install_host_config.merge_product("claude-code", json.dumps(before), generated, replace_overrides=True))
+        self.assertEqual("/prepared/python", replaced["mcpServers"][renderer.SERVER_NAME]["command"])
+        self.assertNotIn("CAMBIUM_RENDER_BROWSER", replaced["mcpServers"][renderer.SERVER_NAME]["env"])
+        self.assertEqual("keep", replaced["mcpServers"][renderer.SERVER_NAME]["env"]["SECRET_REF"])
+
+    def test_toml_keeps_comments_unknown_keys_and_other_servers(self):
+        before = '# user comment\ntheme = "dark"\n\n[mcp_servers.other]\ncommand = "other"\n\n[mcp_servers.%s]\ncommand = "/user/python" # interpreter\ntimeout = 9\n' % renderer.SERVER_NAME
+        generated = '[mcp_servers.%s]\ncommand = "/prepared/python"\nargs = ["mcp.py"]\n\n[mcp_servers.%s.env]\nCAMBIUM_CUE = "/cue"\n' % (renderer.SERVER_NAME, renderer.SERVER_NAME)
+        merged = install_host_config.merge_product("codex", before, generated)
+        self.assertIn("# user comment", merged)
+        self.assertIn("# interpreter", merged)
+        self.assertIn('theme = "dark"', merged)
+        self.assertIn('[mcp_servers.other]\ncommand = "other"', merged)
+        self.assertIn('command = "/user/python"', merged)
+        self.assertIn("timeout = 9", merged)
+        self.assertEqual(merged, install_host_config.merge_product("codex", merged, generated))
+
+    def test_install_requires_preview_and_reads_back_without_claiming_session_reload(self):
+        with tempfile.TemporaryDirectory(prefix="host-config-install-") as directory:
+            target = Path(directory).resolve() / ".mcp.json"
+            generated = json.dumps({"mcpServers": {renderer.SERVER_NAME: {"command": "/python", "args": []}}})
+            preview = install_host_config.install("claude-code", generated, target)
+            self.assertFalse(target.exists())
+            with self.assertRaises(ValueError):
+                install_host_config.install("claude-code", generated, target, apply=True)
+            installed = install_host_config.install("claude-code", generated, target, apply=True,
+                                                    expected_before=preview["before_sha256"])
+            self.assertTrue(installed["installed"])
+            self.assertFalse(installed["consumer_observed"])
+            self.assertEqual(installed["after_sha256"], kblib.sha256_bytes(target.read_bytes()).removeprefix("sha256:"))
+
+    def test_install_rejects_ambiguous_json_and_unsafe_destinations(self):
+        generated = '{"mcpServers":{}}'
+        with self.assertRaises(ValueError):
+            install_host_config.merge_product("claude-code", '{"x":1,"x":2}', generated)
+        with tempfile.TemporaryDirectory(prefix="host-config-install-") as directory:
+            root = Path(directory).resolve()
+            link = root / "link"
+            link.symlink_to(root, target_is_directory=True)
+            with self.assertRaises(ValueError):
+                install_host_config.install("claude-code", generated, link / "config")
 
 
 def run_cli(*arguments):
@@ -518,25 +579,30 @@ class HostProductSlowTests(unittest.TestCase):
         self.assertEqual(result.returncode, 1)
 
     def test_runtime_binding_change_during_read_cannot_publish(self):
-        with temporary_repository() as root:
-            binding = root.parent / "runtime.json"
-            binding.write_text("{}\n", encoding="utf-8")
-            output = root / "host-config-staging"
+        # Both optional binding sources join the same generator publication boundary.
+        for option in ("--runtime-bindings", "--toolchain-bindings"):
+            with self.subTest(source=option), temporary_repository() as root:
+                binding = root.parent / "runtime.json"
+                binding.write_text("{}\n", encoding="utf-8")
+                output = root / "host-config-staging"
 
-            def changed(_root, path):
-                Path(path).write_text("{ }\n", encoding="utf-8")
-                return {}
+                def changed(_root, path):
+                    Path(path).write_text("{ }\n", encoding="utf-8")
+                    return {}
 
-            with patch.object(renderer.static_render_runtime,
-                              "read_runtime_bindings", side_effect=changed):
-                result = run_in_process(
-                    str(root), "--runtime-bindings", str(binding),
-                    "--output-dir", str(output),
-                    "--distribution-root", str(root),
-                    "--workspace-root", str(root))
-            self.assertEqual(result.returncode, 1)
-            self.assertIn("changed during rendering", result.stdout)
-            self.assertFalse(output.exists())
+                def changed_toolchain(_root, *, path):
+                    changed(_root, path)
+                    return {"result": "ready", "bindings": {"python": "/python", "cue": "/cue"}}
+
+                with patch.object(renderer.static_render_runtime,
+                                  "read_runtime_bindings", side_effect=changed), \
+                        patch.object(renderer.host_toolchain, "observe", side_effect=changed_toolchain):
+                    result = run_in_process(
+                        str(root), option, str(binding), "--output-dir", str(output),
+                        "--distribution-root", str(root), "--workspace-root", str(root))
+                self.assertEqual(result.returncode, 1)
+                self.assertIn("changed during rendering", result.stdout)
+                self.assertFalse(output.exists())
 
 
 class HostProductTransportTests(unittest.TestCase):

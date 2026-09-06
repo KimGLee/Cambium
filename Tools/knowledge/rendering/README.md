@@ -4,14 +4,14 @@ The [Profile interview workflow](../../../profiles/README.md) creates a candidat
 
 ## Host setup
 
-The Agent calls `prepare_rendering_runtime` before operations that require the parser or renderer. Its default invocation is read-only: discover available executables and validate installed dependencies. An explicit `--apply` performs the reported preparation in Host-owned storage, within the user's installation authorization. Missing software or denied installation remains a Host boundary; setup does not approve Profile policy, create a Gate result, or open a batch.
+First use goes through [`prepare_host`](../../prepare_host.py), which also prepares the Profile toolchain and Host connection. `prepare_rendering_runtime` remains its narrow rendering provider and can be called independently. Default invocation is read-only; explicit `--apply` performs the reported preparation in Host-owned storage, within the user's installation authorization. Missing software or denied installation remains a Host boundary; setup does not approve Profile policy, create a Gate result, or open a batch.
 
 ```text
 python3 Tools/prepare_rendering_runtime.py . --json
 python3 Tools/prepare_rendering_runtime.py . --apply --json
 ```
 
-Add `--require-browser` only for an acceptance that uses browser compilation or layout. Source selection and KaTeX HTML/MathML compilation do not probe or execute a browser. Runner requests the capability needed at its current action boundary; inspecting `next_action` never installs dependencies.
+With no construct request the self-test proves AST selection only. Add `--construct dollar-math` to actually compile the synthetic formula; use `--construct mermaid-fence` for SVG compilation or `--construct outer-pipe-markdown-table` for reference layout. The capability registry determines the dependencies; callers do not choose a browser switch. Source selection and KaTeX HTML/MathML compilation do not probe or execute a browser. Runner requests the capability needed at its current action boundary; inspecting `next_action` never installs dependencies.
 
 Dependency versions and Node engine requirements come from the existing [`static_renderer/package.json`](static_renderer/package.json) and [`package-lock.json`](static_renderer/package-lock.json), not a second setup version list. The Agent reuses compatible Node and the prepared lock-specific Host dependency directory. When needed, preparation installs the locked Playwright package's Chromium into an isolated Host cache and smoke-tests it headlessly. It does not discover or default to the user's daily Chrome; an explicit Host executable override remains possible. Readiness is verified by execution, not merely by a successful install command.
 

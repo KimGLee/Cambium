@@ -2,7 +2,7 @@
 
 `Tools/` contains Cambium's deterministic, repeatable, and testable programs. This README is navigation and operating guidance, not a copy of governance rules, state contracts, Cards, or Read Sets.
 
-Most Python mechanics use the standard library. Profile loading requires the [TOML and CUE toolchain](#profile-toolchain). The Agent uses [rendering preparation](prepare_rendering_runtime.py) following the [setup guide](knowledge/rendering/README.md); dependency bindings belong to Host configuration, not Profile or `.cambium`.
+Most Python mechanics use the standard library. The Agent starts with [Host preparation](#host-preparation), which composes the TOML/CUE and optional rendering providers. Dependency bindings belong to Host configuration, not Profile or `.cambium`.
 
 ## Responsibility boundary
 
@@ -92,20 +92,24 @@ python3 Tools/check_kernel_size.py .
 
 `kernel-size-policy.yaml` is the sole numeric owner of Kernel leaf-size limits and registered measurements. `check_kernel_size.py` separates a hard failure (exit `1`) from an otherwise safe result that still needs engineering review (exit `2`).
 
-## Profile toolchain
+## Host preparation
 
-Use an isolated environment with Python 3.10 or later; CI checks Python 3.10 and 3.14. From a source checkout or carried Runtime root, install into a fresh task-private directory:
+With Python 3.10 or later and a terminal-capable Agent, observe first, then apply within Host installation authorization:
 
 ```sh
-CAMBIUM_PROFILE_ENV=$(mktemp -d)
-python3 -m venv "$CAMBIUM_PROFILE_ENV/venv"
-. "$CAMBIUM_PROFILE_ENV/venv/bin/activate"
-python -m pip install -r Tools/requirements-profile.txt
-python -m Tools.platform.distribution.install_profile_toolchain --destination "$CAMBIUM_PROFILE_ENV/cue-bin"
-export CAMBIUM_CUE="$CAMBIUM_PROFILE_ENV/cue-bin/cue"
+python3 Tools/prepare_host.py . --json
+python3 Tools/prepare_host.py . --apply --json
 ```
 
-[`requirements-profile.txt`](requirements-profile.txt) pins the TOML codecs; [`cue-toolchain.json`](governance/profile/cue-toolchain.json) pins CUE and its archive checksums. The Runtime-carried [`installer`](platform/distribution/install_profile_toolchain.py), also called by CI, verifies downloads without replacing system tools. Keep this environment available for Profile checks and downstream consumers. Missing or mismatched evaluators fail closed; no Markdown parser or Profile-supplied code is used as a fallback.
+Tool owners supply versions and paths. Preparation verifies private Python/CUE resources and publishes Host bindings; it does not modify system Python, global PATH, Profile or runtime state. Add `--rendering` for selection or `--construct` for [rendering capabilities](knowledge/rendering/README.md).
+
+For registration add `--host codex --workspace-root /absolute/corpus`. Unrelated settings are preserved; `--replace-host-overrides` replaces Python/CUE and removes explicit rendering paths. See `--help` for configuration-only mode and carried-runtime roots. Invalid overrides never silently fall back.
+
+Follow the returned `inspect_host` request through the actual consumer. Prepared resources, installed configuration and process readiness are separate results; native patches/reloads remain Host handoffs. Pure MCP can observe but cannot install externally. Then query the original Runner: preserve completed actions and history, do not rebuild Task/AuditPlan, and let existing evidence owners recheck currentness.
+
+## Profile toolchain
+
+Dependency owners are [`requirements-profile.txt`](requirements-profile.txt), [`cue-toolchain.json`](governance/profile/cue-toolchain.json) and the separate Host editor [`requirements-host.txt`](requirements-host.txt). Host and CI share the [CUE installer](platform/distribution/install_profile_toolchain.py). Explicit `CAMBIUM_CUE` precedes managed discovery; an unusable evaluator returns a Host handoff, not a Profile verdict.
 
 Kernel owns slot semantics; Tool owns the document wrapper and evaluator. Existing shared YAML domain contracts remain their sole owners. Verify or regenerate their CUE projections and the [`profile-document.cue`](governance/profile/profile-document.cue) wrapper with:
 
@@ -118,9 +122,9 @@ python -m Tools.governance.profile.profile_schema_projection --root . --write
 
 ## Profile candidate workflow
 
-A Profile begins as a candidate proposed through user/Agent discussion. The agent uses the source-distribution authoring tools to create `profiles/<profile-id>/profile.toml` and record answers; the user does not have to copy template files or write TOML. The single template starts with empty slots. Tools preserve unanswered draft decisions rather than treating them as confirmed defaults.
+A Profile starts through user/Agent discussion. Source-distribution tools create `profiles/<profile-id>/profile.toml` from the single empty template; unanswered slots remain drafts, not confirmed defaults.
 
-Preview creation, apply it after reviewing the plan, and read back the candidate:
+Preview, authorize and read back:
 
 ```text
 python3 Tools/scaffold_profile.py . --profile-id my-profile
@@ -138,7 +142,7 @@ python3 Tools/profile_onboarding_status.py . --profile-id my-profile --json
 python3 Tools/check_profile.py profiles/my-profile --root .
 ```
 
-Read-only status and rendered views do not select a Profile. A successful CUE/owner check proves mechanical validity, not that answers were confirmed or adoption authorized. For initial or pre-runtime adoption, inspect the transaction interface before supplying a confirmed plan:
+Status, rendered views and CUE checks do not authorize adoption. For an initial confirmed plan, inspect the transaction interface:
 
 ```text
 python3 Tools/apply_profile_adoption.py --help

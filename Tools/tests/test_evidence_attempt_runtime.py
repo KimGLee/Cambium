@@ -9,6 +9,7 @@ TOOLS = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(TOOLS))
 
 import Tools.execution.evidence.evidence_attempt_runtime as attempts  # noqa: E402
+from Tools.platform.common.host_environment import HostEnvironmentUnavailable
 
 
 class EvidenceAttemptRuntimeTests(unittest.TestCase):
@@ -70,6 +71,19 @@ class EvidenceAttemptRuntimeTests(unittest.TestCase):
             attempts.unique_current_attempt(
                 [invalid], validate_stable=self.stable,
                 validate_current=self.current, label="fixture evidence")
+
+    def test_unavailable_observation_neither_retires_nor_reauthorizes_an_attempt(self):
+        record = {"receipt_id": "unchanged", "contract": "stable", "input": "now"}
+        failure = HostEnvironmentUnavailable("Node absent", capability_id="renderer",
+                                              code="executable-unavailable")
+        def cannot_observe(_record):
+            raise failure
+        with self.assertRaises(HostEnvironmentUnavailable) as raised:
+            attempts.unique_current_attempt([record], validate_stable=self.stable,
+                validate_current=cannot_observe, label="fixture evidence")
+        self.assertIs(failure, raised.exception)
+        self.assertIs(record, attempts.unique_current_attempt([record],
+            validate_stable=self.stable, validate_current=self.current, label="fixture evidence"))
 
 
 if __name__ == "__main__":

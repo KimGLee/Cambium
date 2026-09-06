@@ -48,6 +48,34 @@ def completed(returncode=0, stdout="{}\n", stderr=""):
 
 
 class TaskRuntimeRunnerUnitTests(unittest.TestCase):
+    def test_host_failure_after_execution_preserves_completed_tool_result(self):
+        action = {"action_id": "a1", "token": "sample", "disposition": "invoke"}
+        failure = runner.HostEnvironmentUnavailable("missing", capability_id="sample",
+                                                     code="dependency-unavailable")
+        with mock.patch.object(runner, "_internal_step", return_value=completed(stdout='{"applied":true}')), \
+                mock.patch.object(runner, "next_action", side_effect=failure):
+            outcome = runner._execute_observed("/fixture", action)
+        self.assertEqual("a1", outcome["executed_action_id"])
+        self.assertEqual(0, outcome["returncode"])
+        self.assertEqual('{"applied":true}', outcome["output"])
+        self.assertIsNone(outcome["next_action"])
+        self.assertEqual("await-host", outcome["next_action_error"]["status"])
+
+    def test_environment_wait_preserves_open_batch_and_requeries_original_state(self):
+        state = parsed_runtime_state()
+        state["items_by_id"]["B1"]["state"] = "open"
+        failure = runner.HostEnvironmentUnavailable("browser absent",
+            capability_id="static-markdown-render-v1", code="browser-unavailable",
+            constructs=("mermaid-fence",))
+        with mock.patch.object(runner.runtime_validation, "validate_runtime", return_value=state), \
+                mock.patch.object(runner, "_resume_action", side_effect=[failure, {"restored": True}]), \
+                mock.patch.object(runner, "_capability_tool", return_value="prepare_rendering_runtime"):
+            action = runner.next_action("/fixture")
+            self.assertEqual("await-host", action["disposition"])
+            self.assertEqual(["mermaid-fence"], action["required_input"]["host_preparation"]["arguments"]["construct"])
+            self.assertEqual("open", state["items_by_id"]["B1"]["state"])
+            self.assertEqual({"restored": True}, runner.next_action("/fixture"))
+
     """Pure decisions over already-admitted, in-memory runtime states."""
 
     def test_next_action_projects_representative_runtime_boundaries(self):
@@ -341,8 +369,9 @@ class TaskRuntimeRunnerCheckpointIntegrationTests(unittest.TestCase):
                 mock.patch.object(runner.kblib, "repository_target_snapshot",
                                   return_value=snapshot), \
                 mock.patch.object(runner.profile_rendering, "require_bindings",
-                                  side_effect=runner.static_render_runtime.
-                                  StaticRenderRuntimeError("dependencies absent")), \
+                                  side_effect=runner.HostEnvironmentUnavailable(
+                                      "dependencies absent", capability_id="static-markdown-render-v1",
+                                      code="dependencies-unavailable")), \
                 mock.patch.object(runner.static_render_runtime, "probe_runtime",
                                   return_value=unavailable) as probe, \
                 mock.patch.object(runner, "_capability_tool",
@@ -350,14 +379,14 @@ class TaskRuntimeRunnerCheckpointIntegrationTests(unittest.TestCase):
                 mock.patch.object(runner, "_run_command") as command:
             action = runner.next_action("/fixture")
             self.assertEqual("await-host", action["disposition"])
-            self.assertEqual("prepare-rendering-runtime", action["token"])
+            self.assertEqual(action_contract.action_route("prepare-host-environment").token_template, action["token"])
             self.assertEqual("prepare_rendering_runtime",
                              action["required_input"]["host_preparation"]["tool"])
             with self.assertRaisesRegex(runner.RunnerError, "unsupported field"):
                 runner._continue_awaited("/fixture", action, {"ready": True})
             with self.assertRaisesRegex(runner.RunnerError, "resolved outside"):
                 runner._continue_awaited("/fixture", action, {})
-        probe.assert_called_once_with("/fixture", require_browser=False)
+        probe.assert_not_called()
         command.assert_not_called()
         self.assertEqual("queued", state["items_by_id"]["B1"]["state"])
 
@@ -384,7 +413,7 @@ class TaskRuntimeRunnerCheckpointIntegrationTests(unittest.TestCase):
         gate = completed(stdout=json.dumps([{
             "queue_check_mode": "require-ready:B1", "receipt_id": "ready-1",
         }]))
-        hold = {"disposition": "await-host", "reason_code": "rendering-runtime-not-ready"}
+        hold = {"disposition": "await-host", "reason_code": "host-environment-not-ready"}
         # These checkpoints exercise the Runner seam only. No fixture opens a
         # real batch or reconstructs any earlier lifecycle to obtain them.
         for boundaries, expected_commands, succeeds in (

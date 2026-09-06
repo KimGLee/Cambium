@@ -12,6 +12,9 @@ from Tools.knowledge.metadata.apply_metadata_transition import main as _main
 
 IMPLEMENTATION_MODULE = "Tools.knowledge.metadata.apply_metadata_transition"
 
+from Tools.platform.common.reporting import host_environment_boundary as _host_environment_boundary
+
+@_host_environment_boundary
 def main(argv=None):
     return _main(argv)
 

@@ -115,7 +115,7 @@ Cambium 当前不包含：
 
 采用过程的目标，是为一个仓库创建并批准唯一一个 Profile。复制模板或示例并不等于选定 Profile。
 
-先在 Cambium 源码工作区完成[隔离的 Profile 工具链安装](Tools/README.md#profile-toolchain)，再进行以下作者工作流。下面的命令由辅助 Agent 执行；用户只需讨论和确认仓库自己的决定，不必手动复制模板文件或填写 TOML。
+先在 Cambium 源码工作区通过[统一 Host 准备入口](Tools/README.md#host-preparation)准备环境，再进行以下作者工作流。具备终端能力与安装授权的 Agent 负责发现、准备和验证所需工具链；用户不必选择依赖版本或填写本机路径，只需讨论和确认仓库自己的决定，不必手动复制模板文件或填写 TOML。
 
 ### 1. 创建候选 Profile
 

@@ -13,6 +13,9 @@ from Tools.execution.task_runtime.record_maintenance_evidence import main as _ma
 IMPLEMENTATION_MODULE = "Tools.execution.task_runtime.record_maintenance_evidence"
 
 
+from Tools.platform.common.reporting import host_environment_boundary as _host_environment_boundary
+
+@_host_environment_boundary
 def main(argv=None):
     return _main(argv)
 

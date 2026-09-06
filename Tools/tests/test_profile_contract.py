@@ -134,9 +134,11 @@ class ProfileTypedModelTests(unittest.TestCase):
         self.assertEqual({}, draft.slot_document("Corpus Planning"))
 
     def test_cue_unavailability_cannot_fall_back_to_python_success(self):
+        from Tools.platform.common.host_environment import HostEnvironmentUnavailable
         self.fixture.save()
         with mock.patch.dict("os.environ", {"CAMBIUM_CUE": "/missing/cue"}):
-            self.assert_invalid("profile-contract-schema")
+            with self.assertRaises(HostEnvironmentUnavailable):
+                self.fixture.load()
 
     def test_exact_frozen_toolchain_reaches_both_draft_validations(self):
         self.fixture.save()

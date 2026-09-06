@@ -113,7 +113,7 @@ Do not edit canonical state by hand. Use the owning writer so revisions, hashes,
 
 Adoption creates and approves one profile for one repository. Copying a template or example does not select it.
 
-Run the authoring workflow from a Cambium source checkout after the [isolated Profile toolchain setup](Tools/README.md#profile-toolchain). The assisting agent runs the commands below; the user supplies and confirms repository decisions, without manually copying template files or writing TOML.
+Run the authoring workflow from a Cambium source checkout after the [Agent-driven Host preparation](Tools/README.md#host-preparation). With terminal access and installation authorization, the Agent prepares and verifies the required toolchain; users do not choose dependency versions or fill in local paths. The user supplies and confirms repository decisions, without manually copying template files or writing TOML.
 
 ### 1. Create a candidate profile
 
