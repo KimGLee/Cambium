@@ -1002,6 +1002,9 @@ tests:
     owner_contract_symbol: ci_impact.plan_changes
     parallel_safe: true
     overrides:
+      - selector: CiMatrixPresentationContractTests.*
+        semantics: ci_matrix_labels_describe_members_without_changing_selection
+        owner_contract_symbol: ci_impact._matrix
       - selector: SelectedTestRunnerDelegationContractTests.*
         semantics: ci_exact_selection_delegates_to_catalog_execution_owner
         owner_contract_symbol: ci_impact.run_selected_tests

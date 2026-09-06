@@ -18,7 +18,7 @@ permissions:
 
 jobs:
   plan:
-    name: plan affected verification
+    name: Plan affected checks and tests
     runs-on: ubuntu-latest
     timeout-minutes: 5
     outputs:
@@ -80,7 +80,7 @@ jobs:
           fi
 
   verify_check:
-    name: verify check (${{ matrix.python-version }})
+    name: Contracts and generated artifacts (Python ${{ matrix.python-version }})
     needs:
       - plan
     runs-on: ubuntu-latest
@@ -119,7 +119,7 @@ jobs:
           fi
 
   verify_tests:
-    name: verify tests (${{ matrix.python-version }}, ${{ matrix.shard }})
+    name: Tests — ${{ matrix.test-label }} [${{ matrix.shard }}, Python ${{ matrix.python-version }}]
     if: ${{ needs.plan.outputs.run_tests == 'true' }}
     needs:
       - plan
@@ -129,6 +129,22 @@ jobs:
       fail-fast: false
       matrix: ${{ fromJSON(needs.plan.outputs.test_matrix) }}
     steps:
+      - name: Show this shard's test coverage
+        env:
+          SHARD: ${{ matrix.shard }}
+          TEST_LABEL: ${{ matrix.test-label }}
+          TEST_FILES: ${{ matrix.test-files }}
+          PYTHON_VERSION: ${{ matrix.python-version }}
+        run: |
+          {
+            printf '## %s\n\n' "$TEST_LABEL"
+            printf 'Shard: `%s` · Python: `%s`\n\n' "$SHARD" "$PYTHON_VERSION"
+            printf 'Names highlight the two largest test source modules, not exclusive domains or test levels. The complete file list below is authoritative for this job.\n\n'
+            printf '%s\n' "$TEST_FILES" | tr ',' '\n' | while IFS= read -r test_file; do
+              printf -- '- `Tools/tests/%s`\n' "$test_file"
+            done
+          } >> "$GITHUB_STEP_SUMMARY"
+
       - name: Check out repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
