@@ -15,22 +15,18 @@ async function dependency(name) {
   return import(pathToFileURL(resolved).href);
 }
 const [{unified}, {default: remarkParse}, {default: remarkMath},
-  {default: remarkGfm}, {default: remarkFrontmatter},
-  {default: remarkRehype}, {default: rehypeStringify}, {default: katex}] =
+  {default: remarkGfm}, {default: remarkFrontmatter}] =
   await Promise.all(['unified', 'remark-parse', 'remark-math', 'remark-gfm',
-    'remark-frontmatter', 'remark-rehype', 'rehype-stringify', 'katex'].map(dependency));
+    'remark-frontmatter'].map(dependency));
 
 const SELECTOR = 'remark-commonmark-gfm-math-v1';
-const ACCEPTANCE = Object.freeze({
-  'mermaid-fence': 'mermaid-svg',
-  'dollar-math': 'katex-html-mathml',
-  'outer-pipe-markdown-table': 'wrap-or-scroll-table',
-});
 const sha = value => 'sha256:' + crypto.createHash('sha256').update(value).digest('hex');
 const processor = unified().use(remarkParse).use(remarkFrontmatter, ['yaml'])
   .use(remarkGfm).use(remarkMath, {singleDollarTextMath: true});
+const inventories = new Map();
 
 function parse(source) {
+  if (inventories.has(source)) return inventories.get(source);
   const found = [];
   function visit(node) {
     let kind;
@@ -46,10 +42,13 @@ function parse(source) {
     for (const child of node.children || []) visit(child);
   }
   visit(processor.parse(source));
+  inventories.set(source, found);
   return found;
 }
 
 async function htmlFor(node) {
+  const [{default: remarkRehype}, {default: rehypeStringify}] =
+    await Promise.all(['remark-rehype', 'rehype-stringify'].map(dependency));
   const compiler = unified().use(remarkRehype).use(rehypeStringify);
   return compiler.stringify(await compiler.run({type: 'root', children: [node]}));
 }
@@ -68,7 +67,7 @@ th,td { border:1px solid #888; padding:8px; white-space:normal; overflow-wrap:an
 .diagram { overflow:visible; }
 `;
 
-async function run(request) {
+async function run(request, runtime) {
   if (typeof request.source !== 'string') throw new Error('source must be a string');
   const items = parse(request.source);
   if (request.action === 'select') return {
@@ -82,14 +81,27 @@ async function run(request) {
       source_sha256: sha(request.source.slice(node.position.start.offset, node.position.end.offset))})),
   };
   if (request.action !== 'render') throw new Error('Unknown renderer action');
-  const playwright = await dependency('playwright-core');
-  const {chromium} = playwright.default || playwright;
-  const browser = await chromium.launch({executablePath: request.browser, headless: true});
+  const contracts = new Map(request.acceptance_contracts.map(row => [row.construct, row]));
+  const selected = items.filter(item => Object.hasOwn(request.bindings, item.kind));
+  const needsBrowser = selected.some(item => contracts.get(item.kind)?.execution_kind.startsWith('browser-'));
+  let browser;
+  if (needsBrowser) {
+    if (!request.browser) throw new Error('Selected capability requires its managed browser');
+    if (!runtime.browser) {
+      const playwright = await dependency('playwright-core');
+      const {chromium} = playwright.default || playwright;
+      runtime.browser = await chromium.launch({executablePath: request.browser, headless: true});
+      runtime.executable = request.browser;
+    }
+    if (runtime.executable !== request.browser) throw new Error('Rendering group mixes browser identities');
+    browser = runtime.browser;
+  }
   const result = {selector_id: SELECTOR, source_sha256: sha(request.source),
-    constructs: [], artifacts: [], result: 'pass', diagnostics: [],
-    browser_version: browser.version()};
+    constructs: [], artifacts: [], result: 'pass', diagnostics: []};
+  let context, page;
   try {
-    const context = await browser.newContext({viewport: {width: 1024, height: 768},
+    if (browser) {
+    context = await browser.newContext({viewport: {width: 1024, height: 768},
       deviceScaleFactor: 1, locale: 'en-US', timezoneId: 'UTC', serviceWorkers: 'block'});
     // Network is unavailable while rendering. The only resource loader below
     // supplies the pinned local KaTeX fonts; no URL from the source is fetched.
@@ -103,19 +115,21 @@ async function run(request) {
           contentType: name.endsWith('.woff2') ? 'font/woff2' : 'font/woff'});
       } else await route.abort();
     });
-    const page = await context.newPage();
+    page = await context.newPage();
     await page.setContent('<!doctype html><html><head><base href="https://cambium-render.invalid/"></head><body><div id="fixture"></div></body></html>');
     await page.addStyleTag({content: STYLE});
     await page.addStyleTag({path: path.join(moduleRoot, 'katex', 'dist', 'katex.min.css')});
     await page.addScriptTag({path: path.join(moduleRoot, 'katex', 'dist', 'katex.min.js')});
-    if (items.some(item => item.kind === 'mermaid-fence')) {
+    if (selected.some(item => item.kind === 'mermaid-fence')) {
       await page.addScriptTag({path: path.join(moduleRoot, 'mermaid', 'dist', 'mermaid.min.js')});
       await page.evaluate(() => mermaid.initialize({startOnLoad: false, securityLevel: 'strict',
         deterministicIds: true, deterministicIDSeed: 'cambium-static-v1',
         fontFamily: 'Arial, sans-serif', theme: 'default'}));
     }
+    }
     for (let index = 0; index < items.length; index++) {
       const {kind, node} = items[index];
+      if (!Object.hasOwn(request.bindings, kind)) continue;
       const instanceId = 'construct-' + (index + 1);
       const item = {kind, instance_id: instanceId,
         source_range: {...node.position, offset_unit: 'utf-16-code-unit',
@@ -125,7 +139,7 @@ async function run(request) {
         measurements: {}, diagnostics: []};
       result.constructs.push(item);
       try {
-        if (request.bindings[kind] !== ACCEPTANCE[kind]) throw new Error(`Missing or invalid acceptance for ${kind}`);
+        if (request.bindings[kind] !== contracts.get(kind)?.acceptance) throw new Error(`Missing or invalid acceptance for ${kind}`);
         let content, mediaType;
         if (kind === 'mermaid-fence') {
           const rendered = await page.evaluate(async ({source, id}) => {
@@ -147,21 +161,14 @@ async function run(request) {
           content = rendered.svg; mediaType = 'image/svg+xml';
           item.measurements = {bounds: rendered.bounds, view_box: rendered.view_box};
         } else if (kind === 'dollar-math') {
+          const {default: katex} = await dependency('katex');
           content = katex.renderToString(node.value, {displayMode: node.type === 'math',
             output: 'htmlAndMathml', throwOnError: true, trust: false, strict: 'error', macros: {}});
           mediaType = 'text/html';
-          item.measurements = await page.evaluate(async ({html, source}) => {
-            const host = document.querySelector('#fixture'); host.innerHTML = html;
-            await document.fonts.ready;
-            const math = host.querySelector('.katex');
-            const annotation = host.querySelector('math annotation[encoding="application/x-tex"]');
-            if (!math || !annotation || annotation.textContent !== source || host.querySelector('.katex-error'))
-              throw new Error('Math output does not preserve its source in MathML');
-            const box = math.getBoundingClientRect();
-            if (![box.width,box.height].every(Number.isFinite) || box.width <= 0 || box.height <= 0)
-              throw new Error('Math output has invalid geometry');
-            return {width:box.width,height:box.height,mathml_count:host.querySelectorAll('math').length};
-          }, {html: content, source: node.value});
+          // This acceptance is compiler output, not a claim about Host layout.
+          if (!content.includes('<math ') || !content.includes('class="katex-html"'))
+            throw new Error('KaTeX produced no HTML/MathML output');
+          item.measurements = {mathml_count: 1};
         } else {
           const tableHTML = await htmlFor(node);
           const expected = node.children.map(row => row.children.map(textOf));
@@ -210,14 +217,24 @@ async function run(request) {
         item.diagnostics.push(String(error.message || error)); result.result = 'fail';
       }
     }
-  } finally { await browser.close(); }
+  } finally { if (context) await context.close(); }
   return result;
 }
 
 try {
   const chunks = []; for await (const chunk of process.stdin) chunks.push(chunk);
   const input = Buffer.concat(chunks).toString('utf8');
-  process.stdout.write(JSON.stringify(await run(JSON.parse(input))));
+  const request = JSON.parse(input), runtime = {};
+  try {
+    const output = request.action === 'render-group'
+      ? {reports: await (async () => {
+          const reports = [];
+          for (const job of request.jobs) reports.push(await run(job, runtime));
+          return reports;
+        })()}
+      : await run(request, runtime);
+    process.stdout.write(JSON.stringify(output));
+  } finally { if (runtime.browser) await runtime.browser.close(); }
 } catch (error) {
   process.stdout.write(JSON.stringify({result:'fail',diagnostics:[String(error.message || error)]}));
   process.exitCode = 1;

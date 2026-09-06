@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Complete one AuditPlan obligation into a full AuditReceipt.
+"""Complete AuditPlan obligations into their separate full AuditReceipts.
 
 The caller may select only the plan obligation and producer evidence. Every
 dimension, predicate, scope, fingerprint, and authority binding is derived
@@ -254,8 +254,9 @@ def main(argv=None):
     parser.add_argument("root", help="adopting repository root")
     parser.add_argument("--batch", required=True)
     parser.add_argument("--plan", required=True)
-    parser.add_argument("--obligation-id", required=True)
-    parser.add_argument("--evidence-receipt", required=True)
+    parser.add_argument("--obligation-id", required=True, action="append")
+    parser.add_argument("--evidence-receipt", required=True, action="append",
+                        help="producer evidence, in the same order as repeated obligation IDs")
     parser.add_argument("--receipts", default=DEFAULT_RECEIPTS)
     parser.add_argument("--apply", action="store_true")
     args = parser.parse_args(argv)
@@ -267,31 +268,31 @@ def main(argv=None):
             result, args.batch)
         _absolute, plan, plan_sha256, frozen = _load_current_plan(
             root, args.plan, result, item)
-        obligation = _obligation(plan, args.obligation_id)
-        evidence = _producer_evidence(
-            root, result, args.evidence_receipt, plan, plan_sha256,
-            obligation, frozen)
+        if len(args.obligation_id) != len(args.evidence_receipt) or len(set(args.obligation_id)) != len(args.obligation_id):
+            raise audit_producer_runtime.AuditProducerError("completion requires unique paired obligation/evidence IDs")
         receipt_absolute = audit_producer_runtime.managed_receipt_path(
             root, args.receipts)
-        existing = current_audit_receipt_attempt(
-            result, plan, plan_sha256, obligation, frozen, root)
-        if existing is not None:
-            if existing.get("evidence_ref") != evidence["receipt_id"]:
-                raise audit_producer_runtime.AuditProducerError(
-                    "AuditReceipt obligation already has current evidence: %s"
-                    % existing["receipt_id"])
-            receipt = existing
-        else:
-            receipt = build_audit_receipt(
-                plan=plan, plan_sha256=plan_sha256,
-                obligation=obligation, evidence=evidence)
+        completions = []
+        for index, (identity, evidence_id) in enumerate(zip(args.obligation_id, args.evidence_receipt), 1):
+            obligation = _obligation(plan, identity)
+            evidence = _producer_evidence(root, result, evidence_id, plan, plan_sha256, obligation, frozen)
+            existing = current_audit_receipt_attempt(result, plan, plan_sha256, obligation, frozen, root)
+            if existing is not None and existing.get("evidence_ref") != evidence["receipt_id"]:
+                raise audit_producer_runtime.AuditProducerError("AuditReceipt obligation already has different current evidence")
+            receipt = existing if existing is not None else build_audit_receipt(
+                plan=plan, plan_sha256=plan_sha256, obligation=obligation, evidence=evidence, seq=index)
+            completions.append((obligation, evidence, receipt, existing is None))
+        receipts = [row[2] for row in completions]
+        pending = [row for row in completions if row[3]]
+        new_receipts = [row[2] for row in pending]
+        receipt = receipts[0]
     except (OSError, TypeError, UnicodeError, ValueError,
             kblib.YamlSubsetError) as exc:
         reporting.write_canonical_json(
             {"applied": False, "errors": [str(exc)], "status": "invalid"})
         return 1
 
-    if existing is not None:
+    if not pending:
         reporting.write_canonical_json({
             "applied": args.apply,
             "errors": [],
@@ -299,6 +300,7 @@ def main(argv=None):
             "receipt_id": receipt["receipt_id"],
             "receipt_path": args.receipts,
             "result": receipt["result"],
+            "receipt_ids": [row["receipt_id"] for row in receipts],
         })
         return 0
 
@@ -310,13 +312,14 @@ def main(argv=None):
             "receipt_id": receipt["receipt_id"],
             "receipt_path": args.receipts,
             "result": receipt["result"],
+            "receipt_ids": [row["receipt_id"] for row in receipts],
         })
         return 0
 
     operation = audit_producer_runtime.runtime_lock_metadata(
         TOOL, "complete-audit-receipt", result, authority,
         batch_id=args.batch, plan_id=plan["plan_id"],
-        obligation_id=obligation["obligation_id"],
+        obligation_id=args.obligation_id[0],
         receipt_id=receipt["receipt_id"])
     try:
         with kblib.runtime_write_lock(root, owner_metadata=operation) as lease:
@@ -334,22 +337,17 @@ def main(argv=None):
                         "resolved AuditPlan changed before evidence publication")
                 audit_producer_runtime.require_pages_current(
                     root, frozen, "before AuditReceipt publication")
-                current_evidence = _producer_evidence(
-                    root, locked, args.evidence_receipt, plan,
-                    plan_sha256, obligation, frozen)
-                if current_evidence != evidence:
-                    raise audit_producer_runtime.AuditProducerError(
-                        "producer evidence changed before AuditReceipt "
-                        "publication")
-                if current_audit_receipt_attempt(
-                        locked, plan, plan_sha256, obligation, frozen,
-                        root) is not None:
-                    raise audit_producer_runtime.AuditProducerError(
-                        "AuditReceipt evidence appeared before publication")
+                for obligation, evidence, _, _ in pending:
+                    current_evidence = _producer_evidence(root, locked, evidence["receipt_id"],
+                        plan, plan_sha256, obligation, frozen)
+                    if current_evidence != evidence:
+                        raise audit_producer_runtime.AuditProducerError("producer evidence changed before AuditReceipt publication")
+                    if current_audit_receipt_attempt(locked, plan, plan_sha256, obligation, frozen, root) is not None:
+                        raise audit_producer_runtime.AuditProducerError("AuditReceipt evidence appeared before publication")
                 before = kblib.receipt_append_observation(
-                    receipt_absolute, [receipt])
+                    receipt_absolute, new_receipts)
             outcome, error, _ = kblib.write_receipts_observed(
-                receipt_absolute, [receipt], before=before)
+                receipt_absolute, new_receipts, before=before)
             if outcome != "present" or error is not None:
                 if outcome == "absent":
                     lease.mark_reconciled()
@@ -367,15 +365,17 @@ def main(argv=None):
         return 1
 
     try:
+        ids = {row["receipt_id"] for row in new_receipts}
         persisted = [row for row in
                      audit_producer_runtime.read_receipt_records(
                          receipt_absolute)
-                     if row.get("receipt_id") == receipt["receipt_id"]]
-        if len(persisted) != 1 or persisted[0] != receipt:
+                     if row.get("receipt_id") in ids]
+        if persisted != new_receipts:
             raise audit_producer_runtime.AuditProducerError(
                 "published AuditReceipt did not read back exactly")
-        audit_receipt_contract.validate_audit_receipt(
-            persisted[0], audit_receipt_contract.load_contract(root))
+        contract = audit_receipt_contract.load_contract(root)
+        for row in persisted:
+            audit_receipt_contract.validate_audit_receipt(row, contract)
     except (OSError, TypeError, UnicodeError, ValueError) as exc:
         reporting.write_canonical_json({
             "applied": True,
@@ -392,6 +392,7 @@ def main(argv=None):
         "receipt_id": receipt["receipt_id"],
         "receipt_path": args.receipts,
         "result": receipt["result"],
+        "receipt_ids": [row["receipt_id"] for row in receipts],
     })
     return 0
 

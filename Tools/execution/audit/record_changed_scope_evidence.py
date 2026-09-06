@@ -18,6 +18,7 @@ from Tools.platform.repository.repository import (
 import json
 import os
 import sys
+from concurrent.futures import ThreadPoolExecutor
 
 import Tools.execution.audit.audit_evidence_runtime as audit_evidence_runtime
 import Tools.execution.audit.audit_lifecycle_contract as audit_lifecycle_contract
@@ -922,8 +923,9 @@ def existing_evidence_record(context):
     return existing_audit_producer_record(context)
 
 
-def require_exact_evidence_readback(path, receipt, context):
-    matches = [row for row in audit_producer_runtime.read_receipt_records(path)
+def require_exact_evidence_readback(path, receipt, context, *, records=None):
+    records = audit_producer_runtime.read_receipt_records(path) if records is None else records
+    matches = [row for row in records
                if row.get("receipt_id") == receipt["receipt_id"]]
     if len(matches) != 1 or matches[0] != receipt:
         raise ChangedScopeProducerError(
@@ -944,24 +946,29 @@ def require_exact_evidence_readback(path, receipt, context):
     return matches[0]
 
 
-def _context(root_arg, batch_id, plan_path, obligation_id):
-    root, result, authority = audit_producer_runtime.admitted_runtime(root_arg)
-    item, _activation = audit_producer_runtime.open_batch(result, batch_id)
-    stage = audit_evidence_runtime.resolve_stage_plan(
-        result, item, "pre-merge", required_state="open")
+def _context(root_arg, batch_id, plan_path, obligation_id, *, shared=None):
+    if shared is None:
+        root, result, authority = audit_producer_runtime.admitted_runtime(root_arg)
+        item, _activation = audit_producer_runtime.open_batch(result, batch_id)
+        stage = audit_evidence_runtime.resolve_stage_plan(
+            result, item, "pre-merge", required_state="open")
+        registry = load_registry(root)
+        control_registry = load_control_registry(root)
+        frozen = audit_producer_runtime.freeze_manifest_pages(root, result, item)
+    else:
+        root, result, authority, item, stage, registry, control_registry, frozen = (
+            shared[key] for key in ("root", "result", "authority", "item", "stage",
+                                    "registry", "control_registry", "frozen"))
     if stage["audit_plan_path"] != plan_path:
         raise ChangedScopeProducerError(
             "current AuditPlan path is %s, not %s" %
             (stage["audit_plan_path"], plan_path))
-    registry = load_registry(root)
-    control_registry = load_control_registry(root)
     profile_view = result.get("_profile_authorized_view")
     profile = profile_view.get("_contract") \
         if isinstance(profile_view, dict) else None
     obligation, row, trace = resolve_obligation(
         root, stage["plan"], obligation_id, registry, control_registry,
         profile_view.get("_evaluation") if isinstance(profile_view, dict) else None)
-    frozen = audit_producer_runtime.freeze_manifest_pages(root, result, item)
     target_matches = [page for page in frozen
                       if page.path == obligation["target"]]
     if len(target_matches) > 1:
@@ -997,13 +1004,13 @@ def _context_with_runtime(context, result, item, stage):
     return current
 
 
-def produce_evidence(context):
+def produce_evidence(context, *, seq=1):
     if context["trace"]["adapter_id"] == "profile-registered-scan-v1":
         scan_result = metadata_gate_runtime.run_registered_scan(
             context["root"], context["profile_view"], context["scan"],
             allowed_summary_results=("pass", "candidate"))
         return build_candidate_set_record(
-            context=context, scan_result=scan_result)
+            context=context, scan_result=scan_result, seq=seq)
     if context["trace"]["producer_route_kind"] == "gate":
         source_exit, source_receipts = run_source_gate(
             context["root"], context["plan"],
@@ -1015,7 +1022,7 @@ def produce_evidence(context):
             trace=context["trace"], registry=context["registry"],
             control_registry=context["control_registry"],
             frozen=context["frozen"], source_exit_code=source_exit,
-            source_receipts=source_receipts)
+            source_receipts=source_receipts, seq=seq)
     if context["trace"]["adapter_id"].startswith("dedicated-"):
         raise ChangedScopeProducerError(
             "obligation %s is produced only by %s@%s/%s; use that "
@@ -1027,12 +1034,26 @@ def produce_evidence(context):
                 context["trace"]["existing_check"]))
     check_result = _runtime_check_result(context)
     return build_audit_producer_record(
-        context=context, check_result=check_result)
+        context=context, check_result=check_result, seq=seq)
 
 
 def _evidence_exit_code(receipt):
     return {"pass": 0, "fail": 1, "candidate": 2}.get(
         receipt.get("result"), 1)
+
+
+def compute_evidence_group(contexts):
+    """Parallelize isolated read-only Gate subprocesses, not writers.
+
+    In-process Profile evaluation keeps its original serial ownership. The
+    output order follows AuditPlan selection, not worker completion order.
+    """
+    with ThreadPoolExecutor(max_workers=min(4, max(1, len(contexts)))) as executor:
+        jobs = [executor.submit(produce_evidence, context, seq=index)
+                if context["trace"]["producer_route_kind"] == "gate" else None
+                for index, context in enumerate(contexts, 1)]
+        return [job.result() if job is not None else produce_evidence(context, seq=index)
+                for index, (job, context) in enumerate(zip(jobs, contexts), 1)]
 
 
 def main(argv=None):
@@ -1043,7 +1064,8 @@ def main(argv=None):
                         help="report every Kernel base row and exact producer availability")
     parser.add_argument("--batch")
     parser.add_argument("--plan")
-    parser.add_argument("--obligation-id")
+    parser.add_argument("--obligation-id", action="append",
+                        help="exact obligation; repeat for independent same-producer work")
     parser.add_argument("--receipts", default=DEFAULT_RECEIPTS)
     parser.add_argument("--apply", action="store_true")
     args = parser.parse_args(argv)
@@ -1074,35 +1096,42 @@ def main(argv=None):
         })
         return 1
     try:
-        context = _context(
-            args.root, args.batch, args.plan, args.obligation_id)
-        existing = existing_evidence_record(context)
+        if len(set(args.obligation_id)) != len(args.obligation_id):
+            raise ChangedScopeProducerError("obligation identities must be unique")
+        context = _context(args.root, args.batch, args.plan, args.obligation_id[0])
+        contexts = [context] + [_context(args.root, args.batch, args.plan, identity,
+                    shared=context) for identity in args.obligation_id[1:]]
+        attempts = [existing_evidence_record(value) for value in contexts]
+        pending = [value for value, attempt in zip(contexts, attempts) if attempt is None]
         receipt_absolute = audit_producer_runtime.managed_receipt_path(
             context["root"], args.receipts)
-        if existing is None:
-            receipt = produce_evidence(context)
-        else:
-            receipt = existing
+        binding = audit_producer_runtime.computation_binding(context["root"], context["result"])
+        produced = iter(compute_evidence_group(pending))
+        receipts = [next(produced) if attempt is None else attempt for attempt in attempts]
+        new_receipts = [receipt for receipt, attempt in zip(receipts, attempts) if attempt is None]
+        receipt = receipts[0]
     except (OSError, TypeError, UnicodeError, ValueError,
             kblib.YamlSubsetError) as exc:
         reporting.write_canonical_json(
             {"applied": False, "errors": [str(exc)], "status": "invalid"})
         return 1
 
-    if existing is not None:
+    if not new_receipts:
         reporting.write_canonical_json({
             "applied": args.apply, "errors": [],
             "status": "already-present", "receipt_id": receipt["receipt_id"],
             "receipt_path": args.receipts, "result": receipt["result"],
+            "receipt_ids": [row["receipt_id"] for row in receipts],
         })
-        return _evidence_exit_code(receipt)
+        return max(map(_evidence_exit_code, receipts))
     if not args.apply:
         reporting.write_canonical_json({
             "applied": False, "errors": [], "status": "planned",
             "receipt_id": receipt["receipt_id"],
             "receipt_path": args.receipts, "result": receipt["result"],
+            "receipt_ids": [row["receipt_id"] for row in receipts],
         })
-        return _evidence_exit_code(receipt)
+        return max(map(_evidence_exit_code, receipts))
 
     operation = audit_producer_runtime.runtime_lock_metadata(
         TOOL, "record-changed-scope-evidence", context["result"],
@@ -1129,33 +1158,15 @@ def main(argv=None):
                 audit_producer_runtime.require_pages_current(
                     context["root"], context["frozen"],
                     "before changed-scope evidence publication")
-                locked_context = _context_with_runtime(
-                    context, locked, locked_item, locked_stage)
-                if existing_evidence_record(locked_context) is not None:
-                    raise ChangedScopeProducerError(
-                        "changed-scope evidence appeared before publication")
-                receipt = produce_evidence(locked_context)
-                audit_producer_runtime.require_pages_current(
-                    context["root"], context["frozen"],
-                    "after changed-scope evidence production")
-                after = audit_producer_runtime.require_runtime_current(
-                    context["root"], context["authority"],
-                    "after changed-scope evidence production")
-                after_item, _ = audit_producer_runtime.open_batch(
-                    after, args.batch)
-                after_stage = audit_evidence_runtime.resolve_stage_plan(
-                    after, after_item, "pre-merge", required_state="open")
-                for field in (
-                        "audit_plan_id", "audit_plan_path",
-                        "audit_plan_sha256"):
-                    if after_stage[field] != context["stage"][field]:
-                        raise ChangedScopeProducerError(
-                            "AuditPlan changed after evidence production in %s"
-                            % field)
+                audit_producer_runtime.require_computation_current(context["root"], locked, binding)
+                for value in pending:
+                    locked_context = _context_with_runtime(value, locked, locked_item, locked_stage)
+                    if existing_evidence_record(locked_context) is not None:
+                        raise ChangedScopeProducerError("changed-scope evidence appeared before publication")
                 before = kblib.receipt_append_observation(
-                    receipt_absolute, [receipt])
+                    receipt_absolute, new_receipts)
             outcome, error, _ = kblib.write_receipts_observed(
-                receipt_absolute, [receipt], before=before)
+                receipt_absolute, new_receipts, before=before)
             if outcome != "present" or error is not None:
                 if outcome == "absent":
                     lease.mark_reconciled()
@@ -1171,8 +1182,11 @@ def main(argv=None):
         return 1
 
     try:
-        require_exact_evidence_readback(
-            receipt_absolute, receipt, context)
+        persisted = audit_producer_runtime.read_receipt_records(receipt_absolute)
+        # Reused current attempts may live in another managed register. Only
+        # this transaction's new records must read back from its write target.
+        for value, receipt in zip(pending, new_receipts):
+            require_exact_evidence_readback(receipt_absolute, receipt, value, records=persisted)
     except (OSError, TypeError, UnicodeError, ValueError) as exc:
         reporting.write_canonical_json({
             "applied": True, "errors": [str(exc)], "status": "uncertain",
@@ -1183,8 +1197,9 @@ def main(argv=None):
         "applied": True, "errors": [], "status": "recorded",
         "receipt_id": receipt["receipt_id"],
         "receipt_path": args.receipts, "result": receipt["result"],
+        "receipt_ids": [row["receipt_id"] for row in receipts],
     })
-    return _evidence_exit_code(receipt)
+    return max(map(_evidence_exit_code, receipts))
 
 
 if __name__ == "__main__":

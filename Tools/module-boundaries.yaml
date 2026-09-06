@@ -215,6 +215,8 @@ modules:
     public:
       - AuditPlanMissing
       - batch_review_evidence
+      - candidate_page_evidence
+      - candidate_page_evidence_errors
       - closed_plan_closure_errors
       - combine_plan_reconciliations
       - current_consumption_evidence_ids
@@ -315,6 +317,7 @@ modules:
     public:
       - AuditProducerError
       - admitted_runtime
+      - computation_binding
       - freeze_manifest_pages
       - frozen_manifest_page
       - managed_plan_path
@@ -328,6 +331,7 @@ modules:
       - profile_bindings
       - read_receipt_records
       - receipt_by_id
+      - require_computation_current
       - require_nonempty_string
       - require_pages_current
       - require_runtime_current
@@ -2276,6 +2280,8 @@ modules:
       - probe_runtime
       - read_runtime_bindings
       - render_page
+      - render_pages
+      - requires_browser
       - runtime_requirements
       - select_constructs
       - validate_render_result
@@ -2647,6 +2653,14 @@ modules:
     public:
       - main
       - manifest_errors
+  - module: platform.distribution.prepare_rendering_runtime
+    path: Tools/platform/distribution/prepare_rendering_runtime.py
+    area: platform
+    domain: distribution
+    layer: infrastructure
+    public:
+      - main
+      - prepare_runtime
   - module: platform.distribution.stamp_cards
     path: Tools/platform/distribution/stamp_cards.py
     area: platform
@@ -2680,14 +2694,6 @@ modules:
     layer: application
     public:
       - main
-  - module: platform.distribution.prepare_rendering_runtime
-    path: Tools/platform/distribution/prepare_rendering_runtime.py
-    area: platform
-    domain: distribution
-    layer: infrastructure
-    public:
-      - main
-      - prepare_runtime
   - module: platform.distribution.upstream_component_boundary
     path: Tools/platform/distribution/upstream_component_boundary.py
     area: platform

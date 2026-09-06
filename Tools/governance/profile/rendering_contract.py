@@ -166,12 +166,15 @@ def rendering_capability_records(document):
         seen = set()
         for binding in bindings:
             if not isinstance(binding, dict) or set(binding) != {
-                    "construct", "acceptance"}:
+                    "construct", "acceptance", "execution_kind"}:
                 raise ValueError("rendering acceptance binding fields are not closed")
             if any(not isinstance(value, str) or
                    re.fullmatch(pattern, value) is None
                    for value in binding.values()):
                 raise ValueError("rendering acceptance binding identifier is invalid")
+            if binding["execution_kind"] not in {
+                    "node-compile", "browser-compile", "browser-layout"}:
+                raise ValueError("rendering execution kind is not implemented")
             key = (binding["construct"], binding["acceptance"])
             if key in seen:
                 raise ValueError("rendering acceptance binding is duplicated")

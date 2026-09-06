@@ -199,9 +199,9 @@ python3 Tools/complete_audit_receipt.py --help
 python3 Tools/record_batch_review.py --help
 ```
 
-Substantive, changed-scope, and rendering producers may emit precursors. Use `complete_audit_receipt` only for obligations requiring a full AuditReceipt; other evidence keeps its kind. Run `record_batch_review` after pre-merge closure. Writes require `--apply`.
+Ready obligations may be grouped with repeated `--obligation-id` (paired `--evidence-receipt` for finalization). Existing producers preserve evidence kinds, recheck inputs and serialize `--apply` writes. Batch Review requires pre-merge closure.
 
-[`agent-interface-policy.yaml`](agent-interface-policy.yaml) constrains runtime paths. Page and target select AuditPlan identities; they grant no read access.
+`publish_delta` assembles omitted page `gate_receipts`; invalid explicit references fail. See [runtime policy](agent-interface-policy.yaml).
 
 ## Generated interfaces
 

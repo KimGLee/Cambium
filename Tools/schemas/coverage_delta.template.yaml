@@ -21,7 +21,7 @@ generated_at: "2026-07-30T12:00:00+08:00"  # time the delta was written out (whe
 pages:                             # status updates for pages on this batch's manifest (manifest pages only; out-of-manifest pages are rejected at merge)
   - path: "Topics/Example Topic.md"
     authoring_status: drafted      # reviewed is written only by Queue close after consuming page_review_acceptance
-    gate_receipts: ["r-0311", "r-0312"]  # pre-merge evidence this batch produced for the page
+    gate_receipts: ["r-0311", "r-0312"]  # omit in a proposal to let publish_delta resolve current page evidence
 
 # A page delta MUST NOT contain any control field owned by Coverage
 # reconciliation, profile policy, or Queue compilation.  If even one page

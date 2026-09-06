@@ -2195,6 +2195,50 @@ def batch_review_evidence(result, item, required_state="open"):
         result, item, "pre-merge", required_state=required_state)
 
 
+def candidate_page_evidence(result, item):
+    """Project current page evidence from the existing heterogeneous resolver.
+
+    A candidate need not discharge every audit obligation yet. Only uniquely
+    accepted terminal page evidence (or its accepted terminal precursor) can
+    be referenced. Final AuditReceipts are unwrapped through their validated
+    producer edge, not treated as a differently spelled passing Gate.
+    """
+    status = stage_evidence_status(result, item, "pre-merge", required_state="open")
+    catalog = current_receipt_catalog(result)
+    selected = {path: set() for path in item["manifest"]}
+    for row in status["obligations"]:
+        obligation = row["obligation"]
+        target = obligation["target"]
+        if target not in selected:
+            continue
+        if row["status"] in {"invalid", "ambiguous"}:
+            raise AuditEvidenceError("candidate page evidence %s is %s: %s" %
+                (obligation["obligation_id"], row["status"], row.get("reason")))
+        if row["status"] not in {"satisfied", "ready-for-completion"}:
+            continue
+        record = _current_record(catalog, row["evidence_ref"], "candidate page evidence")
+        if obligation["evidence_kind"] == "audit-receipt" and row["status"] == "satisfied":
+            record = _current_record(catalog, record.get("evidence_ref"), "candidate page producer")
+        if record.get("result") == "pass" and record.get("target") == target:
+            selected[target].add(record["receipt_id"])
+    return {target: sorted(refs) for target, refs in selected.items()}
+
+
+def candidate_page_evidence_errors(result, item, delta, *, resolved=None):
+    """Check supplied references without replacing semantics or accepting latest."""
+    selected = candidate_page_evidence(result, item) if resolved is None else resolved
+    errors = []
+    for page in delta.get("pages") or []:
+        if not isinstance(page, dict) or page.get("path") not in selected:
+            continue  # The Coverage/Delta owner reports structure/manifest errors.
+        refs = page.get("gate_receipts")
+        if not isinstance(refs, list) or not refs:
+            errors.append("%s has no current plan-bound page evidence" % page["path"])
+        elif any(ref not in selected[page["path"]] for ref in refs):
+            errors.append("%s references evidence outside its current AuditPlan producer closure" % page["path"])
+    return errors
+
+
 def wrapper_binding_errors(result, item, wrapper, required_state="open"):
     """Return fail-closed differences from the current audit evidence set."""
     if not isinstance(wrapper, dict):
@@ -2287,6 +2331,8 @@ def closed_plan_closure_errors(result, item, close_receipt):
 __all__ = [
     'AuditPlanMissing',
     'batch_review_evidence',
+    'candidate_page_evidence',
+    'candidate_page_evidence_errors',
     'closed_plan_closure_errors',
     'combine_plan_reconciliations',
     'current_consumption_evidence_ids',

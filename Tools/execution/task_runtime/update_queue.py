@@ -648,6 +648,7 @@ def _transition_item(item, args, result):
         wrapper_receipt = wrapper_entry[1] if wrapper_entry else None
         audit_errors = audit_evidence_runtime.wrapper_binding_errors(
             result, item, wrapper_receipt)
+        audit_errors.extend(audit_evidence_runtime.candidate_page_evidence_errors(result, item, delta_data))
         if audit_errors:
             raise ValueError(
                 "open -> merge-ready requires the complete pre-merge "

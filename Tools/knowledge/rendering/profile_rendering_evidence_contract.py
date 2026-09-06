@@ -217,7 +217,7 @@ def validate_record_for_obligation(record, plan, plan_sha256, obligation, *,
             raise ValueError("Profile rendering target no longer exists")
         text = page.read_text()
     kinds = require_bindings([(obligation["target"], text)], profile, root=root)[obligation["target"]]
-    bindings = {kind: contract.binding_for_construct(kind).acceptance for kind in kinds}
+    bindings = {rule.construct: rule.acceptance}
     expected = {
         "construct": rule.construct, "render_bindings": bindings,
         "rendering_contract_sha256": contract.fingerprint,

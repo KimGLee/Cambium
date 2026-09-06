@@ -2,7 +2,9 @@
 
 Discovery is read-only by default. Explicit --apply permits an npm ci with
 scripts disabled in a fresh cache directory and publishes checked Host bindings.
-It does not install a system Node/browser, approve policy, or write a Receipt.
+With --require-browser it provisions Playwright's pinned Chromium in the same
+Host cache. It never selects the user's daily browser implicitly, installs a
+system runtime, approves policy, or writes a Receipt.
 """
 
 import argparse
@@ -70,6 +72,31 @@ def _publish_bindings(root, target, bindings):
     runtime.read_runtime_bindings(root, target)
 
 
+def _install_browser(root, cache, bindings):
+    """Let the locked Playwright package own platform and browser revision."""
+    package = Path(bindings["CAMBIUM_RENDER_NODE_MODULES"]) / "playwright-core"
+    destination = Path(tempfile.mkdtemp(prefix="chromium-", dir=str(cache)))
+    environment = {key: value for key, value in os.environ.items()
+                   if not key.startswith("PLAYWRIGHT_") and key not in {"NODE_OPTIONS", "NODE_PATH"}}
+    environment["PLAYWRIGHT_BROWSERS_PATH"] = str(destination)
+    command = [bindings["CAMBIUM_RENDER_NODE"], str(package / "cli.js"),
+               "install", "chromium", "--no-shell"]
+    completed = kblib.run_cambium_subprocess(command, env=environment,
+        text=True, capture_output=True, timeout=600, check=False)
+    if completed.returncode:
+        raise runtime.StaticRenderRuntimeError("Managed Chromium installation failed; unselected cache retained at %s: %s" %
+            (destination, completed.stderr[-2000:]))
+    resolved = kblib.run_cambium_subprocess([bindings["CAMBIUM_RENDER_NODE"], "-e",
+        "process.stdout.write(require(process.argv[1]).chromium.executablePath())", str(package)],
+        env=environment, text=True, capture_output=True, timeout=30, check=False)
+    browser = Path(resolved.stdout.strip())
+    if resolved.returncode or not browser.is_absolute() or not browser.resolve().is_relative_to(destination):
+        raise runtime.StaticRenderRuntimeError("Playwright did not resolve its managed Chromium")
+    if not browser.is_file() or not os.access(browser, os.X_OK):
+        raise runtime.StaticRenderRuntimeError("Managed Chromium executable is unavailable")
+    return str(browser.resolve())
+
+
 def prepare_runtime(root, *, apply=False, require_browser=False):
     """Discover, optionally prepare, smoke-test, and publish local bindings."""
     root = Path(root).resolve()
@@ -82,9 +109,8 @@ def prepare_runtime(root, *, apply=False, require_browser=False):
     if not apply or probe["result"] == "invalid":
         return result
     bindings = dict(probe["bindings"])
-    if not bindings.get("CAMBIUM_RENDER_NODE") or (
-            require_browser and not bindings.get("CAMBIUM_RENDER_BROWSER")):
-        result["findings"].append("Agent must provision the missing supported Node/browser under Host authorization")
+    if not bindings.get("CAMBIUM_RENDER_NODE"):
+        result["findings"].append("Agent must provision the missing supported Node under Host authorization")
         return result
     requirement = runtime.runtime_requirements(root)
     target.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
@@ -124,6 +150,8 @@ def prepare_runtime(root, *, apply=False, require_browser=False):
             raise runtime.StaticRenderRuntimeError("npm preparation failed; unselected cache retained at %s: %s" %
                                                   (install, completed.stderr[-2000:]))
         bindings["CAMBIUM_RENDER_NODE_MODULES"] = str(install / "node_modules")
+    if require_browser and not bindings.get("CAMBIUM_RENDER_BROWSER"):
+        bindings["CAMBIUM_RENDER_BROWSER"] = _install_browser(root, target.parent, bindings)
     # An exit code is insufficient: resolve actual imports and, when needed,
     # launch the real browser to render synthetic diagram/math/table constructs.
     result["smoke"] = runtime.verify_runtime_bindings(root, bindings, require_browser=require_browser)

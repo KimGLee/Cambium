@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Render one frozen Profile obligation and publish verified compiler evidence."""
+"""Render frozen Profile obligations and publish their separate verified evidence."""
 
 import Tools.execution.audit.audit_evidence_runtime as audit_evidence_runtime
 import Tools.execution.audit.audit_lifecycle_contract as lifecycle
@@ -18,7 +18,7 @@ CHECK = contract.CHECK
 DEFAULT_RECEIPTS = runtime_paths.PROFILE_RENDERING_RECEIPT_PATH
 
 
-def build_record(*, root, plan, plan_sha256, obligation, evaluation, page, report):
+def build_record(*, root, plan, plan_sha256, obligation, evaluation, page, report, seq=1):
     admission = contract.load_profile_admission(
         root, plan["selected_profile_manifest"], evaluation=evaluation)
     profile = admission.contract
@@ -26,10 +26,12 @@ def build_record(*, root, plan, plan_sha256, obligation, evaluation, page, repor
     rule = contract.rule_for_obligation(profile, obligation)
     text = page.snapshot.read_text()
     kinds = contract.require_bindings([(page.path, text)], profile, root=root)[page.path]
-    bindings = {kind: rendering.binding_for_construct(kind).acceptance for kind in kinds}
+    if rule.construct not in kinds:
+        raise ValueError("obligation construct is absent from current source")
+    bindings = {rule.construct: rule.acceptance}
     receipt = kblib.make_receipt(
         TOOL, TOOL_VERSION, CHECK, page.path, report["result"],
-        "Profile rendering compiler report for %s" % rule.rule_id, 1,
+        "Profile rendering compiler report for %s" % rule.rule_id, seq,
         receipt_type_id=contract.RECEIPT_TYPE_ID, root=root,
         identity={field: plan[field] for field in
                   ("task_id", "upstream_revision_id", "selected_profile_manifest")})
@@ -52,11 +54,15 @@ def build_record(*, root, plan, plan_sha256, obligation, evaluation, page, repor
     return receipt
 
 
-def _context(root, batch, plan_path, obligation_id):
-    root, result, authority = producer_runtime.admitted_runtime(root)
-    item, _ = producer_runtime.open_batch(result, batch)
-    stage = audit_evidence_runtime.resolve_stage_plan(
-        result, item, "pre-merge", required_state="open", plan_path=plan_path)
+def _context(root, batch, plan_path, obligation_id, *, shared=None):
+    if shared is None:
+        root, result, authority = producer_runtime.admitted_runtime(root)
+        item, _ = producer_runtime.open_batch(result, batch)
+        stage = audit_evidence_runtime.resolve_stage_plan(
+            result, item, "pre-merge", required_state="open", plan_path=plan_path)
+        frozen = producer_runtime.freeze_manifest_pages(root, result, item)
+    else:
+        root, result, authority, item, stage, frozen = shared
     if stage["audit_plan_path"] != plan_path:
         raise ValueError("requested rendering plan is not the current AuditPlan")
     plan = stage["plan"]
@@ -69,7 +75,6 @@ def _context(root, batch, plan_path, obligation_id):
         obligation, root=root, evaluation=evaluation)
     if chain["execution_route"] != "profile-rendering" or obligation["status"] != "required":
         raise ValueError("obligation is not a required Profile rendering producer")
-    frozen = producer_runtime.freeze_manifest_pages(root, result, item)
     page = producer_runtime.frozen_manifest_page(frozen, obligation["target"])
     if page is None:
         raise ValueError("Profile rendering target is not a current manifest page")
@@ -98,35 +103,46 @@ def main(argv=None):
     parser.add_argument("root", help="adopting repository root")
     parser.add_argument("--batch", required=True, help="current open Queue batch ID")
     parser.add_argument("--plan", required=True, help="current AuditPlan path")
-    parser.add_argument("--obligation-id", required=True, help="exact Profile rendering obligation")
+    parser.add_argument("--obligation-id", required=True, action="append",
+                        help="exact Profile rendering obligation; repeat for a read-only compute group")
     parser.add_argument("--receipts", default=DEFAULT_RECEIPTS, help="managed receipt register")
     parser.add_argument("--apply", action="store_true", help="publish verified rendering evidence")
     args = parser.parse_args(argv)
     receipt = None
     try:
         (root, result, authority, item, stage, obligation, frozen, page,
-         profile) = _context(args.root, args.batch, args.plan, args.obligation_id)
+         profile) = _context(args.root, args.batch, args.plan, args.obligation_id[0])
+        if len(set(args.obligation_id)) != len(args.obligation_id):
+            raise ValueError("obligation identities must be unique")
+        shared = (root, result, authority, item, stage, frozen)
+        pairs = [(obligation, page)]
+        for identity in args.obligation_id[1:]:
+            current = _context(root, args.batch, args.plan, identity, shared=shared)
+            pairs.append((current[5], current[7]))
         from Tools.knowledge.rendering import static_render_runtime
-        rendering = contract.rendering_contract(profile)
-        text = page.snapshot.read_text()
-        kinds = contract.require_bindings([(page.path, text)], profile, root=root)[page.path]
-        bindings = {kind: rendering.binding_for_construct(kind).acceptance for kind in kinds}
-        report = static_render_runtime.render_page(
-            contract.rendering_source(text), target=page.path, bindings=bindings, root=root)
-        if report.get("result") != "pass":
-            reporting.write_canonical_json({"applied": False, "status": "failed", "report": report})
+        binding = producer_runtime.computation_binding(root, result)
+        jobs = []
+        for obligation, page in pairs:
+            rule = contract.rule_for_obligation(profile, obligation)
+            jobs.append({"text": contract.rendering_source(page.snapshot.read_text()),
+                         "target": page.path, "bindings": {rule.construct: rule.acceptance}})
+        reports = static_render_runtime.render_pages(jobs, root=root)
+        if any(report.get("result") != "pass" for report in reports):
+            reporting.write_canonical_json({"applied": False, "status": "failed", "reports": reports})
             return 1
-        receipt = build_record(
+        receipts = [build_record(
             root=root, plan=stage["plan"], plan_sha256=stage["audit_plan_sha256"],
             obligation=obligation, evaluation=result["_profile_authorized_view"]["_evaluation"],
-            page=page, report=report)
+            page=page, report=report, seq=index)
+            for index, ((obligation, page), report) in enumerate(zip(pairs, reports), 1)]
+        receipt = receipts[0]
         receipt_path = producer_runtime.managed_receipt_path(root, args.receipts)
         if not args.apply:
-            reporting.write_canonical_json({"applied": False, "status": "planned", "receipt": receipt})
+            reporting.write_canonical_json({"applied": False, "status": "planned", "receipt": receipt, "receipts": receipts})
             return 0
         operation = producer_runtime.runtime_lock_metadata(
             TOOL, "record-profile-rendering", result, authority, batch_id=args.batch,
-            plan_id=stage["plan"]["plan_id"], obligation_id=args.obligation_id,
+            plan_id=stage["plan"]["plan_id"], obligation_id=args.obligation_id[0],
             receipt_id=receipt["receipt_id"])
         with kblib.runtime_write_lock(root, owner_metadata=operation) as lease:
             with kblib.no_authoritative_write_guard(lease):
@@ -137,20 +153,25 @@ def main(argv=None):
                 if current_stage["plan"] != stage["plan"] or current_stage["audit_plan_sha256"] != stage["audit_plan_sha256"]:
                     raise ValueError("AuditPlan changed before rendering publication")
                 producer_runtime.require_pages_current(root, frozen, "before rendering publication")
-                contract.validate_record_for_obligation(
-                    receipt, stage["plan"], stage["audit_plan_sha256"], obligation,
-                    root=root, evaluation=locked["_profile_authorized_view"]["_evaluation"])
-                before = kblib.receipt_append_observation(receipt_path, [receipt])
-            outcome, error, _ = kblib.write_receipts_observed(receipt_path, [receipt], before=before)
+                producer_runtime.require_computation_current(root, locked, binding)
+                for (obligation, _), receipt in zip(pairs, receipts):
+                    _context(root, args.batch, args.plan, obligation["obligation_id"],
+                        shared=(root, locked, authority, locked_item, current_stage, frozen))
+                    contract.validate_record_for_obligation(
+                        receipt, stage["plan"], stage["audit_plan_sha256"], obligation,
+                        root=root, evaluation=locked["_profile_authorized_view"]["_evaluation"])
+                before = kblib.receipt_append_observation(receipt_path, receipts)
+            outcome, error, _ = kblib.write_receipts_observed(receipt_path, receipts, before=before)
             if outcome != "present" or error is not None:
                 if outcome == "absent":
                     lease.mark_reconciled()
                 raise ValueError("rendering publication outcome=%s error=%s" % (outcome, error))
+        ids = {row["receipt_id"] for row in receipts}
         persisted = [row for row in producer_runtime.read_receipt_records(receipt_path)
-                     if row.get("receipt_id") == receipt["receipt_id"]]
-        if persisted != [receipt]:
+                     if row.get("receipt_id") in ids]
+        if persisted != receipts:
             raise ValueError("rendering receipt read-back differs from publication")
-        reporting.write_canonical_json({"applied": True, "status": "published", "receipt": receipt})
+        reporting.write_canonical_json({"applied": True, "status": "published", "receipt": receipts[0], "receipts": receipts})
         return 0
     except (OSError, TypeError, UnicodeError, ValueError, RuntimeError,
             kblib.RuntimeStateLockedError) as exc:

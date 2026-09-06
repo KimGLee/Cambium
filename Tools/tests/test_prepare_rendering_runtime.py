@@ -76,6 +76,14 @@ class RenderingHostPreparationTests(unittest.TestCase):
         result = runtime.probe_runtime(REPOSITORY, require_browser=True)
         self.assertEqual("needs-preparation", result["result"])
         self.assertTrue(any("CAMBIUM_RENDER_BROWSER" in value for value in result["findings"]))
+        with mock.patch.object(runtime, "_discover_executable", side_effect=lambda name:
+                [] if name == "node" else self.fail("parser must not probe browsers")), \
+                mock.patch.object(runtime, "_version", side_effect=lambda path:
+                "v22.19.0" if Path(path).name == "node" else self.fail("parser must not execute browsers")):
+            fingerprint = runtime.current_runtime_fingerprint(root=REPOSITORY,
+                render_bindings={"dollar-math": "katex-html-mathml"})
+        self.assertNotIn("browser", fingerprint["host_config"])
+        self.assertNotIn("browser_version", fingerprint)
 
     def test_explicit_valid_binding_precedes_managed_binding_and_bad_explicit_fails_closed(self):
         bindings = self.installed()
@@ -173,6 +181,17 @@ class RenderingHostPreparationTests(unittest.TestCase):
         upgraded = runtime.read_runtime_bindings(REPOSITORY, target)
         self.assertEqual(str(self.browser), upgraded.pop("CAMBIUM_RENDER_BROWSER"))
         self.assertEqual(initial, upgraded)
+        # Previously auto-discovered daily-browser paths are not a managed
+        # dependency. Re-preparation must provision the pinned independent one.
+        managed = target.parent / "chromium-owned" / "chrome"
+        managed.parent.mkdir()
+        shutil.copyfile(self.browser, managed)
+        managed.chmod(0o700)
+        with mock.patch.object(setup, "_install_browser", return_value=str(managed)) as install, \
+                mock.patch.object(runtime, "verify_runtime_bindings", return_value={"result": "pass"}):
+            result = setup.prepare_runtime(REPOSITORY, apply=True, require_browser=True)
+        install.assert_called_once()
+        self.assertEqual(str(managed), result["bindings"]["CAMBIUM_RENDER_BROWSER"])
 
     def test_failed_smoke_cannot_publish_bindings(self):
         with mock.patch.dict(os.environ, self.installed()), \
