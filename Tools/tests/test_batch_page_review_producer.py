@@ -702,6 +702,26 @@ class BatchPageReviewProducerTests(unittest.TestCase):
             current_receipt_ids={successor["receipt_id"]})
         self.assertEqual((successor,), selected)
 
+        review = producer.build_review_receipt(
+            root=str(REPOSITORY), plan=plan, plan_sha256=plan_sha256,
+            obligation=obligation, spec=spec,
+            page_snapshot=self.frozen("M.md"),
+            reviewer_context_id="review-context",
+            reviewer_role="batch-reviewer", verdict="passed",
+            statement="the current selected evidence passes",
+            applicability_disposition="applicable",
+            consumed_records=(successor,), registry=self.registry,
+            identity={})
+        self.assertEqual(
+            (successor,),
+            contract.validate_receipt_consumption(
+                plan, plan_sha256, review, catalog, self.registry))
+        self.assertEqual(
+            (successor,),
+            contract.validate_receipt_consumption(
+                plan, plan_sha256, review, catalog, self.registry,
+                current_receipt_ids={successor["receipt_id"]}))
+
         with self.assertRaisesRegex(ValueError, "exactly one current"):
             contract.resolve_consumed_evidence(
                 plan, plan_sha256, spec, obligation["target"], catalog,
