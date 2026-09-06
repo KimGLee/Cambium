@@ -154,7 +154,7 @@ source_files:
   - Tools/stamp_cards.py
   - Tools/update_queue.py
   - Tools/update_task.py
-source_hash: sha256:bc6786436dc7af8639e6829149d84510470fe5c4090b0749f53facfce439f78a
+source_hash: sha256:d18f62f53782f5f513c683f87a686a295ccf3b37ae63d36cc7c6e5fa60dfc6c4
 agent_interface_policy:
   path: Tools/agent-interface-policy.yaml
   sha256: sha256:fc3170ca859a95ec95290fef9ef9e631a641d78d32e8017b3c09060935125092
@@ -5788,7 +5788,7 @@ tools:
     source_hash: sha256:8340ff288c48bfe7bef06b963072286279f42dc81c4fd20669523469a99c1f41
     implementation_module: Tools.execution.audit.record_changed_scope_evidence
     implementation_path: Tools/execution/audit/record_changed_scope_evidence.py
-    implementation_source_hash: sha256:c9a527f7fc714ad4510f5eaabed02afe3c6cf55fca427e01d7f91486aae0360d
+    implementation_source_hash: sha256:d3b3fb6a8f0d99aab152e0349c55d86007bd3a96ca0849f49647ad320f363cbc
     description: Record exact plan-bound K12/05 changed-scope evidence
     arguments:
       - dest: root
@@ -5929,7 +5929,7 @@ tools:
     receipt_extensions_extraction: complete
     receipt_extension_sources:
       - path: Tools/execution/audit/record_changed_scope_evidence.py
-        sha256: sha256:c9a527f7fc714ad4510f5eaabed02afe3c6cf55fca427e01d7f91486aae0360d
+        sha256: sha256:d3b3fb6a8f0d99aab152e0349c55d86007bd3a96ca0849f49647ad320f363cbc
       - path: Tools/platform/common/kblib.py
         sha256: sha256:2a76a741123287ccb918edeb577e3cc0eec28475bb7e5c3fa3fcda8920b11335
     agent_interface:

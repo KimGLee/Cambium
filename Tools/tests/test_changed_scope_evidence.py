@@ -361,12 +361,15 @@ class ChangedScopeEvidenceContractTests(
                    "stage": stage, "plan": stage["plan"], "plan_sha256": stage["audit_plan_sha256"],
                    "obligation": {"obligation_id": "one"}, "frozen": [],
                    "trace": {"producer_route_kind": "gate"}}
-        for changed in (None, "repository", "runtime"):
+        for changed in (None, "repository", "runtime", "existing"):
             with self.subTest(changed=changed), contextlib.ExitStack() as stack:
                 locked = copy.deepcopy(state)
                 if changed == "runtime": locked["queue_sha256"] = digest("new queue")
                 stack.enter_context(mock.patch.object(producer, "_context", return_value=context))
-                stack.enter_context(mock.patch.object(producer, "existing_evidence_record", return_value=None))
+                existing = {"receipt_id": "earlier", "result": "pass"}
+                stack.enter_context(mock.patch.object(producer, "existing_evidence_record",
+                    side_effect=[existing, None, None] if changed == "existing" else None,
+                    return_value=None))
                 computed = stack.enter_context(mock.patch.object(producer, "produce_evidence",
                     side_effect=[{"receipt_id": identity, "result": "pass"} for identity in ("one", "two")]))
                 stack.enter_context(mock.patch.object(kblib, "repository_snapshot_sha256",
@@ -381,14 +384,19 @@ class ChangedScopeEvidenceContractTests(
                 stack.enter_context(mock.patch.object(kblib, "receipt_append_observation", return_value=object()))
                 writer = stack.enter_context(mock.patch.object(kblib, "write_receipts_observed", return_value=("present", None, None)))
                 stack.enter_context(mock.patch.object(audit_producer_runtime, "read_receipt_records", return_value=[]))
-                stack.enter_context(mock.patch.object(producer, "require_exact_evidence_readback"))
+                readback = stack.enter_context(mock.patch.object(producer, "require_exact_evidence_readback"))
                 output = stack.enter_context(contextlib.redirect_stdout(io.StringIO()))
                 code = producer.main([ROOT, "--batch", "B1", "--plan", stage["audit_plan_path"],
                     "--obligation-id", "one", "--obligation-id", "two", "--apply"])
-                self.assertEqual(2, computed.call_count)  # No second computation inside the writer lock.
-                self.assertEqual(0 if changed is None else 1, code, output.getvalue())
-                self.assertEqual(1 if changed is None else 0, writer.call_count)
-                if changed is None: self.assertEqual(2, len(writer.call_args.args[1]))
+                expected_count = 1 if changed == "existing" else 2
+                success = changed in {None, "existing"}
+                self.assertEqual(expected_count, computed.call_count)  # No computation inside the writer lock.
+                self.assertEqual(0 if success else 1, code, output.getvalue())
+                self.assertEqual(1 if success else 0, writer.call_count)
+                if success:
+                    self.assertEqual(expected_count, len(writer.call_args.args[1]))
+                    self.assertEqual(expected_count, readback.call_count)
+                    self.assertNotIn("earlier", [call.args[1]["receipt_id"] for call in readback.call_args_list])
 
     def test_registry_rows_have_one_exact_current_producer_trace(self):
         rows = {row["rule_id"]: row for row in self.rules}

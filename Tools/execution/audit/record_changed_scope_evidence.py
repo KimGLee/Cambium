@@ -1183,7 +1183,9 @@ def main(argv=None):
 
     try:
         persisted = audit_producer_runtime.read_receipt_records(receipt_absolute)
-        for value, receipt in zip(contexts, receipts):
+        # Reused current attempts may live in another managed register. Only
+        # this transaction's new records must read back from its write target.
+        for value, receipt in zip(pending, new_receipts):
             require_exact_evidence_readback(receipt_absolute, receipt, value, records=persisted)
     except (OSError, TypeError, UnicodeError, ValueError) as exc:
         reporting.write_canonical_json({
