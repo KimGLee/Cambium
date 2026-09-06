@@ -119,15 +119,9 @@ class RequiredQueueFixture:
             (self.root / ".cambium" / name).mkdir(exist_ok=True)
         self.install_plain_s_audit_fixture()
 
-    def install_plain_s_audit_fixture(self):
-        """Make the shared lifecycle fixture a real, bounded S-tier run.
-
-        These tests exercise Queue and close mechanics rather than M-tier
-        semantic judgment.  The fixture therefore uses plain Markdown pages
-        that satisfy the selected Profile's page contract, and the Kernel's
-        real deterministic sampling rule supplies their review obligation.
-        No production obligation is bypassed or replaced by fixture prose.
-        """
+    def write_plain_s_audit_pages(self):
+        """Create only the two real page inputs, never runtime evidence."""
+        (self.root / "Topics").mkdir(exist_ok=True)
         pages = (("A", "B1"), ("B", "B2"))
         for name, _batch in pages:
             (self.root / ("Topics/%s.md" % name)).write_text(
@@ -146,6 +140,13 @@ class RequiredQueueFixture:
                 encoding="utf-8",
             )
 
+    def install_plain_s_audit_fixture(self):
+        """Install a bounded S-tier checkpoint through the fixture owner.
+
+        The initial-plan E2E instead publishes Task Plan and Queue through
+        real CLI transactions; both reuse exactly the same page inputs.
+        """
+        self.write_plain_s_audit_pages()
         coverage_path = self.root / queue_runtime.COVERAGE_PATH
         progress_path = self.root / queue_runtime.PROGRESS_PATH
         coverage = kblib.load_yaml_file(coverage_path)
@@ -163,6 +164,12 @@ class RequiredQueueFixture:
 
         install_initial_task_plan_fixture(self.root)
 
+        self.compose_page_inputs()
+        self.assertEqual(
+            [], runtime_validation.validate_runtime(self.root)["errors"])
+
+    def compose_page_inputs(self):
+        """Generate the two derived checker inputs through their actual owners."""
         admission, errors = profile_admission.admit_profile(self.root)
         self.assertEqual([], errors, errors)
         self.assertIsNotNone(admission)
@@ -177,9 +184,6 @@ class RequiredQueueFixture:
         (derived / "vocab.yaml").write_text(vocab_text, encoding="utf-8")
         (derived / "page_contract.yaml").write_text(
             page_contract_text, encoding="utf-8")
-        self.assertEqual(
-            [], runtime_validation.validate_runtime(self.root)["errors"])
-
     def run_tool(self, name, *arguments):
         return subprocess.run(
             [sys.executable, str(TOOLS / name), str(self.root), *arguments],

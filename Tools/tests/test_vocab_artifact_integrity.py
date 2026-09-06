@@ -111,6 +111,17 @@ def install_sources(root):
 
 class VocabularyArtifactIdentityContractTests(unittest.TestCase):
 
+    def test_checker_input_projection_binds_fields_not_body_or_input_order(self):
+        pages = [("A.md", "---\npriority: P1\n---\n# Before\n"),
+                 ("B.md", "---\ntier: M\n---\nOther content\n")]
+        before = check_vocab.input_projection(pages)
+        self.assertEqual(before, check_vocab.input_projection(list(reversed(pages))))
+        self.assertEqual(before, check_vocab.input_projection([
+            (path, text.replace("Before", "After")) for path, text in pages]))
+        self.assertNotEqual(before, check_vocab.input_projection([
+            (path, text.replace("P1", "P2")) for path, text in pages]))
+        self.assertNotEqual(before, check_vocab.input_projection(pages[:1]))
+
     def test_identity_is_deterministic_and_all_byte_drift_is_stale(self):
         with tempfile.TemporaryDirectory() as directory, mock.patch.object(
                 compose_vocab.profile_admission, "currency_errors",

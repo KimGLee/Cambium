@@ -8,7 +8,7 @@ permissions:
 
 jobs:
   deep-verify:
-    name: deep-verify (${{ matrix.python-version }})
+    name: Exhaustive checks and full test suite (Python ${{ matrix.python-version }})
     runs-on: ubuntu-latest
     timeout-minutes: 45
     strategy:

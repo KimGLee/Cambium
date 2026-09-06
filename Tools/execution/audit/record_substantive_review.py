@@ -12,8 +12,8 @@ import sys
 
 import Tools.execution.audit.audit_evidence_runtime as audit_evidence_runtime
 import Tools.execution.audit.audit_producer_chain as audit_producer_chain
+import Tools.execution.audit.audit_fingerprint as audit_fingerprint
 import Tools.execution.audit.audit_producer_runtime as audit_producer_runtime
-import Tools.execution.evidence.evidence_attempt_runtime as evidence_attempt_runtime
 import Tools.platform.common.kblib as kblib
 import Tools.execution.task_runtime.runtime_paths as runtime_paths
 import Tools.execution.audit.substantive_review_contract as substantive_review_contract
@@ -104,125 +104,12 @@ def _obligation(root, plan, obligation_id, page):
     return row
 
 
-def _prior_round(result, receipt_id, plan, plan_sha256, obligation, page):
-    if not receipt_id:
-        return None
-    prior = audit_producer_runtime.receipt_by_id(result, receipt_id)
-    if not isinstance(prior, dict):
-        raise audit_producer_runtime.AuditProducerError(
-            "round-1 substantive-review receipt %s is not current" %
-            receipt_id)
-    substantive_review_contract.validate_review_receipt(
-        prior, substantive_review_contract.load_contract(result["root"]))
-    audit_producer_runtime.validate_obligation_attempt_binding(
-        prior, plan, plan_sha256, obligation)
-    expected = {
-        "round": 1,
-        "round_1_receipt_id": None,
-    }
-    mismatches = [field for field, value in expected.items()
-                  if prior.get(field) != value]
-    if prior.get("invalidated_by") is not None:
-        mismatches.append("invalidated_by")
-    if mismatches:
-        raise audit_producer_runtime.AuditProducerError(
-            "round-1 receipt differs in %s" % ", ".join(mismatches))
-    return prior
 
 
-def _require_round_two_scope(prior, findings):
-    prior_rows = prior.get("findings") or []
-    prior_by_id = {row.get("finding_id"): row for row in prior_rows}
-    references = [row.get("round_1_finding_id") for row in findings
-                  if isinstance(row, dict)]
-    if (len(references) != len(findings) or
-            len(references) != len(set(references)) or
-            set(references) != set(prior_by_id)):
-        raise audit_producer_runtime.AuditProducerError(
-            "round 2 must confirm every and only round 1 finding exactly once")
-    for row in findings:
-        before = prior_by_id[row["round_1_finding_id"]]
-        if (row.get("severity") != before.get("severity") or
-                row.get("statement") != before.get("statement")):
-            raise audit_producer_runtime.AuditProducerError(
-                "round 2 cannot change finding severity or statement")
 
 
-def current_review_attempt(result, plan, plan_sha256, obligation, frozen,
-                           root):
-    """Return the sole review attempt that observes the current page bytes."""
-    page = audit_producer_runtime.frozen_manifest_page(
-        frozen, obligation["target"])
-    if page is None:
-        raise audit_producer_runtime.AuditProducerError(
-            "substantive-review target is not one frozen manifest page")
-    contract = substantive_review_contract.load_contract(root)
-    attempts = audit_producer_runtime.obligation_attempt_records(
-        result, tool=TOOL, plan_id=plan["plan_id"],
-        obligation_id=obligation["obligation_id"],
-        record_kind=contract["record_kind"])
-    by_id = {record["receipt_id"]: record for record in attempts}
-
-    def validate_stable(record):
-        substantive_review_contract.validate_review_receipt(record, contract)
-        if record.get("tool_version") != TOOL_VERSION:
-            raise ValueError(
-                "substantive-review tool version is not supported")
-        audit_producer_runtime.validate_obligation_attempt_binding(
-            record, plan, plan_sha256, obligation)
-        if record.get("contract_fingerprint") != \
-                audit_producer_runtime.obligation_contract_fingerprint(
-                    plan, obligation):
-            raise ValueError(
-                "substantive-review contract fingerprint differs from plan")
-        if record.get("round") == 2:
-            prior = by_id.get(record.get("round_1_receipt_id"))
-            if prior is None:
-                raise ValueError(
-                    "round 2 has no stable round-1 predecessor")
-            substantive_review_contract.validate_review_pair(
-                prior, record, contract)
-        return record
-
-    def validate_current(record):
-        validate_stable(record)
-        text = page.snapshot.read_text()
-        sources = audit_producer_runtime.sources_sha256(text)
-        expected = {
-            "page_sha256": page.page_sha256,
-            "sources_sha256": sources,
-            "semantic_content_fingerprint":
-                page.semantic_content_fingerprint,
-            "artifact_fingerprint":
-                audit_producer_runtime.page_artifact_fingerprint(page),
-            "dependency_fingerprint": sources,
-        }
-        mismatches = [field for field, value in expected.items()
-                      if record.get(field) != value]
-        if mismatches:
-            raise ValueError(
-                "substantive-review input changed in: %s" %
-                ", ".join(sorted(mismatches)))
-        return record
-
-    try:
-        return evidence_attempt_runtime.unique_current_attempt(
-            attempts, validate_stable=validate_stable,
-            validate_current=validate_current,
-            label="AuditPlan obligation %s substantive review" %
-                  obligation["obligation_id"])
-    except evidence_attempt_runtime.EvidenceAttemptError as exc:
-        raise audit_producer_runtime.AuditProducerError(str(exc)) from exc
 
 
-def _require_no_current_attempt(result, plan, plan_sha256, obligation,
-                                frozen, root):
-    existing = current_review_attempt(
-        result, plan, plan_sha256, obligation, frozen, root)
-    if existing is not None:
-        raise audit_producer_runtime.AuditProducerError(
-            "substantive-review obligation already has current evidence: %s" %
-            existing["receipt_id"])
 
 
 def build_review_receipt(*, root, result, plan, plan_sha256, obligation,
@@ -247,13 +134,12 @@ def build_review_receipt(*, root, result, plan, plan_sha256, obligation,
         if prior is None:
             raise audit_producer_runtime.AuditProducerError(
                 "round 2 requires the exact round-1 receipt")
-        _require_round_two_scope(prior, findings)
 
     page_snapshot = audit_producer_runtime.frozen_manifest_page(frozen, page)
     if page_snapshot is None:
         raise audit_producer_runtime.AuditProducerError(
             "page %s is not exactly one member of the open batch" % page)
-    sources_digest = audit_producer_runtime.sources_sha256(
+    sources_digest = audit_fingerprint.sources_sha256(
         page_snapshot.snapshot.read_text())
     contract_fingerprint = \
         audit_producer_runtime.obligation_contract_fingerprint(
@@ -338,17 +224,13 @@ def main(argv=None):
             result, args.batch)
         _absolute, plan, plan_sha256, frozen = load_current_plan(
             root, args.plan, result, item, activation)
+        result = audit_evidence_runtime.evidence_evaluation(result)
         obligation = _obligation(
             root, plan, args.obligation_id, args.page)
-        _require_no_current_attempt(
-            result, plan, plan_sha256, obligation, frozen, root)
         findings = parse_findings(args.finding)
-        prior = _prior_round(
-            result, args.round_1_receipt_id, plan, plan_sha256,
-            obligation, args.page)
-        if args.round == 1 and args.round_1_receipt_id:
-            raise audit_producer_runtime.AuditProducerError(
-                "round 1 does not accept --round-1-receipt-id")
+        prior = audit_evidence_runtime.require_substantive_review_attempt(
+            result, item, plan, plan_sha256, obligation,
+            round_number=args.round, round_1_receipt_id=args.round_1_receipt_id)
         receipt = build_review_receipt(
             root=root, result=result, plan=plan,
             plan_sha256=plan_sha256, obligation=obligation, page=args.page,
@@ -357,6 +239,12 @@ def main(argv=None):
             reviewer_role=args.reviewer_role, round_number=args.round,
             verdict=args.verdict, findings=findings,
             statement=args.statement, prior=prior)
+        proposed = audit_evidence_runtime.obligation_evidence_resolution(
+            result, item, plan, plan_sha256, obligation,
+            proposed_record=receipt)
+        if proposed["status"] in {"invalid", "ambiguous", "missing"}:
+            raise audit_producer_runtime.AuditProducerError(
+                "proposed review is not acceptable: %s" % proposed.get("reason"))
         receipt_absolute = audit_producer_runtime.managed_receipt_path(
             root, args.receipts)
     except (OSError, TypeError, UnicodeError, ValueError,
@@ -390,8 +278,19 @@ def main(argv=None):
                     root, args.plan, locked, locked_item, plan, plan_sha256)
                 audit_producer_runtime.require_pages_current(
                     root, frozen, "before substantive review publication")
-                _require_no_current_attempt(
-                    locked, plan, plan_sha256, obligation, frozen, root)
+                locked = audit_evidence_runtime.evidence_evaluation(locked)
+                locked_prior = audit_evidence_runtime.require_substantive_review_attempt(
+                    locked, locked_item, plan, plan_sha256, obligation,
+                    round_number=args.round, round_1_receipt_id=args.round_1_receipt_id)
+                if locked_prior != prior:
+                    raise audit_producer_runtime.AuditProducerError(
+                        "review predecessor changed before publication")
+                proposed = audit_evidence_runtime.obligation_evidence_resolution(
+                    locked, locked_item, plan, plan_sha256, obligation,
+                    proposed_record=receipt)
+                if proposed["status"] in {"invalid", "ambiguous", "missing"}:
+                    raise audit_producer_runtime.AuditProducerError(
+                        "proposed review is not acceptable: %s" % proposed.get("reason"))
                 before = kblib.receipt_append_observation(
                     receipt_absolute, [receipt])
             outcome, error, _ = kblib.write_receipts_observed(

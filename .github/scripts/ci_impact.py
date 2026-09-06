@@ -320,13 +320,34 @@ def _selective_groups(root, test_names):
         root, expected, min(FULL_SHARD_COUNT, len(expected)), "affected")
 
 
-def _matrix(versions, groups):
+def _shard_label(root, tests):
+    """Describe actual members, not a second manually maintained taxonomy.
+
+    Shards mix domains and test levels to balance load. Name their two largest
+    source modules and expose the remaining members in the job summary.
+    """
+    representatives = sorted(
+        tests, key=lambda name: (-_test_weight(root, name), name))[:2]
+    label = " + ".join(
+        name.removeprefix("test_").removesuffix(".py").replace("_", " ")
+        for name in representatives)
+    remaining = len(tests) - len(representatives)
+    if remaining:
+        label += " (+%d more modules)" % remaining
+    return label
+
+
+def _matrix(root, versions, groups):
+    labelled_groups = [
+        (name, tests, _shard_label(root, tests)) for name, tests in groups
+    ]
     include = []
     for version in versions:
-        for name, tests in groups:
+        for name, tests, label in labelled_groups:
             include.append({
                 "python-version": version,
                 "shard": name,
+                "test-label": label,
                 "test-files": ",".join(tests),
             })
     return {"include": include}
@@ -344,7 +365,7 @@ def _full_plan(root, changed, reasons):
             "include": [{"python-version": value}
                         for value in PYTHON_VERSIONS],
         },
-        "test_matrix": _matrix(PYTHON_VERSIONS, _full_groups(root, tests)),
+        "test_matrix": _matrix(root, PYTHON_VERSIONS, _full_groups(root, tests)),
         "run_tests": True,
     }
 
@@ -450,7 +471,7 @@ def plan_changes(root, changes, event="pull_request"):
     groups = _selective_groups(root, selected)
     base.update({
         "mode": "selective",
-        "test_matrix": _matrix(check_versions, groups),
+        "test_matrix": _matrix(root, check_versions, groups),
         "run_tests": True,
     })
     return base

@@ -1,5 +1,7 @@
 """Pure K12/07 fingerprint projections shared by producers and consumers."""
 
+import re
+
 import Tools.execution.audit.audit_receipt_contract as audit_receipt_contract
 import Tools.platform.common.kblib as kblib
 from Tools.platform.repository.path_contract import \
@@ -13,6 +15,43 @@ _OBLIGATION_CONTRACT_FIELDS = (
     "producer_check", "producer_capability", "producer_gate_id",
     "consumer_gate_id", "fingerprint_binding",
 )
+
+
+def sources_sha256(text):
+    """Hash the exact authoritative H2 Sources section and no other prose."""
+    lines = text.splitlines(keepends=True)
+    start = None
+    end = len(lines)
+    fenced = False
+    fence_marker = None
+    for index, line in enumerate(lines):
+        stripped = line.lstrip()
+        marker = "```" if stripped.startswith("```") else (
+            "~~~" if stripped.startswith("~~~") else None)
+        if marker is not None:
+            if not fenced:
+                fenced = True
+                fence_marker = marker
+            elif marker == fence_marker:
+                fenced = False
+                fence_marker = None
+            continue
+        if fenced:
+            continue
+        match = re.match(
+            r"^(#{1,6})\s+(.+?)\s*#*\s*$", line.rstrip("\r\n"))
+        if match is None:
+            continue
+        level = len(match.group(1))
+        heading = match.group(2).strip()
+        if start is None and level == 2 and heading.casefold() == "sources":
+            start = index
+            continue
+        if start is not None and level <= 2:
+            end = index
+            break
+    material = "" if start is None else "".join(lines[start:end])
+    return kblib.sha256_bytes(material)
 
 
 def _frontmatter_and_body(text, protocol):
@@ -118,4 +157,5 @@ def obligation_contract_fingerprint(plan, obligation, *, additional=None):
 __all__ = [
     "obligation_contract_fingerprint", "page_artifact_fingerprint",
     "page_set_artifact_fingerprint",
+    "sources_sha256",
 ]

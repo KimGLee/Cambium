@@ -6,7 +6,9 @@ import os
 import Tools.execution.audit.audit_lifecycle_contract as audit_lifecycle_contract
 import Tools.execution.audit.audit_plan_contract as _support
 import Tools.platform.common.kblib as kblib
-from Tools.platform.common.primitives import require_trimmed_string
+from Tools.platform.common.primitives import (
+    document_projection, require_trimmed_string, validated_document,
+)
 
 
 AUDIT_RECEIPT_CONTRACT_PATH = (
@@ -39,10 +41,6 @@ _SUPPORTED_PAGE_ARTIFACT = {
     "path_binding": "canonical-repository-relative-posix",
     "body_binding": "exact-bytes-after-frontmatter",
     "frontmatter_normalization": "restricted-yaml-semantic",
-    "included_frontmatter_fields": (
-        "type", "priority", "tier", "coverage_disposition", "lifecycle",
-        "prerequisites",
-    ),
     "excluded_frontmatter_policy": "all-other-fields",
     "absent_included_field_policy": "omit",
     "opening_frontmatter_marker": "---",
@@ -56,6 +54,10 @@ _SUPPORTED_PAGE_ARTIFACT = {
 
 def validate_contract(document):
     """Validate one full AuditReceipt contract and return projections."""
+    return document_projection(document, _validate_contract)
+
+
+def _validate_contract(document):
     if not isinstance(document, dict) or set(document) != _CONTRACT_FIELDS:
         raise ValueError("AuditReceipt contract fields are not closed")
     if document.get("schema_version") != 3:
@@ -151,7 +153,7 @@ def validate_contract(document):
     }
 
 
-def load_contract(root=None, snapshots=None):
+def load_contract(root=None, snapshots=None, *, cache_projection=False):
     """Load the current Kernel-owned full AuditReceipt contract."""
     if root is None:
         root = repository_source_root(__file__)
@@ -162,8 +164,8 @@ def load_contract(root=None, snapshots=None):
         text = kblib.read_text(os.path.join(
             root, *AUDIT_RECEIPT_CONTRACT_PATH.split("/")))
     document = kblib.parse_yaml_subset(text)
-    validate_contract(document)
-    return document
+    return validated_document(document, _validate_contract,
+                              cache_projection=cache_projection)
 
 
 def page_artifact_fingerprint_contract(contract=None):

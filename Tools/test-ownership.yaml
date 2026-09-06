@@ -1002,6 +1002,9 @@ tests:
     owner_contract_symbol: ci_impact.plan_changes
     parallel_safe: true
     overrides:
+      - selector: CiMatrixPresentationContractTests.*
+        semantics: ci_matrix_labels_describe_members_without_changing_selection
+        owner_contract_symbol: ci_impact._matrix
       - selector: SelectedTestRunnerDelegationContractTests.*
         semantics: ci_exact_selection_delegates_to_catalog_execution_owner
         owner_contract_symbol: ci_impact.run_selected_tests
@@ -1660,6 +1663,11 @@ tests:
         level: unit
         semantics: page_contract_condition_predicate
         owner_contract_symbol: check_page_contract.condition_holds
+        parallel_safe: true
+      - selector: PageContractUnitTests.test_input_projection_binds_only_relevant_coverage_owner_values
+        level: unit
+        semantics: page_contract_current_input_binding
+        owner_contract_symbol: check_page_contract.page_input_material
         parallel_safe: true
       - selector: PageContractAcceptanceTests.*
         level: contract

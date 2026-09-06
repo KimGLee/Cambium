@@ -29,6 +29,7 @@ import Tools.execution.audit.audit_evidence_runtime as audit_evidence_runtime
 import Tools.execution.audit.audit_obligation_projection as obligation_projection
 import Tools.execution.audit.audit_producer_runtime as audit_producer_runtime
 import Tools.execution.audit.changed_scope_evidence_contract as contract
+import Tools.execution.audit.changed_scope_evidence_runtime as evidence_runtime
 import Tools.execution.audit.changed_scope_runtime_checks as runtime_checks
 import Tools.execution.audit.complete_audit_receipt as complete_audit_receipt
 import Tools.execution.audit.record_changed_scope_evidence as producer
@@ -135,6 +136,8 @@ class ChangedScopeEvidenceFixtures:
             "profile_contract_fingerprint": plan[
                 "profile_contract_fingerprint"],
             "profile_load_inputs_sha256": digest("profile-load-inputs"),
+            "check_inputs_sha256": kblib.sha256_bytes(kblib.canonical_json_bytes(
+                [{"fixture": target}])),
             ("compiled_page_contract_sha256"
              if gate_id == check_page_contract.GATE_ID
              else "compiled_vocab_sha256"): digest("compiled-contract"),
@@ -147,12 +150,16 @@ class ChangedScopeEvidenceFixtures:
             semantic_content_fingerprint=digest("page"),
             snapshot=snapshot),)
         plan_sha256 = digest("plan")
+        input_values = ({"check_inputs_sha256": kblib.sha256_bytes(
+            kblib.canonical_json_bytes(check_links.capture_inputs(ROOT, target)))}
+            if gate_id == check_links.GATE_ID else source)
         record = producer.build_direct_record(
             root=ROOT, plan=plan, plan_sha256=plan_sha256,
             obligation=obligation, row=row, trace=trace,
             registry=self.registry, control_registry=self.control,
             frozen=frozen, source_exit_code=source_exit_code,
-            source_receipts=[source])
+            source_receipts=[source],
+            source_input_binding=contract.direct_input_binding(gate_id, input_values))
         return {
             "record": record,
             "plan": plan,
@@ -360,8 +367,12 @@ class ChangedScopeEvidenceContractTests(
         context = {"root": ROOT, "result": state, "authority": object(), "item": {"id": "B1"},
                    "stage": stage, "plan": stage["plan"], "plan_sha256": stage["audit_plan_sha256"],
                    "obligation": {"obligation_id": "one"}, "frozen": [],
-                   "trace": {"producer_route_kind": "gate"}}
-        for changed in (None, "repository", "runtime", "existing"):
+                   "trace": {"producer_route_kind": "gate"},
+                   "registry": self.registry, "control_registry": self.control,
+                   "target_page": types.SimpleNamespace(
+                       path="Page.md", snapshot=types.SimpleNamespace(
+                           read_text=lambda: "# Page\n"))}
+        for changed in (None, "repository", "runtime", "existing", "direct-input"):
             with self.subTest(changed=changed), contextlib.ExitStack() as stack:
                 locked = copy.deepcopy(state)
                 if changed == "runtime": locked["queue_sha256"] = digest("new queue")
@@ -371,7 +382,13 @@ class ChangedScopeEvidenceContractTests(
                     side_effect=[existing, None, None] if changed == "existing" else None,
                     return_value=None))
                 computed = stack.enter_context(mock.patch.object(producer, "produce_evidence",
-                    side_effect=[{"receipt_id": identity, "result": "pass"} for identity in ("one", "two")]))
+                    side_effect=[{"receipt_id": identity, "result": "pass",
+                                  "record_kind": "gate-receipt"}
+                                 for identity in ("one", "two")]))
+                acceptance = stack.enter_context(mock.patch.object(
+                    evidence_runtime, "validate_current_direct_record",
+                    side_effect=ValueError("direct input changed")
+                    if changed == "direct-input" else None))
                 stack.enter_context(mock.patch.object(kblib, "repository_snapshot_sha256",
                     side_effect=[digest("before"), digest("after" if changed == "repository" else "before")]))
                 stack.enter_context(mock.patch.object(audit_producer_runtime, "managed_receipt_path", return_value="receipts"))
@@ -394,9 +411,50 @@ class ChangedScopeEvidenceContractTests(
                 self.assertEqual(0 if success else 1, code, output.getvalue())
                 self.assertEqual(1 if success else 0, writer.call_count)
                 if success:
+                    self.assertEqual(expected_count, acceptance.call_count)
                     self.assertEqual(expected_count, len(writer.call_args.args[1]))
                     self.assertEqual(expected_count, readback.call_count)
                     self.assertNotIn("earlier", [call.args[1]["receipt_id"] for call in readback.call_args_list])
+
+    def test_direct_input_change_reaches_reuse_and_stage_consumers(self):
+        def link_inputs(pages):
+            return check_links.project_inputs(
+                [(path, path) for path in pages], [("README.md", "README.md")],
+                scope="README.md", read_text=pages.__getitem__)
+
+        original = link_inputs({"README.md": "[[B]]\n", "B.md": "# B\n"})
+        changed = link_inputs({"README.md": "[[B]]\n", "B.md": "# B\n",
+                               "other/B.md": "# Another B\n"})
+        with mock.patch.object(check_links, "capture_inputs", return_value=original):
+            case = self.direct_case(check_links.GATE_ID)
+            record = case["record"]
+            state = {"root": ROOT,
+                     "current_receipt_catalog": {record["receipt_id"]: record}}
+
+            def selected():
+                return producer.existing_direct_record(
+                    state, case["plan"], case["plan_sha256"],
+                    case["obligation"], self.registry, self.control,
+                    case["artifact_fingerprint"])
+
+            def errors(current=True):
+                return audit_evidence_runtime._direct_binding_errors(
+                    ROOT, case["plan"], case["plan_sha256"],
+                    case["obligation"], record, state, require_current=current)
+
+            self.assertIs(record, selected())
+            self.assertEqual([], errors())
+            with mock.patch.object(check_links, "capture_inputs", return_value=changed):
+                self.assertIsNone(selected())
+                self.assertTrue(any("input binding" in row for row in errors()))
+                # Historical validation proves the stored binding, without
+                # silently making this old pass usable on today's index.
+                self.assertEqual([], errors(current=False))
+
+        retired = copy.deepcopy(record)
+        retired["receipt_type_id"] = "changed-scope-gate-evidence-v2"
+        with self.assertRaisesRegex(ValueError, "receipt_type_id"):
+            contract.validate_direct_record(retired, self.registry, self.control, ROOT)
 
     def test_registry_rows_have_one_exact_current_producer_trace(self):
         rows = {row["rule_id"]: row for row in self.rules}
@@ -412,6 +470,38 @@ class ChangedScopeEvidenceContractTests(
                                  observed["existing_check"])
                 self.assertEqual(row["evidence_kind"],
                                  observed["evidence_kind"])
+
+    def test_profile_direct_gates_bind_current_composed_and_scanned_inputs(self):
+        for gate, composer, checker in (
+                (check_page_contract.GATE_ID, evidence_runtime.compose_page_contract,
+                 check_page_contract),
+                (check_vocab.GATE_ID, evidence_runtime.compose_vocab, check_vocab)):
+            with self.subTest(gate=gate):
+                case = self.direct_case(gate)
+                evaluation = types.SimpleNamespace(
+                    profile_snapshot_sha256=case["plan"]["profile_snapshot_sha256"],
+                    profile_contract_fingerprint=case["plan"]["profile_contract_fingerprint"],
+                    profile_load_inputs_sha256=digest("profile-load-inputs"))
+                admission = types.SimpleNamespace(evaluation=evaluation)
+                snapshot = types.SimpleNamespace(sha256=digest("compiled-contract"))
+                with mock.patch.object(evidence_runtime.profile_admission,
+                        "admit_profile_manifest", return_value=(admission, [])), \
+                     mock.patch.object(composer, "admitted_artifact", return_value=(snapshot, [])), \
+                     mock.patch.object(checker, "capture_inputs",
+                        return_value=[{"fixture": case["obligation"]["target"]}]) as capture:
+                    def validate():
+                        return evidence_runtime.validate_current_direct_record(
+                            case["record"], root=ROOT, plan=case["plan"],
+                            plan_sha256=case["plan_sha256"], obligation=case["obligation"],
+                            artifact_fingerprint=case["artifact_fingerprint"])
+                    self.assertIs(case["record"], validate())
+                    capture.return_value = [{"fixture": "changed dependent input"}]
+                    with self.assertRaisesRegex(ValueError, "input binding is not current"):
+                        validate()
+                    capture.return_value = [{"fixture": case["obligation"]["target"]}]
+                    snapshot.sha256 = digest("different composed bytes")
+                    with self.assertRaisesRegex(ValueError, "input binding is not current"):
+                        validate()
 
     def test_registered_gate_matrix_builds_exact_dimensionless_evidence(self):
         for gate_id, result, source_exit_code in (
@@ -571,19 +661,23 @@ class ChangedScopeEvidenceIntegrationTests(
     def test_current_record_kinds_cross_registered_consumer_boundaries(self):
         direct = self.direct_case(
             check_page_contract.GATE_ID, "candidate", 2)
-        self.assertEqual([], audit_evidence_runtime._direct_binding_errors(
-            ROOT, direct["plan"], direct["plan_sha256"],
-            direct["obligation"], direct["record"]))
+        # This seam uses a constructed Profile, not an adopted repository.
+        # Inject its input snapshot, not a passing validator or verdict.
+        with mock.patch.object(evidence_runtime, "_current_direct_input_binding",
+                               return_value=direct["record"]["source_input_binding"]):
+            self.assertEqual([], audit_evidence_runtime._direct_binding_errors(
+                ROOT, direct["plan"], direct["plan_sha256"],
+                direct["obligation"], direct["record"]))
 
         precursor = self.audit_precursor_case()
         catalog = {precursor["record"]["receipt_id"]: precursor["record"]}
         precursor["result"]["current_receipt_catalog"] = catalog
-        observed = complete_audit_receipt._producer_evidence(
-            ROOT, precursor["result"],
-            precursor["record"]["receipt_id"], precursor["plan"],
+        observed, existing = audit_evidence_runtime.require_completion_evidence(
+            precursor["result"], precursor["item"], precursor["plan"],
             precursor["plan_sha256"], precursor["obligation"],
-            precursor["frozen"])
+            precursor["record"]["receipt_id"])
         self.assertIs(precursor["record"], observed)
+        self.assertIsNone(existing)
 
         candidate = self.candidate_set_case()
         with mock.patch.object(
@@ -656,9 +750,8 @@ class ChangedScopeEvidenceIntegrationTests(
             case["plan"], case["plan_sha256"], case["obligation"])
 
         def current_final():
-            return complete_audit_receipt.current_audit_receipt_attempt(
-                result, plan, plan_sha256, obligation, case["frozen"],
-                case["root"])
+            value = resolution()
+            return value["record"] if value["status"] == "satisfied" else None
 
         def resolution():
             return audit_evidence_runtime._required_obligation_resolution(
@@ -673,9 +766,10 @@ class ChangedScopeEvidenceIntegrationTests(
             return record
 
         def finalize(record, seq):
-            evidence = complete_audit_receipt._producer_evidence(
-                case["root"], result, record["receipt_id"], plan,
-                plan_sha256, obligation, case["frozen"])
+            evidence, existing = audit_evidence_runtime.require_completion_evidence(
+                result, case["item"], plan, plan_sha256, obligation,
+                record["receipt_id"])
+            self.assertIsNone(existing)
             completed = complete_audit_receipt.build_audit_receipt(
                 plan=plan, plan_sha256=plan_sha256,
                 obligation=obligation, evidence=evidence, seq=seq)
@@ -700,10 +794,10 @@ class ChangedScopeEvidenceIntegrationTests(
             attempt["state"] for attempt in stale_resolution["attempts"]})
         # This is the regression: a stale final must not reserve completion.
         self.assertIsNone(current_final())
-        with self.assertRaises(audit_producer_runtime.AuditProducerError):
-            complete_audit_receipt._producer_evidence(
-                case["root"], result, old["receipt_id"], plan,
-                plan_sha256, obligation, case["frozen"])
+        with self.assertRaisesRegex(ValueError, "missing"):
+            audit_evidence_runtime.require_completion_evidence(
+                result, case["item"], plan, plan_sha256, obligation,
+                old["receipt_id"])
 
         new = precursor(2)
         self.assertEqual(old["artifact_fingerprint"], new["artifact_fingerprint"])

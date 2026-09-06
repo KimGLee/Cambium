@@ -220,7 +220,11 @@ modules:
       - closed_plan_closure_errors
       - combine_plan_reconciliations
       - current_consumption_evidence_ids
+      - evidence_evaluation
+      - obligation_evidence_resolution
       - reconciliation_from_bindings
+      - require_completion_evidence
+      - require_substantive_review_attempt
       - resolve_stage_plan
       - stage_evidence_closure
       - stage_evidence_status
@@ -243,6 +247,7 @@ modules:
       - obligation_contract_fingerprint
       - page_artifact_fingerprint
       - page_set_artifact_fingerprint
+      - sources_sha256
   - module: execution.audit.audit_lifecycle_contract
     path: Tools/execution/audit/audit_lifecycle_contract.py
     area: execution
@@ -337,7 +342,6 @@ modules:
       - require_runtime_current
       - runtime_lock_metadata
       - runtime_state_bindings
-      - sources_sha256
       - standards_bindings
       - validate_obligation_attempt_binding
   - module: execution.audit.audit_receipt_contract
@@ -417,7 +421,7 @@ modules:
       - resolve_consumed_evidence
       - select_s_targets
       - validate_applicability_disposition
-      - validate_page_fingerprint_binding
+      - validate_input_binding
       - validate_plan_base_closure
       - validate_producer_receipt
       - validate_receipt_consumption
@@ -444,6 +448,7 @@ modules:
       - CANDIDATE_SET_RECEIPT_TYPE_ID
       - ChangedScopeEvidenceContractError
       - DIRECT_RECEIPT_TYPE_ID
+      - DIRECT_SCHEMA_VERSION
       - INPUT_BINDING_FIELDS
       - PLAN_BINDING_FIELDS
       - PROFILE_SCAN_EXTENSION
@@ -457,6 +462,7 @@ modules:
       - current_receipt_errors
       - direct_contract_fingerprint
       - direct_dependency_fingerprint
+      - direct_input_binding
       - load_control_registry
       - load_registry
       - normalized_base_rules
@@ -482,6 +488,7 @@ modules:
     public:
       - pure_check_result
       - pure_input_binding
+      - validate_current_direct_record
       - validate_current_record
   - module: execution.audit.changed_scope_runtime_checks
     path: Tools/execution/audit/changed_scope_runtime_checks.py
@@ -1993,9 +2000,12 @@ modules:
     domain: content
     layer: application
     public:
+      - GATE_ID
       - LINK_RE
       - build_index
+      - capture_inputs
       - current_receipt_errors
+      - evaluate_inputs
       - main
       - parse_link
       - resolve
@@ -2046,6 +2056,7 @@ modules:
     domain: metadata
     layer: application
     public:
+      - capture_inputs
       - current_receipt_errors
       - main
       - run
@@ -2055,6 +2066,7 @@ modules:
     domain: metadata
     layer: application
     public:
+      - capture_inputs
       - current_receipt_errors
       - main
   - module: knowledge.metadata.compose_page_contract
@@ -2063,6 +2075,7 @@ modules:
     domain: metadata
     layer: application
     public:
+      - DEFAULT_OUTPUT
       - admitted_artifact
       - artifact_currency_errors
       - main
@@ -2581,10 +2594,12 @@ modules:
     public:
       - catalog_receipt
       - catalog_record
+      - document_projection
       - nonempty_string
       - require_trimmed_string
       - timestamp_value
       - valid_timestamp
+      - validated_document
   - module: platform.common.receipts
     path: Tools/platform/common/receipts.py
     area: platform

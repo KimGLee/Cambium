@@ -2,6 +2,7 @@
 
 from pathlib import Path
 from types import SimpleNamespace
+from contextlib import contextmanager
 import copy
 import sys
 import tempfile
@@ -150,6 +151,21 @@ class ProfileBatchJudgmentContractTests(unittest.TestCase):
                 "fixture-depth", "Topics/A.md", "reviewer",
                 "the registered content class is confirmed")
 
+    @contextmanager
+    def observed_page(self, text, semantic_sha256):
+        # Supply captured input at the filesystem boundary. Both consumers
+        # run the real shared artifact projection; do not mock its old private
+        # caller or build a runtime just to test this Profile evidence seam.
+        snapshot = contract_module.kblib.RepositoryTargetSnapshot(
+            "/fixture/Topics/A.md", "Topics/A.md", exists=True,
+            data=text.encode("utf-8"))
+        with mock.patch.object(
+                contract_module.kblib, "repository_target_snapshot",
+                return_value=snapshot), mock.patch.object(
+                    contract_module, "semantic_content_fingerprint",
+                    return_value=semantic_sha256):
+            yield
+
     def test_writer_binds_the_unique_profile_audit_plan_obligation(self):
         receipt = self.build()
 
@@ -195,91 +211,60 @@ class ProfileBatchJudgmentContractTests(unittest.TestCase):
 
     def test_heterogeneous_stage_consumer_accepts_and_rejects_fingerprint_drift(self):
         receipt = self.build()
+        text = "# A\nCurrent reviewed content.\n"
+        receipt["artifact_fingerprint"] = \
+            contract_module.audit_fingerprint.page_artifact_fingerprint(
+                "Topics/A.md", text)
         result = {
-            "root": "/fixture",
+            "root": str(TOOLS.parent),
             "_profile_authorized_view": {"_contract": self.contract},
         }
         catalog = {"judgment-1": ("receipts/judgments.jsonl", receipt)}
-        with mock.patch.object(
-                contract_module, "artifact_fingerprint",
-                return_value=SHA_E), mock.patch.object(
-                    contract_module, "semantic_content_fingerprint",
-                    return_value=SHA_D), mock.patch.object(
-                        audit_evidence_runtime,
-                        "_current_page_artifact_fingerprint",
-                        return_value=SHA_E):
+        with self.observed_page(text, SHA_D):
             selected = audit_evidence_runtime._required_stage_records(
                 result, self.item, self.plan, SHA_A, catalog, "pre-merge",
                 require_current=True)
         self.assertEqual("judgment-1", selected[0][1]["receipt_id"])
 
-        drifted = copy.deepcopy(receipt)
-        drifted["artifact_fingerprint"] = SHA_C
-        catalog = {"judgment-1": ("receipts/judgments.jsonl", drifted)}
-        with mock.patch.object(
-                contract_module, "artifact_fingerprint",
-                return_value=SHA_E), mock.patch.object(
-                    contract_module, "semantic_content_fingerprint",
-                    return_value=SHA_D), mock.patch.object(
-                        audit_evidence_runtime,
-                        "_current_page_artifact_fingerprint",
-                        return_value=SHA_E):
-            with self.assertRaisesRegex(
-                    ValueError, "no current terminal"):
-                audit_evidence_runtime._required_stage_records(
-                    result, self.item, self.plan, SHA_A, catalog,
-                    "pre-merge", require_current=True)
-
-        drifted = copy.deepcopy(receipt)
-        drifted["semantic_content_sha256"] = SHA_C
-        catalog = {"judgment-1": ("receipts/judgments.jsonl", drifted)}
-        with mock.patch.object(
-                contract_module, "artifact_fingerprint",
-                return_value=SHA_E), mock.patch.object(
-                    contract_module, "semantic_content_fingerprint",
-                    return_value=SHA_D), mock.patch.object(
-                        audit_evidence_runtime,
-                        "_current_page_artifact_fingerprint",
-                        return_value=SHA_E):
-            with self.assertRaisesRegex(
-                    ValueError, "no current terminal"):
-                audit_evidence_runtime._required_stage_records(
-                    result, self.item, self.plan, SHA_A, catalog,
-                    "pre-merge", require_current=True)
+        for field in ("artifact_fingerprint", "semantic_content_sha256"):
+            with self.subTest(field=field), self.observed_page(text, SHA_D):
+                drifted = copy.deepcopy(receipt)
+                drifted[field] = SHA_C
+                catalog = {"judgment-1": ("receipts/judgments.jsonl", drifted)}
+                with self.assertRaisesRegex(ValueError, "no current terminal"):
+                    audit_evidence_runtime._required_stage_records(
+                        result, self.item, self.plan, SHA_A, catalog,
+                        "pre-merge", require_current=True)
 
     def test_shared_attempt_resolver_allows_stale_successor(self):
         predecessor = self.build()
+        before = "# A\nBefore correction.\n"
+        after = "# A\nAfter correction.\n"
+        predecessor["artifact_fingerprint"] = \
+            contract_module.audit_fingerprint.page_artifact_fingerprint(
+                "Topics/A.md", before)
         successor = copy.deepcopy(predecessor)
         successor["receipt_id"] = "judgment-successor"
-        successor["artifact_fingerprint"] = SHA_A
+        successor["artifact_fingerprint"] = \
+            contract_module.audit_fingerprint.page_artifact_fingerprint(
+                "Topics/A.md", after)
         successor["semantic_content_sha256"] = SHA_B
         catalog = {
             predecessor["receipt_id"]: predecessor,
             successor["receipt_id"]: successor,
         }
-        with mock.patch.object(
-                contract_module, "artifact_fingerprint",
-                return_value=SHA_A), mock.patch.object(
-                    contract_module, "semantic_content_fingerprint",
-                    return_value=SHA_B):
+        with self.observed_page(after, SHA_B):
             selected = contract_module.current_judgment_attempt(
-                "/fixture", self.plan, SHA_A, self.contract, self.item,
+                str(TOOLS.parent), self.plan, SHA_A, self.contract, self.item,
                 self.runtime["_profile_authorized_view"], catalog,
                 "Topics/A.md", "fixture-depth")
         self.assertIs(successor, selected)
 
         result = {
-            "root": "/fixture",
+            "root": str(TOOLS.parent),
             "_profile_authorized_view": {"_contract": self.contract},
         }
-        with mock.patch.object(
-                contract_module, "artifact_fingerprint",
-                return_value=SHA_A), mock.patch.object(
-                    contract_module, "semantic_content_fingerprint",
-                    return_value=SHA_B), mock.patch.object(
-                        audit_evidence_runtime,
-                        "_current_page_artifact_fingerprint",
-                        return_value=SHA_A):
+        with self.observed_page(after, SHA_B):
             terminal = audit_evidence_runtime._required_stage_records(
                 result, self.item, self.plan, SHA_A, catalog, "pre-merge",
                 require_current=True)

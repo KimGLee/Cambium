@@ -35,6 +35,55 @@ class ActiveResolutionIndexUnitTests(unittest.TestCase):
                     check_links.resolve(target, by_path, by_base),
                 )
 
+    def test_input_projection_tracks_deciding_facts_not_unrelated_bodies(self):
+        base = {"A.md": "[[B#Heading]]\n[[history/B#Ignored]]\n",
+                "active/B.md": "# Heading\nBody\n",
+                "history/B.md": "# Anything\n",
+                "Other.md": "Unrelated\n"}
+
+        def projection(pages):
+            active = [(p, p) for p in pages if not p.startswith("history/")]
+            excluded = [(p, p) for p in pages if p.startswith("history/")]
+            reads = []
+
+            def read(path):
+                reads.append(path)
+                return pages[path]
+
+            value = check_links.project_inputs(
+                active, [("A.md", "A.md")], excluded,
+                scope="A.md", excludes=("history",), read_text=read)
+            self.assertEqual(len(reads), len(set(reads)))
+            self.assertNotIn("Other.md", reads)
+            self.assertNotIn("history/B.md", reads)
+            return value
+
+        original = projection(base)
+        self.assertEqual(original, projection({
+            **base, "active/B.md": "# Heading\nDifferent body\n",
+            "history/B.md": "# Changed ignored heading\n",
+            "Other.md": "Changed unrelated page\n"}))
+        variants = (
+            ({**base, "new/B.md": "# Heading\n"}, "ambiguous"),
+            ({p: text for p, text in base.items() if p != "active/B.md"},
+             "missing"),
+            ({**base, "active/B.md": "# Renamed\n"}, "resolved"),
+            ({**base, "active/B.md": "---\nlifecycle: retired\n"
+              "superseded_by: Other.md\n---\n# Heading\n"}, "resolved"),
+        )
+        for pages, status in variants:
+            with self.subTest(status=status, target=pages.get("active/B.md")):
+                changed = projection(pages)
+                self.assertNotEqual(original, changed)
+                self.assertEqual(status, changed["sources"][0]["links"][0]["status"])
+
+        # Removal of an excluded exact target also matters; its ignored body
+        # does not. The normal active basename fallback then applies.
+        removed = projection({p: t for p, t in base.items()
+                              if p != "history/B.md"})
+        self.assertNotEqual(original, removed)
+        self.assertEqual("resolved", removed["sources"][0]["links"][1]["status"])
+
 
 class ExcludedHistoryResolutionIntegrationTests(unittest.TestCase):
     """One in-process CLI seam for the current excluded-content policy."""

@@ -427,8 +427,12 @@ RECEIPT_REFERENCE_SPECS = (
           ("revalidated_invalidated_receipt_ids[]",), CARDINALITY_MANY,
           MATERIALIZATION_ID_ONLY, REVALIDATION_CLOSURE),
 
-    # Batch-review wrapper.  Review registers remain unsealable in v1, but
-    # their aggregate closure still belongs to the same typed graph.
+    # Batch-review wrapper. Its admission identity and member evidence are
+    # distinct edges, consumed in both current and frozen-history contexts.
+    _spec("batch-review.activation", SOURCE_BATCH_REVIEW,
+          ("activation_receipt_id",), CARDINALITY_ONE,
+          MATERIALIZATION_BODY_REQUIRED, BATCH_REVIEW_CLOSURE,
+          keep_hot=True),
     _spec("batch-review.delta-page", SOURCE_BATCH_REVIEW,
           ("delta_page_receipt_ids[]",), CARDINALITY_MANY,
           MATERIALIZATION_COLD_PROJECTION, BATCH_REVIEW_CLOSURE,

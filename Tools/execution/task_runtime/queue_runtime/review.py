@@ -574,7 +574,7 @@ def batch_review_judgment_errors(result, item, wrapper_receipt):
 
 
 def batch_review_receipt_errors(catalog, receipt_id, *, item_id, task_id,
-                                delta_page_receipt_ids):
+                                activation_receipt_id, delta_page_receipt_ids):
     """Validate the current batch-level authorization around page evidence.
 
     Page receipts are validated under the current hard-cut evidence contracts.
@@ -594,10 +594,29 @@ def batch_review_receipt_errors(catalog, receipt_id, *, item_id, task_id,
             "target": item_id,
             "task_id": task_id,
             "batch_id": item_id,
+            "activation_receipt_id": activation_receipt_id,
         },
     )
     if receipt is None:
         return errors
+    # This edge binds the admission Gate, not the later queued -> open
+    # transition. Historical callers supply the frozen activation and a
+    # historical catalog; do not compare its snapshot with today's Queue.
+    require_receipt(
+        catalog, receipt.get("activation_receipt_id"),
+        "%s batch review activation" % item_id, errors,
+        expected={
+            "receipt_id": activation_receipt_id,
+            "tool": TOOL,
+            "tool_version": TOOL_VERSION,
+            "check": GATE_CHECK,
+            "gate_id": "required-queue-admission",
+            "queue_check_mode": "require-ready:%s" % item_id,
+            "target": QUEUE_PATH,
+            "task_id": task_id,
+            "activation_protocol": card_activation.ACTIVATION_PROTOCOL,
+        },
+    )
     bound = receipt.get("delta_page_receipt_ids")
     expected = sorted(set(delta_page_receipt_ids or []))
     if (not isinstance(bound, list) or

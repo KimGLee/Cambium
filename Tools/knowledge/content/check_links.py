@@ -123,34 +123,187 @@ def resolve(target, by_path, by_base):
     return "missing", None
 
 
-def headings_cache_get(cache, by_path, key):
-    if key not in cache:
-        text = kblib.read_text(by_path[key], errors="replace")
-        cache[key] = [h for _, _, h in kblib.headings_of(kblib.strip_code(text))]
-    return cache[key]
+def project_inputs(files, scan_files, excluded_files=(), *, scope=".",
+                   excludes=(), read_text=None):
+    """Freeze only the source constructs and target facts this check reads.
+
+    This is the sole resolution projection used by the checker and evidence
+    currentness. Inventory changes matter when they alter a referenced name;
+    unrelated page bodies and excluded-target headings do not. The caller's
+    file inventory and each required file's bytes are read once per capture.
+    """
+    by_path, by_base = build_index(files)
+    excluded, _ = build_index(excluded_files)
+    texts = {}
+    heading_cache = {}
+    lifecycle_cache = {}
+
+    def text_of(path):
+        if path not in texts:
+            texts[path] = (read_text(path) if read_text is not None else
+                           kblib.read_text(path, errors="replace"))
+        return texts[path]
+
+    sources = []
+    for full, rel in sorted(scan_files, key=lambda row: row[1]):
+        rel = rel.replace(os.sep, "/")
+        rel_key = rel[:-3]
+        links = []
+        for lineno, line in enumerate(
+                kblib.strip_code(text_of(full)).splitlines(), 1):
+            for match in LINK_RE.finditer(line):
+                inner = match.group(1)
+                target, heading = parse_link(inner)
+                if not target:
+                    status, resolved = "resolved", rel_key
+                elif "/" in target and target in excluded:
+                    status, resolved = "excluded", target
+                else:
+                    status, resolved = resolve(target, by_path, by_base)
+                    if status == "ambiguous":
+                        resolved = sorted(resolved)
+                life = None
+                headings = None
+                if status == "resolved":
+                    if target and resolved != rel_key:
+                        if resolved not in lifecycle_cache:
+                            fm_text = kblib.extract_frontmatter(
+                                text_of(by_path[resolved]))
+                            try:
+                                fm = kblib.parse_yaml_subset(fm_text) \
+                                    if fm_text is not None else None
+                            except kblib.YamlSubsetError:
+                                fm = None
+                            lifecycle_cache[resolved] = {
+                                key: fm.get(key) if isinstance(fm, dict)
+                                else None for key in
+                                ("lifecycle", "superseded_by")}
+                        life = lifecycle_cache[resolved]
+                    if heading and not heading.startswith("^"):
+                        if resolved not in heading_cache:
+                            heading_cache[resolved] = sorted(set(
+                                h for _, _, h in kblib.headings_of(
+                                    kblib.strip_code(text_of(
+                                        by_path[resolved])))))
+                        headings = heading_cache[resolved]
+                links.append({
+                    "line": lineno, "inner": inner, "target": target,
+                    "heading": heading, "status": status,
+                    "resolved": resolved, "lifecycle": life,
+                    "headings": headings,
+                })
+        sources.append({"path": rel, "links": links})
+    return {"scope": scope, "excludes": sorted(set(excludes)),
+            "sources": sources}
 
 
-def lifecycle_cache_get(cache, by_path, key):
-    """Returns the target page's {'lifecycle':..., 'superseded_by':...} (missing/unparseable frontmatter counts as active)."""
-    if key not in cache:
-        info = {"lifecycle": None, "superseded_by": None}
-        fm_text = kblib.extract_frontmatter(
-            kblib.read_text(by_path[key], errors="replace"))
-        if fm_text is not None:
-            try:
-                fm = kblib.parse_yaml_subset(fm_text)
-            except kblib.YamlSubsetError:
-                fm = None
-            if isinstance(fm, dict):
-                info["lifecycle"] = fm.get("lifecycle")
-                info["superseded_by"] = fm.get("superseded_by")
-        cache[key] = info
-    return cache[key]
+def capture_inputs(root, scope=None, excludes=()):
+    """Capture one read-only check input without running a CLI or writer."""
+    excludes = frozenset(excludes)
+
+    def keep(rel):
+        return not any(part in excludes
+                       for part in rel.replace(os.sep, "/").split("/"))
+
+    every_file = list(kblib.iter_managed_md_files(root))
+    files = [(f, r) for f, r in every_file if keep(r)]
+    excluded = [(f, r) for f, r in every_file if not keep(r)]
+    scan = ([(f, r) for f, r in kblib.iter_managed_md_files(root, scope)
+             if keep(r)] if scope else files)
+    return project_inputs(files, scan, excluded, scope=scope or ".",
+                          excludes=excludes)
 
 
 def main():
     """CLI entry point; `--json` projects the produced receipts onto stdout."""
     return reporting.run_redirected_json(_JSON_REPORTER, _main)
+
+
+def evaluate_inputs(inputs, *, root):
+    """Run the existing predicates against one captured input projection.
+
+    Returns receipt data and counts only; it never writes receipts or state.
+    CLI and plan-bound production use this same checker implementation.
+    """
+    receipts = []
+    seq = 0
+    counts = {"links": 0, "missing": 0, "ambiguous": 0, "bad_heading": 0,
+              "block_ref_skipped": 0, "retired_target": 0, "excluded_target": 0}
+
+    if not inputs["sources"]:
+        return [_make_receipt(
+            "scan-empty", inputs["scope"], "fail",
+            "effective scan set contains no .md files (path missing, empty, "
+            "or fully excluded); a zero-file scan cannot serve as a gate "
+            "result", 1, root=root)], counts
+    for source in inputs["sources"]:
+        rel = source["path"]
+        rel_key = rel[:-3]
+        for link in source["links"]:
+            target, heading = link["target"], link["heading"]
+            status, resolved = link["status"], link["resolved"]
+            counts["links"] += 1
+            where = "%s:%d" % (rel, link["line"])
+            if status == "excluded":
+                counts["excluded_target"] += 1
+                continue
+            if status == "missing":
+                counts["missing"] += 1
+                seq += 1
+                receipts.append(_make_receipt(
+                    "link-missing", where, "fail",
+                    "[[%s]] has no matching target (missing)" % link["inner"],
+                    seq, root=root))
+                continue
+            if status == "ambiguous":
+                counts["ambiguous"] += 1
+                seq += 1
+                receipts.append(_make_receipt(
+                    "link-ambiguous", where, "fail",
+                    "[[%s]] has multiple basename matches (ambiguous): %s"
+                    % (link["inner"], "; ".join(resolved)), seq,
+                    root=root))
+                continue
+            # Target page retired/merged: candidate (K03/03 requires inbound
+            # links to be repointed to the successor page), not a fail
+            if target != "" and resolved != rel_key:
+                life = link["lifecycle"]
+                if str(life["lifecycle"]) in ("retired", "merged"):
+                    counts["retired_target"] += 1
+                    seq += 1
+                    hint = ("successor page superseded_by: %s" % life["superseded_by"]
+                            if life["superseded_by"] else
+                            "target page declares no superseded_by; verify its tombstone before repointing")
+                    receipts.append(_make_receipt(
+                        "link-retired-target", where, "candidate",
+                        "[[%s]] points to page %s with lifecycle: %s; consider repointing to the successor page (%s; K03/03 retirement gate)"
+                        % (link["inner"], resolved, life["lifecycle"], hint),
+                        seq, root=root))
+            if heading:
+                if heading.startswith("^"):
+                    counts["block_ref_skipped"] += 1  # block references cannot be checked deterministically
+                    continue
+                hs = link["headings"]
+                if heading not in hs and heading.casefold() not in {h.casefold() for h in hs}:
+                    counts["bad_heading"] += 1
+                    seq += 1
+                    receipts.append(_make_receipt(
+                        "link-bad-heading", where, "fail",
+                        "[[%s]]: heading '%s' does not exist in target %s"
+                        % (link["inner"], heading, resolved), seq,
+                        root=root))
+
+
+    problems = counts["missing"] + counts["ambiguous"] + counts["bad_heading"]
+    if problems == 0:
+        seq += 1
+        receipts.append(_make_receipt(
+            GATE_CHECK,
+            inputs["scope"], "pass",
+            "missing=0 ambiguous=0 bad_heading=0 (%d link(s) total)"
+            % counts["links"], seq, root=root))
+
+    return receipts, counts
 
 
 def _main():
@@ -168,124 +321,12 @@ def _main():
     args = ap.parse_args()
     _JSON_REPORTER.begin(args.json)
 
-    excludes = set(args.exclude)
-
-    def keep(rel):
-        return not any(part in excludes
-                       for part in rel.replace(os.sep, "/").split("/"))
-
-    every_file = kblib.iter_managed_md_files(args.vault_root)
-    all_files = [(f, r) for f, r in every_file if keep(r)]
-    excluded_files = [(f, r) for f, r in every_file if not keep(r)]
-    if args.scope:
-        scan_files = [(f, r) for f, r in kblib.iter_managed_md_files(args.vault_root, args.scope)
-                      if keep(r)]
-    else:
-        scan_files = all_files
-    if not scan_files:
-        # A gate that scans nothing must fail, not silently pass. This applies
-        # equally to a scoped run, an empty whole root, and a root whose files
-        # were all removed by explicit exclusions.
-        target = args.scope or "."
-        receipts = [_make_receipt(
-            "scan-empty", target, "fail",
-            "effective scan set contains no .md files (path missing, empty, "
-            "or fully excluded); a zero-file scan cannot serve as a gate "
-            "result", 1, root=args.vault_root)]
-        print("check_links: scanned 0 file(s) — FAIL: effective scan set is empty")
-        kblib.write_receipts(args.receipts, receipts)
-        _JSON_REPORTER.record(receipts)
-        return kblib.exit_code(receipts)
-    by_path, by_base = build_index(all_files)
-    # Excluded files (e.g. frozen legacy snapshots) are indexed as resolution
-    # targets for exact vault-relative paths only: --exclude means "do not
-    # audit these files' contents and keep them out of basename
-    # disambiguation", not "pretend they do not exist". Explicit full-path
-    # links into an excluded area therefore still resolve.
-    by_path_excluded, _ = build_index(excluded_files)
-    heading_cache = {}
-    lifecycle_cache = {}
-
-    receipts = []
-    seq = 0
-    counts = {"links": 0, "missing": 0, "ambiguous": 0, "bad_heading": 0,
-              "block_ref_skipped": 0, "retired_target": 0, "excluded_target": 0}
-
-    for full, rel in scan_files:
-        text = kblib.strip_code(kblib.read_text(full, errors="replace"))
-        rel_key = rel[:-3].replace(os.sep, "/")
-        for lineno, line in enumerate(text.splitlines(), 1):
-            for m in LINK_RE.finditer(line):
-                target, heading = parse_link(m.group(1))
-                counts["links"] += 1
-                where = "%s:%d" % (rel.replace(os.sep, "/"), lineno)
-                if target == "":
-                    status, resolved = "resolved", rel_key  # [[#heading]] self-reference
-                elif "/" in target and target in by_path_excluded:
-                    # An explicit path names one object and therefore wins
-                    # before any active basename fallback. The excluded target
-                    # exists but is outside content, lifecycle, and heading
-                    # audit scope.
-                    counts["excluded_target"] += 1
-                    continue
-                else:
-                    status, resolved = resolve(target, by_path, by_base)
-                if status == "missing":
-                    counts["missing"] += 1
-                    seq += 1
-                    receipts.append(_make_receipt(
-                        "link-missing", where, "fail",
-                        "[[%s]] has no matching target (missing)" % m.group(1),
-                        seq, root=args.vault_root))
-                    continue
-                if status == "ambiguous":
-                    counts["ambiguous"] += 1
-                    seq += 1
-                    receipts.append(_make_receipt(
-                        "link-ambiguous", where, "fail",
-                        "[[%s]] has multiple basename matches (ambiguous): %s"
-                        % (m.group(1), "; ".join(resolved)), seq,
-                        root=args.vault_root))
-                    continue
-                # Target page retired/merged: candidate (K03/03 requires inbound
-                # links to be repointed to the successor page), not a fail
-                if target != "" and resolved != rel_key:
-                    life = lifecycle_cache_get(lifecycle_cache, by_path, resolved)
-                    if str(life["lifecycle"]) in ("retired", "merged"):
-                        counts["retired_target"] += 1
-                        seq += 1
-                        hint = ("successor page superseded_by: %s" % life["superseded_by"]
-                                if life["superseded_by"] else
-                                "target page declares no superseded_by; verify its tombstone before repointing")
-                        receipts.append(_make_receipt(
-                            "link-retired-target", where, "candidate",
-                            "[[%s]] points to page %s with lifecycle: %s; consider repointing to the successor page (%s; K03/03 retirement gate)"
-                            % (m.group(1), resolved, life["lifecycle"], hint),
-                            seq, root=args.vault_root))
-                if heading:
-                    if heading.startswith("^"):
-                        counts["block_ref_skipped"] += 1  # block references cannot be checked deterministically
-                        continue
-                    hs = headings_cache_get(heading_cache, by_path, resolved)
-                    if heading not in hs and heading.casefold() not in {h.casefold() for h in hs}:
-                        counts["bad_heading"] += 1
-                        seq += 1
-                        receipts.append(_make_receipt(
-                            "link-bad-heading", where, "fail",
-                            "[[%s]]: heading '%s' does not exist in target %s"
-                            % (m.group(1), heading, resolved), seq,
-                            root=args.vault_root))
-
+    inputs = capture_inputs(args.vault_root, args.scope, args.exclude)
+    receipts, counts = evaluate_inputs(inputs, root=args.vault_root)
     problems = counts["missing"] + counts["ambiguous"] + counts["bad_heading"]
-    if problems == 0:
-        seq += 1
-        receipts.append(_make_receipt(
-            GATE_CHECK,
-            args.scope or ".", "pass",
-            "missing=0 ambiguous=0 bad_heading=0 (%d link(s) total)"
-            % counts["links"], seq, root=args.vault_root))
-
-    print("check_links: scanned %d file(s), %d link(s)" % (len(scan_files), counts["links"]))
+    if not inputs["sources"]:
+        print("check_links: scanned 0 file(s) — FAIL: effective scan set is empty")
+    print("check_links: scanned %d file(s), %d link(s)" % (len(inputs["sources"]), counts["links"]))
     print("  missing=%(missing)d ambiguous=%(ambiguous)d bad_heading=%(bad_heading)d "
           "block_ref_skipped=%(block_ref_skipped)d retired_target(candidate)=%(retired_target)d "
           "excluded_target(resolved)=%(excluded_target)d" % counts)
@@ -294,7 +335,7 @@ def _main():
             print("  [FAIL %s] %s — %s" % (r["check"], r["target"], r["details"]))
         elif r["result"] == "candidate":
             print("  [CAND %s] %s — %s" % (r["check"], r["target"], r["details"]))
-    if problems == 0:
+    if inputs["sources"] and problems == 0:
         print("  Conclusion: all link checks passed (K09/05: missing=0, ambiguous=0).")
 
     kblib.write_receipts(args.receipts, receipts)

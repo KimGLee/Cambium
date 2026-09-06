@@ -10,6 +10,7 @@ TOOLS = REPOSITORY / "Tools"
 sys.path.insert(0, str(TOOLS))
 
 import Tools.execution.audit.audit_fingerprint as audit_fingerprint  # noqa: E402
+import Tools.execution.audit.audit_receipt_contract as receipt_contract  # noqa: E402
 import Tools.platform.common.kblib as kblib  # noqa: E402
 
 
@@ -31,8 +32,36 @@ Body bytes.\n"""
 
 class PageArtifactFingerprintTests(unittest.TestCase):
 
+    def test_sources_projection_uses_exact_section_not_code_or_other_prose(self):
+        sources = "## Sources\n\n- [Primary](https://example.test)\n"
+        prefix = "# Page\n\n```md\n## Sources\nnot authoritative\n```\n"
+        expected = kblib.sha256_bytes(sources)
+        self.assertEqual(expected, audit_fingerprint.sources_sha256(
+            prefix + sources + "## Next\nUnrelated.\n"))
+        self.assertEqual(expected, audit_fingerprint.sources_sha256(
+            prefix.replace("not authoritative", "changed example") +
+            sources + "## Next\nDifferent prose.\n"))
+        self.assertNotEqual(expected, audit_fingerprint.sources_sha256(
+            prefix + sources.replace("Primary", "Changed primary")))
+        self.assertEqual(kblib.sha256_bytes(""),
+                         audit_fingerprint.sources_sha256(prefix))
+
     def fingerprint(self, text=BASE, path="Topics/Example.md"):
         return audit_fingerprint.page_artifact_fingerprint(path, text)
+
+    def test_semantic_fields_come_from_the_contract_not_a_tool_allowlist(self):
+        contract = receipt_contract.load_contract(REPOSITORY)
+        fields = contract["page_artifact_fingerprint"]["included_frontmatter_fields"]
+        fields.reverse()
+        self.assertEqual(self.fingerprint(),
+            audit_fingerprint.page_artifact_fingerprint("Topics/Example.md", BASE,
+                                                       contract=contract))
+        fields.append("custom_field")
+        def changed(text):
+            return audit_fingerprint.page_artifact_fingerprint(
+                "Topics/Example.md", text, contract=contract)
+        self.assertNotEqual(changed(BASE), changed(BASE.replace("ignored-one", "new-value")))
+        self.assertEqual(self.fingerprint(), self.fingerprint(BASE.replace("ignored-one", "new-value")))
 
     def test_matches_independent_canonical_material_oracle(self):
         expected_material = {

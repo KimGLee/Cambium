@@ -63,30 +63,170 @@ class AuditPlanMissing(AuditEvidenceError):
 _PLAN_BINDING_FIELDS = audit_lifecycle_contract.PLAN_BINDING_FIELDS
 
 
-def _current_page_artifact_fingerprint(root, relative):
-    snapshot = kblib.repository_target_snapshot(
+class _EvidenceFacts:
+    """Mechanical facts retained for one read-only evaluation, never authority.
+
+    The context is private to a copied runtime view and is not returned or
+    persisted. A new public invocation (including a writer's locked recheck)
+    starts a new context. Record keys include their bytes, not just IDs;
+    candidate selection, currentness and stage verdicts are never cached.
+    """
+
+    def __init__(self, result, *, enabled=True):
+        self.root = result["root"]
+        self.evaluation = (result.get("_profile_authorized_view") or {}).get("_evaluation")
+        self.enabled = enabled
+        self._values = {}
+        self._catalogs = {}
+
+    def memo(self, key, compute):
+        if not self.enabled:
+            return compute()
+        if key not in self._values:
+            try:
+                self._values[key] = (compute(), None)
+            except (TypeError, ValueError) as exc:
+                self._values[key] = (None, (type(exc), exc.args))
+        value, error = self._values[key]
+        if error is not None:
+            kind, args = error
+            raise kind(*args)
+        return value
+
+    def contract(self, owner):
+        return self.memo(("contract", owner.__name__),
+                         lambda: owner.load_contract(
+                             self.root, cache_projection=self.enabled))
+
+    def batch_registry(self):
+        return self.memo(("batch-registry",), lambda:
+            batch_review_obligation_contract.load_registry(
+                self.root, cache_projection=self.enabled))
+
+    def batch_record(self, record, registry):
+        return self.memo(("batch-record", _record_sha256(registry), _record_sha256(record)),
+            lambda: batch_review_obligation_contract.validate_producer_receipt(record, registry))
+
+    def records(self, catalog, plan_id, obligation_id):
+        # Retain the view itself so object IDs cannot be reused during this
+        # evaluation. A candidate addition uses a new catalog; a new public
+        # invocation (or locked recheck) gets an entirely new index.
+        key = id(catalog)
+        if not self.enabled or key not in self._catalogs:
+            index = {}
+            for identity, entry in catalog.items():
+                record = catalog_record(entry)
+                if not isinstance(record, dict) or record.get("receipt_id") != identity:
+                    continue
+                binding = (record.get("plan_id"), record.get("obligation_id"))
+                if not all(isinstance(value, str) for value in binding):
+                    continue
+                index.setdefault(binding, []).append(record)
+            for rows in index.values():
+                rows.sort(key=lambda row: row.get("receipt_id") or "")
+            if not self.enabled:
+                return index.get((plan_id, obligation_id), [])
+            self._catalogs[key] = (catalog, index)
+        return self._catalogs[key][1].get((plan_id, obligation_id), [])
+
+    def metadata_page(self, relative, profile_view):
+        def capture():
+            _contract, rules = self.memo(("metadata-rules",), lambda:
+                metadata_property_state.authorized_profile_projection_rules(
+                    self.root, profile_view))
+            return metadata_property_state.semantic_page_snapshot(
+                self.root, relative, rules=rules)
+        return self.memo(("metadata-page", relative), capture)
+
+    def chain(self, obligation):
+        return self.memo(("producer-chain", _record_sha256(obligation)),
+            lambda: audit_producer_chain.precursor_chain_for_obligation(
+                obligation, root=self.root, evaluation=self.evaluation,
+                contract_loader=self.contract))
+
+    def validate(self, owner, validator, record, *, contract=None):
+        contract = contract if contract is not None else self.contract(owner)
+        return self.memo(("record", owner.__name__, validator,
+                          _record_sha256(contract), _record_sha256(record)),
+                         lambda: validator(record, contract=contract))
+
+    def review(self, record, *, contract=None):
+        return self.validate(substantive_review_contract,
+            substantive_review_contract.validate_review_receipt,
+            record, contract=contract)
+
+    def review_pair(self, first, second):
+        contract = self.contract(substantive_review_contract)
+        return self.memo(("review-pair", _record_sha256(contract),
+                          _record_sha256(first), _record_sha256(second)),
+            lambda: substantive_review_contract.validate_review_pair(
+                first, second, contract=contract, validate_receipt=self.review))
+
+    def page_snapshot(self, relative):
+        def capture():
+            snapshot = kblib.repository_target_snapshot(
+                self.root, relative, suffixes=(".md", ".MD"), singly_linked=True)
+            if not snapshot.exists:
+                raise AuditEvidenceError("artifact target does not exist: %s" % relative)
+            return snapshot
+        return self.memo(("page-snapshot", relative), capture)
+
+    def page_artifact(self, relative):
+        return self.memo(("page-artifact", relative),
+            lambda: _current_page_artifact_fingerprint(
+                self.root, relative, snapshot=self.page_snapshot(relative),
+                contract=self.contract(audit_receipt_contract)))
+
+    def page_sources(self, relative):
+        return self.memo(("page-sources", relative), lambda:
+            audit_fingerprint.sources_sha256(self.page_snapshot(relative).read_text()))
+
+    def page_set_artifact(self, scope):
+        return self.memo(("page-set-artifact", tuple(scope or ())), lambda:
+            _current_page_set_artifact_fingerprint(self.root, scope, facts=self))
+
+
+def evidence_evaluation(result):
+    """Bind mechanical facts to one read-only evaluation of an admitted view.
+
+    Producers may explicitly share this view before a write. Never persist it
+    or reuse it after a write; lock-time admission must provide a fresh view.
+    It neither admits runtime nor caches currentness or stage verdicts.
+    """
+    if "_audit_evidence_facts" in result:
+        return result
+    return {**result, "_audit_evidence_facts": _EvidenceFacts(result),
+            "current_receipt_catalog": current_receipt_catalog(result),
+            "receipt_catalog": historical_receipt_catalog(result)}
+
+
+def _current_page_artifact_fingerprint(root, relative, *, snapshot=None,
+                                      contract=None):
+    snapshot = snapshot or kblib.repository_target_snapshot(
         root, relative, suffixes=(".md", ".MD"), singly_linked=True)
     if not snapshot.exists:
         raise AuditEvidenceError(
             "artifact target does not exist: %s" % relative)
     return audit_fingerprint.page_artifact_fingerprint(
-        relative, snapshot.read_text())
+        relative, snapshot.read_text(), contract=contract)
 
 
-def _current_page_set_artifact_fingerprint(root, scope):
+def _current_page_set_artifact_fingerprint(root, scope, *, facts=None):
     if (not isinstance(scope, list) or not scope or
             len(scope) != len(set(scope))):
         raise AuditEvidenceError(
             "artifact scope must be a non-empty unique page list")
     pages = []
     for relative in scope:
-        snapshot = kblib.repository_target_snapshot(
-            root, relative, suffixes=(".md", ".MD"), singly_linked=True)
+        snapshot = (facts.page_snapshot(relative) if facts else
+            kblib.repository_target_snapshot(
+                root, relative, suffixes=(".md", ".MD"), singly_linked=True))
         if not snapshot.exists:
             raise AuditEvidenceError(
                 "artifact target does not exist: %s" % relative)
         pages.append((relative, snapshot.read_text()))
-    return audit_fingerprint.page_set_artifact_fingerprint(pages)
+    return audit_fingerprint.page_set_artifact_fingerprint(
+        pages, contract=facts.contract(audit_receipt_contract) if facts else None)
 
 _EVIDENCE_BINDING_FIELDS = audit_lifecycle_contract.EVIDENCE_BINDING_FIELDS
 
@@ -387,6 +527,8 @@ def _producer_evidence_errors(root, catalog, plan, plan_sha256,
                               obligation, receipt, *, require_pass=True,
                               require_current=True, result=None, item=None):
     errors = []
+    facts = (result or {}).get("_audit_evidence_facts") or _EvidenceFacts(
+        result or {"root": root})
     reference = receipt.get("evidence_ref")
     try:
         evidence = _current_record(
@@ -394,9 +536,10 @@ def _producer_evidence_errors(root, catalog, plan, plan_sha256,
     except AuditEvidenceError as exc:
         return [str(exc)]
     try:
-        chain = audit_producer_chain.require_precursor_record(
-            evidence, obligation, root=root,
-            evaluation=((result or {}).get("_profile_authorized_view") or {}).get("_evaluation"))
+        chain = facts.chain(obligation)
+        if not audit_producer_chain.precursor_record_matches(evidence, chain):
+            raise audit_producer_chain.AuditProducerChainError(
+                "record differs from the registered precursor identity")
     except audit_producer_chain.AuditProducerChainError as exc:
         return ["AuditReceipt producer chain: %s" % exc]
     errors.extend(audit_lifecycle_contract.attempt_binding_mismatches(
@@ -432,9 +575,8 @@ def _producer_evidence_errors(root, catalog, plan, plan_sha256,
     if chain["execution_route"] == "substantive-review":
         review_contract = None
         try:
-            review_contract = substantive_review_contract.load_contract(root)
-            substantive_review_contract.validate_review_receipt(
-                evidence, contract=review_contract)
+            review_contract = facts.contract(substantive_review_contract)
+            facts.review(evidence, contract=review_contract)
         except (OSError, TypeError, UnicodeError, ValueError,
                 kblib.YamlSubsetError) as exc:
             errors.append("substantive-review contract: %s" % exc)
@@ -446,8 +588,7 @@ def _producer_evidence_errors(root, catalog, plan, plan_sha256,
                 if first.get("invalidated_by") is not None:
                     raise AuditEvidenceError(
                         "round-1 substantive-review evidence is invalidated")
-                substantive_review_contract.validate_review_pair(
-                    first, evidence, contract=review_contract)
+                facts.review_pair(first, evidence)
             except (OSError, TypeError, UnicodeError, ValueError,
                     kblib.YamlSubsetError) as exc:
                 errors.append("substantive-review pair: %s" % exc)
@@ -455,10 +596,11 @@ def _producer_evidence_errors(root, catalog, plan, plan_sha256,
             errors.append("verdict")
         if require_current:
             try:
-                expected_artifact = _current_page_artifact_fingerprint(
-                    root, obligation["target"])
+                expected_artifact = facts.page_artifact(obligation["target"])
                 if evidence.get("artifact_fingerprint") != expected_artifact:
                     errors.append("artifact_fingerprint")
+                if evidence.get("sources_sha256") != facts.page_sources(obligation["target"]):
+                    errors.append("sources_sha256/current-input")
             except (OSError, TypeError, UnicodeError, ValueError,
                     AuditEvidenceError, kblib.YamlSubsetError) as exc:
                 errors.append("artifact_fingerprint: %s" % exc)
@@ -482,12 +624,16 @@ def _producer_evidence_errors(root, catalog, plan, plan_sha256,
             errors.append("Profile rendering evidence: %s" % exc)
     elif chain["execution_route"] == "rendering-verification":
         try:
-            contract = rendering_verification_contract.load_contract(root)
-            rendering_verification_contract.validate_record_for_obligation(
-                evidence, plan, plan_sha256, obligation, contract)
+            contract = facts.contract(rendering_verification_contract)
+            facts.memo(("rendering-binding", plan_sha256,
+                        _record_sha256(obligation), _record_sha256(evidence),
+                        _record_sha256(contract)), lambda:
+                rendering_verification_contract.validate_record_for_obligation(
+                    evidence, plan, plan_sha256, obligation, contract))
+            if not isinstance(item, dict) or evidence.get("scope") != sorted(item.get("manifest") or []):
+                errors.append("rendering-verification scope differs from the batch manifest")
             if require_current and evidence.get("artifact_fingerprint") != \
-                    _current_page_set_artifact_fingerprint(
-                        root, evidence.get("scope")):
+                    facts.page_set_artifact(evidence.get("scope")):
                 errors.append("artifact_fingerprint")
         except (OSError, TypeError, UnicodeError, ValueError,
                 kblib.YamlSubsetError) as exc:
@@ -498,8 +644,7 @@ def _producer_evidence_errors(root, catalog, plan, plan_sha256,
             target = obligation.get("target")
             if (require_current and isinstance(target, str) and
                     target.lower().endswith(".md")):
-                current_artifact = _current_page_artifact_fingerprint(
-                    root, target)
+                current_artifact = facts.page_artifact(target)
             changed_scope_evidence_contract.validate_record_for_plan(
                 evidence, plan, plan_sha256, obligation, root=root,
                 artifact_fingerprint=current_artifact)
@@ -534,9 +679,9 @@ def _batch_page_binding_errors(result, catalog, root, plan, plan_sha256,
                                require_current=True):
     errors = []
     try:
-        registry = batch_review_obligation_contract.load_registry(root)
-        batch_review_obligation_contract.validate_producer_receipt(
-            record, registry)
+        facts = result.get("_audit_evidence_facts") or _EvidenceFacts({**result, "root": root})
+        registry = facts.batch_registry()
+        facts.batch_record(record, registry)
         spec = batch_review_obligation_contract.obligation_spec_for_rule(
             obligation.get("owner_rule_id"), registry)
         current_receipt_ids = None
@@ -550,19 +695,16 @@ def _batch_page_binding_errors(result, catalog, root, plan, plan_sha256,
                     result, (result.get("items_by_id") or {}).get(
                         plan["batch_id"], {}), plan, plan_sha256,
                     obligation, registry)
-        batch_review_obligation_contract.validate_receipt_consumption(
+        consumed = batch_review_obligation_contract.validate_receipt_consumption(
             plan, plan_sha256, record, catalog, registry,
-            current_receipt_ids=current_receipt_ids)
+            current_receipt_ids=current_receipt_ids,
+            validate_record=facts.batch_record)
         if require_current:
-            profile_view = result.get("_profile_authorized_view")
-            _metadata_contract, rules = metadata_property_state.\
-                authorized_profile_projection_rules(root, profile_view)
-            snapshot, semantic_fingerprint = \
-                metadata_property_state.semantic_page_snapshot(
-                    root, obligation["target"], rules=rules)
-            batch_review_obligation_contract.validate_page_fingerprint_binding(
+            snapshot, semantic_fingerprint = facts.metadata_page(
+                obligation["target"], result.get("_profile_authorized_view"))
+            batch_review_obligation_contract.validate_input_binding(
                 record, obligation["target"], snapshot.read_text(),
-                semantic_fingerprint)
+                semantic_fingerprint, consumed_records=consumed)
     except (OSError, TypeError, UnicodeError, ValueError,
             kblib.YamlSubsetError) as exc:
         return ["batch-page-review contract: %s" % exc]
@@ -606,10 +748,16 @@ def _direct_binding_errors(
                 current_artifact = _current_page_artifact_fingerprint(
                     root, target)
             profile_view = (result or {}).get("_profile_authorized_view") or {}
-            changed_scope_evidence_contract.validate_record_for_plan(
-                record, plan, plan_sha256, obligation, root=root,
-                artifact_fingerprint=current_artifact,
-                evaluation=profile_view.get("_evaluation") if is_profile_scan else None)
+            if require_current and not is_profile_scan:
+                changed_scope_evidence_runtime.validate_current_direct_record(
+                    record, root=root, plan=plan, plan_sha256=plan_sha256,
+                    obligation=obligation, result=result,
+                    artifact_fingerprint=current_artifact)
+            else:
+                changed_scope_evidence_contract.validate_record_for_plan(
+                    record, plan, plan_sha256, obligation, root=root,
+                    artifact_fingerprint=current_artifact,
+                    evaluation=profile_view.get("_evaluation") if is_profile_scan else None)
             if is_profile_scan:
                 if not profile_view:
                     raise ValueError(
@@ -692,7 +840,7 @@ def _profile_judgment_binding_errors(result, item, plan, plan_sha256,
         require_current=require_current)
 
 
-def _artifact_state(root, obligation, record, *, evaluation=None):
+def _artifact_state(root, obligation, record, *, evaluation=None, facts=None):
     """Classify one attempt against the current observable after-image.
 
     ``unknown`` means that currentness is owned by the evidence-kind-specific
@@ -713,20 +861,22 @@ def _artifact_state(root, obligation, record, *, evaluation=None):
     target = obligation.get("target")
     try:
         if isinstance(target, str) and target.lower().endswith(".md"):
-            expected = _current_page_artifact_fingerprint(root, target)
+            expected = (facts.page_artifact(target) if facts else
+                        _current_page_artifact_fingerprint(root, target))
             return ("current" if record.get("artifact_fingerprint") ==
                     expected else "stale")
         chain = None
         if obligation.get("evidence_kind") == "audit-receipt":
             try:
-                chain = audit_producer_chain.precursor_chain_for_obligation(
-                    obligation, root=root, evaluation=evaluation)
+                chain = (facts.chain(obligation) if facts else
+                    audit_producer_chain.precursor_chain_for_obligation(
+                        obligation, root=root, evaluation=evaluation))
             except audit_producer_chain.AuditProducerChainError:
                 return "invalid"
         if isinstance(chain, dict) and \
                 chain.get("execution_route") == "rendering-verification":
-            expected = _current_page_set_artifact_fingerprint(
-                root, record.get("scope"))
+            expected = (facts.page_set_artifact(record.get("scope")) if facts else
+                _current_page_set_artifact_fingerprint(root, record.get("scope")))
             return ("current" if record.get("artifact_fingerprint") ==
                     expected else "stale")
     except (OSError, TypeError, UnicodeError, ValueError,
@@ -746,9 +896,9 @@ def _audit_receipt_attempt_errors(
     """
     errors = []
     try:
-        contract = audit_receipt_contract.load_contract(result["root"])
-        audit_receipt_contract.validate_audit_receipt(
-            record, contract=contract)
+        facts = result.get("_audit_evidence_facts") or _EvidenceFacts(result)
+        facts.validate(audit_receipt_contract,
+                       audit_receipt_contract.validate_audit_receipt, record)
     except (OSError, TypeError, UnicodeError, ValueError,
             kblib.YamlSubsetError) as exc:
         return ["AuditReceipt contract: %s" % exc]
@@ -873,10 +1023,12 @@ def _invalid_history_reason(label, attempts):
     return "%s: %s" % (label, "; ".join(details)) if details else label
 
 
-def _negative_status(root, catalog, obligation, record, *, evaluation=None):
+def _negative_status(root, catalog, obligation, record, *, evaluation=None,
+                     facts=None):
     try:
-        chain = audit_producer_chain.precursor_chain_for_obligation(
-            obligation, root=root, evaluation=evaluation)
+        chain = (facts.chain(obligation) if facts else
+                 audit_producer_chain.precursor_chain_for_obligation(
+                     obligation, root=root, evaluation=evaluation))
     except audit_producer_chain.AuditProducerChainError:
         chain = None
     if isinstance(chain, dict) and \
@@ -929,7 +1081,8 @@ def _substantive_precursor_resolution(
     for record in records:
         artifact_state = (_artifact_state(
             root, obligation, record,
-            evaluation=(result.get("_profile_authorized_view") or {}).get("_evaluation"))
+            evaluation=(result.get("_profile_authorized_view") or {}).get("_evaluation"),
+            facts=result.get("_audit_evidence_facts"))
                           if require_current else
                           ("invalidated"
                            if record.get("invalidated_by") is not None
@@ -968,6 +1121,31 @@ def _substantive_precursor_resolution(
                 "evidence", attempts))
 
     current = [record for record, state in valid if state == "current"]
+    if require_current:
+        # A corrected artifact does not retire the finding set or reset the
+        # bounded review. Resolve that history before preferring a current
+        # record. This is shared by direct producers and all consumers.
+        confirmations = [record for record, _state in valid
+                         if record.get("round") == 2]
+        finding_sets = [record for record, _state in valid
+                        if record.get("round") == 1 and
+                        record.get("verdict") == "changes-required"]
+        if len(confirmations) > 1 or len(finding_sets) > 1:
+            return "ambiguous", None, attempts, (
+                "multiple confirmation attempts or round-1 finding sets "
+                "claim the same bounded review")
+        anchor = (confirmations[0].get("round_1_receipt_id")
+                  if confirmations else finding_sets[0]["receipt_id"]
+                  if finding_sets else None)
+        if anchor is not None and (
+                any(row.get("round") == 1 and
+                    row.get("receipt_id") != anchor for row in current) or
+                any(row.get("receipt_id") != anchor for row in finding_sets)):
+            return "invalid", None, attempts, (
+                "a new round 1 cannot replace the bounded review finding set")
+        if confirmations and confirmations[0] not in current:
+            return "escalated", confirmations[0], attempts, (
+                "the bounded confirmation after-image changed after round 2")
     if len(current) > 1:
         # One round-2 record and its cited round-1 record are a single legal
         # pair, not two competing terminal attempts.
@@ -1019,9 +1197,7 @@ def _audit_precursor_resolution(
         result, plan, plan_sha256, catalog, obligation, records, *,
         require_current=True, selected_ref=None):
     try:
-        chain = audit_producer_chain.precursor_chain_for_obligation(
-            obligation, root=result["root"],
-            evaluation=(result.get("_profile_authorized_view") or {}).get("_evaluation"))
+        chain = (result.get("_audit_evidence_facts") or _EvidenceFacts(result)).chain(obligation)
     except audit_producer_chain.AuditProducerChainError as exc:
         return "invalid", None, [], str(exc)
     if chain["execution_route"] == "substantive-review":
@@ -1035,7 +1211,8 @@ def _audit_precursor_resolution(
     for record in records:
         artifact_state = (_artifact_state(
             root, obligation, record,
-            evaluation=(result.get("_profile_authorized_view") or {}).get("_evaluation"))
+            evaluation=(result.get("_profile_authorized_view") or {}).get("_evaluation"),
+            facts=result.get("_audit_evidence_facts"))
                           if require_current else
                           ("invalidated"
                            if record.get("invalidated_by") is not None
@@ -1064,7 +1241,9 @@ def _audit_precursor_resolution(
             if (artifact_state == "stale" or current_errors or
                     (not require_current and
                      record.get("receipt_id") != selected_ref)):
-                attempts.append(_attempt_summary(record, "stale"))
+                attempts.append(_attempt_summary(
+                    record, "stale", "; ".join(current_errors) or
+                    ("artifact_fingerprint changed" if artifact_state == "stale" else None)))
             else:
                 attempts.append(_attempt_summary(record, "current"))
                 current.append(record)
@@ -1077,7 +1256,9 @@ def _audit_precursor_resolution(
         return "ambiguous", None, attempts, (
             "multiple current producer attempts")
     if not current:
-        return "missing", None, attempts, "no current producer evidence"
+        reasons = sorted({row["reason"] for row in attempts if row.get("reason")})
+        return "missing", None, attempts, (
+            "no current producer evidence" + (": " + "; ".join(reasons) if reasons else ""))
     record = current[0]
     if record.get("result") == "pass":
         return "ready-for-completion", record, attempts, None
@@ -1087,10 +1268,12 @@ def _audit_precursor_resolution(
     return "invalid", None, attempts, "producer result is not pass/fail"
 
 
-def _audit_precursor_records(records, obligation, root, *, evaluation=None):
+def _audit_precursor_records(records, obligation, root, *, evaluation=None,
+                             facts=None):
     """Return only the producer attempts owned by one AuditReceipt row."""
-    chain = audit_producer_chain.precursor_chain_for_obligation(
-        obligation, root=root, evaluation=evaluation)
+    chain = (facts.chain(obligation) if facts else
+             audit_producer_chain.precursor_chain_for_obligation(
+                 obligation, root=root, evaluation=evaluation))
     return [
         row for row in records
         if row.get("record_kind") != "audit-receipt" and
@@ -1114,7 +1297,8 @@ def _terminal_with_precursor_resolution(
     try:
         precursors = _audit_precursor_records(
             records, obligation, result["root"],
-            evaluation=(result.get("_profile_authorized_view") or {}).get("_evaluation"))
+            evaluation=(result.get("_profile_authorized_view") or {}).get("_evaluation"),
+            facts=result.get("_audit_evidence_facts"))
     except audit_producer_chain.AuditProducerChainError as exc:
         resolution = dict(terminal_resolution)
         resolution.update({
@@ -1172,14 +1356,8 @@ def _required_obligation_resolution_unchecked(
             "attempts": [],
         }
 
-    records = []
-    for key, entry in catalog.items():
-        record = catalog_record(entry)
-        if (isinstance(record, dict) and record.get("receipt_id") == key and
-                record.get("plan_id") == plan["plan_id"] and
-                record.get("obligation_id") == obligation["obligation_id"]):
-            records.append(record)
-    records.sort(key=lambda row: row.get("receipt_id") or "")
+    records = result["_audit_evidence_facts"].records(
+        catalog, plan["plan_id"], obligation["obligation_id"])
     final_records = [row for row in records if row.get("record_kind") ==
                      obligation["evidence_kind"]]
     attempts = []
@@ -1189,7 +1367,8 @@ def _required_obligation_resolution_unchecked(
     for record in final_records:
         artifact_state = (_artifact_state(
             result["root"], obligation, record,
-            evaluation=(result.get("_profile_authorized_view") or {}).get("_evaluation")) if require_current else
+            evaluation=(result.get("_profile_authorized_view") or {}).get("_evaluation"),
+            facts=result.get("_audit_evidence_facts")) if require_current else
             ("invalidated" if record.get("invalidated_by") is not None
              else "unknown"))
         if artifact_state == "invalid":
@@ -1256,7 +1435,8 @@ def _required_obligation_resolution_unchecked(
         resolution = {
             "status": _negative_status(
                 result["root"], catalog, obligation, rejected[0],
-                evaluation=(result.get("_profile_authorized_view") or {}).get("_evaluation")),
+                evaluation=(result.get("_profile_authorized_view") or {}).get("_evaluation"),
+                facts=result.get("_audit_evidence_facts")),
             "record": rejected[0], "reused": False,
             "reason": "current terminal evidence did not satisfy the "
                       "acceptance predicate", "attempts": attempts,
@@ -1274,7 +1454,8 @@ def _required_obligation_resolution_unchecked(
         try:
             precursors = _audit_precursor_records(
                 records, obligation, result["root"],
-                evaluation=(result.get("_profile_authorized_view") or {}).get("_evaluation"))
+                evaluation=(result.get("_profile_authorized_view") or {}).get("_evaluation"),
+                facts=result.get("_audit_evidence_facts"))
         except audit_producer_chain.AuditProducerChainError as exc:
             return {
                 "status": "invalid", "record": None, "reused": False,
@@ -1299,6 +1480,7 @@ def _required_obligation_resolution(
         result, item, plan, plan_sha256, catalog, obligation, *,
         require_current):
     """Resolve one obligation and enforce the closed status machine."""
+    result = evidence_evaluation(result)
     resolution = _required_obligation_resolution_unchecked(
         result, item, plan, plan_sha256, catalog, obligation,
         require_current=require_current)
@@ -1306,6 +1488,84 @@ def _required_obligation_resolution(
         return audit_lifecycle_contract.validate_resolution(resolution)
     except audit_lifecycle_contract.AuditLifecycleContractError as exc:
         raise AuditEvidenceError(str(exc)) from exc
+
+
+def obligation_evidence_resolution(result, item, plan, plan_sha256,
+                                   obligation, *, proposed_record=None):
+    """Resolve a live obligation for either production or consumption.
+
+    A proposed record is evaluated against the complete catalog without
+    publishing it. It cannot hide competing attempts or replace an existing
+    identity. Callers must separately re-admit runtime and inputs before a
+    durable write; this read-only result is not a write authorization.
+    """
+    result = evidence_evaluation(result)
+    catalog = current_receipt_catalog(result)
+    if proposed_record is not None:
+        identity = proposed_record.get("receipt_id")
+        if not isinstance(identity, str) or not identity:
+            raise AuditEvidenceError("proposed evidence has no receipt identity")
+        if identity in catalog:
+            raise AuditEvidenceError("proposed evidence identity already exists")
+        if (proposed_record.get("plan_id") != plan["plan_id"] or
+                proposed_record.get("obligation_id") != obligation["obligation_id"]):
+            raise AuditEvidenceError("proposed evidence differs from the obligation")
+        catalog = {**catalog, identity: proposed_record}
+    return _required_obligation_resolution(
+        result, item, plan, plan_sha256, catalog, obligation,
+        require_current=True)
+
+
+def require_substantive_review_attempt(result, item, plan, plan_sha256,
+                                      obligation, *, round_number,
+                                      round_1_receipt_id=None):
+    """Return the exact predecessor for the one legal next review action."""
+    result = evidence_evaluation(result)
+    chain = result["_audit_evidence_facts"].chain(obligation)
+    if chain["execution_route"] != "substantive-review":
+        raise AuditEvidenceError("obligation is not a substantive review")
+    resolution = obligation_evidence_resolution(
+        result, item, plan, plan_sha256, obligation)
+    if (resolution["status"] == "missing" and round_number == 1 and
+            round_1_receipt_id is None):
+        return None
+    prior = resolution.get("record")
+    if (resolution["status"] == "needs-confirmation" and round_number == 2 and
+            isinstance(prior, dict) and
+            round_1_receipt_id == prior.get("receipt_id")):
+        return prior
+    raise AuditEvidenceError(
+        "substantive-review attempt is not admitted (%s): %s" % (
+            resolution["status"], resolution.get("reason") or
+            "current evidence exists or the requested round/predecessor differs"))
+
+
+def require_completion_evidence(result, item, plan, plan_sha256, obligation,
+                                evidence_id):
+    """Return (unique passing precursor, existing full receipt or None).
+
+    Completion and the final consumer share the same whole-obligation
+    acceptance, including predecessor relations and competing precursors.
+    Selecting an ID never filters the set used to decide currentness.
+    """
+    if (obligation.get("status") != "required" or
+            obligation.get("evidence_kind") != "audit-receipt" or
+            obligation.get("evidence_role") != "emits" or
+            obligation.get("dimension") is None):
+        raise AuditEvidenceError(
+            "only a required dimension-specific AuditReceipt may be completed")
+    resolution = obligation_evidence_resolution(
+        result, item, plan, plan_sha256, obligation)
+    if resolution["status"] not in {"ready-for-completion", "satisfied"}:
+        raise AuditEvidenceError("AuditReceipt completion is %s: %s" % (
+            resolution["status"], resolution.get("reason") or "not provable"))
+    existing = resolution["record"] if resolution["status"] == "satisfied" else None
+    evidence = (_current_record(current_receipt_catalog(result),
+                                existing.get("evidence_ref"), "producer evidence")
+                if existing is not None else resolution["record"])
+    if evidence.get("receipt_id") != evidence_id:
+        raise AuditEvidenceError("selected precursor differs from the unique current evidence")
+    return evidence, existing
 
 
 def _historical_attempt_summaries(result, plan, obligation, attempts):
@@ -1323,12 +1583,11 @@ def _historical_attempt_summaries(result, plan, obligation, attempts):
     current = current_receipt_catalog(result)
     invalidated_ids = set(
         result.get("invalidated_evidence_receipt_ids") or ())
-    for key, entry in historical_receipt_catalog(result).items():
-        record = catalog_record(entry)
-        if (not isinstance(record, dict) or record.get("receipt_id") != key or
-                record.get("plan_id") != plan["plan_id"] or
-                record.get("obligation_id") != obligation["obligation_id"] or
-                key in rows):
+    facts = result.get("_audit_evidence_facts") or _EvidenceFacts(result)
+    historical = facts.memo(("historical-catalog",), lambda: historical_receipt_catalog(result))
+    for record in facts.records(historical, plan["plan_id"], obligation["obligation_id"]):
+        key = record["receipt_id"]
+        if key in rows:
             continue
         if key in invalidated_ids or record.get("invalidated_by") is not None:
             rows[key] = _attempt_summary(
@@ -1985,21 +2244,11 @@ def terminal_dimension_evidence(result):
     return tuple(rows)
 
 
-def _stage_reconciliation(result, item, plan, plan_sha256, catalog,
-                          obligations, *, require_current):
-    rows = []
-    for obligation in obligations:
-        resolution = _required_obligation_resolution(
-            result, item, plan, plan_sha256, catalog, obligation,
-            require_current=require_current)
-        rows.append(_reconciliation_row(
-            result, plan, obligation, resolution))
-    return _reconciliation_projection(rows)
-
-
 def _required_obligation_records(result, item, plan, plan_sha256, catalog,
-                                 obligations, *, require_current):
+                                 obligations, *, require_current,
+                                 reconciliation_rows=None):
     """Select only current terminal evidence; preserve attempts as history."""
+    result = evidence_evaluation(result)
     selected = []
     for obligation in obligations:
         resolution = _required_obligation_resolution(
@@ -2021,16 +2270,21 @@ def _required_obligation_records(result, item, plan, plan_sha256, catalog,
                  resolution.get("reason") or "not discharged"))
         selected.append((
             obligation, resolution["record"], resolution["reused"]))
+        if reconciliation_rows is not None:
+            reconciliation_rows.append(_reconciliation_row(
+                result, plan, obligation, resolution))
     return selected
 
 
 def _required_stage_records(result, item, plan, plan_sha256, catalog,
-                            due_stage, *, require_current):
+                            due_stage, *, require_current,
+                            reconciliation_rows=None):
     obligations = [row for row in plan["obligations"]
                    if row["due_stage"] == due_stage]
     return _required_obligation_records(
         result, item, plan, plan_sha256, catalog, obligations,
-        require_current=require_current)
+        require_current=require_current,
+        reconciliation_rows=reconciliation_rows)
 
 
 def _stage_requires_live_currentness(due_stage, required_state):
@@ -2056,6 +2310,7 @@ def stage_evidence_status(result, item, due_stage, required_state=None):
     without making it parse diagnostic prose or maintain a second evidence
     predicate.
     """
+    result = evidence_evaluation(result)
     catalog = current_receipt_catalog(result)
     relative, plan, plan_sha256 = _resolve_current_plan(
         result, item, catalog, required_state=required_state)
@@ -2102,8 +2357,8 @@ def stage_evidence_status(result, item, due_stage, required_state=None):
 def current_consumption_evidence_ids(result, item, plan, plan_sha256,
                                      consuming_obligation, registry=None):
     """Resolve only the current evidence selected by one M consumption edge."""
-    registry = registry or batch_review_obligation_contract.load_registry(
-        result["root"])
+    result = evidence_evaluation(result)
+    registry = registry or result["_audit_evidence_facts"].batch_registry()
     dependency_ids = frozenset(
         batch_review_obligation_contract.consumption_dependency_obligation_ids(
             plan.get("obligations") or (), consuming_obligation, registry))
@@ -2138,19 +2393,18 @@ def current_consumption_evidence_ids(result, item, plan, plan_sha256,
 
 def stage_evidence_closure(result, item, due_stage, required_state=None):
     """Resolve every obligation due at one stage across all evidence kinds."""
+    result = evidence_evaluation(result)
     catalog = current_receipt_catalog(result)
     relative, plan, plan_sha256 = _resolve_current_plan(
         result, item, catalog, required_state=required_state)
     _require_current_profile_rendering_contract_state(result, item, plan)
+    reconciliation_rows = []
     selected = _required_stage_records(
         result, item, plan, plan_sha256, catalog, due_stage,
         require_current=_stage_requires_live_currentness(
-            due_stage, required_state))
-    reconciliation = _stage_reconciliation(
-        result, item, plan, plan_sha256, catalog,
-        [row for row in plan["obligations"] if row["due_stage"] == due_stage],
-        require_current=_stage_requires_live_currentness(
-            due_stage, required_state))
+            due_stage, required_state),
+        reconciliation_rows=reconciliation_rows)
+    reconciliation = _reconciliation_projection(reconciliation_rows)
     if reconciliation["audit_evidence_unresolved_count"] != 0:
         raise AuditEvidenceError(
             "audit evidence reconciliation contains unresolved obligations")
@@ -2249,6 +2503,11 @@ def wrapper_binding_errors(result, item, wrapper, required_state="open"):
     except (OSError, TypeError, UnicodeError, ValueError,
             kblib.YamlSubsetError) as exc:
         return ["batch-review audit evidence is invalid: %s" % exc]
+    return _wrapper_projection_errors(wrapper, expected)
+
+
+def _wrapper_projection_errors(wrapper, expected):
+    """Compare an already resolved projection, without re-running its owner."""
     errors = []
     for field in (
             "audit_plan_id", "audit_plan_path", "audit_plan_sha256",
@@ -2266,6 +2525,7 @@ def closed_plan_closure_errors(result, item, close_receipt):
     errors = []
     if not isinstance(close_receipt, dict):
         return ["batch-close aggregate must be a mapping"]
+    result = evidence_evaluation(result)
     catalog = current_receipt_catalog(result)
     batch_receipts = item.get("batch_receipts") or []
     if (not isinstance(batch_receipts, list) or
@@ -2274,10 +2534,9 @@ def closed_plan_closure_errors(result, item, close_receipt):
     try:
         wrapper = _current_record(
             catalog, batch_receipts[0], "Batch Review wrapper")
-        errors.extend(wrapper_binding_errors(
-            result, item, wrapper, required_state="merge-ready"))
         premerge = batch_review_evidence(
             result, item, required_state="merge-ready")
+        errors.extend(_wrapper_projection_errors(wrapper, premerge))
         postdelta = _post_delta_evidence_closure(
             result, item, close_receipt, required_state="merge-ready")
         stage_plan = postdelta["stage_plan"]

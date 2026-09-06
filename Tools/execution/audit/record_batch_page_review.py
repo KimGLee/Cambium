@@ -10,6 +10,7 @@ import os
 import sys
 
 import Tools.execution.audit.audit_evidence_runtime as audit_evidence_runtime
+import Tools.execution.audit.audit_fingerprint as audit_fingerprint
 import Tools.execution.audit.audit_producer_runtime as audit_producer_runtime
 import Tools.execution.audit.batch_review_obligation_contract as batch_contract
 import Tools.execution.evidence.evidence_attempt_runtime as evidence_attempt_runtime
@@ -173,9 +174,6 @@ def current_review_attempt(result, item, plan, plan_sha256, obligation, spec,
     def validate_current(record):
         validate_stable(record)
         text = page_snapshot.snapshot.read_text()
-        batch_contract.validate_page_fingerprint_binding(
-            record, page_snapshot.path, text,
-            page_snapshot.semantic_content_fingerprint)
         consumed = _current_consumed_records(
             result, item, record.get("consumed_evidence_refs"),
             plan=plan, plan_sha256=plan_sha256, obligation=obligation,
@@ -183,14 +181,10 @@ def current_review_attempt(result, item, plan, plan_sha256, obligation, spec,
             page=page_snapshot.path,
             disposition=record.get("applicability_disposition"),
             registry=registry)
-        expected_dependency = batch_contract.dependency_fingerprint(
-            audit_producer_runtime.sources_sha256(text), consumed,
-            selection_fingerprint=(
-                record.get("selection_fingerprint")
-                if spec["tier"] == "S" else None))
-        if record.get("dependency_fingerprint") != expected_dependency:
-            raise ValueError(
-                "batch-page dependency fingerprint is not current")
+        batch_contract.validate_input_binding(
+            record, page_snapshot.path, text,
+            page_snapshot.semantic_content_fingerprint,
+            consumed_records=consumed)
         return record
 
     try:
@@ -271,7 +265,7 @@ def build_review_receipt(*, root, plan, plan_sha256, obligation, spec,
         raise audit_producer_runtime.AuditProducerError(str(exc)) from exc
 
     text = page_snapshot.snapshot.read_text()
-    sources_digest = audit_producer_runtime.sources_sha256(text)
+    sources_digest = audit_fingerprint.sources_sha256(text)
     selection_fingerprint = (
         selection.get("selection_fingerprint") if selection else None)
     artifact_fingerprint = audit_producer_runtime.page_artifact_fingerprint(
@@ -341,9 +335,10 @@ def build_review_receipt(*, root, plan, plan_sha256, obligation, spec,
         receipt.update(selection)
         receipt["selection_frozen_at"] = plan["generated_at"]
     batch_contract.validate_producer_receipt(receipt, registry)
-    batch_contract.validate_page_fingerprint_binding(
+    batch_contract.validate_input_binding(
         receipt, page_snapshot.path, text,
-        page_snapshot.semantic_content_fingerprint)
+        page_snapshot.semantic_content_fingerprint,
+        consumed_records=consumed_records)
     return receipt
 
 

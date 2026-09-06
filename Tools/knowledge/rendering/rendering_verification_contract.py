@@ -12,7 +12,9 @@ import Tools.execution.audit.audit_fingerprint as audit_fingerprint
 import Tools.execution.audit.audit_lifecycle_contract as audit_lifecycle_contract
 import Tools.execution.audit.audit_plan_contract as _support
 import Tools.platform.common.kblib as kblib
-from Tools.platform.common.primitives import require_trimmed_string
+from Tools.platform.common.primitives import (
+    document_projection, require_trimmed_string, validated_document,
+)
 
 
 RENDERING_VERIFICATION_CONTRACT_PATH = (
@@ -66,6 +68,10 @@ def _validate_modes(rows):
 
 def validate_contract(document):
     """Validate the closed Kernel machine contract and return projections."""
+    return document_projection(document, _validate_contract)
+
+
+def _validate_contract(document):
     if not isinstance(document, dict) or set(document) != _CONTRACT_FIELDS:
         raise ValueError("rendering-verification contract fields are not closed")
     if document.get("schema_version") != 3:
@@ -101,7 +107,7 @@ def validate_contract(document):
     }
 
 
-def load_contract(root=None, snapshots=None):
+def load_contract(root=None, snapshots=None, *, cache_projection=False):
     """Load the current Kernel-owned rendering record contract."""
     if root is None:
         root = repository_source_root(__file__)
@@ -112,8 +118,8 @@ def load_contract(root=None, snapshots=None):
         text = kblib.read_text(os.path.join(
             root, *RENDERING_VERIFICATION_CONTRACT_PATH.split("/")))
     document = kblib.parse_yaml_subset(text)
-    validate_contract(document)
-    return document
+    return validated_document(document, _validate_contract,
+                              cache_projection=cache_projection)
 
 
 def contract_sha256(contract=None):

@@ -18,7 +18,10 @@ import Tools.execution.audit.audit_plan_contract as audit_plan_contract
 import Tools.execution.audit.audit_receipt_contract as audit_receipt_contract
 import Tools.execution.evidence.evidence_attempt_runtime as evidence_attempt_runtime
 import Tools.platform.common.kblib as kblib
-from Tools.platform.common.primitives import catalog_record, require_trimmed_string
+from Tools.platform.common.primitives import (
+    catalog_record, document_projection, require_trimmed_string,
+    validated_document,
+)
 
 
 BATCH_REVIEW_OBLIGATION_REGISTRY_PATH = (
@@ -259,6 +262,10 @@ def _producer_contract(value):
 
 def validate_registry(document):
     """Validate the complete Kernel registry and return derived values."""
+    return document_projection(document, _validate_registry)
+
+
+def _validate_registry(document):
     _closed_mapping(document, _TOP_FIELDS, "batch-review registry")
     if document.get("schema_version") != 3:
         raise ValueError("batch-review registry schema_version must be 3")
@@ -640,7 +647,7 @@ def validate_registry(document):
     }
 
 
-def load_registry(root=None, snapshots=None):
+def load_registry(root=None, snapshots=None, *, cache_projection=False):
     """Load the current Kernel-owned K12/14 registry."""
     if root is None:
         root = repository_source_root(__file__)
@@ -651,8 +658,8 @@ def load_registry(root=None, snapshots=None):
         text = kblib.read_text(os.path.join(
             root, *BATCH_REVIEW_OBLIGATION_REGISTRY_PATH.split("/")))
     document = kblib.parse_yaml_subset(text)
-    validate_registry(document)
-    return document
+    return validated_document(document, _validate_registry,
+                              cache_projection=cache_projection)
 
 
 def _base_spec(values, *, tier, rule_id, applicability, acceptance,
@@ -914,11 +921,11 @@ def resolve_consumed_evidence(plan, plan_sha256, spec, target, catalog,
     The selector comes only from the Kernel registry.  The function accepts a
     stable catalog view plus an explicit live-current identity set and returns
     the exact sorted evidence rows; callers cannot substitute an unrelated or
-    stale passing receipt.  ``current_receipt_ids=None`` is retained only for
-    pure construction tests whose synthetic catalog contains no history.
-    Production producers and consumers must pass the IDs resolved by the
-    runtime AuditPlan currentness owner.  An unresolved selector is an
-    explicit HOLD, not a permissive fallback.
+    stale passing receipt. ``current_receipt_ids=None`` validates the exact
+    recorded references for construction or stable-history replay; it does
+    not select current authority from history. Live producers and consumers
+    pass the IDs resolved by the runtime AuditPlan currentness owner. An
+    unresolved selector is an explicit HOLD, not a permissive fallback.
     """
     registry = registry or _SHIPPED_REGISTRY
     validate_registry(registry)
@@ -1041,10 +1048,11 @@ def resolve_consumed_evidence(plan, plan_sha256, spec, target, catalog,
 
 
 def validate_receipt_consumption(plan, plan_sha256, record, catalog,
-                                 registry=None, *, current_receipt_ids=None):
+                                 registry=None, *, current_receipt_ids=None,
+                                 validate_record=None):
     """Consumer-safe strict revalidation for one persisted M record."""
     registry = registry or _SHIPPED_REGISTRY
-    validate_producer_receipt(record, registry)
+    (validate_record or validate_producer_receipt)(record, registry)
     if record.get("review_variant") != "m-atomic-item":
         if record.get("consumed_evidence_refs"):
             raise ValueError("sampled S evidence cannot consume evidence")
@@ -1313,12 +1321,15 @@ def dependency_fingerprint(sources_sha256, consumed_records=(),
     }))
 
 
-def validate_page_fingerprint_binding(record, relative_path, text,
-                                      semantic_content_fingerprint):
-    """Validate distinct K12/07 artifact and semantic page bindings.
+def validate_input_binding(record, relative_path, text,
+                           semantic_content_fingerprint, *, consumed_records=()):
+    """Validate the complete M/S page, Sources and dependency binding.
 
     This helper is consumer-safe: a caller with the current target bytes can
-    re-run the same projection without importing the producer CLI.
+    re-run the same projection without importing the producer CLI. Consumed
+    rows have already been resolved by the Kernel selector in the caller's
+    explicit current or historical context; matching IDs alone are not proof
+    of their bytes. S selection is independently checked by the record owner.
     """
     expected_artifact = audit_fingerprint.page_artifact_fingerprint(
         relative_path, text)
@@ -1329,6 +1340,11 @@ def validate_page_fingerprint_binding(record, relative_path, text,
             semantic_content_fingerprint:
         raise ValueError(
             "batch-page semantic content fingerprint is not current")
+    expected_dependency = dependency_fingerprint(
+        audit_fingerprint.sources_sha256(text), consumed_records,
+        selection_fingerprint=record.get("selection_fingerprint"))
+    if record.get("dependency_fingerprint") != expected_dependency:
+        raise ValueError("batch-page dependency fingerprint is not current")
     return record
 
 
@@ -1532,7 +1548,7 @@ __all__ = [
     'resolve_consumed_evidence',
     'validate_applicability_disposition',
     'current_receipt_errors',
-    'validate_page_fingerprint_binding',
+    'validate_input_binding',
     'validate_producer_receipt',
     'validate_receipt_consumption',
 ]

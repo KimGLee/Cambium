@@ -214,6 +214,24 @@ def compile_contract(contract_text, *, verify_repeat=False):
 
 
 class PageContractUnitTests(unittest.TestCase):
+    def test_input_projection_binds_only_relevant_coverage_owner_values(self):
+        text = "---\nreviewed: 2026-08-28\n---\n# Page\n"
+        fields = {"reviewed": "2026-08-28"}
+        rules = [{"field": "reviewed", "source_adapter": "coverage-property-state-v1"}]
+        state = {"value": "2026-08-28", "evidence_receipt": "review-1",
+                 "content_fingerprint": "sha256:" + "a" * 64}
+
+        def material(owner):
+            return check_page_contract.page_input_material(
+                "/fixture", "Page.md", text, fields, {}, rules, owner)
+
+        before = material({"path": "Page.md", "property_state": {"reviewed": state}})
+        self.assertEqual(before, material({"path": "Page.md", "batch": "unread-field",
+            "property_state": {"reviewed": state, "unrelated": {"value": "different"}}}))
+        self.assertNotEqual(before, material({"path": "Page.md", "property_state": {
+            "reviewed": {**state, "evidence_receipt": "review-2"}}}))
+        self.assertNotEqual(before, material(None))
+
     def test_condition_predicate_handles_all_any_and_absence(self):
         cases = (
             ({"all": [{"field": "type", "in": ["concept"]}]},
@@ -285,13 +303,27 @@ class PageContractContractTests(unittest.TestCase):
             (root / "Domain/Other.md").write_text(
                 "---\ntype: concept\n---\n# Other\n", encoding="utf-8")
             rows = []
+            references = []
             report = lambda check, target, details: rows.append(
                 (check, target, details))
             spec = {"shape": "list-of-paths", "target": ["source-note"]}
             check_page_contract.check_shape(
                 str(root), "Domain/Page.md", "evidence_sources", spec,
-                ["Domain/Source"], report)
+                ["Domain/Source"], report, references=references)
             self.assertEqual([], rows)
+            material = check_page_contract.page_input_material(
+                str(root), "Domain/Page.md", "# Page\n",
+                {"evidence_sources": ["Domain/Source"]},
+                {"evidence_sources": spec}, (), None)
+            self.assertEqual(references, material["references"])
+            self.assertEqual("source-note", references[0]["target_type"])
+            (root / "Domain/Source.md").write_text(
+                "---\ntype: concept\n---\n# Source\n", encoding="utf-8")
+            changed = check_page_contract.page_input_material(
+                str(root), "Domain/Page.md", "# Page\n",
+                {"evidence_sources": ["Domain/Source"]},
+                {"evidence_sources": spec}, (), None)
+            self.assertNotEqual(material, changed)
             check_page_contract.check_shape(
                 str(root), "Domain/Page.md", "evidence_sources", spec,
                 ["Domain/Other", "Domain/Ghost"], report)

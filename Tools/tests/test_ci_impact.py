@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """Changed-path to required-verification impact contracts.
 
-This suite owns only the planner's path classification and affected Tool test
+This suite owns the planner's path classification, matrix presentation, and affected Tool test
 closure. Test discovery/catalog correctness, test execution, Git transport,
-repository-layout inspection, workflow output rendering, and shard balancing
+repository-layout inspection, and shard balancing
 have separate owners and are not replayed here. The CI execution adapter is
 tested only for delegation to that shared runner.
 """
@@ -193,6 +193,40 @@ class ToolDependencyImpactContractTests(CiImpactFixture):
         with mock.patch.object(ci_impact, "MAX_SELECTIVE_TESTS", 1):
             overwide = self.plan(("M", "Tools/alpha.py", ""))
         self.assertEqual("full", overwide["mode"])
+
+
+class CiMatrixPresentationContractTests(unittest.TestCase):
+
+    def test_member_labels_preserve_exact_selection_and_version_order(self):
+        weights = {
+            "test_audit_evidence.py": 300,
+            "test_batch_close.py": 300,
+            "test_profile.py": 100,
+            "test_queue.py": 50,
+        }
+        cases = (
+            (["test_queue.py"], "queue"),
+            (["test_batch_close.py", "test_audit_evidence.py"],
+             "audit evidence + batch close"),
+            (list(reversed(weights)),
+             "audit evidence + batch close (+2 more modules)"),
+        )
+        with mock.patch.object(
+                ci_impact, "_test_weight",
+                side_effect=lambda root, name: weights[name]):
+            for members, label in cases:
+                for shard in ("full-01", "affected-01"):
+                    with self.subTest(members=members, shard=shard):
+                        original = list(members)
+                        matrix = ci_impact._matrix(
+                            ROOT, ("3.10", "3.14"), [(shard, members)])
+                        self.assertEqual({"include": [
+                            {"python-version": version, "shard": shard,
+                             "test-label": label,
+                             "test-files": ",".join(original)}
+                            for version in ("3.10", "3.14")
+                        ]}, matrix)
+                        self.assertEqual(original, members)
 
 
 class SelectedTestRunnerDelegationContractTests(unittest.TestCase):

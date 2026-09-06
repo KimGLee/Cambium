@@ -6,7 +6,9 @@ import os
 import Tools.execution.audit.audit_lifecycle_contract as audit_lifecycle_contract
 import Tools.execution.audit.audit_plan_contract as _support
 import Tools.platform.common.kblib as kblib
-from Tools.platform.common.primitives import require_trimmed_string
+from Tools.platform.common.primitives import (
+    document_projection, require_trimmed_string, validated_document,
+)
 
 
 SUBSTANTIVE_REVIEW_CONTRACT_PATH = (
@@ -119,6 +121,10 @@ def _validate_obligation_projection(projection, acceptance_predicate):
 
 def validate_contract(document):
     """Validate one substantive-review contract and return projections."""
+    return document_projection(document, _validate_contract)
+
+
+def _validate_contract(document):
     if not isinstance(document, dict) or set(document) != _CONTRACT_FIELDS:
         raise ValueError("substantive-review contract fields are not closed")
     if document.get("schema_version") != 3:
@@ -184,7 +190,7 @@ def validate_contract(document):
     }
 
 
-def load_contract(root=None, snapshots=None):
+def load_contract(root=None, snapshots=None, *, cache_projection=False):
     """Load the current Kernel-owned substantive-review contract."""
     if root is None:
         root = repository_source_root(__file__)
@@ -195,8 +201,8 @@ def load_contract(root=None, snapshots=None):
         text = kblib.read_text(os.path.join(
             root, *SUBSTANTIVE_REVIEW_CONTRACT_PATH.split("/")))
     document = kblib.parse_yaml_subset(text)
-    validate_contract(document)
-    return document
+    return validated_document(document, _validate_contract,
+                              cache_projection=cache_projection)
 
 
 def validate_review_receipt(record, contract=None):
@@ -310,7 +316,7 @@ def validate_review_receipt(record, contract=None):
     return record
 
 
-def validate_review_pair(first, second, contract=None):
+def validate_review_pair(first, second, contract=None, *, validate_receipt=None):
     """Validate the exact round-1 to round-2 confirmation relationship.
 
     The immutable AuditPlan and review scope stay fixed across the pair, but
@@ -320,8 +326,11 @@ def validate_review_pair(first, second, contract=None):
     them equal would make the Kernel's ``after fixes, confirm`` lifecycle
     impossible to execute.
     """
-    validate_review_receipt(first, contract=contract)
-    validate_review_receipt(second, contract=contract)
+    # The read-only evidence evaluation may memoize this same owner validator
+    # by exact record/contract bytes; standalone callers still validate both.
+    validate_receipt = validate_receipt or validate_review_receipt
+    validate_receipt(first, contract=contract)
+    validate_receipt(second, contract=contract)
     if first["round"] != 1 or second["round"] != 2:
         raise ValueError("review pair must be ordered round 1 then round 2")
     if second["round_1_receipt_id"] != first["receipt_id"]:
