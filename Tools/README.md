@@ -94,28 +94,22 @@ python3 Tools/check_kernel_size.py .
 
 ## Host preparation
 
-The terminal-capable Agent discovers requirements from shipped Tool owners; users do not copy compiler versions or computer paths into a Profile. Begin with a usable Python 3.10 or later (CI covers 3.10 and 3.14):
+With Python 3.10 or later and a terminal-capable Agent, observe first, then apply within Host installation authorization:
 
 ```sh
 python3 Tools/prepare_host.py . --json
 python3 Tools/prepare_host.py . --apply --json
 ```
 
-The first call only observes and reports scope. With Host installation authorization, the second reuses valid resources or prepares private Python packages and the pinned CUE executable, verifies them, publishes a lock-specific Host binding, and reads it back. It never installs system Python, edits the global PATH, approves a Profile, creates a task, or writes a Receipt. A broken explicit override requires a scoped configuration decision; it is not silently replaced. Interrupted candidates remain unselected in the reported Host directory.
+Tool owners supply versions and paths. Preparation verifies private Python/CUE resources and publishes Host bindings; it does not modify system Python, global PATH, Profile or runtime state. Add `--rendering` for selection or `--construct` for [rendering capabilities](knowledge/rendering/README.md).
 
-The result includes the prepared interpreter and the next `inspect_host` invocation. Run that observation through the intended CLI or MCP consumer: `prepared` does not mean an existing process has reloaded. A pure MCP client can inspect and request Host assistance, but cannot download software or install Host configuration.
+For registration add `--host codex --workspace-root /absolute/corpus`. Unrelated settings are preserved; `--replace-host-overrides` replaces Python/CUE and removes explicit rendering paths. See `--help` for configuration-only mode and carried-runtime roots. Invalid overrides never silently fall back.
 
-For an existing supported Host, add `--host codex` (or another registered product) and `--workspace-root /absolute/corpus` to preview and authorized apply. The unique generator creates staging products; a bounded installer merges only Cambium's registration, preserving other servers, unknown settings, and TOML comments. Existing overrides stay by default. `--replace-host-overrides` explicitly replaces configured Python/CUE values and removes Cambium rendering-path overrides so the Host uses current default discovery; unrelated environment settings stay untouched. `--configure-only --host … --apply` installs configuration from an already prepared toolchain without installing dependencies. A dsh profile patch still requires its native Host mechanism. Installed configuration and actual process consumption are separate facts; the tool does not claim to restart external applications.
-
-Use the existing `--projection-target carried-runtime` when configuring a carried distribution: its distribution and workspace must be the same root, and its Host product consumes the carried interface projection. The default source-distribution mode also supports a separately located corpus. Configuration generation rechecks both the interface and supplied toolchain bindings before publication. Results separately report retained overrides, publication, read-back, and required consumer observation; a later failure does not erase earlier completed steps.
-
-Rendering is prepared only when requested by the operation: `--rendering` prepares the selector; repeat `--construct` with registered construct IDs to verify the corresponding compilation/layout capability. The [rendering guide](knowledge/rendering/README.md) explains the scope. Default lock-specific cache discovery avoids copying rendering paths into every Host config; explicit `render_host_configs --runtime-bindings` remains available. `--toolchain-bindings` projects verified Python/CUE values rather than asking the Agent to edit generated files.
-
-If an environment observation becomes unavailable during a task, prepare the missing capability and query the original Runner again. Do not rebuild the task or AuditPlan. Installation cannot reauthorize historical evidence. If an earlier action completed before the next observation failed, preserve its result and read the current state before deciding what should run next.
+Follow the returned `inspect_host` request through the actual consumer. Prepared resources, installed configuration and process readiness are separate results; native patches/reloads remain Host handoffs. Pure MCP can observe but cannot install externally. Then query the original Runner: preserve completed actions and history, do not rebuild Task/AuditPlan, and let existing evidence owners recheck currentness.
 
 ## Profile toolchain
 
-[`requirements-profile.txt`](requirements-profile.txt) pins the TOML codecs; [`cue-toolchain.json`](governance/profile/cue-toolchain.json) pins CUE and its archive checksums. [`requirements-host.txt`](requirements-host.txt) separately pins the Host configuration editor; it is not a Profile codec. Host preparation calls the same Runtime-carried [CUE installer](platform/distribution/install_profile_toolchain.py) as CI. Explicit `CAMBIUM_CUE` has precedence; otherwise consumers discover the published Host binding. Missing or mismatched evaluators produce an environment handoff, not a successful Profile verdict or a permissive fallback.
+Dependency owners are [`requirements-profile.txt`](requirements-profile.txt), [`cue-toolchain.json`](governance/profile/cue-toolchain.json) and the separate Host editor [`requirements-host.txt`](requirements-host.txt). Host and CI share the [CUE installer](platform/distribution/install_profile_toolchain.py). Explicit `CAMBIUM_CUE` precedes managed discovery; an unusable evaluator returns a Host handoff, not a Profile verdict.
 
 Kernel owns slot semantics; Tool owns the document wrapper and evaluator. Existing shared YAML domain contracts remain their sole owners. Verify or regenerate their CUE projections and the [`profile-document.cue`](governance/profile/profile-document.cue) wrapper with:
 
@@ -128,9 +122,9 @@ python -m Tools.governance.profile.profile_schema_projection --root . --write
 
 ## Profile candidate workflow
 
-A Profile begins as a candidate proposed through user/Agent discussion. The agent uses the source-distribution authoring tools to create `profiles/<profile-id>/profile.toml` and record answers; the user does not have to copy template files or write TOML. The single template starts with empty slots. Tools preserve unanswered draft decisions rather than treating them as confirmed defaults.
+A Profile starts through user/Agent discussion. Source-distribution tools create `profiles/<profile-id>/profile.toml` from the single empty template; unanswered slots remain drafts, not confirmed defaults.
 
-Preview creation, apply it after reviewing the plan, and read back the candidate:
+Preview, authorize and read back:
 
 ```text
 python3 Tools/scaffold_profile.py . --profile-id my-profile
@@ -148,7 +142,7 @@ python3 Tools/profile_onboarding_status.py . --profile-id my-profile --json
 python3 Tools/check_profile.py profiles/my-profile --root .
 ```
 
-Read-only status and rendered views do not select a Profile. A successful CUE/owner check proves mechanical validity, not that answers were confirmed or adoption authorized. For initial or pre-runtime adoption, inspect the transaction interface before supplying a confirmed plan:
+Status, rendered views and CUE checks do not authorize adoption. For an initial confirmed plan, inspect the transaction interface:
 
 ```text
 python3 Tools/apply_profile_adoption.py --help
