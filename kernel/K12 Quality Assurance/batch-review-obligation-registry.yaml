@@ -45,9 +45,10 @@ audit_plan_projection:
 # These rows machine-resolve the existing K12/08 `consumes` arrows.  The two
 # M05 atoms consume the exact same-page pre-merge wiki-link Gate obligation;
 # M07 consumes the complete same-page changed-scope deterministic closure.
-# The conditional Profile-rendering atom remains HOLD until its typed Profile
-# contract registers an exact producer.  That HOLD is not completion evidence
-# and does not block a page on which the rendering condition is not applicable.
+# The conditional Profile-rendering atom consumes every same-page, current
+# Profile-rendering obligation frozen by the typed Profile contract. A page
+# with no matching obligation can still record an explicit not-applicable
+# disposition; an applicable page cannot pass without the exact evidence.
 m_consumption_contracts:
   - item_id: m05-no-required-link-missing
     resolution: resolved
@@ -92,9 +93,25 @@ m_consumption_contracts:
       match_cardinality: exactly-one
     hold_reason: null
   - item_id: m06-triggered-rendering-obligations-applied
-    resolution: hold
-    selector: null
-    hold_reason: The existing Profile extension point does not register a unique rendering-obligation evidence selector for this M item.
+    resolution: resolved
+    selector:
+      selector_id: m06-profile-rendering-evidence-v1
+      source: audit-plan-obligation-evidence
+      owner_kind: profile-extension
+      owner_rule_ids: null
+      kernel_extension_point: k12-02-profile-rendering
+      partition: changed-scope-deterministic
+      due_stage: pre-merge
+      target_binding: same-page
+      evidence_role: emits
+      obligation_status: required
+      consumer_gate_id: batch-review
+      evidence_currency: current
+      evidence_result_values:
+        - pass
+        - passed
+      match_cardinality: one-or-more-all-matching-required
+    hold_reason: null
   - item_id: m07-applicable-deterministic-checks-pass
     resolution: resolved
     selector:

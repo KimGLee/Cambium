@@ -197,6 +197,37 @@ class BatchPageReviewProducerTests(unittest.TestCase):
         audit_plan_contract.validate_plan(changed)
         return changed, obligations
 
+    def with_profile_rendering(self, plan, page):
+        changed = copy.deepcopy(plan)
+        obligation = {
+            "obligation_id": "profile-rendering-0001",
+            "owner_kind": "profile-extension",
+            "owner_rule_id": "test-table-rendering",
+            "kernel_extension_point": "k12-02-profile-rendering",
+            "partition": "changed-scope-deterministic",
+            "due_stage": "pre-merge",
+            "target": page,
+            "applicability": "outer-pipe-markdown-table",
+            "evidence_role": "emits",
+            "evidence_kind": "audit-receipt",
+            "dimension": "rendering",
+            "acceptance_predicate": "test-table-rendering",
+            "producer_check": "profile_rendering",
+            "producer_capability": "profile-rendering-evidence-v1",
+            "producer_gate_id": None,
+            "consumer_gate_id": "batch-review",
+            "fingerprint_binding": "evidence-time",
+            "review_due": None,
+            "status": "required",
+            "evidence_ref": None,
+            "reused_receipt_id": None,
+            "reuse_reason": None,
+        }
+        changed["obligations"].append(obligation)
+        changed["obligations"].sort(key=lambda row: row["obligation_id"])
+        audit_plan_contract.validate_plan(changed)
+        return changed, obligation
+
     @staticmethod
     def passing_evidence(plan, obligation, index):
         common = {
@@ -312,6 +343,15 @@ class BatchPageReviewProducerTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "ceiling"):
             contract.validate_registry(changed)
 
+        changed = copy.deepcopy(self.registry)
+        rendering = next(
+            row for row in changed["m_consumption_contracts"]
+            if row["item_id"] ==
+            "m06-triggered-rendering-obligations-applied")
+        rendering["selector"]["kernel_extension_point"] = "made-up-extension"
+        with self.assertRaisesRegex(ValueError, "admitted exact"):
+            contract.validate_registry(changed)
+
     def test_m_evidence_roles_preserve_the_existing_checklist_boundary(self):
         values = contract.validate_registry(self.registry)
         items = {row["item_id"]: row for row in values["m_items"]}
@@ -344,7 +384,16 @@ class BatchPageReviewProducerTests(unittest.TestCase):
 
         rendering = values["m_consumption_by_item_id"][
             "m06-triggered-rendering-obligations-applied"]
-        self.assertEqual("hold", rendering["resolution"])
+        self.assertEqual("resolved", rendering["resolution"])
+        self.assertEqual(
+            "profile-extension", rendering["selector"]["owner_kind"])
+        self.assertEqual(
+            "k12-02-profile-rendering",
+            rendering["selector"]["kernel_extension_point"])
+        self.assertIsNone(rendering["selector"]["owner_rule_ids"])
+        self.assertEqual(
+            "one-or-more-all-matching-required",
+            rendering["selector"]["match_cardinality"])
 
     def test_ceiling_count_is_independently_derived_from_parameters(self):
         values = self.registry["s_tier_sampling"]["sample_count"]
@@ -897,7 +946,7 @@ class BatchPageReviewProducerTests(unittest.TestCase):
             self.assertTrue(any("artifact fingerprint" in row
                                 for row in errors), errors)
 
-    def test_consumption_contract_inventory_is_closed_and_gap_is_conditional(self):
+    def test_consumption_contract_inventory_and_profile_rendering_edge(self):
         values = contract.validate_registry(self.registry)
         consumes = {
             row["item_id"] for row in self.registry["m_tier_atomic_items"]
@@ -906,44 +955,22 @@ class BatchPageReviewProducerTests(unittest.TestCase):
         self.assertEqual(
             consumes, set(values["m_consumption_by_item_id"]))
         for item_id, row in values["m_consumption_by_item_id"].items():
-            if row["resolution"] == "hold":
-                self.assertIsNone(row["selector"], item_id)
-                self.assertTrue(row["hold_reason"], item_id)
-            else:
-                self.assertIsNone(row["hold_reason"], item_id)
-                self.assertIsInstance(row["selector"], dict, item_id)
+            self.assertEqual("resolved", row["resolution"], item_id)
+            self.assertIsNone(row["hold_reason"], item_id)
+            self.assertIsInstance(row["selector"], dict, item_id)
 
         plan, manifest, tiers, _selection = self.full_plan()
         closure = contract.validate_plan_base_closure(
             plan, manifest, tiers, self.registry)
-        held_rows = [
+        rendering = next(
             row for row in self.registry["m_tier_atomic_items"]
-            if (row["item_id"] in values["m_consumption_by_item_id"] and
-                values["m_consumption_by_item_id"][row["item_id"]]
-                ["resolution"] == "hold")]
-        self.assertEqual(
-            ["m06-triggered-rendering-obligations-applied"],
-            [row["item_id"] for row in held_rows])
-        self.assertTrue(all(
-            row["applicability"] != "always" for row in held_rows))
-        held = held_rows[0]
+            if row["item_id"] ==
+            "m06-triggered-rendering-obligations-applied")
         spec = contract.obligation_spec_for_rule(
-            held["rule_id"], self.registry)
+            rendering["rule_id"], self.registry)
         obligation = closure["obligations_by_target_rule"][
-            ("M.md", held["rule_id"])]
-        with self.assertRaisesRegex(ValueError, "selector is HOLD"):
-            producer.build_review_receipt(
-                root=str(REPOSITORY), plan=plan,
-                plan_sha256=audit_plan_contract.plan_sha256(plan),
-                obligation=obligation, spec=spec,
-                page_snapshot=self.frozen("M.md"),
-                reviewer_context_id="review-context",
-                reviewer_role="batch-reviewer", verdict="passed",
-                statement="must not accept an arbitrary pass",
-                applicability_disposition="applicable",
-                registry=self.registry, identity={})
-
-        receipt = producer.build_review_receipt(
+            ("M.md", rendering["rule_id"])]
+        not_applicable = producer.build_review_receipt(
             root=str(REPOSITORY), plan=plan,
             plan_sha256=audit_plan_contract.plan_sha256(plan),
             obligation=obligation, spec=spec,
@@ -954,7 +981,31 @@ class BatchPageReviewProducerTests(unittest.TestCase):
             applicability_disposition="not-applicable",
             applicability_reason="The page triggers no Profile rendering rule.",
             registry=self.registry, identity={})
-        self.assertEqual("not-applicable", receipt["applicability_disposition"])
+        self.assertEqual(
+            "not-applicable", not_applicable["applicability_disposition"])
+
+        plan, rendering_obligation = self.with_profile_rendering(
+            plan, "M.md")
+        plan_sha256 = audit_plan_contract.plan_sha256(plan)
+        rendering_evidence = self.passing_evidence(
+            plan, rendering_obligation, 1)
+        self.assertEqual(
+            (rendering_obligation["obligation_id"],),
+            contract.consumption_dependency_obligation_ids(
+                plan["obligations"], obligation, self.registry))
+        receipt = producer.build_review_receipt(
+            root=str(REPOSITORY), plan=plan, plan_sha256=plan_sha256,
+            obligation=obligation, spec=spec,
+            page_snapshot=self.frozen("M.md"),
+            reviewer_context_id="review-context",
+            reviewer_role="batch-reviewer", verdict="passed",
+            statement="current Profile rendering evidence is consumed",
+            consumed_records=(rendering_evidence,),
+            applicability_disposition="applicable",
+            registry=self.registry, identity={})
+        self.assertEqual(
+            [rendering_evidence["receipt_id"]],
+            receipt["consumed_evidence_refs"])
 
     def test_conditional_atoms_record_explicit_not_applicable_reason(self):
         plan, manifest, tiers, _selection = self.full_plan()

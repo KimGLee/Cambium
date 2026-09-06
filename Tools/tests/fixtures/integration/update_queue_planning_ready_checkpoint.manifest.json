@@ -1,6 +1,6 @@
 {
   "artifacts": {
-    "ready_gate": "audit-check_queue-20260905T172143Z-c9cfd02bc9c94035965cd794e9110a94-0001"
+    "ready_gate": "audit-check_queue-20260906T030223Z-70ff7dd5877a4dc9b386fff894e55e93-0001"
   },
   "checkpoint_id": "update-queue-planning-ready-current",
   "current_contract_owner": "Tools.execution.task_runtime.runtime_validation.validate_runtime",
@@ -28,12 +28,12 @@
     },
     {
       "path": ".cambium/receipts/gates.jsonl",
-      "sha256": "sha256:449af05bb713ca65c5ac3715e49ca5c4cadb853b52c87552e91c5a845d40476b",
+      "sha256": "sha256:e3f576742dd259eab44aaff3b19ef50c6c68d2d2ec00850c554799b1415e2cc9",
       "size": 8120
     },
     {
       "path": ".cambium/receipts/standards-adoptions.jsonl",
-      "sha256": "sha256:4c6219634db34874c54b3af21500c8d0fa2f5522bc6b1f44f1fb7914fdfc5f3b",
+      "sha256": "sha256:2e28e0ba2f577b0c089c1e85fa12fa2cb07b471f52171038a1c2f54c63a6a8d0",
       "size": 2314
     },
     {
@@ -68,7 +68,7 @@
     },
     {
       "path": ".cambium/tmp/receipt-append.free",
-      "sha256": "sha256:cd3e898fd97b84c6b82df3cce474e0cf9e6e91c20918da53dc8f32bb97f83be9",
+      "sha256": "sha256:bdf18de6443327ad939c569c5d3fdee0743800443313d0eb70a025516616100a",
       "size": 91
     },
     {
@@ -91,6 +91,6 @@
   "scenario": "planning-ready",
   "scenario_dependency_builder": "Tools.tests.fixtures.integration.update_queue_checkpoints.install_update_queue_profile",
   "schema_version": 1,
-  "tree_sha256": "sha256:a93e0c2530eb177237c658578a120f22dd3a0b4378384030cf64d137e5efb65c",
-  "validated_tree_sha256": "sha256:e8ffdbb91d7fc3a74f8e7f79c4825afedb99abef3f75f0bf8c1b777213278069"
+  "tree_sha256": "sha256:eb943292b29c56d1aa4f049cb330afa93602a37ad36863805533a198d31ebe33",
+  "validated_tree_sha256": "sha256:f00c1350d47d8e0e4328c825616034d72c7a409c52e2d3f3f0f5fbaa90bd2255"
 }
