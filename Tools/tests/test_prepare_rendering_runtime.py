@@ -13,6 +13,7 @@ from unittest import mock
 
 from Tools.knowledge.rendering import static_render_runtime as runtime
 from Tools.platform.distribution import prepare_rendering_runtime as setup
+from Tools.platform.common.host_environment import HostEnvironmentUnavailable
 
 
 REPOSITORY = Path(__file__).resolve().parents[2]
@@ -37,8 +38,8 @@ class RenderingHostPreparationTests(unittest.TestCase):
         self.browser.write_text("host browser placeholder")
         self.browser.chmod(0o700)
 
-    def installed(self):
-        package = self.host / "installed"
+    def installed(self, directory=None):
+        package = Path(directory) if directory else self.host / "installed"
         package.mkdir(exist_ok=True)
         for name, source in (("package.json", self.requirement["manifest"]),
                              ("package-lock.json", self.requirement["lock"])):
@@ -88,7 +89,7 @@ class RenderingHostPreparationTests(unittest.TestCase):
     def test_explicit_valid_binding_precedes_managed_binding_and_bad_explicit_fails_closed(self):
         bindings = self.installed()
         with mock.patch.dict(os.environ, bindings), \
-                mock.patch.object(runtime, "read_runtime_bindings", side_effect=AssertionError("must not consult cache")):
+                mock.patch.object(runtime, "binding_document", side_effect=AssertionError("must not consult cache")):
             self.assertEqual("ready", runtime.probe_runtime(REPOSITORY)["result"])
             os.environ["CAMBIUM_RENDER_NODE"] = "relative/node"
             self.assertEqual("invalid", runtime.probe_runtime(REPOSITORY)["result"])
@@ -96,7 +97,7 @@ class RenderingHostPreparationTests(unittest.TestCase):
         moved = self.host / "new-node" / "node"
         moved.parent.mkdir()
         self.node.rename(moved)
-        with self.assertRaisesRegex(runtime.StaticRenderRuntimeError, "unavailable"):
+        with self.assertRaisesRegex(HostEnvironmentUnavailable, "unavailable"):
             runtime.read_runtime_bindings(REPOSITORY, target)
         with mock.patch.object(runtime, "_discover_executable", side_effect=lambda name: [str(moved)] if name == "node" else []), \
                 mock.patch.object(runtime, "verify_runtime_bindings", return_value={"result": "pass"}):
@@ -152,7 +153,7 @@ class RenderingHostPreparationTests(unittest.TestCase):
             self.assertFalse(runtime.default_runtime_bindings_path(REPOSITORY).exists())
             return {"result": "pass"}
         with mock.patch.object(runtime, "probe_runtime", return_value={"result": "needs-preparation", "bindings": bindings, "findings": []}), \
-                mock.patch.object(setup.shutil, "which", return_value="/usr/bin/npm"), \
+                mock.patch.object(setup.node_runtime, "npm_cli", return_value="/fixture/npm-cli.js"), \
                 mock.patch.object(setup.kblib, "run_cambium_subprocess", side_effect=installed), \
                 mock.patch.object(runtime, "verify_runtime_bindings", side_effect=smoke), \
                 mock.patch.object(runtime, "read_runtime_bindings", side_effect=lambda root, target: json.loads(target.read_text())["bindings"]):
@@ -176,7 +177,7 @@ class RenderingHostPreparationTests(unittest.TestCase):
         target = self.publish(initial)
         with mock.patch.dict(os.environ, {"CAMBIUM_RENDER_BROWSER": str(self.browser)}), \
                 mock.patch.object(runtime, "verify_runtime_bindings", return_value={"result": "pass"}):
-            result = setup.prepare_runtime(REPOSITORY, apply=True, require_browser=True)
+            result = setup.prepare_runtime(REPOSITORY, apply=True, constructs=("mermaid-fence",))
         self.assertEqual("ready", result["result"])
         upgraded = runtime.read_runtime_bindings(REPOSITORY, target)
         self.assertEqual(str(self.browser), upgraded.pop("CAMBIUM_RENDER_BROWSER"))
@@ -189,16 +190,29 @@ class RenderingHostPreparationTests(unittest.TestCase):
         managed.chmod(0o700)
         with mock.patch.object(setup, "_install_browser", return_value=str(managed)) as install, \
                 mock.patch.object(runtime, "verify_runtime_bindings", return_value={"result": "pass"}):
-            result = setup.prepare_runtime(REPOSITORY, apply=True, require_browser=True)
+            result = setup.prepare_runtime(REPOSITORY, apply=True, constructs=("mermaid-fence",))
         install.assert_called_once()
         self.assertEqual(str(managed), result["bindings"]["CAMBIUM_RENDER_BROWSER"])
 
     def test_failed_smoke_cannot_publish_bindings(self):
         with mock.patch.dict(os.environ, self.installed()), \
                 mock.patch.object(runtime, "verify_runtime_bindings", side_effect=runtime.StaticRenderRuntimeError("smoke failed")):
-            with self.assertRaisesRegex(runtime.StaticRenderRuntimeError, "smoke failed"):
-                setup.prepare_runtime(REPOSITORY, apply=True)
+            result = setup.prepare_runtime(REPOSITORY, apply=True)
+        self.assertEqual("invalid", result["result"])
+        self.assertFalse(result["published"])
+        self.assertFalse(result["read_back"])
+        self.assertIn("smoke failed", result["findings"][0])
         self.assertFalse(runtime.default_runtime_bindings_path(REPOSITORY).exists())
+
+    def test_failed_readback_preserves_publication_and_does_not_claim_readiness(self):
+        with mock.patch.dict(os.environ, self.installed()), \
+                mock.patch.object(runtime, "verify_runtime_bindings", return_value={"result": "pass"}), \
+                mock.patch.object(runtime, "read_runtime_bindings", side_effect=OSError("readback failed")):
+            result = setup.prepare_runtime(REPOSITORY, apply=True)
+        self.assertEqual("needs-preparation", result["result"])
+        self.assertTrue(result["published"])
+        self.assertFalse(result["read_back"])
+        self.assertTrue(runtime.default_runtime_bindings_path(REPOSITORY).exists())
 
     def test_unsafe_lock_urls_links_and_integrity_are_rejected(self):
         first = next(path for path in self.requirement["packages"] if path)
@@ -210,6 +224,68 @@ class RenderingHostPreparationTests(unittest.TestCase):
                 document["packages"][first].update(change)
                 with self.assertRaisesRegex(runtime.StaticRenderRuntimeError, "Unsafe or unlocked"):
                     setup._installation_inputs(document)
+
+    def test_damaged_managed_dependencies_get_a_fresh_verified_successor(self):
+        bindings = self.installed()
+        target = self.publish(bindings)
+        package = Path(bindings["CAMBIUM_RENDER_NODE_MODULES"]) / "katex/package.json"
+        package.write_text('{"version":"0.0.0"}')
+        before = target.read_bytes()
+        with self.assertRaises(HostEnvironmentUnavailable):
+            runtime.read_runtime_bindings(REPOSITORY)
+        def install(command, **kwargs):
+            self.assertEqual(before, target.read_bytes())
+            self.installed(kwargs["cwd"])
+            return subprocess.CompletedProcess(command, 0, "", "")
+        with mock.patch.object(setup.node_runtime, "npm_cli", return_value="/fixture/npm-cli.js"), \
+                mock.patch.object(setup.kblib, "run_cambium_subprocess", side_effect=install), \
+                mock.patch.object(runtime, "verify_runtime_bindings", return_value={"result": "pass"}):
+            result = setup.prepare_runtime(REPOSITORY, apply=True)
+        self.assertEqual("ready", result["result"])
+        self.assertNotEqual(bindings["CAMBIUM_RENDER_NODE_MODULES"], result["bindings"]["CAMBIUM_RENDER_NODE_MODULES"])
+        self.assertEqual('{"version":"0.0.0"}', package.read_text())
+        self.assertEqual(result["bindings"], runtime.read_runtime_bindings(REPOSITORY))
+
+    def test_preparation_does_not_replace_an_explicit_broken_environment(self):
+        self.publish(self.installed())
+        with mock.patch.dict(os.environ, {"CAMBIUM_RENDER_NODE_MODULES": str(self.host / "absent")}), \
+                mock.patch.object(setup.node_runtime, "prepare_node") as node, \
+                mock.patch.object(setup.kblib, "run_cambium_subprocess") as install:
+            result = setup.prepare_runtime(REPOSITORY, apply=True)
+        self.assertEqual("invalid", result["result"])
+        self.assertEqual("configure", result["diagnostics"][0]["remedy"])
+        node.assert_not_called()
+        install.assert_not_called()
+
+    def test_binding_before_image_is_checked_even_when_initially_absent(self):
+        bindings = self.installed()
+        target = self.publish(bindings)
+        with self.assertRaisesRegex(runtime.StaticRenderRuntimeError, "changed during"):
+            setup._publish_bindings(REPOSITORY, target, bindings, expected_before=None)
+
+    def test_smoke_proves_requested_compilation_not_just_selection(self):
+        for constructs in ((), ("dollar-math",), ("mermaid-fence",)):
+            with self.subTest(constructs=constructs):
+                captured = []
+                def invoke(request, **kwargs):
+                    captured.append(request)
+                    output = {"selector_id": runtime.SELECTOR_ID,
+                        "source_sha256": runtime._sha(request["source"].encode()),
+                        "constructs": ["dollar-math"]}
+                    if constructs:
+                        content = "compiled artifact"
+                        output.update(result="pass", diagnostics=[],
+                            constructs=[{"kind": constructs[0], "result": "pass", "diagnostics": [],
+                                "acceptance": request["bindings"][constructs[0]], "artifact_ids": ["a"]}],
+                            artifacts=[{"artifact_id": "a", "content": content,
+                                        "sha256": runtime._sha(content.encode())}])
+                    return output
+                with mock.patch.object(runtime, "_invoke", side_effect=invoke):
+                    result = runtime.verify_runtime_bindings(REPOSITORY,
+                        {"CAMBIUM_RENDER_BROWSER": str(self.browser)}, constructs=constructs)
+                self.assertEqual("render" if constructs else "select", result["action"])
+                self.assertEqual(constructs == ("mermaid-fence",), "browser" in captured[0])
+                self.assertEqual(list(constructs), result["verified_request"]["constructs"])
 
 
 if __name__ == "__main__":

@@ -811,7 +811,7 @@ tools:
     exposure: cli-only
     workspace_argument: root
     workspace_access: read
-    value_arguments: [apply, require_browser, json]
+    value_arguments: [apply, construct, json]
     read_paths: []
     write_paths: []
     read_write_paths: []
@@ -821,9 +821,27 @@ tools:
     workspace_argument: root
     workspace_access: read
     value_arguments: [host, projection_target, distribution_root, workspace_root, check, sources]
-    read_paths: [projection, runtime_bindings]
+    read_paths: [projection, runtime_bindings, toolchain_bindings]
     write_paths: []
     read_write_paths: [output_dir]
+    external_write: none
+  - tool: prepare_host
+    exposure: cli-only
+    workspace_argument: root
+    workspace_access: write
+    value_arguments: [apply, rendering, construct, host, workspace_root, projection_target, replace_host_overrides, configure_only, json]
+    read_paths: []
+    write_paths: []
+    read_write_paths: []
+    external_write: authorized-host-environment-and-configuration
+  - tool: inspect_host
+    exposure: mcp
+    workspace_argument: root
+    workspace_access: read
+    value_arguments: [rendering, construct, json]
+    read_paths: []
+    write_paths: []
+    read_write_paths: []
     external_write: none
   - tool: render_interface_projection
     exposure: cli-only

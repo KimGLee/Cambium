@@ -1994,6 +1994,12 @@ modules:
     domain: task-runtime
     layer: entrypoint
     public: []
+  - module: inspect_host
+    path: Tools/inspect_host.py
+    area: platform
+    domain: agent-interface
+    layer: entrypoint
+    public: []
   - module: knowledge.content.check_links
     path: Tools/knowledge/content/check_links.py
     area: knowledge
@@ -2289,11 +2295,13 @@ modules:
     public:
       - RUNTIME_ENV_KEYS
       - StaticRenderRuntimeError
+      - binding_document
       - default_runtime_bindings_path
       - probe_runtime
       - read_runtime_bindings
       - render_page
       - render_pages
+      - rendering_request
       - requires_browser
       - runtime_requirements
       - select_constructs
@@ -2453,6 +2461,20 @@ modules:
       - discover_entrypoints
       - entrypoint_for_implementation_path
       - load_tool_implementation
+  - module: platform.agent_interface.inspect_host
+    path: Tools/platform/agent_interface/inspect_host.py
+    area: platform
+    domain: agent-interface
+    layer: application
+    public:
+      - main
+  - module: platform.agent_interface.install_host_config
+    path: Tools/platform/agent_interface/install_host_config.py
+    area: platform
+    domain: agent-interface
+    layer: infrastructure
+    public:
+      - install
   - module: platform.agent_interface.mcp_server
     path: Tools/platform/agent_interface/mcp_server.py
     area: platform
@@ -2465,7 +2487,11 @@ modules:
     domain: agent-interface
     layer: application
     public:
+      - HOSTS
+      - SERVER_NAME
+      - dotenv_lines
       - main
+      - parse_dotenv
   - module: platform.agent_interface.render_interface_projection
     path: Tools/platform/agent_interface/render_interface_projection.py
     area: platform
@@ -2484,6 +2510,33 @@ modules:
       - PROJECTION_TARGETS
       - SOURCE_DISTRIBUTION
       - resolve
+  - module: platform.common.host_environment
+    path: Tools/platform/common/host_environment.py
+    area: platform
+    domain: common
+    layer: contract
+    public:
+      - HostEnvironmentUnavailable
+      - PREPARATION_CAPABILITY_ID
+      - preparation_failure
+      - preparation_request
+  - module: platform.common.host_toolchain
+    path: Tools/platform/common/host_toolchain.py
+    area: platform
+    domain: common
+    layer: infrastructure
+    public:
+      - CAPABILITY_ID
+      - CUE_ENV
+      - binding_document
+      - binding_path
+      - cue_unavailable
+      - cue_version_matches
+      - observe
+      - requirements
+      - select_cue
+      - verify_cue
+      - verify_python
   - module: platform.common.implementation_marker
     path: Tools/platform/common/implementation_marker.py
     area: platform
@@ -2586,6 +2639,13 @@ modules:
       - validate_structure_registry_shape
       - write_receipts
       - write_receipts_observed
+  - module: platform.common.locked_download
+    path: Tools/platform/common/locked_download.py
+    area: platform
+    domain: common
+    layer: infrastructure
+    public:
+      - download
   - module: platform.common.primitives
     path: Tools/platform/common/primitives.py
     area: platform
@@ -2619,6 +2679,7 @@ modules:
       - JSON_RECEIPT_SUMMARY_HELP
       - JsonReceiptCollector
       - RedirectedJsonReceipts
+      - host_environment_boundary
       - run_redirected_json
       - write_canonical_json
       - write_canonical_json_array
@@ -2642,6 +2703,7 @@ modules:
     domain: distribution
     layer: infrastructure
     public:
+      - install_cue
       - main
   - module: platform.distribution.module_boundary_facts
     path: Tools/platform/distribution/module_boundary_facts.py
@@ -2668,6 +2730,29 @@ modules:
     public:
       - main
       - manifest_errors
+  - module: platform.distribution.node_runtime
+    path: Tools/platform/distribution/node_runtime.py
+    area: platform
+    domain: distribution
+    layer: infrastructure
+    public:
+      - node_requirement
+      - npm_cli
+      - prepare_node
+  - module: platform.distribution.prepare_host
+    path: Tools/platform/distribution/prepare_host.py
+    area: platform
+    domain: distribution
+    layer: application
+    public:
+      - main
+  - module: platform.distribution.prepare_host_toolchain
+    path: Tools/platform/distribution/prepare_host_toolchain.py
+    area: platform
+    domain: distribution
+    layer: infrastructure
+    public:
+      - prepare
   - module: platform.distribution.prepare_rendering_runtime
     path: Tools/platform/distribution/prepare_rendering_runtime.py
     area: platform
@@ -2789,6 +2874,12 @@ modules:
     path: Tools/prepare_audit_plan.py
     area: execution
     domain: audit
+    layer: entrypoint
+    public: []
+  - module: prepare_host
+    path: Tools/prepare_host.py
+    area: platform
+    domain: distribution
     layer: entrypoint
     public: []
   - module: prepare_rendering_runtime

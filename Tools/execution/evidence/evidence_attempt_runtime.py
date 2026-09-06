@@ -33,6 +33,8 @@ def classify_attempts(records, *, validate_stable, validate_current, label):
     normal filesystem/decoding error) when their proof does not hold.  Stable
     failures are corruption, while current failures are the expected signal
     that an append-only predecessor no longer observes the live input.
+    HostEnvironmentUnavailable deliberately escapes both proofs: inability to
+    observe is neither a stable failure nor a successful stale classification.
     """
     if not isinstance(records, (list, tuple)):
         raise EvidenceAttemptError("%s attempts must be a sequence" % label)

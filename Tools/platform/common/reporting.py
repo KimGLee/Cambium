@@ -1,9 +1,39 @@
 """Canonical receipt-to-stdout reporting shared by Tool entry points."""
 
 import contextlib
+import functools
+import io
 import sys
 
 import Tools.platform.common.kblib as kblib
+from Tools.platform.common.host_environment import HostEnvironmentUnavailable, preparation_request
+
+
+def host_environment_boundary(function):
+    """CLI-only handoff for an unperformed observation; never a Receipt verdict.
+
+    No applied=False claim: an operation may have committed an earlier step
+    before its resulting-state observation became unavailable.
+    """
+    @functools.wraps(function)
+    def run(*args, **kwargs):
+        output = io.StringIO()
+        try:
+            with contextlib.redirect_stdout(output):
+                result = function(*args, **kwargs)
+        except HostEnvironmentUnavailable as exc:
+            handoff = {"status": "await-host", "host_environment": exc.diagnostic(),
+                       "host_preparation": preparation_request([exc.diagnostic()])}
+            if output.getvalue():
+                handoff["prior_output"] = output.getvalue()
+            write_canonical_json(handoff)
+            return 1
+        except BaseException:
+            sys.stdout.write(output.getvalue())
+            raise
+        sys.stdout.write(output.getvalue())
+        return result
+    return run
 
 
 JSON_RECEIPT_HELP = (

@@ -2,7 +2,7 @@
 
 `Tools/` contains Cambium's deterministic, repeatable, and testable programs. This README is navigation and operating guidance, not a copy of governance rules, state contracts, Cards, or Read Sets.
 
-Most Python mechanics use the standard library. Profile loading requires the [TOML and CUE toolchain](#profile-toolchain). The Agent uses [rendering preparation](prepare_rendering_runtime.py) following the [setup guide](knowledge/rendering/README.md); dependency bindings belong to Host configuration, not Profile or `.cambium`.
+Most Python mechanics use the standard library. The Agent starts with [Host preparation](#host-preparation), which composes the TOML/CUE and optional rendering providers. Dependency bindings belong to Host configuration, not Profile or `.cambium`.
 
 ## Responsibility boundary
 
@@ -92,20 +92,30 @@ python3 Tools/check_kernel_size.py .
 
 `kernel-size-policy.yaml` is the sole numeric owner of Kernel leaf-size limits and registered measurements. `check_kernel_size.py` separates a hard failure (exit `1`) from an otherwise safe result that still needs engineering review (exit `2`).
 
-## Profile toolchain
+## Host preparation
 
-Use an isolated environment with Python 3.10 or later; CI checks Python 3.10 and 3.14. From a source checkout or carried Runtime root, install into a fresh task-private directory:
+The terminal-capable Agent discovers requirements from shipped Tool owners; users do not copy compiler versions or computer paths into a Profile. Begin with a usable Python 3.10 or later (CI covers 3.10 and 3.14):
 
 ```sh
-CAMBIUM_PROFILE_ENV=$(mktemp -d)
-python3 -m venv "$CAMBIUM_PROFILE_ENV/venv"
-. "$CAMBIUM_PROFILE_ENV/venv/bin/activate"
-python -m pip install -r Tools/requirements-profile.txt
-python -m Tools.platform.distribution.install_profile_toolchain --destination "$CAMBIUM_PROFILE_ENV/cue-bin"
-export CAMBIUM_CUE="$CAMBIUM_PROFILE_ENV/cue-bin/cue"
+python3 Tools/prepare_host.py . --json
+python3 Tools/prepare_host.py . --apply --json
 ```
 
-[`requirements-profile.txt`](requirements-profile.txt) pins the TOML codecs; [`cue-toolchain.json`](governance/profile/cue-toolchain.json) pins CUE and its archive checksums. The Runtime-carried [`installer`](platform/distribution/install_profile_toolchain.py), also called by CI, verifies downloads without replacing system tools. Keep this environment available for Profile checks and downstream consumers. Missing or mismatched evaluators fail closed; no Markdown parser or Profile-supplied code is used as a fallback.
+The first call only observes and reports scope. With Host installation authorization, the second reuses valid resources or prepares private Python packages and the pinned CUE executable, verifies them, publishes a lock-specific Host binding, and reads it back. It never installs system Python, edits the global PATH, approves a Profile, creates a task, or writes a Receipt. A broken explicit override requires a scoped configuration decision; it is not silently replaced. Interrupted candidates remain unselected in the reported Host directory.
+
+The result includes the prepared interpreter and the next `inspect_host` invocation. Run that observation through the intended CLI or MCP consumer: `prepared` does not mean an existing process has reloaded. A pure MCP client can inspect and request Host assistance, but cannot download software or install Host configuration.
+
+For an existing supported Host, add `--host codex` (or another registered product) and `--workspace-root /absolute/corpus` to preview and authorized apply. The unique generator creates staging products; a bounded installer merges only Cambium's registration, preserving other servers, unknown settings, and TOML comments. Existing overrides stay by default. `--replace-host-overrides` explicitly replaces configured Python/CUE values and removes Cambium rendering-path overrides so the Host uses current default discovery; unrelated environment settings stay untouched. `--configure-only --host … --apply` installs configuration from an already prepared toolchain without installing dependencies. A dsh profile patch still requires its native Host mechanism. Installed configuration and actual process consumption are separate facts; the tool does not claim to restart external applications.
+
+Use the existing `--projection-target carried-runtime` when configuring a carried distribution: its distribution and workspace must be the same root, and its Host product consumes the carried interface projection. The default source-distribution mode also supports a separately located corpus. Configuration generation rechecks both the interface and supplied toolchain bindings before publication. Results separately report retained overrides, publication, read-back, and required consumer observation; a later failure does not erase earlier completed steps.
+
+Rendering is prepared only when requested by the operation: `--rendering` prepares the selector; repeat `--construct` with registered construct IDs to verify the corresponding compilation/layout capability. The [rendering guide](knowledge/rendering/README.md) explains the scope. Default lock-specific cache discovery avoids copying rendering paths into every Host config; explicit `render_host_configs --runtime-bindings` remains available. `--toolchain-bindings` projects verified Python/CUE values rather than asking the Agent to edit generated files.
+
+If an environment observation becomes unavailable during a task, prepare the missing capability and query the original Runner again. Do not rebuild the task or AuditPlan. Installation cannot reauthorize historical evidence. If an earlier action completed before the next observation failed, preserve its result and read the current state before deciding what should run next.
+
+## Profile toolchain
+
+[`requirements-profile.txt`](requirements-profile.txt) pins the TOML codecs; [`cue-toolchain.json`](governance/profile/cue-toolchain.json) pins CUE and its archive checksums. [`requirements-host.txt`](requirements-host.txt) separately pins the Host configuration editor; it is not a Profile codec. Host preparation calls the same Runtime-carried [CUE installer](platform/distribution/install_profile_toolchain.py) as CI. Explicit `CAMBIUM_CUE` has precedence; otherwise consumers discover the published Host binding. Missing or mismatched evaluators produce an environment handoff, not a successful Profile verdict or a permissive fallback.
 
 Kernel owns slot semantics; Tool owns the document wrapper and evaluator. Existing shared YAML domain contracts remain their sole owners. Verify or regenerate their CUE projections and the [`profile-document.cue`](governance/profile/profile-document.cue) wrapper with:
 

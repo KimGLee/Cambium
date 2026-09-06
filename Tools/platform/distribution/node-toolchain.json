@@ -1,0 +1,14 @@
+{
+  "schema_version": 1,
+  "version": "v24.20.0",
+  "release_base": "https://nodejs.org/dist",
+  "checksum_source": "https://nodejs.org/dist/v24.20.0/SHASUMS256.txt",
+  "archives": {
+    "darwin-arm64": {"suffix": "tar.gz", "sha256": "40e5607e5ecb3db9192723776da2d75d966260fc74a7a9e731c1bd67dda96bc8"},
+    "darwin-x64": {"suffix": "tar.gz", "sha256": "9e5b2644cf107befb6aefca676b96d3296bc10138096f022ed378d6233ed81f4"},
+    "linux-arm64": {"suffix": "tar.gz", "sha256": "3515603e2487879a39bc75716f1a2affd027500c64ba50e845cf72cb33219013"},
+    "linux-x64": {"suffix": "tar.gz", "sha256": "855d581f8a4eb1a8117e3426de25fe02770592febcfb31369aee1ffbfee9e8ec"},
+    "win-arm64": {"suffix": "zip", "sha256": "31c6799744de8a54601643098040c68c3697e56c94e407d61d0e5fa5f34191d7"},
+    "win-x64": {"suffix": "zip", "sha256": "6cac9ffbca8f6a47091e4b5c772e0606049c3871cb67d900c0cedde630e545ba"}
+  }
+}

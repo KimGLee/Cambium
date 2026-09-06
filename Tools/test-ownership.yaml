@@ -1405,6 +1405,57 @@ tests:
         semantics: initial_task_plan_receipt_reference_required
         owner_contract_symbol: task_contract.initial_task_plan_receipt_errors
         parallel_safe: true
+  - path: Tools/tests/test_node_runtime.py
+    owner: Tools/platform/distribution/node_runtime.py
+    level: contract
+    lifecycle: current
+    disposition: keep
+    semantics: managed_node_pinned_archive_and_extraction
+    owner_contract_symbol: node_runtime.prepare_node
+    parallel_safe: true
+    overrides:
+      - selector: NodeRuntimeTests.test_truncated_transfer_resumes_only_the_exact_missing_range
+        owner: Tools/platform/common/locked_download.py
+        semantics: bounded_immutable_host_download_transfer
+        owner_contract_symbol: locked_download.download
+  - path: Tools/tests/test_host_environment.py
+    owner: Tools/platform/distribution/prepare_host.py
+    level: unit
+    lifecycle: current
+    disposition: keep
+    semantics: host_bootstrap_composition_and_stop_boundaries
+    owner_contract_symbol: prepare_host.prepare
+    parallel_safe: true
+    overrides:
+      - selector: HostToolchainContractTests.test_request_uses_owner_bytes_and_changes_identity_when_owner_changes
+        owner: Tools/platform/common/host_toolchain.py
+        level: contract
+        semantics: host_toolchain_request_selection_and_verification
+        owner_contract_symbol: host_toolchain.observe
+      - selector: HostToolchainContractTests.test_explicit_broken_binding_never_falls_back_or_installs
+        owner: Tools/platform/distribution/prepare_host_toolchain.py
+        level: contract
+        semantics: explicit_override_preparation_boundary
+        owner_contract_symbol: prepare_host_toolchain.prepare
+      - selector: HostToolchainContractTests.test_wrong_package_version_is_host_unavailable_not_a_profile_verdict
+        owner: Tools/platform/common/host_toolchain.py
+        level: contract
+        semantics: python_package_contract_observation
+        owner_contract_symbol: host_toolchain.verify_python
+      - selector: HostToolchainContractTests.test_binding_rejects_contract_drift_before_resource_execution
+        owner: Tools/platform/common/host_toolchain.py
+        level: contract
+        semantics: host_binding_source_identity
+        owner_contract_symbol: host_toolchain.binding_document
+      - selector: HostToolchainContractTests.test_valid_resources_publish_then_reuse_without_installation
+        owner: Tools/platform/distribution/prepare_host_toolchain.py
+        level: integration
+        semantics: host_toolchain_verified_binding_publication
+        owner_contract_symbol: prepare_host_toolchain.prepare
+      - selector: HostPreparationCompositionTests.test_actual_consumer_inspection_uses_process_not_prepared_python
+        owner: Tools/platform/agent_interface/inspect_host.py
+        semantics: current_process_host_observation
+        owner_contract_symbol: inspect_host.observe
   - path: Tools/tests/test_install_profile_toolchain.py
     owner: Tools/platform/distribution/install_profile_toolchain.py
     level: contract
@@ -2135,6 +2186,24 @@ tests:
     owner_contract_symbol: render_host_configs.main
     parallel_safe: false
     overrides:
+      - selector: HostInstallationTests.test_install_*
+        owner: Tools/platform/agent_interface/install_host_config.py
+        level: integration
+        semantics: bounded_host_product_installation_and_readback
+        owner_contract_symbol: install_host_config.install
+        parallel_safe: true
+      - selector: HostInstallationTests.test_json_*
+        owner: Tools/platform/agent_interface/install_host_config.py
+        level: unit
+        semantics: host_json_registration_preservation
+        owner_contract_symbol: install_host_config.merge_product
+        parallel_safe: true
+      - selector: HostInstallationTests.test_toml_*
+        owner: Tools/platform/agent_interface/install_host_config.py
+        level: unit
+        semantics: host_toml_comment_preserving_registration
+        owner_contract_symbol: install_host_config.merge_product
+        parallel_safe: true
       - selector: HostProductContractTests.test_registry_builds_unique_parseable_products
         level: contract
         semantics: host_product_registry_membership_and_format_contract

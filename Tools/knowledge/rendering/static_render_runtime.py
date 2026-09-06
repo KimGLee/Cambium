@@ -12,6 +12,7 @@ import re
 import shutil
 import subprocess
 import Tools.platform.common.kblib as kblib
+from Tools.platform.common.host_environment import HostEnvironmentUnavailable
 
 
 SELECTOR_ID = "remark-commonmark-gfm-math-v1"
@@ -22,7 +23,12 @@ RUNTIME_ENV_KEYS = ("CAMBIUM_RENDER_NODE", "CAMBIUM_RENDER_BROWSER",
 
 
 class StaticRenderRuntimeError(ValueError):
-    """Required renderer implementation, dependencies, or Host binding missing."""
+    """Invalid rendering contract, input, binding shape, or renderer output."""
+
+
+def _unavailable(message, code, resource=None, *, constructs=(), remedy="prepare"):
+    return HostEnvironmentUnavailable(message, capability_id=CAPABILITY_ID,
+        code=code, resource=resource, constructs=constructs, remedy=remedy)
 
 
 def _sha(value):
@@ -48,6 +54,13 @@ def _file_sha(path):
     stat = path.stat()
     return _hash_file_version(str(path.resolve()),
         (stat.st_dev, stat.st_ino, stat.st_size, stat.st_mtime_ns, stat.st_ctime_ns))
+
+
+def _host_file_sha(path):
+    try:
+        return _file_sha(path)
+    except OSError as exc:
+        raise _unavailable(str(exc), "executable-unavailable", str(path)) from exc
 
 
 def _owner(root):
@@ -84,7 +97,8 @@ def _executable(name, value=None):
         raise StaticRenderRuntimeError("%s must bind an absolute executable" % name)
     path = Path(value).resolve()
     if not path.is_file() or not os.access(path, os.X_OK):
-        raise StaticRenderRuntimeError("%s executable is unavailable" % name)
+        raise _unavailable("%s executable is unavailable" % name,
+                           "executable-unavailable", str(path))
     return path
 
 
@@ -127,19 +141,29 @@ def _dependencies(root, modules=None):
     requirement = runtime_requirements(root)
     modules = Path(modules or _resolve_bindings(root)["CAMBIUM_RENDER_NODE_MODULES"]).resolve()
     if not modules.is_dir():
-        raise StaticRenderRuntimeError("Pinned renderer node_modules missing; run npm ci for the Tool lockfile")
-    if _file_sha(modules.parent / "package.json") != requirement["package_sha256"] or \
-            _file_sha(modules.parent / "package-lock.json") != requirement["package_lock_sha256"]:
-        raise StaticRenderRuntimeError("Host dependency manifest/lock differs from Tool")
+        raise _unavailable("Pinned renderer node_modules missing",
+                           "dependencies-unavailable", str(modules))
+    try:
+        if _file_sha(modules.parent / "package.json") != requirement["package_sha256"] or \
+                _file_sha(modules.parent / "package-lock.json") != requirement["package_lock_sha256"]:
+            raise _unavailable("Host dependency manifest/lock differs from Tool",
+                               "dependencies-unavailable", str(modules))
+    except OSError as exc:
+        raise _unavailable(str(exc), "dependencies-unavailable", str(modules)) from exc
     declared = requirement["dependencies"]
     installed = {}
     for name, version in sorted(declared.items()):
         package = modules / name / "package.json"
         if not package.is_file():
-            raise StaticRenderRuntimeError("Missing pinned renderer dependency: %s" % name)
-        actual = json.loads(package.read_text(encoding="utf-8"))["version"]
+            raise _unavailable("Missing pinned renderer dependency: %s" % name,
+                               "dependencies-unavailable", str(modules))
+        try:
+            actual = json.loads(package.read_text(encoding="utf-8"))["version"]
+        except (OSError, ValueError, KeyError, TypeError) as exc:
+            raise _unavailable(str(exc), "dependencies-unavailable", str(modules)) from exc
         if actual != version:
-            raise StaticRenderRuntimeError("Renderer dependency version differs: %s" % name)
+            raise _unavailable("Renderer dependency version differs: %s" % name,
+                               "dependencies-unavailable", str(modules))
         installed[name] = actual
     for relative, row in requirement["packages"].items():
         if not relative:
@@ -149,8 +173,13 @@ def _dependencies(root, modules=None):
             raise StaticRenderRuntimeError("Renderer dependency escapes its bound directory")
         if not package.is_file() and row.get("optional"):
             continue
-        if not package.is_file() or json.loads(package.read_text(encoding="utf-8")).get("version") != row.get("version"):
-            raise StaticRenderRuntimeError("Locked renderer dependency differs: " + relative)
+        try:
+            actual = json.loads(package.read_text(encoding="utf-8")) if package.is_file() else {}
+            if not isinstance(actual, dict) or actual.get("version") != row.get("version"):
+                raise _unavailable("Locked renderer dependency differs: " + relative,
+                                   "dependencies-unavailable", str(modules))
+        except (OSError, ValueError) as exc:
+            raise _unavailable(str(exc), "dependencies-unavailable", str(modules)) from exc
     return modules, {"package_sha256": requirement["package_sha256"],
                      "package_lock_sha256": requirement["package_lock_sha256"],
                      "installed_versions": installed}
@@ -171,24 +200,24 @@ def _validate_bindings(root, bindings, *, check_executables=True,
         version = _version(node)
         match = re.fullmatch(r"v(\d+)\.\d+\.\d+(?:[-+].*)?", version)
         if match is None or int(match.group(1)) < requirement["node_minimum_major"]:
-            raise StaticRenderRuntimeError("Node does not satisfy " + requirement["node_engine"])
+            raise _unavailable("Node does not satisfy " + requirement["node_engine"],
+                               "node-incompatible", str(node))
     _dependencies(root, bindings["CAMBIUM_RENDER_NODE_MODULES"])
     if require_browser and not bindings.get("CAMBIUM_RENDER_BROWSER"):
-        raise StaticRenderRuntimeError("CAMBIUM_RENDER_BROWSER is required")
+        raise _unavailable("CAMBIUM_RENDER_BROWSER is required", "browser-unavailable")
     if check_executables and require_browser:
         browser = _executable("CAMBIUM_RENDER_BROWSER", bindings["CAMBIUM_RENDER_BROWSER"])
         if not re.search(r"(?:Chrome|Chromium|Edge)\s", _version(browser)):
-            raise StaticRenderRuntimeError("Renderer requires a Chromium-family browser")
+            raise _unavailable("Renderer requires a Chromium-family browser",
+                               "browser-incompatible", str(browser))
     return {key: str(Path(value).resolve()) for key, value in bindings.items()}
 
 
-def read_runtime_bindings(root, path=None, *, check_executables=True,
-                          require_browser=False):
-    """Read a checked Host projection; absent default bindings are harmless.
+def binding_document(root, path=None):
+    """Validate binding ownership/shape without trusting installed resources.
 
-    Only local discovery/preparation may defer executable validation so moved
-    binaries can be rediscovered. Schema, lock and dependencies always validate.
-    Host publication and actual rendering use the strict default.
+    Preparation uses this before-image boundary to replace an unusable managed
+    selection. Actual consumers must additionally use read_runtime_bindings.
     """
     target = Path(path) if path is not None else default_runtime_bindings_path(root)
     if target.resolve().is_relative_to(Path(root).resolve()):
@@ -207,10 +236,24 @@ def read_runtime_bindings(root, path=None, *, check_executables=True,
         for key in ("capability_id", "package_sha256", "package_lock_sha256"):
             if document[key] != requirement[key]:
                 raise StaticRenderRuntimeError("Rendering Host bindings are stale: " + key)
-        return _validate_bindings(root, document["bindings"],
-            check_executables=check_executables, require_browser=require_browser)
+        bindings = document["bindings"]
+        if not isinstance(bindings, dict) or set(bindings) - set(RUNTIME_ENV_KEYS) or \
+                not {"CAMBIUM_RENDER_NODE", "CAMBIUM_RENDER_NODE_MODULES"} <= set(bindings) or \
+                any(not isinstance(value, str) or not Path(value).is_absolute() for value in bindings.values()):
+            raise StaticRenderRuntimeError("Invalid rendering Host binding keys or paths")
+        return bindings
     except (OSError, ValueError, TypeError, KeyError) as exc:
         raise StaticRenderRuntimeError("Cannot read rendering Host bindings: %s" % exc) from exc
+
+
+def read_runtime_bindings(root, path=None, *, check_executables=True,
+                          require_browser=False):
+    """Strict consumer: shape, lock and installed dependencies must validate."""
+    bindings = binding_document(root, path)
+    if not bindings:
+        return {}
+    return _validate_bindings(root, bindings, check_executables=check_executables,
+                             require_browser=require_browser)
 
 
 def _discover_executable(name):
@@ -226,15 +269,22 @@ def _discover_executable(name):
 
 def probe_runtime(root, *, require_browser=False):
     """Read-only capability discovery. Never install or create runtime state."""
-    bindings, findings = {}, []
+    bindings, diagnostics = {}, []
+    explicit = {key: os.environ[key] for key in RUNTIME_ENV_KEYS if os.environ.get(key)}
+
+    def unavailable(error, *, override=False):
+        detail = error.diagnostic()
+        if override:
+            detail.update(code="explicit-binding-unavailable", remedy="configure")
+        diagnostics.append(detail)
+
     try:
         requirement = runtime_requirements(root)
-        explicit = {key: os.environ[key] for key in RUNTIME_ENV_KEYS if os.environ.get(key)}
         required = {"CAMBIUM_RENDER_NODE", "CAMBIUM_RENDER_NODE_MODULES"}
         if require_browser:
             required.add("CAMBIUM_RENDER_BROWSER")
         if not required <= set(explicit):
-            bindings.update(read_runtime_bindings(root, check_executables=False))
+            bindings.update(binding_document(root))
         cached_browser = bindings.get("CAMBIUM_RENDER_BROWSER")
         if cached_browser and not Path(cached_browser).resolve().is_relative_to(default_runtime_bindings_path(root).parent):
             bindings.pop("CAMBIUM_RENDER_BROWSER")
@@ -257,53 +307,82 @@ def probe_runtime(root, *, require_browser=False):
                     if name == "node":
                         match = re.fullmatch(r"v(\d+)\.\d+\.\d+(?:[-+].*)?", version)
                         if not match or int(match.group(1)) < requirement["node_minimum_major"]:
-                            raise StaticRenderRuntimeError("Node does not satisfy " + requirement["node_engine"])
+                            raise _unavailable("Node does not satisfy " + requirement["node_engine"],
+                                               "node-incompatible", candidate)
                     elif not re.search(r"(?:Chrome|Chromium|Edge)\s", version):
-                        raise StaticRenderRuntimeError("Unsupported Chromium-family browser")
+                        raise _unavailable("Unsupported Chromium-family browser", "browser-incompatible", candidate)
                     valid = str(executable)
                     break
-                except (OSError, StaticRenderRuntimeError, subprocess.SubprocessError):
+                except HostEnvironmentUnavailable as exc:
                     if key in explicit:
-                        raise
+                        unavailable(exc, override=True)
+                        break
             if valid:
                 bindings[key] = valid
             else:
                 bindings.pop(key, None)
-                if name == "node" or require_browser:
-                    findings.append(key + " unavailable or incompatible")
+                if key not in explicit:
+                    unavailable(_unavailable(key + " unavailable or incompatible",
+                                             name + "-unavailable", key))
         modules = bindings.get("CAMBIUM_RENDER_NODE_MODULES") or str(
             _owner(root) / "static_renderer/node_modules")
         if Path(modules).is_dir():
-            _dependencies(root, modules)
-            bindings["CAMBIUM_RENDER_NODE_MODULES"] = str(Path(modules).resolve())
+            try:
+                _dependencies(root, modules)
+                bindings["CAMBIUM_RENDER_NODE_MODULES"] = str(Path(modules).resolve())
+            except HostEnvironmentUnavailable as exc:
+                bindings.pop("CAMBIUM_RENDER_NODE_MODULES", None)
+                unavailable(exc, override="CAMBIUM_RENDER_NODE_MODULES" in explicit)
         elif "CAMBIUM_RENDER_NODE_MODULES" in explicit:
-            raise StaticRenderRuntimeError("Explicit renderer dependency directory is unavailable")
+            bindings.pop("CAMBIUM_RENDER_NODE_MODULES", None)
+            unavailable(_unavailable("Explicit renderer dependency directory is unavailable",
+                                     "dependencies-unavailable", modules), override=True)
         else:
-            findings.append("Pinned renderer dependencies are not prepared")
-        return {"result": "needs-preparation" if findings else "ready",
-                "bindings": bindings, "findings": findings}
+            bindings.pop("CAMBIUM_RENDER_NODE_MODULES", None)
+            unavailable(_unavailable("Pinned renderer dependencies are not prepared",
+                                     "dependencies-unavailable", modules))
+        result = ("invalid" if any(row["remedy"] == "configure" for row in diagnostics)
+                  else "needs-preparation" if diagnostics else "ready")
+        return {"result": result, "bindings": bindings, "diagnostics": diagnostics,
+                "findings": [row["message"] for row in diagnostics],
+                "binding_sources": {key: "explicit" if key in explicit else "discovered"
+                                    for key in bindings}}
     except (OSError, ValueError, KeyError, TypeError, subprocess.SubprocessError) as exc:
-        return {"result": "invalid", "bindings": bindings, "findings": [str(exc)]}
+        return {"result": "invalid", "bindings": bindings, "findings": [str(exc)],
+                "diagnostics": [{"code": "rendering-contract-invalid", "message": str(exc),
+                    "capability_id": CAPABILITY_ID, "remedy": "repair-contract"}]}
 
 
 def _resolve_bindings(root, *, require_browser=False):
     probe = probe_runtime(root, require_browser=require_browser)
     if probe["result"] != "ready":
+        diagnostics = probe.get("diagnostics", [])
+        if diagnostics and all(row["remedy"] != "repair-contract" for row in diagnostics):
+            row = diagnostics[0]
+            raise _unavailable("; ".join(probe["findings"]), row["code"], row.get("resource"),
+                               remedy=row["remedy"])
         raise StaticRenderRuntimeError("; ".join(probe["findings"]))
     return probe["bindings"]
 
 
 @lru_cache(maxsize=16)
 def _version_probe(executable, digest):
-    result = kblib.run_cambium_subprocess([str(executable), "--version"], capture_output=True,
-                            text=True, timeout=15, check=False)
+    try:
+        result = kblib.run_cambium_subprocess([str(executable), "--version"], capture_output=True,
+                                text=True, timeout=15, check=False)
+    except (OSError, subprocess.SubprocessError) as exc:
+        raise _unavailable(str(exc), "executable-unavailable", str(executable)) from exc
     if result.returncode or not result.stdout.strip():
-        raise StaticRenderRuntimeError("Runtime version probe failed: %s" % executable)
+        raise _unavailable("Runtime version probe failed: %s" % executable,
+                           "executable-unavailable", str(executable))
     return result.stdout.strip()
 
 
 def _version(executable):
-    return _version_probe(str(executable), _file_sha(executable))
+    try:
+        return _version_probe(str(executable), _file_sha(executable))
+    except OSError as exc:
+        raise _unavailable(str(exc), "executable-unavailable", str(executable)) from exc
 
 
 def current_runtime_fingerprint(*, root, render_bindings=None):
@@ -311,7 +390,11 @@ def current_runtime_fingerprint(*, root, render_bindings=None):
     render_bindings = (_acceptances(root) if render_bindings is None
                        else _bindings(render_bindings, root))
     needs_browser = requires_browser(render_bindings, root=root)
-    bindings = _resolve_bindings(root, require_browser=needs_browser)
+    try:
+        bindings = _resolve_bindings(root, require_browser=needs_browser)
+    except HostEnvironmentUnavailable as exc:
+        raise _unavailable(str(exc), exc.code, exc.resource,
+                           constructs=render_bindings, remedy=exc.remedy) from exc
     node = Path(bindings["CAMBIUM_RENDER_NODE"])
     modules, dependency = _dependencies(root, bindings["CAMBIUM_RENDER_NODE_MODULES"])
     owner = _owner(root)
@@ -320,7 +403,7 @@ def current_runtime_fingerprint(*, root, render_bindings=None):
     if needs_browser:
         browser = Path(bindings["CAMBIUM_RENDER_BROWSER"])
         config["browser"] = str(browser)
-        browser_fields = {"browser_sha256": _file_sha(browser),
+        browser_fields = {"browser_sha256": _host_file_sha(browser),
                           "browser_version": _version(browser)}
     return {
         "capability_id": CAPABILITY_ID, "selector_id": SELECTOR_ID,
@@ -329,7 +412,7 @@ def current_runtime_fingerprint(*, root, render_bindings=None):
         "adapter_sha256": _file_sha(owner / "static_render_runtime.py"),
         "dependencies": dependency, "host_config": config,
         "host_config_sha256": _json_sha(config),
-        "node_sha256": _file_sha(node), "node_version": _version(node),
+        "node_sha256": _host_file_sha(node), "node_version": _version(node),
         **browser_fields,
     }
 
@@ -354,33 +437,79 @@ def _invoke(request, *, root, timeout=120, runtime_bindings=None):
             encoding="utf-8", capture_output=True, check=False, timeout=timeout,
             env=environment)
         value = json.loads(completed.stdout)
-    except (OSError, subprocess.TimeoutExpired, json.JSONDecodeError) as exc:
-        raise StaticRenderRuntimeError("Renderer invocation failed: %s" % exc) from exc
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        raise _unavailable("Renderer invocation failed: %s" % exc,
+                           "execution-unavailable", str(node)) from exc
+    except json.JSONDecodeError as exc:
+        if completed.returncode:
+            raise _unavailable("Renderer exited without an observation: " + completed.stderr[:2000],
+                               "execution-unavailable", str(node)) from exc
+        raise StaticRenderRuntimeError("Invalid renderer output: %s" % exc) from exc
+    if isinstance(value, dict) and "host_environment" in value:
+        unavailable = value["host_environment"]
+        if not isinstance(unavailable, dict) or set(unavailable) != {"code", "resource", "message"} or \
+                not all(isinstance(unavailable[key], str) for key in unavailable):
+            raise StaticRenderRuntimeError("Invalid renderer Host diagnostic")
+        selected = set(request.get("bindings", {}))
+        for job in request.get("jobs", []):
+            selected.update(job.get("bindings", {}))
+        raise _unavailable(unavailable["message"], unavailable["code"],
+                           unavailable["resource"], constructs=selected)
     if completed.returncode:
         raise StaticRenderRuntimeError("Renderer failed: %s" %
             "; ".join(value.get("diagnostics", [completed.stderr[:2000]])))
     return value
 
 
-def verify_runtime_bindings(root, bindings, *, require_browser=False):
+def rendering_request(root, constructs=()):
+    """Resolve an exact engineering request from the capability owner."""
+    if not isinstance(constructs, (tuple, list)) or any(not isinstance(x, str) for x in constructs):
+        raise StaticRenderRuntimeError("Requested constructs must be a sequence of identities")
+    selected = sorted(set(constructs))
+    allowed = _acceptances(root)
+    if set(selected) - set(allowed):
+        raise StaticRenderRuntimeError("Unregistered rendering construct")
+    return {"capability_id": CAPABILITY_ID, "selector_id": SELECTOR_ID,
+            "constructs": selected, "bindings": {key: allowed[key] for key in selected},
+            "requires_browser": requires_browser(selected, root=root)}
+
+
+def verify_runtime_bindings(root, bindings, *, constructs=()):
     """Exercise only a synthetic Host smoke input, never corpus or Receipt writes."""
+    demand = rendering_request(root, constructs)
     source = "```mermaid\nflowchart LR\nA --> B\n```\n\n$x+1$\n\n| A | B |\n|---|---|\n| a | b |\n"
-    action = "render" if require_browser else "select"
+    action = "render" if demand["constructs"] else "select"
     request = {"action": action, "source": source}
-    if require_browser:
+    if action == "render":
+        request.update(bindings=demand["bindings"],
+                       acceptance_contracts=_capability(root)["acceptance_bindings"])
+    if demand["requires_browser"]:
         if not bindings.get("CAMBIUM_RENDER_BROWSER"):
-            raise StaticRenderRuntimeError("CAMBIUM_RENDER_BROWSER is required for rendering smoke")
-        request.update({"browser": bindings["CAMBIUM_RENDER_BROWSER"],
-                        "bindings": _acceptances(root),
-                        "acceptance_contracts": _capability(root)["acceptance_bindings"]})
+            raise _unavailable("CAMBIUM_RENDER_BROWSER is required for rendering smoke",
+                               "browser-unavailable", constructs=demand["constructs"])
+        request["browser"] = bindings["CAMBIUM_RENDER_BROWSER"]
     result = _invoke(request, root=root, runtime_bindings=bindings)
     if result.get("selector_id") != SELECTOR_ID or result.get("source_sha256") != _sha(source.encode()):
         raise StaticRenderRuntimeError("Rendering smoke is not bound to the requested source")
-    if require_browser and (result.get("result") != "pass" or result.get("diagnostics")):
+    if action == "render" and (result.get("result") != "pass" or result.get("diagnostics")):
         raise StaticRenderRuntimeError("Rendering smoke failed: " + str(result.get("diagnostics")))
     if not result.get("constructs"):
         raise StaticRenderRuntimeError("Rendering smoke produced no parsed constructs")
-    return {"action": action, "result": "pass", "source_sha256": result["source_sha256"]}
+    if action == "render":
+        if sorted(item.get("kind") for item in result["constructs"]) != demand["constructs"]:
+            raise StaticRenderRuntimeError("Rendering smoke construct coverage differs")
+        for item in result["constructs"]:
+            if item.get("result") != "pass" or item.get("diagnostics") or \
+                    item.get("acceptance") != demand["bindings"][item["kind"]] or not item.get("artifact_ids"):
+                raise StaticRenderRuntimeError("Rendering smoke construct did not pass")
+        artifacts = result.get("artifacts", [])
+        if sorted(item["artifact_id"] for item in artifacts) != sorted(
+                identity for item in result["constructs"] for identity in item["artifact_ids"]):
+            raise StaticRenderRuntimeError("Rendering smoke artifact coverage differs")
+        if any(_sha(item["content"].encode("utf-8")) != item["sha256"] for item in artifacts):
+            raise StaticRenderRuntimeError("Rendering smoke artifact digest differs")
+    return {"action": action, "result": "pass", "source_sha256": result["source_sha256"],
+            "verified_request": demand}
 
 
 @lru_cache(maxsize=256)
@@ -396,7 +525,7 @@ def _select_inventory(text, *, root):
     node = Path(bindings["CAMBIUM_RENDER_NODE"])
     modules, dependency = _dependencies(root, bindings["CAMBIUM_RENDER_NODE_MODULES"])
     owner = _owner(root)
-    fingerprint = _json_sha({"node": str(node), "node_sha256": _file_sha(node),
+    fingerprint = _json_sha({"node": str(node), "node_sha256": _host_file_sha(node),
         "node_modules": str(modules), "dependencies": dependency,
         "capability_sha256": _json_sha(_capability(root)),
         "implementation_sha256": _file_sha(owner / "static_markdown_renderer.mjs"),

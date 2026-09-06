@@ -12,6 +12,9 @@ from Tools.knowledge.rendering.record_rendering_verification import main as _mai
 
 IMPLEMENTATION_MODULE = "Tools.knowledge.rendering.record_rendering_verification"
 
+from Tools.platform.common.reporting import host_environment_boundary as _host_environment_boundary
+
+@_host_environment_boundary
 def main(argv=None):
     return _main(argv)
 

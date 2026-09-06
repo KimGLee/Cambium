@@ -306,11 +306,11 @@ ACTION_ROUTES = (
     # Await tokens emitted after the resume route has entered one bounded
     # phase.  They share this registry so the Runner has no private await map.
     _route(
-        "prepare-rendering-runtime", r"prepare-rendering-runtime",
-        "prepare-rendering-runtime", (), resume_source=False,
+        "prepare-host-environment", r"prepare-host-environment",
+        "prepare-host-environment", (), resume_source=False,
         disposition="await-host", runner_route="external-reparse",
-        capabilities=("rendering-runtime-preparation-v1",), recommendation=(
-            "inspect the local rendering runtime, prepare missing Host "
+        capabilities=("host-environment-preparation-v1",), recommendation=(
+            "inspect the local Host toolchain, prepare missing Host "
             "dependencies only with authorization, then derive a fresh action; "
             "do not acknowledge readiness or change Profile/Queue state")),
     _route(

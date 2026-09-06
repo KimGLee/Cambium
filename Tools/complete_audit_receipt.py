@@ -12,6 +12,9 @@ from Tools.execution.audit.complete_audit_receipt import main as _main
 
 IMPLEMENTATION_MODULE = "Tools.execution.audit.complete_audit_receipt"
 
+from Tools.platform.common.reporting import host_environment_boundary as _host_environment_boundary
+
+@_host_environment_boundary
 def main(argv=None):
     return _main(argv)
 

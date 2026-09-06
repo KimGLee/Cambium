@@ -26,6 +26,7 @@ import Tools.knowledge.rendering.record_profile_rendering as profile_producer  #
 import Tools.knowledge.rendering.static_render_runtime as static_render_runtime  # noqa: E402
 from Tools.governance.profile.rendering_contract import RenderingContract, RenderingRule  # noqa: E402
 from Tools.tests.support.profile_fixture import FIXTURE_UPSTREAM_REVISION  # noqa: E402
+from Tools.platform.common.host_environment import HostEnvironmentUnavailable
 
 
 SHA_A = "sha256:" + "a" * 64
@@ -158,7 +159,7 @@ class ProfileRenderingEvidenceTests(unittest.TestCase):
                     plan, [("Topics/A.md", "# Plain\n")], self.profile, root=REPOSITORY)
         self.assertEqual(before, plan)
 
-    def test_finalizer_and_consumer_both_reject_compiler_invalid_artifacts(self):
+    def test_finalizer_consumer_preserves_invalid_artifacts_vs_unavailable_observation(self):
         record, plan, obligation = self._record()
         digest = audit_plan_contract.plan_sha256(plan)
         self.assertEqual([], profile_evidence.current_receipt_errors(record))
@@ -168,13 +169,19 @@ class ProfileRenderingEvidenceTests(unittest.TestCase):
                                          "_evaluation": self.evaluation}}
         item = {"id": plan["batch_id"], "manifest": [obligation["target"]]}
         result["items_by_id"] = {item["id"]: item}
-        with mock.patch.object(kblib, "repository_target_snapshot", return_value=SimpleNamespace(
-                    exists=True, read_text=lambda: self.text)), \
-                mock.patch.object(static_render_runtime, "select_constructs", return_value=("mermaid-fence",)), \
-                mock.patch.object(static_render_runtime, "validate_render_result", return_value=["compiler artifact is invalid"]):
-            with self.assertRaisesRegex(ValueError, "compiler artifact is invalid"):
-                audit_evidence_runtime.require_completion_evidence(
-                    result, item, plan, digest, obligation, record["receipt_id"])
+        unavailable = HostEnvironmentUnavailable("Node absent",
+            capability_id="static-markdown-render-v1", code="node-unavailable")
+        for outcome, exception in ((["compiler artifact is invalid"], ValueError),
+                                   (unavailable, HostEnvironmentUnavailable)):
+            with self.subTest(exception=exception), mock.patch.object(kblib, "repository_target_snapshot", return_value=SimpleNamespace(
+                        exists=True, read_text=lambda: self.text)), \
+                    mock.patch.object(static_render_runtime, "select_constructs", return_value=("mermaid-fence",)), \
+                    mock.patch.object(static_render_runtime, "validate_render_result",
+                        side_effect=outcome if isinstance(outcome, Exception) else None,
+                        return_value=outcome):
+                with self.assertRaises(exception):
+                    audit_evidence_runtime.require_completion_evidence(
+                        result, item, plan, digest, obligation, record["receipt_id"])
 
     def test_report_and_source_drift_cannot_reuse_current_evidence(self):
         record, plan, obligation = self._record()

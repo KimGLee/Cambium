@@ -28,7 +28,7 @@ jobs:
 
       - name: Install the pinned Profile toolchain
         run: |
-          python -m pip install --disable-pip-version-check -r Tools/requirements-profile.txt
+          python -m pip install --disable-pip-version-check -r Tools/requirements-profile.txt -r Tools/requirements-host.txt
           python .github/scripts/install_cue.py --destination "$RUNNER_TEMP/cambium-profile-cue"
           echo "CAMBIUM_CUE=$RUNNER_TEMP/cambium-profile-cue/cue" >> "$GITHUB_ENV"
 

@@ -12,6 +12,9 @@ from Tools.execution.task_runtime.register_amendment import main as _main
 
 IMPLEMENTATION_MODULE = "Tools.execution.task_runtime.register_amendment"
 
+from Tools.platform.common.reporting import host_environment_boundary as _host_environment_boundary
+
+@_host_environment_boundary
 def main(argv=None):
     return _main(argv)
 

@@ -873,6 +873,24 @@ class DependencyDirection(unittest.TestCase):
             if implementation and implementation not in graph.get(module, ()):
                 problems.append(
                     "%s does not depend on %s" % (module, implementation))
+            reachable, pending = set(), [module]
+            while pending:
+                item = pending.pop()
+                if item not in reachable:
+                    reachable.add(item)
+                    pending.extend(graph.get(item, ()))
+            if reachable & {"governance.profile.profile_cue", "knowledge.rendering.static_render_runtime"}:
+                source = Path(TOOLS, row["path"]).read_text(encoding="utf-8")
+                owner_source = Path(TOOLS, self.facts[implementation]["path"]).read_text(encoding="utf-8")
+                if "@_host_environment_boundary" not in source:
+                    tree = ast.parse(owner_source)
+                    caught = any(isinstance(node, ast.ExceptHandler) and node.type and
+                                 "HostEnvironmentUnavailable" in ast.unparse(node.type)
+                                 for node in ast.walk(tree))
+                    if not caught:
+                        problems.append("%s has no Host error transport boundary" % module)
+                if "@reporting.host_environment_boundary" in owner_source or "@host_environment_boundary" in owner_source:
+                    problems.append("%s converts an in-process failure into a CLI verdict" % implementation)
         self.assertEqual([], problems)
 
     def test_top_level_cli_wrappers_define_only_main_and_entry_metadata(self):

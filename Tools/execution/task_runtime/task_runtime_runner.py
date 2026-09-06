@@ -32,7 +32,8 @@ import Tools.execution.task_runtime.runtime_paths as runtime_paths
 import Tools.execution.task_runtime.runtime_validation as runtime_validation
 import Tools.execution.task_runtime.task_runtime_action as task_runtime_action
 from Tools.platform.common.primitives import catalog_record
-from Tools.platform.common.reporting import write_canonical_json
+from Tools.platform.common.reporting import write_canonical_json, host_environment_boundary
+from Tools.platform.common.host_environment import HostEnvironmentUnavailable, preparation_request
 
 
 AUDIT_PLAN_CAPABILITY = "audit-plan-producer-v1"
@@ -656,7 +657,12 @@ def next_action(root):
     # the ordinary full validation in the same validator.
     result = runtime_validation.validate_runtime(
         root, allow_unmaterialized_queue=True)
-    return _resume_action(result)
+    try:
+        return _resume_action(result)
+    except HostEnvironmentUnavailable as exc:
+        return _await_host_environment(result, None, {
+            "result": "needs-preparation", "findings": [str(exc)],
+            "diagnostics": [exc.diagnostic()]}, exc.constructs)
 
 
 def _repository_tool_entrypoint(root, tool, relative):
@@ -873,39 +879,48 @@ def _rendering_boundary(result, batch_id):
             pages.append((relative, snapshot.read_text()))
     try:
         selected = profile_rendering.require_bindings(pages, profile, root=root)
+    except HostEnvironmentUnavailable as exc:
+        return _await_host_environment(result, batch_id, {
+            "result": "needs-preparation", "findings": [str(exc)],
+            "diagnostics": [exc.diagnostic()]}, exc.constructs)
     except static_render_runtime.StaticRenderRuntimeError as exc:
-        probe = static_render_runtime.probe_runtime(root, require_browser=False)
-        if probe["result"] == "ready":
-            return _repair(result, "rendering-selector-failed", target={
-                "batch_id": batch_id, "diagnostics": [str(exc)]})
-        return _await_rendering_runtime(result, batch_id, probe, False)
+        return _repair(result, "rendering-selector-failed", target={
+            "batch_id": batch_id, "diagnostics": [str(exc)]})
     except ValueError as exc:
         return _repair(result, "profile-rendering-contract-gap", target={
             "batch_id": batch_id, "diagnostics": [str(exc)]})
     if not any(selected.values()):
         return None
-    needs_browser = static_render_runtime.requires_browser(
-        {kind for kinds in selected.values() for kind in kinds}, root=root)
+    constructs = sorted({kind for kinds in selected.values() for kind in kinds})
+    needs_browser = static_render_runtime.requires_browser(constructs, root=root)
     probe = static_render_runtime.probe_runtime(root, require_browser=needs_browser)
     if probe["result"] != "ready":
-        return _await_rendering_runtime(result, batch_id, probe, needs_browser)
+        if any(row.get("remedy") == "repair-contract" for row in probe.get("diagnostics", [])):
+            return _repair(result, "rendering-selector-failed", target={
+                "batch_id": batch_id, "diagnostics": probe["findings"]})
+        return _await_host_environment(result, batch_id, probe, constructs)
     return None
 
 
-def _await_rendering_runtime(result, batch_id, probe, require_browser):
-    route = task_runtime_action.action_route("prepare-rendering-runtime")
+def _await_host_environment(result, batch_id, probe, constructs):
+    route = task_runtime_action.action_route("prepare-host-environment")
     capability = _route_capability(route)
+    diagnostics = probe.get("diagnostics") or [{
+        "capability_id": probe.get("capability_id", "static-markdown-render-v1"),
+        "constructs": list(constructs), "message": "; ".join(probe["findings"])}]
+    request = preparation_request(diagnostics)
+    if request["capability_id"] != capability:
+        raise RunnerError("Host preparation route differs from its request owner")
     return _await(result, "await-host", route.token_template, {
         "host_preparation": {
-            "capability_id": capability,
+            **request,
             "tool": _capability_tool(result, capability),
-            "arguments": {"require_browser": require_browser, "json": True},
             "instruction": (
                 "Inspect first; apply preparation only with Host authorization, "
                 "then query the Runner again. A supplied ready assertion is "
                 "not accepted."),
         },
-    }, "rendering-runtime-not-ready", target={
+    }, "host-environment-not-ready", target={
         "batch_id": batch_id, "runtime_result": probe["result"],
         "diagnostics": probe["findings"],
     })
@@ -1516,6 +1531,10 @@ def _execute_observed(root, action, input_record=None):
             "%s action cannot be executed" % action["disposition"])
     try:
         next_value = next_action(root)
+    except HostEnvironmentUnavailable as exc:
+        next_value = None
+        next_error = {"status": "await-host", "host_environment": exc.diagnostic(),
+                      "host_preparation": preparation_request([exc.diagnostic()])}
     except (OSError, TypeError, UnicodeError, ValueError,
             kblib.YamlSubsetError) as exc:
         next_value = None

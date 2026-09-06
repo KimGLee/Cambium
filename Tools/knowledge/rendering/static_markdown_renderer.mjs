@@ -6,23 +6,34 @@ import {createRequire} from 'node:module';
 import {fileURLToPath, pathToFileURL} from 'node:url';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
-const moduleRoot = fs.realpathSync(process.env.CAMBIUM_RENDER_NODE_MODULES ||
-  path.join(here, 'static_renderer', 'node_modules'));
-const requireLocal = createRequire(path.join(moduleRoot, '..', 'package.json'));
-async function dependency(name) {
-  const resolved = fs.realpathSync(requireLocal.resolve(name));
-  if (!resolved.startsWith(moduleRoot + path.sep)) throw new Error(`Nonlocal dependency: ${name}`);
-  return import(pathToFileURL(resolved).href);
+class HostRuntimeUnavailable extends Error {
+  constructor(message, resource) { super(message); this.resource = resource; }
 }
-const [{unified}, {default: remarkParse}, {default: remarkMath},
-  {default: remarkGfm}, {default: remarkFrontmatter}] =
-  await Promise.all(['unified', 'remark-parse', 'remark-math', 'remark-gfm',
-    'remark-frontmatter'].map(dependency));
+let moduleRoot, requireLocal, unified, processor;
+async function dependency(name) {
+  let resolved;
+  try { resolved = fs.realpathSync(requireLocal.resolve(name)); }
+  catch (error) { throw new HostRuntimeUnavailable(String(error.message || error), name); }
+  if (!resolved.startsWith(moduleRoot + path.sep)) throw new Error(`Nonlocal dependency: ${name}`);
+  try { return await import(pathToFileURL(resolved).href); }
+  catch (error) { throw new HostRuntimeUnavailable(String(error.message || error), name); }
+}
+async function initialize() {
+  try { moduleRoot = fs.realpathSync(process.env.CAMBIUM_RENDER_NODE_MODULES ||
+    path.join(here, 'static_renderer', 'node_modules')); }
+  catch (error) { throw new HostRuntimeUnavailable(String(error.message || error), 'node_modules'); }
+  requireLocal = createRequire(path.join(moduleRoot, '..', 'package.json'));
+  const [core, {default: remarkParse}, {default: remarkMath},
+    {default: remarkGfm}, {default: remarkFrontmatter}] =
+    await Promise.all(['unified', 'remark-parse', 'remark-math', 'remark-gfm',
+      'remark-frontmatter'].map(dependency));
+  unified = core.unified;
+  processor = unified().use(remarkParse).use(remarkFrontmatter, ['yaml'])
+    .use(remarkGfm).use(remarkMath, {singleDollarTextMath: true});
+}
 
 const SELECTOR = 'remark-commonmark-gfm-math-v1';
 const sha = value => 'sha256:' + crypto.createHash('sha256').update(value).digest('hex');
-const processor = unified().use(remarkParse).use(remarkFrontmatter, ['yaml'])
-  .use(remarkGfm).use(remarkMath, {singleDollarTextMath: true});
 const inventories = new Map();
 
 function parse(source) {
@@ -90,7 +101,8 @@ async function run(request, runtime) {
     if (!runtime.browser) {
       const playwright = await dependency('playwright-core');
       const {chromium} = playwright.default || playwright;
-      runtime.browser = await chromium.launch({executablePath: request.browser, headless: true});
+      try { runtime.browser = await chromium.launch({executablePath: request.browser, headless: true}); }
+      catch (error) { throw new HostRuntimeUnavailable(String(error.message || error), request.browser); }
       runtime.executable = request.browser;
     }
     if (runtime.executable !== request.browser) throw new Error('Rendering group mixes browser identities');
@@ -101,6 +113,7 @@ async function run(request, runtime) {
   let context, page;
   try {
     if (browser) {
+    try {
     context = await browser.newContext({viewport: {width: 1024, height: 768},
       deviceScaleFactor: 1, locale: 'en-US', timezoneId: 'UTC', serviceWorkers: 'block'});
     // Network is unavailable while rendering. The only resource loader below
@@ -125,6 +138,9 @@ async function run(request, runtime) {
       await page.evaluate(() => mermaid.initialize({startOnLoad: false, securityLevel: 'strict',
         deterministicIds: true, deterministicIDSeed: 'cambium-static-v1',
         fontFamily: 'Arial, sans-serif', theme: 'default'}));
+    }
+    } catch (error) {
+      throw new HostRuntimeUnavailable(String(error.message || error), request.browser);
     }
     }
     for (let index = 0; index < items.length; index++) {
@@ -214,6 +230,9 @@ async function run(request, runtime) {
         result.artifacts.push({artifact_id: artifactId, media_type: mediaType, content, sha256: sha(content)});
         item.artifact_ids.push(artifactId); item.result = 'pass';
       } catch (error) {
+        if (error instanceof HostRuntimeUnavailable) throw error;
+        if (browser && (!browser.isConnected() || page.isClosed()))
+          throw new HostRuntimeUnavailable(String(error.message || error), request.browser);
         item.diagnostics.push(String(error.message || error)); result.result = 'fail';
       }
     }
@@ -222,6 +241,7 @@ async function run(request, runtime) {
 }
 
 try {
+  await initialize();
   const chunks = []; for await (const chunk of process.stdin) chunks.push(chunk);
   const input = Buffer.concat(chunks).toString('utf8');
   const request = JSON.parse(input), runtime = {};
@@ -236,6 +256,9 @@ try {
     process.stdout.write(JSON.stringify(output));
   } finally { if (runtime.browser) await runtime.browser.close(); }
 } catch (error) {
-  process.stdout.write(JSON.stringify({result:'fail',diagnostics:[String(error.message || error)]}));
+  const unavailable = error instanceof HostRuntimeUnavailable;
+  process.stdout.write(JSON.stringify(unavailable
+    ? {host_environment: {code:'renderer-execution-unavailable', resource:error.resource, message:String(error.message || error)}}
+    : {result:'fail',diagnostics:[String(error.message || error)]}));
   process.exitCode = 1;
 }
