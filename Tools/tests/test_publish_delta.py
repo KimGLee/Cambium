@@ -22,11 +22,11 @@ sys.path.insert(0, str(TOOLS / "tests"))
 sys.path.insert(0, str(TOOLS))
 
 import Tools.execution.task_runtime.candidate_delta_runtime as candidate_delta_runtime  # noqa: E402
+import Tools.execution.audit.audit_evidence_runtime as audit_evidence_runtime
 import Tools.platform.common.kblib as kblib  # noqa: E402
 import publish_delta  # noqa: E402
 from Tools.execution.task_runtime import queue_runtime  # noqa: E402
 import Tools.execution.task_runtime.runtime_validation as runtime_validation  # noqa: E402
-import Tools.knowledge.metadata.check_page_contract as check_page_contract  # noqa: E402
 from Tools.tests.support.coverage_delta_fixture import (  # noqa: E402
     premerge_delta_document,
 )
@@ -48,6 +48,35 @@ class CandidateDeltaContractTests(unittest.TestCase):
             with self.subTest(invalid=invalid), self.assertRaises(
                     candidate_delta_runtime.CandidateDeltaError):
                 candidate_delta_runtime._expected_sha(invalid)
+
+    def test_page_reference_projection_preserves_kinds_and_refuses_unaccepted_evidence(self):
+        # Acceptance is owned and tested by audit_evidence_runtime. This seam
+        # only selects its results, including L precursor and dimensionless Gate.
+        item = {"id": "B1", "manifest": ["A.md", "B.md"]}
+        records = {
+            "audit": {"receipt_id": "audit", "result": "passed", "target": "A.md", "evidence_ref": "review"},
+            "review": {"receipt_id": "review", "result": "pass", "target": "A.md"},
+            "gate": {"receipt_id": "gate", "result": "pass", "target": "B.md"},
+            "trigger": {"receipt_id": "trigger", "result": "candidate", "target": "B.md"},
+        }
+        result = {"current_receipt_catalog": {key: ("receipts.jsonl", value) for key, value in records.items()}}
+        rows = [{"obligation": {"obligation_id": key, "target": target, "evidence_kind": kind},
+                 "status": "satisfied", "evidence_ref": key}
+                for key, target, kind in (("audit", "A.md", "audit-receipt"),
+                    ("gate", "B.md", "gate-receipt"), ("trigger", "B.md", "candidate-set-receipt"))]
+        with mock.patch.object(audit_evidence_runtime, "stage_evidence_status", return_value={"obligations": rows}):
+            self.assertEqual({"A.md": ["review"], "B.md": ["gate"]},
+                audit_evidence_runtime.candidate_page_evidence(result, item))
+            for ref in ("audit", "gate", "unknown"):
+                self.assertTrue(audit_evidence_runtime.candidate_page_evidence_errors(result, item,
+                    {"pages": [{"path": "A.md", "gate_receipts": [ref]}]}))
+            for outcome in ("missing", "needs-correction", "escalated"):
+                rows[0]["status"] = outcome
+                self.assertEqual([], audit_evidence_runtime.candidate_page_evidence(result, item)["A.md"])
+            for outcome in ("invalid", "ambiguous"):
+                rows[0]["status"] = outcome
+                with self.assertRaises(audit_evidence_runtime.AuditEvidenceError):
+                    audit_evidence_runtime.candidate_page_evidence(result, item)
 
     def test_queue_handoff_rejection_stops_before_target_publication(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -87,35 +116,23 @@ class CandidateDeltaPublicationIntegrationTests(unittest.TestCase):
         self.temporary = tempfile.TemporaryDirectory()
         self.addCleanup(self.temporary.cleanup)
         self.root = Path(self.temporary.name) / "repo"
-        install_update_queue_checkpoint(self.root, "open-b1")
-        self.receipt = kblib.make_receipt(
-            check_page_contract.TOOL,
-            check_page_contract.TOOL_VERSION,
-            check_page_contract.GATE_CHECK,
-            "Topics/A.md",
-            "pass",
-            "fixture evidence for candidate Delta publication",
-            1,
-            receipt_type_id=check_page_contract.RECEIPT_TYPE_ID,
-            root=self.root,
-        )
-        self.receipt["gate_id"] = check_page_contract.GATE_ID
-        kblib.write_receipts(
-            self.root / ".cambium/receipts/candidate-delta-fixture.jsonl",
-            [self.receipt],
-        )
+        install_update_queue_checkpoint(self.root, "merge-admission-b1")
+        # Use already verified local evidence, not a fabricated generic pass.
+        current = runtime_validation.validate_runtime(self.root)
+        self.evidence = audit_evidence_runtime.candidate_page_evidence(current, current["items_by_id"]["B1"])
         self.proposal_relative = ".cambium/tmp/B1-proposal.yaml"
         self.proposal_path = self.root / self.proposal_relative
         self.proposal_path.parent.mkdir(parents=True, exist_ok=True)
         self.delta_relative = ".cambium/deltas/B1.yaml"
         self.delta_path = self.root / self.delta_relative
+        self.delta_path.unlink()  # This test's private candidate-publication checkpoint.
         self.write_proposal()
         self.assertEqual(
             [], runtime_validation.validate_runtime(self.root)["errors"])
 
     def proposal(self, generated_at="2026-08-30T00:00:00Z"):
         return premerge_delta_document(
-            "B1", "Topics/A.md", [self.receipt["receipt_id"]],
+            "B1", "Topics/A.md", self.evidence["Topics/A.md"],
             generated_at=generated_at,
         )
 
@@ -163,7 +180,9 @@ class CandidateDeltaPublicationIntegrationTests(unittest.TestCase):
             )
         self.assertFalse(self.delta_path.exists())
 
-        self.write_proposal()
+        automatic = self.proposal()
+        del automatic["pages"][0]["gate_receipts"]
+        self.write_proposal(document=automatic)
         planned = candidate_delta_runtime.plan_candidate_delta(
             self.root,
             batch_id="B1",

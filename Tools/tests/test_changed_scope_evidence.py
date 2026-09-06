@@ -11,6 +11,12 @@ import os
 import sys
 import types
 import unittest
+import contextlib
+import io
+import threading
+import tempfile
+import json
+from pathlib import Path
 from unittest import mock
 
 
@@ -26,6 +32,9 @@ import Tools.execution.audit.changed_scope_evidence_contract as contract
 import Tools.execution.audit.changed_scope_runtime_checks as runtime_checks
 import Tools.execution.audit.complete_audit_receipt as complete_audit_receipt
 import Tools.execution.audit.record_changed_scope_evidence as producer
+import Tools.execution.audit.prepare_audit_plan as prepare_audit_plan
+import Tools.execution.audit.audit_execution_runtime as execution
+import Tools.execution.task_runtime.runtime_validation as runtime_validation
 from Tools.execution.task_runtime.queue_runtime import profile_view
 import Tools.execution.evidence.metadata_gate_runtime as metadata_gate_runtime
 import Tools.governance.profile.profile_contract as profile_contract
@@ -34,6 +43,7 @@ import Tools.knowledge.metadata.check_page_contract as check_page_contract
 import Tools.knowledge.metadata.check_vocab as check_vocab
 import Tools.platform.common.kblib as kblib
 from Tools.tests.support.profile_contract_fixture import CurrentProfileContractFixture
+from Tools.tests.fixtures.integration.update_queue_checkpoints import install_update_queue_checkpoint
 
 
 def digest(label):
@@ -330,6 +340,56 @@ class ChangedScopeEvidenceFixtures:
 class ChangedScopeEvidenceContractTests(
         ChangedScopeEvidenceFixtures, unittest.TestCase):
 
+    def test_compute_group_keeps_gate_isolation_and_plan_order(self):
+        gate = next(row for row in self.trace if row["producer_route_kind"] == "gate")
+        contexts = [{"trace": gate, "identity": identity} for identity in ("a", "b")]
+        barrier = threading.Barrier(2)
+        def compute(context, *, seq):
+            barrier.wait(timeout=5)
+            self.assertEqual(1 if context["identity"] == "a" else 2, seq)
+            return context["identity"]
+        with mock.patch.object(producer, "produce_evidence", side_effect=compute):
+            self.assertEqual(["a", "b"], producer.compute_evidence_group(contexts))
+
+    def test_group_computes_once_then_cas_rejects_changed_inputs_before_write(self):
+        state = {"queue": {"task_id": "TASK", "queue_revision": 1, "state_revision": 2},
+                 "queue_sha256": digest("queue"), "coverage_sha256": digest("coverage"),
+                 "progress_sha256": digest("progress")}
+        stage = {"plan": {"plan_id": "plan"}, "audit_plan_id": "plan",
+                 "audit_plan_path": ".cambium/work_specs/audit-plans/plan.yaml", "audit_plan_sha256": digest("plan")}
+        context = {"root": ROOT, "result": state, "authority": object(), "item": {"id": "B1"},
+                   "stage": stage, "plan": stage["plan"], "plan_sha256": stage["audit_plan_sha256"],
+                   "obligation": {"obligation_id": "one"}, "frozen": [],
+                   "trace": {"producer_route_kind": "gate"}}
+        for changed in (None, "repository", "runtime"):
+            with self.subTest(changed=changed), contextlib.ExitStack() as stack:
+                locked = copy.deepcopy(state)
+                if changed == "runtime": locked["queue_sha256"] = digest("new queue")
+                stack.enter_context(mock.patch.object(producer, "_context", return_value=context))
+                stack.enter_context(mock.patch.object(producer, "existing_evidence_record", return_value=None))
+                computed = stack.enter_context(mock.patch.object(producer, "produce_evidence",
+                    side_effect=[{"receipt_id": identity, "result": "pass"} for identity in ("one", "two")]))
+                stack.enter_context(mock.patch.object(kblib, "repository_snapshot_sha256",
+                    side_effect=[digest("before"), digest("after" if changed == "repository" else "before")]))
+                stack.enter_context(mock.patch.object(audit_producer_runtime, "managed_receipt_path", return_value="receipts"))
+                stack.enter_context(mock.patch.object(audit_producer_runtime, "runtime_lock_metadata", return_value={}))
+                stack.enter_context(mock.patch.object(audit_producer_runtime, "require_runtime_current", return_value=locked))
+                stack.enter_context(mock.patch.object(audit_producer_runtime, "open_batch", return_value=(context["item"], None)))
+                stack.enter_context(mock.patch.object(audit_evidence_runtime, "resolve_stage_plan", return_value=stage))
+                stack.enter_context(mock.patch.object(kblib, "runtime_write_lock"))
+                stack.enter_context(mock.patch.object(kblib, "no_authoritative_write_guard", side_effect=lambda _: contextlib.nullcontext()))
+                stack.enter_context(mock.patch.object(kblib, "receipt_append_observation", return_value=object()))
+                writer = stack.enter_context(mock.patch.object(kblib, "write_receipts_observed", return_value=("present", None, None)))
+                stack.enter_context(mock.patch.object(audit_producer_runtime, "read_receipt_records", return_value=[]))
+                stack.enter_context(mock.patch.object(producer, "require_exact_evidence_readback"))
+                output = stack.enter_context(contextlib.redirect_stdout(io.StringIO()))
+                code = producer.main([ROOT, "--batch", "B1", "--plan", stage["audit_plan_path"],
+                    "--obligation-id", "one", "--obligation-id", "two", "--apply"])
+                self.assertEqual(2, computed.call_count)  # No second computation inside the writer lock.
+                self.assertEqual(0 if changed is None else 1, code, output.getvalue())
+                self.assertEqual(1 if changed is None else 0, writer.call_count)
+                if changed is None: self.assertEqual(2, len(writer.call_args.args[1]))
+
     def test_registry_rows_have_one_exact_current_producer_trace(self):
         rows = {row["rule_id"]: row for row in self.rules}
         traces = {row["rule_id"]: row for row in self.trace}
@@ -461,6 +521,44 @@ class ChangedScopeEvidenceContractTests(
 
 class ChangedScopeEvidenceIntegrationTests(
         ChangedScopeEvidenceFixtures, unittest.TestCase):
+
+    def test_open_checkpoint_group_publishes_unique_evidence_and_completes_once(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory) / "repo"
+            install_update_queue_checkpoint(root, "open-b1")
+            # This checkpoint ends at Queue open, before AuditPlan creation.
+            # Build only the adjacent producer input, not the Task/Batch prologue.
+            with contextlib.redirect_stdout(io.StringIO()) as output:
+                code = prepare_audit_plan.main([str(root), "--batch", "B1", "--apply"])
+            self.assertEqual(0, code, output.getvalue())
+            result = runtime_validation.validate_runtime(root)
+            item = result["items_by_id"]["B1"]
+            stage = audit_evidence_runtime.resolve_stage_plan(result, item, "pre-merge", required_state="open")
+            evaluation = result["_profile_authorized_view"]["_evaluation"]
+            obligations = [row for row in stage["plan"]["obligations"]
+                if row["status"] == "required" and execution.producer_route(row, root=root, evaluation=evaluation)
+                in {"deterministic-direct-evidence", "deterministic-audit-precursor"}]
+            args = [str(root), "--batch", "B1", "--plan", stage["audit_plan_path"], "--apply"]
+            for row in obligations: args.extend(["--obligation-id", row["obligation_id"]])
+            with contextlib.redirect_stdout(io.StringIO()) as output:
+                code = producer.main(args)
+            self.assertEqual(0, code, output.getvalue())
+            ids = json.loads(output.getvalue())["receipt_ids"]
+            self.assertEqual(len(obligations), len(set(ids)))
+            pairs = [(row, identity) for row, identity in zip(obligations, ids) if row["evidence_kind"] == "audit-receipt"]
+            args = [str(root), "--batch", "B1", "--plan", stage["audit_plan_path"], "--apply"]
+            for row, identity in pairs:
+                args.extend(["--obligation-id", row["obligation_id"], "--evidence-receipt", identity])
+            with contextlib.redirect_stdout(io.StringIO()) as output:
+                code = complete_audit_receipt.main(args)
+            self.assertEqual(0, code, output.getvalue())
+            self.assertEqual(len(pairs), len(set(json.loads(output.getvalue())["receipt_ids"])))
+            current = runtime_validation.validate_runtime(root)
+            self.assertEqual([], current["errors"])
+            status = audit_evidence_runtime.stage_evidence_status(current, current["items_by_id"]["B1"], "pre-merge", required_state="open")
+            selected = {row["obligation_id"] for row in obligations}
+            self.assertTrue(all(row["status"] == "satisfied" for row in status["obligations"]
+                if row["obligation"]["obligation_id"] in selected))
 
     def test_current_record_kinds_cross_registered_consumer_boundaries(self):
         direct = self.direct_case(

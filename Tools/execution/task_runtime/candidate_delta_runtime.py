@@ -1,4 +1,4 @@
-"""Publish one Agent-complete Coverage Delta as the open batch candidate.
+"""Assemble current evidence and publish one open-batch Coverage Delta.
 
 This application layer owns no Coverage rule and no lifecycle transition.  It
 combines the existing Coverage Delta policy, Queue handoff contract, repository
@@ -13,8 +13,10 @@ import argparse
 import fcntl
 import json
 import os
+import copy
 
 import Tools.platform.common.kblib as kblib
+import Tools.execution.audit.audit_evidence_runtime as audit_evidence_runtime
 from Tools.execution.task_runtime import queue_runtime
 import Tools.execution.task_runtime.runtime_paths as runtime_paths
 import Tools.execution.task_runtime.runtime_validation as runtime_validation
@@ -174,8 +176,25 @@ def _plan(root, batch_id, proposal_path, expected_delta_sha256):
     expected_delta_sha256 = _expected_sha(expected_delta_sha256)
     delta_path = runtime_paths.child_path(
         runtime_paths.DELTA_ROOT, "%s.yaml" % batch_id)
-    proposal, canonical_text = _proposal_snapshot(root, proposal_path)
+    proposal, _source_text = _proposal_snapshot(root, proposal_path)
     result, item, manifest = _runtime_and_item(root, batch_id)
+    # Fill only the mechanical evidence slot. Explicit caller references are
+    # validated, never silently repaired; all authoring decisions stay intact.
+    proposal = copy.deepcopy(proposal)
+    pages = proposal.get("pages")
+    if isinstance(pages, list) and pages:
+        try:
+            resolved = audit_evidence_runtime.candidate_page_evidence(result, item)
+            for page in pages:
+                if isinstance(page, dict) and "gate_receipts" not in page and page.get("path") in resolved:
+                    page["gate_receipts"] = resolved[page["path"]]
+            evidence_errors = audit_evidence_runtime.candidate_page_evidence_errors(
+                result, item, proposal, resolved=resolved)
+        except (OSError, TypeError, ValueError) as exc:
+            raise CandidateDeltaError("candidate evidence cannot be resolved: %s" % exc) from exc
+        if evidence_errors:
+            raise CandidateDeltaError(evidence_errors)
+    canonical_text = kblib.canonical_yaml(proposal)
     errors = _handoff_errors(proposal, delta_path, result, item)
     if errors:
         raise CandidateDeltaError([
@@ -317,6 +336,12 @@ def _post_publish_errors(plan):
             records[0].get("handoff_status") != "candidate"):
         errors.append(
             "published bytes were not read back as the unique candidate")
+    if not errors:
+        try:
+            errors.extend(audit_evidence_runtime.candidate_page_evidence_errors(
+                result, item, kblib.parse_yaml_subset(plan.canonical_text)))
+        except (OSError, TypeError, ValueError) as exc:
+            errors.append("candidate evidence changed during publication: %s" % exc)
     return list(dict.fromkeys(errors))
 
 

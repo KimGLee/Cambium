@@ -154,7 +154,7 @@ source_files:
   - Tools/stamp_cards.py
   - Tools/update_queue.py
   - Tools/update_task.py
-source_hash: sha256:8496d6d1c5303f18bb6decbeecc8ac5a1173b962534e95facc1397181ebd1d3b
+source_hash: sha256:bc6786436dc7af8639e6829149d84510470fe5c4090b0749f53facfce439f78a
 agent_interface_policy:
   path: Tools/agent-interface-policy.yaml
   sha256: sha256:fc3170ca859a95ec95290fef9ef9e631a641d78d32e8017b3c09060935125092
@@ -3945,7 +3945,7 @@ tools:
     source_hash: sha256:c6689b1638e5592ea2756bef0107062c8cdd60735659820621683482aa362bbc
     implementation_module: Tools.execution.audit.complete_audit_receipt
     implementation_path: Tools/execution/audit/complete_audit_receipt.py
-    implementation_source_hash: sha256:eb5c2be3ff8634ea543b7e236dee7513efb437b9e86627341a723175972a3c00
+    implementation_source_hash: sha256:b32fe8b17b6d9869f5beb8a87c60202a2bb7b177cf00cb8e3ee03e8f769243cd
     description: Complete one plan obligation into a full AuditReceipt
     arguments:
       - dest: root
@@ -3988,7 +3988,7 @@ tools:
         default_type: NoneType
         choices: null
         nargs: null
-        action: store
+        action: append
         type: null
         help: null
       - dest: evidence_receipt
@@ -3999,9 +3999,9 @@ tools:
         default_type: NoneType
         choices: null
         nargs: null
-        action: store
+        action: append
         type: null
-        help: null
+        help: producer evidence, in the same order as repeated obligation IDs
       - dest: receipts
         option_strings:
           - --receipts
@@ -4029,7 +4029,7 @@ tools:
     receipt_extensions_extraction: complete
     receipt_extension_sources:
       - path: Tools/execution/audit/complete_audit_receipt.py
-        sha256: sha256:eb5c2be3ff8634ea543b7e236dee7513efb437b9e86627341a723175972a3c00
+        sha256: sha256:b32fe8b17b6d9869f5beb8a87c60202a2bb7b177cf00cb8e3ee03e8f769243cd
       - path: Tools/platform/common/kblib.py
         sha256: sha256:2a76a741123287ccb918edeb577e3cc0eec28475bb7e5c3fa3fcda8920b11335
     agent_interface:
@@ -4839,8 +4839,8 @@ tools:
     source_hash: sha256:4cc49b3dc7409ecead0ccb860be94d52ba774cecd51715c7f2af683020cdee64
     implementation_module: Tools.platform.distribution.prepare_rendering_runtime
     implementation_path: Tools/platform/distribution/prepare_rendering_runtime.py
-    implementation_source_hash: sha256:5e377aafc44ffb73e9dfe85d4b38d0a12a7d224d92cb80eec110eb222b4ac1c6
-    description: Prepare locked rendering dependencies in Host user space, never in a corpus. Discovery is read-only by default. Explicit --apply permits an npm ci with scripts disabled in a fresh cache directory and publishes checked Host bindings. It does not install a system Node/browser, approve policy, or write a Receipt.
+    implementation_source_hash: sha256:eac15fe4618747b1f0683ccb4c59468a0c4fe3846b39515e0d7453ddf5af315e
+    description: Prepare locked rendering dependencies in Host user space, never in a corpus. Discovery is read-only by default. Explicit --apply permits an npm ci with scripts disabled in a fresh cache directory and publishes checked Host bindings. With --require-browser it provisions Playwright's pinned Chromium in the same Host cache. It never selects the user's daily browser implicitly, installs a system runtime, approves policy, or writes a Receipt.
     arguments:
       - dest: root
         option_strings: []
@@ -4890,7 +4890,7 @@ tools:
     receipt_extensions_extraction: complete
     receipt_extension_sources:
       - path: Tools/platform/distribution/prepare_rendering_runtime.py
-        sha256: sha256:5e377aafc44ffb73e9dfe85d4b38d0a12a7d224d92cb80eec110eb222b4ac1c6
+        sha256: sha256:eac15fe4618747b1f0683ccb4c59468a0c4fe3846b39515e0d7453ddf5af315e
     agent_interface:
       exposure: cli-only
       workspace_argument: root
@@ -5150,7 +5150,7 @@ tools:
     source_hash: sha256:6c3b30d4fd804e807acbbe4a35d54ac1bea63d41f380884daaa31d1a28e62309
     implementation_module: Tools.execution.task_runtime.candidate_delta_runtime
     implementation_path: Tools/execution/task_runtime/candidate_delta_runtime.py
-    implementation_source_hash: sha256:3c9f411128c8f606fb5de96ff41bc2ffdf2e179943fe7aa11ff2be11d041c01b
+    implementation_source_hash: sha256:905d60428358158edb54176e8c62c786822a09ce8d5eda8c1c1a0ea6075be491
     description: Validate an Agent-complete proposal and publish it to the canonical candidate Delta path for one current open batch.
     arguments:
       - dest: root
@@ -5212,7 +5212,7 @@ tools:
     receipt_extensions_extraction: complete
     receipt_extension_sources:
       - path: Tools/execution/task_runtime/candidate_delta_runtime.py
-        sha256: sha256:3c9f411128c8f606fb5de96ff41bc2ffdf2e179943fe7aa11ff2be11d041c01b
+        sha256: sha256:905d60428358158edb54176e8c62c786822a09ce8d5eda8c1c1a0ea6075be491
     agent_interface:
       exposure: mcp
       workspace_argument: root
@@ -5655,7 +5655,7 @@ tools:
     source_hash: sha256:602ded0d03e38223cc28f3b1ef139266434586b229fa9964cec6aeaa68eb87c2
     implementation_module: Tools.execution.audit.record_batch_review
     implementation_path: Tools/execution/audit/record_batch_review.py
-    implementation_source_hash: sha256:a2f62726151f3884c1e936c8c737a023d7bdeec096d0d5b8f4563e6c36d9db6b
+    implementation_source_hash: sha256:d8e675d082316297703c6be92ddaa16b46425b51778f6097bd42468a95117eb4
     description: Record one current, evidence-complete Batch Review wrapper
     arguments:
       - dest: root
@@ -5758,7 +5758,7 @@ tools:
     receipt_extensions_extraction: partial
     receipt_extension_sources:
       - path: Tools/execution/audit/record_batch_review.py
-        sha256: sha256:a2f62726151f3884c1e936c8c737a023d7bdeec096d0d5b8f4563e6c36d9db6b
+        sha256: sha256:d8e675d082316297703c6be92ddaa16b46425b51778f6097bd42468a95117eb4
       - path: Tools/platform/common/kblib.py
         sha256: sha256:2a76a741123287ccb918edeb577e3cc0eec28475bb7e5c3fa3fcda8920b11335
     agent_interface:
@@ -5788,7 +5788,7 @@ tools:
     source_hash: sha256:8340ff288c48bfe7bef06b963072286279f42dc81c4fd20669523469a99c1f41
     implementation_module: Tools.execution.audit.record_changed_scope_evidence
     implementation_path: Tools/execution/audit/record_changed_scope_evidence.py
-    implementation_source_hash: sha256:15be5e4e3e1bdf99532585bdb08d86cb71a9f45f294e6bc3bb3ba72b195ad093
+    implementation_source_hash: sha256:c9a527f7fc714ad4510f5eaabed02afe3c6cf55fca427e01d7f91486aae0360d
     description: Record exact plan-bound K12/05 changed-scope evidence
     arguments:
       - dest: root
@@ -5842,9 +5842,9 @@ tools:
         default_type: NoneType
         choices: null
         nargs: null
-        action: store
+        action: append
         type: null
-        help: null
+        help: exact obligation; repeat for independent same-producer work
       - dest: receipts
         option_strings:
           - --receipts
@@ -5929,7 +5929,7 @@ tools:
     receipt_extensions_extraction: complete
     receipt_extension_sources:
       - path: Tools/execution/audit/record_changed_scope_evidence.py
-        sha256: sha256:15be5e4e3e1bdf99532585bdb08d86cb71a9f45f294e6bc3bb3ba72b195ad093
+        sha256: sha256:c9a527f7fc714ad4510f5eaabed02afe3c6cf55fca427e01d7f91486aae0360d
       - path: Tools/platform/common/kblib.py
         sha256: sha256:2a76a741123287ccb918edeb577e3cc0eec28475bb7e5c3fa3fcda8920b11335
     agent_interface:
@@ -6548,8 +6548,8 @@ tools:
     source_hash: sha256:a783540cb07845e216a6186f6d51084a85213ee78fa0ae2ddf08d96eb65fb950
     implementation_module: Tools.knowledge.rendering.record_profile_rendering
     implementation_path: Tools/knowledge/rendering/record_profile_rendering.py
-    implementation_source_hash: sha256:f5e494c364f7b80c38eaf69c31c8d03d45bc09fd7e8b5e16777a53d7c8584f5d
-    description: Render one frozen Profile obligation and publish verified compiler evidence.
+    implementation_source_hash: sha256:e3c800771917d40482316e379f96196e7e38659886e8ff2c2b215ba2812fb3ad
+    description: Render frozen Profile obligations and publish their separate verified evidence.
     arguments:
       - dest: root
         option_strings: []
@@ -6591,9 +6591,9 @@ tools:
         default_type: NoneType
         choices: null
         nargs: null
-        action: store
+        action: append
         type: null
-        help: exact Profile rendering obligation
+        help: exact Profile rendering obligation; repeat for a read-only compute group
       - dest: receipts
         option_strings:
           - --receipts
@@ -6637,7 +6637,7 @@ tools:
     receipt_extensions_extraction: partial
     receipt_extension_sources:
       - path: Tools/knowledge/rendering/record_profile_rendering.py
-        sha256: sha256:f5e494c364f7b80c38eaf69c31c8d03d45bc09fd7e8b5e16777a53d7c8584f5d
+        sha256: sha256:e3c800771917d40482316e379f96196e7e38659886e8ff2c2b215ba2812fb3ad
       - path: Tools/platform/common/kblib.py
         sha256: sha256:2a76a741123287ccb918edeb577e3cc0eec28475bb7e5c3fa3fcda8920b11335
     agent_interface:
@@ -8054,7 +8054,7 @@ tools:
     source_hash: sha256:321b9c879068af47ec42eb4bbee7d4b3bdfe857b5c441292324363e4580dfa75
     implementation_module: Tools.execution.task_runtime.task_runtime_runner
     implementation_path: Tools/execution/task_runtime/task_runtime_runner.py
-    implementation_source_hash: sha256:6e9e5f86de52928f9cae6fff58b783a2a969376f417f16053123be52a3763721
+    implementation_source_hash: sha256:98be7f1481b22c644f51778c1077d6a6dc4282383bba26ade32472d30b5b3a72
     description: Read the current Task Runtime action, execute that exact action, or advance deterministic actions to the next semantic boundary.
     arguments:
       - dest: root
@@ -8146,7 +8146,7 @@ tools:
     receipt_extensions_extraction: complete
     receipt_extension_sources:
       - path: Tools/execution/task_runtime/task_runtime_runner.py
-        sha256: sha256:6e9e5f86de52928f9cae6fff58b783a2a969376f417f16053123be52a3763721
+        sha256: sha256:98be7f1481b22c644f51778c1077d6a6dc4282383bba26ade32472d30b5b3a72
     agent_interface:
       exposure: mcp
       workspace_argument: root
@@ -8518,7 +8518,7 @@ tools:
     source_hash: sha256:3f20f9f64b52bb8437231d10b6ceb8b2ebefeee535655cbcd864e89c3e3963dc
     implementation_module: Tools.execution.task_runtime.update_queue
     implementation_path: Tools/execution/task_runtime/update_queue.py
-    implementation_source_hash: sha256:fff7e5db1cda89af791970357775369b567c1cc26e3e8b59bc3110418bf7aef8
+    implementation_source_hash: sha256:aa2e7dcafa62f64ac5dbe0f30362c0d9e4bea1e2bb63d69e56071ddcd05f8ce7
     description: Apply one Required Queue transition
     arguments:
       - dest: root
@@ -8773,7 +8773,7 @@ tools:
     receipt_extensions_extraction: partial
     receipt_extension_sources:
       - path: Tools/execution/task_runtime/update_queue.py
-        sha256: sha256:fff7e5db1cda89af791970357775369b567c1cc26e3e8b59bc3110418bf7aef8
+        sha256: sha256:aa2e7dcafa62f64ac5dbe0f30362c0d9e4bea1e2bb63d69e56071ddcd05f8ce7
     agent_interface:
       exposure: mcp
       workspace_argument: root

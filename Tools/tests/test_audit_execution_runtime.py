@@ -80,6 +80,11 @@ class AuditExecutionRuntimeTests(unittest.TestCase):
         self.assertEqual("record_changed_scope_evidence", step["tool"])
         self.assertEqual("obligation-1", step["arguments"]["obligation_id"])
         self.assert_execution_consumer(step["capability_id"])
+        second = dict(self.obligation, obligation_id="obligation-2", target="Topics/B.md")
+        self.status["obligations"].append(dict(self.status["obligations"][0], obligation=second))
+        grouped = self.project()
+        self.assertEqual(["obligation-1", "obligation-2"], grouped["arguments"]["obligation_id"])
+        self.assertEqual(step["capability_id"], grouped["capability_id"])
 
     def test_substantive_review_is_an_explicit_agent_boundary(self):
         self.use_substantive_obligation()
@@ -116,6 +121,12 @@ class AuditExecutionRuntimeTests(unittest.TestCase):
         self.assertEqual("complete_audit_receipt", step["tool"])
         self.assertEqual("review-1", step["arguments"]["evidence_receipt"])
         self.assert_execution_consumer(step["capability_id"])
+        second = dict(self.obligation, obligation_id="obligation-2", target="Topics/B.md")
+        self.status["obligations"].append(dict(self.status["obligations"][0],
+            obligation=second, evidence_ref="review-2"))
+        grouped = self.project()
+        self.assertEqual(["review-1", "review-2"], grouped["arguments"]["evidence_receipt"])
+        self.assertEqual(["obligation-1", "obligation-2"], grouped["arguments"]["obligation_id"])
 
     def test_invalid_or_ambiguous_evidence_requires_repair(self):
         for state in ("invalid", "ambiguous"):

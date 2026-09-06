@@ -6,7 +6,7 @@ This file is generated from `Tools/test-ownership.yaml` and static source facts.
 
 | Test modules | Test cases | Fixtures | Fixture bundles | Parallel-safe cases | Test process calls | Fixture process calls | Test full copies | Fixture full copies | Cross-test imports |
 | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| 131 | 1202 | 47 | 8 | 1000 | 38 | 11 | 15 | 23 | 0 |
+| 131 | 1206 | 47 | 8 | 1004 | 38 | 11 | 15 | 23 | 0 |
 
 ### Method-level transitive exposure
 
@@ -14,16 +14,16 @@ These counts identify test methods whose per-method, per-class, or per-process s
 
 | Process | Temporary resource | File copy | Full repository copy | E2E builder | Full lifecycle |
 | ---: | ---: | ---: | ---: | ---: | ---: |
-| 36 | 291 | 74 | 50 | 2 | 2 |
+| 36 | 292 | 75 | 51 | 2 | 2 |
 
 ## Before and current static baseline
 
 | Metric | Before closure | Current |
 | --- | ---: | ---: |
 | Test modules | 129 | 131 |
-| Test cases | 2543 | 1202 |
+| Test cases | 2543 | 1206 |
 | Process-launch call sites | 192 | 49 |
-| Temporary-resource call sites | 233 | 144 |
+| Temporary-resource call sites | 233 | 145 |
 | Full repository copy call sites | 86 | 38 |
 | Cross-test import sites | 22 | 0 |
 
@@ -41,9 +41,9 @@ These counts identify test methods whose per-method, per-class, or per-process s
 
 | Level | Definition | Cases |
 | --- | --- | ---: |
-| `unit` | In-process deterministic computation owned by one module. | 385 |
+| `unit` | In-process deterministic computation owned by one module. | 388 |
 | `contract` | Schema, registry, owner, closed-set, or producer-consumer contract. | 513 |
-| `integration` | Adjacent production modules joined in an isolated temporary runtime. | 231 |
+| `integration` | Adjacent production modules joined in an isolated temporary runtime. | 232 |
 | `e2e` | One representative complete current-contract lifecycle. | 4 |
 | `slow` | Real security, concurrency, crash, recovery, or host-isolation behavior. | 68 |
 | `historical-read-only` | Current-contract sealed history that cannot regain current authority. | 1 |
@@ -80,7 +80,7 @@ These counts identify test methods whose per-method, per-class, or per-process s
 | `Tools/tests/test_candidate_lifecycle.py` | `Tools/execution/evidence/candidate_lifecycle.py` | `unit` | True | 6 | 0 | 0 | 0 | 0 | 0 |
 | `Tools/tests/test_canonical_registry_fixture.py` | `Tools/tests/support/canonical_registry_fixture.py` | `integration` | False | 4 | 0 | 1 | 2 | 0 | 0 |
 | `Tools/tests/test_card_activation.py` | `Tools/execution/context_delivery/card_activation.py` | `contract` | True | 6 | 5 | 0 | 1 | 0 | 0 |
-| `Tools/tests/test_changed_scope_evidence.py` | `Tools/execution/audit/changed_scope_evidence_contract.py` | `contract` | True | 9 | 1 | 0 | 0 | 0 | 0 |
+| `Tools/tests/test_changed_scope_evidence.py` | `Tools/execution/audit/changed_scope_evidence_contract.py` | `contract` | True | 12 | 3 | 0 | 1 | 0 | 0 |
 | `Tools/tests/test_changed_scope_rendering_checks.py` | `Tools/knowledge/rendering/changed_scope_rendering_checks.py` | `unit` | True | 14 | 0 | 0 | 0 | 0 | 0 |
 | `Tools/tests/test_changed_scope_runtime_checks.py` | `Tools/execution/audit/changed_scope_runtime_checks.py` | `unit` | True | 9 | 3 | 0 | 0 | 0 | 0 |
 | `Tools/tests/test_check_batch_close.py` | `Tools/execution/audit/check_batch_close.py` | `integration` | False | 9 | 6 | 1 | 2 | 0 | 0 |
@@ -126,7 +126,7 @@ These counts identify test methods whose per-method, per-class, or per-process s
 | `Tools/tests/test_page_frontmatter_contract.py` | `Tools/knowledge/metadata/page_frontmatter_contract.py` | `contract` | True | 2 | 0 | 0 | 2 | 0 | 0 |
 | `Tools/tests/test_phased_readback.py` | `Tools/execution/context_delivery/card_activation.py` | `contract` | True | 8 | 8 | 0 | 1 | 0 | 0 |
 | `Tools/tests/test_prepare_audit_plan.py` | `Tools/execution/audit/prepare_audit_plan.py` | `unit` | True | 16 | 0 | 0 | 0 | 0 | 0 |
-| `Tools/tests/test_prepare_rendering_runtime.py` | `Tools/platform/distribution/prepare_rendering_runtime.py` | `contract` | True | 11 | 0 | 0 | 1 | 1 | 0 |
+| `Tools/tests/test_prepare_rendering_runtime.py` | `Tools/platform/distribution/prepare_rendering_runtime.py` | `contract` | True | 11 | 0 | 0 | 1 | 2 | 0 |
 | `Tools/tests/test_profile_admission.py` | `Tools/governance/profile/profile_admission.py` | `integration` | True | 17 | 0 | 0 | 0 | 0 | 0 |
 | `Tools/tests/test_profile_batch_judgment_contract.py` | `Tools/governance/profile/profile_batch_judgment_contract.py` | `contract` | True | 10 | 0 | 0 | 1 | 0 | 0 |
 | `Tools/tests/test_profile_candidate.py` | `Tools/governance/profile/profile_candidate.py` | `unit` | True | 8 | 1 | 0 | 1 | 0 | 0 |
@@ -137,7 +137,7 @@ These counts identify test methods whose per-method, per-class, or per-process s
 | `Tools/tests/test_profile_format.py` | `Tools/governance/profile/profile_codec.py` | `unit` | True | 6 | 0 | 0 | 0 | 0 | 0 |
 | `Tools/tests/test_profile_onboarding_status.py` | `Tools/governance/profile/profile_onboarding_status.py` | `contract` | True | 3 | 1 | 0 | 0 | 0 | 0 |
 | `Tools/tests/test_project_page_state.py` | `Tools/knowledge/metadata/project_page_state.py` | `unit` | True | 10 | 6 | 0 | 1 | 0 | 0 |
-| `Tools/tests/test_publish_delta.py` | `Tools/execution/task_runtime/candidate_delta_runtime.py` | `contract` | True | 6 | 2 | 0 | 5 | 0 | 0 |
+| `Tools/tests/test_publish_delta.py` | `Tools/execution/task_runtime/candidate_delta_runtime.py` | `contract` | True | 7 | 3 | 0 | 5 | 0 | 0 |
 | `Tools/tests/test_queue_proof.py` | `Tools/execution/audit/check_proof.py` | `contract` | True | 14 | 12 | 1 | 3 | 0 | 0 |
 | `Tools/tests/test_quota_exception_lifecycle.py` | `Tools/execution/audit/check_batch_close.py` | `contract` | True | 6 | 4 | 0 | 1 | 0 | 0 |
 | `Tools/tests/test_read_set_contract.py` | `Tools/execution/context_delivery/read_set_contract.py` | `contract` | True | 3 | 1 | 0 | 1 | 0 | 0 |
@@ -196,6 +196,7 @@ Each row is charged once in that test module's child process. `Triggered by` is 
 | `Tools/tests/test_apply_amendment.py` | `Tools/tests/test_apply_amendment.py:_checkpoint[registered-scope]` | 3 | False | 0 | 1 | 0 | 1 |
 | `Tools/tests/test_apply_contract_amendment.py` | `Tools/tests/test_apply_contract_amendment.py:_template[materialized]` | 4 | False | 0 | 1 | 3 | 1 |
 | `Tools/tests/test_apply_delta_runtime.py` | `Tools/tests/fixtures/integration/update_queue_checkpoints.py:_validated_checkpoint_template[dynamic]` | 6 | False | 0 | 1 | 3 | 1 |
+| `Tools/tests/test_changed_scope_evidence.py` | `Tools/tests/fixtures/integration/update_queue_checkpoints.py:_validated_checkpoint_template[dynamic]` | 1 | False | 0 | 1 | 3 | 1 |
 | `Tools/tests/test_check_batch_close.py` | `Tools/tests/fixtures/integration/batch_close_checkpoints.py:_validated_checkpoint_template[dynamic]` | 3 | False | 0 | 2 | 1 | 2 |
 | `Tools/tests/test_publish_delta.py` | `Tools/tests/fixtures/integration/update_queue_checkpoints.py:_validated_checkpoint_template[dynamic]` | 1 | False | 0 | 1 | 3 | 1 |
 | `Tools/tests/test_register_amendment.py` | `Tools/tests/test_register_amendment.py:amendment_checkpoint[current]` | 3 | False | 0 | 1 | 3 | 1 |
@@ -300,7 +301,10 @@ Only mixed test modules need method-level rows. All other cases inherit their mo
 | `test_card_activation.CardActivationIntegrationTests.test_activation_reuses_one_real_profile_admission` | `Tools/execution/context_delivery/card_activation.py` | `integration` | False | card_activation_runtime_to_gate_receipt_connection |
 | `test_card_activation.CardActivationIntegrationTests.test_static_runtime_checkpoint_connects_activation_to_gate_receipt` | `Tools/execution/context_delivery/card_activation.py` | `integration` | False | card_activation_runtime_to_gate_receipt_connection |
 | `test_card_activation.CardActivationUnitTests.test_transport_binding_never_claims_delivery` | `Tools/execution/context_delivery/card_activation.py` | `unit` | True | card_activation_transport_binding |
+| `test_changed_scope_evidence.ChangedScopeEvidenceContractTests.test_compute_group_keeps_gate_isolation_and_plan_order` | `Tools/execution/audit/record_changed_scope_evidence.py` | `unit` | True | same_producer_readonly_group_order_and_isolation |
+| `test_changed_scope_evidence.ChangedScopeEvidenceContractTests.test_group_computes_once_then_cas_rejects_changed_inputs_before_write` | `Tools/execution/audit/record_changed_scope_evidence.py` | `unit` | True | evidence_compute_publish_input_boundary |
 | `test_changed_scope_evidence.ChangedScopeEvidenceIntegrationTests.test_current_record_kinds_cross_registered_consumer_boundaries` | `Tools/execution/audit/changed_scope_evidence_contract.py` | `integration` | True | changed_scope_evidence_producer_consumer_seam |
+| `test_changed_scope_evidence.ChangedScopeEvidenceIntegrationTests.test_open_checkpoint_group_publishes_unique_evidence_and_completes_once` | `Tools/execution/audit/changed_scope_evidence_contract.py` | `integration` | True | changed_scope_evidence_producer_consumer_seam |
 | `test_changed_scope_evidence.ChangedScopeEvidenceIntegrationTests.test_repository_change_retries_batch_target_without_artifact_drift` | `Tools/execution/audit/changed_scope_evidence_contract.py` | `integration` | True | changed_scope_evidence_producer_consumer_seam |
 | `test_changed_scope_evidence.ChangedScopeEvidenceIntegrationTests.test_runtime_change_retries_page_target_without_artifact_drift` | `Tools/execution/audit/changed_scope_evidence_contract.py` | `integration` | True | changed_scope_evidence_producer_consumer_seam |
 | `test_changed_scope_runtime_checks.FrozenTaskContractReferenceTests.test_owned_consumer_findings_map_to_one_closed_producer_result` | `Tools/execution/audit/changed_scope_runtime_checks.py` | `contract` | True | changed_scope_owned_consumer_finding_projection |
@@ -526,6 +530,7 @@ Only mixed test modules need method-level rows. All other cases inherit their mo
 | `test_project_page_state.ProjectPageStateSlowTests.test_foreign_published_edit_is_preserved_with_recovery_evidence` | `Tools/knowledge/metadata/project_page_state.py` | `slow` | False | project_page_state_publication_recovery_boundary |
 | `test_project_page_state.ProjectPageStateSlowTests.test_later_page_failure_rolls_back_earlier_publication` | `Tools/knowledge/metadata/project_page_state.py` | `slow` | False | project_page_state_publication_recovery_boundary |
 | `test_project_page_state.ProjectPageStateSlowTests.test_staged_after_image_name_drift_is_rejected_before_publication` | `Tools/knowledge/metadata/project_page_state.py` | `slow` | False | project_page_state_publication_recovery_boundary |
+| `test_publish_delta.CandidateDeltaContractTests.test_page_reference_projection_preserves_kinds_and_refuses_unaccepted_evidence` | `Tools/execution/audit/audit_evidence_runtime.py` | `unit` | True | current_plan_page_evidence_projection |
 | `test_publish_delta.CandidateDeltaFilesystemSafetyTests.test_canonical_target_rejects_multiple_links` | `Tools/execution/task_runtime/candidate_delta_runtime.py` | `slow` | False | candidate_delta_filesystem_and_rollback_boundary |
 | `test_publish_delta.CandidateDeltaFilesystemSafetyTests.test_proposal_path_rejects_links_and_namespace_escape` | `Tools/execution/task_runtime/candidate_delta_runtime.py` | `slow` | False | candidate_delta_filesystem_and_rollback_boundary |
 | `test_publish_delta.CandidateDeltaFilesystemSafetyTests.test_rollback_restores_absence_or_previous_bytes` | `Tools/execution/task_runtime/candidate_delta_runtime.py` | `slow` | False | candidate_delta_filesystem_and_rollback_boundary |
@@ -950,13 +955,16 @@ Ownership fields come from `Tools/test-ownership.yaml`; fixture entrypoints and 
 | `test_card_activation.CardActivationIntegrationTests.test_activation_reuses_one_real_profile_admission` | `card_activation.build_activation_context` | `test_card_activation.CardActivationIntegrationTests.test_activation_reuses_one_real_profile_admission` | `integration` | — | — | temp=1, copy=3 | — | — | — | `Tools/tests/fixtures/integration/card_activation_checkpoint.py:install_checkpoint` | False | — | `keep` |
 | `test_card_activation.CardActivationIntegrationTests.test_static_runtime_checkpoint_connects_activation_to_gate_receipt` | `card_activation.build_activation_context` | `test_card_activation.CardActivationIntegrationTests.test_static_runtime_checkpoint_connects_activation_to_gate_receipt` | `integration` | — | — | temp=1, copy=3 | — | — | — | `Tools/tests/fixtures/integration/card_activation_checkpoint.py:install_checkpoint` | False | — | `keep` |
 | `test_card_activation.CardActivationUnitTests.test_transport_binding_never_claims_delivery` | `card_activation._delivery_binding` | `test_card_activation.CardActivationUnitTests.test_transport_binding_never_claims_delivery` | `unit` | — | — | — | — | — | — | — | False | — | `keep` |
+| `test_changed_scope_evidence.ChangedScopeEvidenceContractTests.test_compute_group_keeps_gate_isolation_and_plan_order` | `record_changed_scope_evidence.compute_evidence_group` | `test_changed_scope_evidence.ChangedScopeEvidenceContractTests.test_compute_group_keeps_gate_isolation_and_plan_order` | `unit` | — | — | — | — | — | — | — | False | — | `keep` |
 | `test_changed_scope_evidence.ChangedScopeEvidenceContractTests.test_current_record_kind_matrix_is_closed_and_plan_bound` | `changed_scope_evidence_contract.validate_record_for_plan` | `test_changed_scope_evidence.ChangedScopeEvidenceContractTests.test_current_record_kind_matrix_is_closed_and_plan_bound` | `contract` | — | — | — | — | — | — | — | False | — | `keep` |
 | `test_changed_scope_evidence.ChangedScopeEvidenceContractTests.test_frozen_plan_drift_is_rejected_for_every_record_kind` | `changed_scope_evidence_contract.validate_record_for_plan` | `test_changed_scope_evidence.ChangedScopeEvidenceContractTests.test_frozen_plan_drift_is_rejected_for_every_record_kind` | `contract` | — | — | — | — | — | — | — | False | — | `keep` |
 | `test_changed_scope_evidence.ChangedScopeEvidenceContractTests.test_gate_adapter_selects_one_scoped_registered_gate` | `changed_scope_evidence_contract.validate_record_for_plan` | `test_changed_scope_evidence.ChangedScopeEvidenceContractTests.test_gate_adapter_selects_one_scoped_registered_gate` | `contract` | — | — | — | — | — | — | — | False | — | `keep` |
+| `test_changed_scope_evidence.ChangedScopeEvidenceContractTests.test_group_computes_once_then_cas_rejects_changed_inputs_before_write` | `record_changed_scope_evidence.main` | `test_changed_scope_evidence.ChangedScopeEvidenceContractTests.test_group_computes_once_then_cas_rejects_changed_inputs_before_write` | `unit` | — | — | — | — | — | — | — | False | — | `keep` |
 | `test_changed_scope_evidence.ChangedScopeEvidenceContractTests.test_record_identity_and_content_drift_matrix_fails_closed` | `changed_scope_evidence_contract.validate_record_for_plan` | `test_changed_scope_evidence.ChangedScopeEvidenceContractTests.test_record_identity_and_content_drift_matrix_fails_closed` | `contract` | — | — | — | — | — | — | — | False | — | `keep` |
 | `test_changed_scope_evidence.ChangedScopeEvidenceContractTests.test_registered_gate_matrix_builds_exact_dimensionless_evidence` | `changed_scope_evidence_contract.validate_record_for_plan` | `test_changed_scope_evidence.ChangedScopeEvidenceContractTests.test_registered_gate_matrix_builds_exact_dimensionless_evidence` | `contract` | — | — | — | — | — | — | — | False | — | `keep` |
 | `test_changed_scope_evidence.ChangedScopeEvidenceContractTests.test_registry_rows_have_one_exact_current_producer_trace` | `changed_scope_evidence_contract.validate_record_for_plan` | `test_changed_scope_evidence.ChangedScopeEvidenceContractTests.test_registry_rows_have_one_exact_current_producer_trace` | `contract` | — | — | — | — | — | — | — | False | — | `keep` |
 | `test_changed_scope_evidence.ChangedScopeEvidenceIntegrationTests.test_current_record_kinds_cross_registered_consumer_boundaries` | `changed_scope_evidence_contract.validate_record_for_plan` | `test_changed_scope_evidence.ChangedScopeEvidenceIntegrationTests.test_current_record_kinds_cross_registered_consumer_boundaries` | `integration` | — | — | — | — | — | — | — | False | — | `keep` |
+| `test_changed_scope_evidence.ChangedScopeEvidenceIntegrationTests.test_open_checkpoint_group_publishes_unique_evidence_and_completes_once` | `changed_scope_evidence_contract.validate_record_for_plan` | `test_changed_scope_evidence.ChangedScopeEvidenceIntegrationTests.test_open_checkpoint_group_publishes_unique_evidence_and_completes_once` | `integration` | temp=1, full-copy=1 | — | — | — | temp=1, copy=3, full-copy=1 | `Tools/tests/fixtures/integration/update_queue_checkpoints.py:_validated_checkpoint_template[dynamic]` | `Tools/tests/fixtures/integration/update_queue_checkpoints.py:install_update_queue_checkpoint` | False | — | `keep` |
 | `test_changed_scope_evidence.ChangedScopeEvidenceIntegrationTests.test_repository_change_retries_batch_target_without_artifact_drift` | `changed_scope_evidence_contract.validate_record_for_plan` | `test_changed_scope_evidence.ChangedScopeEvidenceIntegrationTests.test_repository_change_retries_batch_target_without_artifact_drift` | `integration` | — | — | — | — | — | — | — | False | — | `keep` |
 | `test_changed_scope_evidence.ChangedScopeEvidenceIntegrationTests.test_runtime_change_retries_page_target_without_artifact_drift` | `changed_scope_evidence_contract.validate_record_for_plan` | `test_changed_scope_evidence.ChangedScopeEvidenceIntegrationTests.test_runtime_change_retries_page_target_without_artifact_drift` | `integration` | — | — | — | — | — | — | — | False | — | `keep` |
 | `test_changed_scope_rendering_checks.FenceChecks.test_level0_fence_closure_uses_shared_parser` | `changed_scope_rendering_checks` | `test_changed_scope_rendering_checks.FenceChecks.test_level0_fence_closure_uses_shared_parser` | `unit` | — | — | — | — | — | — | — | False | — | `keep` |
@@ -1430,7 +1438,7 @@ Ownership fields come from `Tools/test-ownership.yaml`; fixture entrypoints and 
 | `test_prepare_audit_plan.AuditPlanExporterTests.test_s_selection_and_plan_ids_are_deterministic` | `prepare_audit_plan` | `test_prepare_audit_plan.AuditPlanExporterTests.test_s_selection_and_plan_ids_are_deterministic` | `unit` | — | — | — | — | — | — | — | False | — | `keep` |
 | `test_prepare_rendering_runtime.RenderingHostPreparationTests.test_binding_schema_staleness_and_repository_location_are_rejected` | `prepare_rendering_runtime.prepare_runtime` | `test_prepare_rendering_runtime.RenderingHostPreparationTests.test_binding_schema_staleness_and_repository_location_are_rejected` | `contract` | copy=1 | temp=1 | — | — | — | — | — | False | — | `keep` |
 | `test_prepare_rendering_runtime.RenderingHostPreparationTests.test_default_probe_does_not_install_or_create_cache` | `prepare_rendering_runtime.prepare_runtime` | `test_prepare_rendering_runtime.RenderingHostPreparationTests.test_default_probe_does_not_install_or_create_cache` | `contract` | — | temp=1 | — | — | — | — | — | False | — | `keep` |
-| `test_prepare_rendering_runtime.RenderingHostPreparationTests.test_explicit_preparation_can_add_browser_to_parser_only_binding` | `prepare_rendering_runtime.prepare_runtime` | `test_prepare_rendering_runtime.RenderingHostPreparationTests.test_explicit_preparation_can_add_browser_to_parser_only_binding` | `contract` | copy=1 | temp=1 | — | — | — | — | — | False | — | `keep` |
+| `test_prepare_rendering_runtime.RenderingHostPreparationTests.test_explicit_preparation_can_add_browser_to_parser_only_binding` | `prepare_rendering_runtime.prepare_runtime` | `test_prepare_rendering_runtime.RenderingHostPreparationTests.test_explicit_preparation_can_add_browser_to_parser_only_binding` | `contract` | copy=2 | temp=1 | — | — | — | — | — | False | — | `keep` |
 | `test_prepare_rendering_runtime.RenderingHostPreparationTests.test_explicit_valid_binding_precedes_managed_binding_and_bad_explicit_fails_closed` | `prepare_rendering_runtime.prepare_runtime` | `test_prepare_rendering_runtime.RenderingHostPreparationTests.test_explicit_valid_binding_precedes_managed_binding_and_bad_explicit_fails_closed` | `contract` | copy=1 | temp=1 | — | — | — | — | — | False | — | `keep` |
 | `test_prepare_rendering_runtime.RenderingHostPreparationTests.test_failed_smoke_cannot_publish_bindings` | `prepare_rendering_runtime.prepare_runtime` | `test_prepare_rendering_runtime.RenderingHostPreparationTests.test_failed_smoke_cannot_publish_bindings` | `contract` | copy=1 | temp=1 | — | — | — | — | — | False | — | `keep` |
 | `test_prepare_rendering_runtime.RenderingHostPreparationTests.test_locked_install_disables_scripts_uses_fresh_cache_and_smokes_before_publish` | `prepare_rendering_runtime.prepare_runtime` | `test_prepare_rendering_runtime.RenderingHostPreparationTests.test_locked_install_disables_scripts_uses_fresh_cache_and_smokes_before_publish` | `contract` | — | temp=1 | — | — | — | — | — | False | — | `keep` |
@@ -1536,6 +1544,7 @@ Ownership fields come from `Tools/test-ownership.yaml`; fixture entrypoints and 
 | `test_project_page_state.ProjectPageStateSlowTests.test_staged_after_image_name_drift_is_rejected_before_publication` | `project_page_state.stage_projection_plan` | `test_project_page_state.ProjectPageStateSlowTests.test_staged_after_image_name_drift_is_rejected_before_publication` | `slow` | temp=1 | — | — | — | — | — | — | False | — | `keep` |
 | `test_project_page_state.ProjectPageStateUnitTests.test_semantic_fingerprint_excludes_only_contract_managed_copies` | `project_page_state.semantic_content_fingerprint` | `test_project_page_state.ProjectPageStateUnitTests.test_semantic_fingerprint_excludes_only_contract_managed_copies` | `unit` | — | — | — | — | — | — | — | False | — | `keep` |
 | `test_publish_delta.CandidateDeltaContractTests.test_expected_candidate_identity_is_absent_or_canonical_sha256` | `candidate_delta_runtime.main` | `test_publish_delta.CandidateDeltaContractTests.test_expected_candidate_identity_is_absent_or_canonical_sha256` | `contract` | — | — | — | — | — | — | — | False | — | `keep` |
+| `test_publish_delta.CandidateDeltaContractTests.test_page_reference_projection_preserves_kinds_and_refuses_unaccepted_evidence` | `audit_evidence_runtime.candidate_page_evidence` | `test_publish_delta.CandidateDeltaContractTests.test_page_reference_projection_preserves_kinds_and_refuses_unaccepted_evidence` | `unit` | — | — | — | — | — | — | — | False | — | `keep` |
 | `test_publish_delta.CandidateDeltaContractTests.test_queue_handoff_rejection_stops_before_target_publication` | `candidate_delta_runtime.main` | `test_publish_delta.CandidateDeltaContractTests.test_queue_handoff_rejection_stops_before_target_publication` | `contract` | temp=1 | — | — | — | — | — | — | False | — | `keep` |
 | `test_publish_delta.CandidateDeltaFilesystemSafetyTests.test_canonical_target_rejects_multiple_links` | `candidate_delta_runtime._rollback` | `test_publish_delta.CandidateDeltaFilesystemSafetyTests.test_canonical_target_rejects_multiple_links` | `slow` | temp=1 | — | — | — | — | — | — | False | — | `keep` |
 | `test_publish_delta.CandidateDeltaFilesystemSafetyTests.test_proposal_path_rejects_links_and_namespace_escape` | `candidate_delta_runtime._rollback` | `test_publish_delta.CandidateDeltaFilesystemSafetyTests.test_proposal_path_rejects_links_and_namespace_escape` | `slow` | temp=1 | — | — | — | — | — | — | False | — | `keep` |
@@ -1928,9 +1937,9 @@ Python fixture consumers are derived from the import closure. Static data fixtur
 | `Tools/tests/fixtures/integration/__init__.py` | `Tools/platform/distribution/test_catalog.py` | Integration checkpoint fixture package marker | 0 | 0 | 0 | 0 | 0 |
 | `Tools/tests/fixtures/integration/batch_close_checkpoints.py` | `Tools/execution/audit/check_batch_close.py` | Validated applied checkpoints for batch-close Integration and Slow tests | 2 | 0 | 3 | 1 | 3 |
 | `Tools/tests/fixtures/integration/card_activation_checkpoint.py` | `Tools/execution/context_delivery/card_activation.py` | Minimal current Card activation input checkpoint after runtime validation | 1 | 0 | 0 | 1 | 0 |
-| `Tools/tests/fixtures/integration/checkpoint_contract.py` | `Tools/execution/task_runtime/runtime_validation.py` | Unique mechanical manifest and byte-fingerprint contract for current runtime checkpoints | 7 | 0 | 0 | 0 | 1 |
+| `Tools/tests/fixtures/integration/checkpoint_contract.py` | `Tools/execution/task_runtime/runtime_validation.py` | Unique mechanical manifest and byte-fingerprint contract for current runtime checkpoints | 8 | 0 | 0 | 0 | 1 |
 | `Tools/tests/fixtures/integration/required_queue_checkpoints.py` | `kernel/K13 Task Runtime and Execution Control/runtime-state-model.json` | Validated local Required Queue integration checkpoints | 2 | 0 | 3 | 0 | 3 |
-| `Tools/tests/fixtures/integration/update_queue_checkpoints.py` | `Tools/execution/task_runtime/update_queue.py` | Unique validated loader for generated adjacent Queue checkpoints | 4 | 0 | 1 | 0 | 2 |
+| `Tools/tests/fixtures/integration/update_queue_checkpoints.py` | `Tools/execution/task_runtime/update_queue.py` | Unique validated loader for generated adjacent Queue checkpoints | 5 | 0 | 1 | 0 | 2 |
 | `Tools/tests/fixtures/runtime_state/valid/.cambium/state/coverage_ledger.yaml` | `kernel/K13 Task Runtime and Execution Control/runtime-state-model.json` | Current Coverage state | — | 0 | 0 | 0 | 0 |
 | `Tools/tests/fixtures/runtime_state/valid/.cambium/state/progress_ledger.yaml` | `kernel/K13 Task Runtime and Execution Control/runtime-state-model.json` | Current Progress state | — | 0 | 0 | 0 | 0 |
 | `Tools/tests/fixtures/runtime_state/valid/.cambium/state/required_queue.yaml` | `kernel/K13 Task Runtime and Execution Control/runtime-state-model.json` | Current Required Queue state | — | 0 | 0 | 0 | 0 |
@@ -1947,10 +1956,10 @@ Python fixture consumers are derived from the import closure. Static data fixtur
 | `Tools/tests/support/canonical_registry_fixture.py` | `Tools/module-boundaries.yaml` | Isolated-repository closure of shipped machine registries | 38 | 0 | 0 | 1 | 0 |
 | `Tools/tests/support/cli_contract_fixture.py` | `Tools/platform/agent_interface/compile_cli_contract.py` | Minimal parser and policy checkpoint for compiled CLI contract tests | 1 | 1 | 1 | 0 | 0 |
 | `Tools/tests/support/coverage_delta_fixture.py` | `Tools/execution/planning/coverage_delta.py` | Current pre-merge drafted Coverage Delta contract object | 7 | 0 | 0 | 0 | 0 |
-| `Tools/tests/support/initial_task_plan_fixture.py` | `Tools/execution/planning/apply_task_plan.py` | Current initial Task Plan and Queue materialization history | 24 | 0 | 0 | 0 | 0 |
+| `Tools/tests/support/initial_task_plan_fixture.py` | `Tools/execution/planning/apply_task_plan.py` | Current initial Task Plan and Queue materialization history | 25 | 0 | 0 | 0 | 0 |
 | `Tools/tests/support/profile_adoption_fixture.py` | `Tools/governance/profile/apply_profile_adoption.py` | Current Profile adoption transaction | 2 | 0 | 0 | 3 | 6 |
 | `Tools/tests/support/profile_contract_fixture.py` | `Tools/governance/profile/profile_contract.py` | Isolated current Profile linker contract and mutation fixture | 35 | 0 | 1 | 1 | 0 |
-| `Tools/tests/support/profile_fixture.py` | `Tools/governance/profile/profile_contract.py` | Current complete Profile and adoption identity | 24 | 0 | 0 | 1 | 0 |
+| `Tools/tests/support/profile_fixture.py` | `Tools/governance/profile/profile_contract.py` | Current complete Profile and adoption identity | 25 | 0 | 0 | 1 | 0 |
 | `Tools/tests/support/profile_load_fixture.py` | `Tools/governance/profile/check_profile.py` | Unique current Profile-load inputs, compiled projection, and filled candidate | 36 | 0 | 0 | 0 | 0 |
 | `Tools/tests/support/profile_onboarding_status_fixture.py` | `Tools/governance/profile/profile_onboarding_status.py` | In-memory current producer outputs for onboarding status decisions | 1 | 0 | 0 | 0 | 0 |
 | `Tools/tests/support/profile_template_fixture.py` | `profiles/_template/profile.toml` | Filled candidate derived from the one canonical Profile template | 3 | 0 | 0 | 0 | 0 |
@@ -1968,11 +1977,11 @@ Bundle membership, sizes, and hashes come from the adjacent generated manifest; 
 
 | Bundle | Manifest | Owner | Generator | Files | Bytes | Tree SHA-256 |
 | --- | --- | --- | --- | ---: | ---: | --- |
-| `Tools/tests/fixtures/integration/batch_close_applied_checkpoint` | `Tools/tests/fixtures/integration/batch_close_applied_checkpoint.manifest.json` | `Tools/tests/fixtures/e2e/batch_close_scenarios.py` | `Tools.tests.fixtures.e2e.batch_close_scenarios.generate_batch_close_checkpoint` | 25 | 110489 | `sha256:d16fb2d956078efce8f6662556cb5703fccc3cc45b3e669780b3c8e7e195e5a7` |
-| `Tools/tests/fixtures/integration/batch_close_state_mutating_checkpoint` | `Tools/tests/fixtures/integration/batch_close_state_mutating_checkpoint.manifest.json` | `Tools/tests/fixtures/e2e/batch_close_scenarios.py` | `Tools.tests.fixtures.e2e.batch_close_scenarios.generate_batch_close_checkpoint` | 25 | 110489 | `sha256:775d18606b5c9669fac0842a53d1d5d255bbb7f4b1aa9a602d17b643c061ca93` |
-| `Tools/tests/fixtures/integration/maintenance_closed_checkpoint` | `Tools/tests/fixtures/integration/maintenance_closed_checkpoint.manifest.json` | `Tools/tests/fixtures/e2e/required_queue_scenarios.py` | `Tools.tests.fixtures.e2e.required_queue_scenarios.generate_required_queue_checkpoint` | 36 | 392574 | `sha256:5633e075ef483211c203b95fef84dded3b4af6996890eefb0bbac91db6d983bb` |
-| `Tools/tests/fixtures/integration/terminal_closed_checkpoint` | `Tools/tests/fixtures/integration/terminal_closed_checkpoint.manifest.json` | `Tools/tests/fixtures/e2e/required_queue_scenarios.py` | `Tools.tests.fixtures.e2e.required_queue_scenarios.generate_required_queue_checkpoint` | 33 | 385872 | `sha256:e3f65baca2d9fa3ae9873b58cfc2c51dda8f7a25902b681bbe96427b48e06b23` |
-| `Tools/tests/fixtures/integration/update_queue_merge_admission_checkpoint` | `Tools/tests/fixtures/integration/update_queue_merge_admission_checkpoint.manifest.json` | `Tools/tests/fixtures/e2e/update_queue_scenarios.py` | `Tools.tests.fixtures.e2e.update_queue_scenarios.generate_update_queue_checkpoint` | 23 | 103690 | `sha256:3d17f4dda2673a8221f7c83d2fc7671d88d3e7676e4547ca4edc8244a1c95019` |
-| `Tools/tests/fixtures/integration/update_queue_merged_checkpoint` | `Tools/tests/fixtures/integration/update_queue_merged_checkpoint.manifest.json` | `Tools/tests/fixtures/e2e/update_queue_scenarios.py` | `Tools.tests.fixtures.e2e.update_queue_scenarios.generate_update_queue_checkpoint` | 23 | 106198 | `sha256:d2059c8d0762d5eeddeec753079fef9a4f0c1cc72d8965f27202bc97a465b259` |
-| `Tools/tests/fixtures/integration/update_queue_open_checkpoint` | `Tools/tests/fixtures/integration/update_queue_open_checkpoint.manifest.json` | `Tools/tests/fixtures/e2e/update_queue_scenarios.py` | `Tools.tests.fixtures.e2e.update_queue_scenarios.generate_update_queue_checkpoint` | 16 | 34560 | `sha256:68c818451ed809fd0380f5cf7fce14a72680dab4cf7611da2a1fd3ee0c96704c` |
-| `Tools/tests/fixtures/integration/update_queue_planning_ready_checkpoint` | `Tools/tests/fixtures/integration/update_queue_planning_ready_checkpoint.manifest.json` | `Tools/tests/fixtures/e2e/update_queue_scenarios.py` | `Tools.tests.fixtures.e2e.update_queue_scenarios.generate_update_queue_checkpoint` | 15 | 29591 | `sha256:eb943292b29c56d1aa4f049cb330afa93602a37ad36863805533a198d31ebe33` |
+| `Tools/tests/fixtures/integration/batch_close_applied_checkpoint` | `Tools/tests/fixtures/integration/batch_close_applied_checkpoint.manifest.json` | `Tools/tests/fixtures/e2e/batch_close_scenarios.py` | `Tools.tests.fixtures.e2e.batch_close_scenarios.generate_batch_close_checkpoint` | 25 | 110489 | `sha256:5eb4a737f93c23e641d701c77bd8bdb9f521cf017e8379b7b772c5d55afd82a9` |
+| `Tools/tests/fixtures/integration/batch_close_state_mutating_checkpoint` | `Tools/tests/fixtures/integration/batch_close_state_mutating_checkpoint.manifest.json` | `Tools/tests/fixtures/e2e/batch_close_scenarios.py` | `Tools.tests.fixtures.e2e.batch_close_scenarios.generate_batch_close_checkpoint` | 25 | 110489 | `sha256:671f5d4de3503af7c65287a3a62375c34c6633d3cfe7762d8123d812b9848074` |
+| `Tools/tests/fixtures/integration/maintenance_closed_checkpoint` | `Tools/tests/fixtures/integration/maintenance_closed_checkpoint.manifest.json` | `Tools/tests/fixtures/e2e/required_queue_scenarios.py` | `Tools.tests.fixtures.e2e.required_queue_scenarios.generate_required_queue_checkpoint` | 36 | 392574 | `sha256:6cdc5ef4c97a2386f5429b5c93789606d10cfbfe14f4dacde1a88983b6a967af` |
+| `Tools/tests/fixtures/integration/terminal_closed_checkpoint` | `Tools/tests/fixtures/integration/terminal_closed_checkpoint.manifest.json` | `Tools/tests/fixtures/e2e/required_queue_scenarios.py` | `Tools.tests.fixtures.e2e.required_queue_scenarios.generate_required_queue_checkpoint` | 33 | 385872 | `sha256:af6c29c24c2161dc9f790595ae8a639001587a12b3a9201ac79523bc27b17e0f` |
+| `Tools/tests/fixtures/integration/update_queue_merge_admission_checkpoint` | `Tools/tests/fixtures/integration/update_queue_merge_admission_checkpoint.manifest.json` | `Tools/tests/fixtures/e2e/update_queue_scenarios.py` | `Tools.tests.fixtures.e2e.update_queue_scenarios.generate_update_queue_checkpoint` | 23 | 103690 | `sha256:0a32be1dcc712894335fcf0b1387a0b615d6c45d776a698103b1101f717fbe5e` |
+| `Tools/tests/fixtures/integration/update_queue_merged_checkpoint` | `Tools/tests/fixtures/integration/update_queue_merged_checkpoint.manifest.json` | `Tools/tests/fixtures/e2e/update_queue_scenarios.py` | `Tools.tests.fixtures.e2e.update_queue_scenarios.generate_update_queue_checkpoint` | 23 | 106198 | `sha256:ff8465ab9e6699f1eceda58a4bd7c8f4a3fa01ee7383816b1cecd1645fa70bfe` |
+| `Tools/tests/fixtures/integration/update_queue_open_checkpoint` | `Tools/tests/fixtures/integration/update_queue_open_checkpoint.manifest.json` | `Tools/tests/fixtures/e2e/update_queue_scenarios.py` | `Tools.tests.fixtures.e2e.update_queue_scenarios.generate_update_queue_checkpoint` | 16 | 34560 | `sha256:d3ac933f88fc7f66d07d76a47edf64ec2bb548873ed7302fbc9f5feb925d97a7` |
+| `Tools/tests/fixtures/integration/update_queue_planning_ready_checkpoint` | `Tools/tests/fixtures/integration/update_queue_planning_ready_checkpoint.manifest.json` | `Tools/tests/fixtures/e2e/update_queue_scenarios.py` | `Tools.tests.fixtures.e2e.update_queue_scenarios.generate_update_queue_checkpoint` | 15 | 29591 | `sha256:d4a06a836fd0512228045e68cba33b87f41d421d0511c1fa6bccdcea2d963959` |

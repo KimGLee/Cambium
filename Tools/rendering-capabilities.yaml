@@ -10,7 +10,10 @@ capabilities:
     acceptance_bindings:
       - construct: mermaid-fence
         acceptance: mermaid-svg
+        execution_kind: browser-compile
       - construct: dollar-math
         acceptance: katex-html-mathml
+        execution_kind: node-compile
       - construct: outer-pipe-markdown-table
         acceptance: wrap-or-scroll-table
+        execution_kind: browser-layout

@@ -153,7 +153,7 @@ class TaskRuntimeRunnerUnitTests(unittest.TestCase):
             with self.subTest(boundary=boundary["disposition"]), \
                     mock.patch.object(
                         runner, "next_action", return_value=boundary), \
-                    mock.patch.object(runner, "execute") as execute:
+                    mock.patch.object(runner, "_execute_observed") as execute:
                 result = runner.run_until_boundary("/fixture")
             self.assertEqual([], result["executed"])
             self.assertIs(boundary, result["next_action"])
@@ -169,7 +169,7 @@ class TaskRuntimeRunnerUnitTests(unittest.TestCase):
         with mock.patch.object(
                 runner, "next_action", return_value=invoke), \
                 mock.patch.object(
-                    runner, "execute", return_value=failed):
+                    runner, "_execute_observed", return_value=failed):
             stopped = runner.run_until_boundary("/fixture")
         self.assertEqual(1, len(stopped["executed"]))
         self.assertEqual(7, stopped["executed"][0]["returncode"])
@@ -179,10 +179,18 @@ class TaskRuntimeRunnerUnitTests(unittest.TestCase):
         with mock.patch.object(
                 runner, "next_action", return_value=invoke), \
                 mock.patch.object(
-                    runner, "execute", return_value=unchanged), \
+                    runner, "_execute_observed", return_value=unchanged), \
                 self.assertRaisesRegex(
                     runner.RunnerError, "did not advance"):
             runner.run_until_boundary("/fixture")
+
+        boundary = boundaries[0]
+        with mock.patch.object(runner, "next_action", side_effect=[invoke, boundary]) as observe, \
+                mock.patch.object(runner, "_internal_step", return_value=SimpleNamespace(
+                    returncode=0, stdout="", stderr="")):
+            result = runner.run_until_boundary("/fixture")
+        self.assertIs(boundary, result["next_action"])
+        self.assertEqual(2, observe.call_count)  # One before and one resulting-state observation.
 
 
 class TaskRuntimeRunnerContractTests(unittest.TestCase):
@@ -287,13 +295,14 @@ class TaskRuntimeRunnerCheckpointIntegrationTests(unittest.TestCase):
 
     def test_rendering_preflight_reuses_admitted_profile_and_selector_owner(self):
         state = parsed_runtime_state()
+        state["root"] = str(TOOLS.parent)
         state["items_by_id"]["B1"]["manifest"] = [
             "Knowledge/A.md", "Knowledge/Not-written-yet.md"]
         profile = object()
         snapshot = SimpleNamespace(exists=True, read_text=lambda: "source")
         absent = SimpleNamespace(exists=False)
         ready = {"result": "ready", "bindings": {}, "findings": []}
-        for constructs in ((), ("mermaid",)):
+        for constructs in ((), ("mermaid-fence",), ("dollar-math",)):
             with self.subTest(constructs=constructs), mock.patch.object(
                     runner.profile_admission, "contract_from_admitted_view",
                     return_value=profile) as admission, mock.patch.object(
@@ -311,7 +320,7 @@ class TaskRuntimeRunnerCheckpointIntegrationTests(unittest.TestCase):
             selector.assert_called_once_with(
                 [("Knowledge/A.md", "source")], profile, root=state["root"])
             if constructs:
-                probe.assert_called_once_with("/fixture", require_browser=True)
+                probe.assert_called_once_with(state["root"], require_browser=constructs != ("dollar-math",))
             else:
                 probe.assert_not_called()
 

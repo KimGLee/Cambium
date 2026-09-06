@@ -68,6 +68,16 @@ def _acceptances(root):
             for row in _capability(root)["acceptance_bindings"]}
 
 
+def requires_browser(constructs, *, root):
+    """Project execution dependencies from the Tool owner, not Profile prose."""
+    selected = set(constructs)
+    if selected - set(_acceptances(root)):
+        raise StaticRenderRuntimeError("Unregistered rendering construct")
+    return any(row["construct"] in selected and
+               row["execution_kind"].startswith("browser-")
+               for row in _capability(root)["acceptance_bindings"])
+
+
 def _executable(name, value=None):
     value = value or os.environ.get(name)
     if not value or not Path(value).is_absolute():
@@ -146,7 +156,8 @@ def _dependencies(root, modules=None):
                      "installed_versions": installed}
 
 
-def _validate_bindings(root, bindings, *, check_executables=True):
+def _validate_bindings(root, bindings, *, check_executables=True,
+                       require_browser=False):
     if not isinstance(bindings, dict) or set(bindings) - set(RUNTIME_ENV_KEYS):
         raise StaticRenderRuntimeError("Invalid rendering Host binding keys")
     required = {"CAMBIUM_RENDER_NODE", "CAMBIUM_RENDER_NODE_MODULES"}
@@ -162,14 +173,17 @@ def _validate_bindings(root, bindings, *, check_executables=True):
         if match is None or int(match.group(1)) < requirement["node_minimum_major"]:
             raise StaticRenderRuntimeError("Node does not satisfy " + requirement["node_engine"])
     _dependencies(root, bindings["CAMBIUM_RENDER_NODE_MODULES"])
-    if check_executables and bindings.get("CAMBIUM_RENDER_BROWSER"):
+    if require_browser and not bindings.get("CAMBIUM_RENDER_BROWSER"):
+        raise StaticRenderRuntimeError("CAMBIUM_RENDER_BROWSER is required")
+    if check_executables and require_browser:
         browser = _executable("CAMBIUM_RENDER_BROWSER", bindings["CAMBIUM_RENDER_BROWSER"])
         if not re.search(r"(?:Chrome|Chromium|Edge)\s", _version(browser)):
             raise StaticRenderRuntimeError("Renderer requires a Chromium-family browser")
     return {key: str(Path(value).resolve()) for key, value in bindings.items()}
 
 
-def read_runtime_bindings(root, path=None, *, check_executables=True):
+def read_runtime_bindings(root, path=None, *, check_executables=True,
+                          require_browser=False):
     """Read a checked Host projection; absent default bindings are harmless.
 
     Only local discovery/preparation may defer executable validation so moved
@@ -193,21 +207,19 @@ def read_runtime_bindings(root, path=None, *, check_executables=True):
         for key in ("capability_id", "package_sha256", "package_lock_sha256"):
             if document[key] != requirement[key]:
                 raise StaticRenderRuntimeError("Rendering Host bindings are stale: " + key)
-        return _validate_bindings(root, document["bindings"], check_executables=check_executables)
+        return _validate_bindings(root, document["bindings"],
+            check_executables=check_executables, require_browser=require_browser)
     except (OSError, ValueError, TypeError, KeyError) as exc:
         raise StaticRenderRuntimeError("Cannot read rendering Host bindings: %s" % exc) from exc
 
 
 def _discover_executable(name):
-    candidates = [shutil.which(name)]
-    if name == "node":
-        candidates.extend(["/opt/homebrew/bin/node", "/usr/local/bin/node", "/usr/bin/node"])
-    else:
-        candidates.extend(shutil.which(value) for value in (
-            "google-chrome", "chromium", "chromium-browser", "msedge"))
-        candidates.extend(["/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
-            str(Path.home() / "Applications/Google Chrome.app/Contents/MacOS/Google Chrome"),
-            "/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge"])
+    # User browsers are never an implicit fallback. An explicitly authorized
+    # Host binding can override the separately provisioned locked runtime.
+    if name != "node":
+        return []
+    candidates = [shutil.which(name), "/opt/homebrew/bin/node",
+                  "/usr/local/bin/node", "/usr/bin/node"]
     return [str(Path(value).resolve()) for value in candidates
             if value and Path(value).is_file() and os.access(value, os.X_OK)]
 
@@ -223,12 +235,17 @@ def probe_runtime(root, *, require_browser=False):
             required.add("CAMBIUM_RENDER_BROWSER")
         if not required <= set(explicit):
             bindings.update(read_runtime_bindings(root, check_executables=False))
+        cached_browser = bindings.get("CAMBIUM_RENDER_BROWSER")
+        if cached_browser and not Path(cached_browser).resolve().is_relative_to(default_runtime_bindings_path(root).parent):
+            bindings.pop("CAMBIUM_RENDER_BROWSER")
         bindings.update(explicit)
         for key, value in explicit.items():
             if not Path(value).is_absolute():
                 raise StaticRenderRuntimeError(key + " must bind an absolute path")
-        for key, name in (("CAMBIUM_RENDER_NODE", "node"),
-                          ("CAMBIUM_RENDER_BROWSER", "chrome")):
+        executables = [("CAMBIUM_RENDER_NODE", "node")]
+        if require_browser:
+            executables.append(("CAMBIUM_RENDER_BROWSER", "browser"))
+        for key, name in executables:
             candidates = ([bindings[key]] if bindings.get(key) else [])
             if key not in explicit:
                 candidates.extend(_discover_executable(name))
@@ -289,14 +306,22 @@ def _version(executable):
     return _version_probe(str(executable), _file_sha(executable))
 
 
-def current_runtime_fingerprint(*, root):
-    """Probe current binaries/lock/config without starting a rendering browser."""
-    bindings = _resolve_bindings(root, require_browser=True)
+def current_runtime_fingerprint(*, root, render_bindings=None):
+    """Bind only the runtime used by the selected acceptance predicates."""
+    render_bindings = (_acceptances(root) if render_bindings is None
+                       else _bindings(render_bindings, root))
+    needs_browser = requires_browser(render_bindings, root=root)
+    bindings = _resolve_bindings(root, require_browser=needs_browser)
     node = Path(bindings["CAMBIUM_RENDER_NODE"])
-    browser = Path(bindings["CAMBIUM_RENDER_BROWSER"])
     modules, dependency = _dependencies(root, bindings["CAMBIUM_RENDER_NODE_MODULES"])
     owner = _owner(root)
-    config = {"node": str(node), "browser": str(browser), "node_modules": str(modules)}
+    config = {"node": str(node), "node_modules": str(modules)}
+    browser_fields = {}
+    if needs_browser:
+        browser = Path(bindings["CAMBIUM_RENDER_BROWSER"])
+        config["browser"] = str(browser)
+        browser_fields = {"browser_sha256": _file_sha(browser),
+                          "browser_version": _version(browser)}
     return {
         "capability_id": CAPABILITY_ID, "selector_id": SELECTOR_ID,
         "capability_sha256": _json_sha(_capability(root)),
@@ -305,13 +330,15 @@ def current_runtime_fingerprint(*, root):
         "dependencies": dependency, "host_config": config,
         "host_config_sha256": _json_sha(config),
         "node_sha256": _file_sha(node), "node_version": _version(node),
-        "browser_sha256": _file_sha(browser), "browser_version": _version(browser),
+        **browser_fields,
     }
 
 
 def _invoke(request, *, root, timeout=120, runtime_bindings=None):
-    bindings = (_validate_bindings(root, runtime_bindings) if runtime_bindings is not None
-                else _resolve_bindings(root, require_browser=request.get("action") == "render"))
+    needs_browser = bool(request.get("browser"))
+    bindings = (_validate_bindings(root, runtime_bindings, require_browser=needs_browser)
+                if runtime_bindings is not None else
+                _resolve_bindings(root, require_browser=needs_browser))
     node = Path(bindings["CAMBIUM_RENDER_NODE"])
     modules, _ = _dependencies(root, bindings["CAMBIUM_RENDER_NODE_MODULES"])
     script = _owner(root) / "static_markdown_renderer.mjs"
@@ -344,7 +371,8 @@ def verify_runtime_bindings(root, bindings, *, require_browser=False):
         if not bindings.get("CAMBIUM_RENDER_BROWSER"):
             raise StaticRenderRuntimeError("CAMBIUM_RENDER_BROWSER is required for rendering smoke")
         request.update({"browser": bindings["CAMBIUM_RENDER_BROWSER"],
-                        "bindings": _acceptances(root)})
+                        "bindings": _acceptances(root),
+                        "acceptance_contracts": _capability(root)["acceptance_bindings"]})
     result = _invoke(request, root=root, runtime_bindings=bindings)
     if result.get("selector_id") != SELECTOR_ID or result.get("source_sha256") != _sha(source.encode()):
         raise StaticRenderRuntimeError("Rendering smoke is not bound to the requested source")
@@ -397,8 +425,7 @@ def _bindings(bindings, root):
     return dict(sorted(bindings.items()))
 
 
-def render_page(text, *, target, bindings, root):
-    """Return actual SVG/HTML artifacts inline for the existing evidence CAS."""
+def _render_request(text, *, target, bindings, root):
     if not isinstance(text, str) or not isinstance(target, str) or not target:
         raise StaticRenderRuntimeError("Source text and nonempty target are required")
     report = {"schema_version": 1, "target": target,
@@ -408,30 +435,69 @@ def render_page(text, *, target, bindings, root):
     try:
         normalized = _bindings(bindings, root)
         report["bindings_sha256"] = _json_sha(normalized)
-        fingerprint = current_runtime_fingerprint(root=root)
+        inventory = _select_inventory(text, root=root)
+        selected = {key: value for key, value in normalized.items()
+                    if key in inventory["constructs"]}
+        # Reject malformed tables before starting a layout engine, but do not
+        # attach the table predicate to unrelated math or Mermaid evidence.
+        if "outer-pipe-markdown-table" in selected:
+            from Tools.knowledge.rendering.changed_scope_rendering_checks import level1_markdown_table_static
+            structural = level1_markdown_table_static(text, target)
+            if structural["result"] != "pass":
+                raise StaticRenderRuntimeError("Kernel table structure failed: " +
+                    json.dumps(structural["diagnostics"], ensure_ascii=False))
+        fingerprint = current_runtime_fingerprint(root=root, render_bindings=selected)
         report["runtime_fingerprint"] = fingerprint
         report["runtime_sha256"] = _json_sha(fingerprint)
-        value = _invoke({"action": "render", "source": text, "bindings": normalized,
-                         "browser": fingerprint["host_config"]["browser"]}, root=root)
-        if value.get("source_sha256") != report["source_sha256"] or value.get("selector_id") != SELECTOR_ID:
-            raise StaticRenderRuntimeError("Rendered output is not source-bound")
-        for field in ("constructs", "artifacts", "result", "diagnostics"):
-            report[field] = value[field]
-        # GFM HTML normalizes some malformed rows. The already-admitted Kernel
-        # predicate must still reject those sources instead of hiding the loss.
-        from Tools.knowledge.rendering.changed_scope_rendering_checks import level1_markdown_table_static
-        structural = level1_markdown_table_static(text, target)
-        if structural["result"] != "pass":
-            report["result"] = "fail"
-            report["diagnostics"].append("Kernel table structure failed: " +
-                                          json.dumps(structural["diagnostics"], ensure_ascii=False))
-        if current_runtime_fingerprint(root=root) != fingerprint:
-            raise StaticRenderRuntimeError("Renderer runtime changed during execution")
+        return report, {"action": "render", "source": text, "bindings": normalized,
+            "acceptance_contracts": _capability(root)["acceptance_bindings"],
+            "browser": fingerprint["host_config"].get("browser")}, selected
     except (StaticRenderRuntimeError, OSError, ValueError, KeyError, subprocess.SubprocessError) as exc:
-        report["result"] = "fail"
         report["diagnostics"].append(str(exc))
-    report["report_sha256"] = _json_sha(report)
-    return report
+    return report, None, {}
+
+
+def render_pages(jobs, *, root):
+    """One read-only execution group; each job keeps its own evidence contract.
+
+    The Node process shares ASTs and a lazily started browser. It never writes
+    runtime state. Source and dependency bindings are checked again by writers.
+    """
+    prepared = [_render_request(root=root, **job) for job in jobs]
+    runnable = [(report, request, selected) for report, request, selected in prepared
+                if request is not None]
+    try:
+        if runnable:
+            browsers = {request["browser"] for _, request, _ in runnable if request["browser"]}
+            if len(browsers) > 1:
+                raise StaticRenderRuntimeError("Rendering group mixes Host browser identities")
+            value = _invoke({"action": "render-group", "jobs": [row[1] for row in runnable],
+                "browser": next(iter(browsers), None)}, root=root,
+                timeout=120 * len(runnable))
+            outputs = value.get("reports")
+            if not isinstance(outputs, list) or len(outputs) != len(runnable):
+                raise StaticRenderRuntimeError("Rendering group output coverage differs")
+            for (report, _, selected), output in zip(runnable, outputs):
+                if not isinstance(output, dict):
+                    raise StaticRenderRuntimeError("Rendering group report must be an object")
+                if output.get("source_sha256") != report["source_sha256"] or output.get("selector_id") != SELECTOR_ID:
+                    raise StaticRenderRuntimeError("Rendered output is not source-bound")
+                for field in ("constructs", "artifacts", "result", "diagnostics"):
+                    report[field] = output[field]
+                if current_runtime_fingerprint(root=root, render_bindings=selected) != report["runtime_fingerprint"]:
+                    raise StaticRenderRuntimeError("Renderer runtime changed during execution")
+    except (StaticRenderRuntimeError, OSError, ValueError, KeyError, subprocess.SubprocessError) as exc:
+        for report, _, _ in runnable:
+            report["result"] = "fail"
+            report["diagnostics"].append(str(exc))
+    for report, _, _ in prepared:
+        report["report_sha256"] = _json_sha(report)
+    return [row[0] for row in prepared]
+
+
+def render_page(text, *, target, bindings, root):
+    """Return actual SVG/HTML artifacts inline for the existing evidence CAS."""
+    return render_pages([{"text": text, "target": target, "bindings": bindings}], root=root)[0]
 
 
 def validate_render_result(report, text, bindings, *, root):
@@ -448,7 +514,9 @@ def validate_render_result(report, text, bindings, *, root):
         if report["source_sha256"] != _sha(text.encode("utf-8")): errors.append("Rendering source is stale")
         if report["bindings_sha256"] != _json_sha(_bindings(bindings, root)): errors.append("Rendering bindings are stale")
         if report["selector_id"] != SELECTOR_ID: errors.append("Rendering selector differs")
-        current = current_runtime_fingerprint(root=root)
+        inventory = _select_inventory(text, root=root)
+        current = current_runtime_fingerprint(root=root, render_bindings={
+            key: value for key, value in bindings.items() if key in inventory["constructs"]})
         if report["runtime_fingerprint"] != current or report["runtime_sha256"] != _json_sha(current):
             errors.append("Rendering runtime is stale")
         if report["result"] != "pass" or report["diagnostics"]: errors.append("Rendering did not pass")
@@ -460,11 +528,10 @@ def validate_render_result(report, text, bindings, *, root):
             artifacts[artifact["artifact_id"]] = artifact
             if _sha(artifact["content"].encode("utf-8")) != artifact["sha256"]:
                 errors.append("Rendering artifact digest differs")
-        inventory = _select_inventory(text, root=root)
         identity_fields = ("kind", "instance_id", "source_range", "source_sha256")
         actual_instances = [{key: item[key] for key in identity_fields}
                             for item in report["constructs"]]
-        if actual_instances != inventory["instances"]:
+        if actual_instances != [item for item in inventory["instances"] if item["kind"] in bindings]:
             errors.append("Rendering construct coverage differs")
         used = []
         for item in report["constructs"]:

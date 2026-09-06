@@ -322,14 +322,21 @@ def _audit_action(result, item):
         return _repair(result, "unknown-audit-execution-status", target=target)
 
     delta = _managed_candidate_delta(result, item)
-    if delta is None:
+    page_evidence = audit_evidence_runtime.candidate_page_evidence(result, item)
+    delta_errors = []
+    if delta is not None:
+        delta_document = kblib.load_yaml_file(os.path.join(result["root"], delta["path"]))
+        delta_errors = audit_evidence_runtime.candidate_page_evidence_errors(
+            result, item, delta_document, resolved=page_evidence)
+    if delta is None or delta_errors:
         return _await(
             result, "await-agent", "publish-candidate-delta", {
                 "proposal": (
-                    "repository-relative YAML path under %s" %
+                    "repository-relative YAML path under %s; omit gate_receipts for Tool assembly" %
                     runtime_paths.TRANSIENT_ROOT),
             }, "batch-work-needs-candidate-delta",
-            target={"batch_id": item["id"]},
+            target={"batch_id": item["id"], "page_evidence_refs": page_evidence,
+                    "candidate_delta_sha256": delta["sha256"] if delta else "absent"},
             plan_sha256=step["closure"]["audit_plan_sha256"])
     if delta.get("handoff_status") != "candidate":
         return _repair(
@@ -876,9 +883,11 @@ def _rendering_boundary(result, batch_id):
             "batch_id": batch_id, "diagnostics": [str(exc)]})
     if not any(selected.values()):
         return None
-    probe = static_render_runtime.probe_runtime(root, require_browser=True)
+    needs_browser = static_render_runtime.requires_browser(
+        {kind for kinds in selected.values() for kind in kinds}, root=root)
+    probe = static_render_runtime.probe_runtime(root, require_browser=needs_browser)
     if probe["result"] != "ready":
-        return _await_rendering_runtime(result, batch_id, probe, True)
+        return _await_rendering_runtime(result, batch_id, probe, needs_browser)
     return None
 
 
@@ -1345,7 +1354,7 @@ def _await_candidate_delta(root, action, supplied, route):
             _route_capability(route), root=root), {
                 "batch": action["target"].get("batch_id"),
                 "proposal": proposal,
-                "expected_delta_sha256": "absent",
+                "expected_delta_sha256": action["target"].get("candidate_delta_sha256", "absent"),
                 "apply": True,
             })
 
@@ -1488,6 +1497,11 @@ def execute(root, expected_action_id, input_record=None):
         raise RunnerError(
             "next action changed; expected %s, current %s" %
             (expected_action_id, action["action_id"]))
+    return _execute_observed(root, action, input_record)
+
+
+def _execute_observed(root, action, input_record=None):
+    """Use this call's observed action; the selected writer still performs CAS."""
     if action["disposition"] == "invoke":
         if input_record is not None:
             raise RunnerError("invoke action does not accept input_record")
@@ -1524,11 +1538,11 @@ def run_until_boundary(root, *, max_steps=64):
             max_steps < 1:
         raise RunnerError("max_steps must be a positive integer")
     executed = []
+    action = next_action(root)
     for _index in range(max_steps):
-        action = next_action(root)
         if action["disposition"] != "invoke":
             return {"executed": executed, "next_action": action}
-        outcome = execute(root, action["action_id"])
+        outcome = _execute_observed(root, action)
         executed.append({
             "action_id": action["action_id"],
             "token": action["token"],
@@ -1546,6 +1560,10 @@ def run_until_boundary(root, *, max_steps=64):
                 outcome["next_action"]["action_id"] == action["action_id"]):
             raise RunnerError(
                 "successful Tool invocation did not advance its action")
+        if outcome["next_action"] is None:
+            return {"executed": executed, "next_action": None,
+                    "next_action_error": outcome["next_action_error"]}
+        action = outcome["next_action"]
     raise RunnerError("max_steps reached before a boundary")
 
 

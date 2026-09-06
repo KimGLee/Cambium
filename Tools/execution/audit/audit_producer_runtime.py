@@ -183,6 +183,21 @@ def runtime_state_bindings(result):
     return values
 
 
+def computation_binding(root, result):
+    """Ephemeral read-only work boundary, never a Receipt or new authority.
+
+    Covers corpus-wide Gate inputs as well as Queue/Coverage/Progress inputs.
+    Admission and writer CAS still own authority and receipt reconciliation.
+    """
+    return {"repository": kblib.repository_snapshot_sha256(root),
+            "runtime": runtime_state_bindings(result)}
+
+
+def require_computation_current(root, result, before):
+    if computation_binding(root, result) != before:
+        raise AuditProducerError("evidence computation inputs changed before publication")
+
+
 def freeze_manifest_pages(root, result, item):
     """Freeze exact page bytes and the authorized semantic fingerprints."""
     view = result.get("_profile_authorized_view")

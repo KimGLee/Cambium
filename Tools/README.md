@@ -201,6 +201,10 @@ python3 Tools/record_batch_review.py --help
 
 Substantive, changed-scope, and rendering producers may emit precursors. Use `complete_audit_receipt` only for obligations requiring a full AuditReceipt; other evidence keeps its kind. Run `record_batch_review` after pre-merge closure. Writes require `--apply`.
 
+Runner groups independent due obligations by their existing producer. `record_changed_scope_evidence` and `record_profile_rendering` accept repeated `--obligation-id`; `complete_audit_receipt` pairs repeated obligation IDs with repeated `--evidence-receipt` values. Read-only work precedes the serialized publication boundary. Source, runtime and dependency currentness are rechecked before writing, and records are read back; a group is not a new evidence kind or authority. Failed, ambiguous, corrective and human-judgment outcomes retain their existing stop boundaries.
+
+Candidate Delta proposals may omit each page's `gate_receipts`. `publish_delta` derives these references from the current AuditPlan evidence resolver, preserving distinct Gate, review and AuditReceipt producer roles. Explicit references are checked, not silently replaced. Batch Review and merge-ready use the same acceptance projection. If page changes make an existing candidate's references stale, Runner requests candidate replacement using its exact current SHA; it does not reopen the batch or pick the latest Receipt by timestamp. Page status, scope, gap decisions and the integrator's judgment remain external inputs.
+
 [`agent-interface-policy.yaml`](agent-interface-policy.yaml) constrains runtime paths. Page and target select AuditPlan identities; they grant no read access.
 
 ## Generated interfaces

@@ -123,6 +123,18 @@ class StaticRenderingActualExecutionTests(unittest.TestCase):
         self.assertEqual(7, len(report["constructs"]))
         self.assertEqual([], static_runtime.validate_render_result(
             report, source, self.bindings(), root=REPOSITORY))
+        # The same source can discharge separate contracts without rendering
+        # unrelated constructs. One process shares a browser only when needed.
+        with mock.patch.object(static_runtime, "_invoke", wraps=static_runtime._invoke) as invoke:
+            reports = static_runtime.render_pages([
+                {"text": source, "target": "Actual.md", "bindings": {kind: acceptance}}
+                for kind, acceptance in self.bindings().items()], root=REPOSITORY)
+        self.assertEqual(1, sum(call.args[0]["action"] == "render-group" for call in invoke.call_args_list))
+        for rendered, (kind, acceptance) in zip(reports, self.bindings().items()):
+            self.assertEqual({kind}, {row["kind"] for row in rendered["constructs"]})
+            self.assertEqual([], static_runtime.validate_render_result(rendered, source,
+                {kind: acceptance}, root=REPOSITORY))
+            self.assertEqual(kind != "dollar-math", "browser" in rendered["runtime_fingerprint"]["host_config"])
         tampered = copy.deepcopy(report)
         tampered["artifacts"][0]["content"] += "tampered"
         self.assertIn("Rendering artifact digest differs",
@@ -170,6 +182,12 @@ class StaticRenderingActualExecutionTests(unittest.TestCase):
             with mock.patch.object(static_runtime, "_file_sha", return_value="sha256:" + "a" * 64):
                 static_runtime.select_constructs("$x$", root=REPOSITORY)
             self.assertEqual(2, invoke.call_count)
+        with mock.patch.dict(os.environ, {"CAMBIUM_RENDER_BROWSER": "/unavailable/daily/browser"}):
+            math = static_runtime.render_page("$x+1$", target="Math.md",
+                bindings={"dollar-math": "katex-html-mathml"}, root=REPOSITORY)
+            self.assertEqual("pass", math["result"], math)
+            self.assertEqual([], static_runtime.validate_render_result(math, "$x+1$",
+                {"dollar-math": "katex-html-mathml"}, root=REPOSITORY))
 
 
 if __name__ == "__main__":

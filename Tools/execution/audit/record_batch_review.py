@@ -37,7 +37,12 @@ DEFAULT_RECEIPTS = runtime_paths.GATE_ATTESTATION_RECEIPT_PATH
 
 def _managed_candidate_delta(root, result, item):
     """Return the shared exact candidate read-back used by all consumers."""
-    return queue_delta.current_candidate_binding(root, result, item)
+    binding = queue_delta.current_candidate_binding(root, result, item)
+    delta = kblib.load_yaml_file(os.path.join(root, binding["path"]))
+    errors = audit_evidence_runtime.candidate_page_evidence_errors(result, item, delta)
+    if errors:
+        raise ValueError("candidate page evidence is not current: " + "; ".join(errors))
+    return binding
 
 
 def _current_judgment_receipts(result, item, audit_binding):

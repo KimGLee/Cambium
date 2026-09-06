@@ -640,6 +640,18 @@ tests:
     owner_contract_symbol: changed_scope_evidence_contract.validate_record_for_plan
     parallel_safe: true
     overrides:
+      - selector: ChangedScopeEvidenceContractTests.test_compute_group_keeps_gate_isolation_and_plan_order
+        owner: Tools/execution/audit/record_changed_scope_evidence.py
+        level: unit
+        semantics: same_producer_readonly_group_order_and_isolation
+        owner_contract_symbol: record_changed_scope_evidence.compute_evidence_group
+        parallel_safe: true
+      - selector: ChangedScopeEvidenceContractTests.test_group_computes_once_then_cas_rejects_changed_inputs_before_write
+        owner: Tools/execution/audit/record_changed_scope_evidence.py
+        level: unit
+        semantics: evidence_compute_publish_input_boundary
+        owner_contract_symbol: record_changed_scope_evidence.main
+        parallel_safe: true
       - selector: ChangedScopeEvidenceIntegrationTests.*
         level: integration
         semantics: changed_scope_evidence_producer_consumer_seam
@@ -1888,6 +1900,12 @@ tests:
     owner_contract_symbol: candidate_delta_runtime.main
     parallel_safe: true
     overrides:
+      - selector: CandidateDeltaContractTests.test_page_reference_projection_preserves_kinds_and_refuses_unaccepted_evidence
+        owner: Tools/execution/audit/audit_evidence_runtime.py
+        level: unit
+        semantics: current_plan_page_evidence_projection
+        owner_contract_symbol: audit_evidence_runtime.candidate_page_evidence
+        parallel_safe: true
       - selector: CandidateDeltaPublicationIntegrationTests.*
         level: integration
         semantics: current_candidate_delta_publication_writer_seam

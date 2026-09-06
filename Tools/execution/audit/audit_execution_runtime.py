@@ -358,8 +358,8 @@ def _missing_step(result, item, status, obligation):
         evidence_kind)
 
 
-def _next_executable_row(status):
-    """Select one unresolved obligation whose frozen dependencies are done.
+def _executable_rows(status):
+    """Select unresolved obligations whose frozen dependencies are done.
 
     AuditPlan obligation IDs are content identities, not an execution order.
     M ``consumes`` atoms obtain their dependencies from the Kernel-owned
@@ -391,6 +391,7 @@ def _next_executable_row(status):
         by_id[obligation_id] = row
 
     unresolved = [row for row in rows if row.get("status") != "satisfied"]
+    ready = []
     for row in unresolved:
         obligation = row["obligation"]
         dependency_ids = \
@@ -404,14 +405,35 @@ def _next_executable_row(status):
                 "closure: %s" % ", ".join(missing))
         if all(by_id[value].get("status") == "satisfied"
                for value in dependency_ids):
-            return row
-    if unresolved:
+            ready.append(row)
+    if unresolved and not ready:
         blocked = sorted(
             row["obligation"]["obligation_id"] for row in unresolved)
         raise ValueError(
             "AuditPlan unresolved obligations form a dependency cycle or "
             "have no executable producer: %s" % ", ".join(blocked))
-    return None
+    return ready
+
+
+def _next_executable_row(status):
+    rows = _executable_rows(status)
+    return rows[0] if rows else None
+
+
+def _group_production(result, item, status, first):
+    """Group only independent work for the same existing deterministic writer."""
+    if first["status"] != "invoke":
+        return first
+    ids = []
+    for row in _executable_rows(status):
+        if resolution_route(row.get("status")) != "produce":
+            continue
+        candidate = _missing_step(result, item, status, row["obligation"])
+        if candidate["status"] == "invoke" and candidate["tool"] == first["tool"]:
+            ids.append(row["obligation"]["obligation_id"])
+    if len(ids) > 1:
+        first["arguments"]["obligation_id"] = ids
+    return first
 
 
 def next_stage_step(result, item, due_stage, required_state=None):
@@ -429,8 +451,13 @@ def next_stage_step(result, item, due_stage, required_state=None):
                     item, status, obligation,
                     "audit-precursor-not-current",
                     "selected producer attempt is not current")
-            return _complete_precursor(
-                result["root"], item, status, obligation, precursor)
+            step = _complete_precursor(result["root"], item, status, obligation, precursor)
+            ready = [value for value in _executable_rows(status)
+                     if resolution_route(value.get("status")) == "complete-precursor"]
+            if len(ready) > 1:
+                step["arguments"]["obligation_id"] = [value["obligation"]["obligation_id"] for value in ready]
+                step["arguments"]["evidence_receipt"] = [value["evidence_ref"] for value in ready]
+            return step
         if route == "confirm-substantive-review":
             prior = _catalog_record(result, row.get("evidence_ref"))
             try:
@@ -474,7 +501,8 @@ def next_stage_step(result, item, due_stage, required_state=None):
                 item, status, obligation,
                 "audit-evidence-%s" % row["status"], row["reason"])
         if route == "produce":
-            return _missing_step(result, item, status, obligation)
+            return _group_production(result, item, status,
+                _missing_step(result, item, status, obligation))
         return _repair(
             item, status, obligation,
             "unknown-audit-evidence-status",
