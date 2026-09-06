@@ -52,7 +52,7 @@
       "owner": "Tools/tests/fixtures/e2e/batch_close_scenarios.py",
       "path": "Tools/tests/fixtures/integration/batch_close_applied_checkpoint",
       "purpose": "Generated current-contract applied batch checkpoint for close producer integrations",
-      "tree_sha256": "sha256:19663f5fda1c174c0b8e6a538dbbc251c190a0b0a3588ba5ad16c0284193f9e7"
+      "tree_sha256": "sha256:00b9d1ace035d6d85329a0da7e9cff2a1ee9601bf668ebecd1b7b272696fbab8"
     },
     {
       "bytes": 110489,
@@ -63,7 +63,7 @@
       "owner": "Tools/tests/fixtures/e2e/batch_close_scenarios.py",
       "path": "Tools/tests/fixtures/integration/batch_close_state_mutating_checkpoint",
       "purpose": "Generated applied checkpoint for the hostile registered-verifier recovery path",
-      "tree_sha256": "sha256:7705d60a701aac607e3b5ad6d26e1e4876aa558f52d011364a8cf342c5df4625"
+      "tree_sha256": "sha256:00f122e6077e82b24cb1e57859f1f36baf731e3c96e76bbddf7723585b72b9b0"
     },
     {
       "bytes": 392574,
@@ -74,7 +74,7 @@
       "owner": "Tools/tests/fixtures/e2e/required_queue_scenarios.py",
       "path": "Tools/tests/fixtures/integration/maintenance_closed_checkpoint",
       "purpose": "Generated and validated current-contract maintenance-closed integration checkpoint",
-      "tree_sha256": "sha256:36f38d8fc62698384a2619a2d2d0dc33991e4a1592e737ae610639139a872490"
+      "tree_sha256": "sha256:e41ce68b4ab571ad03ddb3af10f5c07f01c9b88a713f3e0245f940bce43ff9a2"
     },
     {
       "bytes": 385872,
@@ -85,7 +85,7 @@
       "owner": "Tools/tests/fixtures/e2e/required_queue_scenarios.py",
       "path": "Tools/tests/fixtures/integration/terminal_closed_checkpoint",
       "purpose": "Generated current-contract terminal-profile checkpoint with both batches closed",
-      "tree_sha256": "sha256:b31c3fd2d7a4cd5000e9d144654d04043098d38c94ed6ba70ce4b438c8c613f3"
+      "tree_sha256": "sha256:daae06763f54ebc3032526c35d4d7ec32fdd520d778788744ec70ca0ccda3450"
     },
     {
       "bytes": 103690,
@@ -96,7 +96,7 @@
       "owner": "Tools/tests/fixtures/e2e/update_queue_scenarios.py",
       "path": "Tools/tests/fixtures/integration/update_queue_merge_admission_checkpoint",
       "purpose": "Generated current-contract open Queue checkpoint with complete pre-merge evidence",
-      "tree_sha256": "sha256:207c6472cacc6b2f4c1aec68df4bb295324f204ccb4c1654a108ba03a32ae2d9"
+      "tree_sha256": "sha256:4ebb5638a4f60b07d8fb5352f295af9a7731e8252b05707ca633886daa4bef44"
     },
     {
       "bytes": 106198,
@@ -107,7 +107,7 @@
       "owner": "Tools/tests/fixtures/e2e/update_queue_scenarios.py",
       "path": "Tools/tests/fixtures/integration/update_queue_merged_checkpoint",
       "purpose": "Generated and validated current-contract merge-ready Queue integration checkpoint",
-      "tree_sha256": "sha256:73aa59047d545cf94e5f548f9f551f8ee755e86498414f5d68ca9050b7eb5cc0"
+      "tree_sha256": "sha256:9b2317b554995ca145293e92033c63bebf17b6f9abb09898d277c89e0cf4d920"
     },
     {
       "bytes": 34560,
@@ -118,7 +118,7 @@
       "owner": "Tools/tests/fixtures/e2e/update_queue_scenarios.py",
       "path": "Tools/tests/fixtures/integration/update_queue_open_checkpoint",
       "purpose": "Generated current-contract open Queue checkpoint before page work begins",
-      "tree_sha256": "sha256:ab9077a7c27809e46555bfebb54a0e49409ea4589ab22c30507ee9e5bf407ead"
+      "tree_sha256": "sha256:cfbc8afd20134e68d7f5e745823524bd9afae42266444a89254d2553a97b8351"
     },
     {
       "bytes": 29591,
@@ -129,7 +129,7 @@
       "owner": "Tools/tests/fixtures/e2e/update_queue_scenarios.py",
       "path": "Tools/tests/fixtures/integration/update_queue_planning_ready_checkpoint",
       "purpose": "Generated current-contract planning checkpoint with one current ready-gate Receipt",
-      "tree_sha256": "sha256:442e2c3b4ce3de1cba10e6bcce98b80c8443643425c0bf367b6594e7092201c9"
+      "tree_sha256": "sha256:a93e0c2530eb177237c658578a120f22dd3a0b4378384030cf64d137e5efb65c"
     }
   ],
   "fixtures": [
@@ -67688,7 +67688,7 @@
       "semantics": "maintenance_candidates"
     },
     {
-      "case_count": 10,
+      "case_count": 11,
       "cases": [
         {
           "consumer_only": false,
@@ -68819,6 +68819,119 @@
           "selector": "RepositoryStructureUnitTests.test_yaml_scope_is_the_selected_profile_plus_kernel",
           "semantics": "repository_structure_yaml_scope",
           "test_id": "test_managed_content_scope.RepositoryStructureUnitTests.test_yaml_scope_is_the_selected_profile_plus_kernel"
+        },
+        {
+          "consumer_only": false,
+          "disposition": "keep",
+          "duplicate_group": null,
+          "effects": {
+            "file_copies": 0,
+            "full_repository_copies": 0,
+            "process_calls": 0,
+            "temp_resources": 0
+          },
+          "execution": {
+            "builder_triggers": [],
+            "e2e_builder_entrypoints": [],
+            "fixture_entrypoints": [],
+            "full_lifecycle": false,
+            "full_lifecycle_entrypoints": [],
+            "lifecycle_signals": [],
+            "recurring_effects": {
+              "file_copies": 0,
+              "full_repository_copies": 0,
+              "process_calls": 0,
+              "temp_resources": 0
+            },
+            "scopes": {
+              "direct_method": {
+                "builder_triggers": [],
+                "e2e_builder_entrypoints": [],
+                "effects": {
+                  "file_copies": 0,
+                  "full_repository_copies": 0,
+                  "process_calls": 0,
+                  "temp_resources": 0
+                },
+                "first_use_builds": {},
+                "fixture_entrypoints": [],
+                "full_lifecycle": false,
+                "full_lifecycle_entrypoints": [],
+                "lifecycle_signals": []
+              },
+              "per_class": {
+                "builder_triggers": [],
+                "e2e_builder_entrypoints": [],
+                "effects": {
+                  "file_copies": 0,
+                  "full_repository_copies": 0,
+                  "process_calls": 0,
+                  "temp_resources": 0
+                },
+                "first_use_builds": {},
+                "fixture_entrypoints": [],
+                "full_lifecycle": false,
+                "full_lifecycle_entrypoints": [],
+                "lifecycle_signals": []
+              },
+              "per_method": {
+                "builder_triggers": [],
+                "e2e_builder_entrypoints": [],
+                "effects": {
+                  "file_copies": 0,
+                  "full_repository_copies": 0,
+                  "process_calls": 0,
+                  "temp_resources": 0
+                },
+                "first_use_builds": {},
+                "fixture_entrypoints": [],
+                "full_lifecycle": false,
+                "full_lifecycle_entrypoints": [],
+                "lifecycle_signals": []
+              },
+              "per_process": {
+                "builder_triggers": [],
+                "e2e_builder_entrypoints": [],
+                "effects": {
+                  "file_copies": 0,
+                  "full_repository_copies": 0,
+                  "process_calls": 0,
+                  "temp_resources": 0
+                },
+                "first_use_builds": {},
+                "fixture_entrypoints": [],
+                "full_lifecycle": false,
+                "full_lifecycle_entrypoints": [],
+                "lifecycle_signals": []
+              }
+            },
+            "transitive_effects": {
+              "file_copies": 0,
+              "full_repository_copies": 0,
+              "process_calls": 0,
+              "temp_resources": 0
+            },
+            "triggered_once_per_process": {
+              "builds": {},
+              "effects": {
+                "file_copies": 0,
+                "full_repository_copies": 0,
+                "process_calls": 0,
+                "temp_resources": 0
+              }
+            }
+          },
+          "level": "contract",
+          "lifecycle": "current",
+          "override": null,
+          "owner": "Tools/platform/common/kblib.py",
+          "owner_contract_symbol": "kblib.repository_content_files",
+          "parallel_safe": true,
+          "path": "Tools/tests/test_managed_content_scope.py",
+          "primary_owner_test": "test_managed_content_scope.VocabularyScopeUnitTests.test_scan_files_filters_only_explicit_exclusions",
+          "selector": "VocabularyScopeUnitTests.test_scan_files_filters_only_explicit_exclusions",
+          "semantics": "repository_managed_content_set",
+          "test_id": "test_managed_content_scope.VocabularyScopeUnitTests.test_scan_files_filters_only_explicit_exclusions"
         }
       ],
       "default_level": "contract",
@@ -142244,7 +142357,7 @@
     },
     "fixtures": 47,
     "levels": {
-      "contract": 512,
+      "contract": 513,
       "e2e": 4,
       "historical-read-only": 1,
       "integration": 231,
@@ -142260,14 +142373,14 @@
       "temp_resources": 291
     },
     "module_scenario_first_use_builds": 15,
-    "parallel_safe_cases": 999,
+    "parallel_safe_cases": 1000,
     "source_effects": {
       "file_copies": 6,
       "full_repository_copies": 15,
       "process_calls": 38,
       "temp_resources": 127
     },
-    "test_cases": 1201,
+    "test_cases": 1202,
     "test_modules": 131
   }
 }

@@ -15,6 +15,7 @@ import tempfile
 import unittest
 from unittest import mock
 
+from Tools.knowledge.metadata import check_vocab
 from Tools.knowledge.structure import check_moc
 from Tools.knowledge.structure import repository_structure
 from Tools.platform.common import kblib
@@ -219,6 +220,26 @@ class RepositoryStructureUnitTests(unittest.TestCase):
         self.assertIn("kernel/invalid.yaml", details)
         self.assertNotIn("application/invalid.yaml", details)
         self.assertIn("cambium_yaml=2", result["details"])
+
+
+class VocabularyScopeUnitTests(unittest.TestCase):
+    """Unit: vocabulary checking consumes the shared managed-content set."""
+
+    def test_scan_files_filters_only_explicit_exclusions(self):
+        content = [
+            ("/workspace/Knowledge/Page.md", "Knowledge/Page.md"),
+            ("/workspace/Card/R02.md", "Card/R02.md"),
+        ]
+        with mock.patch.object(
+                check_vocab.kblib, "iter_managed_md_files",
+                return_value=content) as managed:
+            result = check_vocab._scan_files(
+                "/workspace", None, ["Card"])
+
+        self.assertEqual(
+            [("/workspace/Knowledge/Page.md", "Knowledge/Page.md")],
+            result)
+        managed.assert_called_once_with("/workspace", None)
 
 
 class MocDiscoveryUnitTests(unittest.TestCase):

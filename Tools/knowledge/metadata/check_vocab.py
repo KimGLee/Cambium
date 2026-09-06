@@ -33,7 +33,9 @@ Method:
   value can be proved legal from bytes the producer cannot parse.
 
 Scope semantics: --scope may be a directory or a single .md file (note-close
-self-check, K00/05). After explicit exclusions are applied, an empty effective
+self-check, K00/05). In a Git worktree the input set is tracked Markdown plus
+visible untracked Markdown; ignored untracked files are outside the governed
+content snapshot. After explicit exclusions are applied, an empty effective
 scan set is result=fail for both scoped and whole-root runs -- a zero-file
 scan is an invocation error, never a pass.
 
@@ -119,6 +121,22 @@ def load_vocab(path, text=None):
             "owner": spec.get("owner", ""),
         }
     return vocab
+
+
+def _scan_files(root, scope, excludes):
+    """Resolve the governed Markdown set before applying explicit excludes."""
+    normalized = [
+        value.strip("/").replace(os.sep, "/") for value in excludes
+    ]
+    return [
+        (full, relative) for full, relative in
+        kblib.iter_managed_md_files(root, scope)
+        if not any(
+            relative.replace(os.sep, "/") == excluded or
+            relative.replace(os.sep, "/").startswith(excluded + "/")
+            for excluded in normalized
+        )
+    ]
 
 
 def main(argv=None, *, authorized_admission=None):
@@ -278,16 +296,7 @@ def _run(args, produced, authorized_admission):
               "unknown_value": 0, "missing_field": 0, "ok_values": 0}
     dist = {"priority": {}, "tier": {}}  # K00/07 Priority Quota distribution stats
 
-    excludes = [e.strip("/").replace(os.sep, "/") for e in args.exclude]
-    scan_files = [
-        (full, rel) for full, rel in
-        kblib.iter_md_files(args.vault_root, args.scope)
-        if not any(
-            rel.replace(os.sep, "/") == excluded or
-            rel.replace(os.sep, "/").startswith(excluded + "/")
-            for excluded in excludes
-        )
-    ]
+    scan_files = _scan_files(args.vault_root, args.scope, args.exclude)
     if not scan_files:
         # The post-exclusion effective set owns the gate result. A scoped run,
         # an empty whole root, and a fully excluded root all fail closed.

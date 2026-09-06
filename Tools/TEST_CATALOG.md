@@ -6,7 +6,7 @@ This file is generated from `Tools/test-ownership.yaml` and static source facts.
 
 | Test modules | Test cases | Fixtures | Fixture bundles | Parallel-safe cases | Test process calls | Fixture process calls | Test full copies | Fixture full copies | Cross-test imports |
 | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| 131 | 1201 | 47 | 8 | 999 | 38 | 11 | 15 | 23 | 0 |
+| 131 | 1202 | 47 | 8 | 1000 | 38 | 11 | 15 | 23 | 0 |
 
 ### Method-level transitive exposure
 
@@ -21,7 +21,7 @@ These counts identify test methods whose per-method, per-class, or per-process s
 | Metric | Before closure | Current |
 | --- | ---: | ---: |
 | Test modules | 129 | 131 |
-| Test cases | 2543 | 1201 |
+| Test cases | 2543 | 1202 |
 | Process-launch call sites | 192 | 49 |
 | Temporary-resource call sites | 233 | 144 |
 | Full repository copy call sites | 86 | 38 |
@@ -42,7 +42,7 @@ These counts identify test methods whose per-method, per-class, or per-process s
 | Level | Definition | Cases |
 | --- | --- | ---: |
 | `unit` | In-process deterministic computation owned by one module. | 385 |
-| `contract` | Schema, registry, owner, closed-set, or producer-consumer contract. | 512 |
+| `contract` | Schema, registry, owner, closed-set, or producer-consumer contract. | 513 |
 | `integration` | Adjacent production modules joined in an isolated temporary runtime. | 231 |
 | `e2e` | One representative complete current-contract lifecycle. | 4 |
 | `slow` | Real security, concurrency, crash, recovery, or host-isolation behavior. | 68 |
@@ -115,7 +115,7 @@ These counts identify test methods whose per-method, per-class, or per-process s
 | `Tools/tests/test_issue_owner.py` | `Tools/module-boundaries.yaml` | `unit` | True | 8 | 0 | 0 | 0 | 0 | 0 |
 | `Tools/tests/test_kblib_yaml.py` | `Tools/platform/common/kblib.py` | `contract` | True | 9 | 0 | 0 | 0 | 0 | 0 |
 | `Tools/tests/test_maintenance_candidates.py` | `Tools/knowledge/content/maintenance_candidates.py` | `unit` | True | 12 | 0 | 0 | 1 | 0 | 0 |
-| `Tools/tests/test_managed_content_scope.py` | `Tools/platform/common/kblib.py` | `contract` | True | 10 | 6 | 2 | 1 | 0 | 0 |
+| `Tools/tests/test_managed_content_scope.py` | `Tools/platform/common/kblib.py` | `contract` | True | 11 | 6 | 2 | 1 | 0 | 0 |
 | `Tools/tests/test_mcp_server.py` | `Tools/platform/agent_interface/mcp_server.py` | `integration` | False | 47 | 17 | 13 | 5 | 1 | 0 |
 | `Tools/tests/test_metadata_contract_projections.py` | `Tools/governance/control/metadata_execution_contract.py` | `contract` | True | 6 | 0 | 0 | 0 | 0 | 0 |
 | `Tools/tests/test_metadata_execution_contract.py` | `Tools/governance/control/metadata_execution_contract.py` | `contract` | True | 5 | 1 | 0 | 1 | 0 | 0 |
@@ -1280,6 +1280,7 @@ Ownership fields come from `Tools/test-ownership.yaml`; fixture entrypoints and 
 | `test_managed_content_scope.RepositoryStructureCliIntegrationTests.test_cli_forwards_profile_reports_verdict_and_creates_no_state` | `repository_structure.main` | `test_managed_content_scope.RepositoryStructureCliIntegrationTests.test_cli_forwards_profile_reports_verdict_and_creates_no_state` | `integration` | — | — | — | — | — | — | — | False | — | `keep` |
 | `test_managed_content_scope.RepositoryStructureUnitTests.test_repository_files_filters_control_state_and_suffixes` | `repository_structure.repository_files` | `test_managed_content_scope.RepositoryStructureUnitTests.test_repository_files_filters_control_state_and_suffixes` | `unit` | — | — | — | — | — | — | — | False | — | `keep` |
 | `test_managed_content_scope.RepositoryStructureUnitTests.test_yaml_scope_is_the_selected_profile_plus_kernel` | `repository_structure.check_repository_structure` | `test_managed_content_scope.RepositoryStructureUnitTests.test_yaml_scope_is_the_selected_profile_plus_kernel` | `unit` | — | — | — | — | — | — | — | False | — | `keep` |
+| `test_managed_content_scope.VocabularyScopeUnitTests.test_scan_files_filters_only_explicit_exclusions` | `kblib.repository_content_files` | `test_managed_content_scope.VocabularyScopeUnitTests.test_scan_files_filters_only_explicit_exclusions` | `contract` | — | — | — | — | — | — | — | False | — | `keep` |
 | `test_mcp_server.ArgvRenderingContractTests.test_declared_order_actions_and_transport_owned_json_render_once` | `cli_argv_rendering_contract` | `test_mcp_server.ArgvRenderingContractTests.test_declared_order_actions_and_transport_owned_json_render_once` | `contract` | — | — | — | — | — | — | — | False | — | `keep` |
 | `test_mcp_server.ArgvRenderingContractTests.test_unrenderable_argument_shapes_share_one_typed_refusal` | `cli_argv_rendering_contract` | `test_mcp_server.ArgvRenderingContractTests.test_unrenderable_argument_shapes_share_one_typed_refusal` | `contract` | — | — | — | — | — | — | — | False | — | `keep` |
 | `test_mcp_server.BindingTests.test_a_platform_without_no_follow_descriptors_refuses_initialize` | `mcp_workspace_descriptor_contract` | `test_mcp_server.BindingTests.test_a_platform_without_no_follow_descriptors_refuses_initialize` | `contract` | — | — | — | — | — | — | — | False | — | `keep` |
@@ -1967,11 +1968,11 @@ Bundle membership, sizes, and hashes come from the adjacent generated manifest; 
 
 | Bundle | Manifest | Owner | Generator | Files | Bytes | Tree SHA-256 |
 | --- | --- | --- | --- | ---: | ---: | --- |
-| `Tools/tests/fixtures/integration/batch_close_applied_checkpoint` | `Tools/tests/fixtures/integration/batch_close_applied_checkpoint.manifest.json` | `Tools/tests/fixtures/e2e/batch_close_scenarios.py` | `Tools.tests.fixtures.e2e.batch_close_scenarios.generate_batch_close_checkpoint` | 25 | 110489 | `sha256:19663f5fda1c174c0b8e6a538dbbc251c190a0b0a3588ba5ad16c0284193f9e7` |
-| `Tools/tests/fixtures/integration/batch_close_state_mutating_checkpoint` | `Tools/tests/fixtures/integration/batch_close_state_mutating_checkpoint.manifest.json` | `Tools/tests/fixtures/e2e/batch_close_scenarios.py` | `Tools.tests.fixtures.e2e.batch_close_scenarios.generate_batch_close_checkpoint` | 25 | 110489 | `sha256:7705d60a701aac607e3b5ad6d26e1e4876aa558f52d011364a8cf342c5df4625` |
-| `Tools/tests/fixtures/integration/maintenance_closed_checkpoint` | `Tools/tests/fixtures/integration/maintenance_closed_checkpoint.manifest.json` | `Tools/tests/fixtures/e2e/required_queue_scenarios.py` | `Tools.tests.fixtures.e2e.required_queue_scenarios.generate_required_queue_checkpoint` | 36 | 392574 | `sha256:36f38d8fc62698384a2619a2d2d0dc33991e4a1592e737ae610639139a872490` |
-| `Tools/tests/fixtures/integration/terminal_closed_checkpoint` | `Tools/tests/fixtures/integration/terminal_closed_checkpoint.manifest.json` | `Tools/tests/fixtures/e2e/required_queue_scenarios.py` | `Tools.tests.fixtures.e2e.required_queue_scenarios.generate_required_queue_checkpoint` | 33 | 385872 | `sha256:b31c3fd2d7a4cd5000e9d144654d04043098d38c94ed6ba70ce4b438c8c613f3` |
-| `Tools/tests/fixtures/integration/update_queue_merge_admission_checkpoint` | `Tools/tests/fixtures/integration/update_queue_merge_admission_checkpoint.manifest.json` | `Tools/tests/fixtures/e2e/update_queue_scenarios.py` | `Tools.tests.fixtures.e2e.update_queue_scenarios.generate_update_queue_checkpoint` | 23 | 103690 | `sha256:207c6472cacc6b2f4c1aec68df4bb295324f204ccb4c1654a108ba03a32ae2d9` |
-| `Tools/tests/fixtures/integration/update_queue_merged_checkpoint` | `Tools/tests/fixtures/integration/update_queue_merged_checkpoint.manifest.json` | `Tools/tests/fixtures/e2e/update_queue_scenarios.py` | `Tools.tests.fixtures.e2e.update_queue_scenarios.generate_update_queue_checkpoint` | 23 | 106198 | `sha256:73aa59047d545cf94e5f548f9f551f8ee755e86498414f5d68ca9050b7eb5cc0` |
-| `Tools/tests/fixtures/integration/update_queue_open_checkpoint` | `Tools/tests/fixtures/integration/update_queue_open_checkpoint.manifest.json` | `Tools/tests/fixtures/e2e/update_queue_scenarios.py` | `Tools.tests.fixtures.e2e.update_queue_scenarios.generate_update_queue_checkpoint` | 16 | 34560 | `sha256:ab9077a7c27809e46555bfebb54a0e49409ea4589ab22c30507ee9e5bf407ead` |
-| `Tools/tests/fixtures/integration/update_queue_planning_ready_checkpoint` | `Tools/tests/fixtures/integration/update_queue_planning_ready_checkpoint.manifest.json` | `Tools/tests/fixtures/e2e/update_queue_scenarios.py` | `Tools.tests.fixtures.e2e.update_queue_scenarios.generate_update_queue_checkpoint` | 15 | 29591 | `sha256:442e2c3b4ce3de1cba10e6bcce98b80c8443643425c0bf367b6594e7092201c9` |
+| `Tools/tests/fixtures/integration/batch_close_applied_checkpoint` | `Tools/tests/fixtures/integration/batch_close_applied_checkpoint.manifest.json` | `Tools/tests/fixtures/e2e/batch_close_scenarios.py` | `Tools.tests.fixtures.e2e.batch_close_scenarios.generate_batch_close_checkpoint` | 25 | 110489 | `sha256:00b9d1ace035d6d85329a0da7e9cff2a1ee9601bf668ebecd1b7b272696fbab8` |
+| `Tools/tests/fixtures/integration/batch_close_state_mutating_checkpoint` | `Tools/tests/fixtures/integration/batch_close_state_mutating_checkpoint.manifest.json` | `Tools/tests/fixtures/e2e/batch_close_scenarios.py` | `Tools.tests.fixtures.e2e.batch_close_scenarios.generate_batch_close_checkpoint` | 25 | 110489 | `sha256:00f122e6077e82b24cb1e57859f1f36baf731e3c96e76bbddf7723585b72b9b0` |
+| `Tools/tests/fixtures/integration/maintenance_closed_checkpoint` | `Tools/tests/fixtures/integration/maintenance_closed_checkpoint.manifest.json` | `Tools/tests/fixtures/e2e/required_queue_scenarios.py` | `Tools.tests.fixtures.e2e.required_queue_scenarios.generate_required_queue_checkpoint` | 36 | 392574 | `sha256:e41ce68b4ab571ad03ddb3af10f5c07f01c9b88a713f3e0245f940bce43ff9a2` |
+| `Tools/tests/fixtures/integration/terminal_closed_checkpoint` | `Tools/tests/fixtures/integration/terminal_closed_checkpoint.manifest.json` | `Tools/tests/fixtures/e2e/required_queue_scenarios.py` | `Tools.tests.fixtures.e2e.required_queue_scenarios.generate_required_queue_checkpoint` | 33 | 385872 | `sha256:daae06763f54ebc3032526c35d4d7ec32fdd520d778788744ec70ca0ccda3450` |
+| `Tools/tests/fixtures/integration/update_queue_merge_admission_checkpoint` | `Tools/tests/fixtures/integration/update_queue_merge_admission_checkpoint.manifest.json` | `Tools/tests/fixtures/e2e/update_queue_scenarios.py` | `Tools.tests.fixtures.e2e.update_queue_scenarios.generate_update_queue_checkpoint` | 23 | 103690 | `sha256:4ebb5638a4f60b07d8fb5352f295af9a7731e8252b05707ca633886daa4bef44` |
+| `Tools/tests/fixtures/integration/update_queue_merged_checkpoint` | `Tools/tests/fixtures/integration/update_queue_merged_checkpoint.manifest.json` | `Tools/tests/fixtures/e2e/update_queue_scenarios.py` | `Tools.tests.fixtures.e2e.update_queue_scenarios.generate_update_queue_checkpoint` | 23 | 106198 | `sha256:9b2317b554995ca145293e92033c63bebf17b6f9abb09898d277c89e0cf4d920` |
+| `Tools/tests/fixtures/integration/update_queue_open_checkpoint` | `Tools/tests/fixtures/integration/update_queue_open_checkpoint.manifest.json` | `Tools/tests/fixtures/e2e/update_queue_scenarios.py` | `Tools.tests.fixtures.e2e.update_queue_scenarios.generate_update_queue_checkpoint` | 16 | 34560 | `sha256:cfbc8afd20134e68d7f5e745823524bd9afae42266444a89254d2553a97b8351` |
+| `Tools/tests/fixtures/integration/update_queue_planning_ready_checkpoint` | `Tools/tests/fixtures/integration/update_queue_planning_ready_checkpoint.manifest.json` | `Tools/tests/fixtures/e2e/update_queue_scenarios.py` | `Tools.tests.fixtures.e2e.update_queue_scenarios.generate_update_queue_checkpoint` | 15 | 29591 | `sha256:a93e0c2530eb177237c658578a120f22dd3a0b4378384030cf64d137e5efb65c` |

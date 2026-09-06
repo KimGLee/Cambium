@@ -26,27 +26,27 @@
     },
     {
       "path": ".cambium/receipts/gates.jsonl",
-      "sha256": "sha256:32122588d3e3bcaaaa6ef4de13334bd3c7d829a7181044fad2e274e08508bf44",
+      "sha256": "sha256:a0b2a05b344bd89a1545a1ee89acb34c2688252b3061aba97d05161fdf2ff1d2",
       "size": 8120
     },
     {
       "path": ".cambium/receipts/queue-transitions.jsonl",
-      "sha256": "sha256:37eaa8c86a589a9ac3844e7e48495068b3574b4dd2c23e0b49f2b05ef57f5e7e",
+      "sha256": "sha256:4590e074de5bbc38294181a67333138dc43136853918ad10b55ed836522a37b5",
       "size": 2815
     },
     {
       "path": ".cambium/receipts/standards-adoptions.jsonl",
-      "sha256": "sha256:0ac2c65fb87911e7ccb7855160d69c614ee2dd4f73cc0fd3c234d8de2d8c1fba",
+      "sha256": "sha256:df0469807d3dfb8493eb3fdd1122b672dd36f334b6b6ddb7526a973767024d1b",
       "size": 2314
     },
     {
       "path": ".cambium/receipts/task-plans.jsonl",
-      "sha256": "sha256:a73022916fa9ca241120aa3a129723e9095cd9bce0c44e964534bb63b4302127",
+      "sha256": "sha256:2bb0b360874cdd844be5d72dfe742fe9b30bbbfe6f1687a0224d7243230210a7",
       "size": 1740
     },
     {
       "path": ".cambium/receipts/task-transitions.jsonl",
-      "sha256": "sha256:dcad757b38caf8183350348a7517c38127cba8bbcd8245ee20335a5c47cf4461",
+      "sha256": "sha256:8c62850419be7ff7839394c1b3cf97c43034a61c0a2892ce20fec5a70c8095c8",
       "size": 2843
     },
     {
@@ -56,12 +56,12 @@
     },
     {
       "path": ".cambium/state/progress_ledger.yaml",
-      "sha256": "sha256:187a8917631412e83e024fd683f656f1f1e5f06ec7ae41ae5b4565d40c7899fa",
+      "sha256": "sha256:e736a91667d4bb09548459e1fa304d7d4791564507f8cd094b1e2c971b58f02e",
       "size": 2396
     },
     {
       "path": ".cambium/state/required_queue.yaml",
-      "sha256": "sha256:5046279323116110546c4d1553c6dc8ceb3e1ca809a797afc9f94369ab9945f4",
+      "sha256": "sha256:2689201b62593efe7eee194a9092240bf56f2cadb4ca9ca020d9d08f32dc1e3e",
       "size": 1077
     },
     {
@@ -71,7 +71,7 @@
     },
     {
       "path": ".cambium/tmp/receipt-append.free",
-      "sha256": "sha256:dbf19cb7346b0f0c2348e2b2f7414cf42a03f295c5e08ff39856a93e51e864a1",
+      "sha256": "sha256:dd3b47e3f2cd8ccb3988c3f0190fbce0a4789d762b7901fb75c89acd3d2fb05e",
       "size": 103
     },
     {
@@ -94,6 +94,6 @@
   "scenario": "open-b1",
   "scenario_dependency_builder": "Tools.tests.fixtures.integration.update_queue_checkpoints.install_update_queue_profile",
   "schema_version": 1,
-  "tree_sha256": "sha256:ab9077a7c27809e46555bfebb54a0e49409ea4589ab22c30507ee9e5bf407ead",
-  "validated_tree_sha256": "sha256:3d9a7b7fdc13004ec07386ddd6a4d328667342e7322cb69f8916ca7f4cc94dd1"
+  "tree_sha256": "sha256:cfbc8afd20134e68d7f5e745823524bd9afae42266444a89254d2553a97b8351",
+  "validated_tree_sha256": "sha256:5ac5f81123774a908632521ca1011c1f581f2442ac7862ffb185a002247cff4a"
 }
