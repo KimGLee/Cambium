@@ -2,6 +2,9 @@
 
 from pathlib import Path
 from types import SimpleNamespace
+import contextlib
+import io
+import json
 import sys
 import unittest
 from unittest import mock
@@ -19,6 +22,7 @@ import Tools.execution.audit.complete_audit_receipt as complete_audit_receipt
 import Tools.execution.audit.prepare_audit_plan as prepare_audit_plan
 import Tools.execution.audit.record_substantive_review as record_substantive_review
 import Tools.execution.audit.substantive_review_contract as substantive_review_contract
+import Tools.platform.common.kblib as kblib
 
 
 SHA_A = "sha256:" + "a" * 64
@@ -225,6 +229,96 @@ class AuditProducerTests(unittest.TestCase):
             evidence["semantic_content_fingerprint"],
             full["artifact_fingerprint"])
         self.assertEqual(evidence["receipt_id"], full["evidence_ref"])
+
+        # A validated existing completion is reused, not written a second time.
+        with contextlib.ExitStack() as stack:
+            stack.enter_context(mock.patch.object(
+                audit_producer_runtime, "admitted_runtime",
+                return_value=(str(REPOSITORY), {}, object())))
+            stack.enter_context(mock.patch.object(
+                audit_producer_runtime, "open_batch", return_value=({}, {})))
+            stack.enter_context(mock.patch.object(
+                complete_audit_receipt, "_load_current_plan",
+                return_value=(None, plan, plan_sha, (frozen_page,))))
+            stack.enter_context(mock.patch.object(
+                complete_audit_receipt.audit_evidence_runtime, "evidence_evaluation",
+                side_effect=lambda result: result))
+            stack.enter_context(mock.patch.object(
+                complete_audit_receipt.audit_evidence_runtime, "require_completion_evidence",
+                return_value=(evidence, full)))
+            stack.enter_context(mock.patch.object(
+                audit_producer_runtime, "managed_receipt_path", return_value="unused.jsonl"))
+            append = stack.enter_context(mock.patch.object(kblib.ReceiptPublication, "append"))
+            output = stack.enter_context(contextlib.redirect_stdout(io.StringIO()))
+            code = complete_audit_receipt.main([
+                str(REPOSITORY), "--batch", "B001", "--plan", "unused.yaml",
+                "--obligation-id", obligation["obligation_id"],
+                "--evidence-receipt", evidence["receipt_id"], "--apply"])
+        result = json.loads(output.getvalue())
+        self.assertEqual(0, code)
+        self.assertFalse(result["applied"])
+        self.assertEqual("already-present", result["status"])
+        self.assertEqual(full["receipt_id"], result["receipt_id"])
+        self.assertTrue(result["publication"]["reused"])
+        append.assert_not_called()
+
+    def test_changes_required_confirms_recording_without_claiming_review_pass(self):
+        obligation = self.obligation()
+        plan = self.plan(obligation)
+        plan_sha = audit_plan_contract.plan_sha256(plan)
+        frozen = (self.frozen("L.md"),)
+        path = str(REPOSITORY / ".cambium/receipts/unit-review.jsonl")
+        runtime = record_substantive_review.audit_evidence_runtime
+        finding = {
+            "finding_id": "finding-001", "severity": "critical",
+            "statement": "the conclusion does not follow", "status": "open",
+            "round_1_finding_id": None,
+        }
+
+        def observe_publication(publication, actual_path, receipts, *, before=None):
+            self.assertEqual(path, actual_path)
+            publication.outcome = "present"
+            publication.observation = kblib.ReceiptObservation(
+                {"path": path}, b"".join(kblib.canonical_json_bytes(row) + b"\n" for row in receipts))
+            return "present", None, before
+
+        with contextlib.ExitStack() as stack:
+            for owner, name, value in (
+                    (audit_producer_runtime, "admitted_runtime", (str(REPOSITORY), {}, object())),
+                    (audit_producer_runtime, "open_batch", ({}, {})),
+                    (audit_producer_runtime, "managed_receipt_path", path),
+                    (audit_producer_runtime, "runtime_lock_metadata", {}),
+                    (audit_producer_runtime, "require_runtime_current", {}),
+                    (audit_producer_runtime, "require_pages_current", None),
+                    (record_substantive_review, "load_current_plan", (None, plan, plan_sha, frozen)),
+                    (record_substantive_review, "_require_plan_current", None),
+                    (runtime, "require_substantive_review_attempt", None),
+                    (runtime, "obligation_evidence_resolution", {"status": "awaiting-revision"}),
+                    (kblib, "receipt_append_observation", {})):
+                stack.enter_context(mock.patch.object(owner, name, return_value=value))
+            stack.enter_context(mock.patch.object(runtime, "evidence_evaluation", side_effect=lambda result: result))
+            stack.enter_context(mock.patch.object(kblib, "runtime_write_lock",
+                side_effect=lambda *args, **kwargs: contextlib.nullcontext(object())))
+            stack.enter_context(mock.patch.object(kblib, "no_authoritative_write_guard",
+                side_effect=lambda lease: contextlib.nullcontext()))
+            stack.enter_context(mock.patch.object(kblib.ReceiptPublication, "append",
+                autospec=True, side_effect=observe_publication))
+            stack.enter_context(mock.patch.object(kblib, "read_receipt_bytes",
+                side_effect=AssertionError("semantic confirmation must share the append observation")))
+            output = stack.enter_context(contextlib.redirect_stdout(io.StringIO()))
+            code = record_substantive_review.main([
+                str(REPOSITORY), "--batch", "B001", "--plan", "unused.yaml",
+                "--obligation-id", obligation["obligation_id"], "--page", "L.md",
+                "--authoring-context-id", "author", "--reviewer-context-id", "reviewer",
+                "--reviewer-role", "reviewer", "--round", "1",
+                "--verdict", "changes-required", "--statement", "reviewed",
+                "--finding", json.dumps(finding), "--apply"])
+        result = json.loads(output.getvalue())
+        self.assertEqual(1, code)
+        self.assertEqual(("recorded", "fail", "changes-required"),
+                         (result["status"], result["result"], result["verdict"]))
+        self.assertTrue(result["applied"])
+        self.assertEqual("confirmed", result["publication"]["record_confirmation"])
 
     def test_review_refuses_authoring_context_as_reviewer(self):
         obligation = self.obligation()

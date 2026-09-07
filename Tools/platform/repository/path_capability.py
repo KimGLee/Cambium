@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """Descriptor-retained path capabilities for Cambium tool processes.
 
-The MCP transport admits caller-visible paths while it still owns a pinned
-workspace descriptor.  This module is the consumer-side half of that public
-protocol: it validates the inherited manifest, reads through retained file
+MCP and authorized Runner children admit caller-visible paths while holding
+a pinned workspace descriptor. This module validates the inherited manifest,
+reads through retained file
 descriptors, publishes through retained parent descriptors, carries the same
 authority into nested Cambium subprocesses, and acknowledges only actual
 descriptor-backed consumption.
@@ -11,7 +11,7 @@ descriptor-backed consumption.
 Ordinary CLI execution carries no manifest and therefore uses pathname-based
 I/O.  This module deliberately owns no policy registry and no argparse
 surface; classification remains in ``agent-interface-policy.yaml`` and
-transport admission remains in ``mcp_server.py``.
+shared mechanical admission remains in ``path_admission.py``.
 """
 
 import errno
@@ -19,15 +19,18 @@ import hashlib
 import json
 import os
 import stat
+from contextlib import contextmanager
 from types import MappingProxyType
 
 import Tools.execution.task_runtime.runtime_paths as runtime_paths
 import Tools.platform.agent_interface.agent_interface_contract as agent_interface_contract
+import Tools.platform.repository.path_admission as path_admission
 
 
 PATH_CAPABILITIES_ENV = agent_interface_contract.PATH_CAPABILITIES_ENV
 PATH_CAPABILITIES_ACK_ENV = agent_interface_contract.PATH_CAPABILITIES_ACK_ENV
 WORKSPACE_ENV = agent_interface_contract.WORKSPACE_ENV
+WORKSPACE_FD_ENV = agent_interface_contract.WORKSPACE_FD_ENV
 
 _MANIFEST_CACHE = None
 _TREE_BYTES = {}
@@ -36,10 +39,11 @@ _TREE_SNAPSHOTS = {}
 _ADVANCED_TARGETS = {}
 _ACKNOWLEDGED = set()
 _TREE_SNAPSHOT_FACTORY = None
+_RECEIPT_OPERATIONS = {}
 
 
 def records():
-    """Return the validated inherited descriptor manifest, if this is MCP."""
+    """Return the validated inherited descriptor manifest, when controlled."""
     global _MANIFEST_CACHE
     if _MANIFEST_CACHE is not None:
         return _MANIFEST_CACHE
@@ -129,6 +133,28 @@ def logical_spelling(path):
     return normalized
 
 
+def _shared_snapshot(matches, spelling):
+    """Coalesce physical read authority, never a tool's semantic input roles."""
+    if len(matches) == 1:
+        return matches[0]
+    first = matches[0]
+    identity = ("spelling", "access", "consumption", "exists", "kind",
+                "target_dev", "target_ino", "parent_dev", "parent_ino",
+                "basename", "missing_components")
+    def retained_identity(row):
+        prefix = "target" if row.get("exists") else "parent"
+        return (isinstance(row.get(prefix + "_fd"), int) and
+                row.get(prefix + "_dev") is not None and
+                row.get(prefix + "_ino") is not None)
+    if any(not retained_identity(row) or
+           row["access"] != "read" or row["consumption"] != "snapshot" or
+           any(row.get(key) != first.get(key) for key in identity)
+           for row in matches):
+        raise ValueError(
+            "typed path %s has ambiguous retained capabilities" % spelling)
+    return {**first, "_snapshot_aliases": tuple(matches)}
+
+
 def inherited_capability(path, consumptions=None):
     """Return the retained capability matching ``path``, if this is MCP."""
     inherited = records()
@@ -151,10 +177,7 @@ def inherited_capability(path, consumptions=None):
             raise ValueError(
                 "typed path %s is not admitted for %s consumption" %
                 (spelling, ", ".join(sorted(allowed))))
-    if len(matches) > 1:
-        raise ValueError(
-            "typed path %s has ambiguous retained capabilities" % spelling)
-    return matches[0]
+    return _shared_snapshot(matches, spelling)
 
 
 def ancestor_directory_capability(path, consumptions):
@@ -169,8 +192,12 @@ def ancestor_directory_capability(path, consumptions):
                 row["consumption"] in allowed and
                 (prefix == "." or spelling.startswith(prefix + "/"))):
             matches.append(row)
-    return (max(matches, key=lambda row: len(row["spelling"].split("/")))
-            if matches else None)
+    if not matches:
+        return None
+    narrowest = max(matches, key=lambda row: len(row["spelling"].split("/")))
+    return _shared_snapshot(
+        [row for row in matches if row["spelling"] == narrowest["spelling"]],
+        narrowest["spelling"])
 
 
 def register_tree_snapshot_factory(factory):
@@ -183,7 +210,13 @@ def register_tree_snapshot_factory(factory):
 
 
 def acknowledge(capability):
-    """Acknowledge only the exact manifest record that was consumed."""
+    """Acknowledge consumed physical authority, not semantic input-role use."""
+    if "_snapshot_aliases" in capability:
+        for alias in capability["_snapshot_aliases"]:
+            acknowledge(alias)
+        return
+    if "_component_descriptors" in capability:
+        return
     capability_id = capability["capability_id"]
     if capability_id in _ACKNOWLEDGED:
         return
@@ -205,9 +238,10 @@ def acknowledge(capability):
 def subprocess_kwargs():
     """Return subprocess kwargs preserving the inherited authority chain."""
     inherited = records()
-    if not inherited:
+    if not os.environ.get(PATH_CAPABILITIES_ENV):
         return {}
-    descriptors = set()
+    root_fd = controlled_root_fd()
+    descriptors = {root_fd}
     forwarded = []
     for row in inherited:
         forwarded_row = dict(row)
@@ -240,6 +274,7 @@ def subprocess_kwargs():
         PATH_CAPABILITIES_ENV: json.dumps(
             document, sort_keys=True, separators=(",", ":")),
         PATH_CAPABILITIES_ACK_ENV: os.environ[PATH_CAPABILITIES_ACK_ENV],
+        WORKSPACE_FD_ENV: str(root_fd),
     }
     if WORKSPACE_ENV in os.environ:
         environment[WORKSPACE_ENV] = os.environ[WORKSPACE_ENV]
@@ -247,6 +282,107 @@ def subprocess_kwargs():
         "pass_fds": tuple(sorted(descriptors)),
         "env_overrides": environment,
     }
+
+
+def controlled_root_fd():
+    """Return the pinned invocation root, including an empty path manifest."""
+    if not os.environ.get(PATH_CAPABILITIES_ENV):
+        return None
+    records()
+    document = json.loads(os.environ[PATH_CAPABILITIES_ENV])
+    try:
+        fd = int(os.environ[WORKSPACE_FD_ENV])
+        metadata = os.fstat(fd)
+    except (KeyError, TypeError, ValueError, OSError) as exc:
+        raise ValueError("controlled invocation has no usable workspace descriptor") from exc
+    if (not stat.S_ISDIR(metadata.st_mode) or
+            (metadata.st_dev, metadata.st_ino) !=
+            (document.get("workspace_dev"), document.get("workspace_ino"))):
+        raise ValueError("controlled invocation workspace identity changed")
+    return fd
+
+
+def _component_target(path, consumption):
+    """Bind an owner-resolved internal target, never a new public grant."""
+    root_fd = controlled_root_fd()
+    if root_fd is None:
+        return None
+    spelling = logical_spelling(path)
+    path_admission.canonical_spelling("component", "target", spelling)
+    row, descriptors = path_admission.retain_path(
+        "component", "target", root_fd, spelling,
+        {"access": "write" if consumption == "append" else "read",
+         "consumption": consumption, "constraint": "contained"}, 0)
+    row["capability_id"] = "component:" + str(row.get("parent_fd")) + ":" + spelling
+    row["_component_descriptors"] = descriptors
+    return row
+
+
+def release_component_target(capability):
+    if (capability is None or "_component_descriptors" not in capability or
+            capability.get("_operation_retained")):
+        return
+    advanced = _ADVANCED_TARGETS.pop(capability["capability_id"], None)
+    if advanced is not None:
+        os.close(advanced["fd"])
+    for fd in capability["_component_descriptors"]:
+        os.close(fd)
+
+
+@contextmanager
+def receipt_operation(path):
+    """Retain an internal append target across write and exact observation."""
+    spelling = logical_spelling(path)
+    if (spelling in _RECEIPT_OPERATIONS or
+            inherited_capability(path, "append") is not None):
+        yield
+        return
+    capability = _component_target(path, "append")
+    if capability is None:
+        yield
+        return
+    capability["_operation_retained"] = True
+    _RECEIPT_OPERATIONS[spelling] = capability
+    try:
+        yield
+    finally:
+        _RECEIPT_OPERATIONS.pop(spelling)
+        capability.pop("_operation_retained")
+        release_component_target(capability)
+
+
+def current_file_bytes(path, consumptions=("append", "snapshot", "transaction")):
+    """Fresh resulting-state bytes, not an input/tree snapshot cache.
+
+    None means ordinary CLI IO. A controlled internal read stays rooted even
+    when the caller did not expose that component-owned target as a parameter.
+    """
+    capability = inherited_capability(path, consumptions)
+    if capability is None:
+        capability = _RECEIPT_OPERATIONS.get(logical_spelling(path))
+    if capability is None:
+        capability = _component_target(path, "snapshot")
+    if capability is None:
+        return None
+    try:
+        target_fd, dev, ino = effective_target(capability)
+        if target_fd is None:
+            if "_component_descriptors" not in capability:
+                acknowledge(capability)
+            return False, b""
+        verify_named_target(capability, path)
+        flags = os.O_RDONLY | os.O_NOFOLLOW | getattr(os, "O_CLOEXEC", 0)
+        fd = os.open(capability["basename"], flags, dir_fd=capability["parent_fd"])
+        try:
+            content = read_stable_descriptor(fd, dev, ino, os.fspath(path))
+        finally:
+            os.close(fd)
+        verify_named_target(capability, path)
+        if "_component_descriptors" not in capability:
+            acknowledge(capability)
+        return True, content
+    finally:
+        release_component_target(capability)
 
 
 def stat_identity(descriptor):
@@ -619,6 +755,9 @@ def open_parent(path, consumptions=("replace", "transaction")):
             except Exception:
                 os.close(current_fd)
                 raise
+    if capability is None and consumptions == "append":
+        capability = (_RECEIPT_OPERATIONS.get(spelling) or
+                      _component_target(path, "append"))
     if capability is None:
         return None, None, None
     parent_fd = capability.get("parent_fd")
@@ -628,6 +767,7 @@ def open_parent(path, consumptions=("replace", "transaction")):
                       os.fspath(path))
     missing = capability.get("missing_components") or []
     if len(missing) > 1:
+        release_component_target(capability)
         raise OSError(
             errno.ENOTSUP,
             "typed writes require every parent directory to exist at "

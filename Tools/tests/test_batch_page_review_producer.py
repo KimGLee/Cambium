@@ -1228,13 +1228,17 @@ class BatchPageReviewProducerTests(unittest.TestCase):
                 str(path), [prior], before=before)
             self.assertEqual(("present", None), (outcome, error))
             before = kblib.receipt_append_observation(str(path), [receipt])
-            outcome, error, _ = kblib.write_receipts_observed(
+            publication = kblib.ReceiptPublication()
+            outcome, error, _ = publication.append(
                 str(path), [receipt], before=before)
             self.assertEqual(("present", None), (outcome, error))
-            self.assertEqual(
-                receipt,
-                producer.require_exact_readback(
-                    str(path), receipt, self.registry))
+            with mock.patch.object(kblib, "read_receipt_bytes",
+                    side_effect=AssertionError("do not rescan the observed register")):
+                self.assertEqual(
+                    receipt,
+                    producer.require_exact_readback(
+                        str(path), receipt, self.registry,
+                        observation=publication.observation))
             rows = audit_producer_runtime.read_receipt_records(str(path))
             self.assertEqual(prior, rows[0])
             self.assertEqual(receipt, rows[1])

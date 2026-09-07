@@ -1587,6 +1587,7 @@ tests:
         semantics: cli_argv_rendering_contract
         parallel_safe: true
       - selector: PathActivationContractTests.*
+        owner: Tools/platform/repository/path_admission.py
         level: contract
         semantics: mcp_path_capability_activation_contract
         parallel_safe: true
@@ -1601,6 +1602,7 @@ tests:
         semantics: path_capability_security_recovery_isolation
         parallel_safe: false
       - selector: PathCapabilityAdmissionContractTests.*
+        owner: Tools/platform/repository/path_admission.py
         level: contract
         semantics: mcp_path_capability_admission_contract
         parallel_safe: false
@@ -2109,6 +2111,12 @@ tests:
     disposition: keep
     semantics: record_batch_review
     parallel_safe: true
+    overrides:
+      - selector: RecordBatchReviewBuilderTests.test_manual_publication_requires_catalog_confirmation_after_append
+        owner: Tools/execution/evidence/manual_attestation.py
+        level: unit
+        semantics: manual_publication_catalog_confirmation
+        parallel_safe: true
   - path: Tools/tests/test_record_corpus_acceptance.py
     owner: Tools/execution/planning/record_corpus_acceptance.py
     level: integration
@@ -2349,6 +2357,11 @@ tests:
     semantics: rendering_verification_contract
     parallel_safe: true
     overrides:
+      - selector: ProfileRenderingPublicationTests.*
+        owner: Tools/knowledge/rendering/record_profile_rendering.py
+        level: unit
+        semantics: profile_rendering_publication_confirmation
+        parallel_safe: true
       - selector: ProfileRenderingEvidenceTests.*
         owner: Tools/knowledge/rendering/profile_rendering_evidence_contract.py
         level: contract
@@ -3140,6 +3153,10 @@ fixtures:
   - path: Tools/tests/support/cli_contract_fixture.py
     owner: Tools/platform/agent_interface/compile_cli_contract.py
     purpose: Minimal parser and policy checkpoint for compiled CLI contract tests
+    lifecycle: current
+  - path: Tools/tests/support/mcp_stdio_session.py
+    owner: Tools/platform/agent_interface/mcp_server.py
+    purpose: One real sequential stdio driver shared by transport, integration and E2E tests
     lifecycle: current
   - path: Tools/tests/support/coverage_delta_fixture.py
     owner: Tools/execution/planning/coverage_delta.py

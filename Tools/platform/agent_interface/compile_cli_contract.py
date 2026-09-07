@@ -78,6 +78,7 @@ TOOLS_DIR = tools_source_root(__file__)
 REPO_ROOT = repository_source_root(__file__)
 
 import Tools.platform.agent_interface.agent_interface_policy as agent_interface_policy  # noqa: E402
+import Tools.platform.agent_interface.agent_interface_contract as agent_interface_contract  # noqa: E402
 import Tools.platform.agent_interface.entrypoint_loader as entrypoint_loader  # noqa: E402
 import Tools.platform.common.kblib as kblib  # noqa: E402
 import Tools.platform.distribution.module_boundary_facts as module_boundary_facts  # noqa: E402
@@ -87,7 +88,7 @@ import Tools.platform.agent_interface.tool_availability as tool_availability  # 
 TOOL = "compile_cli_contract"
 TOOL_VERSION = "1.8.0"
 
-SCHEMA_VERSION = 9
+SCHEMA_VERSION = 10
 INTERFACE_POLICY_SCHEMA_VERSION = agent_interface_policy.SCHEMA_VERSION
 SOURCE_DISTRIBUTION_OUTPUT = "Tools/compiled/cli-contract.yaml"
 CARRIED_RUNTIME_OUTPUT = runtime_paths.CLI_CONTRACT_ARTIFACT_PATH
@@ -528,7 +529,7 @@ def load_interface_policy(root, records, availability):
     expected_keys = {
         "tool", "exposure", "workspace_argument", "workspace_access",
         "value_arguments", "read_paths", "write_paths",
-        "read_write_paths", "external_write",
+        "read_write_paths", "external_write", "output",
     }
     by_name = {}
     excluded_tools = []
@@ -568,6 +569,31 @@ def load_interface_policy(root, records, availability):
                 "null or both be declared" % name)
         arguments = {item["dest"]: item for item in
                      record_by_name[name]["arguments"]}
+        try:
+            output = agent_interface_contract.validate_output_contract(
+                document["output_contracts"][row["output"]])
+        except ValueError as exc:
+            raise ContractError("%s output: %s" % (name, exc)) from exc
+        for field in ("json_inactive_when_any", "empty_success_disabled_by"):
+            for flag in output[field]:
+                if arguments.get(flag, {}).get("action") != "store_true":
+                    raise ContractError(
+                        "%s output %s must name a store_true option" %
+                        (name, field))
+        if output["mode"] == "json-option":
+            selector = arguments.get(output["json_argument"])
+            if selector is None or not selector.get("option_strings"):
+                raise ContractError("%s output selector must name a declared CLI option" % name)
+            if output["json_value"] is True:
+                if selector.get("action") != "store_true":
+                    raise ContractError("%s output boolean selector must use store_true" % name)
+            elif output["json_value"] not in (selector.get("choices") or []):
+                raise ContractError("%s output selector value must be a declared choice" % name)
+            if row["exposure"] == "mcp" and (
+                    output["json_argument"] != "json" or
+                    output["json_value"] is not True or
+                    "--json" not in selector.get("option_strings", [])):
+                raise ContractError("%s MCP JSON selector must be the supported json flag" % name)
         if workspace_argument is not None and workspace_argument not in arguments:
             raise ContractError("%s: unknown workspace_argument %s" %
                                 (name, workspace_argument))
@@ -703,6 +729,7 @@ def load_interface_policy(root, records, availability):
             "value_arguments": sorted(value_arguments),
             "path_arguments": path_arguments,
             "external_write": row["external_write"],
+            "output": output,
         }
 
     declared = set(by_name)
@@ -1128,6 +1155,46 @@ def receipt_extensions(source_text, *, root, module_name):
 # ---------------------------------------------------------------------------
 
 
+def _has_host_environment_boundary(source_text):
+    """Resolve the public main decorator from its actual import binding.
+
+    The wrapper is already a pinned CLI source. This is a derived invocation
+    fact, not another policy declaration or a list of privileged tool names.
+    """
+    symbol = "Tools.platform.common.reporting.host_environment_boundary"
+    bindings = {}
+
+    def qualified(node):
+        if isinstance(node, ast.Name):
+            return bindings.get(node.id)
+        if isinstance(node, ast.Attribute):
+            parent = qualified(node.value)
+            return parent + "." + node.attr if parent else None
+        return None
+
+    for statement in ast.parse(source_text).body:
+        if isinstance(statement, ast.ImportFrom):
+            for alias in statement.names:
+                bindings[alias.asname or alias.name] = (
+                    (statement.module + "." + alias.name)
+                    if statement.level == 0 and statement.module else None)
+        elif isinstance(statement, ast.Import):
+            for alias in statement.names:
+                bindings[alias.asname or alias.name.split(".")[0]] = (
+                    alias.name if alias.asname else alias.name.split(".")[0])
+        elif isinstance(statement, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            if statement.name == "main":
+                return any(qualified(decorator) == symbol
+                           for decorator in statement.decorator_list)
+            bindings.pop(statement.name, None)
+        else:
+            # A reassignment must not retain the imported decorator identity.
+            for node in ast.walk(statement):
+                if isinstance(node, ast.Name) and isinstance(node.ctx, ast.Store):
+                    bindings.pop(node.id, None)
+    return False
+
+
 def compile_contract(root, projection_target):
     """Return the contract mapping compiled for one declared target.
 
@@ -1194,6 +1261,8 @@ def compile_contract(root, projection_target):
             "module": descriptor.invocation_path,
             "source_hash": kblib.sha256_bytes(
                 descriptor.invocation_source.encode("utf-8")),
+            "host_environment_boundary": _has_host_environment_boundary(
+                descriptor.invocation_source),
             "implementation_module": descriptor.implementation_module,
             "implementation_path": descriptor.implementation_path,
             "implementation_source_hash": kblib.sha256_bytes(

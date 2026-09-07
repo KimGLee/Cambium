@@ -1,4 +1,5 @@
 from types import SimpleNamespace
+import contextlib
 import sys
 import unittest
 from unittest import mock
@@ -12,6 +13,8 @@ sys.path.insert(0, str(TOOLS))
 import Tools.execution.context_delivery.card_activation as card_activation
 import Tools.execution.audit.audit_evidence_runtime as audit_evidence_runtime
 import Tools.execution.audit.record_batch_review as record_batch_review
+import Tools.execution.evidence.manual_attestation as manual_attestation
+import Tools.platform.common.kblib as kblib
 from Tools.execution.task_runtime.queue_runtime.receipts import Catalog
 from Tools.tests.support.profile_fixture import FIXTURE_UPSTREAM_REVISION
 
@@ -190,6 +193,63 @@ class RecordBatchReviewBuilderTests(unittest.TestCase):
             record_batch_review.validate_batch_review_receipt(
                 self.result, self.item, receipt, delta_binding=self.delta,
                 audit_binding=self.audit)
+
+    def test_manual_publication_requires_catalog_confirmation_after_append(self):
+        # Local publication seam only: no Task/Queue reconstruction or CLI.
+        receipt = self.build()
+        for catalog_has_exact_record in (True, False):
+            with self.subTest(catalog_has_exact_record=catalog_has_exact_record), \
+                    contextlib.ExitStack() as stack:
+                events = []
+                publication = kblib.ReceiptPublication()
+                locked = {"errors": []}
+                readback = {"errors": []}
+                def observe_runtime(*_args, **_kwargs):
+                    events.append("runtime")
+                    return locked if events.count("runtime") == 1 else readback
+                def append(facts, _path, rows, *, before):
+                    self.assertEqual([receipt], rows)
+                    events.append("append")
+                    facts.outcome = "present"
+                    return "present", None, before
+                stack.enter_context(mock.patch.object(kblib, "runtime_write_lock",
+                    side_effect=lambda *args, **kwargs: contextlib.nullcontext(object())))
+                stack.enter_context(mock.patch.object(kblib, "no_authoritative_write_guard",
+                    side_effect=lambda lease: contextlib.nullcontext()))
+                stack.enter_context(mock.patch.object(kblib, "receipt_append_observation", return_value={}))
+                stack.enter_context(mock.patch.object(kblib.ReceiptPublication, "append",
+                    autospec=True, side_effect=append))
+                stack.enter_context(mock.patch.object(manual_attestation.runtime_validation,
+                    "validate_runtime", side_effect=observe_runtime))
+                stack.enter_context(mock.patch.object(manual_attestation.queue_runtime,
+                    "runtime_authority_validation_kwargs", return_value={}))
+                stack.enter_context(mock.patch.object(manual_attestation.queue_runtime,
+                    "require_runtime_authority_current"))
+                catalog = Catalog({receipt["receipt_id"]: ("receipts.jsonl", receipt)}) \
+                    if catalog_has_exact_record else Catalog({})
+                resolve = stack.enter_context(mock.patch.object(manual_attestation.queue_runtime,
+                    "current_receipt_catalog", return_value=catalog))
+                def rebuild(runtime):
+                    self.assertIs(locked, runtime)
+                    events.append("rebuild")
+                    return receipt
+                def validate(runtime, candidate):
+                    self.assertIs(locked, runtime)
+                    self.assertEqual(receipt, candidate)
+                    events.append("validate")
+                arguments = dict(authority=object(), operation={}, rebuild=rebuild,
+                    validate=validate, publication_label="review", publication=publication)
+                if catalog_has_exact_record:
+                    self.assertEqual(receipt, manual_attestation.publish_receipt(
+                        "/fixture", "/fixture/receipts.jsonl", receipt, **arguments))
+                else:
+                    with self.assertRaisesRegex(ValueError, "exact receipt"):
+                        manual_attestation.publish_receipt(
+                            "/fixture", "/fixture/receipts.jsonl", receipt, **arguments)
+                self.assertEqual(["runtime", "rebuild", "validate", "append", "runtime"], events)
+                self.assertEqual("present", publication.outcome)
+                self.assertIs(catalog_has_exact_record, publication.confirmed)
+                resolve.assert_called_once_with(readback)
 
     def test_wrapper_activation_edge_cannot_name_an_opening_transition(self):
         receipt = self.build()

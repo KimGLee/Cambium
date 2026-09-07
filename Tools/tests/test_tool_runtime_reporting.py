@@ -10,11 +10,124 @@ TOOLS = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, TOOLS)
 
 from Tools.platform.common import reporting  # noqa: E402
+from Tools.platform.common import kblib  # noqa: E402
 from Tools.platform.agent_interface import entrypoint_loader  # noqa: E402
 from Tools.platform.common.host_environment import HostEnvironmentUnavailable
+from Tools.platform.common.host_environment import host_handoff
 
 
 class CanonicalJsonOutputTests(unittest.TestCase):
+    def test_output_observation_keeps_declared_host_handoff_separate_from_payloads(self):
+        contracts = kblib.load_yaml_file(os.path.join(
+            TOOLS, "agent-interface-policy.yaml"))["output_contracts"]
+        failure = HostEnvironmentUnavailable(
+            "compiler unavailable", capability_id="static-markdown-render-v1",
+            code="execution-unavailable", constructs=("mermaid-fence",))
+        prior = '{"earlier_step":"completed"}\n'
+        handoff = host_handoff(failure.diagnostic(), prior_output=prior)
+        for name in ("json-option-receipts", "receipt-publication", "text-report"):
+            with self.subTest(contract=name):
+                observed = reporting.observe_tool_output(
+                    contracts[name], kblib.canonical_json_bytes(handoff), 0,
+                    {"json": True}, host_boundary=True)
+                self.assertEqual("parsed", observed["stdout_parse"])
+                self.assertFalse(observed["output_reliable"])
+                self.assertEqual(handoff, observed["stdout_json"])
+                self.assertEqual(prior, observed["stdout_json"]["prior_output"])
+                self.assertNotIn("applied", observed["stdout_json"])
+                self.assertNotIn("publication", observed["stdout_json"])
+        malformed = (
+            {key: value for key, value in handoff.items() if key != "host_preparation"},
+            {**handoff, "host_environment": {"message": "missing identity"}},
+            {**handoff, "host_preparation": {"capability_id": "invented"}},
+            {**handoff, "applied": False},
+        )
+        for payload in malformed:
+            with self.subTest(malformed=payload):
+                observed = reporting.observe_tool_output(
+                    contracts["text-report"], kblib.canonical_json_bytes(payload), 1,
+                    {}, host_boundary=True)
+                self.assertEqual("unparseable", observed["stdout_parse"])
+                self.assertFalse(observed["output_reliable"])
+        undeclared = reporting.observe_tool_output(
+            contracts["json-option-object"], kblib.canonical_json_bytes(handoff), 1,
+            {"json": True})
+        self.assertEqual("unparseable", undeclared["stdout_parse"])
+        normal = {"status": "await-host", "next_action": {"kind": "host-input"}}
+        observed = reporting.observe_tool_output(
+            contracts["json-option-object"], kblib.canonical_json_bytes(normal), 0,
+            {"json": True}, host_boundary=True)
+        self.assertEqual(normal, observed["stdout_json"])
+        self.assertTrue(observed["output_reliable"])
+        publication = kblib.ReceiptPublication()
+        publication.outcome = "present"
+        uncertain = reporting.publication_result(publication, status="recorded")
+        observed = reporting.observe_tool_output(
+            contracts["receipt-publication"], kblib.canonical_json_bytes(uncertain), 0, {})
+        self.assertEqual("parsed", observed["stdout_parse"])
+        self.assertFalse(observed["output_reliable"])
+
+    def test_publication_facts_keep_append_confirmation_and_business_result_separate(self):
+        # One owner matrix; producer tests only prove their connection to it.
+        cases = (
+            ("not-attempted", False, False, None, "planned", False, "planned"),
+            ("not-attempted", False, False, "refused", "invalid", False, "invalid"),
+            ("absent", False, False, "append failed", "invalid", False, "invalid"),
+            ("present", False, False, "fsync failed", "recorded", True, "uncertain"),
+            ("uncertain", False, False, "partial bytes", "recorded", None, "uncertain"),
+            ("present", False, False, None, "recorded", True, "uncertain"),
+            ("present", True, False, None, "recorded", True, "recorded"),
+            ("not-attempted", True, True, None, "already-present", False, "already-present"),
+        )
+        for outcome, confirmed, reused, error, status, applied, expected_status in cases:
+            with self.subTest(outcome=outcome, confirmed=confirmed, reused=reused, error=error):
+                publication = kblib.ReceiptPublication()
+                publication.outcome = outcome
+                publication.confirmed = confirmed
+                publication.error = OSError(error) if error else None
+                result = reporting.publication_result(
+                    publication, status=status, reused=reused,
+                    result="fail", verdict="changes-required")
+                self.assertIs(applied, result["applied"])
+                self.assertEqual(expected_status, result["status"])
+                self.assertEqual(outcome, result["publication"]["append"])
+                self.assertEqual("confirmed" if confirmed else "unconfirmed",
+                                 result["publication"]["record_confirmation"])
+                self.assertEqual(reused, result["publication"]["reused"])
+                self.assertEqual([error] if error else [], result["errors"])
+                self.assertEqual(("fail", "changes-required"),
+                                 (result["result"], result["verdict"]))
+                self.assertEqual(expected_status != "uncertain",
+                                 reporting.publication_result_reliable(result))
+
+    def test_reuse_cannot_claim_a_new_append_or_unconfirmed_record(self):
+        publication = kblib.ReceiptPublication()
+        with self.assertRaisesRegex(ValueError, "reuse requires"):
+            reporting.publication_result(publication, status="already-present", reused=True)
+        publication.outcome = "present"
+        publication.confirmed = True
+        with self.assertRaisesRegex(ValueError, "reuse requires"):
+            reporting.publication_result(publication, status="already-present", reused=True)
+
+    def test_publication_decoder_rejects_contradictory_or_incomplete_facts(self):
+        publication = kblib.ReceiptPublication()
+        publication.outcome = "present"
+        publication.confirmed = True
+        original = reporting.publication_result(publication, status="recorded")
+        malformed = (
+            {**original, "applied": False},
+            {**original, "errors": "hidden error"},
+            {**original, "errors": ["late error"]},
+            {**original, "publication": {**original["publication"], "append": "unknown"}},
+            {**original, "publication": {**original["publication"], "reused": True}},
+            {**original, "publication": {"append": "present"}},
+        )
+        for value in malformed:
+            with self.subTest(value=value):
+                with self.assertRaises(ValueError):
+                    reporting.validate_publication_result(value)
+        self.assertIs(original, reporting.validate_publication_result(original))
+
     def test_host_handoff_is_not_a_receipt_or_a_claim_that_nothing_was_written(self):
         failure = HostEnvironmentUnavailable("compiler unavailable", capability_id="render",
                                              code="execution-unavailable")
@@ -273,29 +386,32 @@ class CheckerReportingBoundaryTests(unittest.TestCase):
                 self.assertIn("reporting.write_canonical_json(", source)
                 self.assertNotIn("def _emit(", source)
 
-    def test_manual_producer_outputs_preserve_json_and_human_bytes(self):
-        cases = (
-            ("record_gate_attestation",
-             "[PASS] manual Gate evidence recorded: receipt-1\n"),
-            ("record_batch_review",
-             "[PASS] batch-review wrapper recorded: receipt-1\n"),
-        )
+    def test_manual_producer_outputs_share_json_and_human_publication_facts(self):
         receipt = {"z": 2, "receipt_id": "receipt-1", "a": "文字"}
-        expected_json = \
-            '[{"a":"文字","receipt_id":"receipt-1","z":2}]\n'
-        for name, expected_human in cases:
-            with self.subTest(producer=name):
-                module = entrypoint_loader.load_tool_implementation(
-                    name, TOOLS)
-                json_output = io.StringIO()
-                with contextlib.redirect_stdout(json_output):
-                    module._output(receipt, True)
-                self.assertEqual(expected_json, json_output.getvalue())
-
-                human_output = io.StringIO()
-                with contextlib.redirect_stdout(human_output):
-                    module._output(receipt, False)
-                self.assertEqual(expected_human, human_output.getvalue())
+        publication = kblib.ReceiptPublication()
+        publication.outcome = "present"
+        publication.confirmed = True
+        output = io.StringIO()
+        with contextlib.redirect_stdout(output):
+            payload = reporting.write_publication_result(
+                publication, json_output=True, status="recorded", receipts=[receipt])
+        self.assertEqual([receipt], json.loads(output.getvalue())["receipts"])
+        self.assertEqual(payload, json.loads(output.getvalue()))
+        human = io.StringIO()
+        with contextlib.redirect_stdout(human):
+            reporting.write_publication_result(
+                publication, json_output=False, status="recorded", receipts=[receipt])
+        self.assertIn("append=present; record confirmation=confirmed", human.getvalue())
+        self.assertIn("receipt: receipt-1", human.getvalue())
+        publication.confirmed = False
+        publication.error = OSError("flush failed")
+        diagnostic = io.StringIO()
+        with contextlib.redirect_stderr(diagnostic):
+            reporting.write_publication_result(
+                publication, json_output=False, status="invalid")
+        self.assertIn("[UNCERTAIN]", diagnostic.getvalue())
+        self.assertIn("append=present", diagnostic.getvalue())
+        self.assertIn("flush failed", diagnostic.getvalue())
 
 
 if __name__ == "__main__":

@@ -48,6 +48,21 @@ def completed(returncode=0, stdout="{}\n", stderr=""):
 
 
 class TaskRuntimeRunnerUnitTests(unittest.TestCase):
+    def test_main_preserves_step_failure_and_observation_failure(self):
+        cases = (({"returncode": 2, "next_action_error": None}, 2),
+                 ({"returncode": 0, "next_action_error": "unreadable after action"}, 1),
+                 ({"returncode": 0, "next_action_error": None}, 0))
+        for step, expected in cases:
+            for mode, function, result in (
+                    (["--execute", "a1"], "execute", step),
+                    (["--run-until-boundary"], "run_until_boundary",
+                     {"executed": [step], "next_action_error": step["next_action_error"]})):
+                with self.subTest(step=step, mode=mode), \
+                        mock.patch.object(runner, function, return_value=result), \
+                        mock.patch.object(runner, "write_canonical_json") as emit:
+                    self.assertEqual(expected, runner.main(["/fixture"] + mode))
+                    emit.assert_called_once_with(result)
+
     def test_host_failure_after_execution_preserves_completed_tool_result(self):
         action = {"action_id": "a1", "token": "sample", "disposition": "invoke"}
         failure = runner.HostEnvironmentUnavailable("missing", capability_id="sample",
@@ -231,12 +246,13 @@ class TaskRuntimeRunnerContractTests(unittest.TestCase):
         with mock.patch.object(
                 runner, "_compiled_cli_contract", return_value=contract):
             delta = ".cambium/deltas/B1.yaml"
-            command = runner._command(
+            inputs = runner._command_inputs(
                 root, "apply_delta", {
                     "delta": delta,
                     "apply": True,
                     "json": False,
                 })
+            command = runner._render_command("apply_delta", *inputs[:3])
 
         self.assertEqual(sys.executable, command[0])
         self.assertEqual(
@@ -254,7 +270,7 @@ class TaskRuntimeRunnerContractTests(unittest.TestCase):
                 self.assertRaisesRegex(
                     runner.RunnerError,
                     "generate it with .*--projection-target carried-runtime"):
-            runner._command(
+            runner._command_inputs(
                 Path(directory).resolve(), "apply_delta", {
                     "delta": ".cambium/deltas/B1.yaml",
                     "apply": True,
@@ -282,7 +298,7 @@ class TaskRuntimeRunnerContractTests(unittest.TestCase):
                         runner, "_compiled_entrypoint") as dispatch, \
                     self.assertRaisesRegex(
                         runner.RunnerError, "not current"):
-                runner._command(root, "apply_delta", {
+                runner._command_inputs(root, "apply_delta", {
                     "delta": ".cambium/deltas/B1.yaml",
                     "apply": True,
                     "json": False,

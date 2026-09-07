@@ -287,7 +287,8 @@ def main(argv=None):
     print("metadata transition plan: Gate=%s %s=%s page=%s Coverage %s -> %s" %
           (context.gate.gate_id, context.gate.field_id, args.value,
            context.page_path, context.runtime.get("coverage_sha256"),
-           receipt["after_coverage_sha256"]))
+           receipt["after_coverage_sha256"]),
+          file=sys.stderr if args.json else sys.stdout)
     if not args.apply:
         if not args.json:
             print("dry run; add --apply --actor-role integrator with both "

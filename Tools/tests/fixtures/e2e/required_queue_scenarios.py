@@ -17,6 +17,8 @@ import Tools.execution.task_runtime.runtime_validation as runtime_validation
 from Tools.execution.task_runtime import runtime_paths
 from Tools.platform.common import kblib
 from Tools.tests.support.initial_task_plan_fixture import confirmed_initial_task_plan
+from Tools.tests.support.coverage_delta_fixture import premerge_delta_document
+from Tools.tests.support.mcp_stdio_session import MCPStdioSession
 from Tools.tests.support.profile_fixture import (
     FIXTURE_UPSTREAM_REVISION, install_loadable_profile,
 )
@@ -221,6 +223,100 @@ class RequiredQueueE2EScenarioCase(RequiredQueueFixture,
     """A private starting tree for one representative complete lifecycle."""
 
     START_SCENARIO = "base"
+    MCP_TRANSPORT = False
+
+    def invoke_tool(self, name, *arguments):
+        if not self.MCP_TRANSPORT:
+            return super().invoke_tool(name, *arguments)
+        if not hasattr(self, "mcp_session"):
+            self.mcp_session = MCPStdioSession(self.root)
+            self.mcp_session.__enter__()
+            self.addCleanup(self.mcp_session.close)
+            self.mcp_session.initialize()
+        if name == "record_batch_page_review.py":
+            self._drain_activation_delivery()
+        return self.mcp_session.run_cli(name, *arguments)
+
+    def _drain_activation_delivery(self):
+        """Act only on the Runner's currently due delivery/ack handoff.
+
+        The original scenario still owns its business actions. The Host
+        context returns nonces from actual delivered payloads, never from a
+        hand-written Receipt or an independently chosen phase sequence.
+        """
+        observed = self.mcp_session.run_cli("run_task.py", str(self.root))
+        self.assertEqual(0, observed.returncode, observed.mcp_result)
+        action = json.loads(observed.stdout)
+        deliveries = {}
+        seen_actions = set()
+        while action["token"] in {
+                "deliver-activation-phase", "ack-activation-phase"}:
+            self.assertNotIn(action["action_id"], seen_actions, action)
+            seen_actions.add(action["action_id"])
+            target = action["target"]
+            key = (target["batch_id"], target["phase_id"],
+                   target["part_index"])
+            if action["token"] == "ack-activation-phase":
+                self.assertIn(key, deliveries, action)
+                delivered = deliveries[key]
+                tool = "check_queue"
+                arguments = {
+                    "root": str(self.root),
+                    "ack_activation_phase": target["batch_id"],
+                    "phase": target["phase_id"],
+                    "phase_part": target["part_index"],
+                    "phase_nonce": delivered["delivery_nonce"],
+                    "phase_delivery_receipt": delivered["receipt_id"],
+                    "receipts": runtime_paths.RECEIPT_ROOT +
+                        "/phase-ack-%s-%s-%s.jsonl" % key,
+                }
+            else:
+                tool = action["tool"]
+                arguments = dict(action["arguments"], root=str(self.root))
+            envelope = self.mcp_session.call(tool, arguments)
+            self.assertTrue(envelope["invocation_reliable"], envelope)
+            self.assertTrue(envelope["output_reliable"], envelope)
+            self.assertEqual(0, envelope["exit_code"], envelope)
+            if action["token"] == "deliver-activation-phase":
+                rows = envelope["stdout_json"]
+                self.assertEqual(1, len(rows), rows)
+                delivered = rows[0]
+                self.assertEqual(
+                    delivered["delivery_nonce"],
+                    delivered["activation_phase_payload"]["delivery_nonce"])
+                deliveries[key] = delivered
+            observed = self.mcp_session.run_cli("run_task.py", str(self.root))
+            self.assertEqual(0, observed.returncode, observed.mcp_result)
+            action = json.loads(observed.stdout)
+
+    def prepare_premerge_audit_evidence(self, batch_id):
+        if self.MCP_TRANSPORT:
+            self._drain_activation_delivery()
+        return super().prepare_premerge_audit_evidence(batch_id)
+
+    def record_batch_review_wrapper(self, batch_id):
+        if self.MCP_TRANSPORT:
+            self._drain_activation_delivery()
+        return super().record_batch_review_wrapper(batch_id)
+
+    def write_delta(self, batch_id, object_path, receipt_id):
+        if not self.MCP_TRANSPORT:
+            return super().write_delta(batch_id, object_path, receipt_id)
+        # The scenario supplies authoring decisions, not a canonical Delta or
+        # a hand-picked evidence set. The real publisher resolves references.
+        proposal = premerge_delta_document(
+            batch_id, object_path, [], generated_at="2026-08-04T00:00:00Z")
+        proposal["pages"][0].pop("gate_receipts")
+        relative = runtime_paths.TRANSIENT_ROOT + "/%s-proposal.yaml" % batch_id
+        absolute = self.root / relative
+        absolute.parent.mkdir(parents=True, exist_ok=True)
+        absolute.write_text(kblib.canonical_yaml(proposal), encoding="utf-8")
+        published = self.run_tool(
+            "publish_delta.py", "--batch", batch_id, "--proposal", relative,
+            "--expected-delta-sha256", "absent", "--apply")
+        self.assertEqual(0, published.returncode,
+                         (published.stdout, published.stderr))
+        return json.loads(published.stdout)["delta_path"]
 
     def setUp(self):
         self.temporary = tempfile.TemporaryDirectory()

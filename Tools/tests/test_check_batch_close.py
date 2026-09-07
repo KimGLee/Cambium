@@ -29,6 +29,7 @@ from Tools.tests.fixtures.integration.batch_close_checkpoints import (
     BatchCloseCheckpointCase,
     StateMutatingBatchCloseCheckpointCase,
 )
+from Tools.tests.support.batch_close_fixture import RESIDUAL_SCANNER_SOURCE
 
 
 def _invoke(entrypoint, arguments):
@@ -66,6 +67,91 @@ class InvocationContractTests(unittest.TestCase):
             "integrator and reviewer must use different declared labels",
             output.getvalue(),
         )
+
+    def test_checker_transports_consume_json_without_temporary_receipt_writes(self):
+        record = kblib.make_receipt(
+            check_batch_close.check_links.TOOL,
+            check_batch_close.check_links.TOOL_VERSION,
+            "wiki-link", "Topics/A.md", "pass", "declared checker result", 1,
+            receipt_type_id=check_batch_close.check_links.RECEIPT_TYPE_ID)
+        rows = [record]
+        command = [sys.executable, "Tools/check_links.py", "/fixture"]
+        completed = subprocess.CompletedProcess(
+            command, 0, json.dumps(rows), "human diagnostic\n")
+        with mock.patch.object(
+                check_batch_close.kblib, "run_cambium_subprocess",
+                return_value=completed) as run, mock.patch.object(
+                    tempfile, "TemporaryDirectory",
+                    side_effect=AssertionError("checker output is not a temporary register")), \
+                mock.patch.object(
+                    kblib, "write_receipts",
+                    side_effect=AssertionError("raw checker results are not published here")):
+            subprocess_result = check_batch_close._run_receipting_command(
+                command, "/fixture", "check_links")
+
+            def invoke():
+                print(json.dumps(rows))
+                print("human diagnostic", file=sys.stderr)
+                return 0
+
+            inprocess_result = check_batch_close._run_inprocess_checker(
+                command, "check_links", invoke)
+        self.assertEqual(command + ["--json"], run.call_args.args[0])
+        self.assertEqual(subprocess.PIPE, run.call_args.kwargs["stderr"])
+        self.assertEqual(subprocess_result, inprocess_result)
+        self.assertEqual(rows, subprocess_result["receipts"])
+        self.assertEqual([], subprocess_result["errors"])
+
+    def test_checker_json_shape_cannot_bypass_existing_result_acceptance(self):
+        for malformed in ("", "not JSON", "{}", "[null]"):
+            with self.subTest(stdout=malformed), self.assertRaises(ValueError):
+                check_batch_close._checker_json_result(
+                    ["checker"], "checker", 0, malformed, "")
+        empty = check_batch_close._checker_json_result(
+            ["checker"], "checker", 0, "[]", "")
+        self.assertIn("checker produced no machine-readable receipts",
+                      empty["errors"])
+
+    def test_registered_scan_fixture_obeys_the_checker_json_transport(self):
+        record = kblib.make_receipt(
+            "fixture_residual", "1.0.0", "residual-content-summary",
+            "/fixture", "pass", "fixture scan result", 1,
+            receipt_type_id="registered-residual-scan-receipt-v1")
+        script = "/fixture/Tools/fixture_residual.py"
+        for mode in ([], ["--positive-controls-only"]):
+            with self.subTest(mode=mode):
+                command = [script, "/fixture", "--scan-id",
+                           "fixture-residuals", *mode, "--json"]
+                output = io.StringIO()
+                with mock.patch.object(sys, "argv", command), \
+                        mock.patch.object(sys, "path", list(sys.path)), \
+                        mock.patch.object(kblib, "make_receipt",
+                                          return_value=dict(record)), \
+                        mock.patch.object(kblib, "write_receipts") as writer, \
+                        redirect_stdout(output):
+                    exec(compile(RESIDUAL_SCANNER_SOURCE, script, "exec"),
+                         {"__file__": script})
+                result = check_batch_close._checker_json_result(
+                    command, "fixture-residual", 0, output.getvalue(), "")
+                self.assertEqual([], result["errors"])
+                writer.assert_called_once_with(None, result["receipts"])
+                self.assertEqual("fixture-residuals",
+                                 result["receipts"][0]["scan_id"])
+                self.assertEqual("passed",
+                                 result["receipts"][0]["positive_control_result"])
+
+    def test_page_checker_json_entry_reuses_the_already_authorized_view(self):
+        admission = object()
+        with mock.patch.object(
+                check_batch_close.check_page_contract, "run",
+                return_value=0) as run:
+            code, _stdout, _stderr = _invoke(
+                lambda args: check_batch_close.check_page_contract.main(
+                    args, authorized_admission=admission),
+                ["/fixture", "--json"])
+        self.assertEqual(0, code)
+        self.assertIs(admission, run.call_args.kwargs["authorized_admission"])
+        self.assertIsNone(run.call_args.args[6])
 
 
 class WorkSpecStabilityContractTests(unittest.TestCase):

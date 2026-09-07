@@ -2399,9 +2399,11 @@ modules:
     public:
       - CARRIED_RUNTIME_TARGET
       - EXECUTION_CONTEXT_ENV
+      - HOST_BOUNDARY_EXTENSION_KEY
       - INTERFACE_PROJECTION_ENV
       - INTERFACE_SOURCE_HASH_ENV
       - MCP_FORM
+      - OUTPUT_EXTENSION_KEY
       - PATH_CAPABILITIES_ACK_ENV
       - PATH_CAPABILITIES_ENV
       - PATH_EXTENSION_KEY
@@ -2410,6 +2412,9 @@ modules:
       - SOURCE_DISTRIBUTION_TARGET
       - WORKSPACE_ENV
       - WORKSPACE_EXTENSION_KEY
+      - WORKSPACE_FD_ENV
+      - decode_output
+      - validate_output_contract
   - module: platform.agent_interface.agent_interface_policy
     path: Tools/platform/agent_interface/agent_interface_policy.py
     area: platform
@@ -2518,8 +2523,10 @@ modules:
     public:
       - HostEnvironmentUnavailable
       - PREPARATION_CAPABILITY_ID
+      - host_handoff
       - preparation_failure
       - preparation_request
+      - validate_host_handoff
   - module: platform.common.host_toolchain
     path: Tools/platform/common/host_toolchain.py
     area: platform
@@ -2568,6 +2575,8 @@ modules:
       - RECEIPT_COLD_PREFIX
       - RECEIPT_COLD_SEGMENT_PREFIX
       - RECEIPT_IDENTITY_FIELDS
+      - ReceiptObservation
+      - ReceiptPublication
       - RepositoryFileSnapshot
       - RepositoryTreeSnapshot
       - RuntimeStateLockedError
@@ -2603,6 +2612,7 @@ modules:
       - process_is_alive
       - quota_share_within_limit
       - read_bytes
+      - read_receipt_bytes
       - read_set_document_type
       - read_text
       - receipt_append_mutex
@@ -2680,9 +2690,14 @@ modules:
       - JsonReceiptCollector
       - RedirectedJsonReceipts
       - host_environment_boundary
+      - observe_tool_output
+      - publication_result
+      - publication_result_reliable
       - run_redirected_json
+      - validate_publication_result
       - write_canonical_json
       - write_canonical_json_array
+      - write_publication_result
   - module: platform.distribution.check_kernel_size
     path: Tools/platform/distribution/check_kernel_size.py
     area: platform
@@ -2814,18 +2829,33 @@ modules:
       - UpstreamIdentityError
       - is_full_commit_sha
       - resolve_revision
+  - module: platform.repository.path_admission
+    path: Tools/platform/repository/path_admission.py
+    area: platform
+    domain: repository
+    layer: infrastructure
+    public:
+      - PathAdmissionError
+      - admit_paths
+      - canonical_spelling
+      - capability_is_active
+      - invocation
+      - retain_path
   - module: platform.repository.path_capability
     path: Tools/platform/repository/path_capability.py
     area: platform
     domain: repository
     layer: infrastructure
     public:
+      - PATH_CAPABILITIES_ENV
       - acknowledge
       - ancestor_directory_capability
       - cache_file
       - cache_tree
       - cached_file
       - cached_tree
+      - controlled_root_fd
+      - current_file_bytes
       - effective_target
       - inherited_capability
       - logical_spelling
@@ -2836,10 +2866,12 @@ modules:
       - read_bytes
       - read_stable_descriptor
       - read_text
+      - receipt_operation
       - record_append_target
       - record_replacement
       - records
       - register_tree_snapshot_factory
+      - release_component_target
       - stat_identity
       - subprocess_kwargs
       - tree_contains

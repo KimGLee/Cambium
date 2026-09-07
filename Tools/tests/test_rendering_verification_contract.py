@@ -1,6 +1,9 @@
 """Independent tests for the K12/02 rendering record-shape producer."""
 
 import copy
+import contextlib
+import io
+import json
 from pathlib import Path
 from types import SimpleNamespace
 import sys
@@ -33,7 +36,7 @@ SHA_A = "sha256:" + "a" * 64
 SHA_B = "sha256:" + "b" * 64
 
 
-class ProfileRenderingEvidenceTests(unittest.TestCase):
+class _ProfileRenderingFixture:
     """The binding owner never substitutes a record shape for compiler proof."""
 
     def setUp(self):
@@ -84,6 +87,7 @@ class ProfileRenderingEvidenceTests(unittest.TestCase):
                 obligation=obligation, evaluation=self.evaluation, page=page, report=report)
         return record, plan, obligation
 
+class ProfileRenderingEvidenceTests(_ProfileRenderingFixture, unittest.TestCase):
     def test_profile_rules_project_blocking_receipts_without_changing_base(self):
         before = audit_obligation_projection.base_obligation_specs(REPOSITORY)
         specs = audit_obligation_projection.profile_rendering_specs(self.profile, REPOSITORY)
@@ -194,6 +198,61 @@ class ProfileRenderingEvidenceTests(unittest.TestCase):
                 profile_evidence.validate_record_for_obligation(
                     record, plan, audit_plan_contract.plan_sha256(plan), obligation,
                     root=REPOSITORY, evaluation=self.evaluation, text=self.text + "changed\n")
+
+
+class ProfileRenderingPublicationTests(_ProfileRenderingFixture, unittest.TestCase):
+    def test_rendering_publication_confirms_only_after_its_exact_record_readback(self):
+        # Reuse an independently validated object, not a renderer or runtime fixture.
+        record, plan, obligation = self._record()
+        page = audit_producer_runtime.FrozenPage(
+            "Topics/A.md", kblib.sha256_bytes(self.text), SHA_B,
+            SimpleNamespace(read_text=lambda: self.text))
+        result = {"_profile_authorized_view": {"_evaluation": self.evaluation}}
+        stage = {"plan": plan, "audit_plan_sha256": audit_plan_contract.plan_sha256(plan)}
+        context = (REPOSITORY, result, object(), {}, stage, obligation, (page,), page, self.profile)
+        path = str(REPOSITORY / ".cambium/receipts/unit-rendering.jsonl")
+        for copies in (1, 2):
+            with self.subTest(readback_record_count=copies), contextlib.ExitStack() as stack:
+                def append(publication, actual_path, receipts, *, before):
+                    self.assertEqual(path, actual_path)
+                    publication.outcome = "present"
+                    publication.observation = kblib.ReceiptObservation(
+                        {"path": path}, (kblib.canonical_json_bytes(receipts[0]) + b"\n") * copies)
+                    return "present", None, before
+                for owner, name, value in (
+                        (profile_producer, "_context", context),
+                        (profile_producer, "build_record", record),
+                        (static_render_runtime, "render_pages", [record["render_report"]]),
+                        (audit_producer_runtime, "computation_binding", object()),
+                        (audit_producer_runtime, "managed_receipt_path", path),
+                        (audit_producer_runtime, "runtime_lock_metadata", {}),
+                        (audit_producer_runtime, "require_runtime_current", result),
+                        (audit_producer_runtime, "open_batch", ({}, {})),
+                        (audit_producer_runtime, "require_pages_current", None),
+                        (audit_producer_runtime, "require_computation_current", None),
+                        (audit_evidence_runtime, "resolve_stage_plan", stage),
+                        (profile_evidence, "validate_record_for_obligation", record),
+                        (kblib, "receipt_append_observation", {})):
+                    stack.enter_context(mock.patch.object(owner, name, return_value=value))
+                stack.enter_context(mock.patch.object(kblib, "runtime_write_lock",
+                    side_effect=lambda *args, **kwargs: contextlib.nullcontext(object())))
+                stack.enter_context(mock.patch.object(kblib, "no_authoritative_write_guard",
+                    side_effect=lambda lease: contextlib.nullcontext()))
+                stack.enter_context(mock.patch.object(kblib.ReceiptPublication, "append",
+                    autospec=True, side_effect=append))
+                stack.enter_context(mock.patch.object(kblib, "read_receipt_bytes",
+                    side_effect=AssertionError("confirmation must share the append observation")))
+                output = stack.enter_context(contextlib.redirect_stdout(io.StringIO()))
+                code = profile_producer.main([
+                    str(REPOSITORY), "--batch", "B1", "--plan", "unused.yaml",
+                    "--obligation-id", obligation["obligation_id"], "--apply"])
+            answer = json.loads(output.getvalue())
+            self.assertTrue(answer["applied"])
+            self.assertEqual("present", answer["publication"]["append"])
+            self.assertEqual(0 if copies == 1 else 1, code)
+            self.assertEqual("published" if copies == 1 else "uncertain", answer["status"])
+            self.assertEqual("confirmed" if copies == 1 else "unconfirmed",
+                             answer["publication"]["record_confirmation"])
 
 
 class RenderingVerificationContractTests(unittest.TestCase):

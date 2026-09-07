@@ -38,6 +38,45 @@ from Tools.tests.fixtures.integration.checkpoint_contract import (
 )
 
 
+RESIDUAL_SCANNER_SOURCE = (
+    "#!/usr/bin/env python3\n"
+    "import argparse, hashlib, json, os, sys\n"
+    "sys.path.insert(0, os.path.dirname(os.path.dirname("
+    "os.path.abspath(__file__))))\n"
+    "import Tools.platform.common.kblib as kblib\n"
+    "p=argparse.ArgumentParser()\n"
+    "p.add_argument('root')\n"
+    "p.add_argument('--scan-id', required=True)\n"
+    "p.add_argument('--receipts')\n"
+    "p.add_argument('--json', action='store_true')\n"
+    "p.add_argument('--positive-controls-only', action='store_true')\n"
+    "a=p.parse_args()\n"
+    "def classify(text):\n"
+    "    return text.startswith('residual:')\n"
+    "controls=('residual:alpha','residual:beta')\n"
+    "if not all(classify(item) for item in controls):\n"
+    "    raise SystemExit(1)\n"
+    "control_bytes=json.dumps(controls,separators=(',',':')).encode()\n"
+    "control_fp='sha256:' + hashlib.sha256(control_bytes).hexdigest()\n"
+    "config_fp='sha256:' + hashlib.sha256(b'fixture-config-v1').hexdigest()\n"
+    "r=kblib.make_receipt('fixture_residual','1.0.0',"
+    "'residual-content-summary',a.root,'pass',"
+    "('fixture controls passed' if a.positive_controls_only else "
+    "'fixture production scan passed'),1,"
+    "receipt_type_id='registered-residual-scan-receipt-v1',"
+    "root=a.root)\n"
+    "r['scan_id']=a.scan_id\n"
+    "r['config_fingerprint']=config_fp\n"
+    "r['positive_control_result']='passed'\n"
+    "r['positive_control_mode']='production-classifier'\n"
+    "r['positive_control_count']=len(controls)\n"
+    "r['positive_control_fingerprint']=control_fp\n"
+    "kblib.write_receipts(a.receipts,[r])\n"
+    "if a.json:\n"
+    "    print(json.dumps([r],sort_keys=True))\n"
+)
+
+
 class BatchCloseRuntimeActions:
     """Actions over an already legal current batch-close checkpoint."""
 
@@ -169,38 +208,7 @@ class CheckBatchCloseFixture(BatchCloseRuntimeActions, unittest.TestCase):
         module_boundary_facts.stage_shipped_modules(
             str(TOOLS.parent), str(self.root), ["platform.common.kblib"])
         (tools / "fixture_residual.py").write_text(
-            "#!/usr/bin/env python3\n"
-            "import argparse, hashlib, json, os, sys\n"
-            "sys.path.insert(0, os.path.dirname(os.path.dirname("
-            "os.path.abspath(__file__))))\n"
-            "import Tools.platform.common.kblib as kblib\n"
-            "p=argparse.ArgumentParser()\n"
-            "p.add_argument('root')\n"
-            "p.add_argument('--scan-id', required=True)\n"
-            "p.add_argument('--receipts')\n"
-            "p.add_argument('--positive-controls-only', action='store_true')\n"
-            "a=p.parse_args()\n"
-            "def classify(text):\n"
-            "    return text.startswith('residual:')\n"
-            "controls=('residual:alpha','residual:beta')\n"
-            "if not all(classify(item) for item in controls):\n"
-            "    raise SystemExit(1)\n"
-            "control_bytes=json.dumps(controls,separators=(',',':')).encode()\n"
-            "control_fp='sha256:' + hashlib.sha256(control_bytes).hexdigest()\n"
-            "config_fp='sha256:' + hashlib.sha256(b'fixture-config-v1').hexdigest()\n"
-            "r=kblib.make_receipt('fixture_residual','1.0.0',"
-            "'residual-content-summary',a.root,'pass',"
-            "('fixture controls passed' if a.positive_controls_only else "
-            "'fixture production scan passed'),1,"
-            "receipt_type_id='registered-residual-scan-receipt-v1',"
-            "root=a.root)\n"
-            "r['scan_id']=a.scan_id\n"
-            "r['config_fingerprint']=config_fp\n"
-            "r['positive_control_result']='passed'\n"
-            "r['positive_control_mode']='production-classifier'\n"
-            "r['positive_control_count']=len(controls)\n"
-            "r['positive_control_fingerprint']=control_fp\n"
-            "kblib.write_receipts(a.receipts,[r])\n",
+            RESIDUAL_SCANNER_SOURCE,
             encoding="utf-8",
         )
         if getattr(self, "state_mutating_scan", False):
@@ -391,7 +399,7 @@ class CheckBatchCloseFixture(BatchCloseRuntimeActions, unittest.TestCase):
             "--apply", "--json",
         )
         self.assertEqual(0, reviewed.returncode, reviewed.stdout)
-        receipts = json.loads(reviewed.stdout)
+        receipts = json.loads(reviewed.stdout)["receipts"]
         self.assertEqual(1, len(receipts), receipts)
         return receipts[0]["receipt_id"]
 

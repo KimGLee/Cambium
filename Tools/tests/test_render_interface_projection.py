@@ -183,6 +183,9 @@ class CurrentContractProjectionTests(unittest.TestCase):
                     item[projector.WORKSPACE_EXTENSION_KEY],
                     {"argument": policy["workspace_argument"],
                      "access": policy["workspace_access"]})
+                self.assertEqual(item[projector.OUTPUT_EXTENSION_KEY], policy["output"])
+                self.assertEqual(item[projector.HOST_BOUNDARY_EXTENSION_KEY],
+                                 record["host_environment_boundary"])
                 expected_paths = {
                     entry["argument"]: {
                         key: deepcopy(value)

@@ -13,7 +13,11 @@
 # one source form.
 # A CLI-only tool may retain an external-write workflow, but that effect is
 # never inherited by MCP merely because the CLI happens to declare it.
-schema_version: 6
+# Output contracts are reusable engineering shapes, not Receipt schemas.
+# Every tool selects one named contract; the compiler resolves that reference
+# for CLI/MCP/Host projections. Empty stdout is permitted only where an
+# existing writer or parser mode actually produces no structured answer.
+schema_version: 7
 artifact: agent-interface-policy
 host_transports:
   - transport_id: cambium-mcp-stdio
@@ -24,6 +28,107 @@ host_transports:
     path: Tools/mcp_server.py
     server_name: cambium
     command: python3
+output_contracts:
+  json-option-optional-receipts:
+    mode: json-option
+    result_contract: tool-payload
+    json_argument: json
+    json_value: true
+    json_inactive_when_any: []
+    json_types: [array]
+    required_keys: []
+    empty_exit_codes: [0, 1]
+    empty_success_disabled_by: [apply]
+  json-option-queue-planning-receipts:
+    mode: json-option
+    result_contract: tool-payload
+    json_argument: json
+    json_value: true
+    json_inactive_when_any: []
+    json_types: [array]
+    required_keys: []
+    empty_exit_codes: [0, 1]
+    empty_success_disabled_by: [apply, apply_replan]
+  json-option-object:
+    mode: json-option
+    result_contract: tool-payload
+    json_argument: json
+    json_value: true
+    json_inactive_when_any: []
+    json_types: [object]
+    required_keys: []
+    empty_exit_codes: [1]
+    empty_success_disabled_by: []
+  json-option-receipts:
+    mode: json-option
+    result_contract: tool-payload
+    json_argument: json
+    json_value: true
+    json_inactive_when_any: []
+    json_types: [array]
+    required_keys: []
+    empty_exit_codes: [1]
+    empty_success_disabled_by: []
+  text-report:
+    mode: text
+    result_contract: tool-payload
+    json_argument: null
+    json_value: null
+    json_inactive_when_any: []
+    json_types: []
+    required_keys: []
+    empty_exit_codes: [0, 1, 2]
+    empty_success_disabled_by: []
+  receipt-publication:
+    mode: always-json
+    result_contract: receipt-publication
+    json_argument: null
+    json_value: null
+    json_inactive_when_any: []
+    json_types: [object]
+    required_keys: [applied, status]
+    empty_exit_codes: [1]
+    empty_success_disabled_by: []
+  json-option-publication:
+    mode: json-option
+    result_contract: receipt-publication
+    json_argument: json
+    json_value: true
+    json_inactive_when_any: []
+    json_types: [object]
+    required_keys: [applied, status]
+    empty_exit_codes: [1]
+    empty_success_disabled_by: []
+  format-selected-object:
+    mode: json-option
+    result_contract: tool-payload
+    json_argument: format
+    json_value: json
+    json_inactive_when_any: [emit_manifest]
+    json_types: [object]
+    required_keys: []
+    empty_exit_codes: [1]
+    empty_success_disabled_by: []
+  json-operation:
+    mode: always-json
+    result_contract: tool-payload
+    json_argument: null
+    json_value: null
+    json_inactive_when_any: []
+    json_types: [object]
+    required_keys: [applied, status]
+    empty_exit_codes: [1]
+    empty_success_disabled_by: []
+  json-object:
+    mode: always-json
+    result_contract: tool-payload
+    json_argument: null
+    json_value: null
+    json_inactive_when_any: []
+    json_types: [object]
+    required_keys: []
+    empty_exit_codes: [1]
+    empty_success_disabled_by: []
 consumption_defaults:
   read: snapshot
   write: replace
@@ -322,6 +427,7 @@ path_activation_overrides:
     inactive_when_any: []
 tools:
   - tool: adopt_standards
+    output: json-option-optional-receipts
     exposure: cli-only
     workspace_argument: root
     workspace_access: write
@@ -331,6 +437,7 @@ tools:
     read_write_paths: []
     external_write: none
   - tool: apply_amendment
+    output: json-option-optional-receipts
     exposure: mcp
     workspace_argument: root
     workspace_access: write
@@ -340,6 +447,7 @@ tools:
     read_write_paths: []
     external_write: none
   - tool: apply_contract_amendment
+    output: json-option-optional-receipts
     exposure: mcp
     workspace_argument: root
     workspace_access: write
@@ -349,6 +457,7 @@ tools:
     read_write_paths: []
     external_write: none
   - tool: apply_delta
+    output: json-option-optional-receipts
     exposure: mcp
     workspace_argument: root
     workspace_access: write
@@ -358,6 +467,7 @@ tools:
     read_write_paths: []
     external_write: none
   - tool: apply_metadata_transition
+    output: json-option-optional-receipts
     exposure: mcp
     workspace_argument: root
     workspace_access: write
@@ -367,6 +477,7 @@ tools:
     read_write_paths: [page]
     external_write: none
   - tool: apply_profile_adoption
+    output: json-option-object
     exposure: cli-only
     workspace_argument: root
     workspace_access: write
@@ -376,6 +487,7 @@ tools:
     read_write_paths: []
     external_write: none
   - tool: check_batch_close
+    output: json-option-receipts
     exposure: mcp
     workspace_argument: root
     workspace_access: write
@@ -385,6 +497,7 @@ tools:
     read_write_paths: []
     external_write: none
   - tool: check_boundary_contract
+    output: json-option-receipts
     exposure: mcp
     workspace_argument: vault_root
     workspace_access: write
@@ -394,6 +507,7 @@ tools:
     read_write_paths: []
     external_write: none
   - tool: check_corpus_plan
+    output: json-option-object
     exposure: mcp
     workspace_argument: root
     workspace_access: write
@@ -403,6 +517,7 @@ tools:
     read_write_paths: []
     external_write: none
   - tool: check_freshness
+    output: json-option-receipts
     exposure: mcp
     workspace_argument: vault_root
     workspace_access: write
@@ -412,6 +527,7 @@ tools:
     read_write_paths: []
     external_write: none
   - tool: check_kernel_size
+    output: json-option-object
     exposure: cli-only
     workspace_argument: root
     workspace_access: read
@@ -421,6 +537,7 @@ tools:
     read_write_paths: []
     external_write: none
   - tool: check_links
+    output: json-option-receipts
     exposure: mcp
     workspace_argument: vault_root
     workspace_access: write
@@ -430,6 +547,7 @@ tools:
     read_write_paths: []
     external_write: none
   - tool: check_moc
+    output: json-option-receipts
     exposure: mcp
     workspace_argument: root
     workspace_access: write
@@ -439,6 +557,7 @@ tools:
     read_write_paths: []
     external_write: none
   - tool: check_page_contract
+    output: json-option-receipts
     exposure: mcp
     workspace_argument: vault_root
     workspace_access: write
@@ -448,6 +567,7 @@ tools:
     read_write_paths: []
     external_write: none
   - tool: check_profile
+    output: json-option-object
     exposure: mcp
     workspace_argument: root
     workspace_access: write
@@ -457,6 +577,7 @@ tools:
     read_write_paths: []
     external_write: none
   - tool: check_proof
+    output: json-option-receipts
     exposure: mcp
     workspace_argument: root
     workspace_access: write
@@ -466,6 +587,7 @@ tools:
     read_write_paths: []
     external_write: none
   - tool: assemble_terminal_proof
+    output: json-option-object
     exposure: mcp
     workspace_argument: root
     workspace_access: write
@@ -475,6 +597,7 @@ tools:
     read_write_paths: []
     external_write: none
   - tool: check_queue
+    output: json-option-receipts
     exposure: mcp
     workspace_argument: root
     workspace_access: write
@@ -484,6 +607,7 @@ tools:
     read_write_paths: []
     external_write: none
   - tool: check_repository_structure
+    output: text-report
     exposure: cli-only
     workspace_argument: root
     workspace_access: read
@@ -493,6 +617,7 @@ tools:
     read_write_paths: []
     external_write: none
   - tool: check_residual_content
+    output: json-option-receipts
     exposure: mcp
     workspace_argument: vault_root
     workspace_access: write
@@ -502,6 +627,7 @@ tools:
     read_write_paths: []
     external_write: none
   - tool: check_structure
+    output: json-option-receipts
     exposure: mcp
     workspace_argument: vault_root
     workspace_access: write
@@ -511,6 +637,7 @@ tools:
     read_write_paths: []
     external_write: none
   - tool: check_upstream_components
+    output: json-option-object
     exposure: cli-only
     workspace_argument: root
     workspace_access: write
@@ -520,6 +647,7 @@ tools:
     read_write_paths: []
     external_write: none
   - tool: check_vocab
+    output: json-option-receipts
     exposure: mcp
     workspace_argument: vault_root
     workspace_access: write
@@ -529,6 +657,7 @@ tools:
     read_write_paths: []
     external_write: none
   - tool: compile_cli_contract
+    output: text-report
     exposure: cli-only
     workspace_argument: root
     workspace_access: write
@@ -538,6 +667,7 @@ tools:
     read_write_paths: [output]
     external_write: none
   - tool: compile_queue
+    output: json-option-queue-planning-receipts
     exposure: mcp
     workspace_argument: root
     workspace_access: write
@@ -547,6 +677,7 @@ tools:
     read_write_paths: []
     external_write: none
   - tool: complete_audit_receipt
+    output: receipt-publication
     exposure: mcp
     workspace_argument: root
     workspace_access: write
@@ -556,6 +687,7 @@ tools:
     read_write_paths: []
     external_write: none
   - tool: compose_page_contract
+    output: text-report
     exposure: cli-only
     workspace_argument: root
     workspace_access: write
@@ -565,6 +697,7 @@ tools:
     read_write_paths: [output]
     external_write: none
   - tool: compose_vocab
+    output: text-report
     exposure: cli-only
     workspace_argument: null
     workspace_access: null
@@ -574,6 +707,7 @@ tools:
     read_write_paths: [output]
     external_write: none
   - tool: duplicate_check
+    output: json-option-receipts
     exposure: mcp
     workspace_argument: vault
     workspace_access: write
@@ -583,6 +717,7 @@ tools:
     read_write_paths: []
     external_write: none
   - tool: generate_tool_catalog
+    output: text-report
     exposure: cli-only
     workspace_argument: root
     workspace_access: write
@@ -592,6 +727,7 @@ tools:
     read_write_paths: []
     external_write: none
   - tool: generate_test_catalog
+    output: text-report
     exposure: cli-only
     workspace_argument: root
     workspace_access: write
@@ -601,6 +737,7 @@ tools:
     read_write_paths: []
     external_write: none
   - tool: init_state
+    output: json-option-optional-receipts
     exposure: mcp
     workspace_argument: root
     workspace_access: write
@@ -610,6 +747,7 @@ tools:
     read_write_paths: []
     external_write: none
   - tool: metadata_execution_contract
+    output: text-report
     exposure: cli-only
     workspace_argument: root
     workspace_access: write
@@ -619,6 +757,7 @@ tools:
     read_write_paths: [output]
     external_write: none
   - tool: module_boundary_report
+    output: format-selected-object
     exposure: cli-only
     workspace_argument: root
     workspace_access: write
@@ -628,6 +767,7 @@ tools:
     read_write_paths: [output]
     external_write: temporary-git-worktree
   - tool: prepare_audit_plan
+    output: json-operation
     exposure: mcp
     workspace_argument: root
     workspace_access: write
@@ -637,6 +777,7 @@ tools:
     read_write_paths: []
     external_write: none
   - tool: publish_delta
+    output: json-operation
     exposure: mcp
     workspace_argument: root
     workspace_access: write
@@ -646,6 +787,7 @@ tools:
     read_write_paths: []
     external_write: none
   - tool: run_task
+    output: json-object
     exposure: mcp
     workspace_argument: root
     workspace_access: write
@@ -655,6 +797,7 @@ tools:
     read_write_paths: []
     external_write: none
   - tool: run_tests
+    output: text-report
     exposure: cli-only
     workspace_argument: root
     workspace_access: read
@@ -664,6 +807,7 @@ tools:
     read_write_paths: []
     external_write: none
   - tool: profile_candidate
+    output: json-option-object
     exposure: mcp
     workspace_argument: root
     workspace_access: write
@@ -673,6 +817,7 @@ tools:
     read_write_paths: []
     external_write: none
   - tool: profile_onboarding_status
+    output: json-option-object
     exposure: mcp
     workspace_argument: root
     workspace_access: read
@@ -682,6 +827,7 @@ tools:
     read_write_paths: []
     external_write: none
   - tool: project_page_state
+    output: text-report
     exposure: mcp
     workspace_argument: root
     workspace_access: write
@@ -691,6 +837,7 @@ tools:
     read_write_paths: [page]
     external_write: none
   - tool: record_batch_review
+    output: json-option-publication
     exposure: mcp
     workspace_argument: root
     workspace_access: write
@@ -700,6 +847,7 @@ tools:
     read_write_paths: []
     external_write: none
   - tool: record_maintenance_evidence
+    output: json-option-optional-receipts
     exposure: mcp
     workspace_argument: root
     workspace_access: write
@@ -709,6 +857,7 @@ tools:
     read_write_paths: []
     external_write: none
   - tool: record_batch_page_review
+    output: receipt-publication
     exposure: mcp
     workspace_argument: root
     workspace_access: write
@@ -718,6 +867,7 @@ tools:
     read_write_paths: []
     external_write: none
   - tool: record_batch_judgment
+    output: json-option-publication
     exposure: mcp
     workspace_argument: root
     workspace_access: write
@@ -727,6 +877,7 @@ tools:
     read_write_paths: []
     external_write: none
   - tool: record_changed_scope_evidence
+    output: receipt-publication
     exposure: mcp
     workspace_argument: root
     workspace_access: write
@@ -736,6 +887,7 @@ tools:
     read_write_paths: []
     external_write: none
   - tool: record_corpus_acceptance
+    output: json-object
     exposure: mcp
     workspace_argument: root
     workspace_access: write
@@ -745,6 +897,7 @@ tools:
     read_write_paths: []
     external_write: none
   - tool: record_gate_attestation
+    output: json-option-publication
     exposure: mcp
     workspace_argument: root
     workspace_access: write
@@ -754,6 +907,7 @@ tools:
     read_write_paths: []
     external_write: none
   - tool: record_gate_result
+    output: json-option-optional-receipts
     exposure: mcp
     workspace_argument: root
     workspace_access: write
@@ -763,6 +917,7 @@ tools:
     read_write_paths: []
     external_write: none
   - tool: record_rendering_verification
+    output: receipt-publication
     exposure: mcp
     workspace_argument: root
     workspace_access: write
@@ -772,6 +927,7 @@ tools:
     read_write_paths: []
     external_write: none
   - tool: record_profile_rendering
+    output: receipt-publication
     exposure: mcp
     workspace_argument: root
     workspace_access: write
@@ -781,6 +937,7 @@ tools:
     read_write_paths: []
     external_write: none
   - tool: record_substantive_review
+    output: receipt-publication
     exposure: mcp
     workspace_argument: root
     workspace_access: write
@@ -790,6 +947,7 @@ tools:
     read_write_paths: []
     external_write: none
   - tool: register_amendment
+    output: json-option-optional-receipts
     exposure: mcp
     workspace_argument: root
     workspace_access: write
@@ -799,6 +957,7 @@ tools:
     read_write_paths: []
     external_write: none
   - tool: render_boundary_projection
+    output: text-report
     exposure: mcp
     workspace_argument: vault_root
     workspace_access: write
@@ -808,6 +967,7 @@ tools:
     read_write_paths: [scope]
     external_write: none
   - tool: prepare_rendering_runtime
+    output: json-option-object
     exposure: cli-only
     workspace_argument: root
     workspace_access: read
@@ -817,6 +977,7 @@ tools:
     read_write_paths: []
     external_write: authorized-host-rendering-cache
   - tool: render_host_configs
+    output: text-report
     exposure: cli-only
     workspace_argument: root
     workspace_access: read
@@ -826,6 +987,7 @@ tools:
     read_write_paths: [output_dir]
     external_write: none
   - tool: prepare_host
+    output: json-object
     exposure: cli-only
     workspace_argument: root
     workspace_access: write
@@ -835,6 +997,7 @@ tools:
     read_write_paths: []
     external_write: authorized-host-environment-and-configuration
   - tool: inspect_host
+    output: json-object
     exposure: mcp
     workspace_argument: root
     workspace_access: read
@@ -844,6 +1007,7 @@ tools:
     read_write_paths: []
     external_write: none
   - tool: render_interface_projection
+    output: text-report
     exposure: cli-only
     workspace_argument: root
     workspace_access: write
@@ -853,6 +1017,7 @@ tools:
     read_write_paths: [output]
     external_write: none
   - tool: render_queue
+    output: text-report
     exposure: mcp
     workspace_argument: root
     workspace_access: write
@@ -862,6 +1027,7 @@ tools:
     read_write_paths: [output]
     external_write: none
   - tool: render_structure_projection
+    output: text-report
     exposure: mcp
     workspace_argument: vault_root
     workspace_access: write
@@ -871,6 +1037,7 @@ tools:
     read_write_paths: []
     external_write: none
   - tool: run_gates
+    output: text-report
     exposure: mcp
     workspace_argument: root
     workspace_access: read
@@ -880,6 +1047,7 @@ tools:
     read_write_paths: []
     external_write: none
   - tool: scaffold_profile
+    output: json-option-object
     exposure: mcp
     workspace_argument: root
     workspace_access: write
@@ -889,6 +1057,7 @@ tools:
     read_write_paths: []
     external_write: none
   - tool: seal_receipts
+    output: json-option-receipts
     exposure: mcp
     workspace_argument: root
     workspace_access: write
@@ -898,6 +1067,7 @@ tools:
     read_write_paths: []
     external_write: none
   - tool: stamp_cards
+    output: text-report
     exposure: cli-only
     workspace_argument: root
     workspace_access: write
@@ -907,6 +1077,7 @@ tools:
     read_write_paths: []
     external_write: none
   - tool: update_queue
+    output: json-option-optional-receipts
     exposure: mcp
     workspace_argument: root
     workspace_access: write
@@ -916,6 +1087,7 @@ tools:
     read_write_paths: []
     external_write: none
   - tool: update_task
+    output: json-option-optional-receipts
     exposure: mcp
     workspace_argument: root
     workspace_access: write

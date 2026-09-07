@@ -33,6 +33,8 @@ import Tools.execution.task_runtime.runtime_validation as runtime_validation
 import Tools.execution.task_runtime.task_runtime_action as task_runtime_action
 from Tools.platform.common.primitives import catalog_record
 from Tools.platform.common.reporting import write_canonical_json, host_environment_boundary
+from Tools.platform.common.reporting import publication_result_reliable, observe_tool_output
+from Tools.platform.repository import path_admission, path_capability
 from Tools.platform.common.host_environment import HostEnvironmentUnavailable, preparation_request
 
 
@@ -773,7 +775,7 @@ def _compiled_entrypoint(root, tool, record):
     return _repository_tool_entrypoint(root, tool, relative)
 
 
-def _command(root, tool, arguments):
+def _command_inputs(root, tool, arguments):
     record = _compiled_cli_tool(root, tool)
     script = _compiled_entrypoint(root, tool, record)
     schema = cli_argv_renderer.schema_from_compiled_tool(record)
@@ -801,6 +803,11 @@ def _command(root, tool, arguments):
             raise RunnerError(
                 "%s action contradicts the Runner workspace binding" % tool)
     values[workspace_argument] = workspace_spelling
+    return (script, schema, values, workspace_argument, interface["output"],
+            record["host_environment_boundary"])
+
+
+def _render_command(tool, script, schema, values):
     try:
         tail, _ignored = cli_argv_renderer.build_argv(
             tool, schema, values,
@@ -813,10 +820,50 @@ def _command(root, tool, arguments):
 
 
 def _run_command(root, tool, arguments):
-    command = _command(root, tool, arguments)
-    return kblib.run_cambium_subprocess(
-        command, cwd=root, text=True, stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE, check=False)
+    (script, schema, values, workspace_argument, output_contract,
+     host_boundary) = _command_inputs(root, tool, arguments)
+    retained_root = path_capability.controlled_root_fd()
+    root_fd = (os.dup(retained_root) if retained_root is not None else
+               os.open(root, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW))
+    try:
+        actual = os.stat(root)
+        retained = os.fstat(root_fd)
+        if (actual.st_dev, actual.st_ino) != (retained.st_dev, retained.st_ino):
+            raise RunnerError("Runner root differs from the invocation workspace")
+        parent = path_capability.subprocess_kwargs().get("env_overrides", {})
+        inherited = json.loads(parent.get(path_capability.PATH_CAPABILITIES_ENV,
+                                         '{"capabilities":[]}'))["capabilities"]
+        description = {"name": tool, "schema": schema,
+                       "workspace_argument": workspace_argument}
+        with path_admission.invocation(description, values, os.path.abspath(root),
+                                       root_fd, os.environ,
+                                       inherited_records=inherited) as binding:
+            command = _render_command(tool, script, schema, binding["arguments"])
+            completed = kblib.run_cambium_subprocess(
+                command, text=True,
+                stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=False,
+                path_binding=binding, preexec_fn=lambda: os.fchdir(root_fd))
+        completed.tool_returncode = completed.returncode
+        selected = dict(binding["arguments"])
+        if cli_argv_renderer.STRUCTURED_OUTPUT_FLAG in command[2:]:
+            selected[cli_argv_renderer.STRUCTURED_OUTPUT_ARGUMENT] = True
+        observed = observe_tool_output(
+            output_contract, completed.stdout.encode("utf-8"),
+            completed.returncode, selected, host_boundary=host_boundary)
+        errors = []
+        if not observed["output_reliable"]:
+            errors.append(observed.get("stdout_parse_error") or
+                          "child output requires a stop or unresolved operation review")
+        if completed.returncode in (0, 2) and binding["missing"]:
+            errors.append("child did not consume admitted paths: %s" % binding["missing"])
+        if binding["acknowledgement_error"]:
+            errors.append(binding["acknowledgement_error"])
+        completed.invocation_errors = errors
+        if errors:
+            completed.returncode = 1
+        return completed
+    finally:
+        os.close(root_fd)
 
 
 def _json_output(completed):
@@ -829,6 +876,10 @@ def _json_output(completed):
 
 def _single_json_receipt(completed, predicate, label):
     rows = _json_output(completed)
+    if isinstance(rows, dict) and "publication" in rows:
+        if not publication_result_reliable(rows):
+            raise RunnerError("%s publication is not confirmed" % label)
+        rows = rows.get("receipts")
     if not isinstance(rows, list):
         raise RunnerError("%s did not return a receipt list" % label)
     matches = [row for row in rows
@@ -1545,6 +1596,8 @@ def _execute_observed(root, action, input_record=None):
         "executed_action_id": action["action_id"],
         "executed_token": action["token"],
         "returncode": completed.returncode,
+        "tool_returncode": getattr(completed, "tool_returncode", completed.returncode),
+        "invocation_errors": getattr(completed, "invocation_errors", []),
         "output": completed.stdout,
         "diagnostics": completed.stderr,
         "next_action": next_value,
@@ -1567,6 +1620,8 @@ def run_until_boundary(root, *, max_steps=64):
             "action_id": action["action_id"],
             "token": action["token"],
             "returncode": outcome["returncode"],
+            "tool_returncode": outcome.get("tool_returncode", outcome["returncode"]),
+            "invocation_errors": outcome.get("invocation_errors", []),
             "output": outcome["output"],
             "diagnostics": outcome["diagnostics"],
         })
@@ -1675,8 +1730,14 @@ def main(argv=None):
         return 1
 
     write_canonical_json(result)
-    if args.execute and result.get("returncode") not in (None, 0):
-        return result["returncode"]
+    if args.execute or args.run_until_boundary:
+        codes = ([result.get("returncode")] if args.execute else
+                 [row.get("returncode") for row in result.get("executed", [])])
+        failures = [code for code in codes if code not in (None, 0)]
+        if failures:
+            return failures[0]
+        if result.get("next_action_error") is not None:
+            return 1
     return 0
 
 

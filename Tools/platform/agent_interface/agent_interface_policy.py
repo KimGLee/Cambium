@@ -10,13 +10,14 @@ import os
 import re
 
 import Tools.platform.common.kblib as kblib
+from Tools.platform.agent_interface import agent_interface_contract
 
 
 POLICY_PATH = "Tools/agent-interface-policy.yaml"
-SCHEMA_VERSION = 6
+SCHEMA_VERSION = 7
 ARTIFACT = "agent-interface-policy"
 TOP_LEVEL_KEYS = frozenset((
-    "schema_version", "artifact", "host_transports",
+    "schema_version", "artifact", "host_transports", "output_contracts",
     "consumption_defaults", "path_defaults", "path_overrides",
     "path_activation_overrides", "tools",
 ))
@@ -113,6 +114,28 @@ def load_policy(repo_root):
             "%s must carry exactly %s" % (
                 POLICY_PATH, ", ".join(sorted(TOP_LEVEL_KEYS))))
     _validate_host_transports(document)
+    contracts = document.get("output_contracts")
+    if not isinstance(contracts, dict) or not contracts:
+        raise AgentInterfacePolicyError("output_contracts must be a non-empty map")
+    previous = []
+    for identity, contract in contracts.items():
+        if not isinstance(identity, str) or STABLE_ID_RE.fullmatch(identity) is None:
+            raise AgentInterfacePolicyError("output contract ID must be stable")
+        try:
+            agent_interface_contract.validate_output_contract(contract)
+        except ValueError as exc:
+            raise AgentInterfacePolicyError("output contract %s: %s" % (identity, exc)) from exc
+        if contract in previous:
+            raise AgentInterfacePolicyError("duplicate output contract: %s" % identity)
+        previous.append(contract)
+    referenced = set()
+    for row in document.get("tools") or []:
+        identity = row.get("output") if isinstance(row, dict) else None
+        if not isinstance(identity, str) or identity not in contracts:
+            raise AgentInterfacePolicyError("each tool must reference one declared output contract")
+        referenced.add(identity)
+    if referenced != set(contracts):
+        raise AgentInterfacePolicyError("unused output contracts: %s" % ", ".join(sorted(set(contracts) - referenced)))
     return document, raw
 
 

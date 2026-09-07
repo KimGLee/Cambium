@@ -194,10 +194,11 @@ class Catalog(dict):
             return None
         if segment not in self._sealed_segments:
             try:
-                with open(os.path.join(self.root, segment), "rb") as handle:
-                    self._sealed_segments[segment] = \
-                        handle.read().splitlines(keepends=True)
-            except OSError:
+                exists, content = kblib.read_receipt_bytes(os.path.join(self.root, segment))
+                if not exists:
+                    raise FileNotFoundError(segment)
+                self._sealed_segments[segment] = content.splitlines(keepends=True)
+            except (OSError, ValueError):
                 self._sealed_segments[segment] = []
         lines = self._sealed_segments[segment]
         if line_number > len(lines):
@@ -372,8 +373,10 @@ def receipt_catalog(root, errors):
                 errors.append("receipt register must not be hard-linked: %s" % relative)
                 continue
             try:
-                with open(full, encoding="utf-8") as fh:
-                    lines = fh.read().splitlines()
+                exists, content = kblib.read_receipt_bytes(full)
+                if not exists:
+                    raise FileNotFoundError(full)
+                lines = content.decode("utf-8").splitlines()
             except (OSError, UnicodeError) as exc:
                 errors.append("cannot read receipt register %s: %s" %
                               (relative, exc))
@@ -422,9 +425,11 @@ def receipt_catalog(root, errors):
 def _cold_register_lines(path, label, errors):
     """Read one append-only cold register as exact lines, or None."""
     try:
-        with open(path, encoding="utf-8") as handle:
-            content = handle.read()
-    except (OSError, UnicodeError) as exc:
+        exists, raw = kblib.read_receipt_bytes(path)
+        if not exists:
+            raise FileNotFoundError(path)
+        content = raw.decode("utf-8")
+    except (OSError, UnicodeError, ValueError) as exc:
         errors.append("cannot read %s: %s" % (label, exc))
         return None
     if content and not content.endswith("\n"):
@@ -728,9 +733,10 @@ def _cold_verified_records(root, entries, by_segment, type_registry, errors):
     for segment in sorted(entries):
         entry = entries[segment]
         try:
-            with open(os.path.join(root, segment), "rb") as handle:
-                payload = handle.read()
-        except OSError as exc:
+            exists, payload = kblib.read_receipt_bytes(os.path.join(root, segment))
+            if not exists:
+                raise FileNotFoundError(segment)
+        except (OSError, ValueError) as exc:
             errors.append("cold segment %s became unreadable: %s" %
                           (segment, exc))
             continue

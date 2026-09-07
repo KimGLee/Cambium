@@ -3,6 +3,7 @@
 import copy
 from dataclasses import replace
 import io
+import json
 import os
 from pathlib import Path
 import sys
@@ -20,6 +21,7 @@ import Tools.knowledge.metadata.apply_metadata_transition as transition_writer
 import Tools.knowledge.metadata.metadata_property_state as property_state
 import Tools.knowledge.metadata.project_page_state as page_state
 import Tools.platform.common.kblib as kblib
+from Tools.platform.agent_interface import agent_interface_policy, entrypoint_loader
 
 
 PAGE = "Notes/Target.md"
@@ -107,6 +109,28 @@ def _manual_receipt(context):
 
 class MetadataGateEvidenceContractTests(unittest.TestCase):
     """Pure producer/consumer evidence contract; no runtime filesystem."""
+
+    def test_registered_scan_registry_closes_over_real_json_checker_interfaces(self):
+        root = Path(__file__).resolve().parents[2]
+        registry = gate_runtime.profile_contract.scan_capability_records(
+            gate_runtime.profile_contract.load_scan_capabilities(root))
+        policy, _raw = agent_interface_policy.load_policy(root)
+        tools = {row["tool"]: row for row in policy["tools"]}
+        for identity, scan in registry.items():
+            with self.subTest(capability=identity):
+                entrypoint = gate_runtime.profile_contract.registered_scan_entrypoint(
+                    root, SimpleNamespace(script_repo_path=scan["implementation_path"]))
+                output = policy["output_contracts"][tools[entrypoint.tool]["output"]]
+                self.assertEqual("json-option", output["mode"])
+                self.assertEqual("json", output["json_argument"])
+                self.assertIs(True, output["json_value"])
+                self.assertEqual(["array"], output["json_types"])
+                parser = entrypoint_loader.capture_argument_parser(
+                    entrypoint.tool, str(root / "Tools"), require_marker=True)
+                args = [action for action in parser._actions
+                        if "--json" in action.option_strings]
+                self.assertEqual(1, len(args))
+                self.assertEqual("json", args[0].dest)
 
     def test_manual_evidence_is_accepted_only_for_the_exact_gate_binding(self):
         context = _context()
@@ -262,10 +286,10 @@ class MetadataGateLifecycleIntegrationTests(unittest.TestCase):
         source = self._scan_receipt()
 
         def run(command, **_kwargs):
-            output = Path(command[command.index("--receipts") + 1])
-            output.write_bytes(kblib.canonical_json_bytes(source) + b"\n")
+            self.assertIn("--json", command)
+            self.assertNotIn("--receipts", command)
             return __import__("subprocess").CompletedProcess(
-                command, 0, stdout="scan passed\n")
+                command, 0, stdout=json.dumps([source]), stderr="scan passed\n")
 
         with self._scan_command_patch(scan), mock.patch.object(
                 scan_producer.subprocess, "run", side_effect=run):
@@ -290,7 +314,7 @@ class MetadataGateLifecycleIntegrationTests(unittest.TestCase):
         runtime["errors"] = []
         return runtime
 
-    def _run_apply(self, append=None):
+    def _run_apply(self, append=None, *, as_json=False):
         arguments = [
             str(self.root), "--gate-id", self.context.gate.gate_id,
             "--page", PAGE, "--value", "accepted",
@@ -301,6 +325,8 @@ class MetadataGateLifecycleIntegrationTests(unittest.TestCase):
             "--expected-page-sha256", self.context.page_snapshot.sha256,
             "--apply",
         ]
+        if as_json:
+            arguments.append("--json")
         patches = [
             mock.patch.object(
                 transition_writer.metadata_gate_runtime,
@@ -341,9 +367,13 @@ class MetadataGateLifecycleIntegrationTests(unittest.TestCase):
         return code, stdout.getvalue(), stderr.getvalue()
 
     def test_transition_atomically_updates_owner_and_page(self):
-        code, stdout, stderr = self._run_apply()
+        code, stdout, stderr = self._run_apply(as_json=True)
 
         self.assertEqual(0, code, stdout + stderr)
+        receipts = json.loads(stdout)
+        self.assertEqual(1, len(receipts))
+        self.assertEqual(transition_writer.TOOL, receipts[0]["tool"])
+        self.assertIn("metadata transition plan:", stderr)
         state = kblib.load_yaml_file(self.coverage_path)["pages"][0][
             "property_state"]["readiness_state"]
         self.assertEqual("accepted", state["value"])

@@ -376,29 +376,25 @@ def _replace_registered_scan_config(command, config_path, expects_config):
     return output
 
 
-def _read_registered_scan_receipts(path):
-    records = []
+def _parse_registered_scan_receipts(output):
+    """Consume the registered checker's existing JSON result, not a register."""
     seen = set()
     try:
-        with open(path, encoding="utf-8") as handle:
-            for line_number, line in enumerate(handle, 1):
-                if not line.strip():
-                    continue
-                record = json.loads(line)
-                if not isinstance(record, dict):
-                    raise ValueError(
-                        "line %d is not a JSON object" % line_number)
-                receipt_id = record.get("receipt_id")
-                if (not isinstance(receipt_id, str) or not receipt_id or
-                        receipt_id in seen):
-                    raise ValueError(
-                        "line %d has missing or duplicate receipt_id" %
-                        line_number)
-                seen.add(receipt_id)
-                records.append(record)
-    except (OSError, UnicodeError, json.JSONDecodeError) as exc:
+        records = json.loads(output)
+    except (TypeError, UnicodeError, json.JSONDecodeError) as exc:
         raise ValueError(
             "registered scan receipts are unreadable: %s" % exc) from exc
+    if not isinstance(records, list):
+        raise ValueError("registered scan must return one Receipt array")
+    for index, record in enumerate(records):
+        if not isinstance(record, dict):
+            raise ValueError("record %d is not a JSON object" % (index + 1))
+        receipt_id = record.get("receipt_id")
+        if (not isinstance(receipt_id, str) or not receipt_id or
+                receipt_id in seen):
+            raise ValueError("record %d has missing or duplicate receipt_id" %
+                             (index + 1))
+        seen.add(receipt_id)
     if not records:
         raise ValueError("registered scan produced no machine-readable receipt")
     return records
@@ -485,18 +481,17 @@ def run_registered_scan(root, profile_view, scan, *,
             execution_command = _replace_registered_scan_config(
                 execution_command, staged_config,
                 scan.config_dependency is not None)
-            output_path = os.path.join(temporary, "receipts.jsonl")
             environment = dict(os.environ)
             environment.pop("PYTHONPATH", None)
             environment.pop("PYTHONHOME", None)
             environment["PYTHONDONTWRITEBYTECODE"] = "1"
             environment["PYTHONNOUSERSITE"] = "1"
             completed = kblib.run_cambium_subprocess(
-                execution_command + ["--receipts", output_path],
+                execution_command + ["--json"],
                 cwd=root, env=environment, text=True,
-                stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                stdout=subprocess.PIPE, stderr=subprocess.PIPE,
                 timeout=timeout, check=False)
-            records = _read_registered_scan_receipts(output_path)
+            records = _parse_registered_scan_receipts(completed.stdout)
         summary = validate_registered_scan_receipts(
             scan, records, completed.returncode,
             expected_tool=inputs["invocation_tool"],
@@ -555,7 +550,7 @@ def run_registered_scan(root, profile_view, scan, *,
         "python_runtime_sha256": inputs["python_runtime_sha256"],
         "execution_input_sha256": inputs["execution_input_sha256"],
         "repository_snapshot_sha256": repository_after,
-        "output": completed.stdout,
+        "output": completed.stderr,
     }
 
 

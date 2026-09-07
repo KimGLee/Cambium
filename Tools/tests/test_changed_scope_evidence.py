@@ -33,7 +33,6 @@ import Tools.execution.audit.changed_scope_evidence_runtime as evidence_runtime
 import Tools.execution.audit.changed_scope_runtime_checks as runtime_checks
 import Tools.execution.audit.complete_audit_receipt as complete_audit_receipt
 import Tools.execution.audit.record_changed_scope_evidence as producer
-import Tools.execution.audit.prepare_audit_plan as prepare_audit_plan
 import Tools.execution.audit.audit_execution_runtime as execution
 import Tools.execution.task_runtime.runtime_validation as runtime_validation
 from Tools.execution.task_runtime.queue_runtime import profile_view
@@ -44,6 +43,7 @@ import Tools.knowledge.metadata.check_page_contract as check_page_contract
 import Tools.knowledge.metadata.check_vocab as check_vocab
 import Tools.platform.common.kblib as kblib
 from Tools.tests.support.profile_contract_fixture import CurrentProfileContractFixture
+from Tools.tests.support.mcp_stdio_session import MCPStdioSession
 from Tools.tests.fixtures.integration.update_queue_checkpoints import install_update_queue_checkpoint
 
 
@@ -372,7 +372,7 @@ class ChangedScopeEvidenceContractTests(
                    "target_page": types.SimpleNamespace(
                        path="Page.md", snapshot=types.SimpleNamespace(
                            read_text=lambda: "# Page\n"))}
-        for changed in (None, "repository", "runtime", "existing", "direct-input"):
+        for changed in (None, "repository", "runtime", "existing", "direct-input", "mixed-results"):
             with self.subTest(changed=changed), contextlib.ExitStack() as stack:
                 locked = copy.deepcopy(state)
                 if changed == "runtime": locked["queue_sha256"] = digest("new queue")
@@ -381,10 +381,12 @@ class ChangedScopeEvidenceContractTests(
                 stack.enter_context(mock.patch.object(producer, "existing_evidence_record",
                     side_effect=[existing, None, None] if changed == "existing" else None,
                     return_value=None))
+                produced = [{"receipt_id": identity,
+                             "result": "candidate" if changed == "mixed-results" and identity == "one" else "pass",
+                             "record_kind": "gate-receipt"}
+                            for identity in ("one", "two")]
                 computed = stack.enter_context(mock.patch.object(producer, "produce_evidence",
-                    side_effect=[{"receipt_id": identity, "result": "pass",
-                                  "record_kind": "gate-receipt"}
-                                 for identity in ("one", "two")]))
+                    side_effect=lambda _context, *, seq: produced[seq - 1]))
                 acceptance = stack.enter_context(mock.patch.object(
                     evidence_runtime, "validate_current_direct_record",
                     side_effect=ValueError("direct input changed")
@@ -399,22 +401,33 @@ class ChangedScopeEvidenceContractTests(
                 stack.enter_context(mock.patch.object(kblib, "runtime_write_lock"))
                 stack.enter_context(mock.patch.object(kblib, "no_authoritative_write_guard", side_effect=lambda _: contextlib.nullcontext()))
                 stack.enter_context(mock.patch.object(kblib, "receipt_append_observation", return_value=object()))
-                writer = stack.enter_context(mock.patch.object(kblib, "write_receipts_observed", return_value=("present", None, None)))
+                def append(publication, _path, _receipts, *, before):
+                    publication.outcome = "present"
+                    publication.observation = object()
+                    return "present", None, before
+                writer = stack.enter_context(mock.patch.object(kblib.ReceiptPublication, "append",
+                    autospec=True, side_effect=append))
                 stack.enter_context(mock.patch.object(audit_producer_runtime, "read_receipt_records", return_value=[]))
                 readback = stack.enter_context(mock.patch.object(producer, "require_exact_evidence_readback"))
                 output = stack.enter_context(contextlib.redirect_stdout(io.StringIO()))
                 code = producer.main([ROOT, "--batch", "B1", "--plan", stage["audit_plan_path"],
                     "--obligation-id", "one", "--obligation-id", "two", "--apply"])
                 expected_count = 1 if changed == "existing" else 2
-                success = changed in {None, "existing"}
+                success = changed in {None, "existing", "mixed-results"}
                 self.assertEqual(expected_count, computed.call_count)  # No computation inside the writer lock.
-                self.assertEqual(0 if success else 1, code, output.getvalue())
+                self.assertEqual(2 if changed == "mixed-results" else 0 if success else 1, code, output.getvalue())
                 self.assertEqual(1 if success else 0, writer.call_count)
                 if success:
                     self.assertEqual(expected_count, acceptance.call_count)
-                    self.assertEqual(expected_count, len(writer.call_args.args[1]))
+                    self.assertEqual(expected_count, len(writer.call_args.args[2]))
                     self.assertEqual(expected_count, readback.call_count)
                     self.assertNotIn("earlier", [call.args[1]["receipt_id"] for call in readback.call_args_list])
+                    expected = [existing, produced[0]] if changed == "existing" else produced
+                    response = json.loads(output.getvalue())
+                    self.assertEqual(expected[0]["receipt_id"], response["receipt_id"])
+                    self.assertEqual(expected[0]["result"], response["result"])
+                    self.assertEqual({row["receipt_id"]: row["result"] for row in expected},
+                                     response["receipt_results"])
 
     def test_direct_input_change_reaches_reuse_and_stage_consumers(self):
         def link_inputs(pages):
@@ -624,39 +637,91 @@ class ChangedScopeEvidenceIntegrationTests(
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory) / "repo"
             install_update_queue_checkpoint(root, "open-b1")
-            # This checkpoint ends at Queue open, before AuditPlan creation.
-            # Build only the adjacent producer input, not the Task/Batch prologue.
-            with contextlib.redirect_stdout(io.StringIO()) as output:
-                code = prepare_audit_plan.main([str(root), "--batch", "B1", "--apply"])
-            self.assertEqual(0, code, output.getvalue())
-            result = runtime_validation.validate_runtime(root)
-            item = result["items_by_id"]["B1"]
-            stage = audit_evidence_runtime.resolve_stage_plan(result, item, "pre-merge", required_state="open")
-            evaluation = result["_profile_authorized_view"]["_evaluation"]
-            obligations = [row for row in stage["plan"]["obligations"]
-                if row["status"] == "required" and execution.producer_route(row, root=root, evaluation=evaluation)
-                in {"deterministic-direct-evidence", "deterministic-audit-precursor"}]
-            args = [str(root), "--batch", "B1", "--plan", stage["audit_plan_path"], "--apply"]
-            for row in obligations: args.extend(["--obligation-id", row["obligation_id"]])
-            with contextlib.redirect_stdout(io.StringIO()) as output:
-                code = producer.main(args)
-            self.assertEqual(0, code, output.getvalue())
-            ids = json.loads(output.getvalue())["receipt_ids"]
+            # The generator-owned checkpoint ends at Queue open. Never delete
+            # old records or replay Task/Queue to manufacture first creation.
+            register = root / producer.DEFAULT_RECEIPTS
+            self.assertFalse(register.exists())
+            with MCPStdioSession(root) as session:
+                session.initialize()
+                prepared = session.call("prepare_audit_plan", {
+                    "root": ".", "batch": "B1", "apply": True,
+                })
+                self.assertEqual(0, prepared["exit_code"], prepared)
+                self.assertEqual("parsed", prepared["stdout_parse"], prepared)
+                result = runtime_validation.validate_runtime(root)
+                self.assertEqual([], result["errors"])
+                item = result["items_by_id"]["B1"]
+                stage = audit_evidence_runtime.resolve_stage_plan(
+                    result, item, "pre-merge", required_state="open")
+                evaluation = result["_profile_authorized_view"]["_evaluation"]
+                obligations = [
+                    row for row in stage["plan"]["obligations"]
+                    if row["status"] == "required" and
+                    execution.producer_route(
+                        row, root=root, evaluation=evaluation) in {
+                            "deterministic-direct-evidence",
+                            "deterministic-audit-precursor"}]
+                precursors = [row for row in obligations
+                              if row["evidence_kind"] == "audit-receipt"]
+                self.assertGreaterEqual(len(precursors), 2, precursors)
+                groups = ([precursors[0]], [row for row in obligations
+                                           if row is not precursors[0]])
+                common = {
+                    "root": ".", "batch": "B1",
+                    "plan": stage["audit_plan_path"], "apply": True,
+                }
+                produced_pairs = []
+                before = b""
+                for group in groups:
+                    published = session.call("record_changed_scope_evidence", {
+                        **common,
+                        "obligation_id": [row["obligation_id"] for row in group],
+                    })
+                    self.assertEqual(0, published["exit_code"], published)
+                    self.assertEqual("parsed", published["stdout_parse"], published)
+                    self.assertEqual("confirmed", published["stdout_json"][
+                        "publication"]["record_confirmation"], published)
+                    identities = published["stdout_json"]["receipt_ids"]
+                    self.assertEqual(len(group), len(identities), published)
+                    current_bytes = register.read_bytes()
+                    self.assertTrue(current_bytes.startswith(before))
+                    appended = [json.loads(line)
+                                for line in current_bytes[len(before):].splitlines()
+                                if line.strip()]
+                    self.assertEqual(identities,
+                                     [row["receipt_id"] for row in appended])
+                    produced_pairs.extend(zip(group, identities))
+                    before = current_bytes
+
+                pairs = [(row, identity) for row, identity in produced_pairs
+                         if row["evidence_kind"] == "audit-receipt"]
+                completed = session.call("complete_audit_receipt", {
+                    **common,
+                    "obligation_id": [row["obligation_id"] for row, _ in pairs],
+                    "evidence_receipt": [identity for _, identity in pairs],
+                })
+                self.assertEqual(0, completed["exit_code"], completed)
+                self.assertEqual("parsed", completed["stdout_parse"], completed)
+                self.assertEqual("confirmed", completed["stdout_json"][
+                    "publication"]["record_confirmation"], completed)
+                self.assertEqual(len(pairs), len(set(
+                    completed["stdout_json"]["receipt_ids"])))
+            ids = [identity for _, identity in produced_pairs]
             self.assertEqual(len(obligations), len(set(ids)))
-            pairs = [(row, identity) for row, identity in zip(obligations, ids) if row["evidence_kind"] == "audit-receipt"]
-            args = [str(root), "--batch", "B1", "--plan", stage["audit_plan_path"], "--apply"]
-            for row, identity in pairs:
-                args.extend(["--obligation-id", row["obligation_id"], "--evidence-receipt", identity])
-            with contextlib.redirect_stdout(io.StringIO()) as output:
-                code = complete_audit_receipt.main(args)
-            self.assertEqual(0, code, output.getvalue())
-            self.assertEqual(len(pairs), len(set(json.loads(output.getvalue())["receipt_ids"])))
+            # Consume the actual durable catalog, not the MCP return payload.
+            # Direct Gate evidence is accepted directly, never wrapped merely
+            # to make every row have an AuditReceipt shape.
             current = runtime_validation.validate_runtime(root)
             self.assertEqual([], current["errors"])
-            status = audit_evidence_runtime.stage_evidence_status(current, current["items_by_id"]["B1"], "pre-merge", required_state="open")
+            status = audit_evidence_runtime.stage_evidence_status(
+                current, current["items_by_id"]["B1"], "pre-merge",
+                required_state="open")
             selected = {row["obligation_id"] for row in obligations}
-            self.assertTrue(all(row["status"] == "satisfied" for row in status["obligations"]
-                if row["obligation"]["obligation_id"] in selected))
+            observed = [row for row in status["obligations"]
+                        if row["obligation"]["obligation_id"] in selected]
+            self.assertEqual(len(selected), len(observed))
+            self.assertTrue(all(row["status"] == "satisfied" for row in observed),
+                            observed)
 
     def test_current_record_kinds_cross_registered_consumer_boundaries(self):
         direct = self.direct_case(

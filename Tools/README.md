@@ -1,14 +1,14 @@
 # Tools: deterministic execution for Cambium
 
-`Tools/` contains Cambium's deterministic, repeatable, and testable programs. This README is navigation and operating guidance, not a copy of governance rules, state contracts, Cards, or Read Sets.
+`Tools/` contains Cambium's deterministic programs. This README provides navigation and operating guidance; linked owners define the contracts.
 
 Most Python mechanics use the standard library. The Agent starts with [Host preparation](#host-preparation), which composes the TOML/CUE and optional rendering providers. Dependency bindings belong to Host configuration, not Profile or `.cambium`.
 
 ## Responsibility boundary
 
-Tools own implementation: algorithms, command-line interfaces, validation, controlled writes, generated projections, structured diagnostics, and the observable result guarantees promised by an implemented capability.
+Tools own algorithms, interfaces, validation, controlled writes, projections, diagnostics, and implemented capabilities' result guarantees.
 
-Tools do not decide whether knowledge is deep, accurate, clear, valuable, or approved. They do not create a governance rule, choose a Profile on their own authority, choose a task route, author a Card, define a Read Set, or turn an asserted actor name into authenticated identity. An adoption writer executes an explicitly authorized selection; a candidate authoring tool does not.
+Tools do not judge knowledge quality, invent governance rules, authorize Profile or route choices, or treat an asserted actor name as authentication. Adoption writers execute authorized selections; candidate tools do not authorize adoption.
 
 | Component | Owns | How Tools may interact with it |
 |---|---|---|
@@ -23,7 +23,7 @@ A checker observes without repairing. A writer changes only its named transactio
 
 ## Layered organization
 
-[`tool-taxonomy.yaml`](tool-taxonomy.yaml) owns the Area, Domain, and Layer vocabulary. [`module-boundaries.yaml`](module-boundaries.yaml) assigns every shipped implementation module to one `Area → Domain → Layer` and checks dependency direction. The paths below are navigation into that checked structure, not a second classification.
+[`tool-taxonomy.yaml`](tool-taxonomy.yaml) owns the Area/Domain/Layer vocabulary; [`module-boundaries.yaml`](module-boundaries.yaml) assigns modules and constrains dependencies. These paths navigate that classification:
 
 | Physical Area | Domains |
 |---|---|
@@ -32,13 +32,13 @@ A checker observes without repairing. A writer changes only its named transactio
 | [`execution/`](execution/) | `planning/`, `task_runtime/`, `audit/`, `evidence/`, `context_delivery/` |
 | [`platform/`](platform/) | `agent_interface/`, `distribution/`, `repository/`, `common/` |
 
-Top-level `Tools/<tool>.py` paths remain the stable public CLI surface and forward to their Area/Domain modules. Layer is a checked classification, not another directory level: `entrypoint`, `application`, `contract`, `infrastructure`, or `api`. Shared mechanics live under [`platform/common/`](platform/common/); task state lives under [`execution/task_runtime/`](execution/task_runtime/), including [`queue_runtime/`](execution/task_runtime/queue_runtime/).
+`Tools/<tool>.py` wrappers forward to their Area/Domain owners. Layer (`entrypoint`, `application`, `contract`, `infrastructure`, `api`) is not another directory level. Shared mechanics live in [`platform/common/`](platform/common/); task state in [`execution/task_runtime/`](execution/task_runtime/), including [`queue_runtime/`](execution/task_runtime/queue_runtime/).
 
-Use `python3 Tools/module_boundary_report.py --format hierarchy` to view every shipped module as `Area / Domain / Layer / module`; that report and [`TOOL_CATALOG.md`](TOOL_CATALOG.md) are generated views, not additional owners. The Catalog describes the complete Cambium source distribution and is therefore distribution-only; an adopter carries the governed runtime subset instead of a stale copy of this source-tree projection.
+`python3 Tools/module_boundary_report.py --format hierarchy` and [`TOOL_CATALOG.md`](TOOL_CATALOG.md) are generated views. The Catalog is distribution-only: adopters carry the runtime subset, not this source-tree inventory.
 
 ## Canonical navigation
 
-The following files are the maintained entry points. Follow them instead of copying their tables or field lists into prose.
+Follow these owners instead of copying their field lists:
 
 | Concern | Owner and implementation entry points |
 |---|---|
@@ -62,7 +62,7 @@ The following files are the maintained entry points. Follow them instead of copy
 | Kernel leaf size | [`kernel-size-policy.yaml`](kernel-size-policy.yaml), [`kernel-size-exceptions.md`](kernel-size-exceptions.md), [`check_kernel_size.py`](check_kernel_size.py) |
 | Writer input templates | [`schemas/`](schemas/) |
 
-Files under [`compiled/`](compiled/) are generated, non-authoritative projections. Each entry point's parser owns its invocation shape; use `--help`. Support libraries are not repeated here because source and `module-boundaries.yaml` check their ownership and dependency direction.
+[`compiled/`](compiled/) contains generated projections. Each parser owns invocation shape; use `--help`. Source and module boundaries describe support libraries.
 
 ## Quick verification
 
@@ -73,7 +73,7 @@ python3 Tools/run_gates.py . --list
 python3 Tools/run_gates.py .
 ```
 
-Verify adopter components against an upstream Git revision. The result records the resolved full SHA and applies that revision's `distribution-boundary.yaml`.
+Verify adopter bytes against the resolved full upstream SHA and its distribution boundary:
 
 ```text
 python3 Tools/check_upstream_components.py <adopter-root> --upstream-root <cambium-git-root> --revision <git-ref> --check-manifest
@@ -88,9 +88,9 @@ python3 Tools/stamp_cards.py . --check
 python3 Tools/check_kernel_size.py .
 ```
 
-`stamp_cards.py --check` reads the Card path from its schema and checks budget, bindings, pairing, and navigation. It does not judge semantics or Agent understanding. Card bytes stay immutable and unbound to adopter Standards.
+`stamp_cards.py --check` checks schema-selected Card budget, bindings, pairing and navigation, not meaning or Agent understanding. Card bytes remain immutable and unbound to adopter Standards.
 
-`kernel-size-policy.yaml` is the sole numeric owner of Kernel leaf-size limits and registered measurements. `check_kernel_size.py` separates a hard failure (exit `1`) from an otherwise safe result that still needs engineering review (exit `2`).
+`kernel-size-policy.yaml` owns numeric limits. The checker distinguishes hard failure (`1`) from engineering review (`2`).
 
 ## Host preparation
 
@@ -111,14 +111,14 @@ Follow the returned `inspect_host` request through the actual consumer. Prepared
 
 Dependency owners are [`requirements-profile.txt`](requirements-profile.txt), [`cue-toolchain.json`](governance/profile/cue-toolchain.json) and the separate Host editor [`requirements-host.txt`](requirements-host.txt). Host and CI share the [CUE installer](platform/distribution/install_profile_toolchain.py). Explicit `CAMBIUM_CUE` precedes managed discovery; an unusable evaluator returns a Host handoff, not a Profile verdict.
 
-Kernel owns slot semantics; Tool owns the document wrapper and evaluator. Existing shared YAML domain contracts remain their sole owners. Verify or regenerate their CUE projections and the [`profile-document.cue`](governance/profile/profile-document.cue) wrapper with:
+Kernel owns slot semantics; Tool owns encoding and evaluation. Generate CUE projections and [`profile-document.cue`](governance/profile/profile-document.cue) from their existing YAML owners:
 
 ```sh
 python -m Tools.governance.profile.profile_schema_projection --root . --check
 python -m Tools.governance.profile.profile_schema_projection --root . --write
 ```
 
-`--check` is read-only. `--write` updates only declared projections, never their semantic owners, candidate answers, or adoption state. Admission checks each projection against its source bytes in the same snapshot. See the [Profile guide](../profiles/README.md) for the ownership boundary.
+`--check` is read-only; `--write` updates projections only. Admission verifies them against source bytes in the same snapshot. See the [Profile guide](../profiles/README.md).
 
 ## Profile candidate workflow
 
@@ -133,16 +133,16 @@ python3 Tools/profile_candidate.py . --profile-id my-profile --mode read --json
 python3 Tools/profile_candidate.py . --profile-id my-profile --mode render
 ```
 
-[`profile_candidate.py`](profile_candidate.py) reads, edits, and renders candidate answers without adoption. Edits require a fresh snapshot hash, an explicit edit file, and `--apply`. See the [Profile workflow](../profiles/README.md#agent-read-edit-and-review) for stable record selectors and currentness handling.
+[`profile_candidate.py`](profile_candidate.py) edits require a fresh snapshot hash, edit file, and `--apply`; they do not adopt. See [selectors and currentness](../profiles/README.md#agent-read-edit-and-review).
 
-Use [`profiles/interview.yaml`](../profiles/interview.yaml) for the discussion and inspect unresolved decisions or validate the completed candidate separately:
+Follow [`profiles/interview.yaml`](../profiles/interview.yaml), then inspect unresolved decisions and validate:
 
 ```sh
 python3 Tools/profile_onboarding_status.py . --profile-id my-profile --json
 python3 Tools/check_profile.py profiles/my-profile --root .
 ```
 
-Status, rendered views and CUE checks do not authorize adoption. For an initial confirmed plan, inspect the transaction interface:
+Status, rendered views and CUE checks do not authorize adoption. For a confirmed initial plan:
 
 ```text
 python3 Tools/apply_profile_adoption.py --help
@@ -150,11 +150,11 @@ python3 Tools/apply_profile_adoption.py . --plan <root-relative-plan.yaml> \
   --upstream-root <local-cambium-git-root> --upstream-ref <git-ref>
 ```
 
-Omitting `--apply` previews the transaction. A later Standards/Profile change in an existing runtime uses `adopt_standards.py` and the adoption rules owned by [K12/10](<../kernel/K12 Quality Assurance/10 Standards Version Adoption.md>), not an improvised edit to Profile or `.cambium` files.
+Omit `--apply` to preview. Later Standards/Profile changes use `adopt_standards.py` under [K12/10](<../kernel/K12 Quality Assurance/10 Standards Version Adoption.md>), not direct edits to runtime files.
 
-For authorized Profile revisions, use the authoring kit in a matching source checkout; do not copy it into an adopted runtime or reset onboarding. [`distribution-boundary.yaml`](../distribution-boundary.yaml) separates source-only interview tools from runtime validation and adoption dependencies. Rendered answers are not Profile authority.
+For Profile revisions, use a matching source checkout's authoring kit; do not copy it into runtime or reset onboarding. [`distribution-boundary.yaml`](../distribution-boundary.yaml) separates authoring from runtime dependencies.
 
-Standards adoption accepts only component paths and objects defined by the current contract. Retired path layouts, producer-era objects, and old runtime formats remain outside Cambium's runtime space; they are not migrated, parsed, or re-authorized. Adoption writers never modify Card bytes. Curated Card review remains the separate, CLI-only `stamp_cards.py --acknowledge-curated-review` operation.
+Adoption accepts current paths and objects only; retired layouts, producer-era objects and old runtime formats are not migrated, parsed or re-authorized. Card bytes remain unchanged; curated review uses the separate CLI-only `stamp_cards.py --acknowledge-curated-review`.
 
 ```text
 python3 Tools/adopt_standards.py --help
@@ -164,7 +164,7 @@ python3 Tools/adopt_standards.py . --plan <root-relative-plan.yaml> \
 
 ## Runtime workflow
 
-Do not infer task, scope, route, Card, Read Set, or Profile choices from this README. Once those inputs have been confirmed, use the responsible dry-run writer and inspect its plan before applying it.
+Confirm task, scope and component choices first, then inspect the responsible writer's dry run before applying.
 
 The main runtime entry points are:
 
@@ -179,7 +179,7 @@ The main runtime entry points are:
 
 Queue compilation preserves declared targets; `queued -> open` materializes current Coverage for that batch only. Unopened batches remain planning-only: their pages are not reset, projected, or treated as reviewed. Task Plans do not supply runtime `authoring_status`, `gate_receipts`, or `property_state`.
 
-Start from the live CLI contracts rather than copying a long example with instance-specific values:
+Use the live interfaces:
 
 ```text
 python3 Tools/init_state.py --help
@@ -188,7 +188,7 @@ python3 Tools/apply_delta.py --help
 python3 Tools/check_queue.py . --resume-status
 ```
 
-Runtime data belongs under `.cambium/`; do not redirect current state or runtime receipts into `Tools/`. Physical path spellings shared by producers and consumers come from [`execution/task_runtime/runtime_paths.py`](execution/task_runtime/runtime_paths.py). Agent-interface policy stores the same source identity as `runtime_path_id`; `compile_cli_contract.py` resolves that ID to the physical `value` in its generated projection and rejects an unknown ID, constraint mismatch, or a second literal runtime-path authority.
+Runtime data belongs in `.cambium/`, not `Tools/`. [`runtime_paths.py`](execution/task_runtime/runtime_paths.py) owns shared paths. Policy references `runtime_path_id`; the CLI compiler resolves its value and rejects unknown IDs, mismatched constraints or duplicate literal authorities.
 
 ### Audit evidence hand-off
 
@@ -207,7 +207,7 @@ Ready obligations may be grouped with repeated `--obligation-id` (paired `--evid
 
 ## Generated interfaces
 
-There are two independent generation paths. [`governance/control/metadata_execution_contract.py`](governance/control/metadata_execution_contract.py) combines the Kernel metadata contract with installed operation capabilities; it is not an invocation-interface stage. Separately, each CLI parser plus `agent-interface-policy.yaml` produces the CLI contract, which produces the MCP projection, which in turn produces Host registration and workspace bindings:
+[`metadata_execution_contract.py`](governance/control/metadata_execution_contract.py) projects Kernel metadata and installed capabilities independently of the invocation chain. CLI parsers and `agent-interface-policy.yaml` feed:
 
 `CLI → compiled CLI contract → MCP projection → Host configuration`
 
@@ -237,6 +237,8 @@ python3 Tools/render_host_configs.py . --projection-target carried-runtime --out
 
 Use `--help` and `--sources` before regenerating or installing a host product. [`mcp_server.py`](mcp_server.py) preserves the child tool's structured result and exit code; it makes no new governance judgment.
 
+Each tool binds one reusable `output_contracts` declaration: always JSON, mode-selected JSON, or text. Compiler and MCP project that binding. Empty success requires an explicit mode allowance; `--json` alone proves nothing.
+
 ## Results and evidence
 
 Each CLI's `--help` states its write mode, output options, and required inputs. Where supported:
@@ -247,6 +249,16 @@ Each CLI's `--help` states its write mode, output options, and required inputs. 
 - `--apply` authorizes only the transaction named by that tool.
 
 Gate identity, receipt meaning, reuse, and completion authority remain with [K00/12](<../kernel/K00 Standards Control/12 Control Registry.md>) and [K12/07](<../kernel/K12 Quality Assurance/07 Audit Evidence Reuse and Invalidation.md>). A SHA-256 value binds bytes; it is not a signature. Actor and reviewer fields are recorded assertions unless an external authenticated runner supplies a stronger trust anchor. Do not collapse a documented HOLD exit into either success or failure; callers must preserve the tool's exact result.
+
+Audit producers return publication facts separately from their business verdict. A confirmed `changes-required` review is successfully recorded but is not passing review evidence. A write error can coexist with observed bytes; an uncertain result is not a claim that nothing was written. Manual-attestation tools return the same publication envelope in JSON mode, with their original record array under `receipts`. The transient envelope is not a Receipt and does not authorize a stage transition; catalogs still read and validate the persisted records.
+
+MCP retains the raw `exit_code` and its process-code `verdict`, alongside `output_reliable` and `invocation_reliable`. Output validation or capability confirmation failure stops the call without discarding returned publication facts. Runner children use the same path admission, with separate acknowledgement scopes and no widening of matching inherited capabilities. Child execution and subsequent next-action observation remain separate results.
+
+The compiler derives each tool's Host-environment boundary from its actual entrypoint wrapper. MCP and Runner use the same output observer: a declared Host handoff retains its diagnostic and any prior output, requires a stop, and does not claim either a passing Receipt or that no write occurred.
+
+Receipt-specific observation reads the effective append after-image, not a cached input snapshot. Component-owned receipt targets remain internal, rooted by the invocation descriptor rather than exposed as extra public arguments. This covers receipt file reads and writes and their reachable catalog targets; it is not a claim that every runtime directory enumeration, multi-object transaction or Host filesystem operation is descriptor-based. Their existing owners retain their locks, hashes, CAS and completion checks.
+
+Two input roles may reference the same retained snapshot. Their canonical path, target and parent identities must agree before physical read authority can be shared; the read acknowledges those equivalent path capabilities, not the roles' governance meaning. Write capabilities are not coalesced, and same-mode write aliases remain refused.
 
 ## Receipt-sealing maintenance runbook
 
@@ -265,23 +277,23 @@ Module-boundary facts and reports are Tool engineering artifacts, not Kernel rul
 python3 Tools/module_boundary_report.py --root . --emit-manifest
 ```
 
-[`TOOL_CATALOG.md`](TOOL_CATALOG.md) and `compiled/tool-catalog.json` are generated navigation views over `module-boundaries.yaml`, `tool-taxonomy.yaml`, `agent-interface-policy.yaml`, `operation-capabilities.yaml`, and source facts. They keep static imports, registered relationships, and transport declarations separate:
+[`TOOL_CATALOG.md`](TOOL_CATALOG.md) and `compiled/tool-catalog.json` join module boundaries, taxonomy, interface policy, operation capabilities and source facts, distinguishing imports, registrations and transports:
 
 ```text
 python3 Tools/generate_tool_catalog.py .
 python3 Tools/generate_tool_catalog.py . --check
 ```
 
-The first command regenerates both projections. `--check` recomputes both from the same sources and compares them byte for byte without writing.
+Generation writes both views; `--check` recomputes and compares bytes without writing.
 
-[`test-ownership.yaml`](test-ownership.yaml) is the single reviewed source for test ownership, execution level, lifecycle, and mixed-module method overrides. [`TEST_CATALOG.md`](TEST_CATALOG.md) and `compiled/test-catalog.json` join that source with test and fixture facts observed from the repository; they are generated navigation and runner inputs, not a second test contract:
+[`test-ownership.yaml`](test-ownership.yaml) owns test responsibility, level, lifecycle and method overrides. [`TEST_CATALOG.md`](TEST_CATALOG.md) and `compiled/test-catalog.json` join it with source/fixture facts for navigation and execution:
 
 ```text
 python3 Tools/generate_test_catalog.py .
 python3 Tools/generate_test_catalog.py . --check
 ```
 
-The catalog-owned runner keeps fast contract feedback separate from isolated integration, representative end-to-end, and real security/concurrency/recovery tests. Every selected test file runs in exactly one child process. Files whose selected cases are all marked `parallel_safe` may run with bounded file-level concurrency; isolation-sensitive files remain serial. `full` selects every retained level in one file-level pass, so mixed-level modules are not imported or rebuilt more than once:
+The catalog runner separates test levels. Each selected file runs once; files whose cases are all `parallel_safe` may run concurrently, while isolation-sensitive files remain serial. `full` includes all retained levels without repeating mixed-level files:
 
 ```text
 make fast

@@ -9,9 +9,14 @@ transport.
 """
 
 import argparse
+import contextlib
 import copy
+import io
+import json
 from pathlib import Path
+import subprocess
 import unittest
+from unittest import mock
 
 from Tools.execution.task_runtime import runtime_paths
 from Tools.platform.agent_interface import agent_interface_policy
@@ -48,6 +53,9 @@ class CurrentCliOwnerClosureTests(unittest.TestCase):
 
         self.assertEqual(set(records), set(descriptors))
         self.assertEqual(set(records), policy_tools)
+        for declaration in self.policy["tools"]:
+            self.assertEqual(self.policy["output_contracts"][declaration["output"]],
+                             records[declaration["tool"]]["agent_interface"]["output"])
         self.assertEqual(self.contract["tool_count"], len(records))
         self.assertEqual(
             self.contract["agent_interface_policy"]["sha256"],
@@ -102,6 +110,42 @@ class CurrentCliOwnerClosureTests(unittest.TestCase):
         self.assertNotIn("gate_id", shape["common_envelope_fields"])
         self.assertIn(compiler.KBLIB_RECEIPT_SOURCE,
                       self.contract["source_files"])
+
+    def test_runner_cli_modes_share_transport_shape_not_business_fields(self):
+        from Tools.execution.task_runtime import task_runtime_action
+        from Tools.execution.task_runtime import task_runtime_runner
+        from Tools.platform.common import reporting
+
+        # One current action object, not a copied Runner response schema.
+        action_fields = dict(
+            schema_version=task_runtime_action.SCHEMA_VERSION,
+            disposition="invoke", token="activate-ready-batch:B1",
+            capability_id="task-runtime-runner-v1", tool="run_task",
+            target={}, arguments={}, required_input=None, binding={},
+            reason_code="mode-fixture")
+        action = task_runtime_action.build_action(**action_fields)
+        action_fields.update(disposition="terminal", token="archive-terminal-runtime",
+                             capability_id=None, tool=None)
+        boundary = task_runtime_action.build_action(**action_fields)
+        record = by_tool(self.contract)["run_task"]
+        modes = ([], ["--execute", action["action_id"]],
+                 ["--run-until-boundary"], ["--input", "unused"])
+        for arguments in modes:
+            with self.subTest(arguments=arguments), \
+                    mock.patch.object(task_runtime_runner, "next_action",
+                                      side_effect=[action, boundary]), \
+                    mock.patch.object(task_runtime_runner, "_internal_step",
+                                      return_value=subprocess.CompletedProcess(
+                                          [], 0, stdout="{}\n", stderr="")), \
+                    contextlib.redirect_stdout(io.StringIO()) as stdout:
+                code = task_runtime_runner.main(["/fixture", *arguments])
+            raw = stdout.getvalue().encode("utf-8")
+            observed = reporting.observe_tool_output(
+                record["agent_interface"]["output"], raw, code, {},
+                host_boundary=record["host_environment_boundary"])
+            self.assertTrue(observed["output_reliable"], observed)
+            self.assertEqual("parsed", observed["stdout_parse"])
+            self.assertEqual(json.loads(raw), observed["stdout_json"])
 
 
 class CliContractUnitTests(unittest.TestCase):
@@ -267,6 +311,32 @@ class CompilerFixtureContractTests(unittest.TestCase):
         second = compiler.render(self.fixture.compile())
         self.assertEqual(first, second)
 
+    def test_host_boundary_is_derived_from_the_actual_wrapper_import(self):
+        path = self.fixture.tools / "shape.py"
+        original = path.read_text(encoding="utf-8")
+        variants = (
+            ("from Tools.platform.common.reporting import host_environment_boundary as bound\n",
+             "@bound\n", True),
+            ("import Tools.platform.common.reporting as reporter\n",
+             "@reporter.host_environment_boundary\n", True),
+            ("from unrelated import host_environment_boundary as bound\n",
+             "@bound\n", False),
+            ("from Tools.platform.common.reporting import host_environment_boundary as bound\nbound = None\n",
+             "@bound\n", False),
+            ("from Tools.platform.common.reporting import host_environment_boundary as bound\n",
+             "", False),
+        )
+        try:
+            for imports, decorator, expected in variants:
+                with self.subTest(imports=imports, decorator=decorator):
+                    path.write_text(imports + original.replace(
+                        "def main(argv=None):", decorator + "def main(argv=None):"),
+                        encoding="utf-8")
+                    contract = self.fixture.compile()
+                    self.assertEqual(expected, by_tool(contract)["shape"]["host_environment_boundary"])
+        finally:
+            path.write_text(original, encoding="utf-8")
+
 
 class AgentInterfaceJoinContractTests(unittest.TestCase):
     """Contract: compiler closes parser arguments over the policy relation."""
@@ -357,12 +427,40 @@ class AgentInterfaceJoinContractTests(unittest.TestCase):
             row.pop("runtime_path_id")
             row["value"] = ".cambium/reports"
 
+        def remove_output(document):
+            document["tools"][0].pop("output")
+
+        def invent_json_selector(document):
+            output = document["output_contracts"][document["tools"][0]["output"]]
+            output.update(mode="json-option", json_argument="label", json_value=True,
+                          json_types=["object"])
+
+        def duplicate_output(document):
+            document["output_contracts"]["duplicate"] = copy.deepcopy(next(iter(document["output_contracts"].values())))
+
+        def unused_output(document):
+            output = copy.deepcopy(next(iter(document["output_contracts"].values())))
+            output["empty_exit_codes"] = []
+            document["output_contracts"]["unused"] = output
+
+        def non_boolean_empty_success_condition(document):
+            output = document["output_contracts"][document["tools"][0]["output"]]
+            output.update(mode="always-json", json_types=["object"],
+                          empty_exit_codes=[0, 1],
+                          empty_success_disabled_by=["label"])
+
         cases = (
             (unclassify, "unclassified=label"),
             (use_non_boolean_activation, "must name one store_true"),
             (use_unknown_runtime_identity,
              "unknown runtime_path_id not-registered"),
             (use_literal_runtime_path, "must use runtime_path_id"),
+            (remove_output, "must reference one declared output contract"),
+            (invent_json_selector, "boolean selector must use store_true"),
+            (duplicate_output, "duplicate output contract"),
+            (unused_output, "unused output contracts"),
+            (non_boolean_empty_success_condition,
+             "empty_success_disabled_by must name a store_true option"),
         )
         try:
             for mutate, message in cases:

@@ -48,7 +48,6 @@ import shlex
 import stat
 import subprocess
 import sys
-import tempfile
 from collections import defaultdict
 from pathlib import Path
 
@@ -315,20 +314,34 @@ def _load_jsonl(path):
 
 
 def _run_receipting_command(command, cwd, label):
-    """Run a deterministic checker and return its actual script receipts."""
-    with tempfile.TemporaryDirectory(prefix="cambium-batch-close-") as temp:
-        receipt_path = os.path.join(temp, "receipts.jsonl")
-        completed = kblib.run_cambium_subprocess(
-            list(command) + ["--receipts", receipt_path],
-            cwd=cwd, text=True, stdout=subprocess.PIPE,
-            stderr=subprocess.STDOUT, check=False,
-            timeout=MAX_CHECK_SECONDS,
-        )
-        receipts = _load_jsonl(receipt_path) if os.path.exists(
-            receipt_path) else []
-    return _receipting_result(
+    """Consume the checker's existing JSON result, without a temporary writer.
+
+    These are unpublished checker results. Only the close producer can bind
+    and publish them into the actual close/AuditReceipt/aggregate registers.
+    They are never inserted into the current catalog as execution responses.
+    """
+    completed = kblib.run_cambium_subprocess(
+        list(command) + ["--json"],
+        cwd=cwd, text=True, stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE, check=False,
+        timeout=MAX_CHECK_SECONDS,
+    )
+    return _checker_json_result(
         list(command), label, completed.returncode, completed.stdout,
-        receipts)
+        completed.stderr)
+
+
+def _checker_json_result(command, label, returncode, stdout, stderr):
+    """Parse the one declared checker array before its existing acceptance."""
+    try:
+        receipts = json.loads(stdout)
+    except (TypeError, ValueError) as exc:
+        raise ValueError("%s returned invalid checker JSON: %s" %
+                         (label, exc)) from exc
+    if not isinstance(receipts, list) or any(
+            not isinstance(receipt, dict) for receipt in receipts):
+        raise ValueError("%s must return one checker Receipt array" % label)
+    return _receipting_result(command, label, returncode, stderr, receipts)
 
 
 def _receipting_result(command, label, returncode, stdout, receipts):
@@ -385,17 +398,14 @@ def _receipting_result(command, label, returncode, stdout, receipts):
     }
 
 
-def _run_inprocess_checker(command, cwd, label, invoke):
+def _run_inprocess_checker(command, label, invoke):
     """Run one admission-aware checker without losing its in-memory view."""
-    with tempfile.TemporaryDirectory(prefix="cambium-batch-close-") as temp:
-        receipt_path = os.path.join(temp, "receipts.jsonl")
-        captured = io.StringIO()
-        with contextlib.redirect_stdout(captured):
-            returncode = invoke(receipt_path)
-        receipts = _load_jsonl(receipt_path) if os.path.exists(
-            receipt_path) else []
-    return _receipting_result(
-        command, label, returncode, captured.getvalue(), receipts)
+    captured, diagnostics = io.StringIO(), io.StringIO()
+    with contextlib.redirect_stdout(captured), \
+            contextlib.redirect_stderr(diagnostics):
+        returncode = invoke()
+    return _checker_json_result(
+        command, label, returncode, captured.getvalue(), diagnostics.getvalue())
 
 
 def _stable_candidate(receipt, member):
@@ -1628,9 +1638,9 @@ def _main(argv=None):
                     ])
                 vocab = _run_inprocess_checker(
                     [sys.executable, str(SCRIPT_DIR / "check_vocab.py"),
-                     *vocab_args], root, "check_vocab",
-                    lambda receipt_path: check_vocab.main(
-                        [*vocab_args, "--receipts", receipt_path],
+                     *vocab_args], "check_vocab",
+                    lambda: check_vocab.main(
+                        [*vocab_args, "--json"],
                         authorized_admission=profile_consumer_admission))
                 checks["controlled_vocabulary"] = _tool_member_run(
                     vocab, "controlled_vocabulary")
@@ -1640,12 +1650,10 @@ def _main(argv=None):
                     page_contract = _run_inprocess_checker(
                         [sys.executable,
                          str(SCRIPT_DIR / "check_page_contract.py"), root],
-                        root, "check_page_contract",
-                        lambda receipt_path: check_page_contract.run(
-                            root, None,
-                            runtime_paths.PAGE_CONTRACT_ARTIFACT_PATH,
-                            None, [],
-                            False, receipt_path,
+                        "check_page_contract",
+                        lambda: check_page_contract.main(
+                            [root, "--contract",
+                             runtime_paths.PAGE_CONTRACT_ARTIFACT_PATH, "--json"],
                             authorized_admission=
                                 profile_consumer_admission))
                     checks["manifest_page_contract"] = \
