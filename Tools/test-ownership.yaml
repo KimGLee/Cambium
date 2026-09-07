@@ -1314,6 +1314,14 @@ tests:
     disposition: keep
     semantics: evidence_attempt_runtime
     parallel_safe: true
+  - path: Tools/tests/test_evidence_invalidation_contract.py
+    owner: Tools/execution/evidence/evidence_invalidation_contract.py
+    level: contract
+    lifecycle: current
+    disposition: keep
+    semantics: evidence_correction_decision_and_acceptance_dependency_projection
+    owner_contract_symbol: contract.load_policy
+    parallel_safe: true
   - path: Tools/tests/test_freshness_engine.py
     owner: Tools/knowledge/metadata/freshness_engine.py
     level: unit
@@ -2561,6 +2569,10 @@ tests:
     owner_contract_symbol: runtime_validation.validate_runtime
     parallel_safe: true
     overrides:
+      - selector: RuntimeValidationCompositionTests.test_correction_admission_does_not_mask_corruption
+        owner: Tools/execution/task_runtime/queue_runtime/authority.py
+        semantics: purpose_bound_admission_preserves_structural_proof
+        owner_contract_symbol: authority.runtime_admission_errors
       - selector: RuntimeValidationCompositionTests.test_gate_context_current_composes_both_currentness_owners
         semantics: runtime_and_metadata_gate_currentness_composition
         owner_contract_symbol: runtime_validation.require_gate_context_current

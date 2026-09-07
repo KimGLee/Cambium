@@ -260,6 +260,16 @@ Receipt-specific observation reads the effective append after-image, not a cache
 
 Two input roles may reference the same retained snapshot. Their canonical path, target and parent identities must agree before physical read authority can be shared; the read acknowledges those equivalent path capabilities, not the roles' governance meaning. Write capabilities are not coalesced, and same-mode write aliases remain refused.
 
+### Correcting an erroneous evidence declaration
+
+Use [`record_evidence_invalidation.py`](record_evidence_invalidation.py) (`evidence-invalidation-v1`) after obtaining the decision required by [K12/07](../kernel/K12%20Quality%20Assurance/07%20Audit%20Evidence%20Reuse%20and%20Invalidation.md). The same operation is exposed over MCP. It appends an exact-subject event; it does not edit old Receipts or turn the event into a passing audit result.
+
+Run without `--apply` to inspect the proposed event and current-evidence deficits. Supply a stable `--event-id`, one or more exact `--subject` Receipt IDs, and the approved decision mode, actor binding, authority reference and statement. Repeat the same event identity and payload to confirm an earlier publication; a changed payload under the same identity is refused. Role/context strings and references record an operator- or Host-attested decision, not authenticated identity. The Integrator's write access supplies no judgment authority.
+
+After publication, use a fresh runtime observation. The original producer owns new evidence for the original obligation; consumers reject the withdrawn record and genuine acceptance dependents while retaining historical bytes. Required M dependencies cannot be declared `not-applicable`, and their current evidence references are resolved by Tool. L review rounds remain visible and unprovided continuation escalates under K12/12; S retains its frozen sample. Candidate replacement, Metadata changes and any permitted Queue rollback still use their original controlled writers. A recorded correction does not reopen a closed batch or completed task.
+
+An unmet evidence obligation is reported separately from structural corruption. Correction and permitted evidence production can observe structurally valid state without claiming its business evidence has passed; merge, close and completion still require the complete current evidence closure. Publication confirmation, current usability and completion are distinct results.
+
 ## Receipt-sealing maintenance runbook
 
 Use `seal_receipts.py --apply` only in an exclusive quiet window after a resume check, a dry run, and a verified restorable copy of `.cambium/`. After interruption, apply `--reconcile` only when its preview proves the exact plan safe; otherwise restore the copy. Re-prove history and resumability before releasing the window:

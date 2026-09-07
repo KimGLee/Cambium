@@ -126,16 +126,17 @@ def _required_obligation(plan, obligation_id, page, variant, registry):
 def _current_consumed_records(result, item, receipt_ids, *, plan,
                               plan_sha256, obligation, spec, page, disposition,
                               registry):
-    receipt_ids = sorted(receipt_ids or [])
-    if (len(receipt_ids) != len(set(receipt_ids)) or
-            any(not isinstance(value, str) or not value for value in receipt_ids)):
-        raise audit_producer_runtime.AuditProducerError(
-            "consumed evidence references must be sorted unique IDs")
+    if receipt_ids is not None:
+        if (len(receipt_ids) != len(set(receipt_ids)) or
+                any(not isinstance(value, str) or not value
+                    for value in receipt_ids)):
+            raise audit_producer_runtime.AuditProducerError(
+                "consumed evidence references must be unique IDs")
+        receipt_ids = sorted(receipt_ids)
     try:
         current_receipt_ids = frozenset()
         if (spec.get("tier") == "M" and
-                spec.get("evidence_role") == "consumes" and
-                disposition == "applicable"):
+                spec.get("evidence_role") == "consumes"):
             current_receipt_ids = \
                 audit_evidence_runtime.current_consumption_evidence_ids(
                     result, item, plan, plan_sha256, obligation, registry)
@@ -169,6 +170,9 @@ def current_review_attempt(result, item, plan, plan_sha256, obligation, spec,
             "m-atomic-item" if spec["tier"] == "M" else "s-sampled-page")
         if record.get("review_variant") != expected_variant:
             raise ValueError("batch-page attempt variant differs from plan")
+        batch_contract.validate_plan_applicability(
+            plan["obligations"], spec, obligation["target"],
+            record.get("applicability_disposition"), registry)
         return record
 
     def validate_current(record):
@@ -380,8 +384,8 @@ def main(argv=None):
         "--applicability-reason",
         help="required only when a conditional M atom is not applicable")
     parser.add_argument(
-        "--consumed-evidence-ref", action="append", default=[],
-        help="current canonical evidence consumed by a consumes-role M atom")
+        "--consumed-evidence-ref", action="append",
+        help="optional exact assertion of Tool-derived current evidence IDs")
     parser.add_argument("--apply", action="store_true")
     args = parser.parse_args(argv)
     publication = kblib.ReceiptPublication()

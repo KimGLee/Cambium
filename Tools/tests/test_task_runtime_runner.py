@@ -48,6 +48,39 @@ def completed(returncode=0, stdout="{}\n", stderr=""):
 
 
 class TaskRuntimeRunnerUnitTests(unittest.TestCase):
+    def test_withdrawn_consumed_proof_is_an_explicit_owned_continuation(self):
+        state = parsed_runtime_state()
+        deficits = [{"code": "evidence-invalidated", "scope": "B1",
+                     "receipt_id": "old-review", "event_ids": ["decision-1"]}]
+        state.update(errors=["proof no longer usable"], structural_errors=[],
+                     current_evidence_deficits=deficits)
+        action = resume_action("repair-runtime", state)
+        self.assertEqual("repair", action["disposition"])
+        self.assertEqual("withdrawn-evidence-needs-owned-continuation", action["reason_code"])
+        self.assertEqual(deficits, action["target"]["current_evidence_deficits"])
+        self.assertTrue(action["target"]["recorded_state_preserved"])
+        state["structural_errors"] = ["corrupt ledger"]
+        self.assertEqual("repair-runtime", resume_action("repair-runtime", state)["reason_code"])
+
+    def test_page_review_dispatch_preserves_owner_derived_references(self):
+        step = {
+            "token": "record-batch-page-review",
+            "resume_tool": "record_batch_page_review",
+            "resume_arguments": {
+                "batch": "B1", "consumed_evidence_ref": ["derived-current"],
+            },
+        }
+        with mock.patch.object(runner, "_current_audit_step",
+                               return_value=({}, {}, step)), \
+                mock.patch.object(runner, "_run_command", return_value=completed()) as invoke:
+            runner._await_audit_producer(
+                "/fixture", {"token": step["token"]},
+                {"verdict": "passed", "statement": "reviewed"}, None)
+        self.assertEqual(["derived-current"],
+                         invoke.call_args.args[2]["consumed_evidence_ref"])
+        self.assertTrue(invoke.call_args.args[2]["apply"])
+        self.assertNotIn("consumed_evidence_refs", invoke.call_args.args[2])
+
     def test_main_preserves_step_failure_and_observation_failure(self):
         cases = (({"returncode": 2, "next_action_error": None}, 2),
                  ({"returncode": 0, "next_action_error": "unreadable after action"}, 1),

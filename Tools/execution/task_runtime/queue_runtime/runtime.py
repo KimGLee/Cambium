@@ -14,7 +14,9 @@ import os
 import sys
 
 import Tools.execution.planning.coverage_contract as coverage_contract
-from Tools.execution.evidence import receipt_type_contract
+from Tools.execution.evidence import (
+    receipt_type_contract, receipt_reference_contract, evidence_invalidation_contract,
+)
 import Tools.platform.common.kblib as kblib
 import Tools.knowledge.content.maintenance_candidates as maintenance_candidates
 import Tools.execution.task_runtime.runtime_paths as runtime_paths
@@ -580,8 +582,19 @@ def validate_runtime(root, allowed_open_delta=None,
     # current-use admission, handoff, reuse, and completion queries consume
     # this adoption-aware view, so history is never rewritten or made invalid
     # merely because it was produced under an older Standards identity.
+    state_history_invalidations = frozenset(invalidated_evidence_receipt_ids)
+    recorded_state_catalog = adoption_filtered_catalog(
+        catalog, state_history_invalidations)
+    try:
+        correction_view = evidence_invalidation_contract.invalidation_view(
+            catalog, root=root, registry=receipt_type_registry)
+    except (OSError, TypeError, UnicodeError, ValueError) as exc:
+        errors.append("evidence invalidation history cannot be verified: %s" % exc)
+        correction_view = {"events": (), "direct": {}, "affected": {}}
+    invalidated_evidence_receipt_ids.update(correction_view["affected"])
     current_catalog = adoption_filtered_catalog(
         catalog, invalidated_evidence_receipt_ids)
+    evidence_deficits = []
     errors.extend(initial_task_plan_receipt_errors(
         root, progress, catalog, queue, queue_sha, coverage_sha,
         progress_sha,
@@ -615,10 +628,22 @@ def validate_runtime(root, allowed_open_delta=None,
     records, assignments = coverage_records(root, coverage, errors)
     if profile_view is not None:
         errors.extend(coverage_property_state_errors(
-            root, coverage, current_catalog, queue, profile_view,
+            root, coverage, recorded_state_catalog, queue, profile_view,
             active_standards_view,
             page_projection_overrides=page_projection_overrides,
             gate_evidence_errors=gate_evidence_errors))
+    # Verify already-executed state through its recorded evidence above;
+    # current authorization below independently rejects withdrawn evidence.
+    # These are two proofs, not a fallback that fills a missing current ID.
+    for source, document, scope in (
+            (receipt_reference_contract.SOURCE_COVERAGE, coverage, "Coverage"),
+            (receipt_reference_contract.SOURCE_PROGRESS, progress, "Progress")):
+        try:
+            evidence_deficits.extend(
+                evidence_invalidation_contract.current_reference_deficits(
+                    document, source, correction_view, scope=scope))
+        except ValueError as exc:
+            errors.append("%s evidence reference shape: %s" % (scope, exc))
     context = {"root": root, "profile_view": profile_view}
 
     # Closing a successor batch transfers Coverage ``batch`` ownership
@@ -772,8 +797,15 @@ def validate_runtime(root, allowed_open_delta=None,
                 seen_dep.add(dep)
 
         errors.extend(item_evidence_errors(
-            item, progress, context, catalog, current_catalog, queue
+            item, progress, context, catalog, recorded_state_catalog, queue
         ))
+        try:
+            evidence_deficits.extend(
+                evidence_invalidation_contract.current_reference_deficits(
+                    item, receipt_reference_contract.SOURCE_ITEM,
+                    correction_view, scope=item_id))
+        except ValueError as exc:
+            errors.append("%s evidence reference shape: %s" % (item_id, exc))
 
     if items_by_id or not allow_unmaterialized_queue:
         errors.extend(coverage_batch_spec_errors(coverage, items_by_id))
@@ -954,16 +986,22 @@ def validate_runtime(root, allowed_open_delta=None,
                         structural_errors, settlement_errors, settlement = \
                             delta_handoff_errors(
                             relative, delta, item, records, coverage,
-                            queue, current_catalog,
+                            queue, recorded_state_catalog,
                         )
                         handoff_errors = structural_errors + settlement_errors
+                        candidate_deficits = \
+                            evidence_invalidation_contract.current_reference_deficits(
+                                delta, receipt_reference_contract.SOURCE_CANDIDATE_DELTA,
+                                correction_view, scope=relative)
+                        evidence_deficits.extend(candidate_deficits)
                         if structural_errors:
                             delta_record["handoff_status"] = "invalid"
-                        elif settlement_errors:
+                        elif settlement_errors or candidate_deficits:
                             delta_record["handoff_status"] = "incomplete"
                         else:
                             delta_record["handoff_status"] = "candidate"
                         delta_record["handoff_errors"] = handoff_errors
+                        delta_record["current_evidence_deficits"] = candidate_deficits
                         if settlement is not None:
                             delta_record["routed_gap_settlement"] = settlement
                         # ``allowed_open_delta`` lets a preflight inspect an
@@ -1153,7 +1191,7 @@ def validate_runtime(root, allowed_open_delta=None,
             "queue_sha256": queue_sha,
             "progress_sha256": progress_sha,
         },
-        current_receipts=current_catalog,
+        current_receipts=recorded_state_catalog,
         historical_receipts=catalog,
     )
     task_errors, task_runtime = task_transition_errors(
@@ -1173,9 +1211,9 @@ def validate_runtime(root, allowed_open_delta=None,
         "root": root, "queue": queue, "coverage": coverage,
         "progress": progress, "items_by_id": items_by_id,
         "receipt_catalog": catalog,
-        "current_receipt_catalog": current_catalog,
+        "current_receipt_catalog": recorded_state_catalog,
         "invalidated_evidence_receipt_ids":
-            sorted(invalidated_evidence_receipt_ids),
+            sorted(state_history_invalidations),
         "_standards_revalidation_requirements":
             standards_revalidation_requirements_by_batch,
     }
@@ -1251,8 +1289,16 @@ def validate_runtime(root, allowed_open_delta=None,
         errors.extend(active_standards_view_currency_errors(
             root, active_standards_view,
             state_override=active_standards_state_override))
+    structural_errors = list(errors)
+    errors.extend(
+        "%s has unusable evidence %s via %s (event: %s)" % (
+            row["scope"], row["receipt_id"], row["edge_id"],
+            ", ".join(row["event_ids"])) for row in evidence_deficits)
     return {
         "root": root, "errors": errors, "ready": ready, "blocked": blocked,
+        "structural_errors": structural_errors,
+        "current_evidence_deficits": evidence_deficits,
+        "evidence_invalidation_view": correction_view,
         "hub_page_admission": hub_admission,
         "structural_admission_defects": sorted(structural_admission_defects),
         "queue": queue, "coverage": coverage, "progress": progress,

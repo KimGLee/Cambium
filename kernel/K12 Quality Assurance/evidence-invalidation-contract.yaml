@@ -1,0 +1,28 @@
+schema_version: 1
+contract_id: evidence-invalidation-v1
+semantic_owner: K12/07
+decision_modes:
+  - own-declaration
+  - semantic-authority
+  - explicit-user
+decision_reasons:
+  - incorrect-result
+  - incomplete-input
+  - overturned-claim
+authority_boundary:
+  decision_source: operator-or-host-attested
+  actor_labels_are_authentication: false
+  integrator_has_judgment_authority: false
+  own_declaration: exact-original-reviewer-binding
+  semantic_authority: existing-target-authority
+  explicit_user: exact-target-bound-user-decision
+effects:
+  original_evidence: immutable
+  current_usability: invalidated
+  propagation: acceptance-dependencies-only
+  replacement_evidence: original-producer-and-obligation
+  state_rollback: separate-existing-transition
+  restore_old_authority: forbidden
+  l_review_restart: forbidden
+  l_unprovided_continuation: escalate-under-k12-12
+  s_sample: preserve-frozen-selection

@@ -146,8 +146,8 @@ def main(argv=None):
     root = os.path.realpath(os.path.abspath(args.root))
     try:
         runtime = runtime_validation.validate_runtime(root)
-        metadata_gate_runtime.require_admitted_runtime(runtime)
-        authority = queue_runtime.runtime_authority_context(runtime)
+        metadata_gate_runtime.require_admitted_runtime(runtime, purpose="evidence-production")
+        authority = queue_runtime.runtime_authority_context(runtime, purpose="evidence-production")
         context = metadata_gate_runtime.load_gate_context(
             root, args.gate_id, args.page, runtime=runtime,
             authority=authority)
@@ -215,10 +215,12 @@ def main(argv=None):
             with kblib.no_authoritative_write_guard(lease):
                 locked = runtime_validation.validate_runtime(
                     root, **authority_kwargs)
-                if locked.get("errors"):
+                admission_errors = queue_runtime.runtime_admission_errors(
+                    locked, purpose=authority.get("admission_purpose", "current"))
+                if admission_errors:
                     raise ValueError(
                         "runtime changed before registered Gate scan: %s" %
-                        "; ".join(locked["errors"]))
+                        "; ".join(admission_errors))
                 runtime_validation.require_gate_context_current(
                     context, "deterministic Gate locked preflight",
                     runtime=locked)

@@ -197,8 +197,10 @@ class RecordBatchReviewBuilderTests(unittest.TestCase):
     def test_manual_publication_requires_catalog_confirmation_after_append(self):
         # Local publication seam only: no Task/Queue reconstruction or CLI.
         receipt = self.build()
-        for catalog_has_exact_record in (True, False):
-            with self.subTest(catalog_has_exact_record=catalog_has_exact_record), \
+        for catalog_has_exact_record, already_published in (
+                (True, False), (False, False), (True, True)):
+            with self.subTest(catalog_has_exact_record=catalog_has_exact_record,
+                              already_published=already_published), \
                     contextlib.ExitStack() as stack:
                 events = []
                 publication = kblib.ReceiptPublication()
@@ -228,7 +230,8 @@ class RecordBatchReviewBuilderTests(unittest.TestCase):
                 catalog = Catalog({receipt["receipt_id"]: ("receipts.jsonl", receipt)}) \
                     if catalog_has_exact_record else Catalog({})
                 resolve = stack.enter_context(mock.patch.object(manual_attestation.queue_runtime,
-                    "current_receipt_catalog", return_value=catalog))
+                    "current_receipt_catalog", side_effect=lambda runtime:
+                        catalog if runtime is readback or already_published else Catalog({})))
                 def rebuild(runtime):
                     self.assertIs(locked, runtime)
                     events.append("rebuild")
@@ -246,10 +249,15 @@ class RecordBatchReviewBuilderTests(unittest.TestCase):
                     with self.assertRaisesRegex(ValueError, "exact receipt"):
                         manual_attestation.publish_receipt(
                             "/fixture", "/fixture/receipts.jsonl", receipt, **arguments)
-                self.assertEqual(["runtime", "rebuild", "validate", "append", "runtime"], events)
-                self.assertEqual("present", publication.outcome)
+                self.assertEqual(["runtime", "rebuild", "validate"] +
+                                 ([] if already_published else ["append", "runtime"]), events)
+                self.assertEqual("not-attempted" if already_published else "present",
+                                 publication.outcome)
                 self.assertIs(catalog_has_exact_record, publication.confirmed)
-                resolve.assert_called_once_with(readback)
+                self.assertEqual(1 if already_published else 2, resolve.call_count)
+                resolve.assert_any_call(locked)
+                if not already_published:
+                    resolve.assert_any_call(readback)
 
     def test_wrapper_activation_edge_cannot_name_an_opening_transition(self):
         receipt = self.build()

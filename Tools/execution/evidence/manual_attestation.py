@@ -10,6 +10,7 @@ Coverage, Progress, page, or Delta bytes.
 
 from Tools.execution.task_runtime import queue_runtime
 import Tools.execution.task_runtime.runtime_validation as runtime_validation
+from Tools.execution.task_runtime.queue_runtime.authority import runtime_admission_errors
 import Tools.platform.common.kblib as kblib
 
 
@@ -58,13 +59,17 @@ def publish_receipt(root, receipt_path, planned_receipt, *, authority,
 
     authority_kwargs = queue_runtime.runtime_authority_validation_kwargs(
         authority)
+    admission_purpose = (authority.get("admission_purpose", "current")
+                         if isinstance(authority, dict) else "current")
     with kblib.runtime_write_lock(root, owner_metadata=operation) as lease:
         with kblib.no_authoritative_write_guard(lease):
             locked = runtime_validation.validate_runtime(root, **authority_kwargs)
-            if locked.get("errors"):
+            admission_errors = runtime_admission_errors(
+                locked, purpose=admission_purpose)
+            if admission_errors:
                 raise ValueError(
                     "runtime changed before %s: %s" %
-                    (publication_label, "; ".join(locked["errors"])))
+                    (publication_label, "; ".join(admission_errors)))
             queue_runtime.require_runtime_authority_current(
                 root, authority, publication_label)
             locked_receipt = _freeze_generated_identity(
@@ -74,6 +79,18 @@ def publish_receipt(root, receipt_path, planned_receipt, *, authority,
                     "%s bindings changed before publication" %
                     publication_label)
             validate(locked, locked_receipt)
+            existing = queue_runtime.current_receipt_catalog(locked).get(
+                locked_receipt["receipt_id"])
+            if existing is not None:
+                observed = existing[1] if isinstance(existing, tuple) else existing
+                if observed != locked_receipt:
+                    raise ValueError("%s identity already binds different bytes" %
+                                     publication_label)
+                # Another cooperating invocation may have published this
+                # exact operation before we acquired the lock. Confirm its
+                # current object; never append the same identity twice.
+                publication.confirmed = True
+                return locked_receipt
             before = kblib.receipt_append_observation(
                 receipt_path, [locked_receipt])
 
@@ -90,10 +107,12 @@ def publish_receipt(root, receipt_path, planned_receipt, *, authority,
         # the runtime under the same authority view and require the exact object
         # to resolve through the ordinary current catalog.
         readback = runtime_validation.validate_runtime(root, **authority_kwargs)
-        if readback.get("errors"):
+        admission_errors = runtime_admission_errors(
+            readback, purpose=admission_purpose)
+        if admission_errors:
             raise ValueError(
                 "%s read-back is inconsistent: %s" %
-                (publication_label, "; ".join(readback["errors"])))
+                (publication_label, "; ".join(admission_errors)))
         queue_runtime.require_runtime_authority_current(
             root, authority, "%s read-back" % publication_label)
         entry = queue_runtime.current_receipt_catalog(readback).get(

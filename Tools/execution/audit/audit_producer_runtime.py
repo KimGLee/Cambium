@@ -45,11 +45,13 @@ def admitted_runtime(root):
     """Return one successful runtime observation and its opaque authority."""
     canonical = os.path.realpath(os.path.abspath(os.fspath(root)))
     result = runtime_validation.validate_runtime(canonical)
-    errors = result.get("errors") or []
+    errors = runtime_authority.runtime_admission_errors(
+        result, purpose="evidence-production")
     if errors:
         raise AuditProducerError(
             "runtime is not admitted: %s" % "; ".join(errors[:12]))
-    return canonical, result, runtime_authority.runtime_authority_context(result)
+    return canonical, result, runtime_authority.runtime_authority_context(
+        result, purpose="evidence-production")
 
 
 def open_batch(result, batch_id):
@@ -306,10 +308,12 @@ def require_runtime_current(root, authority, phase):
         root, authority, phase)
     kwargs = runtime_authority.runtime_authority_validation_kwargs(authority)
     current = runtime_validation.validate_runtime(root, **kwargs)
-    if current.get("errors"):
+    errors = runtime_authority.runtime_admission_errors(
+        current, purpose=authority.get("admission_purpose", "current"))
+    if errors:
         raise AuditProducerError(
             "runtime changed %s: %s" %
-            (phase, "; ".join(current["errors"][:12])))
+            (phase, "; ".join(errors[:12])))
     return current
 
 

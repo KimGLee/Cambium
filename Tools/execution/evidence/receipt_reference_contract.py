@@ -52,6 +52,12 @@ SOURCE_CLOSE_GLOBAL_REVIEW = "close-global-review"
 SOURCE_CLOSE_ATTESTATION = "close-reviewer-attestation"
 SOURCE_PAGE_REVIEW = "close-page-review"
 SOURCE_AUDIT_RECEIPT = "audit-receipt"
+SOURCE_BATCH_PAGE_REVIEW = "batch-page-review-record"
+SOURCE_SUBSTANTIVE_REVIEW = "substantive-review-evidence"
+SOURCE_EVIDENCE_INVALIDATION = "evidence-invalidation-event"
+SOURCE_METADATA_TRANSITION = "metadata-transition"
+SOURCE_CANDIDATE_DELTA = "candidate-delta"
+SOURCE_TERMINAL_PROOF = "terminal-proof-gate"
 SOURCE_DELTA_APPLY = "delta-apply"
 SOURCE_REVALIDATION = "standards-revalidation-aggregate"
 SOURCE_BATCH_REVIEW = "batch-review-aggregate"
@@ -106,6 +112,7 @@ class ReceiptReferenceSpec:
     projection_fields: tuple = ()
     keep_hot: bool = False
     alias: bool = False
+    acceptance_dependency: bool = False
 
 
 @dataclass(frozen=True)
@@ -129,7 +136,8 @@ class ResolvedReceipt:
 
 
 def _spec(edge_id, source_kind, path, cardinality, materialization,
-          closure=None, projection_fields=(), keep_hot=False, alias=False):
+          closure=None, projection_fields=(), keep_hot=False, alias=False,
+          acceptance_dependency=False):
     if materialization not in MATERIALIZATION_ORDER:
         raise ValueError("unknown Receipt materialization %r" % materialization)
     return ReceiptReferenceSpec(
@@ -142,6 +150,7 @@ def _spec(edge_id, source_kind, path, cardinality, materialization,
         projection_fields=tuple(projection_fields),
         keep_hot=keep_hot,
         alias=alias,
+        acceptance_dependency=acceptance_dependency,
     )
 
 
@@ -150,6 +159,17 @@ def _spec(edge_id, source_kind, path, cardinality, materialization,
 # body even when a projection exists, and the graph must not silently enlarge
 # the set of rows that may seal.
 RECEIPT_REFERENCE_SPECS = (
+    # Existing Gate summary inputs. Dimension evidence is bound by the
+    # immutable proof artifact and the Queue's complete close reconciliations,
+    # not reconstructed by guessing receipt IDs from free-form audit prose.
+    _spec("terminal-proof.queue-check", SOURCE_TERMINAL_PROOF,
+          ("queue_check_receipt",), CARDINALITY_OPTIONAL,
+          MATERIALIZATION_BODY_REQUIRED, TERMINAL_COMPLETION_CLOSURE,
+          acceptance_dependency=True),
+    _spec("terminal-proof.corpus-plan-check", SOURCE_TERMINAL_PROOF,
+          ("corpus_plan_check_receipt",), CARDINALITY_OPTIONAL,
+          MATERIALIZATION_BODY_REQUIRED, TERMINAL_COMPLETION_CLOSURE,
+          acceptance_dependency=True),
     # Required Queue item.
     _spec("queue-item.transition", SOURCE_ITEM, ("transition_receipts[]",),
           CARDINALITY_MANY, MATERIALIZATION_BODY_REQUIRED,
@@ -160,17 +180,21 @@ RECEIPT_REFERENCE_SPECS = (
     _spec("queue-item.confirmation", SOURCE_ITEM,
           ("confirmation_receipt",), CARDINALITY_OPTIONAL,
           MATERIALIZATION_COLD_PROJECTION,
-          projection_fields=IDENTITY_PROJECTION_FIELDS, keep_hot=True),
+          projection_fields=IDENTITY_PROJECTION_FIELDS, keep_hot=True,
+          acceptance_dependency=True),
     _spec("queue-item.batch-review", SOURCE_ITEM, ("batch_receipts[]",),
           CARDINALITY_MANY, MATERIALIZATION_BODY_REQUIRED,
-          BATCH_REVIEW_CLOSURE, keep_hot=True),
+          BATCH_REVIEW_CLOSURE, keep_hot=True,
+          acceptance_dependency=True),
     _spec("queue-item.queue-consistency", SOURCE_ITEM,
           ("queue_consistency_receipt",), CARDINALITY_OPTIONAL,
           MATERIALIZATION_COLD_PROJECTION, CLOSE_BUNDLE_CLOSURE,
-          projection_fields=IDENTITY_PROJECTION_FIELDS),
+          projection_fields=IDENTITY_PROJECTION_FIELDS,
+          acceptance_dependency=True),
     _spec("queue-item.close-gate", SOURCE_ITEM, ("close_gate_receipt",),
           CARDINALITY_OPTIONAL, MATERIALIZATION_BODY_REQUIRED,
-          CLOSE_BUNDLE_CLOSURE),
+          CLOSE_BUNDLE_CLOSURE,
+          acceptance_dependency=True),
     _spec("queue-item.delta-apply", SOURCE_ITEM, ("delta_apply_receipt",),
           CARDINALITY_OPTIONAL, MATERIALIZATION_COLD_PROJECTION,
           CLOSE_BUNDLE_CLOSURE,
@@ -258,19 +282,23 @@ RECEIPT_REFERENCE_SPECS = (
     _spec("progress.terminal-proof", SOURCE_PROGRESS,
           ("terminal_audit", "terminal_proof_receipt"),
           CARDINALITY_OPTIONAL, MATERIALIZATION_BODY_REQUIRED,
-          TERMINAL_COMPLETION_CLOSURE, keep_hot=True),
+          TERMINAL_COMPLETION_CLOSURE, keep_hot=True,
+          acceptance_dependency=True),
     _spec("progress.terminal-queue-check", SOURCE_PROGRESS,
           ("terminal_audit", "queue_check_receipt"),
           CARDINALITY_OPTIONAL, MATERIALIZATION_BODY_REQUIRED,
-          TERMINAL_COMPLETION_CLOSURE, keep_hot=True),
+          TERMINAL_COMPLETION_CLOSURE, keep_hot=True,
+          acceptance_dependency=True),
     _spec("progress.maintenance-gate", SOURCE_PROGRESS,
           ("maintenance_completion", "completion_gate_receipt"),
           CARDINALITY_OPTIONAL, MATERIALIZATION_BODY_REQUIRED,
-          MAINTENANCE_COMPLETION_CLOSURE, keep_hot=True),
+          MAINTENANCE_COMPLETION_CLOSURE, keep_hot=True,
+          acceptance_dependency=True),
     _spec("progress.maintenance-budget", SOURCE_PROGRESS,
           ("maintenance_completion", "budget_manifest_receipt"),
           CARDINALITY_OPTIONAL, MATERIALIZATION_BODY_REQUIRED,
-          MAINTENANCE_COMPLETION_CLOSURE, keep_hot=True),
+          MAINTENANCE_COMPLETION_CLOSURE, keep_hot=True,
+          acceptance_dependency=True),
     _spec("progress.maintenance-ledger", SOURCE_PROGRESS,
           ("maintenance_completion", "ledger_advance_receipt"),
           CARDINALITY_OPTIONAL, MATERIALIZATION_BODY_REQUIRED,
@@ -330,67 +358,115 @@ RECEIPT_REFERENCE_SPECS = (
     _spec("coverage-page.gate-receipts", SOURCE_COVERAGE,
           ("pages[]", "gate_receipts[]"), CARDINALITY_MANY,
           MATERIALIZATION_COLD_PROJECTION,
-          projection_fields=PASS_PROJECTION_FIELDS, keep_hot=True),
+          projection_fields=PASS_PROJECTION_FIELDS, keep_hot=True,
+          acceptance_dependency=True),
     _spec("coverage-property.evidence", SOURCE_COVERAGE,
           ("pages[]", "property_state{}", "evidence_receipt"),
-          CARDINALITY_MANY, MATERIALIZATION_BODY_REQUIRED, keep_hot=True),
+          CARDINALITY_MANY, MATERIALIZATION_BODY_REQUIRED, keep_hot=True,
+          acceptance_dependency=True),
 
     # Current close aggregate. Retired close formats are external archives and
     # never enter this graph.
     _spec("close.queue-consistency", SOURCE_CLOSE,
           ("queue_consistency_receipt",), CARDINALITY_ONE,
           MATERIALIZATION_COLD_PROJECTION, CLOSE_BUNDLE_CLOSURE,
-          projection_fields=IDENTITY_PROJECTION_FIELDS),
+          projection_fields=IDENTITY_PROJECTION_FIELDS,
+          acceptance_dependency=True),
     _spec("close.delta-apply", SOURCE_CLOSE, ("delta_apply_receipt",),
           CARDINALITY_ONE, MATERIALIZATION_COLD_PROJECTION,
           CLOSE_BUNDLE_CLOSURE,
           projection_fields=IDENTITY_PROJECTION_FIELDS),
     _spec("close.global-review", SOURCE_CLOSE, ("global_review_receipt",),
           CARDINALITY_ONE, MATERIALIZATION_BODY_REQUIRED,
-          CLOSE_BUNDLE_CLOSURE),
+          CLOSE_BUNDLE_CLOSURE,
+          acceptance_dependency=True),
     _spec("close.reviewer-attestation", SOURCE_CLOSE,
           ("reviewer_attestation_receipt",), CARDINALITY_ONE,
-          MATERIALIZATION_BODY_REQUIRED, CLOSE_BUNDLE_CLOSURE),
+          MATERIALIZATION_BODY_REQUIRED, CLOSE_BUNDLE_CLOSURE,
+          acceptance_dependency=True),
     _spec("close.corpus-plan", SOURCE_CLOSE, ("corpus_plan_receipt",),
           CARDINALITY_OPTIONAL, MATERIALIZATION_BODY_REQUIRED,
-          CLOSE_BUNDLE_CLOSURE),
+          CLOSE_BUNDLE_CLOSURE,
+          acceptance_dependency=True),
     _spec("close.page-review", SOURCE_CLOSE, ("page_review_receipts[]",),
           CARDINALITY_MANY, MATERIALIZATION_BODY_REQUIRED,
-          CLOSE_BUNDLE_CLOSURE),
+          CLOSE_BUNDLE_CLOSURE,
+          acceptance_dependency=True),
     _spec("close.closed-list", SOURCE_CLOSE, ("closed_list_evidence{}",),
           CARDINALITY_MANY, MATERIALIZATION_BODY_REQUIRED,
-          CLOSE_BUNDLE_CLOSURE),
+          CLOSE_BUNDLE_CLOSURE,
+          acceptance_dependency=True),
     _spec("close.closed-list-producer", SOURCE_CLOSE,
           ("closed_list_producer_evidence{}",), CARDINALITY_MANY,
-          MATERIALIZATION_BODY_REQUIRED, CLOSE_BUNDLE_CLOSURE),
+          MATERIALIZATION_BODY_REQUIRED, CLOSE_BUNDLE_CLOSURE,
+          acceptance_dependency=True),
     _spec("close.post-delta-evidence", SOURCE_CLOSE,
           ("post_delta_evidence_bindings[]", "evidence_ref"),
           CARDINALITY_MANY, MATERIALIZATION_BODY_REQUIRED,
-          CLOSE_BUNDLE_CLOSURE),
+          CLOSE_BUNDLE_CLOSURE,
+          acceptance_dependency=True),
 
     _spec("close-global.reviewer-attestation", SOURCE_CLOSE_GLOBAL_REVIEW,
           ("reviewer_attestation_receipt",), CARDINALITY_ONE,
-          MATERIALIZATION_BODY_REQUIRED, CLOSE_BUNDLE_CLOSURE),
+          MATERIALIZATION_BODY_REQUIRED, CLOSE_BUNDLE_CLOSURE,
+          acceptance_dependency=True),
     _spec("close-global.closed-list", SOURCE_CLOSE_GLOBAL_REVIEW,
           ("closed_list_evidence{}",), CARDINALITY_MANY,
-          MATERIALIZATION_BODY_REQUIRED, CLOSE_BUNDLE_CLOSURE),
+          MATERIALIZATION_BODY_REQUIRED, CLOSE_BUNDLE_CLOSURE,
+          acceptance_dependency=True),
     _spec("close-global.closed-list-producer", SOURCE_CLOSE_GLOBAL_REVIEW,
           ("closed_list_producer_evidence{}",), CARDINALITY_MANY,
-          MATERIALIZATION_BODY_REQUIRED, CLOSE_BUNDLE_CLOSURE),
+          MATERIALIZATION_BODY_REQUIRED, CLOSE_BUNDLE_CLOSURE,
+          acceptance_dependency=True),
     _spec("close-global.post-delta-evidence", SOURCE_CLOSE_GLOBAL_REVIEW,
           ("post_delta_evidence_bindings[]", "evidence_ref"),
           CARDINALITY_MANY, MATERIALIZATION_BODY_REQUIRED,
-          CLOSE_BUNDLE_CLOSURE),
+          CLOSE_BUNDLE_CLOSURE,
+          acceptance_dependency=True),
     _spec("close-attestation.candidate-baseline", SOURCE_CLOSE_ATTESTATION,
           ("candidate_baseline_receipt",), CARDINALITY_OPTIONAL,
-          MATERIALIZATION_ID_ONLY, CLOSE_BUNDLE_CLOSURE),
+          MATERIALIZATION_ID_ONLY, CLOSE_BUNDLE_CLOSURE,
+          acceptance_dependency=True),
     _spec("close-attestation.post-delta-evidence", SOURCE_CLOSE_ATTESTATION,
           ("post_delta_evidence_bindings[]", "evidence_ref"),
           CARDINALITY_MANY, MATERIALIZATION_BODY_REQUIRED,
-          CLOSE_BUNDLE_CLOSURE),
+          CLOSE_BUNDLE_CLOSURE,
+          acceptance_dependency=True),
     _spec("close-page.reviewer-attestation", SOURCE_PAGE_REVIEW,
           ("reviewer_attestation_receipt",), CARDINALITY_ONE,
+          MATERIALIZATION_BODY_REQUIRED, CLOSE_BUNDLE_CLOSURE,
+          acceptance_dependency=True),
+
+    # Review records retain their own references even before an AuditReceipt
+    # or wrapper exists. A round-one link is also review history; these
+    # materialization edges alone never authorize another review round.
+    _spec("batch-page-review.opening-transition", SOURCE_BATCH_PAGE_REVIEW,
+          ("opening_transition_receipt",), CARDINALITY_ONE,
           MATERIALIZATION_BODY_REQUIRED, CLOSE_BUNDLE_CLOSURE),
+    _spec("batch-page-review.consumed-evidence", SOURCE_BATCH_PAGE_REVIEW,
+          ("consumed_evidence_refs[]",), CARDINALITY_MANY,
+          MATERIALIZATION_BODY_REQUIRED, CLOSE_BUNDLE_CLOSURE,
+          acceptance_dependency=True),
+    _spec("substantive-review.opening-transition", SOURCE_SUBSTANTIVE_REVIEW,
+          ("opening_transition_receipt",), CARDINALITY_ONE,
+          MATERIALIZATION_BODY_REQUIRED, CLOSE_BUNDLE_CLOSURE),
+    _spec("substantive-review.round-one", SOURCE_SUBSTANTIVE_REVIEW,
+          ("round_1_receipt_id",), CARDINALITY_OPTIONAL,
+          MATERIALIZATION_BODY_REQUIRED, CLOSE_BUNDLE_CLOSURE,
+          acceptance_dependency=True),
+
+    # A correction cites immutable history, not evidence for another pass.
+    _spec("evidence-invalidation.subject", SOURCE_EVIDENCE_INVALIDATION,
+          ("subjects[]", "receipt_id"), CARDINALITY_MANY,
+          MATERIALIZATION_BODY_REQUIRED),
+    _spec("metadata-transition.gate", SOURCE_METADATA_TRANSITION,
+          ("gate_receipt",), CARDINALITY_ONE,
+          MATERIALIZATION_BODY_REQUIRED,
+          acceptance_dependency=True),
+    _spec("candidate-delta.page-evidence", SOURCE_CANDIDATE_DELTA,
+          ("pages[]", "gate_receipts[]"), CARDINALITY_MANY,
+          MATERIALIZATION_BODY_REQUIRED,
+          acceptance_dependency=True),
 
     # Full AuditReceipt links its historical attempt and producer evidence.
     _spec("audit-receipt.opening-transition", SOURCE_AUDIT_RECEIPT,
@@ -398,10 +474,12 @@ RECEIPT_REFERENCE_SPECS = (
           MATERIALIZATION_BODY_REQUIRED, CLOSE_BUNDLE_CLOSURE),
     _spec("audit-receipt.evidence", SOURCE_AUDIT_RECEIPT,
           ("evidence_ref",), CARDINALITY_ONE,
-          MATERIALIZATION_BODY_REQUIRED, CLOSE_BUNDLE_CLOSURE),
+          MATERIALIZATION_BODY_REQUIRED, CLOSE_BUNDLE_CLOSURE,
+          acceptance_dependency=True),
     _spec("audit-receipt.reused-alias", SOURCE_AUDIT_RECEIPT,
           ("reused_receipt_id",), CARDINALITY_OPTIONAL,
-          MATERIALIZATION_ID_ONLY, CLOSE_BUNDLE_CLOSURE, alias=True),
+          MATERIALIZATION_ID_ONLY, CLOSE_BUNDLE_CLOSURE, alias=True,
+          acceptance_dependency=True),
 
     # Apply-delta evidence can be the current Coverage owner.
     _spec("delta-apply.opening-transition", SOURCE_DELTA_APPLY,
@@ -415,7 +493,8 @@ RECEIPT_REFERENCE_SPECS = (
     # only the aggregate body and treats these child IDs as history.
     _spec("revalidation.boundary-gate", SOURCE_REVALIDATION,
           ("boundary_gate_receipts[]", "receipt_id"), CARDINALITY_MANY,
-          MATERIALIZATION_BODY_REQUIRED, REVALIDATION_CLOSURE),
+          MATERIALIZATION_BODY_REQUIRED, REVALIDATION_CLOSURE,
+          acceptance_dependency=True),
     _spec("revalidation.gate-alias", SOURCE_REVALIDATION,
           ("revalidation_bindings[]", "gate_receipt_id"), CARDINALITY_MANY,
           MATERIALIZATION_ID_ONLY, REVALIDATION_CLOSURE, alias=True),
@@ -436,13 +515,16 @@ RECEIPT_REFERENCE_SPECS = (
     _spec("batch-review.delta-page", SOURCE_BATCH_REVIEW,
           ("delta_page_receipt_ids[]",), CARDINALITY_MANY,
           MATERIALIZATION_COLD_PROJECTION, BATCH_REVIEW_CLOSURE,
-          projection_fields=PASS_PROJECTION_FIELDS),
+          projection_fields=PASS_PROJECTION_FIELDS,
+          acceptance_dependency=True),
     _spec("batch-review.judgment", SOURCE_BATCH_REVIEW,
           ("judgment_receipt_ids[]",), CARDINALITY_MANY,
-          MATERIALIZATION_BODY_REQUIRED, BATCH_REVIEW_CLOSURE),
+          MATERIALIZATION_BODY_REQUIRED, BATCH_REVIEW_CLOSURE,
+          acceptance_dependency=True),
     _spec("batch-review.audit-evidence", SOURCE_BATCH_REVIEW,
           ("audit_evidence_bindings[]", "evidence_ref"), CARDINALITY_MANY,
-          MATERIALIZATION_BODY_REQUIRED, BATCH_REVIEW_CLOSURE),
+          MATERIALIZATION_BODY_REQUIRED, BATCH_REVIEW_CLOSURE,
+          acceptance_dependency=True),
 
     # Active writer lock owner.  The seal command still refuses every lock;
     # declaring its phase graph makes the refusal and recovery inspect the

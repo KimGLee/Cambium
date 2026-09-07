@@ -419,10 +419,12 @@ modules:
       - plan_projection_errors
       - registry_sha256
       - resolve_consumed_evidence
+      - review_input_constraints
       - select_s_targets
       - validate_applicability_disposition
       - validate_input_binding
       - validate_plan_base_closure
+      - validate_plan_applicability
       - validate_producer_receipt
       - validate_receipt_consumption
   - module: execution.audit.batch_review_receipt_contract
@@ -673,6 +675,30 @@ modules:
     public:
       - EvidenceAttemptError
       - unique_current_attempt
+  - module: execution.evidence.evidence_invalidation_contract
+    path: Tools/execution/evidence/evidence_invalidation_contract.py
+    area: execution
+    domain: evidence
+    layer: contract
+    public:
+      - CAPABILITY_ID
+      - RECEIPT_TYPE_ID
+      - TOOL
+      - TOOL_VERSION
+      - build_event
+      - current_receipt_errors
+      - current_reference_deficits
+      - invalidation_view
+      - load_policy
+      - resolve_body
+      - validate_subjects
+  - module: execution.evidence.record_evidence_invalidation
+    path: Tools/execution/evidence/record_evidence_invalidation.py
+    area: execution
+    domain: evidence
+    layer: application
+    public:
+      - main
   - module: execution.evidence.manual_attestation
     path: Tools/execution/evidence/manual_attestation.py
     area: execution
@@ -687,6 +713,7 @@ modules:
     domain: evidence
     layer: application
     public:
+      - CONSUMER_OPERATION
       - DETERMINISTIC_GATE_PRODUCER_IDENTITY
       - DETERMINISTIC_GATE_RECEIPT_TYPE_ID
       - GateRuntimeContext
@@ -724,6 +751,7 @@ modules:
       - ReceiptReferenceError
       - ResolvedReceipt
       - SOURCE_AUDIT_RECEIPT
+      - SOURCE_CANDIDATE_DELTA
       - SOURCE_CLOSE
       - SOURCE_CLOSE_ATTESTATION
       - SOURCE_CLOSE_GLOBAL_REVIEW
@@ -1073,6 +1101,7 @@ modules:
       - resolve_activation_phase_receipt
       - resume_next_action
       - reviewed_without_current_evidence
+      - runtime_admission_errors
       - runtime_authority_context
       - runtime_authority_lock_fields
       - runtime_authority_validation_kwargs
@@ -1113,6 +1142,7 @@ modules:
     layer: contract
     public:
       - require_runtime_authority_current
+      - runtime_admission_errors
       - runtime_authority_context
       - runtime_authority_currency_errors
       - runtime_authority_lock_fields
@@ -1519,6 +1549,7 @@ modules:
       - BATCH_CLOSE_RECEIPT_PATH
       - BATCH_JUDGMENT_RECEIPT_PATH
       - BATCH_PAGE_REVIEW_RECEIPT_PATH
+      - EVIDENCE_INVALIDATION_RECEIPT_PATH
       - CANONICAL_STATE
       - CHANGED_SCOPE_EVIDENCE_RECEIPT_PATH
       - CLI_CONTRACT_ARTIFACT_PATH
@@ -2954,6 +2985,12 @@ modules:
     path: Tools/record_batch_page_review.py
     area: execution
     domain: audit
+    layer: entrypoint
+    public: []
+  - module: record_evidence_invalidation
+    path: Tools/record_evidence_invalidation.py
+    area: execution
+    domain: evidence
     layer: entrypoint
     public: []
   - module: record_batch_review

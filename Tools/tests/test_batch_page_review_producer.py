@@ -1044,6 +1044,44 @@ class BatchPageReviewProducerTests(unittest.TestCase):
             (rendering_obligation["obligation_id"],),
             contract.consumption_dependency_obligation_ids(
                 plan["obligations"], obligation, self.registry))
+        constraints = contract.review_input_constraints(
+            plan["obligations"], obligation, self.registry)
+        self.assertEqual(
+            [self.registry["m_applicability_contract"][
+                "required_dependency_disposition"]],
+            constraints["allowed_applicability_dispositions"])
+        # A plan obligation, not a catalog entry or reviewer label, determines
+        # the dependency. Exercise absence and presence in the same owner.
+        for available in (False, True):
+            catalog = ({rendering_evidence["receipt_id"]: rendering_evidence}
+                       if available else {})
+            with self.subTest(available=available, disposition="not-applicable"):
+                with self.assertRaisesRegex(ValueError, "not-applicable contradicts"):
+                    contract.resolve_consumed_evidence(
+                        plan, plan_sha256, spec, "M.md", catalog, [],
+                        "not-applicable", self.registry,
+                        current_receipt_ids=frozenset(catalog))
+            with self.subTest(available=available, disposition="applicable"):
+                if available:
+                    self.assertEqual((rendering_evidence,),
+                        contract.resolve_consumed_evidence(
+                            plan, plan_sha256, spec, "M.md", catalog, None,
+                            "applicable", self.registry,
+                            current_receipt_ids=frozenset(catalog)))
+                else:
+                    with self.assertRaisesRegex(ValueError, "exactly one current"):
+                        contract.resolve_consumed_evidence(
+                            plan, plan_sha256, spec, "M.md", catalog, None,
+                            "applicable", self.registry,
+                            current_receipt_ids=frozenset())
+        # Stable record parsing keeps the erroneous declaration as readable
+        # history; using it to discharge the obligation is a separate proof.
+        erroneous = dict(not_applicable, audit_plan_sha256=plan_sha256)
+        contract.validate_producer_receipt(erroneous, self.registry)
+        with self.assertRaisesRegex(ValueError, "not-applicable contradicts"):
+            contract.validate_receipt_consumption(
+                plan, plan_sha256, erroneous, {}, self.registry,
+                current_receipt_ids=frozenset())
         receipt = producer.build_review_receipt(
             root=str(REPOSITORY), plan=plan, plan_sha256=plan_sha256,
             obligation=obligation, spec=spec,

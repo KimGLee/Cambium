@@ -32,6 +32,7 @@ _RECEIPT_CONTRACT_KEYS = frozenset((
     "receipt_type_id", "validator_owner", "catalog_lifecycle",
     "reference_source_kind",
 ))
+_RECEIPT_CONTRACT_OPTIONAL_KEYS = frozenset(("correction_subject",))
 
 
 class ReceiptTypeContractError(ValueError):
@@ -47,6 +48,7 @@ class ReceiptTypeRegistration:
     validator_owner: str
     catalog_lifecycle: tuple
     reference_source_kind: str
+    correction_subject: bool = False
 
 
 def _closed_mapping(value, fields, label):
@@ -100,7 +102,15 @@ def load_receipt_type_registry(root=None,
                 "%s receipt_contracts must be a list" % label)
         for row_index, row in enumerate(rows):
             row_label = "%s receipt_contracts[%d]" % (label, row_index)
-            _closed_mapping(row, _RECEIPT_CONTRACT_KEYS, row_label)
+            if not isinstance(row, dict):
+                raise ReceiptTypeContractError("%s must be a mapping" % row_label)
+            _closed_mapping(
+                row, _RECEIPT_CONTRACT_KEYS | (
+                    set(row) & _RECEIPT_CONTRACT_OPTIONAL_KEYS), row_label)
+            correction_subject = row.get("correction_subject", False)
+            if not isinstance(correction_subject, bool):
+                raise ReceiptTypeContractError(
+                    "%s correction_subject must be boolean" % row_label)
             receipt_type_id = row.get("receipt_type_id")
             if not isinstance(receipt_type_id, str) or not _ID_RE.fullmatch(
                     receipt_type_id):
@@ -137,6 +147,7 @@ def load_receipt_type_registry(root=None,
                 validator_owner=validator_owner,
                 catalog_lifecycle=lifecycle,
                 reference_source_kind=source_kind,
+                correction_subject=correction_subject,
             )
     duplicates = sorted(
         receipt_type_id for receipt_type_id, count in producer_counts.items()

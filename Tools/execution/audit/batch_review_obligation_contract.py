@@ -52,6 +52,7 @@ _TRIGGER_PARTITION_FIELDS = {"trigger", "partition"}
 _M_APPLICABILITY_FIELDS = {
     "unconditional_predicate", "disposition_values", "applicable_reason",
     "not_applicable_reason", "plan_definition_policy",
+    "required_dependency_disposition",
 }
 _M_CONSUMPTION_FIELDS = {
     "item_id", "resolution", "selector", "hold_reason",
@@ -297,7 +298,9 @@ def _validate_registry(document):
             applicability_contract.get("not_applicable_reason") !=
             "nonempty" or
             applicability_contract.get("plan_definition_policy") !=
-            "freeze-all-registered-atoms"):
+            "freeze-all-registered-atoms" or
+            applicability_contract.get("required_dependency_disposition") !=
+            "applicable"):
         raise ValueError("M applicability disposition contract is invalid")
 
     plan_contract = audit_plan_contract.validate_contract(
@@ -829,10 +832,10 @@ def _consumption_dependency_obligations(obligations, spec, target,
     """Resolve the frozen obligations one M atom consumes.
 
     This is the single selector interpretation shared by execution ordering,
-    evidence production, and final consumption validation.  It returns no
-    dependency for emitting atoms or for an explicit contract-gap/HOLD: the
-    latter still needs the Agent's applicability judgment before the producer
-    can either record ``not-applicable`` or surface the existing HOLD.
+    evidence production, and final consumption validation. Emitting atoms
+    have no consumption dependency. A contract-gap is not an empty dependency
+    set: without a resolved selector neither applicability nor consumption
+    can be proved.
     """
     if not isinstance(obligations, (list, tuple)):
         raise ValueError("AuditPlan obligations must be a sequence")
@@ -843,7 +846,9 @@ def _consumption_dependency_obligations(obligations, spec, target,
     if not isinstance(consumption, dict):
         raise ValueError("consumes-role M item has no consumption contract")
     if consumption.get("resolution") == "hold":
-        return ()
+        raise ValueError(
+            "M consumption selector is HOLD for %s: %s" %
+            (spec.get("item_id"), consumption.get("hold_reason")))
     selector = consumption.get("selector")
     if not isinstance(selector, dict):
         raise ValueError("resolved M consumption contract has no selector")
@@ -913,6 +918,53 @@ def consumption_dependency_obligation_ids(obligations,
             obligations, spec, consuming_obligation.get("target"), registry))
 
 
+def review_input_constraints(obligations, consuming_obligation, registry=None):
+    """Project machine-known review inputs, never a semantic verdict.
+
+    Missing evidence cannot erase a required dependency. Only a registered
+    selector or an unconditional predicate can constrain a human disposition;
+    conditional emitting judgments remain with the reviewer. Rendering plan
+    drift/contract gaps are checked by the stage plan owner before this view.
+    """
+    registry = registry or _SHIPPED_REGISTRY
+    spec = obligation_spec_for_rule(
+        consuming_obligation.get("owner_rule_id"), registry)
+    dependencies = consumption_dependency_obligation_ids(
+        obligations, consuming_obligation, registry)
+    if spec["tier"] != "M":
+        dispositions = [None]
+    elif (spec["applicability"] ==
+          registry["m_applicability_contract"]["unconditional_predicate"] or
+          dependencies):
+        dispositions = [registry["m_applicability_contract"][
+            "required_dependency_disposition"]]
+    else:
+        dispositions = list(
+            registry["m_applicability_contract"]["disposition_values"])
+    return {
+        "allowed_applicability_dispositions": dispositions,
+        "required_consumption_obligation_ids": list(dependencies),
+    }
+
+
+def validate_plan_applicability(obligations, spec, target, disposition,
+                                registry=None):
+    """Reject contradictions with frozen plan facts, independent of live input.
+
+    The original statement remains structurally readable. A known incorrect
+    declaration needs a correction decision; it is not ordinary input drift.
+    """
+    registry = registry or _SHIPPED_REGISTRY
+    dependencies = _consumption_dependency_obligations(
+        obligations, spec, target, registry)
+    if disposition == "not-applicable" and dependencies:
+        raise ValueError(
+            "not-applicable contradicts required AuditPlan consumption "
+            "obligations: %s" % ", ".join(
+                row["obligation_id"] for row in dependencies))
+    return dependencies
+
+
 def resolve_consumed_evidence(plan, plan_sha256, spec, target, catalog,
                               referenced_receipt_ids, disposition,
                               registry=None, *, current_receipt_ids=None):
@@ -935,6 +987,9 @@ def resolve_consumed_evidence(plan, plan_sha256, spec, target, catalog,
     target = require_trimmed_string(target, "consumption target")
     if not isinstance(catalog, dict):
         raise ValueError("current evidence catalog must be a mapping")
+    derive_refs = referenced_receipt_ids is None
+    if derive_refs and current_receipt_ids is None:
+        raise ValueError("deriving evidence references requires a current view")
     refs = _string_list(
         list(referenced_receipt_ids or ()), "consumed evidence references",
         allow_empty=True, sorted_unique=True)
@@ -966,6 +1021,8 @@ def resolve_consumed_evidence(plan, plan_sha256, spec, target, catalog,
         spec, disposition,
         None if disposition == "applicable" else "selector-validation",
         registry)
+    expected_obligations = validate_plan_applicability(
+        plan.get("obligations") or (), spec, target, disposition, registry)
     if disposition_values["applicability_disposition"] == "not-applicable":
         if refs:
             raise ValueError(
@@ -977,19 +1034,9 @@ def resolve_consumed_evidence(plan, plan_sha256, spec, target, catalog,
         return ()
     if spec.get("evidence_role") != "consumes":
         raise ValueError("M item has no admitted consumption role")
-    consumption = spec.get("consumption_contract")
-    if not isinstance(consumption, dict):
-        raise ValueError("consumes-role M item has no consumption contract")
-    if consumption.get("resolution") == "hold":
-        raise ValueError(
-            "M consumption selector is HOLD for %s: %s" %
-            (spec.get("item_id"), consumption.get("hold_reason")))
-    selector = consumption.get("selector")
-    if not isinstance(selector, dict):
-        raise ValueError("resolved M consumption contract has no selector")
-    expected_obligations = _consumption_dependency_obligations(
-        plan.get("obligations") or (), spec, target, registry)
-
+    # The dependency owner above has already validated the selector, including
+    # HOLD. Do not maintain a second interpretation after disposition parsing.
+    selector = spec["consumption_contract"]["selector"]
     records_by_obligation = {
         obligation["obligation_id"]: []
         for obligation in expected_obligations
@@ -1039,7 +1086,7 @@ def resolve_consumed_evidence(plan, plan_sha256, spec, target, catalog,
         resolved.append(selected)
     resolved.sort(key=lambda row: row["receipt_id"])
     expected_refs = tuple(row["receipt_id"] for row in resolved)
-    if refs != expected_refs:
+    if not derive_refs and refs != expected_refs:
         raise ValueError(
             "consumed evidence references differ from selector %s: "
             "expected=%s actual=%s" %
@@ -1546,7 +1593,9 @@ __all__ = [
     'select_s_targets',
     'validate_plan_base_closure',
     'resolve_consumed_evidence',
+    'review_input_constraints',
     'validate_applicability_disposition',
+    'validate_plan_applicability',
     'current_receipt_errors',
     'validate_input_binding',
     'validate_producer_receipt',

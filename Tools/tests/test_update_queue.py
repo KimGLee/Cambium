@@ -28,6 +28,7 @@ import Tools.execution.task_runtime.runtime_validation as runtime_validation  # 
 import Tools.execution.task_runtime.update_queue as update_queue  # noqa: E402
 import Tools.execution.task_runtime.update_task as update_task  # noqa: E402
 import Tools.execution.task_runtime.queue_runtime.revalidation as revalidation  # noqa: E402
+from Tools.execution.evidence import record_evidence_invalidation
 import Tools.platform.common.kblib as kblib  # noqa: E402
 from Tools.tests.fixtures.integration.update_queue_checkpoints import (  # noqa: E402
     install_update_queue_checkpoint,
@@ -53,6 +54,28 @@ def _invoke_resume_status(root):
     with redirect_stdout(stdout), redirect_stderr(stderr):
         code = check_queue.main([str(root), "--resume-status"])
     return code, stdout.getvalue() + stderr.getvalue()
+
+
+def _withdraw_batch_review(case):
+    """Supply one real correction at the adjacent writer checkpoint."""
+    before = runtime_validation.validate_runtime(case.root)
+    case.assertEqual([], before["errors"])
+    subject = before["items_by_id"]["B1"]["batch_receipts"][0]
+    original = queue_runtime.current_receipt_catalog(before)[subject]
+    stdout, stderr = io.StringIO(), io.StringIO()
+    with redirect_stdout(stdout), redirect_stderr(stderr):
+        code = record_evidence_invalidation.main([
+            str(case.root), "--event-id", "rollback-correction", "--subject", subject,
+            "--reason", "incorrect-result", "--decision-mode", "explicit-user",
+            "--actor-role", "user", "--authority-reference", "fixture-user-decision",
+            "--statement", "Withdraw the batch review before its existing exact rollback.",
+            "--apply", "--json"])
+    case.assertEqual(0, code, stdout.getvalue() + stderr.getvalue())
+    after = runtime_validation.validate_runtime(case.root)
+    case.assertEqual([], after["structural_errors"])
+    case.assertTrue(after["current_evidence_deficits"])
+    case.assertNotIn(subject, queue_runtime.current_receipt_catalog(after))
+    case.assertEqual(original, queue_runtime.historical_receipt_catalog(after)[subject])
 
 
 def _invoke_batch_close(root, *arguments):
@@ -483,6 +506,7 @@ class MergeRollbackIntegrationTests(_CheckpointCase):
     CHECKPOINT = "merged-b1"
 
     def test_preapply_rollback_archives_delta_and_records_invalidation(self):
+        _withdraw_batch_review(self)
         revision, fingerprint = self.expected()
         coverage_before = (
             self.root / queue_runtime.COVERAGE_PATH).read_bytes()
@@ -516,6 +540,7 @@ class AppliedRollbackIntegrationTests(BatchCloseCheckpointCase):
     """Consume the batch-close owner's applied checkpoint at the rollback edge."""
 
     def test_applied_rollback_restores_the_exact_preapply_coverage(self):
+        _withdraw_batch_review(self)
         archives = sorted(
             (self.root / ".cambium/receipts/pre-apply-coverage").glob(
                 "B1-r*.yaml"))

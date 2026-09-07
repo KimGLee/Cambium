@@ -137,7 +137,8 @@ def _external_reparse(item, status, obligation, *, disposition, token,
 
 def _complete_precursor(root, item, status, obligation, precursor):
     arguments = _base_arguments(item, status, obligation)
-    arguments["evidence_receipt"] = precursor["receipt_id"]
+    arguments["obligation_id"] = [obligation["obligation_id"]]
+    arguments["evidence_receipt"] = [precursor["receipt_id"]]
     return {
         "status": "invoke",
         "token": "complete-audit-receipt",
@@ -287,12 +288,28 @@ def _missing_step(result, item, status, obligation):
         variant = ("s-sampled-page" if obligation.get("producer_check") ==
                    "batch_page_review:s-tier-sampled-review"
                    else "m-atomic-item")
+        constraints = batch_review_obligation_contract.review_input_constraints(
+            [row["obligation"] for row in status["obligations"]], obligation)
+        dependency_ids = set(constraints["required_consumption_obligation_ids"])
+        refs = []
+        for row in status["obligations"]:
+            if row["obligation"]["obligation_id"] not in dependency_ids:
+                continue
+            if (row["status"] != "satisfied" or
+                    not isinstance(row.get("evidence_ref"), str) or
+                    not row["evidence_ref"]):
+                return _repair(
+                    item, status, obligation, "consumption-evidence-not-ready",
+                    "required consumption evidence has no satisfied identity")
+            refs.append(row["evidence_ref"])
+        constraints["consumed_evidence_refs"] = sorted(set(refs))
         return {
             "status": "await-agent",
             "token": "record-batch-page-review",
             "capability_id": None,
             "tool": None,
-            "target": _target(item, obligation, status),
+            "target": dict(_target(item, obligation, status),
+                           review_input_constraints=constraints),
             "arguments": {},
             "required_input": {
                 "reviewer_context_id": "string",
@@ -301,14 +318,14 @@ def _missing_step(result, item, status, obligation):
                 "statement": "string",
                 "applicability_disposition": "applicable|not-applicable|null",
                 "applicability_reason": "string|null",
-                "consumed_evidence_refs": "list",
             },
             "reason_code": "batch-page-review-requires-judgment",
             "reason": None,
             "resume_tool": _tool(result["root"], capability),
             "resume_capability_id": capability,
             "resume_arguments": dict(
-                arguments, page=obligation["target"], variant=variant),
+                arguments, page=obligation["target"], variant=variant,
+                consumed_evidence_ref=constraints["consumed_evidence_refs"]),
         }
 
     if route == "profile-batch-judgment":
@@ -431,8 +448,7 @@ def _group_production(result, item, status, first):
         candidate = _missing_step(result, item, status, row["obligation"])
         if candidate["status"] == "invoke" and candidate["tool"] == first["tool"]:
             ids.append(row["obligation"]["obligation_id"])
-    if len(ids) > 1:
-        first["arguments"]["obligation_id"] = ids
+    first["arguments"]["obligation_id"] = ids
     return first
 
 

@@ -113,8 +113,8 @@ def main(argv=None):
     root = os.path.realpath(os.path.abspath(args.root))
     try:
         runtime = runtime_validation.validate_runtime(root)
-        metadata_gate_runtime.require_admitted_runtime(runtime)
-        authority = queue_runtime.runtime_authority_context(runtime)
+        metadata_gate_runtime.require_admitted_runtime(runtime, purpose="evidence-production")
+        authority = queue_runtime.runtime_authority_context(runtime, purpose="evidence-production")
         context = metadata_gate_runtime.load_gate_context(
             root, args.gate_id, args.page, runtime=runtime,
             authority=authority)

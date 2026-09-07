@@ -132,7 +132,31 @@ def runtime_metadata_execution_contract(observation):
     return contract
 
 
-def runtime_authority_context(result):
+def runtime_admission_errors(result, *, purpose="current"):
+    """Separate failed state proofs from an operation's permitted purpose.
+
+    Recording a correction may leave current evidence unusable. It never
+    tolerates a malformed ledger, unproved historical object or stale root
+    authority. Ordinary authorization retains the complete fail-closed view.
+    """
+    if not isinstance(result, dict):
+        raise TypeError("runtime validation result must be a mapping")
+    if purpose == "current":
+        return list(result.get("errors") or [])
+    if purpose in (
+            "record-evidence-invalidation", "evidence-production",
+            "typed-field-metadata-transition", "merge-ready-evidence-rollback"):
+        if "structural_errors" not in result:
+            return ["runtime observation has no structural admission proof"]
+        # This admits observation of authoritative state, not the operation.
+        # Its existing owner must still check the exact Gate/transition, CAS,
+        # scope and resulting after-image. Forward merge/close/complete never
+        # use these purposes.
+        return list(result["structural_errors"])
+    raise ValueError("runtime admission purpose is not registered")
+
+
+def runtime_authority_context(result, *, purpose="current"):
     """Freeze one successful runtime admission for a complete transaction.
 
     Ordinary writers call :func:`validate_runtime` once without injected
@@ -144,7 +168,7 @@ def runtime_authority_context(result):
     """
     if not isinstance(result, dict):
         raise TypeError("runtime validation result must be a mapping")
-    if result.get("errors"):
+    if runtime_admission_errors(result, purpose=purpose):
         raise ValueError(
             "runtime authority context requires a successful validation")
     root = result.get("root")
@@ -184,7 +208,10 @@ def runtime_authority_context(result):
         raise ValueError(
             "runtime active Standards view does not select the validated "
             "Queue version")
-    context = {"root": os.path.realpath(os.path.abspath(root))}
+    context = {
+        "root": os.path.realpath(os.path.abspath(root)),
+        "admission_purpose": purpose,
+    }
     for spec in RUNTIME_AUTHORITY_REGISTRY:
         context[spec.context_key] = values[spec.authority_id]
     return context

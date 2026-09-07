@@ -64,7 +64,8 @@ def initialize_task_plan_scenario(walker):
         path, batch_id = "Topics/%s.md" % name, "B%d" % order
         plan["planned_work"]["pages"].append({
             **copy.deepcopy(page_base), "path": path, "canonical_owner": path,
-            "tier": "S", "priority": "P2", "next_batch": batch_id,
+            "tier": getattr(walker, "TASK_PAGE_TIERS", {}).get(path, "S"),
+            "priority": "P2", "next_batch": batch_id,
             "prerequisites": [] if order == 1 else ["Topics/A.md"],
         })
         plan["planned_work"]["batch_specs"].append({

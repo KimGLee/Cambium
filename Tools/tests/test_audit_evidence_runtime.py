@@ -147,6 +147,23 @@ class CurrentEvidenceCheckpoint:
 class AuditEvidenceReconciliationContractTests(CurrentEvidenceCheckpoint,
                                                 unittest.TestCase):
 
+    def test_withdrawn_l_review_preserves_rounds_and_cannot_restart(self):
+        first = self.review_record("review-first", blocking=True)
+        second = self.review_record("review-confirmed", prior=first)
+        for withdrawn in (first, second, self.review):
+            with self.subTest(round=withdrawn["round"], verdict=withdrawn["verdict"]):
+                history = {row["receipt_id"]: row for row in (first, second, self.review)}
+                self.result["receipt_catalog"] = history
+                self.result["evidence_invalidation_view"] = {
+                    "affected": {withdrawn["receipt_id"]: ("correction",)}}
+                self.result["invalidated_evidence_receipt_ids"] = [withdrawn["receipt_id"]]
+                self.catalog.clear()
+                self.assertEqual("escalated", self.resolution()["status"])
+                with self.assertRaisesRegex(runtime.AuditEvidenceError, "escalated"):
+                    runtime.require_substantive_review_attempt(
+                        self.result, self.item, self.plan, self.plan_sha256,
+                        self.obligation, round_number=1)
+
     def review_record(self, identity, *, prior=None, blocking=False):
         record = self.copy_with_id(self.review, identity)
         if blocking:
@@ -442,6 +459,24 @@ class AuditEvidenceReconciliationContractTests(CurrentEvidenceCheckpoint,
         self.assertIn("absent from the current-use catalog",
                       row["unresolved_reason"])
 
+    def test_terminal_reports_withdrawn_close_without_reauthorizing_history(self):
+        row = runtime._reconciliation_row(
+            self.result, self.plan, self.obligation, self.resolution())
+        close = {"receipt_id": "closed", "audit_plan_id": self.plan["plan_id"],
+                 **runtime._reconciliation_projection([row])}
+        self.item.update(state="closed", close_gate_receipt="closed")
+        self.result["receipt_catalog"] = {"closed": close}
+        self.result["current_receipt_catalog"] = {}
+        with self.assertRaisesRegex(runtime.AuditEvidenceError, "no current close"):
+            runtime.terminal_plan_reconciliation(self.result)
+        self.result["invalidated_evidence_receipt_ids"] = [
+            "closed", self.review["receipt_id"]]
+        projection = runtime.terminal_plan_reconciliation(self.result)
+        self.assertIn("closed", projection["invalidated_receipts"])
+        self.assertGreater(projection["unresolved_invalidations"], 0)
+        self.assertEqual("closed", self.item["state"])
+        self.assertEqual(close, self.result["receipt_catalog"]["closed"])
+
     def test_reconciliation_projection_is_closed_disjoint_and_hash_bound(self):
         row = runtime._reconciliation_row(
             self.result, self.plan, self.obligation, self.resolution())
@@ -670,12 +705,21 @@ class TerminalDimensionEvidenceProjectionTests(unittest.TestCase):
         }
 
     def project(self):
+        def resolve(_result, _item, _plan, _sha, catalog, obligation,
+                    require_current):
+            # The final-evidence owner can consume other obligations (M
+            # consumes atoms). Keep the complete close-selected checkpoint,
+            # while excluding all unselected attempts and other batches.
+            self.assertEqual({ref for row in self.close["audit_evidence_reconciliation"]
+                              for ref in row["produced_evidence_refs"]}, set(catalog))
+            self.assertFalse(require_current)
+            return self._resolution(obligation)
+
         with mock.patch.object(
                 runtime, "_post_delta_evidence_closure",
                 return_value=self._postdelta_closure()), mock.patch.object(
                 runtime, "_required_obligation_resolution",
-                side_effect=lambda _result, _item, _plan, _sha, _catalog,
-                obligation, require_current: self._resolution(obligation)):
+                side_effect=resolve):
             return runtime.terminal_dimension_evidence(self.result)
 
     def test_m_and_profile_evidence_project_but_dimensionless_and_na_do_not(self):

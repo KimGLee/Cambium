@@ -172,8 +172,10 @@ def _post_state_errors(root, context, receipt, expected_coverage_sha,
     errors = []
     post = runtime_validation.validate_runtime(
         root, extra_receipts=[receipt], **authority_kwargs)
-    if post.get("errors"):
-        errors.append("runtime: %s" % "; ".join(post["errors"]))
+    admission_errors = queue_runtime.runtime_admission_errors(
+        post, purpose=context.authority.get("admission_purpose", "current"))
+    if admission_errors:
+        errors.append("runtime: %s" % "; ".join(admission_errors))
     if post.get("coverage_sha256") != expected_coverage_sha:
         errors.append("Coverage after-image fingerprint differs")
     if post.get("queue_sha256") != context.runtime.get("queue_sha256"):
@@ -263,8 +265,10 @@ def main(argv=None):
     root = os.path.realpath(os.path.abspath(args.root))
     try:
         runtime = runtime_validation.validate_runtime(root)
-        metadata_gate_runtime.require_admitted_runtime(runtime)
-        authority = queue_runtime.runtime_authority_context(runtime)
+        metadata_gate_runtime.require_admitted_runtime(
+            runtime, purpose=metadata_gate_runtime.CONSUMER_OPERATION)
+        authority = queue_runtime.runtime_authority_context(
+            runtime, purpose=metadata_gate_runtime.CONSUMER_OPERATION)
         context = metadata_gate_runtime.load_gate_context(
             root, args.gate_id, args.page, runtime=runtime,
             authority=authority)
@@ -361,10 +365,12 @@ def main(argv=None):
             with kblib.no_authoritative_write_guard(lease):
                 locked = runtime_validation.validate_runtime(
                     root, **authority_kwargs)
-                if locked.get("errors"):
+                admission_errors = queue_runtime.runtime_admission_errors(
+                    locked, purpose=context.authority.get("admission_purpose", "current"))
+                if admission_errors:
                     raise ValueError(
                         "runtime changed before metadata write: %s" %
-                        "; ".join(locked["errors"]))
+                        "; ".join(admission_errors))
                 runtime_validation.require_gate_context_current(
                     context, "metadata transition locked preflight",
                     runtime=locked)
@@ -437,10 +443,12 @@ def main(argv=None):
                         (receipt_outcome, receipt_error))
                 persisted = runtime_validation.validate_runtime(
                     root, **authority_kwargs)
-                if persisted.get("errors"):
+                admission_errors = queue_runtime.runtime_admission_errors(
+                    persisted, purpose=context.authority.get("admission_purpose", "current"))
+                if admission_errors:
                     raise ValueError(
                         "persisted metadata transition is invalid: %s" %
-                        "; ".join(persisted["errors"]))
+                        "; ".join(admission_errors))
                 _current_receipt_from(
                     persisted, context, args.gate_receipt, args.value,
                     require_current_repository=False)
