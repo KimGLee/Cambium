@@ -114,11 +114,17 @@ class EvidenceInvalidationContractTests(unittest.TestCase):
                 "evidence_ref": "review-one", "opening_transition_receipt": "opened"}
         wrapper = {"receipt_id": "wrapper", "receipt_type_id": "batch-review-wrapper-v2",
                    "audit_evidence_bindings": [{"evidence_ref": "full"}]}
+        close = {"receipt_id": "close", "receipt_type_id": "batch-close-gate-v1",
+                 "queue_consistency_receipt": "unrelated",
+                 "delta_apply_receipt": "state-write",
+                 "global_review_receipt": "unrelated",
+                 "reviewer_attestation_receipt": "unrelated",
+                 "audit_evidence_reconciliation": [{"selected_evidence_ref": "full"}]}
         unrelated = dict(self.subject, receipt_id="unrelated", consumed_evidence_refs=[])
-        self.catalog.update(full=full, wrapper=wrapper, unrelated=unrelated)
+        self.catalog.update(full=full, wrapper=wrapper, close=close, unrelated=unrelated)
         before = copy.deepcopy(self.catalog)
         view = contract.invalidation_view(self.catalog, registry=self.registry)
-        self.assertEqual({"review-one", "full", "wrapper"}, set(view["affected"]))
+        self.assertEqual({"review-one", "full", "wrapper", "close"}, set(view["affected"]))
         self.assertEqual({"review-one"}, set(view["direct"]))
         self.assertNotIn(self.event["receipt_id"], view["affected"])
         self.assertEqual(before, self.catalog)

@@ -52,7 +52,7 @@
       "owner": "Tools/tests/fixtures/e2e/batch_close_scenarios.py",
       "path": "Tools/tests/fixtures/integration/batch_close_applied_checkpoint",
       "purpose": "Generated current-contract applied batch checkpoint for close producer integrations",
-      "tree_sha256": "sha256:3a3d20bb3ff0e2d2e606fa481a8707668389306a39d256ab4ed92c4fea9ca2ac"
+      "tree_sha256": "sha256:f12b579a90ccf986e185ddf3013f8dca9523a87187f79f17e26162079f668720"
     },
     {
       "bytes": 111590,
@@ -63,7 +63,7 @@
       "owner": "Tools/tests/fixtures/e2e/batch_close_scenarios.py",
       "path": "Tools/tests/fixtures/integration/batch_close_state_mutating_checkpoint",
       "purpose": "Generated applied checkpoint for the hostile registered-verifier recovery path",
-      "tree_sha256": "sha256:164c4312107efdcb3cda78eeb6c17859f78ecb40784f6e5a1fb006977e00f998"
+      "tree_sha256": "sha256:67b5c54eda6012ccf5ef134e04a366f5a44e27eae353e8e8167e418b72d475b8"
     },
     {
       "bytes": 394972,
@@ -74,7 +74,7 @@
       "owner": "Tools/tests/fixtures/e2e/required_queue_scenarios.py",
       "path": "Tools/tests/fixtures/integration/maintenance_closed_checkpoint",
       "purpose": "Generated and validated current-contract maintenance-closed integration checkpoint",
-      "tree_sha256": "sha256:0fc3a3089e6c6efdf862e5a3bcb963b14e1579b743593c2ec822c0dd4aaeafe3"
+      "tree_sha256": "sha256:903caffca0e6cb2e9813369d26a4c3e70928db7c5fa736f0c6b1f903b6279506"
     },
     {
       "bytes": 388270,
@@ -85,7 +85,7 @@
       "owner": "Tools/tests/fixtures/e2e/required_queue_scenarios.py",
       "path": "Tools/tests/fixtures/integration/terminal_closed_checkpoint",
       "purpose": "Generated current-contract terminal-profile checkpoint with both batches closed",
-      "tree_sha256": "sha256:80642c2edc8414d7e07d4a1aa8fc479e3b6536db08a3f9d9e65e96abf62c4feb"
+      "tree_sha256": "sha256:7a2a686b526bbf97d7edeff8d055a449be0a0ee74fe48c7d0c39e74d67377f7f"
     },
     {
       "bytes": 104791,
@@ -96,7 +96,7 @@
       "owner": "Tools/tests/fixtures/e2e/update_queue_scenarios.py",
       "path": "Tools/tests/fixtures/integration/update_queue_merge_admission_checkpoint",
       "purpose": "Generated current-contract open Queue checkpoint with complete pre-merge evidence",
-      "tree_sha256": "sha256:274383e10a4dabc2aa5a13106c079f2a0f97d2c5060eaa3f07f6a0f958be9b81"
+      "tree_sha256": "sha256:594ffa8e77d423da08124455d2c8781586a0e8c375c9862cdbde54f3e9f49044"
     },
     {
       "bytes": 107299,
@@ -107,7 +107,7 @@
       "owner": "Tools/tests/fixtures/e2e/update_queue_scenarios.py",
       "path": "Tools/tests/fixtures/integration/update_queue_merged_checkpoint",
       "purpose": "Generated and validated current-contract merge-ready Queue integration checkpoint",
-      "tree_sha256": "sha256:cd931f0adf072fd853c66ffab3a3d577fa5c5256547325ce07de4dc9e286b4bd"
+      "tree_sha256": "sha256:dcb9d06b608c759d88b25818e6c716be5565dde234fdc94062a46a5d802fa354"
     },
     {
       "bytes": 34560,
@@ -118,7 +118,7 @@
       "owner": "Tools/tests/fixtures/e2e/update_queue_scenarios.py",
       "path": "Tools/tests/fixtures/integration/update_queue_open_checkpoint",
       "purpose": "Generated current-contract open Queue checkpoint before page work begins",
-      "tree_sha256": "sha256:3965a36058e1b6e58064d250fe6f819cdf9191d3fc8fd09ef87f8e870f279f74"
+      "tree_sha256": "sha256:af604fa0f4bca1a5e784422fe59c7205794f11d686578239193a0bfc2c30295f"
     },
     {
       "bytes": 29591,
@@ -129,7 +129,7 @@
       "owner": "Tools/tests/fixtures/e2e/update_queue_scenarios.py",
       "path": "Tools/tests/fixtures/integration/update_queue_planning_ready_checkpoint",
       "purpose": "Generated current-contract planning checkpoint with one current ready-gate Receipt",
-      "tree_sha256": "sha256:9500459c59d03c8aa98e66e0c5c85e252d0be7330a6abf83ee6e0f7693cd7e8a"
+      "tree_sha256": "sha256:a16e3eafcae8dc03dbd20a94e558132398959dea2e9425ddc3070bb235a527c5"
     }
   ],
   "fixtures": [

@@ -367,6 +367,10 @@ RECEIPT_REFERENCE_SPECS = (
 
     # Current close aggregate. Retired close formats are external archives and
     # never enter this graph.
+    _spec("close.plan-selection", SOURCE_CLOSE,
+          ("audit_evidence_reconciliation[]", "selected_evidence_ref"),
+          CARDINALITY_MANY, MATERIALIZATION_BODY_REQUIRED,
+          CLOSE_BUNDLE_CLOSURE, acceptance_dependency=True),
     _spec("close.queue-consistency", SOURCE_CLOSE,
           ("queue_consistency_receipt",), CARDINALITY_ONE,
           MATERIALIZATION_COLD_PROJECTION, CLOSE_BUNDLE_CLOSURE,

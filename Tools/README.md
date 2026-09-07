@@ -262,13 +262,7 @@ Two input roles may reference the same retained snapshot. Their canonical path, 
 
 ### Correcting an erroneous evidence declaration
 
-Use [`record_evidence_invalidation.py`](record_evidence_invalidation.py) (`evidence-invalidation-v1`) after obtaining the decision required by [K12/07](../kernel/K12%20Quality%20Assurance/07%20Audit%20Evidence%20Reuse%20and%20Invalidation.md). The same operation is exposed over MCP. It appends an exact-subject event; it does not edit old Receipts or turn the event into a passing audit result.
-
-Run without `--apply` to inspect the proposed event and current-evidence deficits. Supply a stable `--event-id`, one or more exact `--subject` Receipt IDs, and the approved decision mode, actor binding, authority reference and statement. Repeat the same event identity and payload to confirm an earlier publication; a changed payload under the same identity is refused. Role/context strings and references record an operator- or Host-attested decision, not authenticated identity. The Integrator's write access supplies no judgment authority.
-
-After publication, use a fresh runtime observation. The original producer owns new evidence for the original obligation; consumers reject the withdrawn record and genuine acceptance dependents while retaining historical bytes. Required M dependencies cannot be declared `not-applicable`, and their current evidence references are resolved by Tool. L review rounds remain visible and unprovided continuation escalates under K12/12; S retains its frozen sample. Candidate replacement, Metadata changes and any permitted Queue rollback still use their original controlled writers. A recorded correction does not reopen a closed batch or completed task.
-
-An unmet evidence obligation is reported separately from structural corruption. Correction and permitted evidence production can observe structurally valid state without claiming its business evidence has passed; merge, close and completion still require the complete current evidence closure. Publication confirmation, current usability and completion are distinct results.
+Use [`record_evidence_invalidation.py`](record_evidence_invalidation.py) (also MCP) with the K12/07 decision. See `--help` for exact subjects, authority bindings and event identity; preview before `--apply`, and retry the same identity/payload. The append-only event neither passes review nor rolls back state. Refresh runtime, then follow the original producer or permitted transition; L rounds remain retained, not restarted.
 
 ## Receipt-sealing maintenance runbook
 
