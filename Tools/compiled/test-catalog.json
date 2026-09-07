@@ -52,7 +52,7 @@
       "owner": "Tools/tests/fixtures/e2e/batch_close_scenarios.py",
       "path": "Tools/tests/fixtures/integration/batch_close_applied_checkpoint",
       "purpose": "Generated current-contract applied batch checkpoint for close producer integrations",
-      "tree_sha256": "sha256:f5b76937adaf3803517ecbe19df90dc52a7d934e233d7a8bda7e27d6b7fe4e65"
+      "tree_sha256": "sha256:07c2f8e5403ca2a586a083bbc79aca6476e0be1fb91c28dd188da4e3408c476b"
     },
     {
       "bytes": 111590,
@@ -63,7 +63,7 @@
       "owner": "Tools/tests/fixtures/e2e/batch_close_scenarios.py",
       "path": "Tools/tests/fixtures/integration/batch_close_state_mutating_checkpoint",
       "purpose": "Generated applied checkpoint for the hostile registered-verifier recovery path",
-      "tree_sha256": "sha256:902dd4ddbf1d11787de2d86e9ae357d14ffc66d556e70e8d0905d7506ad8e6fd"
+      "tree_sha256": "sha256:17206c8afa5fccd5e69ae5b3c9e59e74a8e20c987aabb27023a9c8788057d107"
     },
     {
       "bytes": 394972,
@@ -35883,7 +35883,7 @@
       "semantics": "changed_scope_runtime_checks"
     },
     {
-      "case_count": 12,
+      "case_count": 13,
       "cases": [
         {
           "consumer_only": false,
@@ -36613,6 +36613,119 @@
           "selector": "InvocationContractTests.test_page_checker_json_entry_reuses_the_already_authorized_view",
           "semantics": "batch_close_invocation_contract",
           "test_id": "test_check_batch_close.InvocationContractTests.test_page_checker_json_entry_reuses_the_already_authorized_view"
+        },
+        {
+          "consumer_only": false,
+          "disposition": "keep",
+          "duplicate_group": null,
+          "effects": {
+            "file_copies": 0,
+            "full_repository_copies": 0,
+            "process_calls": 0,
+            "temp_resources": 0
+          },
+          "execution": {
+            "builder_triggers": [],
+            "e2e_builder_entrypoints": [],
+            "fixture_entrypoints": [],
+            "full_lifecycle": false,
+            "full_lifecycle_entrypoints": [],
+            "lifecycle_signals": [],
+            "recurring_effects": {
+              "file_copies": 0,
+              "full_repository_copies": 0,
+              "process_calls": 0,
+              "temp_resources": 0
+            },
+            "scopes": {
+              "direct_method": {
+                "builder_triggers": [],
+                "e2e_builder_entrypoints": [],
+                "effects": {
+                  "file_copies": 0,
+                  "full_repository_copies": 0,
+                  "process_calls": 0,
+                  "temp_resources": 0
+                },
+                "first_use_builds": {},
+                "fixture_entrypoints": [],
+                "full_lifecycle": false,
+                "full_lifecycle_entrypoints": [],
+                "lifecycle_signals": []
+              },
+              "per_class": {
+                "builder_triggers": [],
+                "e2e_builder_entrypoints": [],
+                "effects": {
+                  "file_copies": 0,
+                  "full_repository_copies": 0,
+                  "process_calls": 0,
+                  "temp_resources": 0
+                },
+                "first_use_builds": {},
+                "fixture_entrypoints": [],
+                "full_lifecycle": false,
+                "full_lifecycle_entrypoints": [],
+                "lifecycle_signals": []
+              },
+              "per_method": {
+                "builder_triggers": [],
+                "e2e_builder_entrypoints": [],
+                "effects": {
+                  "file_copies": 0,
+                  "full_repository_copies": 0,
+                  "process_calls": 0,
+                  "temp_resources": 0
+                },
+                "first_use_builds": {},
+                "fixture_entrypoints": [],
+                "full_lifecycle": false,
+                "full_lifecycle_entrypoints": [],
+                "lifecycle_signals": []
+              },
+              "per_process": {
+                "builder_triggers": [],
+                "e2e_builder_entrypoints": [],
+                "effects": {
+                  "file_copies": 0,
+                  "full_repository_copies": 0,
+                  "process_calls": 0,
+                  "temp_resources": 0
+                },
+                "first_use_builds": {},
+                "fixture_entrypoints": [],
+                "full_lifecycle": false,
+                "full_lifecycle_entrypoints": [],
+                "lifecycle_signals": []
+              }
+            },
+            "transitive_effects": {
+              "file_copies": 0,
+              "full_repository_copies": 0,
+              "process_calls": 0,
+              "temp_resources": 0
+            },
+            "triggered_once_per_process": {
+              "builds": {},
+              "effects": {
+                "file_copies": 0,
+                "full_repository_copies": 0,
+                "process_calls": 0,
+                "temp_resources": 0
+              }
+            }
+          },
+          "level": "contract",
+          "lifecycle": "current",
+          "override": "InvocationContractTests.*",
+          "owner": "Tools/execution/audit/check_batch_close.py",
+          "owner_contract_symbol": "check_batch_close._main",
+          "parallel_safe": true,
+          "path": "Tools/tests/test_check_batch_close.py",
+          "primary_owner_test": "test_check_batch_close.InvocationContractTests.test_registered_scan_fixture_obeys_the_checker_json_transport",
+          "selector": "InvocationContractTests.test_registered_scan_fixture_obeys_the_checker_json_transport",
+          "semantics": "batch_close_invocation_contract",
+          "test_id": "test_check_batch_close.InvocationContractTests.test_registered_scan_fixture_obeys_the_checker_json_transport"
         },
         {
           "consumer_only": false,
@@ -149942,7 +150055,7 @@
     },
     "fixtures": 48,
     "levels": {
-      "contract": 544,
+      "contract": 545,
       "e2e": 4,
       "historical-read-only": 1,
       "integration": 235,
@@ -149958,14 +150071,14 @@
       "temp_resources": 311
     },
     "module_scenario_first_use_builds": 16,
-    "parallel_safe_cases": 1066,
+    "parallel_safe_cases": 1067,
     "source_effects": {
       "file_copies": 7,
       "full_repository_copies": 15,
       "process_calls": 36,
       "temp_resources": 138
     },
-    "test_cases": 1268,
+    "test_cases": 1269,
     "test_modules": 133
   }
 }

@@ -13,6 +13,8 @@ TOOLS = Path(__file__).resolve().parents[1]
 sys.path.insert(0, os.fspath(TOOLS))
 
 import Tools.platform.distribution.tool_catalog as tool_catalog  # noqa: E402
+from Tools.platform.agent_interface import agent_interface_policy  # noqa: E402
+from Tools.platform.common import kblib  # noqa: E402
 import generate_tool_catalog  # noqa: E402
 
 
@@ -80,36 +82,26 @@ modules:
     public: []
 """
 
-POLICY = """\
-schema_version: 6
-artifact: agent-interface-policy
-host_transports:
-  - transport_id: fixture-mcp-stdio
-    protocol: mcp
-    mode: stdio
-    host_exposure: shared-bridge
-    module: mcp_server
-    path: Tools/mcp_server.py
-    server_name: fixture
-    command: python3
-consumption_defaults:
-  read: snapshot
-  write: replace
-  read-write: transaction
-path_defaults: []
-path_overrides: []
-path_activation_overrides: []
-tools:
-  - tool: beta
-    exposure: mcp
-    workspace_argument: root
-    workspace_access: read
-    value_arguments: []
-    read_paths: []
-    write_paths: []
-    read_write_paths: []
-    external_write: none
-"""
+def catalog_policy():
+    """Project the current policy owner onto this isolated catalog fixture."""
+    document, _ = agent_interface_policy.load_policy(TOOLS.parent)
+    document["host_transports"][0].update(
+        transport_id="fixture-mcp-stdio", server_name="fixture")
+    document["output_contracts"] = {"fixture-text": next(
+        declaration for declaration in document["output_contracts"].values()
+        if declaration["mode"] == "text")}
+    for field in ("path_defaults", "path_overrides", "path_activation_overrides"):
+        document[field] = []
+    document["tools"] = [{
+        "tool": "beta", "output": "fixture-text", "exposure": "mcp",
+        "workspace_argument": "root", "workspace_access": "read",
+        "value_arguments": [], "read_paths": [], "write_paths": [],
+        "read_write_paths": [], "external_write": "none",
+    }]
+    return kblib.canonical_yaml(document)
+
+
+POLICY = catalog_policy()
 
 CAPABILITIES = """\
 schema_version: 3
@@ -451,11 +443,11 @@ class ToolCatalogProjection(CatalogFixture, unittest.TestCase):
 
     def test_declared_transport_without_source_is_an_integrity_gap(self):
         policy = self.root / "Tools/agent-interface-policy.yaml"
+        document = kblib.parse_yaml_subset(POLICY)
+        document["host_transports"][0].update(
+            module="absent_server", path="Tools/absent_server.py")
         policy.write_text(
-            POLICY.replace("module: mcp_server", "module: absent_server")
-            .replace("path: Tools/mcp_server.py",
-                     "path: Tools/absent_server.py"),
-            encoding="utf-8")
+            kblib.canonical_yaml(document), encoding="utf-8")
 
         catalog = tool_catalog.build_catalog(self.root)
 
@@ -467,10 +459,10 @@ class ToolCatalogProjection(CatalogFixture, unittest.TestCase):
 
     def test_host_transport_shape_is_validated_by_its_source_contract(self):
         policy = self.root / "Tools/agent-interface-policy.yaml"
+        document = kblib.parse_yaml_subset(POLICY)
+        document["host_transports"][0]["path"] = "Tools/not-the-module.py"
         policy.write_text(
-            POLICY.replace("path: Tools/mcp_server.py",
-                           "path: Tools/not-the-module.py"),
-            encoding="utf-8")
+            kblib.canonical_yaml(document), encoding="utf-8")
 
         with self.assertRaisesRegex(
                 tool_catalog.ToolCatalogError,
@@ -488,20 +480,12 @@ class ToolCatalogProjection(CatalogFixture, unittest.TestCase):
 
     def test_shared_host_transport_cannot_have_two_machine_owners(self):
         policy = self.root / "Tools/agent-interface-policy.yaml"
-        duplicate = """\
-  - transport_id: fixture-second-mcp-stdio
-    protocol: mcp
-    mode: stdio
-    host_exposure: shared-bridge
-    module: mcp_server
-    path: Tools/mcp_server.py
-    server_name: fixture
-    command: python3
-"""
+        document = kblib.parse_yaml_subset(POLICY)
+        duplicate = dict(document["host_transports"][0],
+                         transport_id="fixture-second-mcp-stdio")
+        document["host_transports"].append(duplicate)
         policy.write_text(
-            POLICY.replace("consumption_defaults:",
-                           duplicate + "\nconsumption_defaults:"),
-            encoding="utf-8")
+            kblib.canonical_yaml(document), encoding="utf-8")
 
         with self.assertRaisesRegex(
                 tool_catalog.ToolCatalogError,

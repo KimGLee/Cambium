@@ -29,6 +29,7 @@ from Tools.tests.fixtures.integration.batch_close_checkpoints import (
     BatchCloseCheckpointCase,
     StateMutatingBatchCloseCheckpointCase,
 )
+from Tools.tests.support.batch_close_fixture import RESIDUAL_SCANNER_SOURCE
 
 
 def _invoke(entrypoint, arguments):
@@ -110,6 +111,34 @@ class InvocationContractTests(unittest.TestCase):
             ["checker"], "checker", 0, "[]", "")
         self.assertIn("checker produced no machine-readable receipts",
                       empty["errors"])
+
+    def test_registered_scan_fixture_obeys_the_checker_json_transport(self):
+        record = kblib.make_receipt(
+            "fixture_residual", "1.0.0", "residual-content-summary",
+            "/fixture", "pass", "fixture scan result", 1,
+            receipt_type_id="registered-residual-scan-receipt-v1")
+        script = "/fixture/Tools/fixture_residual.py"
+        for mode in ([], ["--positive-controls-only"]):
+            with self.subTest(mode=mode):
+                command = [script, "/fixture", "--scan-id",
+                           "fixture-residuals", *mode, "--json"]
+                output = io.StringIO()
+                with mock.patch.object(sys, "argv", command), \
+                        mock.patch.object(sys, "path", list(sys.path)), \
+                        mock.patch.object(kblib, "make_receipt",
+                                          return_value=dict(record)), \
+                        mock.patch.object(kblib, "write_receipts") as writer, \
+                        redirect_stdout(output):
+                    exec(compile(RESIDUAL_SCANNER_SOURCE, script, "exec"),
+                         {"__file__": script})
+                result = check_batch_close._checker_json_result(
+                    command, "fixture-residual", 0, output.getvalue(), "")
+                self.assertEqual([], result["errors"])
+                writer.assert_called_once_with(None, result["receipts"])
+                self.assertEqual("fixture-residuals",
+                                 result["receipts"][0]["scan_id"])
+                self.assertEqual("passed",
+                                 result["receipts"][0]["positive_control_result"])
 
     def test_page_checker_json_entry_reuses_the_already_authorized_view(self):
         admission = object()
