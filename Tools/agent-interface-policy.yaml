@@ -866,6 +866,16 @@ tools:
     write_paths: []
     read_write_paths: []
     external_write: none
+  - tool: record_evidence_invalidation
+    output: json-option-publication
+    exposure: mcp
+    workspace_argument: root
+    workspace_access: write
+    value_arguments: [event_id, subject, reason, decision_mode, actor_role, reviewer_context_id, authority_reference, statement, apply, json]
+    read_paths: []
+    write_paths: []
+    read_write_paths: []
+    external_write: none
   - tool: record_batch_judgment
     output: json-option-publication
     exposure: mcp

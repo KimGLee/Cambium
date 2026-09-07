@@ -78,7 +78,7 @@ class AuditExecutionRuntimeTests(unittest.TestCase):
         self.assertEqual(
             "changed-scope-evidence-adapter-v1", step["capability_id"])
         self.assertEqual("record_changed_scope_evidence", step["tool"])
-        self.assertEqual("obligation-1", step["arguments"]["obligation_id"])
+        self.assertEqual(["obligation-1"], step["arguments"]["obligation_id"])
         self.assert_execution_consumer(step["capability_id"])
         second = dict(self.obligation, obligation_id="obligation-2", target="Topics/B.md")
         self.status["obligations"].append(dict(self.status["obligations"][0], obligation=second))
@@ -119,7 +119,7 @@ class AuditExecutionRuntimeTests(unittest.TestCase):
 
         self.assertEqual("invoke", step["status"])
         self.assertEqual("complete_audit_receipt", step["tool"])
-        self.assertEqual("review-1", step["arguments"]["evidence_receipt"])
+        self.assertEqual(["review-1"], step["arguments"]["evidence_receipt"])
         self.assert_execution_consumer(step["capability_id"])
         second = dict(self.obligation, obligation_id="obligation-2", target="Topics/B.md")
         self.status["obligations"].append(dict(self.status["obligations"][0],
@@ -168,20 +168,24 @@ class AuditExecutionRuntimeTests(unittest.TestCase):
                 self.assertIn("external_resolution", step["required_input"])
 
     def test_batch_page_variant_comes_from_frozen_producer_check(self):
-        self.obligation.update({
-            "evidence_kind": "batch-page-review-record",
-            "producer_capability": "batch-page-review-attestation-v1",
-            "producer_check": "batch_page_review:s-tier-sampled-review",
-        })
-        step = self.project()
-        self.assertEqual(
-            "s-sampled-page", step["resume_arguments"]["variant"])
-
-        self.obligation["producer_check"] = \
-            "batch_page_review:m01-note-type-explicit-consistent"
-        step = self.project()
-        self.assertEqual("m-atomic-item", step["resume_arguments"]["variant"])
-        self.assert_execution_consumer(step["resume_capability_id"])
+        registry = audit_execution_runtime.batch_review_obligation_contract
+        for rule, variant in (
+                (registry.S_SAMPLING_RULE_ID, "s-sampled-page"),
+                (registry.M_ATOMIC_RULE_IDS[0], "m-atomic-item")):
+            with self.subTest(rule=rule):
+                spec = audit_obligation_projection.obligation_spec_for_rule(
+                    rule, root=REPOSITORY)
+                definition = audit_obligation_projection.resolve_obligation_definition(
+                    spec, "Topics/A.md", **(
+                        {"trigger": "new"} if variant == "m-atomic-item" else {}))
+                self.obligation.clear()
+                self.obligation.update(
+                    audit_obligation_projection.required_obligation(definition))
+                step = self.project()
+                self.assertEqual(variant, step["resume_arguments"]["variant"])
+                self.assertNotIn("consumed_evidence_refs", step["required_input"])
+                self.assertEqual([], step["resume_arguments"]["consumed_evidence_ref"])
+                self.assert_execution_consumer(step["resume_capability_id"])
 
     def test_m_consumption_waits_for_registry_selected_evidence_not_hash_order(self):
         target = "Topics/Page-1.md"
@@ -218,11 +222,16 @@ class AuditExecutionRuntimeTests(unittest.TestCase):
 
         next(row for row in rows
              if row["obligation"]["obligation_id"] ==
-             emitting["obligation_id"])["status"] = "satisfied"
+             emitting["obligation_id"]).update(
+                 status="satisfied", evidence_ref="wiki-link-evidence")
         step = self.project()
         self.assertEqual("await-agent", step["status"])
         self.assertEqual(
             consuming["obligation_id"], step["target"]["obligation_id"])
+        self.assertEqual(["wiki-link-evidence"],
+                         step["resume_arguments"]["consumed_evidence_ref"])
+        self.assertEqual(["applicable"], step["target"][
+            "review_input_constraints"]["allowed_applicability_dispositions"])
 
     def test_audit_plan_and_profile_judgment_routes_are_registered(self):
         self.assert_execution_consumer("audit-plan-producer-v1")

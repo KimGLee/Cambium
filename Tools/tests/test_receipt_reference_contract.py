@@ -9,6 +9,9 @@ split at the catalog connection.
 import unittest
 
 from Tools.execution.evidence import receipt_reference_contract as graph
+from Tools.execution.evidence import receipt_type_contract
+from Tools.execution.audit import batch_review_obligation_contract
+from Tools.execution.audit import substantive_review_contract
 from Tools.execution.task_runtime.queue_runtime.receipts import (
     CurrentReceiptCatalog,
     HistoricalReceiptCatalog,
@@ -47,6 +50,32 @@ def _record_for_spec(spec, receipt_id="R"):
 
 
 class ReceiptReferenceRegistryContractTests(unittest.TestCase):
+    def test_review_body_references_are_reachable_through_producer_dispatch(self):
+        registry = receipt_type_contract.load_receipt_type_registry()
+        for receipt_type_id, fields in (
+                (batch_review_obligation_contract.RECEIPT_TYPE_ID, {
+                    "opening_transition_receipt": "opened",
+                    "consumed_evidence_refs": ["upstream"],
+                }),
+                (substantive_review_contract.RECEIPT_TYPE_ID, {
+                    "opening_transition_receipt": "opened",
+                    "round_1_receipt_id": "first-round",
+                }),
+                ("terminal-proof-gate-v2", {
+                    "queue_check_receipt": "queue-proof",
+                    "corpus_plan_check_receipt": "corpus-proof",
+                })):
+            with self.subTest(receipt_type_id=receipt_type_id):
+                record = dict(fields, receipt_type_id=receipt_type_id)
+                source = receipt_type_contract.reference_source_kind(
+                    record, registry=registry)
+                expected = {value for field in fields.values()
+                            for value in (field if isinstance(field, list)
+                                          else [field])}
+                self.assertEqual(expected, graph.reference_ids(
+                    record, source,
+                    minimum_materialization=graph.MATERIALIZATION_BODY_REQUIRED))
+
     def test_registry_is_a_closed_partition_with_one_named_edge(self):
         specs = graph.RECEIPT_REFERENCE_SPECS
         edge_ids = [spec.edge_id for spec in specs]

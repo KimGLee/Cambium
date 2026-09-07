@@ -23,6 +23,7 @@ m_applicability_contract:
   applicable_reason: null
   not_applicable_reason: nonempty
   plan_definition_policy: freeze-all-registered-atoms
+  required_dependency_disposition: applicable
 
 audit_plan_projection:
   owner_kind: kernel

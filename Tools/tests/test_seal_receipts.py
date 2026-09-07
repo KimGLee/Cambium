@@ -18,6 +18,7 @@ from unittest import mock
 
 from Tools.execution.evidence import receipt_reference_contract
 from Tools.execution.evidence import receipt_type_contract
+from Tools.execution.evidence import evidence_invalidation_contract
 from Tools.execution.evidence import seal_receipts
 from Tools.execution.task_runtime import runtime_validation
 from Tools.execution.task_runtime.queue_runtime import receipts as receipt_store
@@ -259,6 +260,28 @@ class SealLifecycleIntegrationTests(unittest.TestCase):
                 cold["index"][history_receipt["receipt_id"]]["invalidated_by"],
             )
             self.assertNotIn(history_receipt["receipt_id"], catalog)
+
+            # Correction reads the actual sealed body through its custody
+            # owner; it never edits the segment or revives historical proof.
+            sealed_bytes = _sealed_segment(root).read_bytes()
+            event = evidence_invalidation_contract.build_event(
+                event_id="sealed-correction", reason="incorrect-result",
+                decision={"mode": "explicit-user", "actor_role": "user",
+                          "reviewer_context_id": None,
+                          "authority_reference": "fixture-user-decision",
+                          "statement": "Withdraw this exact historical result."},
+                subjects=[history_receipt], checked_at="2026-09-08T00:00:00Z",
+                authority={"upstream_revision_id": "a" * 40,
+                           "active_standards_sha256": "sha256:" + "a" * 64,
+                           "selected_profile_manifest": "profiles/test/profile.toml",
+                           "profile_snapshot_sha256": "sha256:" + "b" * 64,
+                           "profile_contract_fingerprint": "sha256:" + "c" * 64})
+            catalog[event["receipt_id"]] = event
+            view = evidence_invalidation_contract.invalidation_view(catalog, registry=_registry())
+            self.assertEqual({history_receipt["receipt_id"]}, set(view["affected"]))
+            current = receipt_store.adoption_filtered_catalog(catalog, view["affected"])
+            self.assertNotIn(history_receipt["receipt_id"], current.cold)
+            self.assertEqual(sealed_bytes, _sealed_segment(root).read_bytes())
 
     def test_writer_rejects_a_stale_plan_and_preserves_an_unplanned_append(self):
         with _current_checkpoint() as (root, runtime, _receipt):

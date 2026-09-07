@@ -215,10 +215,12 @@ def main(argv=None):
     root = os.path.realpath(os.path.abspath(args.root))
     try:
         runtime = runtime_validation.validate_runtime(root)
-        if runtime.get("errors"):
+        admission_errors = runtime_authority.runtime_admission_errors(
+            runtime, purpose="evidence-production")
+        if admission_errors:
             raise ValueError("current runtime is inconsistent: %s" %
-                             "; ".join(runtime["errors"]))
-        authority = runtime_authority.runtime_authority_context(runtime)
+                             "; ".join(admission_errors))
+        authority = runtime_authority.runtime_authority_context(runtime, purpose="evidence-production")
         view = runtime.get("_profile_authorized_view") or {}
         from Tools.governance.profile.profile_admission import contract_from_admitted_view
         contract = contract_from_admitted_view(root, view)

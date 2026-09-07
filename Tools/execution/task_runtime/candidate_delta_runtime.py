@@ -20,6 +20,7 @@ import Tools.execution.audit.audit_evidence_runtime as audit_evidence_runtime
 from Tools.execution.task_runtime import queue_runtime
 import Tools.execution.task_runtime.runtime_paths as runtime_paths
 import Tools.execution.task_runtime.runtime_validation as runtime_validation
+from Tools.execution.task_runtime.queue_runtime.authority import runtime_admission_errors
 
 
 TOOL = "publish_delta"
@@ -110,7 +111,7 @@ def _coverage_records(result):
 
 def _runtime_and_item(root, batch_id):
     result = runtime_validation.validate_runtime(root)
-    errors = list(result.get("errors") or [])
+    errors = runtime_admission_errors(result, purpose="evidence-production")
     if errors:
         raise CandidateDeltaError([
             "runtime is not admitted: %s" % error for error in errors[:12]
@@ -316,7 +317,7 @@ def _rollback(plan, before):
 
 def _post_publish_errors(plan):
     result = runtime_validation.validate_runtime(plan.root)
-    errors = list(result.get("errors") or [])
+    errors = runtime_admission_errors(result, purpose="evidence-production")
     if result.get("queue_sha256") != plan.queue_sha256:
         errors.append("Required Queue changed during candidate publication")
     if result.get("coverage_sha256") != plan.coverage_sha256:

@@ -22,6 +22,7 @@ import Tools.knowledge.metadata.metadata_property_state as property_state
 import Tools.knowledge.metadata.project_page_state as page_state
 import Tools.platform.common.kblib as kblib
 from Tools.platform.agent_interface import agent_interface_policy, entrypoint_loader
+from Tools.execution.evidence import evidence_invalidation_contract, receipt_reference_contract
 
 
 PAGE = "Notes/Target.md"
@@ -224,6 +225,8 @@ class MetadataGateLifecycleIntegrationTests(unittest.TestCase):
         self.context.runtime.update({
             "root": str(self.root),
             "errors": [],
+            "structural_errors": [],
+            "current_evidence_deficits": [],
             "_writer_locks": [],
             "coverage": copy.deepcopy(self.coverage),
             "coverage_sha256": kblib.sha256_file(self.coverage_path),
@@ -311,10 +314,17 @@ class MetadataGateLifecycleIntegrationTests(unittest.TestCase):
         runtime = dict(self.context.runtime)
         runtime["coverage"] = kblib.load_yaml_file(self.coverage_path)
         runtime["coverage_sha256"] = kblib.sha256_file(self.coverage_path)
-        runtime["errors"] = []
+        runtime["current_evidence_deficits"] = evidence_invalidation_contract.current_reference_deficits(
+            runtime["coverage"], receipt_reference_contract.SOURCE_COVERAGE,
+            {"affected": getattr(self, "withdrawn", {})}, scope="Coverage")
+        runtime["errors"] = ["current property evidence was withdrawn"] \
+            if runtime["current_evidence_deficits"] else []
         return runtime
 
     def _run_apply(self, append=None, *, as_json=False):
+        self.context.authority["admission_purpose"] = \
+            gate_runtime.CONSUMER_OPERATION
+        self._invocation_count = getattr(self, "_invocation_count", 0) + 1
         arguments = [
             str(self.root), "--gate-id", self.context.gate.gate_id,
             "--page", PAGE, "--value", "accepted",
@@ -328,6 +338,9 @@ class MetadataGateLifecycleIntegrationTests(unittest.TestCase):
         if as_json:
             arguments.append("--json")
         patches = [
+            # Each real CLI invocation has its own process token. Preserve
+            # that boundary while running this adjacent seam in-process.
+            mock.patch.object(kblib, "_RECEIPT_RUN_TOKEN", "%032x" % self._invocation_count),
             mock.patch.object(
                 transition_writer.metadata_gate_runtime,
                 "load_gate_context", return_value=self.context),
@@ -384,6 +397,27 @@ class MetadataGateLifecycleIntegrationTests(unittest.TestCase):
             (self.root / PAGE).read_text(encoding="utf-8"))
         self.assertFalse((
             self.root / ".cambium/tmp/state-writer.lock").exists())
+
+        # Continue at this exact local after-image: the old Gate is no longer
+        # current, but the existing transition may replace its authorization
+        # with a newly approved Gate without pretending to undo history.
+        old_receipt = self.receipt
+        self.withdrawn = {old_receipt["receipt_id"]: ("correction-decision",)}
+        self.context = replace(self.context, page_snapshot=kblib.repository_target_snapshot(
+            self.root, PAGE, suffixes=".md", singly_linked=True))
+        self.context.runtime["coverage_sha256"] = kblib.sha256_file(self.coverage_path)
+        self.receipt = dict(_manual_receipt(self.context), receipt_id="manual-gate-current-2")
+        self.context.runtime["current_receipt_catalog"] = {
+            self.receipt["receipt_id"]: ("gate-attestations.jsonl", self.receipt)}
+        self.assertTrue(self._dynamic_runtime()["current_evidence_deficits"])
+        before = (self.root / PAGE).read_bytes()
+        code, stdout, stderr = self._run_apply(as_json=True)
+        self.assertEqual(0, code, stdout + stderr)
+        after_state = kblib.load_yaml_file(self.coverage_path)["pages"][0]["property_state"]["readiness_state"]
+        self.assertEqual(self.receipt["receipt_id"], after_state["evidence_receipt"])
+        self.assertEqual("accepted", after_state["value"])
+        self.assertEqual(before, (self.root / PAGE).read_bytes())
+        self.assertEqual([], self._dynamic_runtime()["current_evidence_deficits"])
 
     def test_transition_receipt_failure_rolls_back_owner_and_page(self):
         before_coverage = self.coverage_path.read_bytes()

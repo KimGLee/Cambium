@@ -1055,12 +1055,19 @@ def _run(args, produced):
         allow_standards_rollback_batch=(
             args.id if args.transition == "open" else None),
     )
-    if result["errors"]:
-        for error in result["errors"]:
+    item_before = (result.get("items_by_id") or {}).get(args.id)
+    admission_purpose = (
+        "merge-ready-evidence-rollback"
+        if args.transition == "open" and isinstance(item_before, dict) and
+        item_before.get("state") == "merge-ready" else "current")
+    admission_errors = queue_runtime.runtime_admission_errors(
+        result, purpose=admission_purpose)
+    if admission_errors:
+        for error in admission_errors:
             print("[FAIL] current runtime state: %s" % error)
         return 1
     try:
-        authority = queue_runtime.runtime_authority_context(result)
+        authority = queue_runtime.runtime_authority_context(result, purpose=admission_purpose)
         authority_kwargs = \
             queue_runtime.runtime_authority_validation_kwargs(authority)
         (profile_view, profile_contract, metadata_contract,
@@ -1354,8 +1361,10 @@ def _run(args, produced):
                 page_projection_plan),
             **authority_kwargs,
         )
-        if proposed["errors"]:
-            for error in proposed["errors"]:
+        admission_errors = queue_runtime.runtime_admission_errors(
+            proposed, purpose=admission_purpose)
+        if admission_errors:
+            for error in admission_errors:
                 print("[FAIL] proposed runtime state: %s" % error)
             return 1
 
@@ -1442,9 +1451,11 @@ def _run(args, produced):
                         args.id if args.transition == "open" else None),
                     **authority_kwargs,
                 )
-                if current["errors"]:
+                admission_errors = queue_runtime.runtime_admission_errors(
+                    current, purpose=admission_purpose)
+                if admission_errors:
                     raise ValueError("runtime changed before write: %s" %
-                                     "; ".join(current["errors"]))
+                                     "; ".join(admission_errors))
                 queue_runtime.require_runtime_authority_current(
                     root, authority, "runtime authority changed under lock")
                 barrier = queue_runtime.delta_apply_write_barrier(
@@ -1675,9 +1686,11 @@ def _run(args, produced):
                             locked_page_plan),
                         **authority_kwargs,
                     )
-                    if proposed["errors"]:
+                    admission_errors = queue_runtime.runtime_admission_errors(
+                        proposed, purpose=admission_purpose)
+                    if admission_errors:
                         raise ValueError("proposed runtime state: %s" %
-                                         "; ".join(proposed["errors"]))
+                                         "; ".join(admission_errors))
                 queue_runtime.require_runtime_authority_current(
                     root, authority,
                     "runtime authority changed before state write")
@@ -1700,9 +1713,11 @@ def _run(args, produced):
                                     if task_receipt is not None else [receipt]),
                     **authority_kwargs,
                 )
-                if post["errors"]:
+                admission_errors = queue_runtime.runtime_admission_errors(
+                    post, purpose=admission_purpose)
+                if admission_errors:
                     raise ValueError("persisted state is invalid: %s" %
-                                     "; ".join(post["errors"]))
+                                     "; ".join(admission_errors))
                 if args.transition == "open":
                     _require_opening_semantics_current(
                         root, current.get("items_by_id", {}).get(args.id),
@@ -1738,9 +1753,11 @@ def _run(args, produced):
                         "opening semantic baseline changed during Queue receipt")
                 persisted = runtime_validation.validate_runtime(
                     root, **authority_kwargs)
-                if persisted["errors"]:
+                admission_errors = queue_runtime.runtime_admission_errors(
+                    persisted, purpose=admission_purpose)
+                if admission_errors:
                     raise ValueError("persisted runtime state: %s" %
-                                     "; ".join(persisted["errors"]))
+                                     "; ".join(admission_errors))
                 if page_transaction is not None:
                     page_transaction.commit()
             except Exception as write_error:

@@ -15,8 +15,8 @@ source_files:
   - kernel/K13 Task Runtime and Execution Control/17 Escalation Policy.md
   - kernel/K12 Quality Assurance/14 Batch Review.md
   - kernel/K12 Quality Assurance/19 Incremental Audit Planning.md
-source_hash: 'e7f5619f18cc'
-reviewed_source_hash: 'e7f5619f18cc'
+source_hash: 'f9c549102cec'
+reviewed_source_hash: 'f9c549102cec'
 reviewed_card_hash: '872a0e9da739'
 ---
 # R07 Long-running Execution Card

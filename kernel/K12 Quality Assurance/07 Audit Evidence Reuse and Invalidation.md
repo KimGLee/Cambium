@@ -101,6 +101,14 @@ The following changes invalidate the corresponding receipt:
 - A user correction or accepted guidance changing the reviewed semantics;
 - The audit itself finding the receipt's input incomplete or its result wrong.
 
+### Correction Decisions and Recorded Invalidation
+
+An erroneous judgment can be invalidated even when its bound inputs have not changed. The reviewer may withdraw their own declaration; overturning another reviewer's declaration requires its existing semantic authority or an explicit user decision. The Integrator executes the decision and does not acquire judgment authority by holding a writer capability. A context label, role, approval reference, or receipt is not identity authentication: the operator or Host remains responsible for the real decision source and its authority, while Tools validate the exact object, scope, declared authority binding, and immutable publication.
+
+The invalidation event preserves the original evidence bytes, identifies the exact corrected statement and decision, and removes its current usability without issuing a replacement pass. Reassessment remains with the original producer under the original obligation. Current evidence cannot be restored by erasing or reversing the invalidation record. An L-tier withdrawal preserves all rounds and findings; a withdrawal does not authorize a new first round or a new confirmation scope. When the existing two-round protocol has no legal continuation, escalate under K12/12.
+
+Invalidation is not a rollback of previously executed state. Current authorization and completion consumers must account for affected evidence, while historical state transitions remain facts; any state correction uses its own existing controlled transition. The sole structured decision boundary is [the evidence invalidation contract](evidence-invalidation-contract.yaml).
+
 ### Dependency Invalidation
 
 Propagation goes only to the dimensions that genuinely depend on the change:

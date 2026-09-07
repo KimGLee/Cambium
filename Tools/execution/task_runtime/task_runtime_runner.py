@@ -408,7 +408,15 @@ def _current_standards_revalidation_aggregate(result, batch_id):
 
 def _resume_repair(result, route, parameters, _token):
     target = ({"batch_id": parameters["batch_id"]}
-              if "batch_id" in parameters else None)
+              if "batch_id" in parameters else {})
+    deficits = result.get("current_evidence_deficits")
+    if deficits and not result.get("structural_errors"):
+        target["current_evidence_deficits"] = deficits
+        # The original state owner decides whether a rollback, new Gate, or
+        # escalation is allowed. Never silently reopen closed/complete state.
+        target["recorded_state_preserved"] = True
+        return _repair(result, "withdrawn-evidence-needs-owned-continuation",
+                       target=target)
     return _repair(result, route.route_id, target=target)
 
 
@@ -1405,9 +1413,6 @@ def _await_audit_producer(root, action, supplied, _route):
         arguments["finding"] = [json.dumps(
             row, ensure_ascii=False, sort_keys=True,
             separators=(",", ":")) for row in findings]
-    elif token == "record-batch-page-review":
-        references = arguments.pop("consumed_evidence_refs", [])
-        arguments["consumed_evidence_ref"] = references
     arguments["apply"] = True
     return _run_command(root, step["resume_tool"], arguments)
 

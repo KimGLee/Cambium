@@ -49,6 +49,7 @@ from Tools.execution.task_runtime.queue_runtime import (
     evidence_identity_errors,
     property_receipt_utc_date,
     runtime_metadata_execution_contract,
+    runtime_admission_errors,
 )
 
 
@@ -590,7 +591,7 @@ def validate_registered_scan_input_binding(
     return record
 
 
-def require_admitted_runtime(runtime, *, allow_writer_lock=False):
+def require_admitted_runtime(runtime, *, allow_writer_lock=False, purpose="current"):
     """Refuse a runtime observation that may not authorize a Gate decision.
 
     Running the admission is the facade's job; refusing its result is this
@@ -601,7 +602,7 @@ def require_admitted_runtime(runtime, *, allow_writer_lock=False):
     """
     if not isinstance(runtime, dict):
         raise ValueError("runtime admission did not return a mapping")
-    errors = runtime.get("errors") or []
+    errors = runtime_admission_errors(runtime, purpose=purpose)
     if errors:
         raise ValueError("current runtime is invalid: %s" % "; ".join(errors))
     if runtime.get("_writer_locks") and not allow_writer_lock:
@@ -650,7 +651,9 @@ def load_gate_context(root, gate_id, page_path, *, runtime, authority,
     admission this module fetched for itself.
     """
     canonical_root = os.path.realpath(os.path.abspath(os.fspath(root)))
-    require_admitted_runtime(runtime, allow_writer_lock=allow_writer_lock)
+    require_admitted_runtime(
+        runtime, allow_writer_lock=allow_writer_lock,
+        purpose=authority.get("admission_purpose", "current"))
     if authority.get("root") != canonical_root:
         raise ValueError("runtime authority belongs to a different repository")
     require_paired_authority(runtime, authority)

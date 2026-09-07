@@ -203,6 +203,8 @@ RUNTIME_OBJECTS = {
         EVIDENCE, child_path(RECEIPT_ROOT, "substantive-reviews.jsonl")),
     "batch-page-review-receipts": RuntimeObject(
         EVIDENCE, child_path(RECEIPT_ROOT, "batch-page-reviews.jsonl")),
+    "evidence-invalidation-receipts": RuntimeObject(
+        EVIDENCE, child_path(RECEIPT_ROOT, "evidence-invalidations.jsonl")),
     "changed-scope-evidence-receipts": RuntimeObject(
         EVIDENCE, child_path(RECEIPT_ROOT, "changed-scope-evidence.jsonl")),
     "rendering-verification-receipts": RuntimeObject(
@@ -432,6 +434,7 @@ SUBSTANTIVE_REVIEW_RECEIPT_PATH = path_for(
     "substantive-review-receipts")
 BATCH_PAGE_REVIEW_RECEIPT_PATH = path_for(
     "batch-page-review-receipts")
+EVIDENCE_INVALIDATION_RECEIPT_PATH = path_for("evidence-invalidation-receipts")
 CHANGED_SCOPE_EVIDENCE_RECEIPT_PATH = path_for(
     "changed-scope-evidence-receipts")
 RENDERING_VERIFICATION_RECEIPT_PATH = path_for(

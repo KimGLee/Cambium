@@ -260,6 +260,10 @@ Receipt-specific observation reads the effective append after-image, not a cache
 
 Two input roles may reference the same retained snapshot. Their canonical path, target and parent identities must agree before physical read authority can be shared; the read acknowledges those equivalent path capabilities, not the roles' governance meaning. Write capabilities are not coalesced, and same-mode write aliases remain refused.
 
+### Correcting an erroneous evidence declaration
+
+Use [`record_evidence_invalidation.py`](record_evidence_invalidation.py) (also MCP) with the K12/07 decision. See `--help` for exact subjects, authority bindings and event identity; preview before `--apply`, and retry the same identity/payload. The append-only event neither passes review nor rolls back state. Refresh runtime, then follow the original producer or permitted transition; L rounds remain retained, not restarted.
+
 ## Receipt-sealing maintenance runbook
 
 Use `seal_receipts.py --apply` only in an exclusive quiet window after a resume check, a dry run, and a verified restorable copy of `.cambium/`. After interruption, apply `--reconcile` only when its preview proves the exact plan safe; otherwise restore the copy. Re-prove history and resumability before releasing the window:

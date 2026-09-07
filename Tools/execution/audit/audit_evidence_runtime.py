@@ -688,9 +688,7 @@ def _batch_page_binding_errors(result, catalog, root, plan, plan_sha256,
         if require_current:
             current_receipt_ids = frozenset()
             if (spec.get("tier") == "M" and
-                    spec.get("evidence_role") == "consumes" and
-                    record.get("applicability_disposition") ==
-                    "applicable"):
+                    spec.get("evidence_role") == "consumes"):
                 current_receipt_ids = current_consumption_evidence_ids(
                     result, (result.get("items_by_id") or {}).get(
                         plan["batch_id"], {}), plan, plan_sha256,
@@ -1075,6 +1073,34 @@ def _substantive_precursor_resolution(
         result, plan, plan_sha256, catalog, obligation, records, *,
         require_current=True, selected_ref=None):
     root = result["root"]
+    invalidation = result.get("evidence_invalidation_view") or {}
+    affected = invalidation.get("affected") or {}
+    if affected:
+        history = historical_receipt_catalog(result)
+        withdrawn = []
+        for receipt_id in sorted(affected):
+            entry = history.resolve(receipt_id)
+            record = entry[1] if isinstance(entry, tuple) else entry
+            if not (isinstance(record, dict) and
+                    record.get("record_kind") == "substantive-review-evidence" and
+                    record.get("plan_id") == plan["plan_id"] and
+                    record.get("obligation_id") == obligation["obligation_id"]):
+                continue
+            stable_errors = _producer_attempt_errors(
+                root, history, plan, plan_sha256, obligation, record,
+                require_current=False, result=result,
+                item=(result.get("items_by_id") or {}).get(plan["batch_id"]))
+            if stable_errors:
+                return "invalid", None, [_attempt_summary(record, "invalid")], (
+                    "withdrawn L history cannot be proved: %s" % "; ".join(stable_errors))
+            withdrawn.append(record)
+        if withdrawn:
+            return "escalated", None, [
+                _attempt_summary(row, "invalidated", "correction event: %s" %
+                                 ", ".join(affected[row["receipt_id"]]))
+                for row in withdrawn], (
+                "L review was withdrawn; preserve its rounds and escalate under K12/12; "
+                "invalidation does not authorize a new first round")
     attempts = []
     valid = []
     invalid = []
@@ -1365,11 +1391,13 @@ def _required_obligation_resolution_unchecked(
     rejected = []
     invalid = []
     for record in final_records:
-        artifact_state = (_artifact_state(
+        explicitly_invalidated = record.get("receipt_id") in set(
+            result.get("invalidated_evidence_receipt_ids") or ())
+        artifact_state = ("invalidated" if explicitly_invalidated else _artifact_state(
             result["root"], obligation, record,
             evaluation=(result.get("_profile_authorized_view") or {}).get("_evaluation"),
             facts=result.get("_audit_evidence_facts")) if require_current else
-            ("invalidated" if record.get("invalidated_by") is not None
+            ("invalidated" if explicitly_invalidated or record.get("invalidated_by") is not None
              else "unknown"))
         if artifact_state == "invalid":
             errors = ["current target cannot be fingerprinted"]
@@ -1845,6 +1873,7 @@ def terminal_plan_reconciliation(result):
     if not isinstance(result, dict):
         raise AuditEvidenceError("Terminal reconciliation needs runtime state")
     current = current_receipt_catalog(result)
+    history = historical_receipt_catalog(result)
     invalidated_now = set(
         result.get("invalidated_evidence_receipt_ids") or ())
     superseded = set()
@@ -1858,7 +1887,12 @@ def terminal_plan_reconciliation(result):
         if not isinstance(item, dict) or item.get("state") != "closed":
             continue
         close_id = item.get("close_gate_receipt")
-        close = catalog_record(current.get(close_id))
+        # A withdrawn close is still an executed historical fact. Read its
+        # immutable reconciliation only to report unresolved dependencies;
+        # it cannot supply current completion authority. Unclassified absence
+        # never authorizes a fallback to history.
+        selected_catalog = history if close_id in invalidated_now else current
+        close = catalog_record(selected_catalog.resolve(close_id))
         if not isinstance(close, dict) or close.get("receipt_id") != close_id:
             raise AuditEvidenceError(
                 "closed batch %s has no current close receipt" % item_id)
@@ -2121,6 +2155,16 @@ def _closed_batch_dimension_evidence(
             "closed batch %s reconciliation does not cover its complete "
             "AuditPlan" % batch_id)
 
+    # Reconcile at the batch boundary, not one obligation at a time. An M
+    # consumes atom cites other obligations selected by this same close.
+    # Keep that frozen dependency closure available to the original owner,
+    # without admitting unselected attempts or evidence from another batch.
+    scoped_catalog = {}
+    for obligation_id, reconciled in reconciliation.items():
+        scoped_catalog.update(_reconciled_current_catalog(
+            catalog, reconciled, batch_id=batch_id,
+            obligation_id=obligation_id))
+
     rows = []
     selected_refs = set()
     postdelta_rows = {
@@ -2137,9 +2181,6 @@ def _closed_batch_dimension_evidence(
                 isinstance(record, dict) and expected_row == reconciled
             ) else "invalid"
         else:
-            scoped_catalog = _reconciled_current_catalog(
-                catalog, reconciled, batch_id=batch_id,
-                obligation_id=obligation_id)
             resolution = _required_obligation_resolution(
                 result, item, plan, plan_sha256, scoped_catalog, obligation,
                 require_current=False)

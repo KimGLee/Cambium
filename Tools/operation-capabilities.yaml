@@ -121,12 +121,31 @@ capabilities:
       - Tools/execution/audit/record_batch_judgment.py
       - Tools/execution/audit/record_batch_review.py
       - Tools/execution/evidence/record_gate_attestation.py
+      - Tools/execution/evidence/record_evidence_invalidation.py
     operations: []
     receipt_contracts:
       - receipt_type_id: page-batch-judgment-v2
+        correction_subject: true
         validator_owner: Tools.governance.profile.profile_batch_judgment_contract:current_receipt_errors
         catalog_lifecycle: [hot, historical, cold]
         reference_source_kind: none
+
+  - capability_id: evidence-invalidation-v1
+    kind: producer
+    capability_version: 1.0.0
+    implementation_owner: Tools/execution/evidence/record_evidence_invalidation.py
+    invocation_owner: Tools/record_evidence_invalidation.py
+    writers: []
+    checkers:
+      - Tools/execution/task_runtime/check_queue.py
+    consumers:
+      - Tools/execution/task_runtime/queue_runtime/runtime.py
+    operations: []
+    receipt_contracts:
+      - receipt_type_id: evidence-invalidation-event-v1
+        validator_owner: Tools.execution.evidence.evidence_invalidation_contract:current_receipt_errors
+        catalog_lifecycle: [hot, historical, cold]
+        reference_source_kind: evidence-invalidation-event
 
   - capability_id: audit-plan-producer-v1
     kind: producer
@@ -166,9 +185,10 @@ capabilities:
     operations: []
     receipt_contracts:
       - receipt_type_id: batch-page-review-record-v3
+        correction_subject: true
         validator_owner: Tools.execution.audit.batch_review_obligation_contract:current_receipt_errors
         catalog_lifecycle: [hot, historical, cold]
-        reference_source_kind: none
+        reference_source_kind: batch-page-review-record
 
   - capability_id: substantive-review-attestation-v1
     kind: producer
@@ -185,9 +205,10 @@ capabilities:
     operations: []
     receipt_contracts:
       - receipt_type_id: substantive-review-evidence-v3
+        correction_subject: true
         validator_owner: Tools.execution.audit.substantive_review_contract:current_receipt_errors
         catalog_lifecycle: [hot, historical, cold]
-        reference_source_kind: none
+        reference_source_kind: substantive-review-evidence
 
   - capability_id: changed-scope-evidence-adapter-v1
     kind: producer
@@ -204,14 +225,17 @@ capabilities:
     operations: []
     receipt_contracts:
       - receipt_type_id: changed-scope-gate-evidence-v3
+        correction_subject: true
         validator_owner: Tools.execution.audit.changed_scope_evidence_contract:current_receipt_errors
         catalog_lifecycle: [hot, historical, cold]
         reference_source_kind: none
       - receipt_type_id: changed-scope-candidate-set-v2
+        correction_subject: true
         validator_owner: Tools.execution.audit.changed_scope_evidence_contract:current_receipt_errors
         catalog_lifecycle: [hot, historical, cold]
         reference_source_kind: none
       - receipt_type_id: changed-scope-audit-precursor-v2
+        correction_subject: true
         validator_owner: Tools.execution.audit.changed_scope_evidence_contract:current_receipt_errors
         catalog_lifecycle: [hot, historical, cold]
         reference_source_kind: none
@@ -231,6 +255,7 @@ capabilities:
     operations: []
     receipt_contracts:
       - receipt_type_id: rendering-verification-evidence-v3
+        correction_subject: true
         validator_owner: Tools.knowledge.rendering.rendering_verification_contract:current_receipt_errors
         catalog_lifecycle: [hot, historical, cold]
         reference_source_kind: none
@@ -251,6 +276,7 @@ capabilities:
     operations: []
     receipt_contracts:
       - receipt_type_id: profile-rendering-evidence-v1
+        correction_subject: true
         validator_owner: Tools.knowledge.rendering.profile_rendering_evidence_contract:current_receipt_errors
         catalog_lifecycle: [hot, historical, cold]
         reference_source_kind: none
@@ -272,6 +298,7 @@ capabilities:
     operations: []
     receipt_contracts:
       - receipt_type_id: audit-receipt-v3
+        correction_subject: true
         validator_owner: Tools.execution.audit.audit_receipt_contract:current_receipt_errors
         catalog_lifecycle: [hot, historical, cold]
         reference_source_kind: audit-receipt
@@ -301,9 +328,10 @@ capabilities:
     operations: []
     receipt_contracts:
       - receipt_type_id: terminal-proof-gate-v2
+        correction_subject: true
         validator_owner: Tools.execution.audit.terminal_proof_contract:current_receipt_errors
         catalog_lifecycle: [hot, historical, cold]
-        reference_source_kind: none
+        reference_source_kind: terminal-proof-gate
       - receipt_type_id: terminal-proof-diagnostic-v1
         validator_owner: Tools.execution.audit.terminal_proof_contract:current_receipt_errors
         catalog_lifecycle: [hot, historical, cold]
@@ -336,6 +364,7 @@ capabilities:
     operations: []
     receipt_contracts:
       - receipt_type_id: batch-review-wrapper-v2
+        correction_subject: true
         validator_owner: Tools.execution.audit.batch_review_receipt_contract:current_receipt_errors
         catalog_lifecycle: [hot, historical, cold]
         reference_source_kind: batch-review-aggregate
@@ -571,22 +600,27 @@ capabilities:
     operations: []
     receipt_contracts:
       - receipt_type_id: batch-close-gate-v1
+        correction_subject: true
         validator_owner: Tools.execution.audit.batch_close_contract:current_receipt_errors
         catalog_lifecycle: [hot, historical, cold]
         reference_source_kind: close-aggregate
       - receipt_type_id: batch-close-member-evidence-v1
+        correction_subject: true
         validator_owner: Tools.execution.audit.batch_close_contract:current_receipt_errors
         catalog_lifecycle: [hot, historical, cold]
         reference_source_kind: none
       - receipt_type_id: batch-close-review-attestation-v1
+        correction_subject: true
         validator_owner: Tools.execution.audit.batch_close_contract:current_receipt_errors
         catalog_lifecycle: [hot, historical, cold]
         reference_source_kind: close-reviewer-attestation
       - receipt_type_id: batch-close-page-review-v1
+        correction_subject: true
         validator_owner: Tools.execution.audit.batch_close_contract:current_receipt_errors
         catalog_lifecycle: [hot, historical, cold]
         reference_source_kind: close-page-review
       - receipt_type_id: batch-close-global-review-v1
+        correction_subject: true
         validator_owner: Tools.execution.audit.batch_close_contract:current_receipt_errors
         catalog_lifecycle: [hot, historical, cold]
         reference_source_kind: close-global-review
@@ -623,17 +657,19 @@ capabilities:
     operations: []
     receipt_contracts:
       - receipt_type_id: profile-extension-manual-gate-receipt-v1
+        correction_subject: true
         validator_owner: Tools.execution.evidence.metadata_gate_runtime:current_manual_gate_receipt_errors
         catalog_lifecycle: [hot, historical, cold]
         reference_source_kind: none
       - receipt_type_id: profile-extension-deterministic-gate-receipt-v1
+        correction_subject: true
         validator_owner: Tools.execution.evidence.metadata_gate_runtime:current_deterministic_gate_receipt_errors
         catalog_lifecycle: [hot, historical, cold]
         reference_source_kind: none
       - receipt_type_id: metadata-transition-receipt-v1
         validator_owner: Tools.execution.evidence.metadata_gate_runtime:current_metadata_transition_receipt_errors
         catalog_lifecycle: [hot, historical, cold]
-        reference_source_kind: none
+        reference_source_kind: metadata-transition
 
   - capability_id: receipt-seal-evidence-v1
     kind: producer
@@ -673,6 +709,7 @@ capabilities:
     operations: []
     receipt_contracts:
       - receipt_type_id: corpus-plan-gate-receipt-v1
+        correction_subject: true
         validator_owner: Tools.execution.planning.check_corpus_plan:current_gate_receipt_errors
         catalog_lifecycle: [hot, historical, cold]
         reference_source_kind: none
@@ -765,6 +802,7 @@ capabilities:
     operations: []
     receipt_contracts:
       - receipt_type_id: required-queue-gate-receipt-v1
+        correction_subject: true
         validator_owner: Tools.execution.task_runtime.queue_check_receipt:current_receipt_errors
         catalog_lifecycle: [hot, historical, cold]
         reference_source_kind: none
@@ -865,6 +903,7 @@ capabilities:
     operations: []
     receipt_contracts:
       - receipt_type_id: wiki-link-integrity-receipt-v1
+        correction_subject: true
         validator_owner: Tools.knowledge.content.check_links:current_receipt_errors
         catalog_lifecycle: [hot, historical, cold]
         reference_source_kind: none
@@ -879,6 +918,7 @@ capabilities:
     operations: []
     receipt_contracts:
       - receipt_type_id: registered-residual-scan-receipt-v1
+        correction_subject: true
         validator_owner: Tools.knowledge.content.check_residual_content:current_receipt_errors
         catalog_lifecycle: [hot, historical, cold]
         reference_source_kind: none
@@ -893,6 +933,7 @@ capabilities:
     operations: []
     receipt_contracts:
       - receipt_type_id: duplicate-scan-receipt-v1
+        correction_subject: true
         validator_owner: Tools.knowledge.content.duplicate_check:current_receipt_errors
         catalog_lifecycle: [hot, historical, cold]
         reference_source_kind: none
@@ -907,6 +948,7 @@ capabilities:
     operations: []
     receipt_contracts:
       - receipt_type_id: freshness-scan-receipt-v1
+        correction_subject: true
         validator_owner: Tools.knowledge.metadata.check_freshness:current_receipt_errors
         catalog_lifecycle: [hot, historical, cold]
         reference_source_kind: none
@@ -921,6 +963,7 @@ capabilities:
     operations: []
     receipt_contracts:
       - receipt_type_id: page-contract-gate-receipt-v1
+        correction_subject: true
         validator_owner: Tools.knowledge.metadata.check_page_contract:current_receipt_errors
         catalog_lifecycle: [hot, historical, cold]
         reference_source_kind: none
@@ -935,6 +978,7 @@ capabilities:
     operations: []
     receipt_contracts:
       - receipt_type_id: vocabulary-gate-receipt-v1
+        correction_subject: true
         validator_owner: Tools.knowledge.metadata.check_vocab:current_receipt_errors
         catalog_lifecycle: [hot, historical, cold]
         reference_source_kind: none
@@ -949,6 +993,7 @@ capabilities:
     operations: []
     receipt_contracts:
       - receipt_type_id: boundary-contract-gate-receipt-v1
+        correction_subject: true
         validator_owner: Tools.knowledge.structure.check_boundary_contract:current_receipt_errors
         catalog_lifecycle: [hot, historical, cold]
         reference_source_kind: none
@@ -963,6 +1008,7 @@ capabilities:
     operations: []
     receipt_contracts:
       - receipt_type_id: moc-drift-scan-receipt-v1
+        correction_subject: true
         validator_owner: Tools.knowledge.structure.check_moc:current_receipt_errors
         catalog_lifecycle: [hot, historical, cold]
         reference_source_kind: none
@@ -977,6 +1023,7 @@ capabilities:
     operations: []
     receipt_contracts:
       - receipt_type_id: structure-registry-gate-receipt-v1
+        correction_subject: true
         validator_owner: Tools.knowledge.structure.check_structure:current_receipt_errors
         catalog_lifecycle: [hot, historical, cold]
         reference_source_kind: none
