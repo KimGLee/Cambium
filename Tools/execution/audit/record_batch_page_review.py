@@ -342,11 +342,11 @@ def build_review_receipt(*, root, plan, plan_sha256, obligation, spec,
     return receipt
 
 
-def require_exact_readback(receipt_absolute, receipt, registry):
+def require_exact_readback(receipt_absolute, receipt, registry, *, observation=None):
     """Prove resulting append-only state contains one exact valid record."""
     persisted = [
         row for row in audit_producer_runtime.read_receipt_records(
-            receipt_absolute)
+            receipt_absolute, observation=observation)
         if row.get("receipt_id") == receipt["receipt_id"]]
     if len(persisted) != 1 or persisted[0] != receipt:
         raise audit_producer_runtime.AuditProducerError(
@@ -384,6 +384,7 @@ def main(argv=None):
         help="current canonical evidence consumed by a consumes-role M atom")
     parser.add_argument("--apply", action="store_true")
     args = parser.parse_args(argv)
+    publication = kblib.ReceiptPublication()
 
     try:
         root, result, authority = audit_producer_runtime.admitted_runtime(
@@ -430,19 +431,15 @@ def main(argv=None):
         registry_digest = batch_contract.registry_sha256(registry)
     except (OSError, TypeError, UnicodeError, ValueError,
             kblib.YamlSubsetError) as exc:
-        reporting.write_canonical_json(
-            {"applied": False, "errors": [str(exc)], "status": "invalid"})
+        reporting.write_canonical_json(reporting.publication_result(
+            publication, status="invalid", errors=[str(exc)]))
         return 1
 
     if not args.apply:
-        reporting.write_canonical_json({
-            "applied": False,
-            "errors": [],
-            "status": "planned",
-            "receipt_id": receipt["receipt_id"],
-            "receipt_path": DEFAULT_RECEIPTS,
-            "review_variant": receipt["review_variant"],
-        })
+        reporting.write_canonical_json(reporting.publication_result(
+            publication, status="planned", receipt_id=receipt["receipt_id"],
+            receipt_path=DEFAULT_RECEIPTS, result=receipt["result"],
+            review_variant=receipt["review_variant"]))
         return 0 if receipt["result"] == "pass" else 1
 
     operation = audit_producer_runtime.runtime_lock_metadata(
@@ -498,7 +495,7 @@ def main(argv=None):
                     receipt, locked_registry)
                 before = kblib.receipt_append_observation(
                     receipt_absolute, [receipt])
-            outcome, error, _details = kblib.write_receipts_observed(
+            outcome, error, _details = publication.append(
                 receipt_absolute, [receipt], before=before)
             if outcome != "present" or error is not None:
                 if outcome == "absent":
@@ -508,33 +505,26 @@ def main(argv=None):
                     (outcome, error))
     except (OSError, TypeError, ValueError,
             kblib.RuntimeStateLockedError) as exc:
-        reporting.write_canonical_json({
-            "applied": False,
-            "errors": [str(exc)],
-            "status": "uncertain",
-            "receipt_id": receipt["receipt_id"],
-        })
+        reporting.write_canonical_json(reporting.publication_result(
+            publication, status="uncertain", errors=[str(exc)],
+            receipt_id=receipt["receipt_id"]))
         return 1
 
     try:
-        require_exact_readback(receipt_absolute, receipt, registry)
+        require_exact_readback(receipt_absolute, receipt, registry,
+                               observation=publication.observation)
     except (OSError, TypeError, UnicodeError, ValueError) as exc:
-        reporting.write_canonical_json({
-            "applied": True,
-            "errors": [str(exc)],
-            "status": "uncertain",
-            "receipt_id": receipt["receipt_id"],
-        })
+        reporting.write_canonical_json(reporting.publication_result(
+            publication, status="uncertain", errors=[str(exc)],
+            receipt_id=receipt["receipt_id"]))
         return 1
 
-    reporting.write_canonical_json({
-        "applied": True,
-        "errors": [],
-        "status": "recorded",
-        "receipt_id": receipt["receipt_id"],
-        "receipt_path": DEFAULT_RECEIPTS,
-        "review_variant": receipt["review_variant"],
-    })
+    publication.confirmed = True
+    reporting.write_canonical_json(reporting.publication_result(
+        publication, status="recorded", result=receipt["result"],
+        receipt_id=receipt["receipt_id"],
+        receipt_path=DEFAULT_RECEIPTS,
+        review_variant=receipt["review_variant"]))
     return 0 if receipt["result"] == "pass" else 1
 
 

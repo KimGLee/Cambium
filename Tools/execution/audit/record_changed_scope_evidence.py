@@ -1087,31 +1087,27 @@ def main(argv=None):
     parser.add_argument("--receipts", default=DEFAULT_RECEIPTS)
     parser.add_argument("--apply", action="store_true")
     args = parser.parse_args(argv)
+    publication = kblib.ReceiptPublication()
 
     if args.list_producers:
         try:
             trace = producer_trace(args.root)
         except (OSError, TypeError, UnicodeError, ValueError,
                 kblib.YamlSubsetError) as exc:
-            reporting.write_canonical_json(
-                {"errors": [str(exc)], "status": "invalid"})
+            reporting.write_canonical_json(reporting.publication_result(
+                publication, status="invalid", errors=[str(exc)]))
             return 1
-        reporting.write_canonical_json({
-            "errors": [], "status": "producer-trace",
-            "rules": list(trace),
-        })
+        reporting.write_canonical_json(reporting.publication_result(
+            publication, status="producer-trace", rules=list(trace)))
         return 0
 
     missing_args = [name for name, value in (
         ("--batch", args.batch), ("--plan", args.plan),
         ("--obligation-id", args.obligation_id)) if not value]
     if missing_args:
-        reporting.write_canonical_json({
-            "applied": False,
-            "errors": ["required argument(s): %s" %
-                       ", ".join(missing_args)],
-            "status": "invalid",
-        })
+        reporting.write_canonical_json(reporting.publication_result(
+            publication, status="invalid",
+            errors=["required argument(s): %s" % ", ".join(missing_args)]))
         return 1
     try:
         if len(set(args.obligation_id)) != len(args.obligation_id):
@@ -1130,25 +1126,25 @@ def main(argv=None):
         receipt = receipts[0]
     except (OSError, TypeError, UnicodeError, ValueError,
             kblib.YamlSubsetError) as exc:
-        reporting.write_canonical_json(
-            {"applied": False, "errors": [str(exc)], "status": "invalid"})
+        reporting.write_canonical_json(reporting.publication_result(
+            publication, status="invalid", errors=[str(exc)]))
         return 1
 
     if not new_receipts:
-        reporting.write_canonical_json({
-            "applied": args.apply, "errors": [],
-            "status": "already-present", "receipt_id": receipt["receipt_id"],
-            "receipt_path": args.receipts, "result": receipt["result"],
-            "receipt_ids": [row["receipt_id"] for row in receipts],
-        })
+        publication.confirmed = True
+        reporting.write_canonical_json(reporting.publication_result(
+            publication, status="already-present", reused=True,
+            receipt_id=receipt["receipt_id"], receipt_path=args.receipts,
+            result=receipt["result"],
+            receipt_ids=[row["receipt_id"] for row in receipts],
+            receipt_results={row["receipt_id"]: row["result"] for row in receipts}))
         return max(map(_evidence_exit_code, receipts))
     if not args.apply:
-        reporting.write_canonical_json({
-            "applied": False, "errors": [], "status": "planned",
-            "receipt_id": receipt["receipt_id"],
-            "receipt_path": args.receipts, "result": receipt["result"],
-            "receipt_ids": [row["receipt_id"] for row in receipts],
-        })
+        reporting.write_canonical_json(reporting.publication_result(
+            publication, status="planned", receipt_id=receipt["receipt_id"],
+            receipt_path=args.receipts, result=receipt["result"],
+            receipt_ids=[row["receipt_id"] for row in receipts],
+            receipt_results={row["receipt_id"]: row["result"] for row in receipts}))
         return max(map(_evidence_exit_code, receipts))
 
     operation = audit_producer_runtime.runtime_lock_metadata(
@@ -1194,7 +1190,7 @@ def main(argv=None):
                                     value["target_page"]))
                 before = kblib.receipt_append_observation(
                     receipt_absolute, new_receipts)
-            outcome, error, _ = kblib.write_receipts_observed(
+            outcome, error, _ = publication.append(
                 receipt_absolute, new_receipts, before=before)
             if outcome != "present" or error is not None:
                 if outcome == "absent":
@@ -1204,30 +1200,29 @@ def main(argv=None):
                     (outcome, error))
     except (OSError, TypeError, ValueError,
             kblib.RuntimeStateLockedError) as exc:
-        reporting.write_canonical_json({
-            "applied": False, "errors": [str(exc)], "status": "uncertain",
-            "receipt_id": receipt["receipt_id"],
-        })
+        reporting.write_canonical_json(reporting.publication_result(
+            publication, status="uncertain", errors=[str(exc)],
+            receipt_id=receipt["receipt_id"]))
         return 1
 
     try:
-        persisted = audit_producer_runtime.read_receipt_records(receipt_absolute)
+        persisted = audit_producer_runtime.read_receipt_records(
+            receipt_absolute, observation=publication.observation)
         # Reused current attempts may live in another managed register. Only
         # this transaction's new records must read back from its write target.
-        for value, receipt in zip(pending, new_receipts):
-            require_exact_evidence_readback(receipt_absolute, receipt, value, records=persisted)
+        for value, new_receipt in zip(pending, new_receipts):
+            require_exact_evidence_readback(receipt_absolute, new_receipt, value, records=persisted)
     except (OSError, TypeError, UnicodeError, ValueError) as exc:
-        reporting.write_canonical_json({
-            "applied": True, "errors": [str(exc)], "status": "uncertain",
-            "receipt_id": receipt["receipt_id"],
-        })
+        reporting.write_canonical_json(reporting.publication_result(
+            publication, status="uncertain", errors=[str(exc)],
+            receipt_id=receipt["receipt_id"]))
         return 1
-    reporting.write_canonical_json({
-        "applied": True, "errors": [], "status": "recorded",
-        "receipt_id": receipt["receipt_id"],
-        "receipt_path": args.receipts, "result": receipt["result"],
-        "receipt_ids": [row["receipt_id"] for row in receipts],
-    })
+    publication.confirmed = True
+    reporting.write_canonical_json(reporting.publication_result(
+        publication, status="recorded", receipt_id=receipt["receipt_id"],
+        receipt_path=args.receipts, result=receipt["result"],
+        receipt_ids=[row["receipt_id"] for row in receipts],
+        receipt_results={row["receipt_id"]: row["result"] for row in receipts}))
     return max(map(_evidence_exit_code, receipts))
 
 

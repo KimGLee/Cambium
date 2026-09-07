@@ -96,7 +96,7 @@ ARTIFACT_KIND = agent_interface_contract.PROJECTION_ARTIFACT_KIND
 DEFAULT_CONTRACT = "Tools/compiled/cli-contract.yaml"
 CARRIED_RUNTIME_CONTRACT = runtime_paths.CLI_CONTRACT_ARTIFACT_PATH
 UPSTREAM_ARTIFACT = "cli-invocation-contract"
-UPSTREAM_SCHEMA_VERSION = 9
+UPSTREAM_SCHEMA_VERSION = 10
 UPSTREAM_FIELDS = frozenset((
     "schema_version", "artifact", "generator", "generator_version",
     "derived_from", "source_files", "source_hash",
@@ -141,6 +141,8 @@ CLI_EXTENSION_KEY = cli_argv_renderer.CLI_EXTENSION_KEY
 EXCLUSIVE_EXTENSION_KEY = "x-cambium-mutually-exclusive"
 PATH_EXTENSION_KEY = agent_interface_contract.PATH_EXTENSION_KEY
 WORKSPACE_EXTENSION_KEY = agent_interface_contract.WORKSPACE_EXTENSION_KEY
+OUTPUT_EXTENSION_KEY = agent_interface_contract.OUTPUT_EXTENSION_KEY
+HOST_BOUNDARY_EXTENSION_KEY = agent_interface_contract.HOST_BOUNDARY_EXTENSION_KEY
 
 NOTICE = (
     "Generated artifact -- do not edit. Every value here is projected from "
@@ -336,6 +338,36 @@ FIELD_SOURCES = {
     "tools[].%s.access" % WORKSPACE_EXTENSION_KEY:
         "Tools/compiled/cli-contract.yaml: "
         "tools[].agent_interface.workspace_access",
+    "tools[].%s.mode" % OUTPUT_EXTENSION_KEY:
+        "tools[].agent_interface.output.mode",
+    "tools[].%s" % HOST_BOUNDARY_EXTENSION_KEY:
+        "tools[].host_environment_boundary derived from the pinned public main decorator",
+    "tools[].%s.result_contract" % OUTPUT_EXTENSION_KEY:
+        "tools[].agent_interface.output.result_contract",
+    "tools[].%s.json_argument" % OUTPUT_EXTENSION_KEY:
+        "tools[].agent_interface.output.json_argument",
+    "tools[].%s.json_value" % OUTPUT_EXTENSION_KEY:
+        "tools[].agent_interface.output.json_value",
+    "tools[].%s.json_inactive_when_any" % OUTPUT_EXTENSION_KEY:
+        "tools[].agent_interface.output.json_inactive_when_any",
+    "tools[].%s.json_inactive_when_any[]" % OUTPUT_EXTENSION_KEY:
+        "tools[].agent_interface.output.json_inactive_when_any[]",
+    "tools[].%s.json_types" % OUTPUT_EXTENSION_KEY:
+        "tools[].agent_interface.output.json_types",
+    "tools[].%s.json_types[]" % OUTPUT_EXTENSION_KEY:
+        "tools[].agent_interface.output.json_types[]",
+    "tools[].%s.required_keys" % OUTPUT_EXTENSION_KEY:
+        "tools[].agent_interface.output.required_keys",
+    "tools[].%s.required_keys[]" % OUTPUT_EXTENSION_KEY:
+        "tools[].agent_interface.output.required_keys[]",
+    "tools[].%s.empty_exit_codes" % OUTPUT_EXTENSION_KEY:
+        "tools[].agent_interface.output.empty_exit_codes",
+    "tools[].%s.empty_exit_codes[]" % OUTPUT_EXTENSION_KEY:
+        "tools[].agent_interface.output.empty_exit_codes[]",
+    "tools[].%s.empty_success_disabled_by" % OUTPUT_EXTENSION_KEY:
+        "tools[].agent_interface.output.empty_success_disabled_by",
+    "tools[].%s.empty_success_disabled_by[]" % OUTPUT_EXTENSION_KEY:
+        "tools[].agent_interface.output.empty_success_disabled_by[]",
     "tools[].%s[].required" % EXCLUSIVE_EXTENSION_KEY:
         "Tools/compiled/cli-contract.yaml: "
         "tools[].mutually_exclusive_groups[].required",
@@ -420,15 +452,23 @@ def read_contract(path):
                 "%s: tool %r carries no arguments list"
                 % (path, record.get("tool")))
         interface = record.get("agent_interface")
+        if type(record.get("host_environment_boundary")) is not bool:
+            raise ProjectionError(
+                "%s: tool %r carries no boolean Host boundary declaration"
+                % (path, record.get("tool")))
         if not isinstance(interface, dict) or \
                 set(interface) != {
                     "exposure", "workspace_argument", "workspace_access",
-                    "value_arguments", "path_arguments", "external_write",
+                    "value_arguments", "path_arguments", "external_write", "output",
                 } or interface.get("exposure") not in ("mcp", "cli-only"):
             raise ProjectionError(
                 "%s: tool %r carries no closed agent-interface policy"
                 % (path, record.get("tool")))
         arguments = {item.get("dest") for item in record["arguments"]}
+        try:
+            agent_interface_contract.validate_output_contract(interface["output"])
+        except ValueError as exc:
+            raise ProjectionError("%s: tool %r output: %s" % (path, record["tool"], exc)) from exc
         values = interface.get("value_arguments")
         paths = interface.get("path_arguments")
         if not isinstance(values, list) or not isinstance(paths, list):
@@ -589,6 +629,8 @@ def input_schema(record):
 
 def mcp_tool(record):
     tool = {"name": record["tool"], "inputSchema": input_schema(record)}
+    tool[OUTPUT_EXTENSION_KEY] = dict(record["agent_interface"]["output"])
+    tool[HOST_BOUNDARY_EXTENSION_KEY] = record["host_environment_boundary"]
     tool[WORKSPACE_EXTENSION_KEY] = {
         "argument": record["agent_interface"]["workspace_argument"],
         "access": record["agent_interface"]["workspace_access"],

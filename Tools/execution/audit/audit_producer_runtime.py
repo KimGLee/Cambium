@@ -333,10 +333,19 @@ def managed_receipt_path(root, relative, *, must_exist=False):
         suffixes=(".jsonl",), must_exist=must_exist)
 
 
-def read_receipt_records(path):
+def read_receipt_records(path, observation=None):
     """Read one JSONL register strictly for resulting-state verification."""
     records = []
-    text = kblib.read_text(path)
+    if observation is None:
+        exists, content = kblib.read_receipt_bytes(path)
+        if not exists:
+            raise FileNotFoundError(path)
+    else:
+        if (not isinstance(observation, kblib.ReceiptObservation) or
+                observation["path"] != kblib.validate_receipt_output_path(path)):
+            raise AuditProducerError("receipt read-back observation targets another register")
+        content = observation.content
+    text = content.decode("utf-8")
     for line_number, line in enumerate(text.splitlines(), 1):
         if not line.strip():
             continue

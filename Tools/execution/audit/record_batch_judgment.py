@@ -20,7 +20,6 @@ changes no page, Ledger, or Queue state.
 """
 
 import os
-import sys
 
 import Tools.execution.audit.audit_evidence_runtime as audit_evidence_runtime
 import Tools.execution.context_delivery.card_activation as card_activation
@@ -33,6 +32,7 @@ import Tools.platform.common.kblib as kblib
 import Tools.execution.evidence.manual_attestation as manual_attestation
 import Tools.governance.profile.profile_batch_judgment_contract as judgment_contract
 import Tools.execution.task_runtime.runtime_paths as runtime_paths
+from Tools.platform.common import reporting
 
 
 TOOL = judgment_contract.PRODUCER_TOOL
@@ -208,8 +208,9 @@ def main(argv=None):
     parser.add_argument("--apply", action="store_true",
                         help="append the evidence; omit for a dry run")
     parser.add_argument("--json", action="store_true",
-                        help="write the applied receipt as one JSON array")
+                        help="write operation facts and judgment receipts as one JSON object")
     args = parser.parse_args(argv)
+    publication = kblib.ReceiptPublication()
 
     root = os.path.realpath(os.path.abspath(args.root))
     try:
@@ -237,17 +238,15 @@ def main(argv=None):
             root, args.receipts, runtime_paths.RECEIPT_ROOT,
             suffixes=(".jsonl",), must_exist=False)
     except (OSError, TypeError, UnicodeError, ValueError) as exc:
-        print("[FAIL] %s" % exc, file=sys.stderr)
+        reporting.write_publication_result(
+            publication, json_output=args.json, status="invalid", errors=[str(exc)])
         return 1
 
     if not args.apply:
-        if args.json:
-            # A dry run publishes no receipt, matching the other writers.
-            return 0
-        print("[PLAN] %s answers (%s, %s) for batch %s" %
-              (args.reviewer_role, args.target, args.judgment_item,
-               args.batch))
-        print("dry run; add --apply to publish the bound judgment")
+        reporting.write_publication_result(
+            publication, json_output=args.json, status="planned",
+            receipt_id=receipt["receipt_id"], receipt_path=args.receipts,
+            receipts=[receipt])
         return 0
 
     operation = {
@@ -306,17 +305,18 @@ def main(argv=None):
         receipt = manual_attestation.publish_receipt(
             root, receipt_path, receipt, authority=authority,
             operation=operation, rebuild=rebuild, validate=validate,
-            publication_label="batch judgment publication")
+            publication_label="batch judgment publication", publication=publication)
     except (OSError, TypeError, ValueError,
             kblib.RuntimeStateLockedError) as exc:
-        print("[FAIL] %s" % exc, file=sys.stderr)
+        reporting.write_publication_result(
+            publication, json_output=args.json, status="invalid", errors=[str(exc)],
+            receipt_id=receipt["receipt_id"], receipt_path=args.receipts)
         return 1
 
-    if args.json:
-        sys.stdout.write(
-            kblib.canonical_json_bytes([receipt]).decode("utf-8") + "\n")
-    else:
-        print("[PASS] batch judgment recorded: %s" % receipt["receipt_id"])
+    reporting.write_publication_result(
+        publication, json_output=args.json, status="recorded",
+        receipt_id=receipt["receipt_id"], receipt_path=args.receipts,
+        receipts=[receipt])
     return 0
 
 

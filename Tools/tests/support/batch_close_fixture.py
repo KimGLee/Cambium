@@ -391,7 +391,7 @@ class CheckBatchCloseFixture(BatchCloseRuntimeActions, unittest.TestCase):
             "--apply", "--json",
         )
         self.assertEqual(0, reviewed.returncode, reviewed.stdout)
-        receipts = json.loads(reviewed.stdout)
+        receipts = json.loads(reviewed.stdout)["receipts"]
         self.assertEqual(1, len(receipts), receipts)
         return receipts[0]["receipt_id"]
 

@@ -64,6 +64,13 @@ def run_cambium_subprocess(*popenargs, **kwargs):
     makes capability propagation the default for every Cambium child while
     remaining a no-op for ordinary CLI execution.
     """
+    binding = kwargs.pop("path_binding", None)
+    if binding is not None:
+        # An authorized orchestrator has already admitted the selected child's
+        # arguments. Do not overwrite its scoped manifest with the parent's.
+        kwargs["env"] = binding["env"]
+        kwargs["pass_fds"] = binding["pass_fds"]
+        return subprocess.run(*popenargs, **kwargs)
     inherited = inherited_path_capability_subprocess()
     caller_fds = kwargs.pop("pass_fds", ())
     if caller_fds is None:
@@ -2592,7 +2599,7 @@ def _receipt_lines(receipts):
     return lines
 
 
-def _read_receipt_bytes(path):
+def read_receipt_bytes(path):
     """Read one receipt file through no-follow descriptors.
 
     A missing final component is represented by ``(False, b\"\")``.  The same
@@ -2600,20 +2607,9 @@ def _read_receipt_bytes(path):
     after-error inspection cannot be redirected to authoritative state.
     """
     absolute = validate_receipt_output_path(path)
-    capability = inherited_path_capability(path, consumptions="append")
-    if capability is not None:
-        target_fd, target_dev, target_ino = \
-            _pathcaps.effective_target(capability)
-        if target_fd is None:
-            _pathcaps.acknowledge(capability)
-            return False, b""
-        if capability["exists"] and capability["kind"] != "file":
-            raise ValueError("receipt target must be a regular file")
-        content = _pathcaps.read_stable_descriptor(
-            target_fd, target_dev, target_ino, absolute)
-        _pathcaps.verify_named_target(capability, absolute)
-        _pathcaps.acknowledge(capability)
-        return True, content
+    retained = _pathcaps.current_file_bytes(path)
+    if retained is not None:
+        return retained
     parent = os.path.dirname(absolute)
     basename = os.path.basename(absolute)
     nofollow = getattr(os, "O_NOFOLLOW", None)
@@ -2656,6 +2652,27 @@ def _read_receipt_bytes(path):
         os.close(parent_fd)
 
 
+class ReceiptObservation(dict):
+    """One fresh IO observation; bytes never become a persisted result field."""
+
+    def __init__(self, fields, content):
+        super().__init__(fields)
+        self.content = content
+
+
+class ReceiptPublication:
+    """Invocation-local append facts, without a business verdict or lock policy."""
+
+    def __init__(self):
+        self.outcome = "not-attempted"
+        self.error = None
+        self.observation = None
+        self.confirmed = False
+
+    def append(self, path, receipts, *, before=None):
+        return write_receipts_observed(path, receipts, before=before, publication=self)
+
+
 def receipt_append_observation(path, receipts):
     """Observe exact own-record counts without treating other appends as ours.
 
@@ -2666,7 +2683,7 @@ def receipt_append_observation(path, receipts):
     ``uncertain`` condition rather than repaired destructively.
     """
     lines = _receipt_lines(receipts)
-    exists, content = _read_receipt_bytes(path)
+    exists, content = read_receipt_bytes(path)
     counts = [content.splitlines(keepends=True).count(line) for line in lines]
     structurally_valid = True
     if content and not content.endswith(b"\n"):
@@ -2679,12 +2696,12 @@ def receipt_append_observation(path, receipts):
                     raise ValueError("receipt record is not an object")
         except (UnicodeError, ValueError, json.JSONDecodeError):
             structurally_valid = False
-    return {
+    return ReceiptObservation({
         "path": validate_receipt_output_path(path),
         "exists": exists,
         "counts": counts,
         "structurally_valid": structurally_valid,
-    }
+    }, content)
 
 
 def receipt_append_outcome(before, after):
@@ -2721,7 +2738,8 @@ def receipt_outcome_from(path, receipts, before):
         return "uncertain"
 
 
-def write_receipts_observed(path, receipts, exclusive=False, before=None):
+def write_receipts_observed(path, receipts, exclusive=False, before=None,
+                            publication=None):
     """Append receipts and report exact durable outcome plus any write error.
 
     Returns ``(outcome, error, before_observation)`` and does not raise an
@@ -2732,15 +2750,40 @@ def write_receipts_observed(path, receipts, exclusive=False, before=None):
     decide whether rollback is fully closed or must retain its recovery lock.
     """
     try:
+        with _pathcaps.receipt_operation(path):
+            return _write_receipts_observed(path, receipts, exclusive, before, publication)
+    except Exception as exc:
+        if publication is not None:
+            publication.error = exc
+        return "uncertain", exc, before
+
+
+def _write_receipts_observed(path, receipts, exclusive, before, publication):
+    try:
         baseline = before or receipt_append_observation(path, receipts)
     except Exception as exc:
+        if publication is not None:
+            publication.error = exc
         return "uncertain", exc, before
     write_error = None
+    if publication is not None:
+        publication.outcome = "uncertain"
     try:
         write_receipts(path, receipts, exclusive=exclusive)
     except Exception as exc:
         write_error = exc
-    outcome = receipt_outcome_from(path, receipts, baseline)
+    try:
+        after = receipt_append_observation(path, receipts)
+        outcome = receipt_append_outcome(baseline, after)
+    except Exception as exc:
+        after = None
+        outcome = "uncertain"
+        if write_error is None:
+            write_error = exc
+    if publication is not None:
+        publication.outcome = outcome
+        publication.error = write_error
+        publication.observation = after
     if write_error is not None:
         return outcome, write_error, baseline
     if outcome != "present":
@@ -2843,6 +2886,7 @@ def _append_receipt_lines(absolute, lines, exclusive=False):
                     continue
     except Exception:
         os.close(parent_fd)
+        _pathcaps.release_component_target(capability)
         raise
     try:
         descriptor = os.fstat(fd)
@@ -2888,6 +2932,7 @@ def _append_receipt_lines(absolute, lines, exclusive=False):
     finally:
         os.close(fd)
         os.close(parent_fd)
+        _pathcaps.release_component_target(capability)
 
 
 def exit_code(receipts):

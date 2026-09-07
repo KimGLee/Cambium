@@ -85,6 +85,9 @@ class CliContractFixture:
         document["path_overrides"] = []
         document["path_activation_overrides"] = []
         document["tools"] = []
+        document["output_contracts"] = {"fixture-text": copy.deepcopy(next(
+            value for value in owner["output_contracts"].values()
+            if value["mode"] == "text"))}
         for name, _path, _source in compiler.discover_tools(self.root):
             parser = compiler.entrypoint_loader.capture_argument_parser(
                 name, self.tools, require_marker=True)
@@ -99,6 +102,7 @@ class CliContractFixture:
                 "write_paths": [],
                 "read_write_paths": [],
                 "external_write": "none",
+                "output": "fixture-text",
             })
         return document
 

@@ -67,6 +67,63 @@ class InvocationContractTests(unittest.TestCase):
             output.getvalue(),
         )
 
+    def test_checker_transports_consume_json_without_temporary_receipt_writes(self):
+        record = kblib.make_receipt(
+            check_batch_close.check_links.TOOL,
+            check_batch_close.check_links.TOOL_VERSION,
+            "wiki-link", "Topics/A.md", "pass", "declared checker result", 1,
+            receipt_type_id=check_batch_close.check_links.RECEIPT_TYPE_ID)
+        rows = [record]
+        command = [sys.executable, "Tools/check_links.py", "/fixture"]
+        completed = subprocess.CompletedProcess(
+            command, 0, json.dumps(rows), "human diagnostic\n")
+        with mock.patch.object(
+                check_batch_close.kblib, "run_cambium_subprocess",
+                return_value=completed) as run, mock.patch.object(
+                    tempfile, "TemporaryDirectory",
+                    side_effect=AssertionError("checker output is not a temporary register")), \
+                mock.patch.object(
+                    kblib, "write_receipts",
+                    side_effect=AssertionError("raw checker results are not published here")):
+            subprocess_result = check_batch_close._run_receipting_command(
+                command, "/fixture", "check_links")
+
+            def invoke():
+                print(json.dumps(rows))
+                print("human diagnostic", file=sys.stderr)
+                return 0
+
+            inprocess_result = check_batch_close._run_inprocess_checker(
+                command, "check_links", invoke)
+        self.assertEqual(command + ["--json"], run.call_args.args[0])
+        self.assertEqual(subprocess.PIPE, run.call_args.kwargs["stderr"])
+        self.assertEqual(subprocess_result, inprocess_result)
+        self.assertEqual(rows, subprocess_result["receipts"])
+        self.assertEqual([], subprocess_result["errors"])
+
+    def test_checker_json_shape_cannot_bypass_existing_result_acceptance(self):
+        for malformed in ("", "not JSON", "{}", "[null]"):
+            with self.subTest(stdout=malformed), self.assertRaises(ValueError):
+                check_batch_close._checker_json_result(
+                    ["checker"], "checker", 0, malformed, "")
+        empty = check_batch_close._checker_json_result(
+            ["checker"], "checker", 0, "[]", "")
+        self.assertIn("checker produced no machine-readable receipts",
+                      empty["errors"])
+
+    def test_page_checker_json_entry_reuses_the_already_authorized_view(self):
+        admission = object()
+        with mock.patch.object(
+                check_batch_close.check_page_contract, "run",
+                return_value=0) as run:
+            code, _stdout, _stderr = _invoke(
+                lambda args: check_batch_close.check_page_contract.main(
+                    args, authorized_admission=admission),
+                ["/fixture", "--json"])
+        self.assertEqual(0, code)
+        self.assertIs(admission, run.call_args.kwargs["authorized_admission"])
+        self.assertIsNone(run.call_args.args[6])
+
 
 class WorkSpecStabilityContractTests(unittest.TestCase):
     """Keep the close-time CAS contract independent of a Task lifecycle."""

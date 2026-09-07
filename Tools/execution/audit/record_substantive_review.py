@@ -216,6 +216,7 @@ def main(argv=None):
     parser.add_argument("--receipts", default=DEFAULT_RECEIPTS)
     parser.add_argument("--apply", action="store_true")
     args = parser.parse_args(argv)
+    publication = kblib.ReceiptPublication()
 
     try:
         root, result, authority = audit_producer_runtime.admitted_runtime(
@@ -249,18 +250,15 @@ def main(argv=None):
             root, args.receipts)
     except (OSError, TypeError, UnicodeError, ValueError,
             kblib.YamlSubsetError) as exc:
-        reporting.write_canonical_json(
-            {"applied": False, "errors": [str(exc)], "status": "invalid"})
+        reporting.write_canonical_json(reporting.publication_result(
+            publication, status="invalid", errors=[str(exc)]))
         return 1
 
     if not args.apply:
-        reporting.write_canonical_json({
-            "applied": False,
-            "errors": [],
-            "status": "planned",
-            "receipt_id": receipt["receipt_id"],
-            "receipt_path": args.receipts,
-        })
+        reporting.write_canonical_json(reporting.publication_result(
+            publication, status="planned", receipt_id=receipt["receipt_id"],
+            receipt_path=args.receipts, result=receipt["result"],
+            verdict=receipt["verdict"]))
         return 0 if receipt["result"] == "pass" else 1
 
     operation = audit_producer_runtime.runtime_lock_metadata(
@@ -293,7 +291,7 @@ def main(argv=None):
                         "proposed review is not acceptable: %s" % proposed.get("reason"))
                 before = kblib.receipt_append_observation(
                     receipt_absolute, [receipt])
-            outcome, error, _ = kblib.write_receipts_observed(
+            outcome, error, _ = publication.append(
                 receipt_absolute, [receipt], before=before)
             if outcome != "present" or error is not None:
                 if outcome == "absent":
@@ -303,18 +301,15 @@ def main(argv=None):
                     (outcome, error))
     except (OSError, TypeError, ValueError,
             kblib.RuntimeStateLockedError) as exc:
-        reporting.write_canonical_json({
-            "applied": False,
-            "errors": [str(exc)],
-            "status": "uncertain",
-            "receipt_id": receipt["receipt_id"],
-        })
+        reporting.write_canonical_json(reporting.publication_result(
+            publication, status="uncertain", errors=[str(exc)],
+            receipt_id=receipt["receipt_id"]))
         return 1
 
     try:
         persisted = [row for row in
                      audit_producer_runtime.read_receipt_records(
-                         receipt_absolute)
+                         receipt_absolute, observation=publication.observation)
                      if row.get("receipt_id") == receipt["receipt_id"]]
         if len(persisted) != 1 or persisted[0] != receipt:
             raise audit_producer_runtime.AuditProducerError(
@@ -322,21 +317,16 @@ def main(argv=None):
         substantive_review_contract.validate_review_receipt(
             persisted[0], substantive_review_contract.load_contract(root))
     except (OSError, TypeError, UnicodeError, ValueError) as exc:
-        reporting.write_canonical_json({
-            "applied": True,
-            "errors": [str(exc)],
-            "status": "uncertain",
-            "receipt_id": receipt["receipt_id"],
-        })
+        reporting.write_canonical_json(reporting.publication_result(
+            publication, status="uncertain", errors=[str(exc)],
+            receipt_id=receipt["receipt_id"]))
         return 1
 
-    reporting.write_canonical_json({
-        "applied": True,
-        "errors": [],
-        "status": "recorded",
-        "receipt_id": receipt["receipt_id"],
-        "receipt_path": args.receipts,
-    })
+    publication.confirmed = True
+    reporting.write_canonical_json(reporting.publication_result(
+        publication, status="recorded", result=receipt["result"],
+        verdict=receipt["verdict"], receipt_id=receipt["receipt_id"],
+        receipt_path=args.receipts))
     return 0 if receipt["result"] == "pass" else 1
 
 

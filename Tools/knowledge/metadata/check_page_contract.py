@@ -666,13 +666,13 @@ def run(root, profile_override, contract_path, scope, excludes, strict,
     return 2 if candidates else 0
 
 
-def main(argv=None):
+def main(argv=None, *, authorized_admission=None):
     """CLI entry point; `--json` projects the produced receipts onto stdout."""
     return reporting.run_redirected_json(
-        _JSON_REPORTER, lambda: _main(argv))
+        _JSON_REPORTER, lambda: _main(argv, authorized_admission=authorized_admission))
 
 
-def _main(argv=None):
+def _main(argv=None, *, authorized_admission=None):
     parser = kblib.ArgumentParser(
         description="Validate pages against the compiled frontmatter page "
                     "contract (gate: page-contract; advisory by default).")
@@ -700,7 +700,8 @@ def _main(argv=None):
     args = parser.parse_args(argv)
     _JSON_REPORTER.begin(args.json)
     return run(args.vault_root, args.profile, args.contract, args.scope,
-               args.exclude, args.strict, args.receipts)
+               args.exclude, args.strict, args.receipts,
+               authorized_admission=authorized_admission)
 
 
 if __name__ == "__main__":

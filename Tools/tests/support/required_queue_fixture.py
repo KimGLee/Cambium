@@ -185,8 +185,12 @@ class RequiredQueueFixture:
         (derived / "page_contract.yaml").write_text(
             page_contract_text, encoding="utf-8")
     def run_tool(self, name, *arguments):
+        return self.invoke_tool(name, str(self.root), *arguments)
+
+    def invoke_tool(self, name, *arguments):
+        """Default CLI transport; the representative E2E overrides this seam."""
         return subprocess.run(
-            [sys.executable, str(TOOLS / name), str(self.root), *arguments],
+            [sys.executable, str(TOOLS / name), *arguments],
             text=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
             check=False,
         )
@@ -682,7 +686,7 @@ class RequiredQueueFixture:
             "--apply", "--json",
         )
         self.assertEqual(0, reviewed.returncode, reviewed.stdout)
-        receipts = json.loads(reviewed.stdout)
+        receipts = json.loads(reviewed.stdout)["receipts"]
         self.assertEqual(1, len(receipts), receipts)
         return receipts[0]["receipt_id"]
 
@@ -702,20 +706,12 @@ class RequiredQueueFixture:
 
         coverage_path = self.root / queue_runtime.COVERAGE_PATH
         queue_path = self.root / queue_runtime.QUEUE_PATH
-        applied = subprocess.run(
-            [
-                sys.executable, str(TOOLS / "apply_delta.py"),
-                delta, "--root", str(self.root),
-                "--expected-coverage-sha256",
-                kblib.sha256_file(coverage_path),
-                "--expected-queue-sha256", kblib.sha256_file(queue_path),
-                "--actor-role", "integrator",
-                "--receipts",
-                ".cambium/receipts/delta-%s.jsonl" % batch_id,
-                "--apply",
-            ],
-            text=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
-            check=False,
+        applied = self.invoke_tool(
+            "apply_delta.py", delta, "--root", str(self.root),
+            "--expected-coverage-sha256", kblib.sha256_file(coverage_path),
+            "--expected-queue-sha256", kblib.sha256_file(queue_path),
+            "--actor-role", "integrator", "--receipts",
+            ".cambium/receipts/delta-%s.jsonl" % batch_id, "--apply",
         )
         self.assertEqual(0, applied.returncode, applied.stdout)
         delta_apply_receipt = json.loads(

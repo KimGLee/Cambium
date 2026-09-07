@@ -3,10 +3,14 @@
 import contextlib
 import functools
 import io
+import json
 import sys
 
 import Tools.platform.common.kblib as kblib
-from Tools.platform.common.host_environment import HostEnvironmentUnavailable, preparation_request
+from Tools.platform.agent_interface import agent_interface_contract
+from Tools.platform.common.host_environment import (
+    HostEnvironmentUnavailable, host_handoff, validate_host_handoff,
+)
 
 
 def host_environment_boundary(function):
@@ -22,11 +26,8 @@ def host_environment_boundary(function):
             with contextlib.redirect_stdout(output):
                 result = function(*args, **kwargs)
         except HostEnvironmentUnavailable as exc:
-            handoff = {"status": "await-host", "host_environment": exc.diagnostic(),
-                       "host_preparation": preparation_request([exc.diagnostic()])}
-            if output.getvalue():
-                handoff["prior_output"] = output.getvalue()
-            write_canonical_json(handoff)
+            write_canonical_json(host_handoff(
+                exc.diagnostic(), prior_output=output.getvalue() or None))
             return 1
         except BaseException:
             sys.stdout.write(output.getvalue())
@@ -91,6 +92,140 @@ def write_canonical_json(payload, *, stream=None):
     stream = sys.stdout if stream is None else stream
     stream.write(kblib.canonical_json_bytes(payload).decode("utf-8"))
     stream.write("\n")
+
+
+_APPEND_APPLIED = {
+    "not-attempted": False,
+    "absent": False,
+    "present": True,
+    "uncertain": None,
+}
+_PUBLICATION_FIELDS = frozenset(("append", "record_confirmation", "reused"))
+
+
+def validate_publication_result(payload):
+    """Validate transient mechanical facts, never a producer's business verdict."""
+    if not isinstance(payload, dict):
+        raise ValueError("publication result must be one object")
+    publication = payload.get("publication")
+    if not isinstance(publication, dict) or set(publication) != _PUBLICATION_FIELDS:
+        raise ValueError("publication facts have an invalid field set")
+    outcome = publication.get("append")
+    if not isinstance(outcome, str) or outcome not in _APPEND_APPLIED:
+        raise ValueError("publication append outcome is invalid")
+    if "applied" not in payload or payload["applied"] is not _APPEND_APPLIED[outcome]:
+        raise ValueError("applied must preserve the observed append outcome")
+    confirmation = publication.get("record_confirmation")
+    if confirmation not in ("confirmed", "unconfirmed"):
+        raise ValueError("publication record confirmation is invalid")
+    reused = publication.get("reused")
+    if type(reused) is not bool:
+        raise ValueError("publication reuse must be boolean")
+    if reused and (outcome != "not-attempted" or confirmation != "confirmed"):
+        raise ValueError("reuse requires confirmed existing evidence without an append")
+    if confirmation == "confirmed" and outcome != "present" and not reused:
+        raise ValueError("record confirmation requires observed publication or confirmed reuse")
+    errors = payload.get("errors")
+    if not isinstance(errors, list) or any(not isinstance(error, str) for error in errors):
+        raise ValueError("publication errors must be a list of diagnostic strings")
+    status = payload.get("status")
+    if not isinstance(status, str) or not status:
+        raise ValueError("publication status must be a nonempty producer label")
+    if (outcome == "uncertain" or
+            (outcome == "present" and (confirmation != "confirmed" or errors))):
+        if status != "uncertain":
+            raise ValueError("unconfirmed or errored publication must remain uncertain")
+    return payload
+
+
+def publication_result(publication, *, status, errors=(), reused=False, **fields):
+    """Project append facts separately from the producer-owned business result.
+
+    This transient response is not a Receipt and never authorizes consumption.
+    A writer error cannot erase observed bytes or turn an unknown into absence.
+    """
+    if not isinstance(publication, kblib.ReceiptPublication):
+        raise TypeError("publication result requires Receipt I/O facts")
+    if reused and (publication.outcome != "not-attempted" or
+                   not publication.confirmed):
+        raise ValueError("reuse requires confirmed existing evidence without an append")
+    messages = list(errors)
+    if publication.error is not None and str(publication.error) not in messages:
+        messages.append(str(publication.error))
+    present = publication.outcome == "present"
+    absent = publication.outcome in ("not-attempted", "absent")
+    reliable = publication.confirmed and (present or reused) and not messages
+    result = dict(fields, status=status if reliable or absent else "uncertain",
+                applied=_APPEND_APPLIED.get(publication.outcome),
+                errors=messages,
+                publication={
+                    "append": publication.outcome,
+                    "record_confirmation": (
+                        "confirmed" if publication.confirmed else "unconfirmed"),
+                    "reused": reused,
+                })
+    return validate_publication_result(result)
+
+
+def publication_result_reliable(payload):
+    """Whether the operation boundary is settled, not whether its review passed."""
+    validate_publication_result(payload)
+    return payload["status"] != "uncertain"
+
+
+def observe_tool_output(contract, stdout, exit_code, arguments, *, host_boundary=False):
+    """One CLI/MCP/Runner observation of declared output and unsettled outcomes.
+
+    An allowed Host handoff can cross any ordinary output shape, but never
+    becomes a Receipt or a claim of no write. Ordinary business payloads keep
+    their declared shape; their evidence acceptance remains with consumers.
+    """
+    agent_interface_contract.validate_output_contract(contract)
+    if type(host_boundary) is not bool:
+        raise ValueError("Host boundary declaration must be boolean")
+    try:
+        candidate = json.loads(stdout.decode("utf-8"))
+    except (UnicodeError, ValueError):
+        candidate = None
+    if isinstance(candidate, dict) and "host_environment" in candidate:
+        observation = {"stdout_parse": "parsed", "stdout_json": candidate,
+                       "output_reliable": False}
+        try:
+            if not host_boundary:
+                raise ValueError("tool has no declared Host environment boundary")
+            validate_host_handoff(candidate)
+        except ValueError as exc:
+            observation.update(stdout_parse="unparseable", stdout_parse_error=str(exc))
+        return observation
+    observation = agent_interface_contract.decode_output(
+        contract, stdout, exit_code, arguments)
+    if (observation["stdout_parse"] == "parsed" and
+            contract["result_contract"] == "receipt-publication"):
+        try:
+            observation["output_reliable"] = publication_result_reliable(
+                observation["stdout_json"])
+        except ValueError as exc:
+            observation.update(stdout_parse="unparseable", output_reliable=False,
+                               stdout_parse_error=str(exc))
+    return observation
+
+
+def write_publication_result(publication, *, json_output, status, errors=(), **fields):
+    """Emit the same operation facts through JSON or the existing human mode."""
+    payload = publication_result(publication, status=status, errors=errors, **fields)
+    if json_output:
+        write_canonical_json(payload)
+    else:
+        facts = payload["publication"]
+        stream = sys.stderr if payload["errors"] else sys.stdout
+        print("[%s] receipt append=%s; record confirmation=%s" % (
+            payload["status"].upper(), facts["append"],
+            facts["record_confirmation"]), file=stream)
+        for receipt in payload.get("receipts", ()):
+            print("receipt: %s" % receipt["receipt_id"], file=stream)
+        for error in payload["errors"]:
+            print(error, file=stream)
+    return payload
 
 
 def write_canonical_json_array(values, *, stream=None, omit_if_empty=False):

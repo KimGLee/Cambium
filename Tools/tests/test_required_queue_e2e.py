@@ -7,7 +7,6 @@ owned by Unit, Contract, Integration, or Slow tests at their machine owners.
 
 import json
 from pathlib import Path
-import subprocess
 import sys
 import unittest
 
@@ -31,6 +30,7 @@ class RequiredQueueLifecycleEndToEndTests(RequiredQueueE2EScenarioCase):
     """One representative real lifecycle through Terminal Proof."""
 
     START_SCENARIO = "initial-plan"
+    MCP_TRANSPORT = True
 
     def test_real_terminal_proof_receipt_completes_task(self):
         self.merge_and_close("B1", "Topics/A.md")
@@ -105,27 +105,30 @@ class RequiredQueueLifecycleEndToEndTests(RequiredQueueE2EScenarioCase):
             "final_handoff": "fixture completion handoff",
             "time_contract_result": "minimum run satisfied",
         }
-        proof = assemble_terminal_proof.assemble_terminal_proof(
-            self.root, semantic_input,
-            queue_check_receipt=proof_queue_receipt,
-            corpus_plan_check_receipt=corpus_plan_receipt,
-            audit_receipt_register=audit_register,
-            terminal_audit_receipt_register=terminal_register,
-            full_deterministic_results=audit_register)
+        input_relative = runtime_paths.TRANSIENT_ROOT + "/terminal-audit-input.yaml"
+        input_path = self.root / input_relative
+        input_path.parent.mkdir(parents=True, exist_ok=True)
+        input_path.write_text(kblib.canonical_yaml(semantic_input), encoding="utf-8")
         proof_relative = ".cambium/receipts/terminal-proof.yaml"
-        (self.root / proof_relative).write_text(
-            kblib.canonical_yaml(proof), encoding="utf-8")
+        assembled = self.run_tool(
+            "assemble_terminal_proof.py", "--terminal-audit-input", input_relative,
+            "--queue-check-receipt", proof_queue_receipt,
+            "--corpus-plan-check-receipt", corpus_plan_receipt,
+            "--audit-receipt-register", audit_register,
+            "--terminal-audit-receipt-register", terminal_register,
+            "--full-deterministic-results", audit_register,
+            "--proof", proof_relative, "--apply", "--json")
+        self.assertEqual(0, assembled.returncode,
+                         (assembled.stdout, assembled.stderr))
         proof_register = ".cambium/receipts/proof-pass.jsonl"
-        proof_command = [
-            sys.executable, str(TOOLS / "check_proof.py"), proof_relative,
+        proof_check = self.invoke_tool(
+            "check_proof.py", proof_relative,
             "--root", str(self.root), "--progress-ledger",
             queue_runtime.PROGRESS_PATH, "--ledger", queue_runtime.COVERAGE_PATH,
             "--receipts", proof_register,
-        ]
-        proof_check = subprocess.run(
-            proof_command, cwd=self.root, text=True,
-            stdout=subprocess.PIPE, stderr=subprocess.STDOUT, check=False)
-        self.assertEqual(0, proof_check.returncode, proof_check.stdout)
+        )
+        self.assertEqual(0, proof_check.returncode,
+                         (proof_check.stdout, proof_check.stderr))
         proof_receipt = json.loads((self.root / proof_register).read_text(
             encoding="utf-8").splitlines()[-1])
         self.assertEqual("proof-check-summary", proof_receipt["check"])
@@ -143,6 +146,14 @@ class RequiredQueueLifecycleEndToEndTests(RequiredQueueE2EScenarioCase):
             proof_receipt["terminal_proof_sha256"],
             result["progress"]["terminal_audit"]["terminal_proof_sha256"],
         )
+        # Every operation that built this runtime used the same sequential
+        # host session. This is not an installation/adoption test: those
+        # preconditions still come from the existing Profile fixture owner.
+        self.assertTrue(self.mcp_session.calls)
+        for call in self.mcp_session.calls:
+            envelope = call["response"]["result"]["structuredContent"]
+            self.assertEqual("descriptor-retained",
+                             envelope["path_capability_assurance"], call)
 
 
 class MaintenanceCompletionEndToEndTests(RequiredQueueE2EScenarioCase):

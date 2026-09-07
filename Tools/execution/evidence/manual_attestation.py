@@ -34,7 +34,7 @@ def _freeze_generated_identity(planned, rebuilt):
 
 
 def publish_receipt(root, receipt_path, planned_receipt, *, authority,
-                    operation, rebuild, validate, publication_label):
+                    operation, rebuild, validate, publication_label, publication):
     """Publish one locked, self-validating manual receipt and read it back.
 
     ``rebuild(locked_runtime)`` must derive a fresh receipt from the runtime and
@@ -51,6 +51,8 @@ def publish_receipt(root, receipt_path, planned_receipt, *, authority,
     """
     if not callable(rebuild) or not callable(validate):
         raise TypeError("rebuild and validate must be callable")
+    if not isinstance(publication, kblib.ReceiptPublication):
+        raise TypeError("publication requires invocation-local Receipt I/O facts")
     if not isinstance(publication_label, str) or not publication_label.strip():
         raise ValueError("publication_label must be non-empty text")
 
@@ -75,7 +77,7 @@ def publish_receipt(root, receipt_path, planned_receipt, *, authority,
             before = kblib.receipt_append_observation(
                 receipt_path, [locked_receipt])
 
-        outcome, error, _observation = kblib.write_receipts_observed(
+        outcome, error, _observation = publication.append(
             receipt_path, [locked_receipt], before=before)
         if outcome != "present" or error is not None:
             if outcome == "absent":
@@ -101,6 +103,7 @@ def publish_receipt(root, receipt_path, planned_receipt, *, authority,
             raise ValueError(
                 "%s read-back did not resolve the exact receipt" %
                 publication_label)
+    publication.confirmed = True
     return locked_receipt
 
 

@@ -237,6 +237,8 @@ python3 Tools/render_host_configs.py . --projection-target carried-runtime --out
 
 Use `--help` and `--sources` before regenerating or installing a host product. [`mcp_server.py`](mcp_server.py) preserves the child tool's structured result and exit code; it makes no new governance judgment.
 
+Output modes are declared once in the reusable `output_contracts` in `agent-interface-policy.yaml`; each tool binds one declaration. The CLI compiler resolves the binding, and MCP consumes its generated projection. An output can be always JSON, mode-selected JSON, or text. Empty successful output is allowed only in the declared modes, not inferred from the presence of `--json`.
+
 ## Results and evidence
 
 Each CLI's `--help` states its write mode, output options, and required inputs. Where supported:
@@ -247,6 +249,16 @@ Each CLI's `--help` states its write mode, output options, and required inputs. 
 - `--apply` authorizes only the transaction named by that tool.
 
 Gate identity, receipt meaning, reuse, and completion authority remain with [K00/12](<../kernel/K00 Standards Control/12 Control Registry.md>) and [K12/07](<../kernel/K12 Quality Assurance/07 Audit Evidence Reuse and Invalidation.md>). A SHA-256 value binds bytes; it is not a signature. Actor and reviewer fields are recorded assertions unless an external authenticated runner supplies a stronger trust anchor. Do not collapse a documented HOLD exit into either success or failure; callers must preserve the tool's exact result.
+
+Audit producers return publication facts separately from their business verdict. A confirmed `changes-required` review is successfully recorded but is not passing review evidence. A write error can coexist with observed bytes; an uncertain result is not a claim that nothing was written. Manual-attestation tools return the same publication envelope in JSON mode, with their original record array under `receipts`. The transient envelope is not a Receipt and does not authorize a stage transition; catalogs still read and validate the persisted records.
+
+MCP retains the raw `exit_code` and its process-code `verdict`, alongside `output_reliable` and `invocation_reliable`. Output validation or capability confirmation failure stops the call without discarding returned publication facts. Runner children use the same path admission, with separate acknowledgement scopes and no widening of matching inherited capabilities. Child execution and subsequent next-action observation remain separate results.
+
+The compiler derives each tool's Host-environment boundary from its actual entrypoint wrapper. MCP and Runner use the same output observer: a declared Host handoff retains its diagnostic and any prior output, requires a stop, and does not claim either a passing Receipt or that no write occurred.
+
+Receipt-specific observation reads the effective append after-image, not a cached input snapshot. Component-owned receipt targets remain internal, rooted by the invocation descriptor rather than exposed as extra public arguments. This covers receipt file reads and writes and their reachable catalog targets; it is not a claim that every runtime directory enumeration, multi-object transaction or Host filesystem operation is descriptor-based. Their existing owners retain their locks, hashes, CAS and completion checks.
+
+Two input roles may reference the same retained snapshot. Their canonical path, target and parent identities must agree before physical read authority can be shared; the read acknowledges those equivalent path capabilities, not the roles' governance meaning. Write capabilities are not coalesced, and same-mode write aliases remain refused.
 
 ## Receipt-sealing maintenance runbook
 

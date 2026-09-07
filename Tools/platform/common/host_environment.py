@@ -24,6 +24,44 @@ def preparation_request(diagnostics):
             "diagnostics": diagnostics}
 
 
+def validate_host_handoff(payload):
+    """Validate the existing observation handoff without asserting write outcome."""
+    required = {"status", "host_environment", "host_preparation"}
+    if (not isinstance(payload, dict) or not required <= set(payload) or
+            set(payload) - required - {"prior_output"} or
+            payload.get("status") != "await-host"):
+        raise ValueError("Host handoff requires its exact observation and preparation fields")
+    diagnostic = payload["host_environment"]
+    fields = {"code", "capability_id", "resource", "constructs", "remedy", "message"}
+    if not isinstance(diagnostic, dict) or set(diagnostic) != fields:
+        raise ValueError("Host handoff diagnostic has an invalid field set")
+    for field in ("code", "capability_id", "remedy", "message"):
+        if not isinstance(diagnostic[field], str) or not diagnostic[field]:
+            raise ValueError("Host handoff diagnostic %s must be nonempty text" % field)
+    resource = diagnostic["resource"]
+    if resource is not None and not isinstance(resource, str):
+        raise ValueError("Host handoff resource must be text or null")
+    constructs = diagnostic["constructs"]
+    if (not isinstance(constructs, list) or
+            any(not isinstance(item, str) or not item for item in constructs) or
+            constructs != sorted(set(constructs))):
+        raise ValueError("Host handoff constructs must be sorted unique strings")
+    if payload["host_preparation"] != preparation_request([diagnostic]):
+        raise ValueError("Host preparation request differs from its diagnostic projection")
+    if "prior_output" in payload and not isinstance(payload["prior_output"], str):
+        raise ValueError("Host handoff prior output must retain its original text")
+    return payload
+
+
+def host_handoff(diagnostic, *, prior_output=None):
+    """Project one failed observation; do not guess whether earlier steps wrote."""
+    payload = {"status": "await-host", "host_environment": diagnostic,
+               "host_preparation": preparation_request([diagnostic])}
+    if prior_output is not None:
+        payload["prior_output"] = prior_output
+    return validate_host_handoff(payload)
+
+
 class HostEnvironmentUnavailable(Exception):
     """A required observation could not execute; no verdict was obtained."""
 
@@ -52,4 +90,5 @@ def preparation_failure(report, error, *, capability_id):
     return report
 
 
-__all__ = ["PREPARATION_CAPABILITY_ID", "HostEnvironmentUnavailable", "preparation_failure", "preparation_request"]
+__all__ = ["PREPARATION_CAPABILITY_ID", "HostEnvironmentUnavailable", "preparation_failure",
+           "preparation_request", "host_handoff", "validate_host_handoff"]

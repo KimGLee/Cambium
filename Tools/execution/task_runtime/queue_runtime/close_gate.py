@@ -81,9 +81,10 @@ def candidate_evidence_binding_errors(root, label, relative, expected_sha,
         return ["%s candidate evidence file %s has %d hard links" %
                 (label, relative, descriptor.st_nlink)]
     try:
-        with open(full, "rb") as handle:
-            payload = handle.read()
-    except OSError as exc:
+        exists, payload = kblib.read_receipt_bytes(full)
+        if not exists:
+            raise FileNotFoundError(full)
+    except (OSError, ValueError) as exc:
         return ["%s candidate evidence file %s is unreadable: %s" %
                 (label, relative, exc)]
     if expected_bytes is not None and len(payload) != expected_bytes:

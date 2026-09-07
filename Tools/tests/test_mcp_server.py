@@ -51,6 +51,7 @@ import Tools.platform.agent_interface.mcp_server as mcp_server  # noqa: E402
 import Tools.execution.task_runtime.runtime_paths as runtime_paths  # noqa: E402
 import Tools.platform.distribution.module_boundary_facts as module_boundary_facts  # noqa: E402
 import Tools.platform.repository.path_capability as path_capability  # noqa: E402
+import Tools.platform.repository.path_admission as path_admission  # noqa: E402
 from Tools.tests.support.canonical_registry_fixture import (  # noqa: E402
     install_isolated_tool_registry_bundle,
 )
@@ -201,8 +202,20 @@ def fake_projection():
                 "type": "object",
             },
             "name": name,
+            mcp_server.HOST_BOUNDARY_EXTENSION_KEY: False,
             mcp_server.WORKSPACE_EXTENSION_KEY: {
                 "argument": "root", "access": "read"},
+            mcp_server.OUTPUT_EXTENSION_KEY: {
+                "mode": "text" if name == "silent_tool" else "json-option",
+                "result_contract": "tool-payload",
+                "json_argument": None if name == "silent_tool" else "json",
+                "json_value": None if name == "silent_tool" else True,
+                "json_inactive_when_any": [],
+                "json_types": [] if name == "silent_tool" else ["object"] if name == "echo_tool" else ["array"],
+                "required_keys": [],
+                "empty_exit_codes": [1],
+                "empty_success_disabled_by": [],
+            },
         })
     return {
         "artifact": "agent-interface-projection",
@@ -330,6 +343,8 @@ class LayerBoundaryTests(unittest.TestCase):
             "Tools.platform.agent_interface.cli_argv_renderer",
             "Tools.platform.agent_interface.agent_interface_contract",
             "Tools.platform.repository.repository",
+            "Tools.platform.repository.path_admission",
+            "Tools.platform.common",
         }, imported)
         judgment_prefixes = ("check_", "apply_", "update_", "compile_",
                              "compose_", "render_", "adopt_", "register_",
@@ -373,7 +388,8 @@ class LayerBoundaryTests(unittest.TestCase):
                 cli_argv_renderer, "build_argv", side_effect=error), \
                 self.assertRaises(mcp_server.RpcError) as caught:
             mcp_server.build_argv(
-                {"name": entry["name"], "schema": entry["inputSchema"]},
+                {"name": entry["name"], "schema": entry["inputSchema"],
+                 "output": entry[mcp_server.OUTPUT_EXTENSION_KEY]},
                 {"first": "a", "second": "b"})
         self.assertEqual(mcp_server.INVALID_PARAMS, caught.exception.code)
         self.assertEqual({"argument": "first"}, caught.exception.data)
@@ -591,6 +607,9 @@ class ProjectionLoadTests(SyntheticCase):
             ("artifact", lambda doc: doc.__setitem__(
                 "artifact", "something-else"), None),
             ("count", lambda doc: doc.__setitem__("tool_count", 99), None),
+            ("missing-output", lambda doc: doc["tools"][0].pop(mcp_server.OUTPUT_EXTENSION_KEY), "output contract"),
+            ("missing-host-boundary", lambda doc: doc["tools"][0].pop(mcp_server.HOST_BOUNDARY_EXTENSION_KEY), "boolean Host boundary"),
+            ("nonboolean-host-boundary", lambda doc: doc["tools"][0].__setitem__(mcp_server.HOST_BOUNDARY_EXTENSION_KEY, "true"), "boolean Host boundary"),
             ("phantom", lambda doc: (
                 doc["tools"].append({
                     "description": "not shipped",
@@ -836,13 +855,131 @@ class PathActivationContractTests(unittest.TestCase):
         for capability, arguments, expected in cases:
             with self.subTest(capability=capability, arguments=arguments):
                 self.assertEqual(
-                    mcp_server._path_capability_is_active(
+                    path_admission.capability_is_active(
                         capability, arguments),
                     expected)
 
 
 class PathCapabilityUnitTests(unittest.TestCase):
     """The path-capability owner, without MCP transport or a child process."""
+
+    def test_snapshot_roles_share_exact_physical_reads_and_acknowledgements(self):
+        from Tools.platform.common import kblib
+        for directory in (False, True):
+            with self.subTest(directory=directory), tempfile.TemporaryDirectory() as temporary:
+                root = Path(temporary).resolve()
+                target = root / "input"
+                target.mkdir() if directory else None
+                file = target / "record.jsonl" if directory else target
+                file.write_bytes(b'{"receipt_id":"current"}\n')
+                prop = _string("role", "--role", path_access="read")
+                tool = {"name": "shared-input", "workspace_argument": "root", "schema": {
+                    "properties": {"root": _string("root"), "first": prop, "second": prop}}}
+                args = {"root": str(root), "first": target.name, "second": target.name}
+                fd = os.open(root, os.O_RDONLY | os.O_DIRECTORY)
+                try:
+                    with path_admission.invocation(tool, args, str(root), fd, os.environ) as binding:
+                        with mock.patch.dict(os.environ, binding["env"], clear=True), \
+                                mock.patch.object(path_capability, "_MANIFEST_CACHE", None), \
+                                mock.patch.object(path_capability, "_ACKNOWLEDGED", set()), \
+                                mock.patch.object(path_capability, "_TREE_BYTES", {}), \
+                                mock.patch.object(path_capability, "_TREE_METADATA", {}), \
+                                mock.patch.object(path_capability, "_TREE_SNAPSHOTS", {}):
+                            self.assertEqual(file.read_bytes(), kblib.read_bytes(file))
+                            self.assertEqual(file.read_bytes(), kblib.read_bytes(file))
+                            original = path_capability.records()
+                            for field, value in (
+                                    ("target_ino", original[1]["target_ino"] + 1),
+                                    ("parent_ino", original[1]["parent_ino"] + 1),
+                                    ("target_fd", None), ("kind", "missing"),
+                                    ("exists", False), ("consumption", "append")):
+                                rows = [dict(row) for row in original]
+                                rows[1][field] = value
+                                with self.subTest(mismatched=field), \
+                                        mock.patch.object(path_capability, "records", return_value=rows), \
+                                        self.assertRaisesRegex(ValueError, "ambiguous"):
+                                    path_capability.inherited_capability(target)
+                    self.assertEqual([], binding["missing"])
+                    self.assertEqual(2, len(binding["acknowledged"]))
+                finally:
+                    os.close(fd)
+
+    def test_receipt_observation_uses_after_image_not_initial_existence_or_cache(self):
+        from Tools.platform.common import kblib
+        from Tools.execution.audit import audit_producer_runtime
+        for existing, declared in ((False, True), (True, True), (False, False)):
+            with self.subTest(existing=existing, declared=declared), \
+                    tempfile.TemporaryDirectory() as temporary:
+                root = Path(temporary).resolve()
+                target = root / "receipts.jsonl"
+                if existing:
+                    target.write_text('{"receipt_id":"old"}\n', encoding="utf-8")
+                prior = target.read_bytes() if existing else b""
+                prop = _string("register", "--receipts", path_access="write")
+                prop[mcp_server.PATH_EXTENSION_KEY]["consumption"] = "append"
+                tool = {"name": "receipt-owner", "workspace_argument": "root",
+                        "schema": {"properties": {"root": _string("root"),
+                                                  **({"receipts": prop} if declared else {})}}}
+                args = {"root": str(root), **({"receipts": target.name} if declared else {})}
+                fd = os.open(root, os.O_RDONLY | os.O_DIRECTORY)
+                advanced = {}
+                try:
+                    with path_admission.invocation(tool, args, str(root), fd, os.environ) as binding:
+                        with mock.patch.dict(os.environ, binding["env"], clear=True), \
+                                mock.patch.object(path_capability, "_MANIFEST_CACHE", None), \
+                                mock.patch.object(path_capability, "_ADVANCED_TARGETS", advanced), \
+                                mock.patch.object(path_capability, "_ACKNOWLEDGED", set()), \
+                                mock.patch.object(path_capability, "_TREE_BYTES", {target.name: (b"stale", None)}):
+                            publication = kblib.ReceiptPublication()
+                            receipt = {"receipt_id": "new"}
+                            outcome, error, _ = publication.append(target, [receipt])
+                            self.assertEqual("present", outcome)
+                            self.assertIsNone(error)
+                            self.assertTrue(publication.observation.content.startswith(prior))
+                            rows = audit_producer_runtime.read_receipt_records(
+                                target, observation=publication.observation)
+                            self.assertEqual(receipt, rows[-1])
+                            self.assertEqual(target.read_bytes(), kblib.read_receipt_bytes(target)[1])
+                            if declared:
+                                with self.assertRaises(ValueError):
+                                    path_capability.inherited_capability(target, "snapshot")
+                    self.assertEqual([], binding["missing"])
+                finally:
+                    for entry in advanced.values():
+                        os.close(entry["fd"])
+                    os.close(fd)
+
+    def test_child_admission_cannot_widen_or_replace_inherited_identity(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary).resolve()
+            target = root / "input.jsonl"
+            target.write_text("{}\n", encoding="utf-8")
+            prop = _string("input", "--scope", path_access="read")
+            tool = {"name": "child", "workspace_argument": "root",
+                    "schema": {"properties": {"root": _string("root"), "scope": prop}}}
+            args = {"root": str(root), "scope": target.name}
+            fd = os.open(root, os.O_RDONLY | os.O_DIRECTORY)
+            try:
+                with path_admission.invocation(tool, args, str(root), fd, os.environ) as parent:
+                    with path_admission.invocation(tool, args, str(root), fd, os.environ,
+                                                   inherited_records=parent["rows"]) as child:
+                        self.assertNotEqual(parent["rows"][0]["capability_id"],
+                                            child["rows"][0]["capability_id"])
+                    prop[mcp_server.PATH_EXTENSION_KEY]["consumption"] = "append"
+                    with self.assertRaises(path_admission.PathAdmissionError):
+                        with path_admission.invocation(tool, args, str(root), fd, os.environ,
+                                                       inherited_records=parent["rows"]):
+                            self.fail("mode escalation admitted")
+                    prop[mcp_server.PATH_EXTENSION_KEY]["consumption"] = "snapshot"
+                    replacement = root / "replacement"
+                    replacement.write_text("{}\n", encoding="utf-8")
+                    replacement.replace(target)
+                    with self.assertRaises(path_admission.PathAdmissionError):
+                        with path_admission.invocation(tool, args, str(root), fd, os.environ,
+                                                       inherited_records=parent["rows"]):
+                            self.fail("replacement admitted")
+            finally:
+                os.close(fd)
 
     def test_acknowledgement_names_only_the_exact_consumed_record(self):
         rows = (
@@ -1239,7 +1376,7 @@ class PathCapabilityIsolationTests(ArgvTests):
         self.assertIn("result", response, response)
         payload = response["result"]["structuredContent"]["stdout_json"]
         self.assertEqual(payload["outcome"], "uncertain")
-        self.assertIn("could not be proven durable", payload["error"])
+        self.assertTrue(payload["error"])
         self.assertEqual(
             {"receipt_id": "r1"},
             json.loads((receipts / "displaced.jsonl.displaced").read_text(
@@ -1345,10 +1482,14 @@ class PathCapabilityIsolationTests(ArgvTests):
 
         response = self.call(server, "note.md")
 
-        self.assertEqual(response["error"]["code"],
-                         mcp_server.INTERNAL_ERROR)
+        self.assertTrue(response["result"]["isError"])
+        envelope = response["result"]["structuredContent"]
+        self.assertEqual(0, envelope["exit_code"])
+        self.assertFalse(envelope["invocation_reliable"])
+        self.assertIn("ignored", envelope["stdout_json"])
         self.assertEqual(
-            response["error"]["data"]["missing_path_capabilities"],
+            [value.rsplit(":", 1)[-1] for value in
+             envelope["missing_path_capabilities"]],
             ["scope[0]"])
 
 
@@ -1356,7 +1497,7 @@ class PathCapabilityAdmissionContractTests(ArgvTests):
     """Path admission and result wiring without lifecycle reconstruction."""
 
     def admitted_records(self, server, arguments):
-        records, descriptors = mcp_server.enforce_workspace_capabilities(
+        records, descriptors = path_admission.admit_paths(
             server.projection["by_name"]["echo_tool"], arguments,
             server.workspace_root, server.workspace_fd)
         for descriptor in descriptors:
@@ -1420,34 +1561,23 @@ class PathCapabilityAdmissionContractTests(ArgvTests):
                 if message:
                     self.assertIn(message, response["error"]["message"])
 
-    def test_two_active_arguments_cannot_alias_one_consumption_identity(self):
-        projection = fake_projection()
-        echo = next(tool for tool in projection["tools"]
-                    if tool["name"] == "echo_tool")
-        echo["inputSchema"]["properties"]["other"] = _string(
-            "second scoped path", "--other", path_access="read")
-        distribution = SyntheticDistribution(projection=projection)
-        self.addCleanup(distribution.cleanup)
-        (distribution.workspace / "note.md").write_text(
-            "admitted", encoding="utf-8")
-        server = started(distribution)
-
-        response = request(server, "tools/call", {
-            "name": "echo_tool",
-            "arguments": {
-                "root": ".", "first": "a", "second": "b",
-                "scope": "note.md", "other": "note.md",
-            },
-        })
-
-        self.assertEqual(response["error"]["code"],
-                         mcp_server.INVALID_PARAMS)
-        self.assertEqual(
-            {response["error"]["data"]["argument"],
-             response["error"]["data"]["aliased_argument"]},
-            {"scope", "other"})
-        self.assertEqual(response["error"]["data"]["consumption"],
-                         "snapshot")
+    def test_write_arguments_cannot_alias_one_consumption_identity(self):
+        for access, mode in (("write", "append"), ("write", "replace"),
+                             ("read-write", "transaction")):
+            with self.subTest(mode=mode):
+                prop = _string("write role", "--role", path_access=access)
+                prop[mcp_server.PATH_EXTENSION_KEY]["consumption"] = mode
+                tool = {"name": "write-alias", "workspace_argument": "root", "schema": {
+                    "properties": {"root": _string("root"), "first": prop, "second": prop}}}
+                fd = os.open(self.dist.workspace, os.O_RDONLY | os.O_DIRECTORY)
+                try:
+                    with self.assertRaises(path_admission.PathAdmissionError) as caught:
+                        path_admission.admit_paths(tool, {
+                            "root": str(self.dist.workspace), "first": "note.md", "second": "note.md"},
+                            str(self.dist.workspace), fd)
+                    self.assertEqual(mode, caught.exception.data["consumption"])
+                finally:
+                    os.close(fd)
 
     def test_symlinks_are_never_canonical_path_capabilities(self):
         server = started(self.dist)
@@ -1587,7 +1717,8 @@ class PathCapabilityAdmissionContractTests(ArgvTests):
         self.assertNotIn("--scope", dry_run["stdout_json"]["argv"])
         self.assertEqual(dry_run["consumed_path_capabilities"], [])
         self.assertIn("--scope", write_run["stdout_json"]["argv"])
-        self.assertEqual(write_run["consumed_path_capabilities"],
+        self.assertEqual([value.rsplit(":", 1)[-1] for value in
+                          write_run["consumed_path_capabilities"]],
                          ["scope[0]"])
 
     def test_a_namespace_constraint_requires_namespace_and_suffix(self):
@@ -1597,9 +1728,9 @@ class PathCapabilityAdmissionContractTests(ArgvTests):
 
         for scope in ("README.jsonl", ".cambium/receipts/ready.yaml"):
             with self.subTest(scope=scope), \
-                    self.assertRaises(mcp_server.RpcError) as caught:
+                    self.assertRaises(path_admission.PathAdmissionError) as caught:
                 self.admitted_records(server, dict(common, scope=scope))
-            self.assertEqual(caught.exception.code, mcp_server.INVALID_PARAMS)
+            self.assertEqual(caught.exception.data["argument"], "scope")
         records = self.admitted_records(
             server, dict(common, scope=".cambium/receipts/ready.jsonl"))
         self.assertEqual(["scope[0]"],
@@ -1663,9 +1794,13 @@ class SeamTests(SyntheticCase):
                         ""),
     }
 
-    def call(self, name, arguments=None):
+    def call(self, name, arguments=None, completion=None, output=None,
+             host_boundary=False):
         server = started(self.dist)
-        code, stdout, stderr = self.COMPLETIONS[name]
+        server.projection["by_name"][name]["host_environment_boundary"] = host_boundary
+        if output is not None:
+            server.projection["by_name"][name]["output"] = output
+        code, stdout, stderr = completion or self.COMPLETIONS[name]
         completed = subprocess.CompletedProcess(
             [name], code, stdout=stdout.encode("utf-8"),
             stderr=stderr.encode("utf-8"))
@@ -1724,9 +1859,90 @@ class SeamTests(SyntheticCase):
                          envelope["stdout_text"].strip())
         self.assertEqual((0, "clean"),
                          (envelope["exit_code"], envelope["verdict"]))
+        self.assertFalse(envelope["output_reliable"])
+        self.assertTrue(result["isError"])
         text = result["content"][0]["text"]
         self.assertIn("could not be parsed", text)
         self.assertIn("nothing has been inferred from it", text)
+
+    def test_declared_output_shapes_and_publication_facts_are_independent_of_exit(self):
+        contract = dict(fake_projection()["tools"][0][mcp_server.OUTPUT_EXTENSION_KEY])
+        contract.update(mode="always-json", json_argument=None, json_value=None,
+                        json_types=["object"], required_keys=["status"],
+                        empty_exit_codes=[])
+        for raw, reliable in (("{}", False), ("[]", False), ("", False),
+                              ('{"status":"recorded"}', True)):
+            with self.subTest(raw=raw):
+                result = self.call("clean_tool", completion=(0, raw, ""), output=contract)
+                self.assertEqual(reliable, result["structuredContent"]["output_reliable"])
+                self.assertEqual(not reliable, result["isError"])
+                self.assertEqual(0, result["structuredContent"]["exit_code"])
+        contract.update(result_contract="receipt-publication")
+        payload = {"applied": True, "status": "recorded", "errors": [],
+                   "result": "fail", "verdict": "changes-required",
+                   "publication": {"append": "present", "record_confirmation": "confirmed", "reused": False}}
+        result = self.call("clean_tool", completion=(1, json.dumps(payload), ""), output=contract)
+        self.assertTrue(result["structuredContent"]["output_reliable"])
+        self.assertEqual(payload, result["structuredContent"]["stdout_json"])
+        self.assertTrue(result["isError"])
+        payload["applied"] = False
+        result = self.call("clean_tool", completion=(0, json.dumps(payload), ""), output=contract)
+        self.assertFalse(result["structuredContent"]["output_reliable"])
+        self.assertTrue(result["isError"])
+        payload.update(applied=None, status="uncertain")
+        payload["publication"].update(append="uncertain", record_confirmation="unconfirmed")
+        result = self.call("clean_tool", completion=(0, json.dumps(payload), ""), output=contract)
+        self.assertEqual("parsed", result["structuredContent"]["stdout_parse"])
+        self.assertEqual(payload, result["structuredContent"]["stdout_json"])
+        self.assertFalse(result["structuredContent"]["output_reliable"])
+        self.assertTrue(result["isError"])
+        contract.update(result_contract="tool-payload", empty_exit_codes=[0])
+        result = self.call("clean_tool", completion=(0, "", "dry run"), output=contract)
+        self.assertTrue(result["structuredContent"]["output_reliable"])
+        self.assertEqual("empty", result["structuredContent"]["stdout_parse"])
+        contract.update(empty_exit_codes=[0, 1],
+                        empty_success_disabled_by=["apply", "apply_replan"])
+        for arguments, code, reliable in (
+                ({}, 0, True), ({"apply": False}, 0, True),
+                ({"apply": True}, 0, False),
+                ({"apply_replan": True}, 0, False),
+                ({"apply": True}, 1, True), ({}, 2, False)):
+            with self.subTest(arguments=arguments, exit_code=code):
+                observed = mcp_server.agent_interface_contract.decode_output(
+                    contract, b"", code, arguments)
+                self.assertEqual(reliable, observed["output_reliable"])
+
+    def test_declared_host_handoff_keeps_diagnosis_across_output_shapes(self):
+        from Tools.platform.common import host_environment
+
+        error = host_environment.HostEnvironmentUnavailable(
+            "renderer unavailable", capability_id="static-markdown-render-v1",
+            code="runtime-unavailable", constructs=["mermaid"])
+        payload = host_environment.host_handoff(
+            error.diagnostic(), prior_output="prior step returned\n")
+        receipt_contract = dict(fake_projection()["tools"][0][mcp_server.OUTPUT_EXTENSION_KEY])
+        receipt_contract.update(mode="always-json", json_argument=None,
+                                json_value=None, json_types=["object"],
+                                required_keys=["applied", "status"],
+                                result_contract="receipt-publication")
+        for name, output in (("clean_tool", receipt_contract),
+                             ("clean_tool", None), ("silent_tool", None)):
+            with self.subTest(tool=name, output=output):
+                result = self.call(
+                    name, completion=(1, json.dumps(payload), ""),
+                    output=output, host_boundary=True)
+                envelope = result["structuredContent"]
+                self.assertEqual("parsed", envelope["stdout_parse"])
+                self.assertEqual(payload, envelope["stdout_json"])
+                self.assertFalse(envelope["output_reliable"])
+                self.assertTrue(result["isError"])
+                self.assertEqual(1, envelope["exit_code"])
+        rejected = self.call(
+            "clean_tool", completion=(0, json.dumps(payload), ""),
+            output=receipt_contract, host_boundary=False)
+        self.assertEqual("unparseable", rejected["structuredContent"]["stdout_parse"])
+        self.assertFalse(rejected["structuredContent"]["output_reliable"])
+        self.assertTrue(rejected["isError"])
 
 
 # ---------------------------------------------------------------------------
@@ -1808,22 +2024,16 @@ class LiveStdioTests(unittest.TestCase):
     """One real round trip: the shipped file, a pipe, and a real tool."""
 
     def drive(self, messages, env_overrides=None):
-        env = dict(os.environ)
-        env[mcp_server.WORKSPACE_ENV] = str(REPO_ROOT)
-        env.setdefault("TMPDIR", "/private/tmp")
-        for key, value in (env_overrides or {}).items():
-            if value is None:
-                env.pop(key, None)
-            else:
-                env[key] = value
-        completed = subprocess.run(
-            [sys.executable, str(SERVER_SOURCE)],
-            input="".join(json.dumps(m) + "\n" for m in messages),
-            capture_output=True, text=True, env=env, cwd=str(REPO_ROOT),
-        )
-        self.assertEqual(completed.returncode, 0, completed.stderr)
-        return [json.loads(line)
-                for line in completed.stdout.splitlines() if line.strip()]
+        from Tools.tests.support.mcp_stdio_session import MCPStdioSession
+        responses = []
+        with MCPStdioSession(REPO_ROOT, env_overrides=env_overrides) as session:
+            for message in messages:
+                if "id" in message:
+                    responses.append(session.request(message["method"], message.get("params")))
+                else:
+                    session.notify(message["method"], message.get("params"))
+        self.assertEqual(0, session.process.returncode, list(session.diagnostics))
+        return responses
 
     def test_a_full_session_over_a_pipe(self):
         responses = self.drive([

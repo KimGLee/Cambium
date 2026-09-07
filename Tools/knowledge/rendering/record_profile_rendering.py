@@ -109,6 +109,7 @@ def main(argv=None):
     parser.add_argument("--apply", action="store_true", help="publish verified rendering evidence")
     args = parser.parse_args(argv)
     receipt = None
+    publication = kblib.ReceiptPublication()
     try:
         (root, result, authority, item, stage, obligation, frozen, page,
          profile) = _context(args.root, args.batch, args.plan, args.obligation_id[0])
@@ -128,7 +129,8 @@ def main(argv=None):
                          "target": page.path, "bindings": {rule.construct: rule.acceptance}})
         reports = static_render_runtime.render_pages(jobs, root=root)
         if any(report.get("result") != "pass" for report in reports):
-            reporting.write_canonical_json({"applied": False, "status": "failed", "reports": reports})
+            reporting.write_canonical_json(reporting.publication_result(
+                publication, status="failed", reports=reports))
             return 1
         receipts = [build_record(
             root=root, plan=stage["plan"], plan_sha256=stage["audit_plan_sha256"],
@@ -138,7 +140,8 @@ def main(argv=None):
         receipt = receipts[0]
         receipt_path = producer_runtime.managed_receipt_path(root, args.receipts)
         if not args.apply:
-            reporting.write_canonical_json({"applied": False, "status": "planned", "receipt": receipt, "receipts": receipts})
+            reporting.write_canonical_json(reporting.publication_result(
+                publication, status="planned", receipt=receipt, receipts=receipts))
             return 0
         operation = producer_runtime.runtime_lock_metadata(
             TOOL, "record-profile-rendering", result, authority, batch_id=args.batch,
@@ -161,21 +164,25 @@ def main(argv=None):
                         receipt, stage["plan"], stage["audit_plan_sha256"], obligation,
                         root=root, evaluation=locked["_profile_authorized_view"]["_evaluation"])
                 before = kblib.receipt_append_observation(receipt_path, receipts)
-            outcome, error, _ = kblib.write_receipts_observed(receipt_path, receipts, before=before)
+            outcome, error, _ = publication.append(receipt_path, receipts, before=before)
             if outcome != "present" or error is not None:
                 if outcome == "absent":
                     lease.mark_reconciled()
                 raise ValueError("rendering publication outcome=%s error=%s" % (outcome, error))
         ids = {row["receipt_id"] for row in receipts}
-        persisted = [row for row in producer_runtime.read_receipt_records(receipt_path)
+        persisted = [row for row in producer_runtime.read_receipt_records(
+                         receipt_path, observation=publication.observation)
                      if row.get("receipt_id") in ids]
         if persisted != receipts:
             raise ValueError("rendering receipt read-back differs from publication")
-        reporting.write_canonical_json({"applied": True, "status": "published", "receipt": receipts[0], "receipts": receipts})
+        publication.confirmed = True
+        reporting.write_canonical_json(reporting.publication_result(
+            publication, status="published", receipt=receipts[0], receipts=receipts))
         return 0
     except (OSError, TypeError, UnicodeError, ValueError, RuntimeError,
             kblib.RuntimeStateLockedError) as exc:
-        reporting.write_canonical_json({"applied": False, "status": "invalid", "errors": [str(exc)]})
+        reporting.write_canonical_json(reporting.publication_result(
+            publication, status="invalid", errors=[str(exc)]))
         return 1
 
 

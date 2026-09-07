@@ -10,7 +10,6 @@ bounded statement. Queue, page, Delta, and AuditPlan bytes are read-only.
 
 import copy
 import os
-import sys
 
 import Tools.execution.audit.audit_evidence_runtime as audit_evidence_runtime
 import Tools.execution.audit.audit_reconciliation_contract as audit_reconciliation_contract
@@ -211,14 +210,6 @@ def _build_context(root, batch_id, actor_role, statement):
             receipt)
 
 
-def _output(receipt, as_json):
-    if as_json:
-        reporting.write_canonical_json([receipt])
-    else:
-        print("[PASS] batch-review wrapper recorded: %s" %
-              receipt["receipt_id"])
-
-
 def main(argv=None):
     parser = kblib.ArgumentParser(
         description="Record one current, evidence-complete Batch Review wrapper")
@@ -235,8 +226,9 @@ def main(argv=None):
     parser.add_argument("--apply", action="store_true",
                         help="append the wrapper; omit for a dry run")
     parser.add_argument("--json", action="store_true",
-                        help="write the applied wrapper as one JSON array")
+                        help="write operation facts and wrapper receipts as one JSON object")
     args = parser.parse_args(argv)
+    publication = kblib.ReceiptPublication()
 
     try:
         (root, result, authority, item, delta_binding, audit_binding,
@@ -247,19 +239,15 @@ def main(argv=None):
             suffixes=(".jsonl",), must_exist=False)
     except (OSError, TypeError, UnicodeError, ValueError,
             kblib.YamlSubsetError) as exc:
-        print("[FAIL] %s" % exc, file=sys.stderr)
+        reporting.write_publication_result(
+            publication, json_output=args.json, status="invalid", errors=[str(exc)])
         return 1
 
     if not args.apply:
-        if not args.json:
-            print("[PLAN] batch %s wrapper binds %d Delta receipt(s), "
-                  "%d judgment receipt(s), and %d planned evidence "
-                  "object(s)" %
-                  (item.get("id"),
-                   len(receipt["delta_page_receipt_ids"]),
-                   len(receipt.get("judgment_receipt_ids") or []),
-                   len(receipt["audit_evidence_bindings"])))
-            print("dry run; add --apply to publish the wrapper")
+        reporting.write_publication_result(
+            publication, json_output=args.json, status="planned",
+            receipt_id=receipt["receipt_id"], receipt_path=args.receipts,
+            receipts=[receipt])
         return 0
 
     operation = audit_producer_runtime.runtime_lock_metadata(
@@ -295,13 +283,18 @@ def main(argv=None):
         receipt = manual_attestation.publish_receipt(
             root, receipt_path, receipt, authority=authority,
             operation=operation, rebuild=rebuild, validate=validate,
-            publication_label="batch-review wrapper publication")
+            publication_label="batch-review wrapper publication", publication=publication)
     except (OSError, TypeError, UnicodeError, ValueError,
             kblib.RuntimeStateLockedError, kblib.YamlSubsetError) as exc:
-        print("[FAIL] %s" % exc, file=sys.stderr)
+        reporting.write_publication_result(
+            publication, json_output=args.json, status="invalid", errors=[str(exc)],
+            receipt_id=receipt["receipt_id"], receipt_path=args.receipts)
         return 1
 
-    _output(receipt, args.json)
+    reporting.write_publication_result(
+        publication, json_output=args.json, status="recorded",
+        receipt_id=receipt["receipt_id"], receipt_path=args.receipts,
+        receipts=[receipt])
     return 0
 
 

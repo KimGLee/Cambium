@@ -10,7 +10,6 @@ sole consumer that may turn this evidence into canonical owner state.
 """
 
 import os
-import sys
 
 from Tools.execution.task_runtime import queue_runtime
 import Tools.execution.task_runtime.runtime_validation as runtime_validation
@@ -87,14 +86,6 @@ def build_attestation_receipt(context, requested_value, actor_role,
     return receipt
 
 
-def _output(receipt, as_json):
-    if as_json:
-        reporting.write_canonical_json([receipt])
-    else:
-        print("[PASS] manual Gate evidence recorded: %s" %
-              receipt["receipt_id"])
-
-
 def main(argv=None):
     parser = kblib.ArgumentParser(
         description="Record snapshot-bound manual Extension Gate evidence")
@@ -115,8 +106,9 @@ def main(argv=None):
     parser.add_argument("--apply", action="store_true",
                         help="append the evidence; omit for a dry run")
     parser.add_argument("--json", action="store_true",
-                        help="write the applied receipt as one JSON array")
+                        help="write operation facts and attestation receipts as one JSON object")
     args = parser.parse_args(argv)
+    publication = kblib.ReceiptPublication()
 
     root = os.path.realpath(os.path.abspath(args.root))
     try:
@@ -132,17 +124,15 @@ def main(argv=None):
             root, args.receipts, runtime_paths.RECEIPT_ROOT,
             suffixes=(".jsonl",), must_exist=False)
     except (OSError, TypeError, UnicodeError, ValueError) as exc:
-        print("[FAIL] %s" % exc, file=sys.stderr)
+        reporting.write_publication_result(
+            publication, json_output=args.json, status="invalid", errors=[str(exc)])
         return 1
 
     if not args.apply:
-        if args.json:
-            # A dry run publishes no receipt, matching the other writers.
-            return 0
-        print("[PLAN] Gate %s permits %s=%s for %s" %
-              (context.gate.gate_id, context.gate.field_id,
-               args.value, context.page_path))
-        print("dry run; add --apply to publish the bound attestation")
+        reporting.write_publication_result(
+            publication, json_output=args.json, status="planned",
+            receipt_id=receipt["receipt_id"], receipt_path=args.receipts,
+            receipts=[receipt])
         return 0
 
     operation = {
@@ -182,13 +172,18 @@ def main(argv=None):
         receipt = manual_attestation.publish_receipt(
             root, receipt_path, receipt, authority=context.authority,
             operation=operation, rebuild=rebuild, validate=validate,
-            publication_label="manual Gate receipt publication")
+            publication_label="manual Gate receipt publication", publication=publication)
     except (OSError, TypeError, ValueError,
             kblib.RuntimeStateLockedError) as exc:
-        print("[FAIL] %s" % exc, file=sys.stderr)
+        reporting.write_publication_result(
+            publication, json_output=args.json, status="invalid", errors=[str(exc)],
+            receipt_id=receipt["receipt_id"], receipt_path=args.receipts)
         return 1
 
-    _output(receipt, args.json)
+    reporting.write_publication_result(
+        publication, json_output=args.json, status="recorded",
+        receipt_id=receipt["receipt_id"], receipt_path=args.receipts,
+        receipts=[receipt])
     return 0
 
 

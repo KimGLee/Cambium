@@ -86,7 +86,7 @@ registered against".
 
 Execution is a subprocess, always
 ---------------------------------
-`tools/call` runs `python3 Tools/<tool>.py <args...> --json` as a child
+`tools/call` runs `python3 Tools/<tool>.py <args...>` as a child
 process.  It never imports the tool and calls a function.
 
 Importing would be faster and would be wrong.  Every gate, every lock,
@@ -98,16 +98,16 @@ the tool does.  The subprocess is the conservative form because it is the
 same form a person gets from the README, and because the only thing it
 shares with this server is the environment it was handed.
 
-`--json` is appended whenever the tool declares it, so the receipt objects
-arrive on stdout as one canonical JSON array and the human-readable report
-arrives on stderr -- which is exactly the split that flag was added for.
+`--json` is appended for tools declaring that optional output selector.
+Always-JSON objects need no extra flag, and Receipt-array output keeps its
+existing shape. The pinned `x-cambium-output` declares these forms, required
+object fields and the exact exit codes for which empty stdout is legitimate.
 The flag is owned by this layer; a caller-supplied `json` argument changes
 nothing and is reported back as ignored rather than silently dropped.
 
-Not every tool declares it: several emit no receipts and write their whole
-report to stdout. Neither stream is ever discarded on that account. When
-`--json` was requested, stdout is the receipt array and stderr the report;
-when it was not, stdout is carried through as text alongside stderr. A
+Text-only reports are explicitly declared too; they are never guessed to be
+JSON or governance verdicts. Neither stream is discarded: structured stdout
+is decoded against its declaration and text stdout is carried alongside stderr. A
 transport that dropped a stream because it did not know what was in it
 would be losing the tool's answer, which is the one thing it exists to
 carry.
@@ -129,15 +129,16 @@ by inspecting prose:
 this server does not use it as the verdict channel and no reader should.
 The verdict travels verbatim as `exit_code` and `verdict` in
 `structuredContent`, and as the first line of the text content.  `isError`
-is set for any non-zero exit for one narrow reason: so that no host renders
-a held or failed run as a clean one.  A HOLD is never labelled a success and
+is set for a non-zero exit or an unreliable declared output, so that no host
+renders a held, failed or unreadable run as a clean one. A HOLD is never labelled a success and
 never labelled a failure anywhere in the payload -- it is labelled `hold`,
 which is what it is.
 
 An exit code outside {0, 1, 2} has no defined meaning in this distribution,
 so it is reported as `unreadable` with the raw code attached.  Likewise, if
-a `--json` run's stdout cannot be parsed, the payload says `unparseable`,
-carries the raw bytes verbatim, and infers nothing from them.  Reporting
+a declared JSON result cannot be parsed or validated, the payload says
+`unparseable`, sets `output_reliable: false`, preserves the raw exit code and
+carries the text without inferring a business result. Reporting
 "I could not read this" is always available; guessing a result never is.
 
 What this layer refuses, and what it does not
@@ -219,12 +220,14 @@ import hashlib
 import json
 import stat
 import subprocess
+import Tools.platform.repository.path_admission as path_admission
 import uuid
 import traceback
 
 import Tools.execution.task_runtime.runtime_paths as runtime_paths
 import Tools.platform.agent_interface.cli_argv_renderer as cli_argv_renderer
 import Tools.platform.agent_interface.agent_interface_contract as agent_interface_contract
+from Tools.platform.common import reporting
 from Tools.platform.repository.repository import (
     repository_source_root,
     tools_source_root,
@@ -282,6 +285,8 @@ SOURCE_DISTRIBUTION_TARGET = \
 CARRIED_RUNTIME_TARGET = agent_interface_contract.CARRIED_RUNTIME_TARGET
 PATH_EXTENSION_KEY = agent_interface_contract.PATH_EXTENSION_KEY
 WORKSPACE_EXTENSION_KEY = agent_interface_contract.WORKSPACE_EXTENSION_KEY
+OUTPUT_EXTENSION_KEY = agent_interface_contract.OUTPUT_EXTENSION_KEY
+HOST_BOUNDARY_EXTENSION_KEY = agent_interface_contract.HOST_BOUNDARY_EXTENSION_KEY
 
 # ---------------------------------------------------------------------------
 # Verdict vocabulary
@@ -638,6 +643,37 @@ def load_projection(distribution_root, environ, workspace_root=None):
                 "workspace binding for %s" % (path, name),
                 {"path": path, "tool": name})
         workspace_argument = workspace.get("argument")
+        host_boundary = entry.get(HOST_BOUNDARY_EXTENSION_KEY)
+        if type(host_boundary) is not bool:
+            raise RpcError(
+                UNRELIABLE_EVIDENCE,
+                "%s carries no boolean Host boundary declaration" % name,
+                {"path": path, "tool": name})
+        try:
+            output = agent_interface_contract.validate_output_contract(
+                entry.get(OUTPUT_EXTENSION_KEY))
+            for field in ("json_inactive_when_any", "empty_success_disabled_by"):
+                for flag in output[field]:
+                    metadata = cli_argv_renderer.cli_metadata(
+                        schema["properties"].get(flag, {}))
+                    if metadata.get("action") != "store_true":
+                        raise ValueError(
+                            "%s is not a declared boolean option" % field)
+            if output["mode"] == "json-option":
+                selector = schema["properties"].get(output["json_argument"])
+                metadata = cli_argv_renderer.cli_metadata(selector or {})
+                if (output["json_argument"] != "json" or
+                        output["json_value"] is not True or
+                        not isinstance(selector, dict) or
+                        selector.get("type") != "boolean" or
+                        metadata.get("action") != "store_true" or
+                        "--json" not in metadata.get("option_strings", [])):
+                    raise ValueError(
+                        "MCP JSON selection must bind the declared json boolean option")
+        except ValueError as exc:
+            raise RpcError(UNRELIABLE_EVIDENCE,
+                           "%s output contract: %s" % (name, exc),
+                           {"path": path, "tool": name}) from exc
         if not isinstance(workspace_argument, str) or \
                 workspace_argument not in schema["properties"]:
             raise RpcError(
@@ -743,6 +779,8 @@ def load_projection(distribution_root, environ, workspace_root=None):
             "schema": schema,
             "script": script,
             "workspace_argument": workspace_argument,
+            "output": output,
+            "host_environment_boundary": host_boundary,
         }
         # Pass the compiled entry through as-is. Rebuilding it from a
         # whitelist would silently drop any field the projection carries
@@ -768,341 +806,15 @@ def load_projection(distribution_root, environ, workspace_root=None):
 
 def build_argv(tool, arguments):
     """Adapt one transport-neutral argv refusal to JSON-RPC."""
+    output = tool["output"]
+    owned_argument = output["json_argument"] if output["mode"] == "json-option" else None
     try:
         return cli_argv_renderer.build_argv(
             tool["name"], tool["schema"], arguments,
-            transport_owned_argument=
-            cli_argv_renderer.STRUCTURED_OUTPUT_ARGUMENT,
-            transport_owned_flag=cli_argv_renderer.STRUCTURED_OUTPUT_FLAG)
+            transport_owned_argument=owned_argument,
+            transport_owned_flag=cli_argv_renderer.STRUCTURED_OUTPUT_FLAG if owned_argument else None)
     except cli_argv_renderer.ArgvRenderError as exc:
         raise RpcError(INVALID_PARAMS, exc.message, exc.data) from exc
-
-
-def _path_values(tool_name, argument, value):
-    """Yield path strings from one scalar or list-valued path argument."""
-    values = value if isinstance(value, list) else [value]
-    for item in values:
-        if not isinstance(item, str) or not item or item != item.strip() or \
-                "\x00" in item:
-            raise RpcError(
-                INVALID_PARAMS,
-                "%s.%s must carry non-empty canonical path strings" %
-                (tool_name, argument),
-                {"tool": tool_name, "argument": argument})
-        yield item
-
-
-def _bound_path(workspace_root, spelling):
-    candidate = spelling if os.path.isabs(spelling) else \
-        os.path.join(workspace_root, spelling)
-    return os.path.realpath(os.path.abspath(candidate))
-
-
-def _canonical_workspace_spelling(tool_name, argument, spelling):
-    """Require one stable repository-relative spelling at the MCP boundary."""
-    if os.path.isabs(spelling) or "\\" in spelling or \
-            os.path.normpath(spelling).replace(os.sep, "/") != spelling or \
-            spelling == ".." or spelling.startswith("../"):
-        raise RpcError(
-            INVALID_PARAMS,
-            "%s.%s must use a canonical repository-relative path" %
-            (tool_name, argument),
-            {"tool": tool_name, "argument": argument})
-    return spelling
-
-
-def _path_capability_is_active(capability, arguments):
-    """Evaluate one compiled, closed operation-mode predicate."""
-    active_when_any = capability.get("active_when_any") or []
-    inactive_when_any = capability.get("inactive_when_any") or []
-    positive = (not active_when_any or
-                any(arguments.get(name) is True
-                    for name in active_when_any))
-    excluded = any(arguments.get(name) is True
-                   for name in inactive_when_any)
-    return positive and not excluded
-
-
-def _retain_path_capability(tool_name, argument, workspace_fd, spelling,
-                            capability, value_index):
-    """Retain the admitted target and parent objects for one typed path.
-
-    Validation that closes a descriptor has only moved a pathname race.  This
-    walk returns the exact descriptors a cooperating tool must consume: the
-    existing target object for a snapshot, and the stable parent object for a
-    create, append, replacement, or transaction.  The original spelling is
-    retained only as display/lookup identity; it grants no filesystem reach.
-    """
-    if spelling == ".":
-        components = []
-    else:
-        components = spelling.split("/")
-    current_fd = os.dup(workspace_fd)
-    retained = []
-    try:
-        if not components:
-            target_fd = os.dup(current_fd)
-            retained.append(target_fd)
-            descriptor = os.fstat(target_fd)
-            return ({
-                "capability_id": "%s[%d]" % (argument, value_index),
-                "argument": argument,
-                "value_index": value_index,
-                "spelling": spelling,
-                "access": capability["access"],
-                "consumption": capability["consumption"],
-                "constraint": capability["constraint"],
-                "exists": True,
-                "kind": "directory",
-                "target_fd": target_fd,
-                "parent_fd": None,
-                "basename": ".",
-                "missing_components": [],
-                "target_dev": descriptor.st_dev,
-                "target_ino": descriptor.st_ino,
-            }, retained)
-        for index, component in enumerate(components):
-            try:
-                metadata = os.stat(
-                    component, dir_fd=current_fd, follow_symlinks=False)
-            except FileNotFoundError:
-                # A may-create path is anchored by the deepest existing
-                # parent opened from the frozen workspace directory.
-                parent_fd = os.dup(current_fd)
-                retained.append(parent_fd)
-                parent = os.fstat(parent_fd)
-                return ({
-                    "capability_id": "%s[%d]" % (argument, value_index),
-                    "argument": argument,
-                    "value_index": value_index,
-                    "spelling": spelling,
-                    "access": capability["access"],
-                    "consumption": capability["consumption"],
-                    "constraint": capability["constraint"],
-                    "exists": False,
-                    "kind": "missing",
-                    "target_fd": None,
-                    "parent_fd": parent_fd,
-                    "basename": components[-1],
-                    "missing_components": components[index:],
-                    "target_dev": None,
-                    "target_ino": None,
-                    "parent_dev": parent.st_dev,
-                    "parent_ino": parent.st_ino,
-                }, retained)
-            except OSError as exc:
-                raise RpcError(
-                    INVALID_PARAMS,
-                    "%s.%s cannot be inspected safely: %s" %
-                    (tool_name, argument, exc),
-                    {"tool": tool_name, "argument": argument})
-            if stat.S_ISLNK(metadata.st_mode):
-                raise RpcError(
-                    INVALID_PARAMS,
-                    "%s.%s traverses a symlink, which is not a canonical "
-                    "workspace artifact" % (tool_name, argument),
-                    {"tool": tool_name, "argument": argument})
-            if stat.S_ISREG(metadata.st_mode) and metadata.st_nlink != 1:
-                raise RpcError(
-                    INVALID_PARAMS,
-                    "%s.%s names a multiply-linked file, so its repository "
-                    "identity is ambiguous" % (tool_name, argument),
-                    {"tool": tool_name, "argument": argument})
-            if index == len(components) - 1:
-                if stat.S_ISDIR(metadata.st_mode):
-                    flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW
-                elif stat.S_ISREG(metadata.st_mode):
-                    if capability["consumption"] == "append":
-                        flags = os.O_RDWR | os.O_APPEND | os.O_NOFOLLOW
-                    else:
-                        flags = os.O_RDONLY | os.O_NOFOLLOW
-                else:
-                    raise RpcError(
-                        INVALID_PARAMS,
-                        "%s.%s must name a regular file or directory" %
-                        (tool_name, argument),
-                        {"tool": tool_name, "argument": argument})
-                if hasattr(os, "O_CLOEXEC"):
-                    flags |= os.O_CLOEXEC
-                try:
-                    target_fd = os.open(
-                        component, flags, dir_fd=current_fd)
-                except OSError as exc:
-                    raise RpcError(
-                        INVALID_PARAMS,
-                        "%s.%s changed while its target was being retained: "
-                        "%s" % (tool_name, argument, exc),
-                        {"tool": tool_name, "argument": argument})
-                opened = os.fstat(target_fd)
-                if ((metadata.st_dev, metadata.st_ino) !=
-                        (opened.st_dev, opened.st_ino)):
-                    os.close(target_fd)
-                    raise RpcError(
-                        INVALID_PARAMS,
-                        "%s.%s changed while its target was being retained" %
-                        (tool_name, argument),
-                        {"tool": tool_name, "argument": argument})
-                target_kind = ("directory" if stat.S_ISDIR(opened.st_mode)
-                               else "file")
-                parent_fd = os.dup(current_fd)
-                retained.extend((target_fd, parent_fd))
-                parent = os.fstat(parent_fd)
-                return ({
-                    "capability_id": "%s[%d]" % (argument, value_index),
-                    "argument": argument,
-                    "value_index": value_index,
-                    "spelling": spelling,
-                    "access": capability["access"],
-                    "consumption": capability["consumption"],
-                    "constraint": capability["constraint"],
-                    "exists": True,
-                    "kind": target_kind,
-                    "target_fd": target_fd,
-                    "parent_fd": parent_fd,
-                    "basename": component,
-                    "missing_components": [],
-                    "target_dev": opened.st_dev,
-                    "target_ino": opened.st_ino,
-                    "parent_dev": parent.st_dev,
-                    "parent_ino": parent.st_ino,
-                }, retained)
-            if not stat.S_ISDIR(metadata.st_mode):
-                raise RpcError(
-                    INVALID_PARAMS,
-                    "%s.%s has a non-directory parent component" %
-                    (tool_name, argument),
-                    {"tool": tool_name, "argument": argument})
-            flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW
-            if hasattr(os, "O_CLOEXEC"):
-                flags |= os.O_CLOEXEC
-            try:
-                next_fd = os.open(component, flags, dir_fd=current_fd)
-            except OSError as exc:
-                raise RpcError(
-                    INVALID_PARAMS,
-                    "%s.%s changed while its path was being inspected: %s" %
-                    (tool_name, argument, exc),
-                    {"tool": tool_name, "argument": argument})
-            os.close(current_fd)
-            current_fd = next_fd
-        raise RpcError(
-            INTERNAL_ERROR,
-            "%s.%s capability retention reached no terminal state" %
-            (tool_name, argument),
-            {"tool": tool_name, "argument": argument})
-    except Exception:
-        for descriptor in retained:
-            try:
-                os.close(descriptor)
-            except OSError:
-                pass
-        raise
-    finally:
-        os.close(current_fd)
-
-
-def enforce_workspace_capabilities(tool, arguments, workspace_root,
-                                   workspace_fd):
-    """Validate and retain every effective typed path capability."""
-    root_real = os.path.realpath(os.path.abspath(workspace_root))
-    workspace_argument = tool["workspace_argument"]
-    if workspace_argument not in arguments:
-        raise RpcError(
-            INVALID_PARAMS,
-            "%s requires %s over MCP so the operation is bound to this "
-            "session's workspace" % (tool["name"], workspace_argument),
-            {"tool": tool["name"], "required_workspace_argument":
-             workspace_argument})
-    workspace_values = list(_path_values(
-        tool["name"], workspace_argument, arguments[workspace_argument]))
-    if len(workspace_values) != 1 or \
-            _bound_path(root_real, workspace_values[0]) != root_real:
-        raise RpcError(
-            INVALID_PARAMS,
-            "%s.%s must resolve exactly to the session workspace %s" %
-            (tool["name"], workspace_argument, workspace_root),
-            {"tool": tool["name"], "argument": workspace_argument,
-             "workspace_root": workspace_root})
-
-    properties = tool["schema"]["properties"]
-    records = []
-    descriptors = []
-    semantic_slots = {}
-    try:
-        for argument, property_schema in properties.items():
-            if argument == workspace_argument:
-                continue
-            capability = property_schema.get(PATH_EXTENSION_KEY)
-            if capability is None:
-                continue
-            if not _path_capability_is_active(capability, arguments):
-                continue
-            if argument in arguments:
-                value = arguments[argument]
-            elif "default" in property_schema and \
-                    property_schema["default"] is not None:
-                # An omitted option still has an effective path. Validate and
-                # retain the compiled default before the child can use it.
-                value = property_schema["default"]
-            else:
-                continue
-            for value_index, spelling in enumerate(
-                    _path_values(tool["name"], argument, value)):
-                spelling = _canonical_workspace_spelling(
-                    tool["name"], argument, spelling)
-                semantic_slot = (spelling, capability["consumption"])
-                prior = semantic_slots.get(semantic_slot)
-                if prior is not None:
-                    raise RpcError(
-                        INVALID_PARAMS,
-                        "%s.%s aliases active path capability %s at %s "
-                        "with the same consumption mode" %
-                        (tool["name"], argument, prior, spelling),
-                        {"tool": tool["name"], "argument": argument,
-                         "aliased_argument": prior, "path": spelling,
-                         "consumption": capability["consumption"]})
-                semantic_slots[semantic_slot] = argument
-                constraint = capability["constraint"]
-                registered = capability["value"]
-                if constraint == "exact":
-                    if spelling != registered:
-                        raise RpcError(
-                            INVALID_PARAMS,
-                            "%s.%s must name exactly %s" %
-                            (tool["name"], argument, registered),
-                            {"tool": tool["name"], "argument": argument,
-                             "expected": registered})
-                elif constraint == "namespace":
-                    in_namespace = spelling.startswith(registered + "/")
-                    if not in_namespace:
-                        raise RpcError(
-                            INVALID_PARAMS,
-                            "%s.%s must name an artifact under %s" %
-                            (tool["name"], argument, registered),
-                            {"tool": tool["name"], "argument": argument,
-                             "namespace": registered})
-                    suffixes = capability["suffixes"]
-                    if suffixes and not any(
-                            spelling.endswith(suffix) for suffix in suffixes):
-                        raise RpcError(
-                            INVALID_PARAMS,
-                            "%s.%s must end in one of %s" %
-                            (tool["name"], argument, ", ".join(suffixes)),
-                            {"tool": tool["name"], "argument": argument,
-                             "suffixes": suffixes})
-                record, opened = _retain_path_capability(
-                    tool["name"], argument, workspace_fd, spelling,
-                    capability, value_index)
-                records.append(record)
-                descriptors.extend(opened)
-    except Exception:
-        for descriptor in descriptors:
-            try:
-                os.close(descriptor)
-            except OSError:
-                pass
-        raise
-    return records, descriptors
 
 
 # ---------------------------------------------------------------------------
@@ -1117,140 +829,53 @@ def interpreter():
 
 def run_tool(tool, arguments, workspace_root, workspace_fd, environ):
     """Run one tool as a child process and report exactly what came back."""
-    capability_records, capability_fds = enforce_workspace_capabilities(
-        tool, arguments, workspace_root, workspace_fd)
-    execution_arguments = dict(arguments)
-    # The caller must name the right binding, but the child consumes `.` from
-    # the already-open directory object. It can therefore never reopen a
-    # replaced pathname between authorization and subprocess startup.
-    execution_arguments[tool["workspace_argument"]] = "."
-    # Effective typed defaults were admitted and retained above. Materialize
-    # them onto argv so argparse cannot reconstruct an absolute default from
-    # the distribution checkout and bypass the workspace capability object.
-    for argument, property_schema in tool["schema"]["properties"].items():
-        if argument in execution_arguments or \
-                property_schema.get(PATH_EXTENSION_KEY) is None:
-            continue
-        capability = property_schema[PATH_EXTENSION_KEY]
-        if not _path_capability_is_active(
-                capability, execution_arguments):
-            continue
-        if property_schema.get("default") is not None:
-            execution_arguments[argument] = property_schema["default"]
-    tail, ignored = build_argv(tool, execution_arguments)
-    argv = [interpreter(), tool["script"]] + tail
-
     child_env = dict(environ)
     child_env["PYTHONPYCACHEPREFIX"] = _CAMBIUM_PYCACHE_PREFIX
     child_env["PYTHONDONTWRITEBYTECODE"] = "1"
-    child_env[WORKSPACE_ENV] = workspace_root
-    ack_read_fd, ack_write_fd = os.pipe()
-    child_env[PATH_CAPABILITIES_ACK_ENV] = str(ack_write_fd)
-    child_env[PATH_CAPABILITIES_ENV] = canonical_json({
-        "schema_version": 1,
-        "tool": tool["name"],
-        "workspace_dev": os.fstat(workspace_fd).st_dev,
-        "workspace_ino": os.fstat(workspace_fd).st_ino,
-        "capabilities": capability_records,
-    })
-
     try:
-        try:
+        with path_admission.invocation(
+                tool, arguments, workspace_root, workspace_fd, child_env) as binding:
+            tail, ignored = build_argv(tool, binding["arguments"])
+            argv = [interpreter(), tool["script"]] + tail
             completed = subprocess.run(
-                argv,
-                env=child_env,
-                # The server's own stdin is the JSON-RPC stream. A child that
-                # inherited it could consume the protocol.
-                stdin=subprocess.DEVNULL,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                pass_fds=tuple(
-                    [workspace_fd, ack_write_fd] + capability_fds),
-                preexec_fn=lambda: os.fchdir(workspace_fd),
-            )
-        finally:
-            os.close(ack_write_fd)
-            for descriptor in capability_fds:
-                try:
-                    os.close(descriptor)
-                except OSError:
-                    pass
-        acknowledged_raw = b""
-        while True:
-            chunk = os.read(ack_read_fd, 65536)
-            if not chunk:
-                break
-            acknowledged_raw += chunk
-        acknowledged = set(
-            line for line in acknowledged_raw.decode(
-                "utf-8", errors="replace").splitlines() if line)
-        # Every active typed path must reach a descriptor-backed consumer.
-        # A mode that does not consume an otherwise effective path must declare
-        # its activation predicate in the compiled interface; silently
-        # treating all write paths as optional would let an unmigrated writer
-        # reopen argv names and still return a clean result with no
-        # acknowledgement.
-        required_consumption = {
-            row["capability_id"] for row in capability_records
-        }
-        missing_consumption = sorted(required_consumption - acknowledged)
+                argv, env=binding["env"], stdin=subprocess.DEVNULL,
+                stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                pass_fds=binding["pass_fds"],
+                preexec_fn=lambda: os.fchdir(workspace_fd))
+    except path_admission.PathAdmissionError as exc:
+        raise RpcError(INVALID_PARAMS, exc.message, exc.data) from exc
     except OSError as exc:
         raise RpcError(
-            INTERNAL_ERROR,
-            "%s could not be started: %s" % (tool["name"], exc),
-            {"tool": tool["name"], "argv": argv})
-    finally:
-        try:
-            os.close(ack_read_fd)
-        except OSError:
-            pass
-
-    if completed.returncode in (0, 2) and missing_consumption:
-        raise RpcError(
-            INTERNAL_ERROR,
-            "%s completed without consuming retained path capability(s): %s"
-            % (tool["name"], ", ".join(missing_consumption)),
-            {"tool": tool["name"],
-             "missing_path_capabilities": missing_consumption})
+            INTERNAL_ERROR, "%s could not be executed: %s" % (tool["name"], exc),
+            {"tool": tool["name"]}) from exc
+    acknowledged = binding["acknowledged"]
+    invocation_errors = []
+    if binding["acknowledgement_error"]:
+        invocation_errors.append(binding["acknowledgement_error"])
+    if completed.returncode in (0, 2) and binding["missing"]:
+        invocation_errors.append(
+            "%s completed without consuming retained path capability(s): %s" %
+            (tool["name"], ", ".join(binding["missing"])))
 
     report_text = completed.stderr.decode("utf-8", errors="replace")
     report, report_truncated = clip(report_text)
 
-    # A tool that declares `--json` puts its receipts on stdout and its
-    # report on stderr. A tool that does not declare it -- several emit no
-    # receipts at all -- puts its report on stdout, so stdout is never
-    # discarded: it is either parsed as receipts or carried as text.
-    declares_json = cli_argv_renderer.STRUCTURED_OUTPUT_ARGUMENT in \
-        tool["schema"]["properties"]
-    payload = None
-    parse_state = "not_requested"
-    parse_error = None
+    # Output shape comes from the pinned engineering declaration, not from
+    # the presence of a CLI flag or the apparent content of stdout.
+    output_arguments = dict(binding["arguments"])
+    if tool["output"]["mode"] == "json-option":
+        output_arguments[tool["output"]["json_argument"]] = tool["output"]["json_value"]
+    observed = reporting.observe_tool_output(
+        tool["output"], completed.stdout, completed.returncode, output_arguments,
+        host_boundary=tool["host_environment_boundary"])
+    parse_state = observed["stdout_parse"]
+    parse_error = observed.get("stdout_parse_error")
     stdout_echo = None
     stdout_truncated = False
-    decoded = completed.stdout.decode("utf-8", errors="replace")
-    if not declares_json:
+    if parse_state in ("not_requested", "unparseable"):
+        decoded = completed.stdout.decode("utf-8", errors="replace")
         if decoded.strip():
             stdout_echo, stdout_truncated = clip(decoded)
-    else:
-        try:
-            stdout_text = completed.stdout.decode("utf-8")
-        except UnicodeDecodeError as exc:
-            parse_state = "unparseable"
-            parse_error = "stdout is not UTF-8: %s" % exc
-            stdout_echo, stdout_truncated = clip(decoded)
-        else:
-            if not stdout_text.strip():
-                parse_state = "empty"
-            else:
-                try:
-                    payload = json.loads(stdout_text)
-                except ValueError as exc:
-                    parse_state = "unparseable"
-                    parse_error = "stdout is not JSON: %s" % exc
-                    stdout_echo, stdout_truncated = clip(stdout_text)
-                else:
-                    parse_state = "parsed"
-
     code = completed.returncode
     verdict = VERDICTS.get(code, UNREADABLE_VERDICT)
 
@@ -1262,6 +887,10 @@ def run_tool(tool, arguments, workspace_root, workspace_fd, environ):
         "verdict": verdict,
         "verdict_source": "process exit code",
         "stdout_parse": parse_state,
+        "output_reliable": observed["output_reliable"],
+        "invocation_reliable": not invocation_errors,
+        "invocation_errors": invocation_errors,
+        "missing_path_capabilities": binding["missing"],
         "report": report,
         "report_truncated": report_truncated,
         "transport": "%s-mcp-server/%s" % (SERVER_NAME, SERVER_VERSION),
@@ -1269,7 +898,7 @@ def run_tool(tool, arguments, workspace_root, workspace_fd, environ):
         "consumed_path_capabilities": sorted(acknowledged),
     }
     if parse_state == "parsed":
-        envelope["stdout_json"] = payload
+        envelope["stdout_json"] = observed["stdout_json"]
     if parse_state == "unparseable":
         envelope["stdout_parse_error"] = parse_error
     if stdout_echo is not None:
@@ -1278,15 +907,16 @@ def run_tool(tool, arguments, workspace_root, workspace_fd, environ):
     if ignored:
         envelope["transport_owned_arguments_ignored"] = ignored
 
-    lines = ["%s/%s: exit_code=%d verdict=%s"
-             % (SERVER_NAME, tool["name"], code, verdict)]
+    lines = ["%s/%s: exit_code=%d verdict=%s output_reliable=%s"
+             % (SERVER_NAME, tool["name"], code, verdict,
+                str(observed["output_reliable"]).lower())]
     if verdict == UNREADABLE_VERDICT:
         lines.append(
             "exit code %d has no defined meaning in this distribution; it "
             "has not been read as a verdict." % code)
     if parse_state == "unparseable":
         lines.append(
-            "the --json stdout of this run could not be parsed: %s. It is "
+            "the declared JSON stdout of this run could not be parsed or validated: %s. It is "
             "carried verbatim under stdout_text and nothing has been "
             "inferred from it." % parse_error)
     if ignored:
@@ -1307,9 +937,9 @@ def run_tool(tool, arguments, workspace_root, workspace_fd, environ):
         ],
         "structuredContent": envelope,
         # Not the verdict channel. See the module docstring: a non-zero exit
-        # is flagged so no host renders a held or failed run as a clean one,
-        # and the verdict itself is `verdict`/`exit_code` above.
-        "isError": code != 0,
+        # and unreadable/uncertain output is flagged too; raw process verdict
+        # remains independently visible in `verdict`/`exit_code` above.
+        "isError": code != 0 or not observed["output_reliable"] or bool(invocation_errors),
     }
 
 
@@ -1374,14 +1004,17 @@ class Server(object):
                 "version": SERVER_VERSION,
             },
             "instructions": (
-                "Cambium governance tools, run as subprocesses. Read the "
-                "verdict from structuredContent: exit_code 0 is a clean "
-                "success, 1 is a failure or evidence the tool judged "
-                "unreliable, and 2 is a HOLD -- no failure, but something a "
-                "person must read before the work continues. A HOLD is "
-                "neither a success nor a failure; do not treat it as "
-                "either. isError is set for any non-zero exit and is not "
-                "the verdict."
+                "Cambium governance tools, run as subprocesses. "
+                "structuredContent preserves the raw exit_code and process "
+                "verdict: 0 is process success, 1 failure or unreliable "
+                "evidence, and 2 HOLD. Also require output_reliable and "
+                "invocation_reliable; exit 0 alone does not settle an "
+                "operation. Preserve publication facts and business results "
+                "separately. A recorded review need not be a passing review, "
+                "and only the existing consumer can accept persisted evidence. "
+                "HOLD requires attention, not promotion to success. isError "
+                "flags nonzero exit or unreliable output/invocation; it is "
+                "not a substitute for those distinct facts."
             ),
         }
 
