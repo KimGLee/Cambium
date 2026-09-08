@@ -4,6 +4,7 @@ import hashlib
 import json
 import shutil
 from Tools.execution.task_runtime import runtime_validation
+from Tools.platform.distribution.test_runner import measured, measure_scope
 
 
 PERSISTED_PATHS = (".cambium", "Topics")
@@ -13,6 +14,7 @@ PROFILE_DEPENDENCY_BUILDER = (
 FIXTURE_EXCLUDED_NAMES = ("__pycache__", ".DS_Store")
 
 
+@measured("checkpoint", "copy-seed")
 def copy_checkpoint_seed(source, destination):
     """Copy one source fixture without host-local or generated noise."""
     return shutil.copytree(
@@ -44,6 +46,7 @@ def tree_sha256(records):
     return "sha256:" + hashlib.sha256(encoded).hexdigest()
 
 
+@measured("checkpoint", "validate-manifest")
 def validate_checkpoint_manifest(root, manifest_path, expected):
     """Validate one static checkpoint from its declared scenario identity."""
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
@@ -56,13 +59,16 @@ def validate_checkpoint_manifest(root, manifest_path, expected):
     return manifest
 
 
+@measured("checkpoint", "reconstruct")
 def reconstruct_checkpoint(source, destination, manifest, installer):
     """Install and verify a local after-image without replaying its producer."""
     copy_checkpoint_seed(source, destination)
-    installer(destination)
+    with measure_scope("checkpoint", "install-dependencies"):
+        installer(destination)
     if manifest.get("validated_tree_sha256") != tree_sha256(file_records(destination)):
         raise AssertionError("checkpoint dependencies changed; regenerate it")
-    result = runtime_validation.validate_runtime(destination)
+    with measure_scope("checkpoint", "validate-runtime"):
+        result = runtime_validation.validate_runtime(destination)
     if result["errors"]:
         raise AssertionError("checkpoint fails current runtime contract: %s" % result["errors"])
     return result

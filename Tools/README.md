@@ -283,31 +283,14 @@ python3 Tools/check_queue.py . --resume-status
 
 ## Tool engineering checks
 
-Module-boundary facts and reports are Tool engineering artifacts, not Kernel rules. Inspect or regenerate the report through its own interface:
+[`TOOL_CATALOG.md`](TOOL_CATALOG.md) joins engineering contracts and source facts. [`test-ownership.yaml`](test-ownership.yaml) owns classification; [`TEST_CATALOG.md`](TEST_CATALOG.md) distinguishes resolved symbols from declared invariants and traces fixture costs.
 
 ```text
 python3 Tools/module_boundary_report.py --root . --emit-manifest
-```
-
-[`TOOL_CATALOG.md`](TOOL_CATALOG.md) and `compiled/tool-catalog.json` join module boundaries, taxonomy, interface policy, operation capabilities and source facts, distinguishing imports, registrations and transports:
-
-```text
 python3 Tools/generate_tool_catalog.py .
 python3 Tools/generate_tool_catalog.py . --check
-```
-
-Generation writes both views; `--check` recomputes and compares bytes without writing.
-
-[`test-ownership.yaml`](test-ownership.yaml) owns classification; [`TEST_CATALOG.md`](TEST_CATALOG.md) adds source/fixture facts. Build/MCP retains the full E2E; maintenance uses a validated closed checkpoint:
-
-```text
 python3 Tools/generate_test_catalog.py .
 python3 Tools/generate_test_catalog.py . --check
-```
-
-The catalog runner separates test levels. Each selected file runs once; files whose cases are all `parallel_safe` may run concurrently, while isolation-sensitive files remain serial. `full` includes all retained levels without repeating mixed-level files:
-
-```text
 make fast
 make integration
 make e2e
@@ -315,11 +298,11 @@ make slow
 make full
 ```
 
-Run the focused README contract tests with:
+Generators write Markdown/JSON projections; `--check` recomputes their bytes. Each selected test file runs once. Only wholly `parallel_safe` files overlap; `full` does not repeat mixed-level files. Build/MCP owns the complete E2E; maintenance starts at a validated closed checkpoint.
 
-```text
-python3 -m unittest Tools.tests.test_tools_readme_inventory
-```
+`Tools/run_tests.py full --report /tmp/cambium-test-costs.json` writes a new external diagnostic file with module, method, fixture and Tool times. Inclusive times already contain their children. CI uses recent main-run median costs with an explicit fallback, not to select or skip tests. Main still runs full verification.
+
+Runner source views are invocation-scoped and recheck component discovery/bytes, projection and environment. Runtime rechecks may reuse owner-authorized Profile/Standards views, never an old verdict. Independent producer admission, locked currentness and after-image read-back remain.
 
 When adding or changing a public CLI:
 

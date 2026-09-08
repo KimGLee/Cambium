@@ -415,14 +415,14 @@ modules:
       - registry_sha256
       - resolve_consumed_evidence
       - review_input_constraints
-      - validate_review_input
       - select_s_targets
       - validate_applicability_disposition
       - validate_input_binding
-      - validate_plan_base_closure
       - validate_plan_applicability
+      - validate_plan_base_closure
       - validate_producer_receipt
       - validate_receipt_consumption
+      - validate_review_input
   - module: execution.audit.batch_review_receipt_contract
     path: Tools/execution/audit/batch_review_receipt_contract.py
     area: execution
@@ -689,13 +689,6 @@ modules:
       - load_policy
       - resolve_body
       - validate_subjects
-  - module: execution.evidence.record_evidence_invalidation
-    path: Tools/execution/evidence/record_evidence_invalidation.py
-    area: execution
-    domain: evidence
-    layer: application
-    public:
-      - main
   - module: execution.evidence.manual_attestation
     path: Tools/execution/evidence/manual_attestation.py
     area: execution
@@ -777,6 +770,13 @@ modules:
       - current_receipt_errors
       - load_receipt_type_registry
       - reference_source_kind
+  - module: execution.evidence.record_evidence_invalidation
+    path: Tools/execution/evidence/record_evidence_invalidation.py
+    area: execution
+    domain: evidence
+    layer: application
+    public:
+      - main
   - module: execution.evidence.record_gate_attestation
     path: Tools/execution/evidence/record_gate_attestation.py
     area: execution
@@ -1546,7 +1546,6 @@ modules:
       - BATCH_CLOSE_RECEIPT_PATH
       - BATCH_JUDGMENT_RECEIPT_PATH
       - BATCH_PAGE_REVIEW_RECEIPT_PATH
-      - EVIDENCE_INVALIDATION_RECEIPT_PATH
       - CANONICAL_STATE
       - CHANGED_SCOPE_EVIDENCE_RECEIPT_PATH
       - CLI_CONTRACT_ARTIFACT_PATH
@@ -1557,6 +1556,7 @@ modules:
       - COVERAGE_PATH
       - DELTA_ROOT
       - DERIVED_ROOT
+      - EVIDENCE_INVALIDATION_RECEIPT_PATH
       - GATE_ATTESTATION_RECEIPT_PATH
       - GATE_RESULT_RECEIPT_PATH
       - GOVERNANCE_ROOT
@@ -2484,8 +2484,10 @@ modules:
       - ContractError
       - TOOL
       - apply_gated_writer_tools
+      - checked_projection
       - compile_contract
       - main
+      - with_checked_views
   - module: platform.agent_interface.entrypoint_loader
     path: Tools/platform/agent_interface/entrypoint_loader.py
     area: platform
@@ -2849,6 +2851,7 @@ modules:
     public:
       - ComponentBoundaryError
       - DEFAULT_MANIFEST_PATH
+      - component_content_identity
       - evaluate
       - manifest_path
       - manifest_text
@@ -2988,12 +2991,6 @@ modules:
     domain: audit
     layer: entrypoint
     public: []
-  - module: record_evidence_invalidation
-    path: Tools/record_evidence_invalidation.py
-    area: execution
-    domain: evidence
-    layer: entrypoint
-    public: []
   - module: record_batch_review
     path: Tools/record_batch_review.py
     area: execution
@@ -3010,6 +3007,12 @@ modules:
     path: Tools/record_corpus_acceptance.py
     area: execution
     domain: planning
+    layer: entrypoint
+    public: []
+  - module: record_evidence_invalidation
+    path: Tools/record_evidence_invalidation.py
+    area: execution
+    domain: evidence
     layer: entrypoint
     public: []
   - module: record_gate_attestation

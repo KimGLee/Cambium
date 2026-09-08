@@ -13,8 +13,10 @@ import contextlib
 import copy
 import io
 import json
+import os
 from pathlib import Path
 import subprocess
+import tempfile
 import unittest
 from unittest import mock
 
@@ -309,8 +311,20 @@ class CompilerFixtureContractTests(unittest.TestCase):
 
     def test_same_owner_inputs_render_identically_without_process_replay(self):
         first = compiler.render(self.contract)
-        second = compiler.render(self.fixture.compile())
+        original = compiler._ReceiptExtensionAnalyzer._load_module
+        extracted = []
+        analyzers = []
+        def load(analyzer, module_name, source_text=None):
+            analyzers.append(analyzer)
+            if module_name not in analyzer.modules:
+                extracted.append(module_name)
+            return original(analyzer, module_name, source_text)
+        with mock.patch.object(compiler._ReceiptExtensionAnalyzer, "_load_module", load):
+            second = compiler.render(self.fixture.compile())
         self.assertEqual(first, second)
+        self.assertEqual(len(extracted), len(set(extracted)))
+        self.assertEqual(1, len({id(analyzer.modules) for analyzer in analyzers}))
+        self.assertGreater(len({id(analyzer.factory_cache) for analyzer in analyzers}), 1)
 
     def test_host_boundary_is_derived_from_the_actual_wrapper_import(self):
         path = self.fixture.tools / "shape.py"
@@ -481,6 +495,52 @@ class AgentInterfaceJoinContractTests(unittest.TestCase):
 
 
 class CompilerProjectionLifecycleTests(unittest.TestCase):
+
+    def test_checked_view_rechecks_components_discovery_environment_and_target(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            source = root / "Tools" / "owner.py"
+            source.parent.mkdir()
+            source.write_text("value = 1\n", encoding="utf-8")
+            validator = mock.Mock(return_value={"tools": [{"tool": "sample"}]})
+            def load(target="carried-runtime", raw=b"projection"):
+                return compiler.checked_projection(root, target, raw, validator, lambda: raw)
+            with compiler.checked_view_scope():
+                load()["tools"].clear()
+                self.assertEqual([{"tool": "sample"}], load()["tools"])
+                self.assertEqual(1, validator.call_count)
+                # Runtime writes do not change the compiler's immutable input.
+                (root / ".cambium").mkdir()
+                (root / ".cambium" / "receipt").write_text("new", encoding="utf-8")
+                load()
+                self.assertEqual(1, validator.call_count)
+                for relative in ("Tools/owner.py", "Tools/new_adapter.py",
+                                 "Tools/policy.yaml", "kernel/registry.yaml",
+                                 "distribution-boundary.yaml"):
+                    path = root / relative
+                    path.parent.mkdir(parents=True, exist_ok=True)
+                    path.write_text("changed", encoding="utf-8")
+                    before = validator.call_count
+                    load()
+                    self.assertEqual(before + 1, validator.call_count)
+                (root / "Tools/new_adapter.py").unlink()
+                load()
+                load(raw=b"new projection")
+                load(target="source-distribution")
+                with mock.patch.dict(os.environ, {"CAMBIUM_TEST_VIEW": "changed"}):
+                    load()
+                self.assertEqual(10, validator.call_count)
+            load()
+            self.assertEqual(11, validator.call_count)
+            # A mutation during validation does not seed an accepted view.
+            def unstable():
+                source.write_text("changed again", encoding="utf-8")
+                return {}
+            with compiler.checked_view_scope():
+                with self.assertRaisesRegex(compiler.ContractError, "inputs changed"):
+                    compiler.checked_projection(root, "carried-runtime", b"x", unstable, lambda: b"x")
+                load()
+            self.assertEqual(12, validator.call_count)
     """Integration: one local artifact distinguishes HOLD from bad evidence."""
 
     def test_write_check_stale_and_unreliable_evidence_share_one_lifecycle(self):

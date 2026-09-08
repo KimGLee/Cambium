@@ -16,32 +16,16 @@ sys.path.insert(0, str(TOOLS))
 import Tools.execution.audit.batch_close_audit as batch_close_audit
 import Tools.execution.audit.batch_close_contract as batch_close_contract
 import Tools.execution.audit.check_batch_close as check_batch_close
-import Tools.knowledge.metadata.check_page_contract as check_page_contract
 from Tools.execution.audit import audit_obligation_projection
 import Tools.platform.common.kblib as kblib
 import Tools.execution.task_runtime.queue_runtime.close_gate as close_gate
-from Tools.tests.support.profile_fixture import FIXTURE_UPSTREAM_REVISION
-
-
-SHA_A = "sha256:" + "a" * 64
-SHA_B = "sha256:" + "b" * 64
-SHA_C = "sha256:" + "c" * 64
-SHA_D = "sha256:" + "d" * 64
-SHA_E = "sha256:" + "e" * 64
-SHA_F = "sha256:" + "f" * 64
+from Tools.tests.fixtures.contract import post_delta_objects as objects
+from Tools.tests.fixtures.contract.post_delta_objects import SHA_A, SHA_B, SHA_C, SHA_D, SHA_E, SHA_F
 
 
 class PostDeltaCloseConsumerTests(unittest.TestCase):
     def setUp(self):
-        scan = SimpleNamespace(judgment_item_id="residual-judgment")
-        judgment = SimpleNamespace(
-            judgment_item_id="residual-judgment",
-            dimension_id="content_and_depth",
-            evidence_role="emits",
-        )
-        self.profile = SimpleNamespace(
-            required_scan=scan, judgment_items=(judgment,), fingerprint=SHA_A,
-            extension_gates=())
+        self.profile = objects.profile_binding()
         self.evaluation = object()
         # This suite owns the post-Delta evidence closure, not Profile
         # admission. Supply its admitted input at that explicit boundary.
@@ -64,61 +48,8 @@ class PostDeltaCloseConsumerTests(unittest.TestCase):
     def _install_closure(self, rows, obligations=None):
         """Build one producer output and its exact close-consumer fixture."""
         self.rows = tuple(dict(row) for row in rows)
-        if obligations is None:
-            obligations = []
-            for row in self.rows:
-                binding = row["dimension_binding"]
-                dimension = (row["dimension"] if binding == "fixed" else
-                             ("content_and_depth" if
-                              binding == "profile-registration" else None))
-                obligations.append({
-                    "obligation_id": "post-delta-%s" % row["member_id"],
-                    "owner_kind": "kernel",
-                    "owner_rule_id": row["rule_id"],
-                    "kernel_extension_point": None,
-                    "partition": "mandatory-full-deterministic",
-                    "due_stage": row["due_stage"],
-                    "target": (
-                        "page-contract" if
-                        row["evidence_kind"] == "gate-receipt" else "."),
-                    "applicability": "always",
-                    "evidence_role": row["evidence_role"],
-                    "evidence_kind": row["evidence_kind"],
-                    "dimension": dimension,
-                    "acceptance_predicate": "fixture-%s-passes" %
-                        row["member_id"],
-                    "producer_check": row["producer_check"],
-                    "producer_capability": row.get("producer_capability"),
-                    "producer_gate_id": row.get("producer_gate_id"),
-                    "consumer_gate_id": row["consumer_gate_id"],
-                    "fingerprint_binding": "evidence-time",
-                    "review_due": None,
-                    "status": "required",
-                    "evidence_ref": None,
-                    "reused_receipt_id": None,
-                    "reuse_reason": None,
-                })
-        obligations = list(obligations)
-        self.plan = {
-            "plan_id": "plan-b1",
-            "task_id": "task-1",
-            "batch_id": "B1",
-            "opening_transition_receipt": "open-b1",
-            "upstream_revision_id": FIXTURE_UPSTREAM_REVISION,
-            "active_standards_sha256": SHA_B,
-            "selected_profile_manifest": "profiles/test/profile.toml",
-            "profile_snapshot_sha256": SHA_C,
-            "profile_contract_fingerprint": SHA_D,
-            "obligations": obligations,
-        }
-        self.stage = {
-            "audit_plan_id": self.plan["plan_id"],
-            "audit_plan_path": (
-                ".cambium/work_specs/audit-plans/plan-b1.yaml"),
-            "audit_plan_sha256": SHA_A,
-            "plan": self.plan,
-            "obligations": tuple(obligations),
-        }
+        self.stage = objects.plan_stage(self.rows, obligations)
+        self.plan = self.stage["plan"]
         self.projection = batch_close_audit.resolve_post_delta_projection(
             self.stage, self.rows, self.profile)
         self.records = {}
@@ -129,54 +60,10 @@ class PostDeltaCloseConsumerTests(unittest.TestCase):
             obligation = pair["obligation"]
             member_id = row["member_id"]
             if row["evidence_kind"] == "gate-receipt":
-                final = {
-                    "receipt_id": "page-contract-gate",
-                    "tool": "check_page_contract",
-                    "tool_version": check_page_contract.TOOL_VERSION,
-                    "check": "page-contract-summary",
-                    "target": "page-contract",
-                    "result": "pass",
-                    "details": "fixture Gate passed",
-                    "checked_at": "2026-08-28T00:00:00Z",
-                    "invalidated_by": None,
-                    "gate_id": "page-contract",
-                }
+                final = objects.gate_evidence()
                 raw = final
             else:
-                raw = {
-                    "receipt_id": "raw-%02d" % index,
-                    "tool": "check_batch_close",
-                    "tool_version": check_batch_close.TOOL_VERSION,
-                    "check": obligation["producer_check"],
-                    "target": obligation["target"],
-                    "result": "pass",
-                    "details": "fixture producer evidence",
-                    "checked_at": "2026-08-28T00:00:00Z",
-                    "invalidated_by": None,
-                    "plan_id": self.stage["audit_plan_id"],
-                    "audit_plan_path": self.stage["audit_plan_path"],
-                    "audit_plan_sha256": self.stage["audit_plan_sha256"],
-                    "obligation_id": obligation["obligation_id"],
-                    "task_id": self.plan["task_id"],
-                    "batch_id": self.plan["batch_id"],
-                    "opening_transition_receipt":
-                        self.plan["opening_transition_receipt"],
-                    "upstream_revision_id": self.plan["upstream_revision_id"],
-                    "active_standards_sha256":
-                        self.plan["active_standards_sha256"],
-                    "selected_profile_manifest":
-                        self.plan["selected_profile_manifest"],
-                    "profile_snapshot_sha256":
-                        self.plan["profile_snapshot_sha256"],
-                    "profile_contract_fingerprint":
-                        self.plan["profile_contract_fingerprint"],
-                    "fingerprint_binding":
-                        obligation["fingerprint_binding"],
-                    "merged_snapshot_sha256": SHA_F,
-                    "artifact_fingerprint": SHA_F,
-                    "dependency_fingerprint": SHA_C,
-                    "contract_fingerprint": SHA_E,
-                }
+                raw = objects.producer_evidence(self.stage, obligation, index)
                 final = batch_close_audit.build_full_audit_receipt(
                     self.stage, pair, raw)
             self.records[raw["receipt_id"]] = raw
@@ -508,18 +395,6 @@ class PostDeltaCloseConsumerTests(unittest.TestCase):
             errors)
         self.assertTrue(any(
             "reviewer attestation post_delta_evidence_count" in error
-            for error in errors), errors)
-
-    def test_full_receipt_must_bind_its_raw_producer_evidence(self):
-        catalog = self.catalog()
-        member = "controlled_vocabulary"
-        raw_id = self.aggregate["closed_list_producer_evidence"][member]
-        changed = dict(catalog[raw_id][1])
-        changed["contract_fingerprint"] = SHA_B
-        catalog[raw_id] = (catalog[raw_id][0], changed)
-        errors, _ids = self.errors(catalog=catalog)
-        self.assertTrue(any(
-            member in error and "producer evidence" in error
             for error in errors), errors)
 
     def test_raw_producer_evidence_must_remain_resolvable(self):

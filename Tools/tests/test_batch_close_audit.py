@@ -1,5 +1,4 @@
 from copy import deepcopy
-from types import SimpleNamespace
 from pathlib import Path
 import sys
 import unittest
@@ -11,84 +10,22 @@ sys.path.insert(0, str(TOOLS))
 
 import Tools.execution.audit.audit_receipt_contract as audit_receipt_contract
 import Tools.execution.audit.batch_close_audit as batch_close_audit
-import Tools.execution.audit.batch_close_contract as batch_close_contract
 import Tools.execution.audit.check_batch_close as check_batch_close
-import Tools.knowledge.metadata.check_page_contract as check_page_contract
-from Tools.tests.support.profile_fixture import FIXTURE_UPSTREAM_REVISION
-
-
-SHA_A = "sha256:" + "a" * 64
-SHA_B = "sha256:" + "b" * 64
-SHA_C = "sha256:" + "c" * 64
-SHA_D = "sha256:" + "d" * 64
-SHA_E = "sha256:" + "e" * 64
-SHA_F = "sha256:" + "f" * 64
+from Tools.platform.common import kblib
+from Tools.tests.fixtures.contract import post_delta_objects as objects
+from Tools.tests.fixtures.contract.post_delta_objects import SHA_A, SHA_C, SHA_E, SHA_F
 
 
 class PostDeltaAuditClosureTests(unittest.TestCase):
     def setUp(self):
-        self.rows = tuple(batch_close_contract.CLOSED_LIST_MEMBER_ROWS)
-        scan = SimpleNamespace(judgment_item_id="fixture-residual-judgment")
-        judgment = SimpleNamespace(
-            judgment_item_id="fixture-residual-judgment",
-            dimension_id="content_and_depth",
-            evidence_role="emits",
-        )
-        self.profile = SimpleNamespace(
-            required_scan=scan, judgment_items=(judgment,))
-        obligations = []
-        for row in self.rows:
-            binding = row["dimension_binding"]
-            dimension = (row["dimension"] if binding == "fixed" else
-                         ("content_and_depth"
-                          if binding == "profile-registration" else None))
-            obligations.append({
-                "obligation_id": "post-delta-%s" % row["member_id"],
-                "owner_kind": "kernel",
-                "owner_rule_id": row["rule_id"],
-                "kernel_extension_point": None,
-                "partition": "mandatory-full-deterministic",
-                "due_stage": "post-delta-close",
-                "target": ("page-contract" if
-                           row["member_id"] == "manifest_page_contract"
-                           else "."),
-                "applicability": "always",
-                "evidence_role": row["evidence_role"],
-                "evidence_kind": row["evidence_kind"],
-                "dimension": dimension,
-                "acceptance_predicate": "fixture-%s-passes" %
-                    row["member_id"],
-                "producer_check": row["producer_check"],
-                "producer_capability": row.get("producer_capability"),
-                "producer_gate_id": row.get("producer_gate_id"),
-                "consumer_gate_id": "batch-close",
-                "fingerprint_binding": "evidence-time",
-                "review_due": None,
-                "status": "required",
-                "evidence_ref": None,
-                "reused_receipt_id": None,
-                "reuse_reason": None,
-            })
-        self.plan = {
-            "plan_id": "plan-b1",
-            "task_id": "task-1",
-            "batch_id": "B1",
-            "opening_transition_receipt": "opening-b1",
-            "upstream_revision_id": FIXTURE_UPSTREAM_REVISION,
-            "active_standards_sha256": SHA_B,
-            "selected_profile_manifest": "profiles/test/profile.toml",
-            "profile_snapshot_sha256": SHA_C,
-            "profile_contract_fingerprint": SHA_D,
-            "contract_snapshot_sha256": SHA_E,
-            "obligations": obligations,
-        }
-        self.stage = {
-            "audit_plan_id": "plan-b1",
-            "audit_plan_path": ".cambium/audit-plans/plan-b1.yaml",
-            "audit_plan_sha256": SHA_A,
-            "plan": self.plan,
-            "obligations": tuple(obligations),
-        }
+        # The expected set is read independently, not copied from the Tool
+        # projection under test or the shared fixture's resulting output.
+        document = kblib.load_yaml_file(
+            TOOLS.parent / "kernel/K12 Quality Assurance/batch-close-closed-list.yaml")
+        self.rows = tuple(document["members"])
+        self.profile = objects.profile_binding()
+        self.stage = objects.plan_stage(self.rows)
+        self.plan = self.stage["plan"]
         self.projection = batch_close_audit.resolve_post_delta_projection(
             self.stage, self.rows, self.profile)
         self.final_by_member = {}
@@ -97,53 +34,9 @@ class PostDeltaAuditClosureTests(unittest.TestCase):
             row = pair["member"]
             obligation = pair["obligation"]
             if row["evidence_kind"] == "gate-receipt":
-                evidence = {
-                    "receipt_id": "page-contract-gate",
-                    "tool": "check_page_contract",
-                    "tool_version": check_page_contract.TOOL_VERSION,
-                    "check": "page-contract-summary",
-                    "target": "page-contract",
-                    "result": "pass",
-                    "details": "fixture Gate passed",
-                    "checked_at": "2026-08-28T00:00:00Z",
-                    "invalidated_by": None,
-                    "gate_id": "page-contract",
-                }
+                evidence = objects.gate_evidence()
             else:
-                raw = {
-                    "receipt_id": "raw-%02d" % index,
-                    "tool": "check_batch_close",
-                    "tool_version": check_batch_close.TOOL_VERSION,
-                    "check": obligation["producer_check"],
-                    "target": obligation["target"],
-                    "result": "pass",
-                    "details": "fixture producer evidence",
-                    "checked_at": "2026-08-28T00:00:00Z",
-                    "invalidated_by": None,
-                    "plan_id": self.stage["audit_plan_id"],
-                    "audit_plan_path": self.stage["audit_plan_path"],
-                    "audit_plan_sha256": self.stage["audit_plan_sha256"],
-                    "obligation_id": obligation["obligation_id"],
-                    "task_id": self.plan["task_id"],
-                    "batch_id": self.plan["batch_id"],
-                    "opening_transition_receipt":
-                        self.plan["opening_transition_receipt"],
-                    "upstream_revision_id": self.plan["upstream_revision_id"],
-                    "active_standards_sha256":
-                        self.plan["active_standards_sha256"],
-                    "selected_profile_manifest":
-                        self.plan["selected_profile_manifest"],
-                    "profile_snapshot_sha256":
-                        self.plan["profile_snapshot_sha256"],
-                    "profile_contract_fingerprint":
-                        self.plan["profile_contract_fingerprint"],
-                    "fingerprint_binding":
-                        obligation["fingerprint_binding"],
-                    "merged_snapshot_sha256": SHA_F,
-                    "artifact_fingerprint": SHA_F,
-                    "dependency_fingerprint": SHA_C,
-                    "contract_fingerprint": SHA_E,
-                }
+                raw = objects.producer_evidence(self.stage, obligation, index)
                 evidence = batch_close_audit.build_full_audit_receipt(
                     self.stage, pair, raw)
                 audit_receipt_contract.validate_audit_receipt(evidence)
@@ -157,6 +50,11 @@ class PostDeltaAuditClosureTests(unittest.TestCase):
         }
 
     def test_each_missing_plan_obligation_fails(self):
+        expected = [(row["member_id"], row["rule_id"], row["evidence_kind"])
+                    for row in self.rows]
+        self.assertEqual(expected, [(pair["member"]["member_id"],
+            pair["obligation"]["owner_rule_id"], pair["obligation"]["evidence_kind"])
+            for pair in self.projection])
         for index, pair in enumerate(self.projection):
             with self.subTest(member=pair["member"]["member_id"]):
                 stage = dict(self.stage)

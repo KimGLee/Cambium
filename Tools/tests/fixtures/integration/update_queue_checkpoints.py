@@ -17,6 +17,7 @@ from Tools.tests.fixtures.integration.checkpoint_contract import (
     PROFILE_DEPENDENCY_BUILDER as BASE_PROFILE_DEPENDENCY_BUILDER,
 )
 from Tools.tests.support.profile_fixture import install_loadable_profile
+from Tools.platform.distribution.test_runner import measure_scope
 
 
 CHECKPOINTS = {
@@ -102,7 +103,8 @@ def _validated_checkpoint_template(scenario):
 def install_update_queue_checkpoint(destination, scenario):
     """Give one test a private copy of a validated adjacent checkpoint."""
     source, artifacts = _validated_checkpoint_template(scenario)
-    shutil.copytree(source, Path(destination))
+    with measure_scope("checkpoint", "copy-private"):
+        shutil.copytree(source, Path(destination))
     return dict(artifacts)
 
 

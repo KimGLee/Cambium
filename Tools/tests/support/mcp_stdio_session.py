@@ -18,6 +18,7 @@ import threading
 
 from Tools.platform.agent_interface import agent_interface_contract as interface
 from Tools.platform.agent_interface import cli_argv_renderer
+from Tools.platform.distribution.test_runner import measure_scope
 
 
 TOOLS = Path(__file__).resolve().parents[2]
@@ -126,8 +127,9 @@ class MCPStdioSession:
         return response
 
     def call(self, name, arguments):
-        response = self.request(
-            "tools/call", {"name": name, "arguments": arguments})
+        with measure_scope("mcp-tool", name):
+            response = self.request(
+                "tools/call", {"name": name, "arguments": arguments})
         self.calls.append({"name": name, "response": response})
         if "error" in response:
             raise AssertionError("MCP %s transport error: %s" %

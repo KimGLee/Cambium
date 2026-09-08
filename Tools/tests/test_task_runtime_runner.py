@@ -48,6 +48,37 @@ def completed(returncode=0, stdout="{}\n", stderr=""):
 
 
 class TaskRuntimeRunnerUnitTests(unittest.TestCase):
+    def test_audit_recheck_reuses_only_authorized_sources_before_dispatch(self):
+        prior = parsed_runtime_state()
+        current = parsed_runtime_state()
+        current["items_by_id"]["B1"]["state"] = "open"
+        action = {"target": {"batch_id": "B1"}}
+        authority = object()
+        views = {"authorized_profile_view": {"current": "profile"},
+                 "authorized_active_standards_view": {"current": "standards"}}
+        token = runner._ADMISSION_OBSERVATION.set({"/fixture": prior})
+        try:
+            with mock.patch.object(runner.queue_runtime, "runtime_admission_errors", return_value=[]), \
+                    mock.patch.object(runner.queue_runtime, "runtime_authority_context", return_value=authority) as owner, \
+                    mock.patch.object(runner.queue_runtime, "runtime_authority_validation_kwargs", return_value=views), \
+                    mock.patch.object(runner.runtime_validation, "validate_runtime", return_value=current) as validate, \
+                    mock.patch.object(runner.audit_execution_runtime, "next_stage_step", return_value={"token": "current"}) as step:
+                self.assertEqual({"token": "current"}, runner._recheck_audit_step("/fixture", action))
+                owner.assert_called_once_with(prior)
+                validate.assert_called_once_with("/fixture", **views)
+                step.assert_called_once_with(current, current["items_by_id"]["B1"], "pre-merge", required_state="open")
+                validate.side_effect = ValueError("owner refuses changed source")
+                with self.assertRaisesRegex(ValueError, "changed source"):
+                    runner._recheck_audit_step("/fixture", action)
+                self.assertEqual(1, step.call_count)
+            with mock.patch.object(runner, "_command_inputs", side_effect=ValueError("stop before child")):
+                with self.assertRaises(ValueError):
+                    runner._run_command("/fixture", "sample", {})
+                self.assertEqual({}, runner._ADMISSION_OBSERVATION.get())
+        finally:
+            runner._ADMISSION_OBSERVATION.reset(token)
+        self.assertIsNone(runner._ADMISSION_OBSERVATION.get())
+
     def test_withdrawn_consumed_proof_is_an_explicit_owned_continuation(self):
         state = parsed_runtime_state()
         deficits = [{"code": "evidence-invalidated", "scope": "B1",
@@ -294,7 +325,7 @@ class TaskRuntimeRunnerContractTests(unittest.TestCase):
             captured.append(parser.parse_args(argv))
             return completed()
 
-        with mock.patch.object(runner, "_current_audit_step", return_value=(result, {}, step)), \
+        with mock.patch.object(runner, "_recheck_audit_step", return_value=step), \
                 mock.patch.object(runner, "_run_command", side_effect=parse_command):
             runner._await_audit_producer(TOOLS.parent, action, bound, None)
         self.assertIsNone(captured[0].applicability_reason)
@@ -401,7 +432,7 @@ class TaskRuntimeRunnerContractTests(unittest.TestCase):
             with mock.patch.object(
                     runner, "_carried_cli_contract_currentness_check",
                     return_value=refused), mock.patch.object(
-                        runner, "_compiled_entrypoint") as dispatch, \
+                        runner, "_repository_tool_entrypoint") as dispatch, \
                     self.assertRaisesRegex(
                         runner.RunnerError, "not current"):
                 runner._command_inputs(root, "apply_delta", {
@@ -412,7 +443,7 @@ class TaskRuntimeRunnerContractTests(unittest.TestCase):
 
             dispatch.assert_not_called()
 
-    def test_contract_is_reloaded_after_each_currentness_check(self):
+    def test_contract_reuse_is_operation_scoped_and_rechecks_input_bytes(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory).resolve()
             path = root / runtime_paths.CLI_CONTRACT_ARTIFACT_PATH
@@ -426,15 +457,18 @@ class TaskRuntimeRunnerContractTests(unittest.TestCase):
             current = completed(returncode=0)
             with mock.patch.object(
                     runner, "_carried_cli_contract_currentness_check",
-                    return_value=current):
+                    return_value=current) as check, compile_cli_contract.checked_view_scope():
                 path.write_text(
                     compile_cli_contract.kblib.canonical_yaml(first),
                     encoding="utf-8")
                 loaded_first = runner._compiled_cli_contract(root)
+                self.assertEqual(loaded_first, runner._compiled_cli_contract(root))
+                self.assertEqual(1, check.call_count)
                 path.write_text(
                     compile_cli_contract.kblib.canonical_yaml(second),
                     encoding="utf-8")
                 loaded_second = runner._compiled_cli_contract(root)
+                self.assertEqual(2, check.call_count)
 
             self.assertEqual([], loaded_first["tools"])
             self.assertEqual([{"tool": "sample"}], loaded_second["tools"])

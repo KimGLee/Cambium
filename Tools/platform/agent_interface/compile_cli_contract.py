@@ -73,6 +73,10 @@ import argparse
 import ast
 import os
 import sys
+from contextlib import contextmanager
+from contextvars import ContextVar
+from copy import deepcopy
+from functools import wraps
 
 TOOLS_DIR = tools_source_root(__file__)
 REPO_ROOT = repository_source_root(__file__)
@@ -81,7 +85,7 @@ import Tools.platform.agent_interface.agent_interface_policy as agent_interface_
 import Tools.platform.agent_interface.agent_interface_contract as agent_interface_contract  # noqa: E402
 import Tools.platform.agent_interface.entrypoint_loader as entrypoint_loader  # noqa: E402
 import Tools.platform.common.kblib as kblib  # noqa: E402
-import Tools.platform.distribution.module_boundary_facts as module_boundary_facts  # noqa: E402
+import Tools.platform.distribution.upstream_component_boundary as component_boundary  # noqa: E402
 import Tools.execution.task_runtime.runtime_paths as runtime_paths  # noqa: E402
 import Tools.platform.agent_interface.tool_availability as tool_availability  # noqa: E402
 
@@ -123,6 +127,76 @@ class ContractError(Exception):
     """The evidence for one tool is unreliable; the run must exit 1."""
 
 
+_CHECKED_VIEWS = ContextVar("cli_checked_views", default=None)
+
+
+@contextmanager
+def checked_view_scope():
+    """Reuse source facts within one invocation, never a persisted verdict."""
+    if _CHECKED_VIEWS.get() is not None:
+        yield
+        return
+    token = _CHECKED_VIEWS.set({})
+    try:
+        yield
+    finally:
+        _CHECKED_VIEWS.reset(token)
+
+
+def with_checked_views(function):
+    """Give a public Runner operation one bounded compiler-owned view scope."""
+    @wraps(function)
+    def scoped(*args, **kwargs):
+        with checked_view_scope():
+            return function(*args, **kwargs)
+    return scoped
+
+
+def _view_input_identity(root, projection_target, artifact_bytes):
+    # Argparse capture reads component source, registries and policy, not an
+    # adopter's mutable runtime. Use the entire existing component boundary as
+    # a conservative superset: generated projections and newly discovered
+    # adapters cannot fall outside a stale source_files list. Environment is
+    # private in-process invalidation data, never serialized or logged.
+    return (root, projection_target, artifact_bytes, sys.executable,
+            sys.version, tuple(sys.path), os.getcwd(), tuple(sorted(os.environ.items())),
+            component_boundary.component_content_identity(root))
+
+
+def checked_projection(root, projection_target, artifact_bytes, validate, readback):
+    """Consume the original full validator, then reuse only unchanged input.
+
+    `validate` must perform the target root's full compiler check and byte
+    read-back. No caller may supply a success bit or a prevalidated document.
+    Outside an explicit operation scope the validator always runs. Returned
+    documents are private copies so consumers cannot mutate the stored view.
+    """
+    views = _CHECKED_VIEWS.get()
+    if views is None:
+        return validate()
+    root = os.path.realpath(os.path.abspath(os.fspath(root)))
+    key = (root, projection_target)
+    try:
+        before = _view_input_identity(root, projection_target, artifact_bytes)
+        existing = views.get(key)
+        if existing is not None and existing[0] == before:
+            if readback() != artifact_bytes:
+                raise ContractError("CLI projection changed during input observation")
+            return deepcopy(existing[1])
+        views.pop(key, None)
+        document = validate()
+        if before != _view_input_identity(root, projection_target, readback()):
+            raise ContractError("CLI computation inputs changed during currentness validation")
+        views[key] = (before, deepcopy(document))
+        return document
+    except ContractError:
+        views.pop(key, None)
+        raise
+    except (OSError, ValueError) as exc:
+        views.pop(key, None)
+        raise ContractError("CLI view cannot establish input identity: %s" % exc) from exc
+
+
 def fail(message):
     print("%s: %s" % (TOOL, message))
     return 1
@@ -131,18 +205,6 @@ def fail(message):
 # ---------------------------------------------------------------------------
 # Discovery
 # ---------------------------------------------------------------------------
-
-
-def is_cli_module(source_text):
-    """True when the module builds an ArgumentParser and defines `main`.
-
-    Decided statically, so a module that is a shared library rather than a
-    command is never imported by this compiler at all.
-    """
-    try:
-        return module_boundary_facts.is_cli_module(source_text)
-    except SyntaxError as exc:
-        raise ContractError("source does not parse: %s" % exc) from exc
 
 
 def discover_tools(root):
@@ -860,9 +922,12 @@ class _ReceiptExtensionAnalyzer:
     receipt fields.
     """
 
-    def __init__(self, root):
+    def __init__(self, root, source_facts):
         self.root = os.path.abspath(root)
-        self.modules = {}
+        # Only immutable parsed source facts are shared across tools.
+        # Recursive factory results are call-graph-context dependent and must
+        # not leak from one tool's traversal into another's acceptance shape.
+        self.modules = source_facts
         self.factory_cache = {}
         self.active_factories = set()
         self.common_envelope_fields = frozenset(
@@ -900,6 +965,8 @@ class _ReceiptExtensionAnalyzer:
     def _load_module(self, module_name, source_text=None):
         cached = self.modules.get(module_name)
         if cached is not None:
+            if source_text is not None and cached["source"] != source_text:
+                raise ContractError("receipt source changed during compilation: %s" % module_name)
             return cached
         relative = self._relative_path(module_name)
         if relative is None:
@@ -1148,11 +1215,6 @@ class _ReceiptExtensionAnalyzer:
         )
 
 
-def receipt_extensions(source_text, *, root, module_name):
-    """Return fields, completeness, and sources for one implementation."""
-    return _ReceiptExtensionAnalyzer(root).analyze(module_name, source_text)
-
-
 # ---------------------------------------------------------------------------
 # Composition and rendering
 # ---------------------------------------------------------------------------
@@ -1230,6 +1292,7 @@ def compile_contract(root, projection_target):
         common_receipt_source_raw)
 
     records = []
+    source_facts = {}
     for module_name, path, source_text in tools:
         try:
             descriptor = entrypoint_loader.describe_entrypoint(
@@ -1241,11 +1304,9 @@ def compile_contract(root, projection_target):
         except entrypoint_loader.EntrypointResolutionError as exc:
             raise ContractError(str(exc)) from exc
         try:
-            extensions, completeness, extension_paths = receipt_extensions(
-                descriptor.implementation_source,
-                root=root,
-                module_name=descriptor.implementation_module,
-            )
+            extensions, completeness, extension_paths = _ReceiptExtensionAnalyzer(
+                root, source_facts).analyze(
+                    descriptor.implementation_module, descriptor.implementation_source)
             extension_sources = []
             for relative in extension_paths:
                 with open(os.path.join(root, *relative.split("/")),
@@ -1277,6 +1338,15 @@ def compile_contract(root, projection_target):
             "receipt_extensions_extraction": completeness,
             "receipt_extension_sources": extension_sources,
         })
+
+    for info in source_facts.values():
+        try:
+            with open(os.path.join(root, *info["path"].split("/")), encoding="utf-8") as handle:
+                same = handle.read() == info["source"]
+        except (OSError, UnicodeError) as exc:
+            raise ContractError("cannot recheck receipt source %s: %s" % (info["path"], exc)) from exc
+        if not same:
+            raise ContractError("receipt source changed during compilation: %s" % info["path"])
 
     interface_policy, interface_policy_hash, excluded_tools = \
         load_interface_policy(root, records, availability)

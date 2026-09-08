@@ -9,13 +9,21 @@ across workers. Modules not declared ``parallel_safe`` run serially.
 from __future__ import annotations
 
 import argparse
+from contextlib import contextmanager, ExitStack
+from contextvars import ContextVar
 from concurrent import futures
 from dataclasses import dataclass
+import functools
+import hashlib
+import json
 import os
 import pathlib
+import platform
 import subprocess
 import sys
+import tempfile
 import time
+import unittest
 
 from Tools.platform.common import kblib
 from Tools.platform.distribution import test_catalog
@@ -24,6 +32,150 @@ from Tools.platform.distribution import test_catalog
 CATALOG_PATH = "Tools/compiled/test-catalog.json"
 LEVELS = ("unit", "contract", "integration", "e2e", "slow", "historical-read-only")
 DEFAULT_JOBS = min(4, max(1, os.cpu_count() or 1))
+_MEASUREMENTS = ContextVar("test_cost_measurements", default=None)
+
+
+@contextmanager
+def measure_scope(kind: str, identity: str):
+    """Attribute engineering cost, never a production verdict or authority.
+
+    A nested record reports inclusive and exclusive wall time. Outside the
+    test child this is a no-op; no environment flag reaches production tools.
+    """
+    state = _MEASUREMENTS.get()
+    if state is None:
+        yield
+        return
+    stack, rows = state
+    frame = {"kind": kind, "identity": identity, "children": 0.0}
+    parent = stack[-1] if stack else None
+    stack.append(frame)
+    started = time.monotonic()
+    outcome = "returned"
+    try:
+        yield
+    except BaseException:
+        outcome = "raised"
+        raise
+    finally:
+        elapsed = time.monotonic() - started
+        stack.pop()
+        if parent is not None:
+            parent["children"] += elapsed
+        rows.append({"kind": kind, "identity": identity,
+                     "parent": None if parent is None else parent["identity"],
+                     "elapsed": elapsed,
+                     "exclusive": max(0.0, elapsed - frame["children"]),
+                     "outcome": outcome})
+
+
+def measured(kind: str, identity: str):
+    """Instrument a fixture scope without changing its inputs or outputs."""
+    def decorate(function):
+        @functools.wraps(function)
+        def wrapped(*args, **kwargs):
+            with measure_scope(kind, identity):
+                return function(*args, **kwargs)
+        return wrapped
+    return decorate
+
+
+class _TimedResult(unittest.TextTestResult):
+    def startTest(self, test):
+        super().startTest(test)
+        self._scope = measure_scope("case", test.id())
+        self._scope.__enter__()
+
+    def stopTest(self, test):
+        self._scope.__exit__(None, None, None)
+        super().stopTest(test)
+
+
+def _cases(suite):
+    for item in suite:
+        if isinstance(item, unittest.TestSuite):
+            yield from _cases(item)
+        else:
+            yield item
+
+
+@contextmanager
+def _instrument_fixtures(suite):
+    """Wrap real unittest hooks; unittest still owns execution and cleanup."""
+    cases = list(_cases(suite))
+    with ExitStack() as cleanup:
+        def replace(obj, name, replacement):
+            own = name in vars(obj)
+            previous = vars(obj).get(name)
+            setattr(obj, name, replacement)
+            def restore():
+                if own:
+                    setattr(obj, name, previous)
+                else:
+                    delattr(obj, name)
+            cleanup.callback(restore)
+
+        for case in cases:
+            for name in ("_callSetUp", "_callTestMethod", "_callTearDown", "_callCleanup"):
+                original = getattr(case, name)
+                replace(case, name, measured("method-hook", case.id() + ":" + name)(original))
+        # Capture bound hooks before wrapping any inherited class, so a
+        # shared base does not cause nested instrumentation of one call.
+        hooks = [(cls, name, getattr(cls, name))
+                 for cls in dict.fromkeys(type(case) for case in cases)
+                 for name in ("setUpClass", "tearDownClass", "doClassCleanups")]
+        for cls, name, original in hooks:
+            identity = cls.__module__ + "." + cls.__qualname__ + ":" + name
+            timed = measured("class-hook", identity)(original)
+            replace(cls, name, staticmethod(timed))
+        for module_name in dict.fromkeys(type(case).__module__ for case in cases):
+            module = sys.modules[module_name]
+            for name in ("setUpModule", "tearDownModule"):
+                original = getattr(module, name, None)
+                if original is not None:
+                    replace(module, name, measured("module-hook", module_name + ":" + name)(original))
+        original = unittest.case.doModuleCleanups
+        replace(unittest.case, "doModuleCleanups", measured("module-hook", "module-cleanups")(original))
+        yield
+
+
+def run_measured_tests(test_ids, *, stream=None):
+    """Run one selected module in this already isolated child, without Catalog."""
+    rows = []
+    token = _MEASUREMENTS.set(([], rows))
+    try:
+        with measure_scope("discovery", "unittest-load"):
+            suite = unittest.defaultTestLoader.loadTestsFromNames(test_ids)
+        discovered = [case.id() for case in _cases(suite)]
+        with _instrument_fixtures(suite):
+            result = unittest.TextTestRunner(
+                stream=stream, resultclass=_TimedResult).run(suite)
+        failing = {getattr(test, "test_case", test).id(): status for status, items in (
+            ("failure", result.failures), ("error", result.errors),
+            ("skipped", result.skipped), ("expected-failure", result.expectedFailures))
+            for test, _detail in items}
+        failing.update({test.id(): "unexpected-success" for test in result.unexpectedSuccesses})
+        for row in rows:
+            if row["kind"] == "case":
+                row["status"] = failing.get(row["identity"], "passed")
+        return {"schema_version": 1, "selected": list(test_ids),
+                "discovered": discovered,
+                "not_started": sorted(set(discovered) - {
+                    row["identity"] for row in rows if row["kind"] == "case"}),
+                "python": sys.version, "executable": sys.executable,
+                "tests_run": result.testsRun,
+                "successful": result.wasSuccessful(), "scopes": rows}
+    finally:
+        _MEASUREMENTS.reset(token)
+
+
+def child_main(argv=None):
+    """Private test-process entry; its report cannot select or authorize work."""
+    args = sys.argv[1:] if argv is None else argv
+    report, *test_ids = args
+    value = run_measured_tests(test_ids)
+    pathlib.Path(report).write_text(json.dumps(value, sort_keys=True) + "\n", encoding="utf-8")
+    return 0 if value["successful"] else 1
 
 
 class TestRunnerError(Exception):
@@ -49,6 +201,7 @@ class GroupResult:
     stdout: str
     stderr: str
     elapsed: float
+    measurement: dict | None = None
 
 
 def _catalog(root: pathlib.Path) -> dict:
@@ -131,21 +284,25 @@ def _run_child(
     """The only subprocess boundary used by the catalog runner."""
     started = time.monotonic()
     try:
-        result = kblib.run_cambium_subprocess(
-            [python, "-m", "unittest", *group.test_ids],
-            cwd=str(root),
-            env=env,
-            check=False,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            text=True,
-        )
+        print("test runner: starting path=%s cases=%d" % (group.path, len(group.test_ids)), flush=True)
+        with tempfile.TemporaryDirectory(prefix="cambium-test-cost-") as temporary:
+            report = pathlib.Path(temporary) / "result.json"
+            result = kblib.run_cambium_subprocess(
+                [python, "-c", "from Tools.platform.distribution.test_runner import child_main; "
+                 "raise SystemExit(child_main())", str(report), *group.test_ids],
+                cwd=str(root), env=env, check=False, stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE, text=True)
+            try:
+                measurement = json.loads(report.read_text(encoding="utf-8"))
+            except (OSError, ValueError):
+                measurement = None  # A crash has no complete timing report.
         return GroupResult(
             group=group,
             returncode=result.returncode,
             stdout=result.stdout,
             stderr=result.stderr,
             elapsed=time.monotonic() - started,
+            measurement=measurement,
         )
     except (OSError, UnicodeError) as exc:
         return GroupResult(
@@ -292,8 +449,13 @@ def main(argv=None) -> int:
         help="maximum parallel-safe test files to run at once (default: %(default)s)",
     )
     parser.add_argument("--list", action="store_true", dest="list_only")
+    parser.add_argument("--report", help="write a new low-authority JSON cost report outside the repository")
     args = parser.parse_args(argv)
     root = pathlib.Path(args.root).resolve()
+    report_path = pathlib.Path(args.report).resolve() if args.report else None
+    if report_path is not None and (report_path.is_relative_to(root) or report_path.exists()):
+        print("test runner: FAIL: --report must be a new file outside the repository", file=sys.stderr)
+        return 1
     if args.jobs < 1:
         print("test runner: FAIL: --jobs must be positive", file=sys.stderr)
         return 1
@@ -305,19 +467,16 @@ def main(argv=None) -> int:
     # ``full`` is one file-level execution pass. Splitting it by level would
     # import a mixed module repeatedly and rebuild the same isolated fixture
     # once per classification, defeating both ownership and runtime closure.
-    suite_names = (args.suite,)
     try:
-        selections = {suite: select_test_ids(catalog, suite, args.test_files)
-                      for suite in suite_names}
-        if args.test_files is not None and not any(selections.values()):
+        test_ids = select_test_ids(catalog, args.suite, args.test_files)
+        if args.test_files is not None and not test_ids:
             raise TestRunnerError("--test-files selects no current cases in this suite")
     except TestRunnerError as exc:
         print("test runner: FAIL: %s" % exc, file=sys.stderr)
         return 1
     if args.list_only:
-        for suite in suite_names:
-            for test_id in selections[suite]:
-                print(test_id)
+        for test_id in test_ids:
+            print(test_id)
         return 0
     env = dict(os.environ)
     paths = [str(root / "Tools" / "tests"), str(root)]
@@ -327,7 +486,6 @@ def main(argv=None) -> int:
     env["PYTHONDONTWRITEBYTECODE"] = "1"
 
     started = time.monotonic()
-    selected_total = sum(len(selections[suite]) for suite in suite_names)
     if args.suite == "full":
         level_counts = {
             level: len(select_test_ids(catalog, level, args.test_files))
@@ -339,62 +497,66 @@ def main(argv=None) -> int:
                 "%s:%d" % (level, level_counts[level]) for level in LEVELS
             )
         )
-    completed_total = 0
-    completed_modules = 0
-    returncode = 0
-    completed_suites = 0
-    for suite in suite_names:
-        test_ids = selections[suite]
+    try:
+        groups = module_groups(catalog, test_ids)
+    except TestRunnerError as exc:
+        print("test runner: FAIL: %s" % exc, file=sys.stderr)
+        return 1
+    reports = []
+    def run_child(group):
         try:
-            groups = module_groups(catalog, test_ids)
-        except TestRunnerError as exc:
-            print("test runner: FAIL: %s" % exc, file=sys.stderr)
-            return 1
-        if not groups:
-            print("test runner: suite=%s selected=0 completed=0 elapsed=0.000s exit=0" % suite)
-            completed_suites += 1
-            continue
-        suite_started = time.monotonic()
-        run_child = lambda group: _run_child(
-            group, python=args.python or sys.executable, root=root, env=env
-        )
-        result, completed, modules = _execute_suite(
-            suite, groups, jobs=args.jobs, run_child=run_child
-        )
-        completed_total += completed
-        completed_modules += modules
-        returncode = result
-        print(
-            "test runner: suite=%s selected=%d completed=%d modules=%d/%d jobs=%d elapsed=%.3fs exit=%d"
-            % (
-                suite,
-                len(test_ids),
-                completed,
-                modules,
-                len(groups),
-                args.jobs,
-                time.monotonic() - suite_started,
-                returncode,
-            )
-        )
-        if returncode:
-            break
-        completed_suites += 1
+            source_hash = hashlib.sha256((root / group.path).read_bytes()).hexdigest()
+        except OSError:
+            source_hash = None  # Diagnostics do not redefine test admission.
+        result = _run_child(group, python=args.python or sys.executable, root=root, env=env)
+        reports.append({"path": group.path, "test_ids": list(group.test_ids),
+                        "test_source_sha256": source_hash,
+                        "elapsed": result.elapsed, "exit": result.returncode,
+                        "parallel_safe": group.parallel_safe,
+                        "measurement": result.measurement})
+        return result
+    returncode, completed, modules = _execute_suite(
+        args.suite, groups, jobs=args.jobs, run_child=run_child)
     elapsed = time.monotonic() - started
-    if args.suite == "full":
-        print(
-            "test runner: suite=full selected=%d completed=%d modules=%d suites=%d/%d jobs=%d elapsed=%.3fs exit=%d"
-            % (
-                selected_total,
-                completed_total,
-                completed_modules,
-                completed_suites,
-                len(suite_names),
-                args.jobs,
-                elapsed,
-                returncode,
-            )
-        )
+    print(
+        "test runner: suite=%s selected=%d completed=%d modules=%d/%d jobs=%d elapsed=%.3fs exit=%d"
+        % (args.suite, len(test_ids), completed, modules, len(groups),
+           args.jobs, elapsed, returncode))
+    if args.report:
+        case_index = {case["test_id"]: case for module in catalog["modules"]
+                      for case in module.get("cases", [])}
+        for report in reports:
+            for row in (report["measurement"] or {}).get("scopes", []):
+                if row["kind"] == "case":
+                    row["level"] = case_index.get(row["identity"], {}).get("level")
+        def revision(expression):
+            result = kblib.run_cambium_subprocess(
+                ["git", "rev-parse", expression], cwd=root,
+                text=True, capture_output=True, check=False)
+            return result.stdout.strip() if result.returncode == 0 else None
+        dependencies = {str(path.relative_to(root)): hashlib.sha256(path.read_bytes()).hexdigest()
+                        for path in sorted((root / "Tools").glob("requirements*.txt"))}
+        identity = {"commit": revision("HEAD"), "tree": revision("HEAD^{tree}"),
+                    "python": sys.version, "platform": platform.platform(),
+                    "python_override": args.python,
+                    "dependencies": dependencies,
+                    "ci": {key: os.environ.get(key) for key in (
+                        "GITHUB_RUN_ID", "GITHUB_RUN_ATTEMPT", "ImageOS", "ImageVersion", "RUNNER_ARCH")}}
+        tree_status = kblib.run_cambium_subprocess(
+            ["git", "status", "--porcelain=v1"], cwd=root,
+            text=True, capture_output=True, check=False)
+        identity["worktree_clean"] = (
+            not tree_status.stdout if tree_status.returncode == 0 else None)
+        value = {"schema_version": 1, "kind": "test-cost-report", "identity": identity,
+                 "suite": args.suite, "selected": test_ids,
+                 "elapsed": elapsed, "exit": returncode,
+                 "modules": sorted(reports, key=lambda row: row["path"])}
+        try:
+            report_path.parent.mkdir(parents=True, exist_ok=True)
+            with report_path.open("x", encoding="utf-8") as handle:
+                handle.write(json.dumps(value, indent=2, sort_keys=True) + "\n")
+        except OSError as exc:
+            print("test runner: cost report unavailable: %s" % exc, file=sys.stderr)
     return returncode
 
 

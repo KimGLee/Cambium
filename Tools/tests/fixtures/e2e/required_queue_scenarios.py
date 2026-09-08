@@ -20,6 +20,7 @@ from Tools.execution.task_runtime import runtime_paths
 from Tools.platform.common import kblib
 from Tools.platform.agent_interface import agent_interface_contract
 from Tools.platform.distribution import upstream_component_boundary as component_boundary
+from Tools.platform.distribution.test_runner import measured
 from Tools.tests.support.initial_task_plan_fixture import confirmed_initial_task_plan
 from Tools.tests.support.coverage_delta_fixture import premerge_delta_document
 from Tools.tests.support.mcp_stdio_session import MCPStdioSession
@@ -43,6 +44,7 @@ from Tools.tests.support.required_queue_fixture import (
 )
 
 
+@measured("e2e-phase", "task-plan-to-queue")
 def initialize_task_plan_scenario(walker):
     """Publish real initial planning and Queue transactions in an empty root.
 

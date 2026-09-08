@@ -327,6 +327,31 @@ def _component_tree_entries(adopter_root):
     return result, errors
 
 
+def component_content_identity(root):
+    """Read a conservative local component identity, not an adoption verdict.
+
+    Includes newly added entries and all file types, including generator data.
+    No Git HEAD, recorded manifest or hand-maintained parser dependency list
+    substitutes for actual bytes. Runtime and selected Profile values are not
+    component inputs. Missing optional component files remain explicit.
+    """
+    paths, errors = _component_tree_entries(root)
+    if errors:
+        raise ComponentBoundaryError("; ".join(errors))
+    rows = []
+    for relative in sorted(paths | set(IMMUTABLE_FILE_PATHS)):
+        absolute = os.path.join(root, *relative.split("/"))
+        if relative not in paths and not os.path.lexists(absolute):
+            rows.append((relative, None))
+        else:
+            rows.append((relative, hashlib.sha256(
+                _stable_regular_bytes(absolute)).hexdigest()))
+    after, errors = _component_tree_entries(root)
+    if errors or after != paths:
+        raise ComponentBoundaryError("component discovery changed during observation")
+    return tuple(rows)
+
+
 def evaluate(adopter_root, upstream_root, revision_ref):
     """Return the exact component-byte report for one adopter.
 

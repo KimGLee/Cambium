@@ -1504,6 +1504,8 @@ def _validate_classification(
     contract_symbol = classification.get("owner_contract_symbol")
     if not isinstance(contract_symbol, str) or not contract_symbol.strip():
         errors.append("%s has no owner contract symbol" % subject)
+    if classification.get("owner_reference_kind") not in (None, "invariant", "symbol"):
+        errors.append("%s has unknown owner reference kind" % subject)
     primary_owner = classification.get("primary_owner_test")
     if not isinstance(primary_owner, str) or not primary_owner.strip():
         errors.append("%s has no primary owner test" % subject)
@@ -1514,6 +1516,62 @@ def _validate_classification(
         not isinstance(duplicate_group, str) or not duplicate_group.strip()
     ):
         errors.append("%s duplicate_group must be a non-empty string or null" % subject)
+
+
+class _OwnerReferences:
+    """Resolve declarations once per owner, without importing production code.
+
+    A semantic label is explicitly not a resolved symbol. Existence of an
+    owner file proves neither that label's correctness nor semantic dedup.
+    """
+    def __init__(self, root):
+        self.root = root
+        self.symbols = {}
+
+    def resolve(self, case):
+        owner = case["owner"]
+        symbol = case["owner_contract_symbol"]
+        declared_kind = case.get("owner_reference_kind")
+        if declared_kind == "invariant" or (
+                declared_kind is None and symbol == case["semantics"]):
+            return {"kind": "invariant", "status": "declared", "owner": owner,
+                    "target": symbol}
+        path = pathlib.Path(owner)
+        if path.suffix != ".py":
+            if declared_kind == "symbol":
+                return {"kind": "python-symbol", "status": "unresolved", "owner": owner,
+                        "target": symbol}
+            return {"kind": "contract-reference", "status": "declared", "owner": owner,
+                    "target": symbol}
+        if owner not in self.symbols:
+            names = set()
+            def visit(body, prefix=""):
+                for node in body:
+                    if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+                        name = prefix + node.name
+                        names.add(name)
+                        if isinstance(node, ast.ClassDef):
+                            visit(node.body, name + ".")
+                    elif isinstance(node, (ast.Assign, ast.AnnAssign)):
+                        targets = node.targets if isinstance(node, ast.Assign) else [node.target]
+                        for target in targets:
+                            for item in ast.walk(target):
+                                if isinstance(item, ast.Name):
+                                    names.add(prefix + item.id)
+            try:
+                visit(ast.parse((self.root / owner).read_text(encoding="utf-8")).body)
+            except (OSError, UnicodeError, SyntaxError):
+                pass
+            self.symbols[owner] = names
+        prefixes = (".".join(path.with_suffix("").parts) + ".", path.stem + ".")
+        target = symbol
+        for prefix in prefixes:
+            if target.startswith(prefix):
+                target = target[len(prefix):]
+                break
+        return {"kind": "python-symbol", "status": (
+            "resolved" if target in self.symbols[owner] else "unresolved"),
+            "owner": owner, "target": target}
 
 
 def _apply_overrides(case: dict, module: dict, errors: list[str]) -> dict:
@@ -1531,6 +1589,7 @@ def _apply_overrides(case: dict, module: dict, errors: list[str]) -> dict:
         "primary_owner_test": module.get("primary_owner_test", "self"),
         "consumer_only": bool(module.get("consumer_only", False)),
         "duplicate_group": module.get("duplicate_group"),
+        "owner_reference_kind": module.get("owner_reference_kind"),
     }
     matched = []
     for override in module.get("overrides", []):
@@ -1548,6 +1607,7 @@ def _apply_overrides(case: dict, module: dict, errors: list[str]) -> dict:
                 "semantics",
                 "parallel_safe",
                 "owner_contract_symbol",
+                "owner_reference_kind",
                 "primary_owner_test",
                 "consumer_only",
                 "duplicate_group",
@@ -1697,6 +1757,7 @@ def build_catalog(root: pathlib.Path) -> tuple[dict, list[str]]:
             tree, fixture_modules, relative_path
         )
 
+    owner_references = _OwnerReferences(root)
     modules = []
     all_cases = []
     cross_imports = list(fixture_test_imports)
@@ -1793,6 +1854,11 @@ def build_catalog(root: pathlib.Path) -> tuple[dict, list[str]]:
                 if not key.startswith("_")
             }
             expanded_case.update(classification)
+            reference = owner_references.resolve(classification)
+            expanded_case["owner_reference"] = reference
+            if reference["status"] == "unresolved":
+                errors.append("%s has unresolved owner symbol %s in %s" % (
+                    case["test_id"], reference["target"], reference["owner"]))
             expanded_case["path"] = relative_path
             expanded_case["execution"] = execution
             expanded.append(expanded_case)
@@ -1964,6 +2030,9 @@ def build_catalog(root: pathlib.Path) -> tuple[dict, list[str]]:
             "method_transitive_exposure": transitive_exposure,
             "module_scenario_first_use_builds": scenario_first_use_builds,
             "cross_test_imports": len(cross_imports),
+            "owner_references": dict(sorted(Counter(
+                "%s:%s" % (case["owner_reference"]["kind"], case["owner_reference"]["status"])
+                for case in all_cases).items())),
         },
         "modules": modules,
         "fixtures": fixtures,
@@ -2141,8 +2210,10 @@ def render_markdown(catalog: dict) -> str:
             "",
             "Ownership fields come from `Tools/test-ownership.yaml`; fixture entrypoints and effects are derived from source call closures. Direct method work, per-method fixture work, per-class setup, and import-time process work remain separate. A cached scenario builder is shown as a trigger on every dependent method, while its walker cost appears under scenario first-use/process once per scenario rather than being multiplied by every method.",
             "",
-            "| Test case | Contract symbol | Primary owner test | Level | Direct method | Per-method fixture | Per-class fixture | Import/process | Scenario first-use/process | Builder triggers | Fixture entrypoints | Consumer only | Duplicate group | Disposition |",
-            "| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |",
+            "Python references are resolved against their owner AST, never imported. Invariants and non-Python contract references marked `declared` remain reviewed claims anchored to an existing owner file, not a machine proof of their meaning or uniqueness.",
+            "",
+            "| Test case | Owner reference | Reference check | Primary owner test | Level | Direct method | Per-method fixture | Per-class fixture | Import/process | Scenario first-use/process | Builder triggers | Fixture entrypoints | Consumer only | Duplicate group | Disposition |",
+            "| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |",
         ]
     )
     for module in catalog["modules"]:
@@ -2152,6 +2223,8 @@ def render_markdown(catalog: dict) -> str:
                 "`%s`" % entry for entry in execution["fixture_entrypoints"]
             ) or "—"
             display = dict(case)
+            display["reference_check"] = "%s / %s" % (
+                case["owner_reference"]["kind"], case["owner_reference"]["status"])
             display.update({
                 "method": _effect_label(execution["scopes"]["direct_method"]),
                 "per_method": _effect_label(
@@ -2184,7 +2257,7 @@ def render_markdown(catalog: dict) -> str:
                 ),
             })
             lines.append(
-                "| `{test_id}` | `{owner_contract_symbol}` | `{primary_owner_test}` | `{level}` | {method} | {per_method} | {class_scope} | {process} | {first_use} | {builder_triggers} | {entrypoints} | {consumer_only} | {duplicate_group} | `{disposition}` |".format(
+                "| `{test_id}` | `{owner_contract_symbol}` | {reference_check} | `{primary_owner_test}` | `{level}` | {method} | {per_method} | {class_scope} | {process} | {first_use} | {builder_triggers} | {entrypoints} | {consumer_only} | {duplicate_group} | `{disposition}` |".format(
                     **display
                 )
             )

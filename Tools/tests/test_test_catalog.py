@@ -6,6 +6,8 @@ from contextlib import redirect_stdout
 import json
 from pathlib import Path
 import tempfile
+import sys
+from types import ModuleType
 import unittest
 from unittest import mock
 
@@ -62,6 +64,68 @@ class TestRunnerSelectionContractTests(unittest.TestCase):
         self.assertFalse(group.parallel_safe)
         self.assertIn("mode=serial", output.getvalue())
         self.assertIn("selected=2 completed=2", output.getvalue())
+
+    def test_cost_scopes_attribute_real_hooks_without_repeating_shared_fixtures(self):
+        module = ModuleType("cost_probe")
+        calls = []
+        def setup_class(cls):
+            calls.append("class")
+            cls.addClassCleanup(lambda: calls.append("class-cleanup"))
+        def method(case):
+            with test_runner.measure_scope("checkpoint", "local-input"):
+                calls.append("method")
+        module.setUpModule = lambda: calls.append("module")
+        module.tearDownModule = lambda: calls.append("module-cleanup")
+        probe = type("Probe", (unittest.TestCase,), {
+            "__module__": module.__name__, "setUpClass": classmethod(setup_class),
+            "setUp": lambda self: calls.append("setup"),
+            "test_first": method, "test_second": method})
+        module.Probe = probe
+        original = vars(probe)["setUpClass"]
+        ids = ["cost_probe.Probe.test_first", "cost_probe.Probe.test_second"]
+        outer_measurements = test_runner._MEASUREMENTS.get()
+        with mock.patch.dict(sys.modules, {module.__name__: module}):
+            report = test_runner.run_measured_tests(ids, stream=io.StringIO())
+        self.assertTrue(report["successful"])
+        self.assertEqual(2, report["tests_run"])
+        self.assertEqual(1, calls.count("class"))
+        self.assertEqual(1, calls.count("class-cleanup"))
+        self.assertEqual(2, calls.count("setup"))
+        self.assertIs(original, vars(probe)["setUpClass"])
+        rows = report["scopes"]
+        self.assertEqual(2, len([row for row in rows if row["kind"] == "case"]))
+        self.assertEqual(2, len([row for row in rows if row["kind"] == "checkpoint"]))
+        self.assertTrue(all(0 <= row["exclusive"] <= row["elapsed"] for row in rows))
+        # Root scopes partition wall time. Nested rows are not added again.
+        roots = sum(row["elapsed"] for row in rows if row["parent"] is None)
+        self.assertAlmostEqual(roots, sum(row["exclusive"] for row in rows))
+        # The owner test is itself measured under the real test runner.
+        # Nested collection must restore its caller, not clear that context.
+        self.assertIs(outer_measurements, test_runner._MEASUREMENTS.get())
+
+    def test_cost_collection_preserves_failures_skips_and_class_admission_errors(self):
+        module = ModuleType("cost_outcomes")
+        def bad_subtest(case):
+            with case.subTest(value="invalid"):
+                case.fail("expected probe failure")
+        def bad_setup(cls):
+            raise RuntimeError("fixture failed")
+        module.Probe = type("Probe", (unittest.TestCase,), {
+            "__module__": module.__name__, "test_failure": bad_subtest,
+            "test_skipped": unittest.skip("not applicable")(lambda self: None)})
+        module.Broken = type("Broken", (unittest.TestCase,), {
+            "__module__": module.__name__, "setUpClass": classmethod(bad_setup),
+            "test_never_run": lambda self: self.fail("must not run")})
+        with mock.patch.dict(sys.modules, {module.__name__: module}):
+            report = test_runner.run_measured_tests([
+                "cost_outcomes.Probe", "cost_outcomes.Broken"], stream=io.StringIO())
+        self.assertFalse(report["successful"])
+        cases = {row["identity"]: row["status"] for row in report["scopes"] if row["kind"] == "case"}
+        self.assertEqual({"cost_outcomes.Probe.test_failure": "failure",
+                          "cost_outcomes.Probe.test_skipped": "skipped"}, cases)
+        self.assertTrue(any(row["identity"].endswith("Broken:setUpClass") and
+                            row["outcome"] == "raised" for row in report["scopes"]))
+        self.assertNotIn("setUpClass", vars(module.Probe))
 
 
 class SyntheticCatalogWorkspace:
@@ -161,6 +225,8 @@ class TestCatalogContractTests(unittest.TestCase):
         case = module["cases"][0]
         self.assertEqual("Tools/tests/test_sample.py", module["path"])
         self.assertEqual("contract", case["level"])
+        self.assertEqual("declared", case["owner_reference"]["status"])
+        self.assertEqual("invariant", case["owner_reference"]["kind"])
         self.assertEqual(
             ["Tools/tests/support/sample_fixture.py"],
             module["fixture_dependencies"])
@@ -168,6 +234,24 @@ class TestCatalogContractTests(unittest.TestCase):
             {"process_calls": 0, "temp_resources": 0,
              "file_copies": 0, "full_repository_copies": 0},
             case["execution"]["transitive_effects"])
+
+    def test_owner_reference_resolution_does_not_promote_labels_to_symbols(self):
+        root = self.root()
+        for symbol, kind, status in (
+                ("owner.OWNER", "symbol", "resolved"),
+                ("owner.retired", "symbol", "unresolved"),
+                ("synthetic-owner-contract", "invariant", "declared")):
+            with self.subTest(symbol=symbol):
+                SyntheticCatalogWorkspace.write(root,
+                    test_source="import unittest\nclass Sample(unittest.TestCase):\n    def test_value(self):\n        pass\n",
+                    fixture_source="VALUE = 1\n", overrides=[{
+                        "selector": "Sample.test_value", "owner_contract_symbol": symbol,
+                        "owner_reference_kind": kind}])
+                catalog, errors = test_catalog.build_catalog(root)
+                case = catalog["modules"][0]["cases"][0]
+                self.assertEqual(status, case["owner_reference"]["status"])
+                self.assertEqual(status == "unresolved", any(
+                    "unresolved owner symbol" in error for error in errors), errors)
 
     def test_ephemeral_os_and_python_artifacts_are_not_fixtures(self):
         root = self.root()

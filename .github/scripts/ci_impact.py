@@ -21,11 +21,16 @@ is visible in the GitHub Actions job summary.
 
 import argparse
 from dataclasses import dataclass
+import io
 import json
+import math
+import os
 from pathlib import Path, PurePosixPath
 import re
+import statistics
 import subprocess
 import sys
+import zipfile
 
 REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
 TOOLS_ROOT = REPOSITORY_ROOT / "Tools"
@@ -251,99 +256,148 @@ def impacted_tool_tests(root, changed_tool_paths):
     return selected, "affected Tool closure: %s" % ", ".join(sorted(affected))
 
 
-# Full verification used to shard by the first letter of the test module.  That
-# split became structurally unbalanced as the suite grew: the c-m group reached
-# more than twice the source weight of s-z and exceeded the job timeout while a
-# lighter peer completed.  The shard count is therefore the stable policy; the
-# membership is a deterministic projection of the current suite.
+# CI owns placement only; Catalog and runner retain selection and isolation.
 FULL_SHARD_COUNT = 10
+SHARD_WORKERS = 2
 
 
-def _test_weight(root, test_name):
-    """A self-maintaining stand-in for how long one test file takes.
-
-    Byte size is not the cost, but it tracks it closely enough to pack bins:
-    against measured per-file wall clock across the whole suite it correlates
-    at r = 0.80, and packing on it puts the worst bin at 1.26x a perfect
-    split where round-robin puts it at 1.59x.  It is chosen over a recorded
-    duration table because a table goes stale in silence -- a file can double
-    in cost while the number claiming otherwise sits unchanged -- and a file
-    cannot disagree with its own size.
-    """
+def _historical_costs(repository):
+    """Read at most two successful main runs; absence cannot suppress tests."""
+    result = {"samples": {}, "runs": [], "status": "unavailable"}
+    if not re.fullmatch(r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+", repository or ""):
+        return result
+    def api(path):
+        completed = subprocess.run(
+            ["gh", "api", "repos/%s/%s" % (repository, path)],
+            check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=25)
+        return completed.stdout
     try:
-        return (root / "Tools" / "tests" / test_name).stat().st_size
-    except OSError:
-        return 0
+        runs = json.loads(api(
+            "actions/workflows/verify.yml/runs?branch=main&event=push&status=success&per_page=2"))
+        for run in runs.get("workflow_runs", [])[:2]:
+            if run.get("event") != "push" or run.get("head_branch") != "main" or run.get("conclusion") != "success":
+                continue
+            raw = api("actions/runs/%d/logs" % int(run["id"]))
+            if len(raw) > 50_000_000:
+                continue
+            metadata = {key: run.get(key) for key in
+                        ("id", "head_sha", "run_attempt", "created_at", "html_url")}
+            observed = {}
+            with zipfile.ZipFile(io.BytesIO(raw)) as archive:
+                for info in archive.infolist():
+                    if info.file_size > 10_000_000:
+                        continue
+                    log = archive.read(info).decode("utf-8", errors="replace")
+                    version = re.search(r"Successfully set up CPython \((3\.\d+\.\d+)", log)
+                    if version is None:
+                        continue
+                    runner_image = re.search(r"Image: ([^\r\n]+)", log)
+                    for match in re.finditer(
+                            r"test runner: suite=full module=\d+/\d+ path=Tools/tests/(test_[a-z0-9_]+\.py) "
+                            r"cases=(\d+) mode=(parallel|serial) elapsed=([0-9.]+)s exit=0", log):
+                        name, cases, mode, elapsed = match.groups()
+                        value = float(elapsed)
+                        if value > 0 and math.isfinite(value):
+                            observed[(version[1], name)] = {
+                                "seconds": value, "python": version[1], "cases": int(cases),
+                                "runner_image": runner_image[1][:80] if runner_image else None,
+                                "mode": mode, "run": run["id"], "revision": run["head_sha"]}
+            for (_version, name), sample in sorted(observed.items()):
+                result["samples"].setdefault(name, []).append(sample)
+            result["runs"].append(metadata)
+        result["status"] = "observed" if result["samples"] else "no-module-observations"
+    except (OSError, ValueError, KeyError, subprocess.SubprocessError, zipfile.BadZipFile):
+        result["status"] = "partial" if result["samples"] else "unavailable"
+    return result
 
 
-def _packed_groups(root, test_names, count, prefix):
-    """Pack test modules into deterministic, approximately equal groups."""
-    expected = sorted(test_names)
-    count = min(count, len(expected))
-    members = [[] for _ in range(count)]
-    loads = [0] * count
-    for name in sorted(expected, key=lambda item: (-_test_weight(root, item), item)):
-        lightest = loads.index(min(loads))
-        members[lightest].append(name)
-        loads[lightest] += _test_weight(root, name)
+def _scheduling_facts(root, names, samples):
+    """Use the generated Catalog as advisory placement data, never admission."""
+    try:
+        catalog = json.loads((root / "Tools/compiled/test-catalog.json").read_text(encoding="utf-8"))
+        modules = {Path(row["path"]).name: row for row in catalog["modules"]}
+    except (OSError, ValueError, KeyError, TypeError):
+        modules = {}
+    facts = {}
+    for name in names:
+        cases = modules.get(name, {}).get("cases", [])
+        observed = [row["seconds"] for row in samples.get(name, [])
+                    if isinstance(row.get("seconds"), (int, float))
+                    and not isinstance(row["seconds"], bool)
+                    and math.isfinite(row["seconds"]) and row["seconds"] > 0]
+        try:
+            size = (root / "Tools/tests" / name).stat().st_size
+        except OSError:
+            size = 1
+        facts[name] = {
+            "seconds": statistics.median(observed) if observed else max(0.1, size / 1024),
+            "cost_basis": "observed-median-estimate" if observed else "source-size-fallback",
+            "samples": len(observed),
+            "parallel_safe": bool(cases) and all(row.get("parallel_safe") is True for row in cases),
+            "e2e": any(row.get("level") == "e2e" for row in cases),
+        }
+    # Calibrate fallback bytes to observed seconds rather than mixing units.
+    ratios = []
+    for name in names:
+        if facts[name]["samples"]:
+            try:
+                ratios.append(facts[name]["seconds"] / max(1, (root / "Tools/tests" / name).stat().st_size))
+            except OSError:
+                pass
+    if ratios:
+        ratio = statistics.median(ratios)
+        for name in names:
+            if not facts[name]["samples"]:
+                facts[name]["seconds"] = max(0.1, facts[name]["seconds"] * 1024 * ratio)
+    return facts
 
-    groups = [
-        ("%s-%02d" % (prefix, index + 1), sorted(bin_names))
-        for index, bin_names in enumerate(members)
-        if bin_names
-    ]
-    assigned = sorted(name for _, bin_names in groups for name in bin_names)
-    if assigned != expected or len(assigned) != len(set(assigned)):
+
+def _estimated_makespan(names, facts):
+    workers = [0.0] * SHARD_WORKERS
+    serial = 0.0
+    for name in sorted(names, key=lambda key: (-facts[key]["seconds"], key)):
+        row = facts[name]
+        if row["parallel_safe"]:
+            workers[workers.index(min(workers))] += row["seconds"]
+        else:
+            serial += row["seconds"]
+    return serial + max(workers)
+
+
+def _matrix(root, versions, tests, prefix, samples=None):
+    """Place the exact selected set once, accounting for file isolation."""
+    expected = sorted(tests)
+    if len(expected) != len(set(expected)):
+        raise ValueError("CI selected files must be unique")
+    if not expected:
+        return {"include": []}
+    facts = _scheduling_facts(Path(root), expected, samples or {})
+    count = min(FULL_SHARD_COUNT, len(expected))
+    # Complete lifecycle modules keep a dedicated job when capacity permits.
+    lifecycle = [name for name in expected if facts[name]["e2e"]]
+    isolated = lifecycle if len(lifecycle) < count else []
+    groups = [[name] for name in isolated] + [[] for _ in range(count - len(isolated))]
+    for name in sorted(set(expected) - set(isolated), key=lambda key: (-facts[key]["seconds"], key)):
+        available = range(len(isolated), len(groups))
+        chosen = min(available, key=lambda index: (
+            _estimated_makespan(groups[index] + [name], facts), index))
+        groups[chosen].append(name)
+    groups = [sorted(group) for group in groups if group]
+    assigned = sorted(name for group in groups for name in group)
+    if assigned != expected:
         raise ValueError("CI groups must cover every test file exactly once")
-    return groups
-
-
-def _full_groups(root, test_names):
-    """Build the complete-suite matrix from the current test source weights."""
-    return _packed_groups(root, test_names, FULL_SHARD_COUNT, "full")
-
-
-def _selective_groups(root, test_names):
-    """Shard the selected set using the same packing policy as full mode.
-
-    A selective plan that ran in one job was slower than the full matrix it
-    exists to avoid: nine modules measured 451-525s on a runner, against a
-    worst full-mode shard well under that, and the widest closure projects
-    past the job timeout outright.  Splitting is the fix; the packing order
-    only decides how even the split is.
-
-    The bin count follows full mode rather than restating it, so changing the
-    complete-suite concurrency also changes the selective ceiling.
-    """
-    expected = sorted(test_names)
-    return _packed_groups(
-        root, expected, min(FULL_SHARD_COUNT, len(expected)), "affected")
-
-
-def _shard_label(root, tests):
-    """Describe actual members, not a second manually maintained taxonomy.
-
-    Shards mix domains and test levels to balance load. Use one representative
-    module as the short navigation label; the job summary lists all members.
-    """
-    representative = min(tests, key=lambda name: (-_test_weight(root, name), name))
-    return representative.removeprefix("test_").removesuffix(".py").replace("_", " ")
-
-
-def _matrix(root, versions, groups):
-    labelled_groups = [
-        (name, tests, _shard_label(root, tests)) for name, tests in groups
-    ]
-    include = []
+    rows = []
     for version in versions:
-        for name, tests, label in labelled_groups:
-            include.append({
-                "python-version": version,
-                "shard": name,
-                "test-label": label,
-                "test-files": ",".join(tests),
+        for index, group in enumerate(groups):
+            label = ("Lifecycle" if index < len(isolated) else "Tools")
+            label += " " + chr(ord("A") + (index if index < len(isolated) else index - len(isolated)))
+            rows.append({
+                "python-version": version, "shard": "%s-%02d" % (prefix, index + 1),
+                "test-label": label, "test-files": ",".join(group),
+                "estimated-seconds": round(_estimated_makespan(group, facts), 3),
+                "observed-modules": sum(bool(facts[name]["samples"]) for name in group),
             })
-    return {"include": include}
+    return {"include": rows}
 
 
 def _full_plan(root, changed, reasons):
@@ -358,7 +412,7 @@ def _full_plan(root, changed, reasons):
             "include": [{"python-version": value}
                         for value in PYTHON_VERSIONS],
         },
-        "test_matrix": _matrix(root, PYTHON_VERSIONS, _full_groups(root, tests)),
+        "test_matrix": _matrix(root, PYTHON_VERSIONS, tests, "full"),
         "run_tests": True,
     }
 
@@ -461,10 +515,9 @@ def plan_changes(root, changes, event="pull_request"):
             "run_tests": False,
         })
         return base
-    groups = _selective_groups(root, selected)
     base.update({
         "mode": "selective",
-        "test_matrix": _matrix(root, check_versions, groups),
+        "test_matrix": _matrix(root, check_versions, selected, "affected"),
         "run_tests": True,
     })
     return base
@@ -497,7 +550,7 @@ def validate_selected_tests(root, value):
     return names
 
 
-def run_selected_tests(root, value, jobs=2):
+def run_selected_tests(root, value, jobs=SHARD_WORKERS, report=None):
     """Delegate an exact shard to the same catalog runner as local full runs.
 
     CI owns impact selection, not another loader or isolation policy. The
@@ -510,7 +563,7 @@ def run_selected_tests(root, value, jobs=2):
     return test_runner.main([
         "full", "--root", str(root), "--python", sys.executable,
         "--test-files", ",".join(names), "--jobs", str(jobs),
-    ])
+    ] + (["--report", report] if report else []))
 
 
 def _parser():
@@ -524,6 +577,7 @@ def _parser():
     plan_parser.add_argument("--head")
     plan_parser.add_argument("--plan-path")
     plan_parser.add_argument("--github-output")
+    plan_parser.add_argument("--cost-history", action="store_true", help="read advisory costs from recent successful main runs")
 
     validate_parser = subparsers.add_parser("validate")
     validate_parser.add_argument("--root", default=".")
@@ -531,8 +585,9 @@ def _parser():
     run_parser = subparsers.add_parser("run-tests")
     run_parser.add_argument("--root", default=".")
     run_parser.add_argument("--tests", required=True)
-    run_parser.add_argument("--jobs", type=int, default=2,
-                            help="parallel-safe files per CI shard (default: 2)")
+    run_parser.add_argument("--jobs", type=int, default=SHARD_WORKERS,
+                            help="parallel-safe files per CI shard (default: %(default)s)")
+    run_parser.add_argument("--report", help="new cost report outside the repository")
     return parser
 
 
@@ -546,13 +601,13 @@ def main(argv=None):
             print("ci-impact: %s" % error, file=sys.stderr)
             return 1
         tests = discover_tests(root)
-        _full_groups(root, tests)
+        _matrix(root, PYTHON_VERSIONS, tests, "full")
         print("repository_layout_tracked_files = %d" % tracked_count)
         print("ci_impact_tests = %d" % len(tests))
         return 0
     if args.command == "run-tests":
         try:
-            return run_selected_tests(root, args.tests, args.jobs)
+            return run_selected_tests(root, args.tests, args.jobs, args.report)
         except ValueError as error:
             print("ci-impact: %s" % error, file=sys.stderr)
             return 1
@@ -565,6 +620,14 @@ def main(argv=None):
         merge_base = args.base or ""
         changes = []
     plan = plan_changes(root, changes, event=args.event)
+    history = _historical_costs(os.environ.get("GITHUB_REPOSITORY")) if args.cost_history else {
+        "samples": {}, "runs": [], "status": "not-requested"}
+    if plan["run_tests"]:
+        plan["test_matrix"] = _matrix(root, plan["check_versions"], plan["selected_tests"],
+            "full" if plan["mode"] == "full" else "affected", history["samples"])
+    plan["cost_history"] = history
+    plan["result_reuse"] = {"enabled": False, "status": "not-proven",
+        "reason": "Prior head SHAs and module timings do not prove actual checkout tree, toolchain or complete required-check equivalence; main still executes all checks."}
     plan["base_sha"] = args.base or ""
     plan["head_sha"] = args.head or ""
     plan["merge_base_sha"] = merge_base
