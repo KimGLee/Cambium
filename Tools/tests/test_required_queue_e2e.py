@@ -19,7 +19,7 @@ from Tools.execution.task_runtime import queue_runtime
 import Tools.execution.audit.assemble_terminal_proof as assemble_terminal_proof
 import Tools.execution.audit.audit_dimension_contract as audit_dimension_contract
 import Tools.execution.audit.audit_evidence_runtime as audit_evidence_runtime
-from Tools.execution.audit import audit_execution_runtime, batch_review_obligation_contract
+from Tools.execution.audit import audit_execution_runtime, batch_review_obligation_contract, check_batch_close
 import Tools.execution.task_runtime.runtime_validation as runtime_validation  # noqa: E402
 import Tools.platform.common.kblib as kblib
 import Tools.execution.task_runtime.runtime_paths as runtime_paths
@@ -32,6 +32,23 @@ class RequiredQueueLifecycleEndToEndTests(RequiredQueueE2EScenarioCase):
     START_SCENARIO = "initial-plan"
     MCP_TRANSPORT = True
     TASK_PAGE_TIERS = {"Topics/A.md": "M"}
+
+    def invoke_tool(self, name, *arguments):
+        if name == "check_batch_close.py":
+            # The real carried surface includes two intentional, fully
+            # qualified README owners. Review exactly that observed candidate,
+            # not every duplicate basename or a fabricated passing Receipt.
+            graph = check_batch_close._graph_and_basename_check(str(self.root))
+            self.assertEqual([], graph["errors"])
+            self.assertEqual([{
+                "tool": "check_batch_close", "check": "duplicate-markdown-basename",
+                "target": "README.md", "result": "candidate",
+                "details": "duplicate Markdown basename: Tools/README.md, Tools/knowledge/rendering/README.md",
+            }], graph["candidates"])
+            candidate = check_batch_close._stable_candidate(
+                graph["candidates"][0], "graph_and_duplicate_basenames")
+            arguments += ("--accept-candidate-id", candidate["candidate_id"])
+        return super().invoke_tool(name, *arguments)
 
     def prepare_premerge_audit_evidence(self, batch_id):
         if batch_id != "B1":

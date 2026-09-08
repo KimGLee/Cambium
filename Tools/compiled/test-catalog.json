@@ -52,7 +52,7 @@
       "owner": "Tools/tests/fixtures/e2e/batch_close_scenarios.py",
       "path": "Tools/tests/fixtures/integration/batch_close_applied_checkpoint",
       "purpose": "Generated current-contract applied batch checkpoint for close producer integrations",
-      "tree_sha256": "sha256:27f67cbe6d3eb70e0a43c4301b38bc1fccc3737d471da8b6ff28cb9aa6acc746"
+      "tree_sha256": "sha256:e1c7d7ab311a6398f0a973a8351428b81e5a51687b19eb94cedc7e89dcc6f637"
     },
     {
       "bytes": 111590,
@@ -63,7 +63,7 @@
       "owner": "Tools/tests/fixtures/e2e/batch_close_scenarios.py",
       "path": "Tools/tests/fixtures/integration/batch_close_state_mutating_checkpoint",
       "purpose": "Generated applied checkpoint for the hostile registered-verifier recovery path",
-      "tree_sha256": "sha256:a9cad8a19b6063ae6fcf25ac7b42fe437c5f7c294b6fa5c6ae0709e1210a7373"
+      "tree_sha256": "sha256:99deeb41857f50b7fdb7698a72673a602e5ade431147d4c7a56425659d738239"
     },
     {
       "bytes": 394972,
@@ -74,7 +74,7 @@
       "owner": "Tools/tests/fixtures/e2e/required_queue_scenarios.py",
       "path": "Tools/tests/fixtures/integration/maintenance_closed_checkpoint",
       "purpose": "Generated and validated current-contract maintenance-closed integration checkpoint",
-      "tree_sha256": "sha256:04cdc24b77c16722ab7f708d7ccf36e7ab4bcfcc01a9f3b722f83deb62e589d3"
+      "tree_sha256": "sha256:fdc901ba2815740d0396feeaf45a4b304c658d314e19c0e6be97acb62a439746"
     },
     {
       "bytes": 388270,
@@ -85,7 +85,7 @@
       "owner": "Tools/tests/fixtures/e2e/required_queue_scenarios.py",
       "path": "Tools/tests/fixtures/integration/terminal_closed_checkpoint",
       "purpose": "Generated current-contract terminal-profile checkpoint with both batches closed",
-      "tree_sha256": "sha256:a56b49bae05711d898ec2d22321ee06051e70b3939c1944c39cff41603b12df6"
+      "tree_sha256": "sha256:d0e7cd65a51232d28322cb547d6a6facfe4748b92539b85ab9650d265fd83b27"
     },
     {
       "bytes": 104791,
@@ -96,7 +96,7 @@
       "owner": "Tools/tests/fixtures/e2e/update_queue_scenarios.py",
       "path": "Tools/tests/fixtures/integration/update_queue_merge_admission_checkpoint",
       "purpose": "Generated current-contract open Queue checkpoint with complete pre-merge evidence",
-      "tree_sha256": "sha256:30a2b095a6300c67dbfaf207bdd97d17c81d9ed6dae4d9fc66979a77a1c6bfc1"
+      "tree_sha256": "sha256:2853e735a4c514213b4276a38cc461b9798c0115a091a95a97b9afc6f2ab479c"
     },
     {
       "bytes": 107299,
@@ -107,7 +107,7 @@
       "owner": "Tools/tests/fixtures/e2e/update_queue_scenarios.py",
       "path": "Tools/tests/fixtures/integration/update_queue_merged_checkpoint",
       "purpose": "Generated and validated current-contract merge-ready Queue integration checkpoint",
-      "tree_sha256": "sha256:41704e47f7be471553de170798e2279aeb754cdf25dd05bfdd4c456ccf977b90"
+      "tree_sha256": "sha256:48ef6345a501316a7aea68e4a41a391d7617254f11445f9bbcd9fb5eade2f5c7"
     },
     {
       "bytes": 34560,
@@ -118,7 +118,7 @@
       "owner": "Tools/tests/fixtures/e2e/update_queue_scenarios.py",
       "path": "Tools/tests/fixtures/integration/update_queue_open_checkpoint",
       "purpose": "Generated current-contract open Queue checkpoint before page work begins",
-      "tree_sha256": "sha256:cf2f3e79f409537ee5caa55a9f0db4497e47e9bcb1fc85ffda79cf88de6a8946"
+      "tree_sha256": "sha256:44a5d690cc5a963d24a62727bcfd0092cd4db6464576c03c4b81e7d2c105b14e"
     },
     {
       "bytes": 29591,
@@ -129,7 +129,7 @@
       "owner": "Tools/tests/fixtures/e2e/update_queue_scenarios.py",
       "path": "Tools/tests/fixtures/integration/update_queue_planning_ready_checkpoint",
       "purpose": "Generated current-contract planning checkpoint with one current ready-gate Receipt",
-      "tree_sha256": "sha256:7ef6928f972c54d87495f71314772a0ef5bbb6cf2267e6190918e702c033e267"
+      "tree_sha256": "sha256:ab5d557cee9a122d75dcddda862eeb948429dccacc1bcd1c5561baac8cfb5430"
     }
   ],
   "fixtures": [
@@ -118329,7 +118329,6 @@
               "Tools/tests/support/required_queue_fixture.py:_template"
             ],
             "fixture_entrypoints": [
-              "Tools/tests/fixtures/e2e/required_queue_scenarios.py:RequiredQueueE2EScenarioCase.invoke_tool",
               "Tools/tests/fixtures/e2e/required_queue_scenarios.py:RequiredQueueE2EScenarioCase.setUp",
               "Tools/tests/support/required_queue_fixture.py:RequiredQueueFixture.merge_and_close",
               "Tools/tests/support/required_queue_fixture.py:RequiredQueueFixture.run_tool",
@@ -118363,7 +118362,6 @@
                 },
                 "first_use_builds": {},
                 "fixture_entrypoints": [
-                  "Tools/tests/fixtures/e2e/required_queue_scenarios.py:RequiredQueueE2EScenarioCase.invoke_tool",
                   "Tools/tests/support/required_queue_fixture.py:RequiredQueueFixture.merge_and_close",
                   "Tools/tests/support/required_queue_fixture.py:RequiredQueueFixture.run_tool",
                   "Tools/tests/support/required_queue_fixture.py:RequiredQueueFixture.task_transition"

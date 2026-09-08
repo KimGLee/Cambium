@@ -18,7 +18,7 @@ permissions:
 
 jobs:
   plan:
-    name: Plan affected checks and tests
+    name: Impact plan
     runs-on: ubuntu-latest
     timeout-minutes: 5
     outputs:
@@ -80,7 +80,7 @@ jobs:
           fi
 
   verify_check:
-    name: Contracts and generated artifacts (Python ${{ matrix.python-version }})
+    name: Contracts · Py${{ matrix.python-version }}
     needs:
       - plan
     runs-on: ubuntu-latest
@@ -119,7 +119,7 @@ jobs:
           fi
 
   verify_tests:
-    name: Tests — ${{ matrix.test-label }} [${{ matrix.shard }}, Python ${{ matrix.python-version }}]
+    name: ${{ matrix.test-label }} · Py${{ matrix.python-version }}
     if: ${{ needs.plan.outputs.run_tests == 'true' }}
     needs:
       - plan

@@ -841,6 +841,7 @@ class ArgvRenderingContractTests(unittest.TestCase):
     def test_argparse_roundtrip_preserves_omission_null_and_empty_values(self):
         from Tools.platform.agent_interface import agent_interface_contract as interface
         from Tools.platform.agent_interface import compile_cli_contract as compiler
+        from Tools.tests.support.mcp_stdio_session import MCPStdioSession
         parser = argparse.ArgumentParser()
         interface.nullable_argument(parser.add_argument("--reason"))
         parser.add_argument("--scope", action="append")
@@ -850,6 +851,8 @@ class ArgvRenderingContractTests(unittest.TestCase):
         parser.add_argument("--apply", action="store_true")
         cli = {"tool": "shape", "arguments": compiler.describe_arguments(TOOLS.parent, parser)}
         schema = cli_argv_renderer.schema_from_compiled_tool(cli)
+        driver = MCPStdioSession(REPO_ROOT)
+        driver.tools = {"shape": {"inputSchema": schema}}
         cases = (({}, {"reason": None, "refs": None, "scope": None}),
                  ({"reason": None, "refs": []}, {"reason": None, "refs": []}),
                  ({"reason": "null", "refs": ["one", "two"], "tags": [], "limit": 0, "apply": False},
@@ -863,6 +866,16 @@ class ArgvRenderingContractTests(unittest.TestCase):
                 result = vars(parser.parse_args(argv))
                 for field, value in expected.items():
                     self.assertEqual(value, result[field])
+                # The E2E host adapter must consume the same expression
+                # contract, without starting a lifecycle to test conversion.
+                with mock.patch.object(driver, "call", return_value={
+                        "stdout_parse": "parsed", "stdout_json": {},
+                        "exit_code": 0, "output_reliable": True,
+                        "invocation_reliable": True}) as dispatch:
+                    driver.run_cli("shape.py", *argv)
+                transported = dispatch.call_args.args[1]
+                restored, _ = cli_argv_renderer.build_argv("shape", schema, transported)
+                self.assertEqual(result, vars(parser.parse_args(restored)))
         for invalid in ({"scope": []}, {"scope": None}, {"reason": 4}, {"limit": False},
                         {"refs": "one"}, {"apply": 0}, {"unknown": None}):
             with self.subTest(keys=sorted(invalid)), self.assertRaises(cli_argv_renderer.ArgvRenderError):
