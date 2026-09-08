@@ -34,7 +34,7 @@ class TaskRuntimeActionTests(unittest.TestCase):
 
     def fields(self, disposition="invoke"):
         common = {
-            "schema_version": 1,
+            "schema_version": contract.SCHEMA_VERSION,
             "disposition": disposition,
             "token": "run-batch-close-gate:B001",
             "target": {"task_id": "TASK-001", "batch_id": "B001"},
@@ -61,8 +61,10 @@ class TaskRuntimeActionTests(unittest.TestCase):
                 "tool": None,
                 "arguments": {},
                 "required_input": {
-                    "input_contract": "substantive-review-v1",
-                    "target": "Knowledge/A.md",
+                    "type": "object", "properties": {}, "required": [],
+                    "additionalProperties": False,
+                    "x-cambium-binding": {"tool": "check_batch_close", "parameters": {},
+                                          "arguments": {}, "encodings": {}},
                 },
             })
         else:
@@ -199,8 +201,8 @@ class TaskRuntimeActionTests(unittest.TestCase):
             contract.build_action(**fields)
 
         fields = self.fields()
-        fields["schema_version"] = 2
-        with self.assertRaisesRegex(ValueError, "schema_version must be 1"):
+        fields["schema_version"] = contract.SCHEMA_VERSION + 1
+        with self.assertRaisesRegex(ValueError, "schema_version is not current"):
             contract.build_action(**fields)
 
     def test_build_rejects_a_caller_chosen_mismatched_id(self):
@@ -341,11 +343,13 @@ class TaskRuntimeActionTests(unittest.TestCase):
             "progress_sha256": "sha256:" + "3" * 64,
         }
         resume_token = "run-standards-revalidation:B1"
+        parser = runner.entrypoint_loader.capture_argument_parser("check_queue", TOOLS, require_marker=True)
+        cli_record = {"tool": "check_queue", "arguments": runner.compile_cli_contract.describe_arguments(REPOSITORY, parser)}
         with mock.patch.object(
                 runner.queue_runtime, "resume_next_action",
                 return_value=resume_token), mock.patch.object(
                     runner, "_current_standards_revalidation_aggregate",
-                    return_value=None):
+                    return_value=None), mock.patch.object(runner, "_compiled_cli_tool", return_value=cli_record):
             produce = runner._resume_action(result)
         self.assertEqual(
             ("await-agent", resume_token),

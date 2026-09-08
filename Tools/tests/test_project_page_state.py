@@ -196,6 +196,9 @@ class ProjectPageStateIntegrationTests(unittest.TestCase):
                 b"authoring_status: needs_rereview",
                 plan.pages[0].after_data)
             self.assertFalse(plan.revalidate_contract)
+            with self.assertRaisesRegex(ValueError, "explicit page selection cannot be empty"):
+                _plan(root, rules=self.rules, pages=[], ledger_override=proposed)
+            self.assertEqual(before, ledger.read_bytes())
 
     def test_current_contract_main_apply_is_idempotent(self):
         with _temporary_root() as root:

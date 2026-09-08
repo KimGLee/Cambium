@@ -193,6 +193,7 @@ modules:
     public:
       - DEFAULT_PROOF_PATH
       - main
+      - read_terminal_audit_input
   - module: execution.audit.audit_dimension_contract
     path: Tools/execution/audit/audit_dimension_contract.py
     area: execution
@@ -414,6 +415,7 @@ modules:
       - registry_sha256
       - resolve_consumed_evidence
       - review_input_constraints
+      - validate_review_input
       - select_s_targets
       - validate_applicability_disposition
       - validate_input_binding
@@ -573,6 +575,7 @@ modules:
       - SUBSTANTIVE_REVIEW_CONTRACT_PATH
       - current_receipt_errors
       - load_contract
+      - review_input_shape
       - validate_contract
       - validate_review_pair
       - validate_review_receipt
@@ -2309,6 +2312,7 @@ modules:
       - current_receipt_errors
       - load_contract
       - record_dependency_fingerprint
+      - rendering_input
       - validate_contract
       - validate_record
       - validate_record_for_obligation
@@ -2423,6 +2427,7 @@ modules:
     layer: contract
     public:
       - CARRIED_RUNTIME_TARGET
+      - CLI_CONTRACT_SCHEMA_VERSION
       - EXECUTION_CONTEXT_ENV
       - HOST_BOUNDARY_EXTENSION_KEY
       - INTERFACE_PROJECTION_ENV
@@ -2438,7 +2443,13 @@ modules:
       - WORKSPACE_ENV
       - WORKSPACE_EXTENSION_KEY
       - WORKSPACE_FD_ENV
+      - argument_expression
+      - argument_schema
+      - bind_input
       - decode_output
+      - input_binding
+      - nullable_argument
+      - validate_input
       - validate_output_contract
   - module: platform.agent_interface.agent_interface_policy
     path: Tools/platform/agent_interface/agent_interface_policy.py
@@ -2459,15 +2470,10 @@ modules:
     public:
       - ArgvRenderError
       - CLI_EXTENSION_KEY
-      - COUNT_ACTIONS
-      - DEFAULT_SCALAR_TYPE
-      - JSON_SCALAR_TYPES
-      - LIST_ACTIONS
       - STRUCTURED_OUTPUT_ARGUMENT
       - STRUCTURED_OUTPUT_FLAG
       - build_argv
       - cli_metadata
-      - is_list_valued
       - schema_from_compiled_tool
   - module: platform.agent_interface.compile_cli_contract
     path: Tools/platform/agent_interface/compile_cli_contract.py

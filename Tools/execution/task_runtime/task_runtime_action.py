@@ -16,7 +16,7 @@ import Tools.platform.common.kblib as kblib
 from Tools.platform.common.primitives import require_trimmed_string
 
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 ACTION_FIELDS = frozenset((
     "schema_version",
     "action_id",
@@ -516,7 +516,7 @@ def _optional_trimmed_string(value, label):
 def _validate_machine_fields(record):
     _closed_fields(record, MACHINE_FIELDS, "Task Runtime action payload")
     if record.get("schema_version") != SCHEMA_VERSION:
-        raise ValueError("Task Runtime action schema_version must be 1")
+        raise ValueError("Task Runtime action schema_version is not current")
 
     disposition = record.get("disposition")
     if disposition not in DISPOSITIONS:
@@ -559,8 +559,17 @@ def _validate_machine_fields(record):
                          disposition)
 
     if disposition in AWAIT_DISPOSITIONS:
-        _mapping(required_input, "Task Runtime action required_input",
-                 nonempty=True)
+        route, _parameters = action_route_for_token(record["token"])
+        if route.runner_route == "external-reparse":
+            if required_input is not None:
+                raise ValueError("external resolution cannot declare submittable input")
+        else:
+            _mapping(required_input, "Task Runtime action required_input", nonempty=True)
+            if (required_input.get("type") != "object" or
+                    not isinstance(required_input.get("properties"), dict) or
+                    required_input.get("additionalProperties") is not False or
+                    not isinstance(required_input.get("x-cambium-binding"), dict)):
+                raise ValueError("await input must carry its generated object shape and binding")
     elif required_input is not None:
         raise ValueError("%s action required_input must be null" % disposition)
 

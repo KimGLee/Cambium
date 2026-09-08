@@ -65,6 +65,7 @@ class CurrentCliOwnerClosureTests(unittest.TestCase):
             compiler.DEFAULT_INTERFACE_POLICY,
             compiler.DEFAULT_RUNTIME_PATH_REGISTRY,
             compiler.KBLIB_RECEIPT_SOURCE,
+            "Tools/platform/agent_interface/agent_interface_contract.py",
         }
         for tool, descriptor in descriptors.items():
             record = records[tool]

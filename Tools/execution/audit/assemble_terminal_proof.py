@@ -47,6 +47,16 @@ def _input_path(root, relative):
         suffixes=(".yaml", ".json"), must_exist=True)
 
 
+def read_terminal_audit_input(root, relative):
+    """Read and validate the existing bounded input before any prerequisite writes.
+
+    This is a preflight, not a retained authority: assembly reads it again at
+    its own consumption boundary.
+    """
+    return terminal_proof_contract.validate_terminal_audit_input(
+        kblib.load_yaml_file(_input_path(root, relative)))
+
+
 def _receipt_register_path(root, relative, *, must_exist=True):
     return kblib.managed_repository_path(
         root, relative, runtime_paths.RECEIPT_ROOT,
@@ -386,8 +396,7 @@ def main(argv=None):
     args = parser.parse_args(argv)
     root = os.path.realpath(os.path.abspath(args.root))
     try:
-        input_absolute = _input_path(root, args.terminal_audit_input)
-        semantic_input = kblib.load_yaml_file(input_absolute)
+        semantic_input = read_terminal_audit_input(root, args.terminal_audit_input)
         _receipt_register_path(root, args.audit_receipt_register)
         _receipt_register_path(root, args.terminal_audit_receipt_register)
         _receipt_register_path(root, args.full_deterministic_results)

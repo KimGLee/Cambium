@@ -944,7 +944,21 @@ def review_input_constraints(obligations, consuming_obligation, registry=None):
     return {
         "allowed_applicability_dispositions": dispositions,
         "required_consumption_obligation_ids": list(dependencies),
+        "rule_id": spec["rule_id"],
+        "applicability": dict(registry["m_applicability_contract"])
+            if spec["tier"] == "M" else None,
     }
+
+
+def validate_review_input(constraints, disposition, reason, registry=None):
+    """Reuse the producer's predicate for the stage's machine-known inputs."""
+    if disposition not in constraints["allowed_applicability_dispositions"]:
+        raise ValueError("review disposition contradicts the frozen plan")
+    spec = obligation_spec_for_rule(constraints["rule_id"], registry)
+    if spec["tier"] == "M":
+        return validate_applicability_disposition(spec, disposition, reason, registry)
+    if disposition is not None or reason is not None:
+        raise ValueError("sampled S evidence cannot carry M applicability")
 
 
 def validate_plan_applicability(obligations, spec, target, disposition,

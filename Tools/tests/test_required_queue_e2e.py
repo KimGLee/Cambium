@@ -94,13 +94,14 @@ class RequiredQueueLifecycleEndToEndTests(RequiredQueueE2EScenarioCase):
                 continue
             if step["status"] == "invoke":
                 tool, arguments = step["tool"], dict(step["arguments"])
+                outcome = self.mcp_session.call(tool, dict(arguments, root=str(self.root), apply=True))
             else:
                 self.assertIn(step["token"], ("record-batch-page-review", "record-rendering-verification"), step)
-                tool, arguments = step["resume_tool"], dict(step["resume_arguments"])
+                tool, arguments = step["resume_tool"], {}
                 if step["token"] == "record-rendering-verification":
                     arguments["rendering_mode"] = "source-only"
                 else:
-                    obligation = obligations[arguments["obligation_id"]]
+                    obligation = obligations[step["resume_arguments"]["obligation_id"]]
                     spec = batch_review_obligation_contract.obligation_spec_for_rule(obligation["owner_rule_id"])
                     constraints = step["target"]["review_input_constraints"]
                     applicable = (spec["applicability"] in applicable_fixture_conditions or
@@ -108,10 +109,24 @@ class RequiredQueueLifecycleEndToEndTests(RequiredQueueE2EScenarioCase):
                     arguments.update(
                         reviewer_context_id="fixture-review-context", reviewer_role="reviewer",
                         verdict="passed", statement="The synthetic fixture entry meets this bounded checklist item.",
-                        applicability_disposition="applicable" if applicable else "not-applicable")
+                        applicability_disposition="applicable" if applicable else "not-applicable",
+                        applicability_reason=None)
                     if not applicable:
                         arguments["applicability_reason"] = "This isolated synthetic concept contains no corresponding construct or external claim."
-            outcome = self.mcp_session.call(tool, dict(arguments, root=str(self.root), apply=True))
+                self._drain_activation_delivery()
+                observed = self.mcp_session.call("run_task", {"root": str(self.root)})
+                self.assertEqual(0, observed["exit_code"], observed)
+                action = observed["stdout_json"]
+                self.assertEqual(step["token"], action["token"], action)
+                relative_input = runtime_paths.TRANSIENT_ROOT + "/e2e-audit-input.json"
+                (self.root / relative_input).write_text(json.dumps(arguments), encoding="utf-8")
+                outcome = self.mcp_session.call("run_task", {
+                    "root": str(self.root), "execute": action["action_id"], "input": relative_input})
+                self.assertEqual(0, outcome["exit_code"], outcome)
+                execution = outcome["stdout_json"]
+                self.assertEqual(0, execution["returncode"], execution)
+                self.assertEqual(tool, execution["substeps"][-1]["tool"])
+                outcome = dict(outcome, stdout_json=json.loads(execution["output"]))
             self.assertEqual(0, outcome["exit_code"], outcome)
             if tool == "record_batch_page_review":
                 receipt_id = outcome["stdout_json"]["receipt_id"]

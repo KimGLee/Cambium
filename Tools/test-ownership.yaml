@@ -2753,7 +2753,7 @@ tests:
       - selector: TaskRuntimeRunnerContractTests.*
         level: contract
         semantics: task_runtime_runner_compiled_cli_consumption
-        owner_contract_symbol: task_runtime_runner._command
+        owner_contract_symbol: task_runtime_runner._command_inputs
         parallel_safe: true
       - selector: TaskRuntimeRunnerCheckpointIntegrationTests.test_execute_dispatches_invoke_and_await_then_returns_readback
         level: integration

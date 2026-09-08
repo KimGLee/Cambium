@@ -6,7 +6,7 @@ This file is generated from `Tools/test-ownership.yaml` and static source facts.
 
 | Test modules | Test cases | Fixtures | Fixture bundles | Parallel-safe cases | Test process calls | Fixture process calls | Test full copies | Fixture full copies | Cross-test imports |
 | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| 134 | 1282 | 48 | 8 | 1080 | 36 | 10 | 15 | 20 | 0 |
+| 134 | 1284 | 48 | 8 | 1082 | 36 | 12 | 15 | 21 | 0 |
 
 ### Method-level transitive exposure
 
@@ -21,10 +21,10 @@ These counts identify test methods whose per-method, per-class, or per-process s
 | Metric | Before closure | Current |
 | --- | ---: | ---: |
 | Test modules | 129 | 134 |
-| Test cases | 2543 | 1282 |
-| Process-launch call sites | 192 | 46 |
+| Test cases | 2543 | 1284 |
+| Process-launch call sites | 192 | 48 |
 | Temporary-resource call sites | 233 | 155 |
-| Full repository copy call sites | 86 | 35 |
+| Full repository copy call sites | 86 | 36 |
 | Cross-test import sites | 22 | 0 |
 
 ## Observed pre-closure runtime
@@ -41,8 +41,8 @@ These counts identify test methods whose per-method, per-class, or per-process s
 
 | Level | Definition | Cases |
 | --- | --- | ---: |
-| `unit` | In-process deterministic computation owned by one module. | 420 |
-| `contract` | Schema, registry, owner, closed-set, or producer-consumer contract. | 554 |
+| `unit` | In-process deterministic computation owned by one module. | 419 |
+| `contract` | Schema, registry, owner, closed-set, or producer-consumer contract. | 557 |
 | `integration` | Adjacent production modules joined in an isolated temporary runtime. | 236 |
 | `e2e` | One representative complete current-contract lifecycle. | 3 |
 | `slow` | Real security, concurrency, crash, recovery, or host-isolation behavior. | 68 |
@@ -118,7 +118,7 @@ These counts identify test methods whose per-method, per-class, or per-process s
 | `Tools/tests/test_kblib_yaml.py` | `Tools/platform/common/kblib.py` | `contract` | True | 9 | 0 | 0 | 0 | 0 | 0 |
 | `Tools/tests/test_maintenance_candidates.py` | `Tools/knowledge/content/maintenance_candidates.py` | `unit` | True | 12 | 0 | 0 | 1 | 0 | 0 |
 | `Tools/tests/test_managed_content_scope.py` | `Tools/platform/common/kblib.py` | `contract` | True | 11 | 6 | 2 | 1 | 0 | 0 |
-| `Tools/tests/test_mcp_server.py` | `Tools/platform/agent_interface/mcp_server.py` | `integration` | False | 52 | 17 | 12 | 8 | 1 | 0 |
+| `Tools/tests/test_mcp_server.py` | `Tools/platform/agent_interface/mcp_server.py` | `integration` | False | 53 | 17 | 12 | 8 | 1 | 0 |
 | `Tools/tests/test_metadata_contract_projections.py` | `Tools/governance/control/metadata_execution_contract.py` | `contract` | True | 6 | 0 | 0 | 0 | 0 | 0 |
 | `Tools/tests/test_metadata_execution_contract.py` | `Tools/governance/control/metadata_execution_contract.py` | `contract` | True | 5 | 1 | 0 | 1 | 0 | 0 |
 | `Tools/tests/test_metadata_gate_runtime.py` | `Tools/execution/evidence/metadata_gate_runtime.py` | `contract` | True | 7 | 4 | 0 | 1 | 0 | 0 |
@@ -170,7 +170,7 @@ These counts identify test methods whose per-method, per-class, or per-process s
 | `Tools/tests/test_substantive_review_contract.py` | `Tools/execution/audit/substantive_review_contract.py` | `contract` | True | 7 | 0 | 0 | 0 | 0 | 0 |
 | `Tools/tests/test_task_runtime_action.py` | `Tools/execution/task_runtime/task_runtime_action.py` | `unit` | True | 14 | 0 | 0 | 0 | 0 | 0 |
 | `Tools/tests/test_task_runtime_identity_field_contract.py` | `kernel/K13 Task Runtime and Execution Control/runtime-state-model.json` | `contract` | True | 3 | 0 | 0 | 0 | 0 | 0 |
-| `Tools/tests/test_task_runtime_runner.py` | `Tools/execution/task_runtime/task_runtime_runner.py` | `unit` | True | 20 | 3 | 0 | 3 | 0 | 0 |
+| `Tools/tests/test_task_runtime_runner.py` | `Tools/execution/task_runtime/task_runtime_runner.py` | `unit` | True | 21 | 3 | 0 | 3 | 0 | 0 |
 | `Tools/tests/test_template_parity.py` | `Tools/governance/profile/profile_schema_projection.py` | `integration` | False | 23 | 4 | 1 | 2 | 0 | 0 |
 | `Tools/tests/test_test_catalog.py` | `Tools/platform/distribution/test_catalog.py` | `contract` | True | 13 | 2 | 0 | 1 | 0 | 0 |
 | `Tools/tests/test_tool_availability.py` | `Tools/platform/agent_interface/tool_availability.py` | `contract` | True | 5 | 3 | 0 | 1 | 0 | 0 |
@@ -457,6 +457,7 @@ Only mixed test modules need method-level rows. All other cases inherit their mo
 | `test_managed_content_scope.RepositoryStructureCliIntegrationTests.test_cli_forwards_profile_reports_verdict_and_creates_no_state` | `Tools/knowledge/structure/repository_structure.py` | `integration` | True | repository_structure_public_cli_seam |
 | `test_managed_content_scope.RepositoryStructureUnitTests.test_repository_files_filters_control_state_and_suffixes` | `Tools/knowledge/structure/repository_structure.py` | `unit` | True | repository_structure_content_filter |
 | `test_managed_content_scope.RepositoryStructureUnitTests.test_yaml_scope_is_the_selected_profile_plus_kernel` | `Tools/knowledge/structure/repository_structure.py` | `unit` | True | repository_structure_yaml_scope |
+| `test_mcp_server.ArgvRenderingContractTests.test_argparse_roundtrip_preserves_omission_null_and_empty_values` | `Tools/platform/agent_interface/cli_argv_renderer.py` | `contract` | True | cli_argv_rendering_contract |
 | `test_mcp_server.ArgvRenderingContractTests.test_declared_order_actions_and_transport_owned_json_render_once` | `Tools/platform/agent_interface/cli_argv_renderer.py` | `contract` | True | cli_argv_rendering_contract |
 | `test_mcp_server.ArgvRenderingContractTests.test_unrenderable_argument_shapes_share_one_typed_refusal` | `Tools/platform/agent_interface/cli_argv_renderer.py` | `contract` | True | cli_argv_rendering_contract |
 | `test_mcp_server.BindingTests.test_a_platform_without_no_follow_descriptors_refuses_initialize` | `Tools/platform/agent_interface/mcp_server.py` | `contract` | True | mcp_workspace_descriptor_contract |
@@ -682,6 +683,8 @@ Only mixed test modules need method-level rows. All other cases inherit their mo
 | `test_task_runtime_runner.TaskRuntimeRunnerCheckpointIntegrationTests.test_terminal_chain_orders_producers_consumer_and_closed_readback` | `Tools/execution/task_runtime/task_runtime_runner.py` | `integration` | True | task_runtime_runner_terminal_chain_checkpoint |
 | `test_task_runtime_runner.TaskRuntimeRunnerContractTests.test_command_consumes_compiled_positionals_and_transport_once` | `Tools/execution/task_runtime/task_runtime_runner.py` | `contract` | True | task_runtime_runner_compiled_cli_consumption |
 | `test_task_runtime_runner.TaskRuntimeRunnerContractTests.test_contract_is_reloaded_after_each_currentness_check` | `Tools/execution/task_runtime/task_runtime_runner.py` | `contract` | True | task_runtime_runner_compiled_cli_consumption |
+| `test_task_runtime_runner.TaskRuntimeRunnerContractTests.test_execute_preserves_predispatch_and_partial_substep_failure` | `Tools/execution/task_runtime/task_runtime_runner.py` | `contract` | True | task_runtime_runner_compiled_cli_consumption |
+| `test_task_runtime_runner.TaskRuntimeRunnerContractTests.test_page_review_binding_roundtrips_null_and_exact_consumption` | `Tools/execution/task_runtime/task_runtime_runner.py` | `contract` | True | task_runtime_runner_compiled_cli_consumption |
 | `test_task_runtime_runner.TaskRuntimeRunnerContractTests.test_runner_does_not_fall_back_to_distribution_contract` | `Tools/execution/task_runtime/task_runtime_runner.py` | `contract` | True | task_runtime_runner_compiled_cli_consumption |
 | `test_task_runtime_runner.TaskRuntimeRunnerContractTests.test_stale_or_hand_edited_contract_is_refused_before_route_use` | `Tools/execution/task_runtime/task_runtime_runner.py` | `contract` | True | task_runtime_runner_compiled_cli_consumption |
 | `test_template_parity.TemplateParityTests.test_cue_execution_has_private_config_cache_and_no_ambient_controls` | `Tools/governance/profile/profile_cue.py` | `integration` | False | isolated_current_profile_evaluator_without_remote_resolution |
@@ -1360,6 +1363,7 @@ Ownership fields come from `Tools/test-ownership.yaml`; fixture entrypoints and 
 | `test_managed_content_scope.RepositoryStructureUnitTests.test_repository_files_filters_control_state_and_suffixes` | `repository_structure.repository_files` | `test_managed_content_scope.RepositoryStructureUnitTests.test_repository_files_filters_control_state_and_suffixes` | `unit` | — | — | — | — | — | — | — | False | — | `keep` |
 | `test_managed_content_scope.RepositoryStructureUnitTests.test_yaml_scope_is_the_selected_profile_plus_kernel` | `repository_structure.check_repository_structure` | `test_managed_content_scope.RepositoryStructureUnitTests.test_yaml_scope_is_the_selected_profile_plus_kernel` | `unit` | — | — | — | — | — | — | — | False | — | `keep` |
 | `test_managed_content_scope.VocabularyScopeUnitTests.test_scan_files_filters_only_explicit_exclusions` | `kblib.repository_content_files` | `test_managed_content_scope.VocabularyScopeUnitTests.test_scan_files_filters_only_explicit_exclusions` | `contract` | — | — | — | — | — | — | — | False | — | `keep` |
+| `test_mcp_server.ArgvRenderingContractTests.test_argparse_roundtrip_preserves_omission_null_and_empty_values` | `cli_argv_rendering_contract` | `test_mcp_server.ArgvRenderingContractTests.test_argparse_roundtrip_preserves_omission_null_and_empty_values` | `contract` | — | — | — | — | — | — | — | False | — | `keep` |
 | `test_mcp_server.ArgvRenderingContractTests.test_declared_order_actions_and_transport_owned_json_render_once` | `cli_argv_rendering_contract` | `test_mcp_server.ArgvRenderingContractTests.test_declared_order_actions_and_transport_owned_json_render_once` | `contract` | — | — | — | — | — | — | — | False | — | `keep` |
 | `test_mcp_server.ArgvRenderingContractTests.test_unrenderable_argument_shapes_share_one_typed_refusal` | `cli_argv_rendering_contract` | `test_mcp_server.ArgvRenderingContractTests.test_unrenderable_argument_shapes_share_one_typed_refusal` | `contract` | — | — | — | — | — | — | — | False | — | `keep` |
 | `test_mcp_server.BindingTests.test_a_platform_without_no_follow_descriptors_refuses_initialize` | `mcp_workspace_descriptor_contract` | `test_mcp_server.BindingTests.test_a_platform_without_no_follow_descriptors_refuses_initialize` | `contract` | — | — | — | — | — | — | — | False | — | `keep` |
@@ -1846,17 +1850,18 @@ Ownership fields come from `Tools/test-ownership.yaml`; fixture entrypoints and 
 | `test_task_runtime_runner.TaskRuntimeRunnerCheckpointIntegrationTests.test_rendering_preflight_reuses_admitted_profile_and_selector_owner` | `task_runtime_runner.next_action` | `test_task_runtime_runner.TaskRuntimeRunnerCheckpointIntegrationTests.test_rendering_preflight_reuses_admitted_profile_and_selector_owner` | `unit` | — | — | — | — | — | — | `Tools/tests/support/task_runtime_object_factory.py:parsed_runtime_state` | False | — | `keep` |
 | `test_task_runtime_runner.TaskRuntimeRunnerCheckpointIntegrationTests.test_terminal_chain_orders_producers_consumer_and_closed_readback` | `task_runtime_runner._await_terminal_audit` | `test_task_runtime_runner.TaskRuntimeRunnerCheckpointIntegrationTests.test_terminal_chain_orders_producers_consumer_and_closed_readback` | `integration` | — | — | — | — | — | — | — | False | — | `keep` |
 | `test_task_runtime_runner.TaskRuntimeRunnerCheckpointIntegrationTests.test_unready_selector_stops_next_action_without_evidence_or_writes` | `task_runtime_runner.next_action` | `test_task_runtime_runner.TaskRuntimeRunnerCheckpointIntegrationTests.test_unready_selector_stops_next_action_without_evidence_or_writes` | `unit` | — | — | — | — | — | — | `Tools/tests/support/task_runtime_object_factory.py:parsed_runtime_state` | False | — | `keep` |
-| `test_task_runtime_runner.TaskRuntimeRunnerContractTests.test_command_consumes_compiled_positionals_and_transport_once` | `task_runtime_runner._command` | `test_task_runtime_runner.TaskRuntimeRunnerContractTests.test_command_consumes_compiled_positionals_and_transport_once` | `contract` | — | — | — | — | — | — | — | False | — | `keep` |
-| `test_task_runtime_runner.TaskRuntimeRunnerContractTests.test_contract_is_reloaded_after_each_currentness_check` | `task_runtime_runner._command` | `test_task_runtime_runner.TaskRuntimeRunnerContractTests.test_contract_is_reloaded_after_each_currentness_check` | `contract` | temp=1 | — | — | — | — | — | — | False | — | `keep` |
-| `test_task_runtime_runner.TaskRuntimeRunnerContractTests.test_runner_does_not_fall_back_to_distribution_contract` | `task_runtime_runner._command` | `test_task_runtime_runner.TaskRuntimeRunnerContractTests.test_runner_does_not_fall_back_to_distribution_contract` | `contract` | temp=1 | — | — | — | — | — | — | False | — | `keep` |
-| `test_task_runtime_runner.TaskRuntimeRunnerContractTests.test_stale_or_hand_edited_contract_is_refused_before_route_use` | `task_runtime_runner._command` | `test_task_runtime_runner.TaskRuntimeRunnerContractTests.test_stale_or_hand_edited_contract_is_refused_before_route_use` | `contract` | temp=1 | — | — | — | — | — | — | False | — | `keep` |
+| `test_task_runtime_runner.TaskRuntimeRunnerContractTests.test_command_consumes_compiled_positionals_and_transport_once` | `task_runtime_runner._command_inputs` | `test_task_runtime_runner.TaskRuntimeRunnerContractTests.test_command_consumes_compiled_positionals_and_transport_once` | `contract` | — | — | — | — | — | — | — | False | — | `keep` |
+| `test_task_runtime_runner.TaskRuntimeRunnerContractTests.test_contract_is_reloaded_after_each_currentness_check` | `task_runtime_runner._command_inputs` | `test_task_runtime_runner.TaskRuntimeRunnerContractTests.test_contract_is_reloaded_after_each_currentness_check` | `contract` | temp=1 | — | — | — | — | — | — | False | — | `keep` |
+| `test_task_runtime_runner.TaskRuntimeRunnerContractTests.test_execute_preserves_predispatch_and_partial_substep_failure` | `task_runtime_runner._command_inputs` | `test_task_runtime_runner.TaskRuntimeRunnerContractTests.test_execute_preserves_predispatch_and_partial_substep_failure` | `contract` | — | — | — | — | — | — | `Tools/tests/support/task_runtime_object_factory.py:parsed_runtime_state` | False | — | `keep` |
+| `test_task_runtime_runner.TaskRuntimeRunnerContractTests.test_page_review_binding_roundtrips_null_and_exact_consumption` | `task_runtime_runner._command_inputs` | `test_task_runtime_runner.TaskRuntimeRunnerContractTests.test_page_review_binding_roundtrips_null_and_exact_consumption` | `contract` | — | — | — | — | — | — | — | False | — | `keep` |
+| `test_task_runtime_runner.TaskRuntimeRunnerContractTests.test_runner_does_not_fall_back_to_distribution_contract` | `task_runtime_runner._command_inputs` | `test_task_runtime_runner.TaskRuntimeRunnerContractTests.test_runner_does_not_fall_back_to_distribution_contract` | `contract` | temp=1 | — | — | — | — | — | — | False | — | `keep` |
+| `test_task_runtime_runner.TaskRuntimeRunnerContractTests.test_stale_or_hand_edited_contract_is_refused_before_route_use` | `task_runtime_runner._command_inputs` | `test_task_runtime_runner.TaskRuntimeRunnerContractTests.test_stale_or_hand_edited_contract_is_refused_before_route_use` | `contract` | temp=1 | — | — | — | — | — | — | False | — | `keep` |
 | `test_task_runtime_runner.TaskRuntimeRunnerUnitTests.test_close_action_consumes_queue_owned_transition_arguments` | `task_runtime_runner.next_action` | `test_task_runtime_runner.TaskRuntimeRunnerUnitTests.test_close_action_consumes_queue_owned_transition_arguments` | `unit` | — | — | — | — | — | — | `Tools/tests/support/task_runtime_object_factory.py:parsed_runtime_state` | False | — | `keep` |
 | `test_task_runtime_runner.TaskRuntimeRunnerUnitTests.test_environment_wait_preserves_open_batch_and_requeries_original_state` | `task_runtime_runner.next_action` | `test_task_runtime_runner.TaskRuntimeRunnerUnitTests.test_environment_wait_preserves_open_batch_and_requeries_original_state` | `unit` | — | — | — | — | — | — | `Tools/tests/support/task_runtime_object_factory.py:parsed_runtime_state` | False | — | `keep` |
 | `test_task_runtime_runner.TaskRuntimeRunnerUnitTests.test_host_failure_after_execution_preserves_completed_tool_result` | `task_runtime_runner.next_action` | `test_task_runtime_runner.TaskRuntimeRunnerUnitTests.test_host_failure_after_execution_preserves_completed_tool_result` | `unit` | — | — | — | — | — | — | — | False | — | `keep` |
 | `test_task_runtime_runner.TaskRuntimeRunnerUnitTests.test_main_preserves_step_failure_and_observation_failure` | `task_runtime_runner.next_action` | `test_task_runtime_runner.TaskRuntimeRunnerUnitTests.test_main_preserves_step_failure_and_observation_failure` | `unit` | — | — | — | — | — | — | — | False | — | `keep` |
 | `test_task_runtime_runner.TaskRuntimeRunnerUnitTests.test_next_action_projects_representative_runtime_boundaries` | `task_runtime_runner.next_action` | `test_task_runtime_runner.TaskRuntimeRunnerUnitTests.test_next_action_projects_representative_runtime_boundaries` | `unit` | — | — | — | — | — | — | `Tools/tests/support/task_runtime_object_factory.py:parsed_runtime_state` | False | — | `keep` |
 | `test_task_runtime_runner.TaskRuntimeRunnerUnitTests.test_open_batch_internal_route_preserves_audit_owner_outcome` | `task_runtime_runner.next_action` | `test_task_runtime_runner.TaskRuntimeRunnerUnitTests.test_open_batch_internal_route_preserves_audit_owner_outcome` | `unit` | — | — | — | — | — | — | `Tools/tests/support/task_runtime_object_factory.py:parsed_runtime_state` | False | — | `keep` |
-| `test_task_runtime_runner.TaskRuntimeRunnerUnitTests.test_page_review_dispatch_preserves_owner_derived_references` | `task_runtime_runner.next_action` | `test_task_runtime_runner.TaskRuntimeRunnerUnitTests.test_page_review_dispatch_preserves_owner_derived_references` | `unit` | — | — | — | — | — | — | — | False | — | `keep` |
 | `test_task_runtime_runner.TaskRuntimeRunnerUnitTests.test_run_until_boundary_stops_on_semantics_failure_and_nonprogress` | `task_runtime_runner.next_action` | `test_task_runtime_runner.TaskRuntimeRunnerUnitTests.test_run_until_boundary_stops_on_semantics_failure_and_nonprogress` | `unit` | — | — | — | — | — | — | `Tools/tests/support/task_runtime_object_factory.py:parsed_runtime_state` | False | — | `keep` |
 | `test_task_runtime_runner.TaskRuntimeRunnerUnitTests.test_stale_action_identity_is_refused_before_dispatch` | `task_runtime_runner.next_action` | `test_task_runtime_runner.TaskRuntimeRunnerUnitTests.test_stale_action_identity_is_refused_before_dispatch` | `unit` | — | — | — | — | — | — | — | False | — | `keep` |
 | `test_task_runtime_runner.TaskRuntimeRunnerUnitTests.test_withdrawn_consumed_proof_is_an_explicit_owned_continuation` | `task_runtime_runner.next_action` | `test_task_runtime_runner.TaskRuntimeRunnerUnitTests.test_withdrawn_consumed_proof_is_an_explicit_owned_continuation` | `unit` | — | — | — | — | — | — | `Tools/tests/support/task_runtime_object_factory.py:parsed_runtime_state` | False | — | `keep` |
@@ -2038,7 +2043,7 @@ Python fixture consumers are derived from the import closure. Static data fixtur
 | `Tools/tests/fixtures/e2e/__init__.py` | `Tools/platform/distribution/test_catalog.py` | End-to-end scenario fixture package marker | 1 | 0 | 0 | 0 | 0 |
 | `Tools/tests/fixtures/e2e/batch_close_scenarios.py` | `kernel/K13 Task Runtime and Execution Control/runtime-state-model.json` | One-time current batch-close prologue producer for static checkpoints | 0 | 0 | 1 | 1 | 1 |
 | `Tools/tests/fixtures/e2e/generate_required_queue_checkpoint.py` | `Tools/tests/fixtures/e2e/required_queue_scenarios.py` | Deterministic generator for inspectable Required Queue checkpoints | 0 | 0 | 0 | 0 | 0 |
-| `Tools/tests/fixtures/e2e/required_queue_scenarios.py` | `kernel/K13 Task Runtime and Execution Control/runtime-state-model.json` | Representative complete current Required Queue lifecycle scenarios | 1 | 0 | 1 | 1 | 2 |
+| `Tools/tests/fixtures/e2e/required_queue_scenarios.py` | `kernel/K13 Task Runtime and Execution Control/runtime-state-model.json` | Representative complete current Required Queue lifecycle scenarios | 1 | 2 | 1 | 2 | 3 |
 | `Tools/tests/fixtures/e2e/update_queue_scenarios.py` | `kernel/K13 Task Runtime and Execution Control/runtime-state-model.json` | Current Queue lifecycle producer for validated local integration checkpoints | 0 | 0 | 1 | 1 | 2 |
 | `Tools/tests/fixtures/integration/__init__.py` | `Tools/platform/distribution/test_catalog.py` | Integration checkpoint fixture package marker | 0 | 0 | 0 | 0 | 0 |
 | `Tools/tests/fixtures/integration/batch_close_checkpoints.py` | `Tools/execution/audit/check_batch_close.py` | Validated applied checkpoints for batch-close Integration and Slow tests | 2 | 0 | 3 | 1 | 2 |

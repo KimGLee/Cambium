@@ -10,12 +10,16 @@ import copy
 import json
 from pathlib import Path
 import shutil
+import subprocess
+import sys
 import tempfile
 import unittest
 
 import Tools.execution.task_runtime.runtime_validation as runtime_validation
 from Tools.execution.task_runtime import runtime_paths
 from Tools.platform.common import kblib
+from Tools.platform.agent_interface import agent_interface_contract
+from Tools.platform.distribution import upstream_component_boundary as component_boundary
 from Tools.tests.support.initial_task_plan_fixture import confirmed_initial_task_plan
 from Tools.tests.support.coverage_delta_fixture import premerge_delta_document
 from Tools.tests.support.mcp_stdio_session import MCPStdioSession
@@ -47,8 +51,36 @@ def initialize_task_plan_scenario(walker):
     runs. This prologue belongs exclusively to the representative E2E.
     """
     walker.root.mkdir(parents=True)
-    install_loadable_profile(walker.root, before_adoption=lambda root, _profile:
-                             install_terminal_proof_dependencies(root))
+    def dependencies(root, _profile):
+        if not walker.MCP_TRANSPORT:
+            install_terminal_proof_dependencies(root)
+            return
+        # A Runner executes an adopter's carried Tools, not the source
+        # distribution's MCP transport over an incomplete fixture workspace.
+        # Stage this one E2E surface before adoption, deriving omissions from
+        # the distribution owner; local checkpoint tests do not do this.
+        repository = Path(__file__).resolve().parents[4]
+        shutil.copytree(repository / "kernel", root / "kernel", dirs_exist_ok=True)
+        boundary = (repository / "distribution-boundary.yaml").read_bytes()
+        omitted = component_boundary._distribution_only_paths(boundary)
+        tracked = subprocess.check_output(
+            ["git", "ls-files", "-z", "--", "Tools"], cwd=repository).decode("utf-8").split("\0")
+        for relative in filter(None, tracked):
+            if component_boundary._may_be_omitted(relative, omitted):
+                continue
+            destination = root / relative
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(repository / relative, destination)
+        (root / "distribution-boundary.yaml").write_bytes(boundary)
+        for script, arguments in (
+                ("compile_cli_contract.py", ["--projection-target", "carried-runtime"]),
+                ("render_interface_projection.py", ["--projection-target", "carried-runtime"])):
+            produced = subprocess.run(
+                [sys.executable, "-B", str(root / "Tools" / script), str(root), *arguments],
+                text=True, capture_output=True, check=False)
+            walker.assertEqual(0, produced.returncode, (produced.stdout, produced.stderr))
+
+    install_loadable_profile(walker.root, before_adoption=dependencies)
     walker.write_plain_s_audit_pages()
     plan = confirmed_initial_task_plan(
         upstream_revision_id=FIXTURE_UPSTREAM_REVISION,
@@ -230,7 +262,17 @@ class RequiredQueueE2EScenarioCase(RequiredQueueFixture,
         if not self.MCP_TRANSPORT:
             return super().invoke_tool(name, *arguments)
         if not hasattr(self, "mcp_session"):
-            self.mcp_session = MCPStdioSession(self.root)
+            server = self.root / "Tools/mcp_server.py"
+            environment = {}
+            if self.START_SCENARIO == "initial-plan":
+                projection = self.root / runtime_paths.path_for("derived-mcp-tools")
+                environment = {
+                    agent_interface_contract.INTERFACE_PROJECTION_ENV: str(projection.resolve()),
+                    agent_interface_contract.INTERFACE_SOURCE_HASH_ENV: kblib.sha256_file(projection),
+                }
+            self.mcp_session = MCPStdioSession(
+                self.root, server=server if self.START_SCENARIO == "initial-plan" else None,
+                env_overrides=environment)
             self.mcp_session.__enter__()
             self.addCleanup(self.mcp_session.close)
             self.mcp_session.initialize()
@@ -322,7 +364,9 @@ class RequiredQueueE2EScenarioCase(RequiredQueueFixture,
     def setUp(self):
         self.temporary = tempfile.TemporaryDirectory()
         self.addCleanup(self.temporary.cleanup)
-        self.root = Path(self.temporary.name) / "repo"
+        # Host binding and the carried compiler must share one root spelling,
+        # including on macOS where /var is a symlink to /private/var.
+        self.root = (Path(self.temporary.name) / "repo").resolve()
         if self.START_SCENARIO == "initial-plan":
             self.scenario = initialize_task_plan_scenario(self)
             return

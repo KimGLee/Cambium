@@ -51,6 +51,10 @@ class CliContractFixture:
         receipt_owner.parent.mkdir(parents=True, exist_ok=True)
         receipt_owner.write_bytes(
             (REPOSITORY / compiler.KBLIB_RECEIPT_SOURCE).read_bytes())
+        expression_owner = "Tools/platform/agent_interface/agent_interface_contract.py"
+        target = self.root / expression_owner
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_bytes((REPOSITORY / expression_owner).read_bytes())
 
     def cleanup(self):
         self._temporary.cleanup()

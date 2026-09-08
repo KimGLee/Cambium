@@ -360,6 +360,7 @@ def require_exact_readback(receipt_absolute, receipt, registry, *, observation=N
 
 
 def main(argv=None):
+    from Tools.platform.agent_interface.agent_interface_contract import nullable_argument
     parser = kblib.ArgumentParser(
         description="Record one plan-bound Batch Review page judgment")
     parser.add_argument("root", help="adopting repository root")
@@ -376,15 +377,15 @@ def main(argv=None):
         "--verdict", required=True,
         choices=("passed", "changes-required"))
     parser.add_argument("--statement", required=True)
-    parser.add_argument(
+    nullable_argument(parser.add_argument(
         "--applicability-disposition",
         choices=("applicable", "not-applicable"),
-        help="required for M atoms; evidence-time disposition, not plan status")
-    parser.add_argument(
+        help="required for M atoms; evidence-time disposition, not plan status"))
+    nullable_argument(parser.add_argument(
         "--applicability-reason",
-        help="required only when a conditional M atom is not applicable")
+        help="required only when a conditional M atom is not applicable"))
     parser.add_argument(
-        "--consumed-evidence-ref", action="append",
+        "--consumed-evidence-ref", action="extend", nargs="*", default=None,
         help="optional exact assertion of Tool-derived current evidence IDs")
     parser.add_argument("--apply", action="store_true")
     args = parser.parse_args(argv)

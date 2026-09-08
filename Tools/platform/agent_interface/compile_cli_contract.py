@@ -88,7 +88,7 @@ import Tools.platform.agent_interface.tool_availability as tool_availability  # 
 TOOL = "compile_cli_contract"
 TOOL_VERSION = "1.8.0"
 
-SCHEMA_VERSION = 10
+SCHEMA_VERSION = agent_interface_contract.CLI_CONTRACT_SCHEMA_VERSION
 INTERFACE_POLICY_SCHEMA_VERSION = agent_interface_policy.SCHEMA_VERSION
 SOURCE_DISTRIBUTION_OUTPUT = "Tools/compiled/cli-contract.yaml"
 CARRIED_RUNTIME_OUTPUT = runtime_paths.CLI_CONTRACT_ARTIFACT_PATH
@@ -287,6 +287,9 @@ def describe_arguments(root, parser):
             "type": type_name(action),
             "help": normalize_text(action.help),
         }
+        expression = agent_interface_contract.argument_expression(action)
+        if expression:
+            record["expression"] = expression
         records.append(record)
     return records
 
@@ -1287,6 +1290,9 @@ def compile_contract(root, projection_target):
     source_records = [
         (KBLIB_RECEIPT_SOURCE, common_receipt_source_hash),
     ]
+    expression_owner = "Tools/platform/agent_interface/agent_interface_contract.py"
+    with open(os.path.join(root, expression_owner), "rb") as handle:
+        source_records.append((expression_owner, kblib.sha256_bytes(handle.read())))
     for record in records:
         source_records.append((record["module"], record["source_hash"]))
         if record["implementation_path"] != record["module"]:

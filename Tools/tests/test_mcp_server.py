@@ -23,6 +23,7 @@ transport test.
 """
 
 import ast
+import argparse
 import json
 import os
 from pathlib import Path
@@ -819,7 +820,7 @@ class ArgvRenderingContractTests(unittest.TestCase):
 
     def test_unrenderable_argument_shapes_share_one_typed_refusal(self):
         cases = (
-            ({"second": "SECOND"}, {"missing": "first"}),
+            ({"second": "SECOND"}, {"fields": ["first"]}),
             ({"first": "a", "second": "b", "unknown": "x"},
              {"undeclared": ["unknown"]}),
             ({"first": {"a": 1}, "second": "b"}, None),
@@ -836,6 +837,39 @@ class ArgvRenderingContractTests(unittest.TestCase):
             if expected:
                 for key, value in expected.items():
                     self.assertEqual(value, caught.exception.data[key])
+
+    def test_argparse_roundtrip_preserves_omission_null_and_empty_values(self):
+        from Tools.platform.agent_interface import agent_interface_contract as interface
+        from Tools.platform.agent_interface import compile_cli_contract as compiler
+        parser = argparse.ArgumentParser()
+        interface.nullable_argument(parser.add_argument("--reason"))
+        parser.add_argument("--scope", action="append")
+        parser.add_argument("--refs", action="extend", nargs="*", default=None)
+        parser.add_argument("--tags", action="append", default=[])
+        parser.add_argument("--limit", type=int, default=5)
+        parser.add_argument("--apply", action="store_true")
+        cli = {"tool": "shape", "arguments": compiler.describe_arguments(TOOLS.parent, parser)}
+        schema = cli_argv_renderer.schema_from_compiled_tool(cli)
+        cases = (({}, {"reason": None, "refs": None, "scope": None}),
+                 ({"reason": None, "refs": []}, {"reason": None, "refs": []}),
+                 ({"reason": "null", "refs": ["one", "two"], "tags": [], "limit": 0, "apply": False},
+                  {"reason": "null", "refs": ["one", "two"], "tags": [], "limit": 0, "apply": False}),
+                 ({"reason": "", "apply": True}, {"reason": "", "apply": True}),
+                 ({"reason": "--statement", "refs": ["--ref", "plain"], "limit": -1},
+                  {"reason": "--statement", "refs": ["--ref", "plain"], "limit": -1}))
+        for supplied, expected in cases:
+            with self.subTest(supplied=supplied):
+                argv, _ = cli_argv_renderer.build_argv("shape", schema, supplied)
+                result = vars(parser.parse_args(argv))
+                for field, value in expected.items():
+                    self.assertEqual(value, result[field])
+        for invalid in ({"scope": []}, {"scope": None}, {"reason": 4}, {"limit": False},
+                        {"refs": "one"}, {"apply": 0}, {"unknown": None}):
+            with self.subTest(keys=sorted(invalid)), self.assertRaises(cli_argv_renderer.ArgvRenderError):
+                cli_argv_renderer.build_argv("shape", schema, invalid)
+        # Merely being optional with a None default does not authorize null.
+        with self.assertRaises(ValueError):
+            interface.nullable_argument(parser.add_argument("--required", required=True))
 
 
 class PathActivationContractTests(unittest.TestCase):
