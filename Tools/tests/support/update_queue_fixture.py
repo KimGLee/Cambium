@@ -24,9 +24,10 @@ from Tools.tests.support.initial_task_plan_fixture import (  # noqa: E402
     install_initial_task_plan_fixture,
 )
 from Tools.tests.support.coverage_delta_fixture import write_premerge_delta
+from Tools.tests.support.batch_close_fixture import AuditScenarioActions
 
 
-class UpdateQueueFixture:
+class UpdateQueueFixture(AuditScenarioActions):
     """E2E-only actions required to generate Queue checkpoints."""
 
     def load(self, relative):
@@ -39,12 +40,6 @@ class UpdateQueueFixture:
             check=False,
         )
 
-    def run_tool(self, name, *arguments):
-        return subprocess.run(
-            [sys.executable, str(TOOLS / name), str(self.root), *arguments],
-            text=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
-            check=False,
-        )
 
     def install_plain_s_audit_fixture(self):
         """Install one legal bounded S-tier lifecycle fixture.
@@ -219,19 +214,6 @@ class UpdateQueueFixture:
             "produced_by_obligation": produced_by_obligation,
         }
 
-    def record_batch_review_wrapper(self, batch_id):
-        reviewed = self.run_tool(
-            "record_batch_review.py", "--batch", batch_id,
-            "--actor-role", "integrator",
-            "--statement",
-            "fixture integrator confirms the complete frozen pre-merge "
-            "AuditPlan evidence closure",
-            "--apply", "--json",
-        )
-        self.assertEqual(0, reviewed.returncode, reviewed.stdout)
-        receipts = json.loads(reviewed.stdout)["receipts"]
-        self.assertEqual(1, len(receipts), receipts)
-        return receipts[0]["receipt_id"]
 
     def prepare_merge_ready_closure(self, batch_id, object_path, **delta):
         audit = self.prepare_premerge_audit_evidence(batch_id)

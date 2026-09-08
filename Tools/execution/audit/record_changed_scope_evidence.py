@@ -1153,51 +1153,40 @@ def main(argv=None):
         plan_id=context["plan"]["plan_id"],
         obligation_id=context["obligation"]["obligation_id"])
     try:
-        with kblib.runtime_write_lock(
-                context["root"], owner_metadata=operation) as lease:
-            with kblib.no_authoritative_write_guard(lease):
-                locked = audit_producer_runtime.require_runtime_current(
-                    context["root"], context["authority"],
-                    "before changed-scope evidence publication")
-                locked_item, _ = audit_producer_runtime.open_batch(
-                    locked, args.batch)
-                locked_stage = audit_evidence_runtime.resolve_stage_plan(
-                    locked, locked_item, "pre-merge", required_state="open")
-                for field in (
-                        "audit_plan_id", "audit_plan_path",
-                        "audit_plan_sha256"):
-                    if locked_stage[field] != context["stage"][field]:
-                        raise ChangedScopeProducerError(
-                            "AuditPlan changed before publication in %s" % field)
-                audit_producer_runtime.require_pages_current(
-                    context["root"], context["frozen"],
-                    "before changed-scope evidence publication")
-                audit_producer_runtime.require_computation_current(context["root"], locked, binding)
-                for value, new_record in zip(pending, new_receipts):
-                    locked_context = _context_with_runtime(value, locked, locked_item, locked_stage)
-                    if existing_evidence_record(locked_context) is not None:
-                        raise ChangedScopeProducerError("changed-scope evidence appeared before publication")
-                    if new_record["record_kind"] == "gate-receipt":
-                        changed_scope_evidence_runtime.validate_current_direct_record(
-                            new_record, root=context["root"],
-                            plan=locked_stage["plan"],
-                            plan_sha256=locked_stage["audit_plan_sha256"],
-                            obligation=value["obligation"], result=locked,
-                            registry=value["registry"],
-                            control_registry=value["control_registry"],
-                            artifact_fingerprint=
-                                audit_producer_runtime.page_artifact_fingerprint(
-                                    value["target_page"]))
-                before = kblib.receipt_append_observation(
-                    receipt_absolute, new_receipts)
-            outcome, error, _ = publication.append(
-                receipt_absolute, new_receipts, before=before)
-            if outcome != "present" or error is not None:
-                if outcome == "absent":
-                    lease.mark_reconciled()
-                raise ChangedScopeProducerError(
-                    "changed-scope publication outcome=%s error=%s" %
-                    (outcome, error))
+        with publication.locked_append(context['root'], receipt_absolute, new_receipts,
+                operation=operation, label="record_changed_scope_evidence publication"):
+            locked = audit_producer_runtime.require_runtime_current(
+                context["root"], context["authority"],
+                "before changed-scope evidence publication")
+            locked_item, _ = audit_producer_runtime.open_batch(
+                locked, args.batch)
+            locked_stage = audit_evidence_runtime.resolve_stage_plan(
+                locked, locked_item, "pre-merge", required_state="open")
+            for field in (
+                    "audit_plan_id", "audit_plan_path",
+                    "audit_plan_sha256"):
+                if locked_stage[field] != context["stage"][field]:
+                    raise ChangedScopeProducerError(
+                        "AuditPlan changed before publication in %s" % field)
+            audit_producer_runtime.require_pages_current(
+                context["root"], context["frozen"],
+                "before changed-scope evidence publication")
+            audit_producer_runtime.require_computation_current(context["root"], locked, binding)
+            for value, new_record in zip(pending, new_receipts):
+                locked_context = _context_with_runtime(value, locked, locked_item, locked_stage)
+                if existing_evidence_record(locked_context) is not None:
+                    raise ChangedScopeProducerError("changed-scope evidence appeared before publication")
+                if new_record["record_kind"] == "gate-receipt":
+                    changed_scope_evidence_runtime.validate_current_direct_record(
+                        new_record, root=context["root"],
+                        plan=locked_stage["plan"],
+                        plan_sha256=locked_stage["audit_plan_sha256"],
+                        obligation=value["obligation"], result=locked,
+                        registry=value["registry"],
+                        control_registry=value["control_registry"],
+                        artifact_fingerprint=
+                            audit_producer_runtime.page_artifact_fingerprint(
+                                value["target_page"]))
     except (OSError, TypeError, ValueError,
             kblib.RuntimeStateLockedError) as exc:
         reporting.write_canonical_json(reporting.publication_result(

@@ -9,7 +9,6 @@ an AuditPlan, reads a registry, runs a checker, or writes evidence.
 import hashlib
 
 import Tools.execution.audit.audit_receipt_contract as audit_receipt_contract
-import Tools.execution.audit.audit_receipt_finalizer as audit_receipt_finalizer
 import Tools.platform.common.kblib as kblib
 
 
@@ -223,7 +222,7 @@ def build_full_audit_receipt(stage_plan, pair, producer_evidence):
     receipt_id = "audit-check_batch_close-%s" % hashlib.sha256(
         receipt_seed).hexdigest()
     try:
-        receipt = audit_receipt_finalizer.finalize_audit_receipt_record(
+        receipt = audit_receipt_contract.project_new_passing_audit_receipt(
             receipt_id=receipt_id,
             scope=[obligation["target"]],
             plan=plan,

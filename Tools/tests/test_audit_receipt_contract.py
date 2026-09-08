@@ -3,6 +3,7 @@
 import copy
 from pathlib import Path
 import unittest
+from unittest import mock
 
 import Tools.execution.audit.audit_receipt_contract as contract
 from Tools.execution.evidence import receipt_type_contract
@@ -241,6 +242,18 @@ class AuditReceiptTypedDispatchIntegrationTests(unittest.TestCase):
                     [], receipt_type_contract.current_receipt_errors(
                         valid_receipt(), lifecycle,
                         root=REPOSITORY, registry=registry))
+
+        # Catalog views have separate eligibility, not separate body owners.
+        with mock.patch.object(contract, "current_receipt_errors",
+                               wraps=contract.current_receipt_errors) as validator:
+            self.assertEqual([], receipt_type_contract.current_receipt_errors(
+                valid_receipt(), registration.catalog_lifecycle,
+                root=REPOSITORY, registry=registry))
+            validator.assert_called_once()
+            self.assertTrue(receipt_type_contract.current_receipt_errors(
+                valid_receipt(), (*registration.catalog_lifecycle, "unknown"),
+                root=REPOSITORY, registry=registry))
+            self.assertEqual(1, validator.call_count)
 
 
 if __name__ == "__main__":

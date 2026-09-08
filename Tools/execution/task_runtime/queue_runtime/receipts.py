@@ -107,6 +107,10 @@ def adoption_filtered_catalog(catalog, invalidated_receipt_ids):
     })
     current.root = getattr(catalog, "root", None)
     current._type_registry = getattr(catalog, "_type_registry", None)
+    # Share immutable admitted bodies, not the authority/visibility set.
+    current._sealed_segments = catalog._sealed_segments
+    current._sealed_bodies = catalog._sealed_bodies
+    current._sealed_checked = catalog._sealed_checked
     current.cold = {
         receipt_id: projection
         for receipt_id, projection in (
@@ -151,7 +155,7 @@ class Catalog(dict):
 
     __slots__ = (
         "cold", "root", "_sealed_segments", "_sealed_bodies",
-        "_type_registry",
+        "_sealed_checked", "_type_registry",
     )
 
     def __init__(self, *args, **kwargs):
@@ -160,6 +164,7 @@ class Catalog(dict):
         self.root = None
         self._sealed_segments = {}
         self._sealed_bodies = {}
+        self._sealed_checked = {}
         self._type_registry = None
 
     def resolve_sealed(self, receipt_id):
@@ -177,13 +182,11 @@ class Catalog(dict):
         reopened bindings a Queue transition had already discharged.
 
         Catalog loading already parsed and validated every sealed body against
-        the current typed owner.  This method still re-proves the requested
-        line against its projection before returning it, then memoizes that
-        body for consumers that require fields outside the thin projection.
+        the current typed owner. The first body read rechecks the actual
+        segment bytes against that observation; subsequent reads in the same
+        catalog observation share it. Each view must still admit the ID and
+        its exact projection before accessing the already-parsed body.
         """
-        if receipt_id in self._sealed_bodies:
-            return self._sealed_bodies[receipt_id]
-        self._sealed_bodies[receipt_id] = None
         row = self.cold.get(receipt_id)
         if not isinstance(row, dict) or not isinstance(self.root, str):
             return None
@@ -192,35 +195,24 @@ class Catalog(dict):
         if not nonempty_string(segment) or not isinstance(line_number, int) \
                 or isinstance(line_number, bool) or line_number < 1:
             return None
-        if segment not in self._sealed_segments:
+        admitted = self._sealed_bodies.get(receipt_id)
+        expected = self._sealed_segments.get(segment)
+        if admitted is None or expected is None:
+            return None
+        if segment not in self._sealed_checked:
             try:
                 exists, content = kblib.read_receipt_bytes(os.path.join(self.root, segment))
-                if not exists:
-                    raise FileNotFoundError(segment)
-                self._sealed_segments[segment] = content.splitlines(keepends=True)
+                self._sealed_checked[segment] = exists and content == expected
             except (OSError, ValueError):
-                self._sealed_segments[segment] = []
-        lines = self._sealed_segments[segment]
-        if line_number > len(lines):
+                self._sealed_checked[segment] = False
+        if not self._sealed_checked[segment]:
             return None
-        raw = lines[line_number - 1]
-        if kblib.sha256_bytes(raw) != row.get("record_sha256"):
+        admitted_projection, body = admitted
+        if row != admitted_projection:
             return None
-        try:
-            body = json.loads(raw.decode("utf-8"))
-        except (ValueError, UnicodeError):
-            return None
-        if not isinstance(body, dict) or body.get("receipt_id") != receipt_id:
-            return None
-        if body.get("receipt_type_id") != row.get("receipt_type_id"):
-            return None
-        if self._type_registry is None or \
-                receipt_type_contract.current_receipt_errors(
-                    body, "cold", root=self.root,
-                    registry=self._type_registry):
-            return None
-        self._sealed_bodies[receipt_id] = (segment, body)
-        return self._sealed_bodies[receipt_id]
+        # The body was typed exactly once at admission; this read barrier
+        # re-proves identical segment bytes without parsing/validating again.
+        return segment, body
 
     def resolve(self, receipt_id):
         """Resolve hot first, then through the sealed branch above."""
@@ -405,13 +397,9 @@ def receipt_catalog(root, errors):
                                    relative))
                     continue
                 seen_receipt_paths[receipt_id] = relative
-                admission_errors = []
-                for lifecycle in ("hot", "historical"):
-                    admission_errors.extend(
-                        "%s: %s" % (lifecycle, error)
-                        for error in receipt_type_contract.current_receipt_errors(
-                            receipt, lifecycle, root=root,
-                            registry=type_registry))
+                admission_errors = receipt_type_contract.current_receipt_errors(
+                    receipt, ("hot", "historical"), root=root,
+                    registry=type_registry)
                 if admission_errors:
                     errors.extend(
                         "receipt %s:%d is not a current-contract Receipt: %s" %
@@ -729,7 +717,8 @@ def _cold_verified_records(root, entries, by_segment, type_registry, errors):
     it cannot vouch for, so an unproven projection is withheld, not warned
     about.
     """
-    verified = set()
+    verified = {}
+    segments = {}
     for segment in sorted(entries):
         entry = entries[segment]
         try:
@@ -796,8 +785,9 @@ def _cold_verified_records(root, entries, by_segment, type_registry, errors):
                     (row["receipt_id"], error)
                     for error in admission_errors)
                 continue
-            verified.add(row["receipt_id"])
-    return verified
+            verified[row["receipt_id"]] = (dict(row), body)
+            segments[segment] = payload
+    return verified, segments
 
 
 def _cold_orphan_segment_errors(root, named, errors):
@@ -908,8 +898,10 @@ def cold_receipt_store(root, errors, catalog):
     # performance detail, never an authority source: discard both before
     # rereading the current manifest/index and type registry.
     catalog.cold = {}
-    catalog._sealed_segments.clear()
-    catalog._sealed_bodies.clear()
+    # Detach a new observation rather than mutating old filtered views.
+    catalog._sealed_segments = {}
+    catalog._sealed_bodies = {}
+    catalog._sealed_checked = {}
     type_registry = getattr(catalog, "_type_registry", None)
     if type_registry is None:
         try:
@@ -958,7 +950,7 @@ def cold_receipt_store(root, errors, catalog):
     entries, named = _cold_manifest_entries(root, manifest_rows, bound, errors)
     index, by_segment = _cold_index_rows(
         index_rows, entries, bound, catalog, type_registry, errors)
-    verified = _cold_verified_records(
+    verified, segments = _cold_verified_records(
         root, entries, by_segment, type_registry, errors)
     _cold_orphan_segment_errors(root, named, errors)
     store["manifest"] = [entries[segment] for segment in sorted(entries)]
@@ -966,6 +958,8 @@ def cold_receipt_store(root, errors, catalog):
                       if receipt_id in verified}
     store["seals"] = sorted(bound)
     catalog.cold = store["index"]
+    catalog._sealed_bodies = verified
+    catalog._sealed_segments = segments
     return store
 
 

@@ -192,7 +192,9 @@ Runtime data belongs in `.cambium/`, not `Tools/`. [`runtime_paths.py`](executio
 
 ### Audit evidence hand-off
 
-[`audit_evidence_runtime`](execution/audit/audit_evidence_runtime.py) resolves complete attempt sets for producers, completion, and stage consumers; supplying one ID cannot hide conflicts. Evidence-kind owners validate bindings. Stage and history rules remain in [K12/19](<../kernel/K12 Quality Assurance/19 Incremental Audit Planning.md>). `evidence_evaluation` reuses facts only within one read-only evaluation; writers obtain fresh lock-time checks, retain CAS, and read back results.
+[`audit_evidence_runtime`](execution/audit/audit_evidence_runtime.py) resolves complete attempt sets; supplying one ID cannot hide conflicts. Evidence-kind owners validate bindings under [K12/19](<../kernel/K12 Quality Assurance/19 Incremental Audit Planning.md>). `evidence_observation` shares facts and stage resolution within one read-only action, never across writes. Writers retain fresh locked checks, CAS and read-back.
+
+Producers share `ReceiptPublication.locked_append` mechanics and `audit_receipt_contract` projections, not semantic authority.
 
 For an open batch, create its AuditPlan and invoke the producer named by each due obligation:
 
@@ -290,7 +292,7 @@ python3 Tools/generate_tool_catalog.py . --check
 
 Generation writes both views; `--check` recomputes and compares bytes without writing.
 
-[`test-ownership.yaml`](test-ownership.yaml) owns test responsibility, level, lifecycle and method overrides. [`TEST_CATALOG.md`](TEST_CATALOG.md) and `compiled/test-catalog.json` join it with source/fixture facts for navigation and execution:
+[`test-ownership.yaml`](test-ownership.yaml) owns classification; [`TEST_CATALOG.md`](TEST_CATALOG.md) adds source/fixture facts. Build/MCP retains the full E2E; maintenance uses a validated closed checkpoint:
 
 ```text
 python3 Tools/generate_test_catalog.py .

@@ -134,7 +134,6 @@ JSON_SCALAR_TYPES = cli_argv_renderer.JSON_SCALAR_TYPES
 # accurate projection of an undeclared type, not a weak one.
 DEFAULT_SCALAR_TYPE = cli_argv_renderer.DEFAULT_SCALAR_TYPE
 
-LIST_ACTIONS = cli_argv_renderer.LIST_ACTIONS
 COUNT_ACTIONS = cli_argv_renderer.COUNT_ACTIONS
 
 CLI_EXTENSION_KEY = cli_argv_renderer.CLI_EXTENSION_KEY
@@ -537,21 +536,6 @@ def scalar_schema(argument):
     return schema
 
 
-def is_list_valued(argument):
-    """True when one occurrence of this argument yields a list.
-
-    `append`/`extend` accumulate across occurrences; an `nargs` of `*`,
-    `+`, or an integer consumes several argv words into a list. `nargs` 0
-    is the zero-value presence flag handled before this is consulted.
-    """
-    nargs = argument.get("nargs")
-    if argument.get("action") in LIST_ACTIONS:
-        return True
-    if nargs in ("*", "+"):
-        return True
-    return isinstance(nargs, int) and not isinstance(nargs, bool) and nargs >= 1
-
-
 def property_schema(argument, path_capability=None):
     """One JSON Schema property for one declared argument."""
     action = argument.get("action")
@@ -563,7 +547,7 @@ def property_schema(argument, path_capability=None):
         # An action consuming zero argv words is a presence flag: what a
         # caller decides is whether to pass it.
         schema = {"type": "boolean"}
-    elif is_list_valued(argument):
+    elif cli_argv_renderer.is_list_valued(argument):
         schema = {"type": "array", "items": scalar_schema(argument)}
         if nargs == "+":
             schema["minItems"] = 1

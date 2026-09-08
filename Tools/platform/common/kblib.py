@@ -2655,13 +2655,14 @@ def read_receipt_bytes(path):
 class ReceiptObservation(dict):
     """One fresh IO observation; bytes never become a persisted result field."""
 
-    def __init__(self, fields, content):
+    def __init__(self, fields, content, records=None):
         super().__init__(fields)
         self.content = content
+        self.records = records
 
 
 class ReceiptPublication:
-    """Invocation-local append facts, without a business verdict or lock policy."""
+    """Invocation-local append facts and mechanics, never a business verdict."""
 
     def __init__(self):
         self.outcome = "not-attempted"
@@ -2671,6 +2672,33 @@ class ReceiptPublication:
 
     def append(self, path, receipts, *, before=None):
         return write_receipts_observed(path, receipts, before=before, publication=self)
+
+    @contextmanager
+    def locked_append(self, root, path, receipts, *, operation, label,
+                      verify=None):
+        """One append-only transaction, not a ledger/state writer.
+
+        The body performs read-only owner validation under the writer lock.
+        No writes are permitted there. Afterwards this method owns the exact
+        append observation and uncertain/absent handling. A fixed producer
+        may supply its resulting-state check, which still runs under the lock.
+        Clearing the pending list represents an already-proved idempotent hit.
+        """
+        if not isinstance(receipts, list) or (verify is not None and not callable(verify)):
+            raise TypeError("append transaction requires a record list and an owned verifier")
+        with runtime_write_lock(root, owner_metadata=operation) as lease:
+            with no_authoritative_write_guard(lease):
+                yield
+                if not receipts:
+                    return
+                before = receipt_append_observation(path, receipts)
+            outcome, error, _ = self.append(path, receipts, before=before)
+            if outcome != "present" or error is not None:
+                if outcome == "absent":
+                    lease.mark_reconciled()
+                raise ValueError("%s outcome=%s error=%s" % (label, outcome, error))
+            if verify is not None:
+                verify()
 
 
 def receipt_append_observation(path, receipts):
@@ -2686,6 +2714,7 @@ def receipt_append_observation(path, receipts):
     exists, content = read_receipt_bytes(path)
     counts = [content.splitlines(keepends=True).count(line) for line in lines]
     structurally_valid = True
+    records = []
     if content and not content.endswith(b"\n"):
         structurally_valid = False
     if structurally_valid:
@@ -2694,6 +2723,7 @@ def receipt_append_observation(path, receipts):
                 value = json.loads(line.decode("utf-8"))
                 if not isinstance(value, dict):
                     raise ValueError("receipt record is not an object")
+                records.append(value)
         except (UnicodeError, ValueError, json.JSONDecodeError):
             structurally_valid = False
     return ReceiptObservation({
@@ -2701,7 +2731,7 @@ def receipt_append_observation(path, receipts):
         "exists": exists,
         "counts": counts,
         "structurally_valid": structurally_valid,
-    }, content)
+    }, content, tuple(records) if structurally_valid else None)
 
 
 def receipt_append_outcome(before, after):

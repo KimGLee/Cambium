@@ -3,6 +3,7 @@
 import hashlib
 import json
 import shutil
+from Tools.execution.task_runtime import runtime_validation
 
 
 PERSISTED_PATHS = (".cambium", "Topics")
@@ -43,6 +44,30 @@ def tree_sha256(records):
     return "sha256:" + hashlib.sha256(encoded).hexdigest()
 
 
+def validate_checkpoint_manifest(root, manifest_path, expected):
+    """Validate one static checkpoint from its declared scenario identity."""
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    for field, value in expected.items():
+        if manifest.get(field) != value:
+            raise AssertionError("checkpoint has stale %s" % field)
+    records = file_records(root)
+    if manifest.get("files") != records or manifest.get("tree_sha256") != tree_sha256(records):
+        raise AssertionError("checkpoint file manifest or tree fingerprint is stale")
+    return manifest
+
+
+def reconstruct_checkpoint(source, destination, manifest, installer):
+    """Install and verify a local after-image without replaying its producer."""
+    copy_checkpoint_seed(source, destination)
+    installer(destination)
+    if manifest.get("validated_tree_sha256") != tree_sha256(file_records(destination)):
+        raise AssertionError("checkpoint dependencies changed; regenerate it")
+    result = runtime_validation.validate_runtime(destination)
+    if result["errors"]:
+        raise AssertionError("checkpoint fails current runtime contract: %s" % result["errors"])
+    return result
+
+
 __all__ = [
     "FIXTURE_EXCLUDED_NAMES",
     "PERSISTED_PATHS",
@@ -50,4 +75,6 @@ __all__ = [
     "copy_checkpoint_seed",
     "file_records",
     "tree_sha256",
+    "validate_checkpoint_manifest",
+    "reconstruct_checkpoint",
 ]

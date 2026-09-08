@@ -221,6 +221,7 @@ modules:
       - combine_plan_reconciliations
       - current_consumption_evidence_ids
       - evidence_evaluation
+      - evidence_observation
       - obligation_evidence_resolution
       - reconciliation_from_bindings
       - require_completion_evidence
@@ -356,13 +357,6 @@ modules:
       - page_artifact_fingerprint_contract
       - project_new_passing_audit_receipt
       - validate_audit_receipt
-  - module: execution.audit.audit_receipt_finalizer
-    path: Tools/execution/audit/audit_receipt_finalizer.py
-    area: execution
-    domain: audit
-    layer: contract
-    public:
-      - finalize_audit_receipt_record
   - module: execution.audit.audit_reconciliation_contract
     path: Tools/execution/audit/audit_reconciliation_contract.py
     area: execution
@@ -2473,6 +2467,7 @@ modules:
       - STRUCTURED_OUTPUT_FLAG
       - build_argv
       - cli_metadata
+      - is_list_valued
       - schema_from_compiled_tool
   - module: platform.agent_interface.compile_cli_contract
     path: Tools/platform/agent_interface/compile_cli_contract.py

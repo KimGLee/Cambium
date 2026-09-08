@@ -8,6 +8,7 @@ recovery boundaries.
 """
 
 import json
+import contextlib
 import os
 from pathlib import Path
 import subprocess
@@ -52,6 +53,36 @@ class ReceiptSafetyTests(unittest.TestCase):
             with self.subTest(expected=expected, after=after):
                 self.assertEqual(
                     expected, kblib.receipt_append_outcome(before, after))
+
+    def test_append_transaction_keeps_owner_validation_and_uncertainty_boundary(self):
+        for outcome in ("present", "absent", "uncertain", "rejected", "already-present"):
+            with self.subTest(outcome=outcome):
+                publication = kblib.ReceiptPublication()
+                lease = mock.Mock()
+                verify = mock.Mock()
+                pending = [{"receipt_id": "owned"}]
+                with mock.patch.object(kblib, "runtime_write_lock",
+                        return_value=contextlib.nullcontext(lease)), \
+                        mock.patch.object(kblib, "no_authoritative_write_guard",
+                        return_value=contextlib.nullcontext()), \
+                        mock.patch.object(kblib, "receipt_append_observation", return_value={}), \
+                        mock.patch.object(publication, "append",
+                        return_value=(outcome, None, {})) as append:
+                    expectation = (self.assertRaises(ValueError)
+                        if outcome in ("absent", "uncertain", "rejected")
+                        else contextlib.nullcontext())
+                    with expectation, publication.locked_append(
+                            "/repo", "/receipts.jsonl", pending, operation={},
+                            label="owned append", verify=verify):
+                        append.assert_not_called()
+                        if outcome == "rejected":
+                            raise ValueError("owner rejected")
+                        if outcome == "already-present":
+                            pending.clear()
+                self.assertEqual(outcome not in ("rejected", "already-present"), append.called)
+                self.assertEqual(outcome == "absent", lease.mark_reconciled.called)
+                self.assertEqual(outcome == "present", verify.called)
+                self.assertFalse(publication.confirmed)
 
     def test_receipt_writer_publishes_complete_jsonl_and_preserves_creator(self):
         root = self.receipt_root()

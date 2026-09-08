@@ -25,6 +25,7 @@ from Tools.execution.task_runtime import queue_check_receipt
 from Tools.execution.task_runtime import queue_runtime
 from Tools.execution.task_runtime.queue_runtime import resume as runtime_resume
 from Tools.execution.task_runtime.queue_runtime import task_progress
+from Tools.knowledge.content import maintenance_candidates
 import Tools.execution.task_runtime.runtime_validation as runtime_validation
 import Tools.execution.task_runtime.runtime_paths as runtime_paths
 import Tools.platform.common.kblib as kblib
@@ -804,6 +805,67 @@ def _maintenance_gate_errors(case):
 class MaintenanceCompletionCheckpointIntegrationTests(
         MaintenanceClosedCheckpointCase):
     """Maintenance predicates consume one generated post-batch checkpoint."""
+
+    def test_maintenance_gate_is_resumable_and_completes_without_terminal_proof(self):
+        budget_id, ledger_id, watermark_id = self.maintenance_evidence_ids()
+        gate_register = ".cambium/receipts/maintenance-gate.jsonl"
+        gate_arguments = (
+            "check_queue.py", "--require-maintenance-complete",
+            "--budget-manifest-receipt", budget_id,
+            "--ledger-advance-receipt", ledger_id,
+            "--watermark-advance-receipt", watermark_id,
+            "--receipts", gate_register,
+        )
+        first = self.run_tool(*gate_arguments)
+        second = self.run_tool(*gate_arguments)
+        self.assertEqual(0, first.returncode, first.stdout)
+        self.assertEqual(0, second.returncode, second.stdout)
+        gates = [json.loads(line) for line in
+                 (self.root / gate_register).read_text(
+                     encoding="utf-8").splitlines()]
+        self.assertEqual(2, len(gates))
+        selected = max(
+            gates,
+            key=lambda receipt: (receipt["checked_at"], receipt["receipt_id"]),
+        )
+        consumed = next(
+            receipt for receipt in gates
+            if receipt["receipt_id"] != selected["receipt_id"])
+        self.assertEqual("maintenance", selected["completion_semantics"])
+        self.assertEqual(["B1", "B2"], selected["terminal_batch_ids"])
+        self.assertEqual(
+            maintenance_candidates.candidate_state_sha256(
+                runtime_validation.validate_runtime(self.root)["coverage"][
+                    "maintenance_candidates"]),
+            selected["maintenance_candidate_state_sha256"],
+        )
+
+        interrupted = self.run_tool("check_queue.py", "--resume-status")
+        self.assertEqual(2, interrupted.returncode, interrupted.stdout)
+        self.assertIn(
+            "next_action=complete-maintenance-task:%s" %
+            selected["receipt_id"], interrupted.stdout)
+
+        self.task_transition(
+            "complete", "--maintenance-completion-receipt",
+            consumed["receipt_id"], "--checkpoint-summary",
+            "bounded maintenance completion gate passed",
+        )
+        result = runtime_validation.validate_runtime(self.root)
+        self.assertEqual([], result["errors"])
+        self.assertEqual("complete", result["progress"]["task_state"])
+        self.assertEqual(
+            "not-applicable", result["progress"]["terminal_audit"]["state"])
+        self.assertEqual(
+            "passed", result["progress"]["maintenance_completion"]["state"])
+        terminal_resume = self.run_tool("check_queue.py", "--resume-status")
+        self.assertEqual(0, terminal_resume.returncode, terminal_resume.stdout)
+        self.assertIn("next_action=archive-terminal-runtime",
+                      terminal_resume.stdout)
+        self.assertIn(
+            "maintenance_gate.selected=%s" % consumed["receipt_id"],
+            terminal_resume.stdout)
+
 
     def test_gate_binds_the_exact_budget_manifest_bytes(self):
         budget_path = self.root / ".cambium/receipts/maintenance-budget.yaml"

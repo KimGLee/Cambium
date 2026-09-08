@@ -266,39 +266,29 @@ def main(argv=None):
         batch_id=args.batch, plan_id=plan["plan_id"],
         receipt_id=receipt["receipt_id"])
     try:
-        with kblib.runtime_write_lock(root, owner_metadata=operation) as lease:
-            with kblib.no_authoritative_write_guard(lease):
-                locked = audit_producer_runtime.require_runtime_current(
-                    root, authority, "before substantive review publication")
-                locked_item, _locked_activation = \
-                    audit_producer_runtime.open_batch(locked, args.batch)
-                _require_plan_current(
-                    root, args.plan, locked, locked_item, plan, plan_sha256)
-                audit_producer_runtime.require_pages_current(
-                    root, frozen, "before substantive review publication")
-                locked = audit_evidence_runtime.evidence_evaluation(locked)
-                locked_prior = audit_evidence_runtime.require_substantive_review_attempt(
-                    locked, locked_item, plan, plan_sha256, obligation,
-                    round_number=args.round, round_1_receipt_id=args.round_1_receipt_id)
-                if locked_prior != prior:
-                    raise audit_producer_runtime.AuditProducerError(
-                        "review predecessor changed before publication")
-                proposed = audit_evidence_runtime.obligation_evidence_resolution(
-                    locked, locked_item, plan, plan_sha256, obligation,
-                    proposed_record=receipt)
-                if proposed["status"] in {"invalid", "ambiguous", "missing"}:
-                    raise audit_producer_runtime.AuditProducerError(
-                        "proposed review is not acceptable: %s" % proposed.get("reason"))
-                before = kblib.receipt_append_observation(
-                    receipt_absolute, [receipt])
-            outcome, error, _ = publication.append(
-                receipt_absolute, [receipt], before=before)
-            if outcome != "present" or error is not None:
-                if outcome == "absent":
-                    lease.mark_reconciled()
+        with publication.locked_append(root, receipt_absolute, [receipt],
+                operation=operation, label="record_substantive_review publication"):
+            locked = audit_producer_runtime.require_runtime_current(
+                root, authority, "before substantive review publication")
+            locked_item, _locked_activation = \
+                audit_producer_runtime.open_batch(locked, args.batch)
+            _require_plan_current(
+                root, args.plan, locked, locked_item, plan, plan_sha256)
+            audit_producer_runtime.require_pages_current(
+                root, frozen, "before substantive review publication")
+            locked = audit_evidence_runtime.evidence_evaluation(locked)
+            locked_prior = audit_evidence_runtime.require_substantive_review_attempt(
+                locked, locked_item, plan, plan_sha256, obligation,
+                round_number=args.round, round_1_receipt_id=args.round_1_receipt_id)
+            if locked_prior != prior:
                 raise audit_producer_runtime.AuditProducerError(
-                    "substantive-review publication outcome=%s error=%s" %
-                    (outcome, error))
+                    "review predecessor changed before publication")
+            proposed = audit_evidence_runtime.obligation_evidence_resolution(
+                locked, locked_item, plan, plan_sha256, obligation,
+                proposed_record=receipt)
+            if proposed["status"] in {"invalid", "ambiguous", "missing"}:
+                raise audit_producer_runtime.AuditProducerError(
+                    "proposed review is not acceptable: %s" % proposed.get("reason"))
     except (OSError, TypeError, ValueError,
             kblib.RuntimeStateLockedError) as exc:
         reporting.write_canonical_json(reporting.publication_result(

@@ -61,48 +61,10 @@ def publish_receipt(root, receipt_path, planned_receipt, *, authority,
         authority)
     admission_purpose = (authority.get("admission_purpose", "current")
                          if isinstance(authority, dict) else "current")
-    with kblib.runtime_write_lock(root, owner_metadata=operation) as lease:
-        with kblib.no_authoritative_write_guard(lease):
-            locked = runtime_validation.validate_runtime(root, **authority_kwargs)
-            admission_errors = runtime_admission_errors(
-                locked, purpose=admission_purpose)
-            if admission_errors:
-                raise ValueError(
-                    "runtime changed before %s: %s" %
-                    (publication_label, "; ".join(admission_errors)))
-            queue_runtime.require_runtime_authority_current(
-                root, authority, publication_label)
-            locked_receipt = _freeze_generated_identity(
-                planned_receipt, rebuild(locked))
-            if locked_receipt != planned_receipt:
-                raise ValueError(
-                    "%s bindings changed before publication" %
-                    publication_label)
-            validate(locked, locked_receipt)
-            existing = queue_runtime.current_receipt_catalog(locked).get(
-                locked_receipt["receipt_id"])
-            if existing is not None:
-                observed = existing[1] if isinstance(existing, tuple) else existing
-                if observed != locked_receipt:
-                    raise ValueError("%s identity already binds different bytes" %
-                                     publication_label)
-                # Another cooperating invocation may have published this
-                # exact operation before we acquired the lock. Confirm its
-                # current object; never append the same identity twice.
-                publication.confirmed = True
-                return locked_receipt
-            before = kblib.receipt_append_observation(
-                receipt_path, [locked_receipt])
+    locked_receipt = planned_receipt
+    pending = [planned_receipt]
 
-        outcome, error, _observation = publication.append(
-            receipt_path, [locked_receipt], before=before)
-        if outcome != "present" or error is not None:
-            if outcome == "absent":
-                lease.mark_reconciled()
-            raise ValueError(
-                "%s outcome=%s error=%s" %
-                (publication_label, outcome, error))
-
+    def verify():
         # A successful append syscall is not resulting-state evidence. Re-open
         # the runtime under the same authority view and require the exact object
         # to resolve through the ordinary current catalog.
@@ -122,6 +84,39 @@ def publish_receipt(root, receipt_path, planned_receipt, *, authority,
             raise ValueError(
                 "%s read-back did not resolve the exact receipt" %
                 publication_label)
+
+    with publication.locked_append(
+            root, receipt_path, pending, operation=operation,
+            label=publication_label, verify=verify):
+        locked = runtime_validation.validate_runtime(root, **authority_kwargs)
+        admission_errors = runtime_admission_errors(
+            locked, purpose=admission_purpose)
+        if admission_errors:
+            raise ValueError(
+                "runtime changed before %s: %s" %
+                (publication_label, "; ".join(admission_errors)))
+        queue_runtime.require_runtime_authority_current(
+            root, authority, publication_label)
+        locked_receipt = _freeze_generated_identity(
+            planned_receipt, rebuild(locked))
+        if locked_receipt != planned_receipt:
+            raise ValueError(
+                "%s bindings changed before publication" %
+                publication_label)
+        validate(locked, locked_receipt)
+        existing = queue_runtime.current_receipt_catalog(locked).get(
+            locked_receipt["receipt_id"])
+        if existing is not None:
+            observed = existing[1] if isinstance(existing, tuple) else existing
+            if observed != locked_receipt:
+                raise ValueError("%s identity already binds different bytes" %
+                                 publication_label)
+            # Another cooperating invocation may have published this
+            # exact operation before we acquired the lock. Confirm its
+            # current object; never append the same identity twice.
+            pending.clear()
+            publication.confirmed = True
+            return locked_receipt
     publication.confirmed = True
     return locked_receipt
 

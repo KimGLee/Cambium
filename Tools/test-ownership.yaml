@@ -955,6 +955,7 @@ tests:
         parallel_safe: false
         consumer_only: true
         primary_owner_test: test_runtime_safety.ReceiptSafetyTests.test_receipt_writer_rejects_aliases_and_authoritative_targets
+        duplicate_group: receipt-path-safety-owner-and-transport
       - selector: TaskProgressTerminalStateUnitTests.*
         owner: Tools/execution/task_runtime/queue_runtime/task_progress.py
         level: unit
@@ -972,6 +973,12 @@ tests:
         level: integration
         semantics: maintenance_gate_currentness_to_resume_selection
         owner_contract_symbol: resume.maintenance_gate_inventory
+        parallel_safe: false
+      - selector: MaintenanceCompletionCheckpointIntegrationTests.test_maintenance_gate_is_resumable_and_completes_without_terminal_proof
+        owner: Tools/execution/task_runtime/queue_runtime/maintenance.py
+        level: integration
+        semantics: maintenance_gate_to_task_completion_checkpoint
+        owner_contract_symbol: maintenance.maintenance_completion_gate_errors
         parallel_safe: false
   - path: Tools/tests/test_check_structure.py
     owner: Tools/platform/common/kblib.py
@@ -2098,6 +2105,8 @@ tests:
     owner_contract_symbol: receipt_reference_contract.RECEIPT_REFERENCE_SPECS
     parallel_safe: true
     overrides:
+      - selector: ReceiptReferenceRegistryContractTests.test_cold_projection_is_the_stable_union_of_graph_consumers
+        duplicate_group: cold-projection-owner-and-seal-consumer
       - selector: ReceiptReferenceExtractionContractTests.*
         semantics: current_receipt_reference_extraction_policy
         owner_contract_symbol: receipt_reference_contract.iter_receipt_references
@@ -2380,7 +2389,7 @@ tests:
     level: e2e
     lifecycle: current
     disposition: keep
-    semantics: required_queue_current_build_and_maintenance_e2e
+    semantics: required_queue_current_build_mcp_e2e
     parallel_safe: false
   - path: Tools/tests/test_residual_mandated_headings.py
     owner: Tools/knowledge/content/check_residual_content.py
@@ -2461,12 +2470,18 @@ tests:
         semantics: receipt_append_outcome
         owner_contract_symbol: kblib.receipt_append_outcome
         parallel_safe: true
+      - selector: ReceiptSafetyTests.test_append_transaction_keeps_owner_validation_and_uncertainty_boundary
+        level: unit
+        semantics: append_only_publication_transaction_boundary
+        owner_contract_symbol: kblib.ReceiptPublication.locked_append
+        parallel_safe: true
       - selector: ReceiptSafetyTests.test_receipt_writer_publishes_complete_jsonl_and_preserves_creator
         level: integration
         semantics: current_receipt_append_publication
         owner_contract_symbol: kblib.write_receipts
         parallel_safe: true
       - selector: ReceiptSafetyTests.test_receipt_writer_rejects_aliases_and_authoritative_targets
+        duplicate_group: receipt-path-safety-owner-and-transport
         level: slow
         semantics: current_receipt_path_safety
         owner_contract_symbol: kblib.write_receipts
@@ -2630,6 +2645,7 @@ tests:
         owner_contract_symbol: seal_receipts._projection
         consumer_only: true
         primary_owner_test: test_receipt_reference_contract.ReceiptReferenceRegistryContractTests.test_cold_projection_is_the_stable_union_of_graph_consumers
+        duplicate_group: cold-projection-owner-and-seal-consumer
         parallel_safe: true
       - selector: SealContractTests.test_seal_receipt_validator_owns_current_identity_and_payload
         level: contract

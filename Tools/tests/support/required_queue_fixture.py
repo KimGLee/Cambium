@@ -22,16 +22,12 @@ from Tools.execution.task_runtime import queue_runtime
 import Tools.execution.task_runtime.runtime_validation as runtime_validation  # noqa: E402
 import Tools.execution.audit.check_batch_close as check_batch_close
 import Tools.execution.audit.batch_close_contract as batch_close_contract
-import Tools.execution.audit.changed_scope_evidence_contract as changed_scope_evidence_contract
 import Tools.execution.task_runtime.batch_settlement as batch_settlement
 import Tools.execution.evidence.candidate_lifecycle as candidate_lifecycle
-import Tools.knowledge.metadata.compose_page_contract as compose_page_contract
-import Tools.knowledge.metadata.compose_vocab as compose_vocab
 import Tools.platform.common.kblib as kblib
 import Tools.knowledge.content.maintenance_candidates as maintenance_candidates
 import Tools.governance.control.metadata_execution_contract as metadata_execution_contract
 import Tools.knowledge.metadata.metadata_property_state as metadata_property_state
-import Tools.governance.profile.profile_admission as profile_admission
 import Tools.knowledge.metadata.project_page_state as project_page_state
 import Tools.execution.task_runtime.runtime_paths as runtime_paths
 import Tools.execution.task_runtime.record_maintenance_evidence as record_maintenance_evidence
@@ -42,6 +38,7 @@ from Tools.tests.support.initial_task_plan_fixture import (  # noqa: E402
     install_initial_task_plan_fixture,
 )
 from Tools.tests.support.coverage_delta_fixture import write_premerge_delta
+from Tools.tests.support.batch_close_fixture import AuditScenarioActions
 from Tools.tests.fixtures.integration.checkpoint_contract import (
     copy_checkpoint_seed,
 )
@@ -104,7 +101,7 @@ def _terminal_before_adoption(root, _profile):
     progress_path.write_text(kblib.canonical_yaml(progress), encoding="utf-8")
 
 
-class RequiredQueueFixture:
+class RequiredQueueFixture(AuditScenarioActions):
     """The fixture language every scenario class below shares.
 
     This is the original test class's helper set, unchanged; only the
@@ -164,26 +161,10 @@ class RequiredQueueFixture:
 
         install_initial_task_plan_fixture(self.root)
 
-        self.compose_page_inputs()
+        self.compile_profile_artifacts()
         self.assertEqual(
             [], runtime_validation.validate_runtime(self.root)["errors"])
 
-    def compose_page_inputs(self):
-        """Generate the two derived checker inputs through their actual owners."""
-        admission, errors = profile_admission.admit_profile(self.root)
-        self.assertEqual([], errors, errors)
-        self.assertIsNotNone(admission)
-        vocab_text, _vocab, errors = compose_vocab.compiled_artifact(
-            self.root, admission)
-        self.assertEqual([], errors, errors)
-        page_contract_text, _contract, errors = \
-            compose_page_contract.compiled_artifact(self.root, admission)
-        self.assertEqual([], errors, errors)
-        derived = self.root / runtime_paths.DERIVED_ROOT
-        derived.mkdir(parents=True, exist_ok=True)
-        (derived / "vocab.yaml").write_text(vocab_text, encoding="utf-8")
-        (derived / "page_contract.yaml").write_text(
-            page_contract_text, encoding="utf-8")
     def run_tool(self, name, *arguments):
         return self.invoke_tool(name, str(self.root), *arguments)
 
@@ -610,85 +591,7 @@ class RequiredQueueFixture:
             self.root, relative, batch_id, object_path, [receipt_id],
             generated_at="2026-08-04T00:00:00Z")
 
-    def prepare_premerge_audit_evidence(self, batch_id):
-        """Prepare and discharge the real pre-merge AuditPlan closure."""
-        prepared = self.run_tool(
-            "prepare_audit_plan.py", "--batch", batch_id, "--apply")
-        self.assertEqual(0, prepared.returncode, prepared.stdout)
-        plan_result = json.loads(prepared.stdout)
-        plan_path = plan_result["plan_path"]
-        plan = kblib.load_yaml_file(self.root / plan_path)
-        sampled_page_receipts = []
 
-        for obligation in plan["obligations"]:
-            if (obligation.get("status") != "required" or
-                    obligation.get("due_stage") != "pre-merge"):
-                continue
-            common = (
-                "--batch", batch_id,
-                "--plan", plan_path,
-                "--obligation-id", obligation["obligation_id"],
-            )
-            if obligation["evidence_kind"] == "batch-page-review-record":
-                produced = self.run_tool(
-                    "record_batch_page_review.py", *common,
-                    "--page", obligation["target"],
-                    "--variant", "s-sampled-page",
-                    "--reviewer-context-id", "fixture-review-context",
-                    "--reviewer-role", "reviewer",
-                    "--verdict", "passed",
-                    "--statement",
-                    "fixture page satisfies the frozen sampled-review "
-                    "acceptance contract",
-                    "--apply",
-                )
-                self.assertEqual(0, produced.returncode, produced.stdout)
-                evidence = json.loads(produced.stdout)
-                sampled_page_receipts.append(evidence["receipt_id"])
-                continue
-
-            if obligation["producer_check"] == \
-                    "changed_scope_rendering_escalation_record":
-                produced = self.run_tool(
-                    "record_rendering_verification.py", *common,
-                    "--rendering-mode", "source-only", "--apply")
-            elif (obligation.get("producer_capability") ==
-                  changed_scope_evidence_contract.ADAPTER_CAPABILITY_ID or
-                  obligation.get("producer_gate_id") is not None):
-                produced = self.run_tool(
-                    "record_changed_scope_evidence.py", *common, "--apply")
-            else:
-                self.fail(
-                    "fixture has no producer dispatch for AuditPlan "
-                    "obligation %s" % obligation["obligation_id"])
-            self.assertEqual(0, produced.returncode, produced.stdout)
-            evidence = json.loads(produced.stdout)
-
-            if obligation["evidence_kind"] == "audit-receipt":
-                completed = self.run_tool(
-                    "complete_audit_receipt.py", *common,
-                    "--evidence-receipt", evidence["receipt_id"],
-                    "--apply",
-                )
-                self.assertEqual(0, completed.returncode, completed.stdout)
-
-        self.assertEqual(1, len(sampled_page_receipts), plan)
-        return plan_path, sampled_page_receipts[0]
-
-    def record_batch_review_wrapper(self, batch_id):
-        """Publish the production wrapper over the complete pre-merge plan."""
-        reviewed = self.run_tool(
-            "record_batch_review.py", "--batch", batch_id,
-            "--actor-role", "integrator",
-            "--statement",
-            "fixture integrator confirms the complete frozen pre-merge "
-            "AuditPlan evidence closure",
-            "--apply", "--json",
-        )
-        self.assertEqual(0, reviewed.returncode, reviewed.stdout)
-        receipts = json.loads(reviewed.stdout)["receipts"]
-        self.assertEqual(1, len(receipts), receipts)
-        return receipts[0]["receipt_id"]
 
 
     def merge_and_apply(self, batch_id, object_path):

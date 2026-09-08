@@ -198,6 +198,12 @@ def validate_batch_review_receipt(result, item, receipt, *,
 
 def _build_context(root, batch_id, actor_role, statement):
     root, result, authority = audit_producer_runtime.admitted_runtime(root)
+    with audit_evidence_runtime.evidence_observation(result) as observed:
+        return _observed_context(root, observed, authority, batch_id,
+                                 actor_role, statement)
+
+
+def _observed_context(root, result, authority, batch_id, actor_role, statement):
     item, _activation = audit_producer_runtime.open_batch(result, batch_id)
     delta_binding = _managed_candidate_delta(root, result, item)
     audit_binding = _audit_plan_evidence(result, item)
@@ -270,15 +276,16 @@ def main(argv=None):
                 args.actor_role, args.statement)
 
         def validate(locked, candidate):
-            locked_item, _activation = audit_producer_runtime.open_batch(
-                locked, args.batch)
-            locked_delta = _managed_candidate_delta(
-                root, locked, locked_item)
-            locked_audit = _audit_plan_evidence(locked, locked_item)
-            validate_batch_review_receipt(
-                locked, locked_item, candidate,
-                delta_binding=locked_delta,
-                audit_binding=locked_audit)
+            with audit_evidence_runtime.evidence_observation(locked) as observed:
+                locked_item, _activation = audit_producer_runtime.open_batch(
+                    observed, args.batch)
+                locked_delta = _managed_candidate_delta(
+                    root, observed, locked_item)
+                locked_audit = _audit_plan_evidence(observed, locked_item)
+                validate_batch_review_receipt(
+                    observed, locked_item, candidate,
+                    delta_binding=locked_delta,
+                    audit_binding=locked_audit)
 
         receipt = manual_attestation.publish_receipt(
             root, receipt_path, receipt, authority=authority,

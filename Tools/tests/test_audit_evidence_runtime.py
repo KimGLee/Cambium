@@ -512,16 +512,25 @@ class AuditEvidenceCheckpointIntegrationTests(CurrentEvidenceCheckpoint,
                 mock.patch.object(
                     runtime,
                     "_require_current_profile_rendering_contract_state",
-                    return_value=None):
+                    return_value=None), \
+                mock.patch.object(runtime, "_required_obligation_resolution",
+                    wraps=runtime._required_obligation_resolution) as resolve, \
+                runtime.evidence_observation(self.result) as observed:
             status = runtime.stage_evidence_status(
-                self.result, self.item, "pre-merge",
+                observed, self.item, "pre-merge",
                 required_state="open")
             closure = runtime.batch_review_evidence(
-                self.result, self.item, required_state="open")
+                observed, self.item, required_state="open")
             self.assertEqual(
                 [], runtime.wrapper_binding_errors(
-                    self.result, self.item, copy.deepcopy(closure),
+                    observed, self.item, copy.deepcopy(closure),
                     required_state="open"))
+            self.assertEqual(1, resolve.call_count)
+            with runtime.evidence_observation(observed) as fresh:
+                runtime.batch_review_evidence(fresh, self.item, required_state="open")
+            self.assertEqual(2, resolve.call_count)
+        self.assertNotIn("_audit_stage_resolutions", observed)
+        self.assertNotIn("_audit_evidence_facts", observed)
 
         self.assertEqual("satisfied", status["obligations"][0]["status"])
         self.assertEqual(status["audit_plan_id"], closure["audit_plan_id"])

@@ -454,6 +454,11 @@ def _group_production(result, item, status, first):
 
 def next_stage_step(result, item, due_stage, required_state=None):
     """Return the next missing obligation step, or a complete projection."""
+    with audit_evidence_runtime.evidence_observation(result) as observed:
+        return _next_stage_step(observed, item, due_stage, required_state)
+
+
+def _next_stage_step(result, item, due_stage, required_state):
     status = audit_evidence_runtime.stage_evidence_status(
         result, item, due_stage, required_state=required_state)
     row = _next_executable_row(status)
