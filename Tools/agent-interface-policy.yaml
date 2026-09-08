@@ -801,11 +801,11 @@ tools:
     exposure: cli-only
     workspace_argument: root
     workspace_access: read
-    value_arguments: [suite, python, jobs, list_only, test_files]
+    value_arguments: [suite, python, jobs, list_only, test_files, report]
     read_paths: []
     write_paths: []
     read_write_paths: []
-    external_write: none
+    external_write: optional-test-cost-report
   - tool: profile_candidate
     output: json-option-object
     exposure: mcp

@@ -42,6 +42,7 @@ from Tools.tests.support.batch_close_fixture import AuditScenarioActions
 from Tools.tests.fixtures.integration.checkpoint_contract import (
     copy_checkpoint_seed,
 )
+from Tools.platform.distribution.test_runner import measure_scope, measured
 
 
 # ---------------------------------------------------------------------------
@@ -170,11 +171,12 @@ class RequiredQueueFixture(AuditScenarioActions):
 
     def invoke_tool(self, name, *arguments):
         """Default CLI transport; the representative E2E overrides this seam."""
-        return subprocess.run(
-            [sys.executable, str(TOOLS / name), *arguments],
-            text=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
-            check=False,
-        )
+        with measure_scope("cli-tool", name):
+            return subprocess.run(
+                [sys.executable, str(TOOLS / name), *arguments],
+                text=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                check=False,
+            )
 
 
     def assert_resume_envelope(self, completed, next_action, root=None):
@@ -594,6 +596,7 @@ class RequiredQueueFixture(AuditScenarioActions):
 
 
 
+    @measured("e2e-phase", "open-to-post-delta")
     def merge_and_apply(self, batch_id, object_path):
         ready = self.ready_receipt(batch_id)
         self.transition(batch_id, "open", "--gate-receipt", ready)
@@ -646,6 +649,7 @@ class RequiredQueueFixture(AuditScenarioActions):
         close_gate = close_gate_rows[0]["receipt_id"]
         return delta_apply_receipt, close_receipt, close_gate
 
+    @measured("e2e-phase", "batch-lifecycle")
     def merge_and_close(self, batch_id, object_path):
         delta_apply_receipt, close_receipt, close_gate = self.merge_and_apply(
             batch_id, object_path)

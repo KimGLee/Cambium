@@ -15,6 +15,7 @@ permissions:
   contents: read
   issues: read
   pull-requests: read
+  actions: read
 
 jobs:
   plan:
@@ -53,12 +54,14 @@ jobs:
         env:
           BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+          GH_TOKEN: ${{ github.token }}
         run: |
           PYTHONDONTWRITEBYTECODE=1 python .github/scripts/ci_impact.py plan \
             --root . \
             --event "${{ github.event_name }}" \
             --base "$BASE_SHA" \
             --head "$HEAD_SHA" \
+            --cost-history \
             --plan-path "$RUNNER_TEMP/ci-plan.json" \
             --github-output "$GITHUB_OUTPUT"
 
@@ -139,7 +142,7 @@ jobs:
           {
             printf '## %s\n\n' "$TEST_LABEL"
             printf 'Shard: `%s` · Python: `%s`\n\n' "$SHARD" "$PYTHON_VERSION"
-            printf 'The name highlights one representative module, not an exclusive domain or test level. The complete file list below is authoritative for this job.\n\n'
+            printf 'Placement uses advisory measured costs and file isolation. Selection is unchanged; the complete file list follows.\n\n'
             printf '%s\n' "$TEST_FILES" | tr ',' '\n' | while IFS= read -r test_file; do
               printf -- '- `Tools/tests/%s`\n' "$test_file"
             done
@@ -188,7 +191,17 @@ jobs:
       - name: Run catalog-selected tests
         env:
           TEST_FILES: ${{ matrix.test-files }}
-        run: make test-selected PYTHON=python TEST_FILES="$TEST_FILES"
+        run: make test-selected PYTHON=python TEST_FILES="$TEST_FILES" TEST_REPORT="$RUNNER_TEMP/test-costs.json"
+
+      - name: Preserve test costs
+        if: ${{ always() }}
+        continue-on-error: true
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # pinned upstream commit
+        with:
+          name: test-costs-${{ matrix.python-version }}-${{ matrix.shard }}
+          path: ${{ runner.temp }}/test-costs.json
+          if-no-files-found: ignore
+          retention-days: 14
 
       - name: Tracked and untracked non-ignored tree must be unchanged
         if: ${{ always() }}

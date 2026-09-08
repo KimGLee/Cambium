@@ -14,11 +14,13 @@ the advisory report next door and never reach an assertion here.
 """
 
 import ast
+from functools import lru_cache
 import os
 from pathlib import Path
 import sys
 import tempfile
 import unittest
+from types import MappingProxyType
 
 TOOLS = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 REPO = os.path.dirname(TOOLS)
@@ -35,6 +37,18 @@ import Tools.platform.distribution.module_boundary_report as module_boundary_rep
 
 MANIFEST = os.path.join(TOOLS, "module-boundaries.yaml")
 TAXONOMY = os.path.join(TOOLS, "tool-taxonomy.yaml")
+
+
+@lru_cache(maxsize=1)
+def repository_facts():
+    """One immutable graph per module process; synthetic probes stay separate."""
+    def freeze(value):
+        if isinstance(value, dict):
+            return MappingProxyType({key: freeze(item) for key, item in value.items()})
+        if isinstance(value, (list, tuple)):
+            return tuple(freeze(item) for item in value)
+        return value
+    return freeze(boundary_facts.collect(REPO))
 
 
 class ImportAttributionProbes(unittest.TestCase):
@@ -194,7 +208,7 @@ class ManifestShape(unittest.TestCase):
     def setUpClass(cls):
         cls.manifest = load_manifest()
         cls.taxonomy = load_taxonomy()
-        cls.facts = boundary_facts.collect(REPO)
+        cls.facts = repository_facts()
 
     def test_schema_version_is_current(self):
         self.assertEqual(
@@ -243,7 +257,7 @@ class ManifestShape(unittest.TestCase):
 
     def test_manifest_regeneration_preserves_reviewed_classification(self):
         rendered = module_boundary_report._emit_manifest(
-            REPO, manifest_path=MANIFEST)
+            REPO, manifest_path=MANIFEST, facts=self.facts)
         regenerated = kblib.parse_yaml_subset(rendered)
         before = {
             row["module"]: (row["area"], row["domain"], row["layer"])
@@ -259,7 +273,7 @@ class ManifestShape(unittest.TestCase):
             self):
         """Reviewed current exports are not derivable from imports alone."""
         rendered = module_boundary_report._emit_manifest(
-            REPO, manifest_path=MANIFEST)
+            REPO, manifest_path=MANIFEST, facts=self.facts)
         regenerated = kblib.parse_yaml_subset(rendered)
         before = {
             row["module"]: set(row.get("public") or ())
@@ -282,7 +296,7 @@ class ManifestShape(unittest.TestCase):
 
     def test_hierarchy_projection_lists_every_module_once(self):
         rendered = module_boundary_report.render_hierarchy(
-            module_boundary_report.build_report(REPO))
+            module_boundary_report.build_report(REPO, facts=self.facts))
         for row in self.manifest["modules"]:
             marker = "      %s  [%s]\n" % (
                 row["module"], row["path"].removeprefix("Tools/"))
@@ -311,7 +325,7 @@ class Completeness(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.manifest = load_manifest()
-        cls.facts = boundary_facts.collect(REPO)
+        cls.facts = repository_facts()
 
     def test_every_shipped_module_is_declared(self):
         declared = {row["module"] for row in self.manifest["modules"]}
@@ -378,7 +392,7 @@ class PublicSurface(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.manifest = load_manifest()
-        cls.facts = boundary_facts.collect(REPO)
+        cls.facts = repository_facts()
         cls.by_module = {row["module"]: row
                          for row in cls.manifest["modules"]}
 
@@ -827,7 +841,7 @@ class DependencyDirection(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls):
-        cls.facts = boundary_facts.collect(REPO)
+        cls.facts = repository_facts()
         cls.manifest = load_manifest()
 
     def test_import_graph_is_acyclic(self):

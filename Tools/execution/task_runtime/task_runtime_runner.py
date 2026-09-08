@@ -55,6 +55,7 @@ MAINTENANCE_GATE_RECEIPT_PATH = runtime_paths.child_path(
 TERMINAL_RECEIPT_PATH = runtime_paths.path_for("terminal-audit-receipts")
 TERMINAL_PROOF_PATH = assemble_terminal_proof.DEFAULT_PROOF_PATH
 _EXECUTION_OBSERVATION = ContextVar("runner_execution_observation", default=None)
+_ADMISSION_OBSERVATION = ContextVar("runner_admission_observation", default=None)
 
 
 class RunnerError(ValueError):
@@ -685,6 +686,7 @@ def _resume_action(result):
     return handler.resume(result, route, parameters, token)
 
 
+@compile_cli_contract.with_checked_views
 def next_action(root):
     """Read one authoritative snapshot and return its typed next action."""
     # An applied Task Plan intentionally precedes Required Queue
@@ -693,6 +695,10 @@ def next_action(root):
     # the ordinary full validation in the same validator.
     result = runtime_validation.validate_runtime(
         root, allow_unmaterialized_queue=True)
+    admission = _ADMISSION_OBSERVATION.get()
+    if admission is not None:
+        admission.clear()
+        admission[os.path.realpath(os.path.abspath(root))] = result
     try:
         return _resume_action(result)
     except HostEnvironmentUnavailable as exc:
@@ -763,33 +769,43 @@ def _compiled_cli_contract(root):
             "carried-runtime CLI contract cannot be loaded; generate it with "
             "`python3 Tools/compile_cli_contract.py . "
             "--projection-target carried-runtime`: %s" % exc) from exc
-    checked = _carried_cli_contract_currentness_check(root)
-    if checked.returncode != 0:
-        details = (checked.stderr or checked.stdout or "").strip()
-        raise RunnerError(
-            "carried-runtime CLI contract is not current for the executed "
-            "Tool root%s" % (": " + details if details else ""))
-    try:
-        with open(path, "rb") as handle:
-            after = handle.read()
-        if after != before:
+    def validate():
+        checked = _carried_cli_contract_currentness_check(root)
+        if checked.returncode != 0:
+            details = (checked.stderr or checked.stdout or "").strip()
             raise RunnerError(
-                "carried-runtime CLI contract changed during currentness "
-                "validation")
-        document = kblib.parse_yaml_subset(after.decode("utf-8"))
-    except (OSError, UnicodeError, kblib.YamlSubsetError, ValueError) as exc:
-        raise RunnerError(
-            "validated carried-runtime CLI contract cannot be loaded: %s" %
-            exc) from exc
-    if not isinstance(document, dict) or \
-            document.get("artifact") != "cli-invocation-contract" or \
-            not isinstance(document.get("tools"), list):
-        raise RunnerError("compiled CLI contract has an invalid artifact shape")
-    if document.get("projection_target") != "carried-runtime":
-        raise RunnerError(
-            "Runner requires a carried-runtime CLI contract; found %r" %
-            document.get("projection_target"))
-    return document
+                "carried-runtime CLI contract is not current for the executed "
+                "Tool root%s" % (": " + details if details else ""))
+        try:
+            with open(path, "rb") as handle:
+                after = handle.read()
+            if after != before:
+                raise RunnerError(
+                    "carried-runtime CLI contract changed during currentness "
+                    "validation")
+            document = kblib.parse_yaml_subset(after.decode("utf-8"))
+        except (OSError, UnicodeError, kblib.YamlSubsetError, ValueError) as exc:
+            raise RunnerError(
+                "validated carried-runtime CLI contract cannot be loaded: %s" %
+                exc) from exc
+        if not isinstance(document, dict) or \
+                document.get("artifact") != "cli-invocation-contract" or \
+                not isinstance(document.get("tools"), list):
+            raise RunnerError("compiled CLI contract has an invalid artifact shape")
+        if document.get("projection_target") != "carried-runtime":
+            raise RunnerError(
+                "Runner requires a carried-runtime CLI contract; found %r" %
+                document.get("projection_target"))
+        return document
+
+    def readback():
+        with open(path, "rb") as handle:
+            return handle.read()
+    try:
+        return compile_cli_contract.checked_projection(
+            root, tool_availability.CARRIED_RUNTIME, before, validate, readback)
+    except compile_cli_contract.ContractError as exc:
+        raise RunnerError(str(exc)) from exc
 
 
 def _compiled_cli_tool(root, tool):
@@ -805,14 +821,9 @@ def _compiled_cli_tool(root, tool):
     return dict(matches[0], invocation_contract_source_hash=document.get("source_hash"))
 
 
-def _compiled_entrypoint(root, tool, record):
-    relative = record.get("module")
-    return _repository_tool_entrypoint(root, tool, relative)
-
-
 def _command_inputs(root, tool, arguments):
     record = _compiled_cli_tool(root, tool)
-    script = _compiled_entrypoint(root, tool, record)
+    script = _repository_tool_entrypoint(root, tool, record.get("module"))
     schema = cli_argv_renderer.schema_from_compiled_tool(record)
     values = dict(arguments)
     interface = record.get("agent_interface") or {}
@@ -855,6 +866,11 @@ def _render_command(tool, script, schema, values):
 
 
 def _run_command(root, tool, arguments):
+    # A child is an independent admission/write boundary. Never retain a
+    # pre-dispatch runtime view for subsequent actions or resulting-state reads.
+    admission = _ADMISSION_OBSERVATION.get()
+    if admission is not None:
+        admission.clear()
     observation = _EXECUTION_OBSERVATION.get()
     if observation is not None:
         observation.update(stage="parameter-admission", current_tool=tool)
@@ -1203,13 +1219,25 @@ def _require_input(action, supplied):
     return interface_contract.bind_input(action["required_input"], supplied)
 
 
-def _current_audit_step(root, action):
-    result = runtime_validation.validate_runtime(root)
+def _recheck_audit_step(root, action):
+    """Re-read current runtime, reusing only the owner's admitted source views.
+
+    The runtime owner rechecks Profile/Standards identity and current bytes.
+    Queue, pages, evidence and the stage are read again, not taken from a cached
+    verdict. Independent producer admission, locked CAS and read-back remain.
+    """
+    prior = (_ADMISSION_OBSERVATION.get() or {}).get(
+        os.path.realpath(os.path.abspath(root)))
+    kwargs = {}
+    if prior is not None and not queue_runtime.runtime_admission_errors(prior):
+        kwargs = queue_runtime.runtime_authority_validation_kwargs(
+            queue_runtime.runtime_authority_context(prior))
+    result = runtime_validation.validate_runtime(root, **kwargs)
     item = (result.get("items_by_id") or {}).get(
         action["target"].get("batch_id"))
     if not isinstance(item, dict) or item.get("state") != "open":
         raise RunnerError("awaited audit action no longer targets an open batch")
-    return result, item, audit_execution_runtime.next_stage_step(
+    return audit_execution_runtime.next_stage_step(
         result, item, "pre-merge", required_state="open")
 
 
@@ -1400,7 +1428,7 @@ def _await_terminal_audit(root, action, supplied, route):
 
 def _await_audit_producer(root, action, supplied, _route):
     token = action["token"]
-    _result, _item, step = _current_audit_step(root, action)
+    step = _recheck_audit_step(root, action)
     if step.get("token") != token:
         raise RunnerError("awaited audit action is no longer current")
     arguments = dict(step["resume_arguments"])
@@ -1548,14 +1576,19 @@ def _continue_awaited(root, action, supplied):
     return handler.await_input(root, action, supplied, route)
 
 
+@compile_cli_contract.with_checked_views
 def execute(root, expected_action_id, input_record=None):
     """Execute exactly the current action and return its authoritative result."""
-    action = next_action(root)
-    if action["action_id"] != expected_action_id:
-        raise RunnerError(
-            "next action changed; expected %s, current %s" %
-            (expected_action_id, action["action_id"]))
-    return _execute_observed(root, action, input_record)
+    token = _ADMISSION_OBSERVATION.set({})
+    try:
+        action = next_action(root)
+        if action["action_id"] != expected_action_id:
+            raise RunnerError(
+                "next action changed; expected %s, current %s" %
+                (expected_action_id, action["action_id"]))
+        return _execute_observed(root, action, input_record)
+    finally:
+        _ADMISSION_OBSERVATION.reset(token)
 
 
 def _execute_observed(root, action, input_record=None):
@@ -1612,6 +1645,7 @@ def _execute_observed(root, action, input_record=None):
     }
 
 
+@compile_cli_contract.with_checked_views
 def run_until_boundary(root, *, max_steps=64):
     """Run deterministic invoke actions until a semantic or repair boundary."""
     if not isinstance(max_steps, int) or isinstance(max_steps, bool) or \

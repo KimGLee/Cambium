@@ -10,8 +10,8 @@ Regenerate with `python3 Tools/generate_tool_catalog.py .`. Verify without writi
 | Source | Exact-byte SHA-256 |
 |---|---|
 | `Tools/tool-taxonomy.yaml` | `sha256:44c6a46acf604ab28023a4028fb026bf11b01582093450bd113ff3527c95998f` |
-| `Tools/module-boundaries.yaml` | `sha256:3c75149b19d3f5637d8fdb90315036b0c1e9e361adba65973e0aae9adedb3b6b` |
-| `Tools/agent-interface-policy.yaml` | `sha256:07fc19fa9400db95382d5f65f56fb0e67b55bf180844163d91010460faae4336` |
+| `Tools/module-boundaries.yaml` | `sha256:894c7aadf99dfe784a991614523bef0350720a02288829099eaea07865637a8a` |
+| `Tools/agent-interface-policy.yaml` | `sha256:16cbe961699c6a473c9f28d7b1e9b6b1a79bdc6c410ffc8f115ed2f70feee803` |
 | `Tools/operation-capabilities.yaml` | `sha256:d6c672632ff29288fd15d1df5a4b85b7cabbf9e34a292cf0782bb9269c741a02` |
 
 Static consumption, private access, and dependency facts come from `Tools/platform/distribution/module_boundary_facts.py` over shipped production Python modules; its excluded directories are `__pycache__`, `compiled`, `schemas`, `tests`. CLI and MCP exposure and the shared Host transport come only from `Tools/agent-interface-policy.yaml`. The static Python scan deliberately excludes `subprocess-cli`, `registry-driven-dynamic-import`; registered capability relationships and MCP subprocess routes are listed separately below rather than being mislabeled as Python symbol imports.
@@ -25,9 +25,9 @@ Static consumption, private access, and dependency facts come from `Tools/platfo
 | declared cli tools | 68 |
 | mcp tools | 50 |
 | host transports | 1 |
-| static public api symbols | 1543 |
-| declared unused static public apis | 71 |
-| declared public apis without observed consumers | 29 |
+| static public api symbols | 1546 |
+| declared unused static public apis | 72 |
+| declared public apis without observed consumers | 30 |
 | registered capability relationships | 150 |
 | registered symbol relationships | 80 |
 | source public exports | 344 |
@@ -586,7 +586,7 @@ One deterministic use case that composes domain contracts and infrastructure.
 
 | Module | Path | Type | Responsibility class | Interface exposure |
 |---|---|---|---|---|
-| `platform.agent_interface.compile_cli_contract` | `Tools/platform/agent_interface/compile_cli_contract.py` | python-module | `platform / agent-interface / application` | static Python (5 symbols / 3 consumers) |
+| `platform.agent_interface.compile_cli_contract` | `Tools/platform/agent_interface/compile_cli_contract.py` | python-module | `platform / agent-interface / application` | static Python (7 symbols / 3 consumers) |
 | `platform.agent_interface.inspect_host` | `Tools/platform/agent_interface/inspect_host.py` | python-module | `platform / agent-interface / application` | static Python (1 symbols / 1 consumers), registered capability (1 capabilities / 1 consumers), registered Python symbol (1 consumers) |
 | `platform.agent_interface.mcp_server` | `Tools/platform/agent_interface/mcp_server.py` | python-module | `platform / agent-interface / application` | none observed |
 | `platform.agent_interface.render_host_configs` | `Tools/platform/agent_interface/render_host_configs.py` | python-module | `platform / agent-interface / application` | static Python (5 symbols / 3 consumers) |
@@ -664,7 +664,7 @@ One deterministic use case that composes domain contracts and infrastructure.
 | `platform.distribution.test_catalog` | `Tools/platform/distribution/test_catalog.py` | python-module | `platform / distribution / application` | static Python (3 symbols / 2 consumers) |
 | `platform.distribution.test_runner` | `Tools/platform/distribution/test_runner.py` | python-module | `platform / distribution / application` | static Python (1 symbols / 1 consumers) |
 | `platform.distribution.tool_catalog` | `Tools/platform/distribution/tool_catalog.py` | python-module | `platform / distribution / application` | static Python (1 symbols / 1 consumers) |
-| `platform.distribution.upstream_component_boundary` | `Tools/platform/distribution/upstream_component_boundary.py` | python-module | `platform / distribution / application` | static Python (5 symbols / 3 consumers) |
+| `platform.distribution.upstream_component_boundary` | `Tools/platform/distribution/upstream_component_boundary.py` | python-module | `platform / distribution / application` | static Python (6 symbols / 4 consumers) |
 
 ##### Layer: `entrypoint`
 
@@ -689,7 +689,7 @@ Repository IO, serialization, locking, transport, generation, and other Tool-own
 | Module | Path | Type | Responsibility class | Interface exposure |
 |---|---|---|---|---|
 | `platform.distribution.install_profile_toolchain` | `Tools/platform/distribution/install_profile_toolchain.py` | python-module | `platform / distribution / infrastructure` | static Python (1 symbols / 1 consumers) |
-| `platform.distribution.module_boundary_facts` | `Tools/platform/distribution/module_boundary_facts.py` | python-module | `platform / distribution / infrastructure` | static Python (11 symbols / 3 consumers) |
+| `platform.distribution.module_boundary_facts` | `Tools/platform/distribution/module_boundary_facts.py` | python-module | `platform / distribution / infrastructure` | static Python (10 symbols / 2 consumers) |
 | `platform.distribution.node_runtime` | `Tools/platform/distribution/node_runtime.py` | python-module | `platform / distribution / infrastructure` | static Python (3 symbols / 1 consumers) |
 | `platform.distribution.prepare_host_toolchain` | `Tools/platform/distribution/prepare_host_toolchain.py` | python-module | `platform / distribution / infrastructure` | static Python (1 symbols / 1 consumers) |
 | `platform.distribution.prepare_rendering_runtime` | `Tools/platform/distribution/prepare_rendering_runtime.py` | python-module | `platform / distribution / infrastructure` | static Python (2 symbols / 2 consumers), registered capability (1 capabilities / 2 consumers), registered Python symbol (1 consumers) |
@@ -1219,10 +1219,10 @@ Repository IO, serialization, locking, transport, generation, and other Tool-own
 | `execution.task_runtime.queue_runtime.resolve_activation_phase_receipt` | `execution.task_runtime.check_queue` | declared |
 | `execution.task_runtime.queue_runtime.resume_next_action` | `execution.task_runtime.check_queue`, `execution.task_runtime.queue_check_receipt`, `execution.task_runtime.task_runtime_runner` | declared |
 | `execution.task_runtime.queue_runtime.reviewed_without_current_evidence` | `execution.task_runtime.check_queue` | declared |
-| `execution.task_runtime.queue_runtime.runtime_admission_errors` | `execution.evidence.metadata_gate_runtime`, `execution.evidence.record_gate_result`, `execution.task_runtime.update_queue`, `knowledge.metadata.apply_metadata_transition` | declared |
-| `execution.task_runtime.queue_runtime.runtime_authority_context` | `execution.evidence.record_gate_attestation`, `execution.evidence.record_gate_result`, `execution.planning.apply_task_plan`, `execution.planning.compile_queue`, `execution.task_runtime.apply_amendment`, `execution.task_runtime.apply_contract_amendment`, `execution.task_runtime.apply_delta`, `execution.task_runtime.register_amendment`, `execution.task_runtime.update_queue`, `execution.task_runtime.update_task`, `knowledge.metadata.apply_metadata_transition` | declared |
+| `execution.task_runtime.queue_runtime.runtime_admission_errors` | `execution.evidence.metadata_gate_runtime`, `execution.evidence.record_gate_result`, `execution.task_runtime.task_runtime_runner`, `execution.task_runtime.update_queue`, `knowledge.metadata.apply_metadata_transition` | declared |
+| `execution.task_runtime.queue_runtime.runtime_authority_context` | `execution.evidence.record_gate_attestation`, `execution.evidence.record_gate_result`, `execution.planning.apply_task_plan`, `execution.planning.compile_queue`, `execution.task_runtime.apply_amendment`, `execution.task_runtime.apply_contract_amendment`, `execution.task_runtime.apply_delta`, `execution.task_runtime.register_amendment`, `execution.task_runtime.task_runtime_runner`, `execution.task_runtime.update_queue`, `execution.task_runtime.update_task`, `knowledge.metadata.apply_metadata_transition` | declared |
 | `execution.task_runtime.queue_runtime.runtime_authority_lock_fields` | `execution.evidence.record_evidence_invalidation`, `execution.evidence.record_gate_attestation`, `execution.evidence.record_gate_result`, `execution.planning.compile_queue`, `execution.task_runtime.apply_amendment`, `execution.task_runtime.apply_contract_amendment`, `execution.task_runtime.apply_delta`, `execution.task_runtime.init_state`, `execution.task_runtime.register_amendment`, `execution.task_runtime.update_queue`, `execution.task_runtime.update_task`, `knowledge.metadata.apply_metadata_transition` | declared |
-| `execution.task_runtime.queue_runtime.runtime_authority_validation_kwargs` | `execution.evidence.manual_attestation`, `execution.evidence.record_evidence_invalidation`, `execution.evidence.record_gate_result`, `execution.planning.apply_task_plan`, `execution.planning.compile_queue`, `execution.task_runtime.apply_amendment`, `execution.task_runtime.apply_contract_amendment`, `execution.task_runtime.apply_delta`, `execution.task_runtime.register_amendment`, `execution.task_runtime.update_queue`, `execution.task_runtime.update_task`, `knowledge.metadata.apply_metadata_transition` | declared |
+| `execution.task_runtime.queue_runtime.runtime_authority_validation_kwargs` | `execution.evidence.manual_attestation`, `execution.evidence.record_evidence_invalidation`, `execution.evidence.record_gate_result`, `execution.planning.apply_task_plan`, `execution.planning.compile_queue`, `execution.task_runtime.apply_amendment`, `execution.task_runtime.apply_contract_amendment`, `execution.task_runtime.apply_delta`, `execution.task_runtime.register_amendment`, `execution.task_runtime.task_runtime_runner`, `execution.task_runtime.update_queue`, `execution.task_runtime.update_task`, `knowledge.metadata.apply_metadata_transition` | declared |
 | `execution.task_runtime.queue_runtime.runtime_metadata_execution_contract` | `execution.evidence.metadata_gate_runtime`, `execution.task_runtime.apply_delta`, `execution.task_runtime.update_queue` | declared |
 | `execution.task_runtime.queue_runtime.standards_adoption_plan_errors` | `governance.standards.adopt_standards` | declared |
 | `execution.task_runtime.queue_runtime.standards_gate_registry` | `governance.control.run_gates` | declared |
@@ -1951,11 +1951,13 @@ Repository IO, serialization, locking, transport, generation, and other Tool-own
 | `platform.agent_interface.cli_argv_renderer.build_argv` | `execution.task_runtime.task_runtime_runner`, `platform.agent_interface.mcp_server` | declared |
 | `platform.agent_interface.cli_argv_renderer.cli_metadata` | `platform.agent_interface.mcp_server` | declared |
 | `platform.agent_interface.cli_argv_renderer.schema_from_compiled_tool` | `execution.task_runtime.task_runtime_runner` | declared |
-| `platform.agent_interface.compile_cli_contract.ContractError` | `governance.control.run_gates` | declared |
+| `platform.agent_interface.compile_cli_contract.ContractError` | `execution.task_runtime.task_runtime_runner`, `governance.control.run_gates` | declared |
 | `platform.agent_interface.compile_cli_contract.TOOL` | `execution.task_runtime.task_runtime_runner` | declared |
 | `platform.agent_interface.compile_cli_contract.apply_gated_writer_tools` | `governance.control.run_gates` | declared |
+| `platform.agent_interface.compile_cli_contract.checked_projection` | `execution.task_runtime.task_runtime_runner` | declared |
 | `platform.agent_interface.compile_cli_contract.compile_contract` | `governance.control.run_gates` | declared |
 | `platform.agent_interface.compile_cli_contract.main` | `compile_cli_contract` | declared |
+| `platform.agent_interface.compile_cli_contract.with_checked_views` | `execution.task_runtime.task_runtime_runner` | declared |
 | `platform.agent_interface.entrypoint_loader.EntrypointResolutionError` | `execution.audit.audit_execution_runtime`, `execution.audit.record_changed_scope_evidence`, `execution.task_runtime.queue_runtime.gate_registry`, `execution.task_runtime.task_runtime_runner`, `governance.control.metadata_execution_contract`, `governance.profile.profile_contract`, `platform.agent_interface.compile_cli_contract` | declared |
 | `platform.agent_interface.entrypoint_loader.capture_argument_parser` | `execution.audit.record_changed_scope_evidence`, `platform.agent_interface.compile_cli_contract` | declared |
 | `platform.agent_interface.entrypoint_loader.describe_entrypoint` | `execution.audit.audit_execution_runtime`, `execution.audit.record_changed_scope_evidence`, `execution.task_runtime.task_runtime_runner`, `governance.control.metadata_execution_contract`, `platform.agent_interface.compile_cli_contract` | declared |
@@ -2115,7 +2117,6 @@ Repository IO, serialization, locking, transport, generation, and other Tool-own
 | `platform.distribution.module_boundary_facts.consumption_pairs` | `platform.distribution.module_boundary_report`, `platform.distribution.tool_catalog` | declared |
 | `platform.distribution.module_boundary_facts.def_span_sha256` | `platform.distribution.module_boundary_report` | declared |
 | `platform.distribution.module_boundary_facts.import_graph` | `platform.distribution.module_boundary_report`, `platform.distribution.tool_catalog` | declared |
-| `platform.distribution.module_boundary_facts.is_cli_module` | `platform.agent_interface.compile_cli_contract` | declared |
 | `platform.distribution.module_boundary_facts.package_layers` | `platform.distribution.tool_catalog` | declared |
 | `platform.distribution.module_boundary_facts.private_pairs` | `platform.distribution.module_boundary_report` | declared |
 | `platform.distribution.module_boundary_facts.strongly_connected` | `platform.distribution.module_boundary_report`, `platform.distribution.tool_catalog` | declared |
@@ -2139,6 +2140,7 @@ Repository IO, serialization, locking, transport, generation, and other Tool-own
 | `platform.distribution.tool_catalog.main` | `generate_tool_catalog` | declared |
 | `platform.distribution.upstream_component_boundary.ComponentBoundaryError` | `governance.profile.apply_profile_adoption`, `platform.distribution.check_upstream_components` | declared |
 | `platform.distribution.upstream_component_boundary.DEFAULT_MANIFEST_PATH` | `platform.distribution.check_upstream_components` | declared |
+| `platform.distribution.upstream_component_boundary.component_content_identity` | `platform.agent_interface.compile_cli_contract` | declared |
 | `platform.distribution.upstream_component_boundary.evaluate` | `governance.profile.apply_profile_adoption`, `governance.standards.adopt_standards`, `platform.distribution.check_upstream_components` | declared |
 | `platform.distribution.upstream_component_boundary.manifest_path` | `platform.distribution.check_upstream_components` | declared |
 | `platform.distribution.upstream_component_boundary.manifest_text` | `platform.distribution.check_upstream_components` | declared |
@@ -2656,6 +2658,7 @@ Repository IO, serialization, locking, transport, generation, and other Tool-own
 | `platform.common.kblib` | `validate_structure_registry_contract` |
 | `platform.common.reporting` | `validate_publication_result` |
 | `platform.distribution.install_profile_toolchain` | `main` |
+| `platform.distribution.module_boundary_facts` | `is_cli_module` |
 | `platform.repository.path_admission` | `admit_paths` |
 | `platform.repository.path_admission` | `capability_is_active` |
 | `platform.repository.path_capability` | `verify_named_target` |
@@ -2942,7 +2945,7 @@ Repository IO, serialization, locking, transport, generation, and other Tool-own
 | `render_structure_projection` | yes | yes | yes | via:cambium-mcp-stdio | `mcp` | `write` | `none` |
 | `run_gates` | yes | yes | yes | via:cambium-mcp-stdio | `mcp` | `read` | `none` |
 | `run_task` | yes | yes | yes | via:cambium-mcp-stdio | `mcp` | `write` | `none` |
-| `run_tests` | yes | yes | no | none | `cli-only` | `read` | `none` |
+| `run_tests` | yes | yes | no | none | `cli-only` | `read` | `optional-test-cost-report` |
 | `scaffold_profile` | yes | yes | yes | via:cambium-mcp-stdio | `mcp` | `write` | `none` |
 | `seal_receipts` | yes | yes | yes | via:cambium-mcp-stdio | `mcp` | `write` | `none` |
 | `stamp_cards` | yes | yes | no | none | `cli-only` | `write` | `none` |

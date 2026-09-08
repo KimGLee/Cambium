@@ -191,8 +191,10 @@ def _classification_map(repo_root, facts=None):
     }
 
 
-def build_report(repo_root):
-    facts = facts_module.collect(repo_root)
+def build_report(repo_root, *, facts=None):
+    """Project one owner-collected source graph, without collecting it twice."""
+    if facts is None:
+        facts = facts_module.collect(repo_root)
     classifications = _classification_map(repo_root, facts)
     graph = facts_module.import_graph(facts)
     pairs = facts_module.consumption_pairs(facts)
@@ -354,7 +356,7 @@ def _recorded_manifest(manifest_path, facts=None):
 
 
 def _emit_manifest(repo_root, *, acknowledge_drift=False,
-                   manifest_path=None):
+                   manifest_path=None, facts=None):
     """Print a manifest describing what the tree does today, verbatim.
 
     Every module gets an entry because an undeclared module is a hole in the
@@ -362,7 +364,8 @@ def _emit_manifest(repo_root, *, acknowledge_drift=False,
     content binding because the alternative -- declaring them public -- would
     promise compatibility this distribution never made.
     """
-    facts = facts_module.collect(repo_root)
+    if facts is None:
+        facts = facts_module.collect(repo_root)
     recorded, classifications, recorded_public = _recorded_manifest(
         manifest_path or os.path.join(repo_root, "Tools",
                                       "module-boundaries.yaml"), facts)

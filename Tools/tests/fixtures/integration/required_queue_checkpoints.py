@@ -18,6 +18,7 @@ from Tools.tests.support.required_queue_fixture import (
     install_terminal_checkpoint_dependencies,
 )
 from Tools.tests.support.profile_fixture import install_loadable_profile
+from Tools.platform.distribution.test_runner import measure_scope
 from Tools.tests.fixtures.integration.checkpoint_contract import (
     PERSISTED_PATHS,
     PROFILE_DEPENDENCY_BUILDER,
@@ -91,7 +92,8 @@ class RequiredQueueBaseCheckpointCase(RequiredQueueFixture,
         self.addCleanup(self.temporary.cleanup)
         self.root = Path(self.temporary.name) / "repo"
         base_root, self.scenario = _template("base")
-        shutil.copytree(base_root, self.root)
+        with measure_scope("checkpoint", "copy-private"):
+            shutil.copytree(base_root, self.root)
 
 
 class GeneratedRequiredQueueCheckpointCase(RequiredQueueFixture,
@@ -124,7 +126,8 @@ class GeneratedRequiredQueueCheckpointCase(RequiredQueueFixture,
         self.temporary = tempfile.TemporaryDirectory()
         self.addCleanup(self.temporary.cleanup)
         self.root = Path(self.temporary.name) / "repo"
-        shutil.copytree(self._validated_checkpoint_root, self.root)
+        with measure_scope("checkpoint", "copy-private"):
+            shutil.copytree(self._validated_checkpoint_root, self.root)
 
 
 class MaintenanceClosedCheckpointCase(GeneratedRequiredQueueCheckpointCase):

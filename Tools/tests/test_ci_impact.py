@@ -9,6 +9,10 @@ tested only for delegation to that shared runner.
 """
 
 import importlib.util
+import io
+import json
+from types import SimpleNamespace
+import zipfile
 from pathlib import Path
 import tempfile
 import unittest
@@ -198,35 +202,54 @@ class ToolDependencyImpactContractTests(CiImpactFixture):
 class CiMatrixPresentationContractTests(unittest.TestCase):
 
     def test_member_labels_preserve_exact_selection_and_version_order(self):
-        weights = {
-            "test_audit_evidence.py": 300,
-            "test_batch_close.py": 300,
-            "test_profile.py": 100,
-            "test_queue.py": 50,
+        facts = {
+            "test_lifecycle.py": {"seconds": 600, "e2e": True, "parallel_safe": False, "samples": 4},
+            "test_owner.py": {"seconds": 50, "e2e": False, "parallel_safe": True, "samples": 2},
+            "test_consumer.py": {"seconds": 30, "e2e": False, "parallel_safe": False, "samples": 2},
+            "test_transport.py": {"seconds": 10, "e2e": False, "parallel_safe": True, "samples": 0},
         }
-        cases = (
-            (["test_queue.py"], "queue"),
-            (["test_batch_close.py", "test_audit_evidence.py"],
-             "audit evidence"),
-            (list(reversed(weights)),
-             "audit evidence"),
-        )
-        with mock.patch.object(
-                ci_impact, "_test_weight",
-                side_effect=lambda root, name: weights[name]):
-            for members, label in cases:
-                for shard in ("full-01", "affected-01"):
-                    with self.subTest(members=members, shard=shard):
-                        original = list(members)
-                        matrix = ci_impact._matrix(
-                            ROOT, ("3.10", "3.14"), [(shard, members)])
-                        self.assertEqual({"include": [
-                            {"python-version": version, "shard": shard,
-                             "test-label": label,
-                             "test-files": ",".join(original)}
-                            for version in ("3.10", "3.14")
-                        ]}, matrix)
-                        self.assertEqual(original, members)
+        for prefix in ("full", "affected"):
+            with mock.patch.object(ci_impact, "_scheduling_facts", return_value=facts), \
+                    mock.patch.object(ci_impact, "FULL_SHARD_COUNT", 3):
+                matrix = ci_impact._matrix(ROOT, ("3.10", "3.14"), list(reversed(facts)), prefix)
+            self.assertEqual(["3.10"] * 3 + ["3.14"] * 3, [row["python-version"] for row in matrix["include"]])
+            for version in ("3.10", "3.14"):
+                rows = [row for row in matrix["include"] if row["python-version"] == version]
+                assigned = [name for row in rows for name in row["test-files"].split(",")]
+                self.assertEqual(sorted(facts), sorted(assigned))
+                self.assertEqual("test_lifecycle.py", rows[0]["test-files"])
+                self.assertEqual(["Lifecycle A", "Tools A", "Tools B"], [row["test-label"] for row in rows])
+                self.assertEqual(600, rows[0]["estimated-seconds"])
+            self.assertEqual(80, ci_impact._estimated_makespan(
+                ["test_owner.py", "test_consumer.py", "test_transport.py"], facts))
+
+    def test_cost_samples_are_advisory_medians_and_never_zero_for_unknowns(self):
+        samples = {"test_ci_impact.py": [
+            {"seconds": 2}, {"seconds": 1000}, {"seconds": 4},
+            {"seconds": float("nan")}, {"seconds": -1}]}
+        facts = ci_impact._scheduling_facts(ROOT, ["test_ci_impact.py", "test_unknown.py"], samples)
+        self.assertEqual(4, facts["test_ci_impact.py"]["seconds"])
+        self.assertEqual(3, facts["test_ci_impact.py"]["samples"])
+        self.assertGreater(facts["test_unknown.py"]["seconds"], 0)
+        self.assertEqual("source-size-fallback", facts["test_unknown.py"]["cost_basis"])
+
+    def test_history_is_bounded_main_only_and_network_failure_falls_back(self):
+        memory = io.BytesIO()
+        with zipfile.ZipFile(memory, "w") as archive:
+            archive.writestr("job.txt",
+                "Successfully set up CPython (3.14.7)\\n"
+                "test runner: suite=full module=1/1 path=Tools/tests/test_alpha.py "
+                "cases=2 mode=serial elapsed=4.000s exit=0\\n")
+        runs = {"workflow_runs": [{"id": 1, "event": "push", "head_branch": "main",
+                "conclusion": "success", "head_sha": "a" * 40}]}
+        with mock.patch.object(ci_impact.subprocess, "run", side_effect=[
+                SimpleNamespace(stdout=json.dumps(runs).encode()), SimpleNamespace(stdout=memory.getvalue())]) as api:
+            result = ci_impact._historical_costs("owner/repo")
+        self.assertEqual(2, api.call_count)
+        self.assertEqual(4, result["samples"]["test_alpha.py"][0]["seconds"])
+        self.assertEqual("3.14.7", result["samples"]["test_alpha.py"][0]["python"])
+        with mock.patch.object(ci_impact.subprocess, "run", side_effect=OSError("offline")):
+            self.assertEqual("unavailable", ci_impact._historical_costs("owner/repo")["status"])
 
 
 class SelectedTestRunnerDelegationContractTests(unittest.TestCase):
@@ -248,7 +271,7 @@ class SelectedTestRunnerDelegationContractTests(unittest.TestCase):
                 "run-tests", "--root", str(ROOT), "--tests", "test_alpha.py",
                 "--jobs", "1"])
         self.assertEqual(0, result)
-        run.assert_called_once_with(ROOT, "test_alpha.py", 1)
+        run.assert_called_once_with(ROOT, "test_alpha.py", 1, None)
 
 
 if __name__ == "__main__":
