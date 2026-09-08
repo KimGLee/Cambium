@@ -19,9 +19,10 @@ from Tools.execution.task_runtime import queue_runtime
 import Tools.execution.audit.assemble_terminal_proof as assemble_terminal_proof
 import Tools.execution.audit.audit_dimension_contract as audit_dimension_contract
 import Tools.execution.audit.audit_evidence_runtime as audit_evidence_runtime
-from Tools.execution.audit import audit_execution_runtime, batch_review_obligation_contract
+from Tools.execution.audit import batch_review_obligation_contract, check_batch_close
 import Tools.execution.task_runtime.runtime_validation as runtime_validation  # noqa: E402
 import Tools.platform.common.kblib as kblib
+from Tools.platform.agent_interface import agent_interface_contract
 import Tools.execution.task_runtime.runtime_paths as runtime_paths
 from Tools.tests.fixtures.e2e import RequiredQueueE2EScenarioCase
 
@@ -32,6 +33,23 @@ class RequiredQueueLifecycleEndToEndTests(RequiredQueueE2EScenarioCase):
     START_SCENARIO = "initial-plan"
     MCP_TRANSPORT = True
     TASK_PAGE_TIERS = {"Topics/A.md": "M"}
+
+    def invoke_tool(self, name, *arguments):
+        if name == "check_batch_close.py":
+            # The real carried surface includes two intentional, fully
+            # qualified README owners. Review exactly that observed candidate,
+            # not every duplicate basename or a fabricated passing Receipt.
+            graph = check_batch_close._graph_and_basename_check(str(self.root))
+            self.assertEqual([], graph["errors"])
+            self.assertEqual([{
+                "tool": "check_batch_close", "check": "duplicate-markdown-basename",
+                "target": "README.md", "result": "candidate",
+                "details": "duplicate Markdown basename: Tools/README.md, Tools/knowledge/rendering/README.md",
+            }], graph["candidates"])
+            candidate = check_batch_close._stable_candidate(
+                graph["candidates"][0], "graph_and_duplicate_basenames")
+            arguments += ("--accept-candidate-id", candidate["candidate_id"])
+        return super().invoke_tool(name, *arguments)
 
     def prepare_premerge_audit_evidence(self, batch_id):
         if batch_id != "B1":
@@ -47,6 +65,7 @@ class RequiredQueueLifecycleEndToEndTests(RequiredQueueE2EScenarioCase):
         reviewed = {}
         withdrew = False
         old_review = None
+        runner_review_exercised = False
         # One representative lifecycle uses the real execution projection.
         # These are the fixture reviewer's semantic inputs, not a second
         # obligation registry or a production auto-approval algorithm.
@@ -54,13 +73,18 @@ class RequiredQueueLifecycleEndToEndTests(RequiredQueueE2EScenarioCase):
             "always", "when-status-fields-apply",
             "when-failure-behavior-is-genuinely-not-applicable",
         }
+        action = None
         for _ in range(2 * len(obligations) + 10):
-            runtime = runtime_validation.validate_runtime(self.root)
-            self.assertEqual([], runtime["errors"])
-            step = audit_execution_runtime.next_stage_step(
-                runtime, runtime["items_by_id"][batch_id], "pre-merge", required_state="open")
-            if step["status"] == "complete":
+            # Consume the Runner's already reread next action. Only a direct
+            # writer outside Runner requires a fresh observation; the fixture
+            # does not run a parallel audit-stage planner on every iteration.
+            action = self._drain_activation_delivery(action)
+            self.assertEqual(batch_id, action["target"]["batch_id"], action)
+            if action["token"] == "publish-candidate-delta":
                 if withdrew:
+                    self.assertTrue(runner_review_exercised)
+                    runtime = runtime_validation.validate_runtime(self.root)
+                    self.assertEqual([], runtime["errors"])
                     self.assertNotEqual(old_review["receipt_id"],
                                         reviewed[old_review["obligation_id"]]["receipt_id"])
                     self.assertNotIn(old_review["receipt_id"],
@@ -91,27 +115,59 @@ class RequiredQueueLifecycleEndToEndTests(RequiredQueueE2EScenarioCase):
                     self.assertEqual("confirmed", applied["stdout_json"]["publication"]["record_confirmation"], applied)
                 self.assertEqual(history, register.read_bytes())
                 withdrew = True
+                action = None
                 continue
-            if step["status"] == "invoke":
-                tool, arguments = step["tool"], dict(step["arguments"])
+            if action["disposition"] == "invoke":
+                tool, arguments = action["tool"], dict(action["arguments"])
+                outcome = self.mcp_session.call(tool, dict(arguments, root=str(self.root), apply=True))
+                action = None
             else:
-                self.assertIn(step["token"], ("record-batch-page-review", "record-rendering-verification"), step)
-                tool, arguments = step["resume_tool"], dict(step["resume_arguments"])
-                if step["token"] == "record-rendering-verification":
+                self.assertIn(action["token"], ("record-batch-page-review", "record-rendering-verification"), action)
+                tool = action["required_input"]["x-cambium-binding"]["tool"]
+                arguments = {}
+                if action["token"] == "record-rendering-verification":
                     arguments["rendering_mode"] = "source-only"
                 else:
-                    obligation = obligations[arguments["obligation_id"]]
+                    obligation = obligations[action["target"]["obligation_id"]]
                     spec = batch_review_obligation_contract.obligation_spec_for_rule(obligation["owner_rule_id"])
-                    constraints = step["target"]["review_input_constraints"]
+                    constraints = action["target"]["review_input_constraints"]
                     applicable = (spec["applicability"] in applicable_fixture_conditions or
                                   constraints["required_consumption_obligation_ids"])
                     arguments.update(
                         reviewer_context_id="fixture-review-context", reviewer_role="reviewer",
                         verdict="passed", statement="The synthetic fixture entry meets this bounded checklist item.",
-                        applicability_disposition="applicable" if applicable else "not-applicable")
+                        applicability_disposition="applicable" if applicable else "not-applicable",
+                        applicability_reason=None)
                     if not applicable:
                         arguments["applicability_reason"] = "This isolated synthetic concept contains no corresponding construct or external claim."
-            outcome = self.mcp_session.call(tool, dict(arguments, root=str(self.root), apply=True))
+                # T7 owns one real nullable M handoff and the rendering
+                # handoff, not the full input matrix for every M atom. Other
+                # obligations still use their real MCP producer and consume
+                # the Runner's current machine binding. T2/T3/T5 own input
+                # combinations and producer acceptance predicates.
+                exercise_runner = (
+                    action["token"] == "record-rendering-verification" or
+                    (not runner_review_exercised and
+                     arguments.get("applicability_disposition") == "applicable"))
+                if exercise_runner:
+                    relative_input = runtime_paths.TRANSIENT_ROOT + "/e2e-audit-input.json"
+                    (self.root / relative_input).write_text(json.dumps(arguments), encoding="utf-8")
+                    outcome = self.mcp_session.call("run_task", {
+                        "root": str(self.root), "execute": action["action_id"], "input": relative_input})
+                    self.assertEqual(0, outcome["exit_code"], outcome)
+                    execution = outcome["stdout_json"]
+                    self.assertEqual(0, execution["returncode"], execution)
+                    self.assertEqual(tool, execution["substeps"][-1]["tool"])
+                    self.assertIsNone(execution["next_action_error"], execution)
+                    self.assertIsNotNone(execution["next_action"], execution)
+                    if action["token"] == "record-batch-page-review":
+                        runner_review_exercised = True
+                    action = execution["next_action"]
+                    outcome = dict(outcome, stdout_json=json.loads(execution["output"]))
+                else:
+                    bound = agent_interface_contract.bind_input(action["required_input"], arguments)
+                    outcome = self.mcp_session.call(tool, dict(bound, root=str(self.root), apply=True))
+                    action = None
             self.assertEqual(0, outcome["exit_code"], outcome)
             if tool == "record_batch_page_review":
                 receipt_id = outcome["stdout_json"]["receipt_id"]

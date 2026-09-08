@@ -30,13 +30,13 @@ from Tools.tests.support.task_runtime_object_factory import (  # noqa: E402
 )
 
 
-def resume_action(token, result=None):
+def resume_action(token, result=None, tool="fixture-tool"):
     """Project one registered Queue token over an admitted memory state."""
     current = parsed_runtime_state() if result is None else result
     with mock.patch.object(
             runner.queue_runtime, "resume_next_action",
             return_value=token), mock.patch.object(
-                runner, "_capability_tool", return_value="fixture-tool"):
+                runner, "_capability_tool", return_value=tool):
         with mock.patch.object(runner, "_rendering_boundary", return_value=None):
             return runner._resume_action(current)
 
@@ -61,25 +61,6 @@ class TaskRuntimeRunnerUnitTests(unittest.TestCase):
         self.assertTrue(action["target"]["recorded_state_preserved"])
         state["structural_errors"] = ["corrupt ledger"]
         self.assertEqual("repair-runtime", resume_action("repair-runtime", state)["reason_code"])
-
-    def test_page_review_dispatch_preserves_owner_derived_references(self):
-        step = {
-            "token": "record-batch-page-review",
-            "resume_tool": "record_batch_page_review",
-            "resume_arguments": {
-                "batch": "B1", "consumed_evidence_ref": ["derived-current"],
-            },
-        }
-        with mock.patch.object(runner, "_current_audit_step",
-                               return_value=({}, {}, step)), \
-                mock.patch.object(runner, "_run_command", return_value=completed()) as invoke:
-            runner._await_audit_producer(
-                "/fixture", {"token": step["token"]},
-                {"verdict": "passed", "statement": "reviewed"}, None)
-        self.assertEqual(["derived-current"],
-                         invoke.call_args.args[2]["consumed_evidence_ref"])
-        self.assertTrue(invoke.call_args.args[2]["apply"])
-        self.assertNotIn("consumed_evidence_refs", invoke.call_args.args[2])
 
     def test_main_preserves_step_failure_and_observation_failure(self):
         cases = (({"returncode": 2, "next_action_error": None}, 2),
@@ -120,7 +101,8 @@ class TaskRuntimeRunnerUnitTests(unittest.TestCase):
                 mock.patch.object(runner, "_capability_tool", return_value="prepare_rendering_runtime"):
             action = runner.next_action("/fixture")
             self.assertEqual("await-host", action["disposition"])
-            self.assertEqual(["mermaid-fence"], action["required_input"]["host_preparation"]["arguments"]["construct"])
+            self.assertIsNone(action["required_input"])
+            self.assertEqual(["mermaid-fence"], action["target"]["host_preparation"]["arguments"]["construct"])
             self.assertEqual("open", state["items_by_id"]["B1"]["state"])
             self.assertEqual({"restored": True}, runner.next_action("/fixture"))
 
@@ -236,6 +218,7 @@ class TaskRuntimeRunnerUnitTests(unittest.TestCase):
             execute.assert_not_called()
 
         failed = {
+            "execution_status": "returned", "failure": None, "substeps": [],
             "returncode": 7,
             "output": "",
             "diagnostics": "producer refused",
@@ -271,6 +254,96 @@ class TaskRuntimeRunnerUnitTests(unittest.TestCase):
 
 class TaskRuntimeRunnerContractTests(unittest.TestCase):
     """One representative compiled-CLI consumption contract."""
+
+    def test_page_review_binding_roundtrips_null_and_exact_consumption(self):
+        from Tools.execution.audit import audit_obligation_projection as projection
+        from Tools.execution.audit import audit_execution_runtime as execution
+        from Tools.platform.agent_interface import cli_argv_renderer as renderer
+        registry = execution.batch_review_obligation_contract
+        parser = runner.entrypoint_loader.capture_argument_parser(
+            "record_batch_page_review", TOOLS, require_marker=True)
+        cli = {"tool": "record_batch_page_review", "arguments":
+               compile_cli_contract.describe_arguments(TOOLS.parent, parser)}
+        owner = projection.obligation_spec_for_rule(registry.M_ATOMIC_RULE_IDS[0], root=TOOLS.parent)
+        obligation = projection.required_obligation(projection.resolve_obligation_definition(
+            owner, "Topics/A.md", trigger="new"))
+        obligation["obligation_id"] = "obligation-one"
+        status = {"audit_plan_path": ".cambium/work_specs/audit-plans/p.yaml",
+                  "audit_plan_sha256": "sha256:" + "a" * 64,
+                  "obligations": [{"obligation": obligation, "status": "missing"}]}
+        result = {"root": str(TOOLS.parent)}
+        step = execution._missing_step(result, {"id": "B1"}, status, obligation)
+        with mock.patch.object(runner, "_compiled_cli_tool", return_value=cli):
+            shape = runner._producer_input(result, step)
+        with mock.patch.object(runner, "_compiled_cli_tool", return_value=dict(
+                cli, invocation_contract_source_hash="sha256:" + "b" * 64)):
+            changed_shape = runner._producer_input(result, step)
+        self.assertEqual(shape["properties"], changed_shape["properties"])
+        self.assertNotEqual(shape["x-cambium-binding"]["source_fingerprint"],
+                            changed_shape["x-cambium-binding"]["source_fingerprint"])
+        supplied = {"reviewer_context_id": "reviewer-one", "reviewer_role": "reviewer",
+                    "verdict": "passed", "statement": "Bounded review result.",
+                    "applicability_disposition": "applicable", "applicability_reason": None}
+        action = {"token": step["token"], "required_input": shape}
+        bound = runner._require_input(action, supplied)
+        captured = []
+
+        def parse_command(_root, tool, arguments):
+            argv, _ = renderer.build_argv(tool, renderer.schema_from_compiled_tool(cli),
+                                         dict(arguments, root=str(TOOLS.parent)))
+            captured.append(parser.parse_args(argv))
+            return completed()
+
+        with mock.patch.object(runner, "_current_audit_step", return_value=(result, {}, step)), \
+                mock.patch.object(runner, "_run_command", side_effect=parse_command):
+            runner._await_audit_producer(TOOLS.parent, action, bound, None)
+        self.assertIsNone(captured[0].applicability_reason)
+        self.assertEqual([], captured[0].consumed_evidence_ref)
+        self.assertEqual("obligation-one", captured[0].obligation_id)
+        self.assertTrue(captured[0].apply)
+        for invalid in (dict(supplied, batch="B2"), dict(supplied, consumed_evidence_ref=[]),
+                        dict(supplied, reviewer_role=0), {}):
+            with self.subTest(keys=sorted(invalid)), self.assertRaises(ValueError):
+                runner._require_input(action, invalid)
+
+    def test_execute_preserves_predispatch_and_partial_substep_failure(self):
+        action = resume_action("materialize-required-queue")
+        # Only IO is replaced. The same dispatch/result observation path runs
+        # twice and the second command fails before process creation.
+        from contextlib import contextmanager
+
+        @contextmanager
+        def admission(*_args, **_kwargs):
+            yield {"arguments": {"root": str(TOOLS.parent)}, "missing": [], "acknowledgement_error": None}
+
+        schema = {"type": "object", "properties": {"root": {"type": "string",
+                  "x-cambium-cli": {"option_strings": [], "action": "store"}}}, "required": ["root"]}
+        output_contract = {"unused": "observation supplied below"}
+        inputs = ("fixture-tool.py", schema, {"root": str(TOOLS.parent)}, "root", output_contract, None)
+
+        def two_steps(root, _action):
+            runner._run_command(root, "producer-one", {})
+            runner._run_command(root, "producer-two", {})
+
+        for command_inputs, expected_calls in (([ValueError("invalid field")], 0),
+                                               ([inputs, ValueError("invalid field")], 1)):
+            with mock.patch.object(runner, "_internal_step", side_effect=two_steps), \
+                    mock.patch.object(runner, "_command_inputs", side_effect=command_inputs), \
+                    mock.patch.object(runner.path_admission, "invocation", side_effect=admission), \
+                    mock.patch.object(runner.kblib, "run_cambium_subprocess",
+                                      return_value=completed(stdout='{"receipt_id":"committed-one"}\n')) as process, \
+                    mock.patch.object(runner, "observe_tool_output", return_value={"output_reliable": True}), \
+                    mock.patch.object(runner, "next_action", side_effect=ValueError("read-back unavailable")):
+                outcome = runner._execute_observed(str(TOOLS.parent), action)
+            self.assertEqual(expected_calls, process.call_count)
+            self.assertEqual(expected_calls, len(outcome["substeps"]))
+            self.assertIsNone(outcome["tool_returncode"])
+            self.assertEqual("parameter-admission", outcome["failure"]["stage"])
+            self.assertEqual("read-back unavailable", outcome["next_action_error"])
+            if expected_calls:
+                self.assertIn("committed-one", outcome["substeps"][0]["output"])
+                self.assertEqual(0, outcome["substeps"][0]["tool_returncode"])
+            self.assertIsNone(runner._EXECUTION_OBSERVATION.get())
 
     def test_command_consumes_compiled_positionals_and_transport_once(self):
         root = TOOLS.parent
@@ -430,10 +503,10 @@ class TaskRuntimeRunnerCheckpointIntegrationTests(unittest.TestCase):
             self.assertEqual("await-host", action["disposition"])
             self.assertEqual(action_contract.action_route("prepare-host-environment").token_template, action["token"])
             self.assertEqual("prepare_rendering_runtime",
-                             action["required_input"]["host_preparation"]["tool"])
-            with self.assertRaisesRegex(runner.RunnerError, "unsupported field"):
+                             action["target"]["host_preparation"]["tool"])
+            with self.assertRaisesRegex(runner.RunnerError, "no submittable input"):
                 runner._continue_awaited("/fixture", action, {"ready": True})
-            with self.assertRaisesRegex(runner.RunnerError, "resolved outside"):
+            with self.assertRaisesRegex(runner.RunnerError, "no submittable input"):
                 runner._continue_awaited("/fixture", action, {})
         probe.assert_not_called()
         command.assert_not_called()
@@ -490,7 +563,12 @@ class TaskRuntimeRunnerCheckpointIntegrationTests(unittest.TestCase):
 
     def test_execute_dispatches_invoke_and_await_then_returns_readback(self):
         invoke = resume_action("materialize-required-queue")
-        awaiting = resume_action("resume-paused-task")
+        parser = runner.entrypoint_loader.capture_argument_parser("update_task", TOOLS, require_marker=True)
+        cli = {"tool": "update_task", "arguments": compile_cli_contract.describe_arguments(TOOLS.parent, parser)}
+        paused = parsed_runtime_state()
+        paused["progress"]["task_state"] = "paused"
+        with mock.patch.object(runner, "_compiled_cli_tool", return_value=cli):
+            awaiting = resume_action("resume-paused-task", paused, tool="update_task")
         after = resume_action("activate-ready-batch:B1")
         tool_result = completed(stdout='{"applied": true}\n')
         cases = (
@@ -573,7 +651,8 @@ class TaskRuntimeRunnerCheckpointIntegrationTests(unittest.TestCase):
                                  proof_receipt)), \
                 mock.patch.object(
                     runner.runtime_validation, "validate_runtime",
-                    side_effect=(admitted, closed)) as readback:
+                    side_effect=(admitted, closed)) as readback, mock.patch.object(
+                    runner.assemble_terminal_proof, "read_terminal_audit_input", return_value={}) as preflight:
             result = runner._await_terminal_audit(
                 "/fixture", {}, {
                     "terminal_audit_input":
@@ -581,6 +660,7 @@ class TaskRuntimeRunnerCheckpointIntegrationTests(unittest.TestCase):
                 }, route)
 
         self.assertEqual(0, result.returncode)
+        preflight.assert_called_once_with("/fixture", ".cambium/tmp/terminal-audit.yaml")
         self.assertEqual(2, readback.call_count)
         self.assertEqual(
             ["check_queue", "check_corpus_plan", "assemble_terminal_proof",
@@ -595,6 +675,13 @@ class TaskRuntimeRunnerCheckpointIntegrationTests(unittest.TestCase):
             assembler["terminal_audit_receipt_register"])
         writer = dispatched.call_args_list[4].args[2]
         self.assertEqual("proof-pass", writer["terminal_proof_receipt"])
+        with mock.patch.object(runner.assemble_terminal_proof, "read_terminal_audit_input",
+                               side_effect=ValueError("invalid terminal input")), \
+                mock.patch.object(runner, "_run_command") as dispatched:
+            with self.assertRaisesRegex(ValueError, "invalid terminal input"):
+                runner._await_terminal_audit("/fixture", {}, {
+                    "terminal_audit_input": ".cambium/tmp/terminal-audit.yaml"}, route)
+        dispatched.assert_not_called()
 
 
 if __name__ == "__main__":

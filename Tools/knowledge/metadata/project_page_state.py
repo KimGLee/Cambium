@@ -374,7 +374,9 @@ def _build_plan(root, selected_pages, ledger_override=None, rules=None,
     document = (kblib.parse_yaml_subset(ledger.read_text())
                 if ledger_override is None else ledger_override)
     rows = _ledger_rows(document, active_rules)
-    selected = selected_pages if selected_pages else sorted(rows)
+    if selected_pages == []:
+        raise ValueError("explicit page selection cannot be empty; omit it for the Ledger scope")
+    selected = sorted(rows) if selected_pages is None else selected_pages
     unknown = [page for page in (selected_pages or []) if page not in rows]
     if unknown:
         raise ValueError("not in the Coverage Ledger: %s" % ", ".join(unknown))

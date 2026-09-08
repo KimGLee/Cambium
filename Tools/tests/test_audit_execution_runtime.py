@@ -93,7 +93,7 @@ class AuditExecutionRuntimeTests(unittest.TestCase):
 
         self.assertEqual("await-agent", step["status"])
         self.assertEqual("record-substantive-review", step["token"])
-        self.assertIn("verdict", step["required_input"])
+        self.assertIn("verdict", step["required_input"]["parameters"])
         self.assertEqual("record_substantive_review", step["resume_tool"])
         self.assertEqual(1, step["resume_arguments"]["round"])
         self.assertNotIn("round_1_receipt_id", step["resume_arguments"])
@@ -165,7 +165,8 @@ class AuditExecutionRuntimeTests(unittest.TestCase):
                 self.assertIsNone(step["capability_id"])
                 self.assertIsNone(step["tool"])
                 self.assertNotIn("resume_tool", step)
-                self.assertIn("external_resolution", step["required_input"])
+                self.assertIsNone(step["required_input"])
+                self.assertIn("external_resolution", step["external_instruction"])
 
     def test_batch_page_variant_comes_from_frozen_producer_check(self):
         registry = audit_execution_runtime.batch_review_obligation_contract
@@ -183,7 +184,7 @@ class AuditExecutionRuntimeTests(unittest.TestCase):
                     audit_obligation_projection.required_obligation(definition))
                 step = self.project()
                 self.assertEqual(variant, step["resume_arguments"]["variant"])
-                self.assertNotIn("consumed_evidence_refs", step["required_input"])
+                self.assertNotIn("consumed_evidence_refs", step["required_input"]["parameters"])
                 self.assertEqual([], step["resume_arguments"]["consumed_evidence_ref"])
                 self.assert_execution_consumer(step["resume_capability_id"])
 

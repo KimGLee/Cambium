@@ -252,13 +252,19 @@ Each CLI's `--help` states its write mode, output options, and required inputs. 
 
 Gate identity, receipt meaning, reuse, and completion authority remain with [K00/12](<../kernel/K00 Standards Control/12 Control Registry.md>) and [K12/07](<../kernel/K12 Quality Assurance/07 Audit Evidence Reuse and Invalidation.md>). A SHA-256 value binds bytes; it is not a signature. Actor and reviewer fields are recorded assertions unless an external authenticated runner supplies a stronger trust anchor. Do not collapse a documented HOLD exit into either success or failure; callers must preserve the tool's exact result.
 
-Audit producers return publication facts separately from their business verdict. A confirmed `changes-required` review is successfully recorded but is not passing review evidence. A write error can coexist with observed bytes; an uncertain result is not a claim that nothing was written. Manual-attestation tools return the same publication envelope in JSON mode, with their original record array under `receipts`. The transient envelope is not a Receipt and does not authorize a stage transition; catalogs still read and validate the persisted records.
+Publication and verdict are separate: a confirmed `changes-required` record is not passing evidence; a write error does not prove no bytes were written. Manual attestations use the same JSON envelope, with records under `receipts`. Envelopes are transient observations; catalogs validate persisted evidence.
 
-MCP retains the raw `exit_code` and its process-code `verdict`, alongside `output_reliable` and `invocation_reliable`. Output validation or capability confirmation failure stops the call without discarding returned publication facts. Runner children use the same path admission, with separate acknowledgement scopes and no widening of matching inherited capabilities. Child execution and subsequent next-action observation remain separate results.
+MCP retains `exit_code`, its process-code `verdict`, `output_reliable` and `invocation_reliable`. Output or capability confirmation failures stop without discarding publication facts. Runner uses the same path admission, with child-specific acknowledgements and no capability widening.
 
-The compiler derives each tool's Host-environment boundary from its actual entrypoint wrapper. MCP and Runner use the same output observer: a declared Host handoff retains its diagnostic and any prior output, requires a stop, and does not claim either a passing Receipt or that no write occurred.
+Fill only the Runner's generated `required_input` properties; `x-cambium-binding` retains machine-selected identities. CLI declarations own shapes; domain contracts own conditions. `required_input: null` means external resolution, not a submittable readiness assertion.
 
-Receipt-specific observation reads the effective append after-image, not a cached input snapshot. Component-owned receipt targets remain internal, rooted by the invocation descriptor rather than exposed as extra public arguments. This covers receipt file reads and writes and their reachable catalog targets; it is not a claim that every runtime directory enumeration, multi-object transaction or Host filesystem operation is descriptor-based. Their existing owners retain their locks, hashes, CAS and completion checks.
+Omission, `null` and `[]` are distinct. Only declared nullable arguments encode null by omission. In `record_batch_page_review`, omitted `consumed_evidence_ref` means derive, while `[]` asserts an empty set. Unrepresentable values fail rather than widening scope.
+
+Execution responses retain substeps and failure stages. Pre-dispatch rejection has no child return code; later failures and `next_action_error` preserve prior publication observations without authorizing retries or creating a runtime log.
+
+Entrypoint wrappers declare Host boundaries. The shared MCP/Runner output observer preserves diagnostics and prior output on Host handoff; it requires a stop, not a passing Receipt or a no-write claim.
+
+Receipt observation reads the append after-image, not cached input. Internal Receipt targets use the invocation descriptor. This does not extend to every directory scan, transaction or Host operation; those owners retain their existing locks, hashes, CAS and completion checks.
 
 Two input roles may reference the same retained snapshot. Their canonical path, target and parent identities must agree before physical read authority can be shared; the read acknowledges those equivalent path capabilities, not the roles' governance meaning. Write capabilities are not coalesced, and same-mode write aliases remain refused.
 

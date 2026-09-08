@@ -38,16 +38,6 @@ class RenderingVerificationError(audit_producer_runtime.AuditProducerError):
     """A rendering record cannot be safely produced or published."""
 
 
-def _optional_text(value, label):
-    if value is None:
-        return None
-    if (not isinstance(value, str) or not value or
-            value.strip() != value):
-        raise RenderingVerificationError(
-            "%s must be null or a non-empty trimmed string" % label)
-    return value
-
-
 def resolve_obligation(plan, obligation_id, contract=None, root=None):
     """Resolve the unique every-batch rendering record-shape obligation."""
     contract = contract or rendering_verification_contract.load_contract()
@@ -88,28 +78,9 @@ def resolve_obligation(plan, obligation_id, contract=None, root=None):
 def _record_input(*, rendering_mode, visual_trigger,
                   unresolved_question, verification_target,
                   verification_result, contract):
-    values = rendering_verification_contract.validate_contract(contract)
-    mode = values["modes"].get(rendering_mode)
-    if mode is None:
-        raise RenderingVerificationError(
-            "rendering_mode is not registered by K12/02")
-    visual_trigger = _optional_text(visual_trigger, "visual_trigger")
-    unresolved_question = _optional_text(
-        unresolved_question, "unresolved_question")
-    verification_target = _optional_text(
-        verification_target, "verification_target")
-    verification_result = _optional_text(
-        verification_result, "verification_result")
-    if not mode["escalation"] and visual_trigger is None:
-        visual_trigger = "not_applicable"
-    return {
-        "rendering_mode": rendering_mode,
-        "highest_level": mode["highest_level"],
-        "visual_trigger": visual_trigger,
-        "unresolved_question": unresolved_question,
-        "verification_target": verification_target,
-        "verification_result": verification_result,
-    }
+    return rendering_verification_contract.rendering_input(
+        rendering_mode, visual_trigger, unresolved_question,
+        verification_target, verification_result, contract=contract)
 
 
 def _dependency_fingerprint(record_input, contract):
@@ -278,6 +249,7 @@ def _context(root_arg, batch_id, plan_path, obligation_id):
 
 
 def main(argv=None):
+    from Tools.platform.agent_interface.agent_interface_contract import nullable_argument
     parser = kblib.ArgumentParser(
         description="Record one plan-bound K12/02 rendering record shape")
     parser.add_argument("root", help="adopting repository root")
@@ -287,10 +259,10 @@ def main(argv=None):
     parser.add_argument(
         "--rendering-mode", required=True,
         choices=tuple(sorted(rendering_verification_contract.RENDERING_MODES)))
-    parser.add_argument("--visual-trigger")
-    parser.add_argument("--unresolved-question")
-    parser.add_argument("--verification-target")
-    parser.add_argument("--verification-result")
+    nullable_argument(parser.add_argument("--visual-trigger"))
+    nullable_argument(parser.add_argument("--unresolved-question"))
+    nullable_argument(parser.add_argument("--verification-target"))
+    nullable_argument(parser.add_argument("--verification-result"))
     parser.add_argument("--receipts", default=DEFAULT_RECEIPTS)
     parser.add_argument("--apply", action="store_true")
     args = parser.parse_args(argv)

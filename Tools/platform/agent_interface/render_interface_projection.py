@@ -96,7 +96,7 @@ ARTIFACT_KIND = agent_interface_contract.PROJECTION_ARTIFACT_KIND
 DEFAULT_CONTRACT = "Tools/compiled/cli-contract.yaml"
 CARRIED_RUNTIME_CONTRACT = runtime_paths.CLI_CONTRACT_ARTIFACT_PATH
 UPSTREAM_ARTIFACT = "cli-invocation-contract"
-UPSTREAM_SCHEMA_VERSION = 10
+UPSTREAM_SCHEMA_VERSION = agent_interface_contract.CLI_CONTRACT_SCHEMA_VERSION
 UPSTREAM_FIELDS = frozenset((
     "schema_version", "artifact", "generator", "generator_version",
     "derived_from", "source_files", "source_hash",
@@ -123,18 +123,6 @@ SHA256_RE = re.compile(r"sha256:[0-9a-f]{64}\Z")
 # no `sse` and no `websocket` branch is emitted. Their absence is
 # structural: there is no key for them to be false in.
 MCP_TRANSPORTS = ("stdio", "streamable-http")
-
-# argparse `type=` names -> JSON Schema `type`. A name that is not here --
-# any custom converter callable -- projects as the default below, which is
-# what argv actually carries; the declared converter name travels intact in
-# `x-cambium-cli.type` so nothing is lost by the fallback.
-JSON_SCALAR_TYPES = cli_argv_renderer.JSON_SCALAR_TYPES
-# argparse hands an argument's `type` callable a string, and 268 of the 275
-# declared arguments declare no `type` at all. `string` is therefore the
-# accurate projection of an undeclared type, not a weak one.
-DEFAULT_SCALAR_TYPE = cli_argv_renderer.DEFAULT_SCALAR_TYPE
-
-COUNT_ACTIONS = cli_argv_renderer.COUNT_ACTIONS
 
 CLI_EXTENSION_KEY = cli_argv_renderer.CLI_EXTENSION_KEY
 EXCLUSIVE_EXTENSION_KEY = "x-cambium-mutually-exclusive"
@@ -247,8 +235,16 @@ FIELD_SOURCES = {
         "(recorded as an empty object for a tool with no arguments)",
     "tools[].inputSchema.properties.*.type":
         "Tools/compiled/cli-contract.yaml: tools[].arguments[].type via "
-        "JSON_SCALAR_TYPES, DEFAULT_SCALAR_TYPE for an undeclared or "
-        "custom converter; boolean/integer/array from action and nargs",
+        "agent_interface_contract.argument_schema; string for an undeclared or "
+        "custom converter, nullable only through explicit source expression metadata",
+    "tools[].inputSchema.properties.*.type[]":
+        "agent_interface_contract.argument_schema from the argument's explicit expression.null_encoding",
+    "tools[].inputSchema.properties.*.x-cambium-cli.null_encoding":
+        "compiled argument expression.null_encoding, validated beside its argparse declaration",
+    "tools[].inputSchema.properties.*.x-cambium-cli.empty_encoding":
+        "compiled argument action/nargs/default through agent_interface_contract.argument_schema",
+    "tools[].inputSchema.properties.*.minimum":
+        "argparse count action through agent_interface_contract.argument_schema",
     "tools[].inputSchema.properties.*.description":
         "Tools/compiled/cli-contract.yaml: tools[].arguments[].help "
         "(omitted when the argument declares none)",
@@ -263,8 +259,9 @@ FIELD_SOURCES = {
     "tools[].inputSchema.properties.*.items.enum[]":
         "same as .enum, for the element of a list-valued argument",
     "tools[].inputSchema.properties.*.minItems":
-        "Tools/compiled/cli-contract.yaml: tools[].arguments[].nargs -- "
-        "'+' consumes one or more, an integer n consumes exactly n",
+        "Tools/compiled/cli-contract.yaml: tools[].arguments[].nargs, required and default -- "
+        "'+' consumes one or more, an integer n consumes exactly n; "
+        "an empty list is allowed only when its parser spelling preserves the value",
     "tools[].inputSchema.properties.*.maxItems":
         "Tools/compiled/cli-contract.yaml: tools[].arguments[].nargs -- "
         "an integer n consumes exactly n",
@@ -521,41 +518,9 @@ def read_contract(path):
 # ---------------------------------------------------------------------------
 
 
-def scalar_type(argument):
-    declared = argument.get("type")
-    if declared is None:
-        return DEFAULT_SCALAR_TYPE
-    return JSON_SCALAR_TYPES.get(declared, DEFAULT_SCALAR_TYPE)
-
-
-def scalar_schema(argument):
-    schema = {"type": scalar_type(argument)}
-    choices = argument.get("choices")
-    if choices:
-        schema["enum"] = list(choices)
-    return schema
-
-
 def property_schema(argument, path_capability=None):
     """One JSON Schema property for one declared argument."""
-    action = argument.get("action")
-    nargs = argument.get("nargs")
-
-    if action in COUNT_ACTIONS:
-        schema = {"type": "integer"}
-    elif nargs == 0:
-        # An action consuming zero argv words is a presence flag: what a
-        # caller decides is whether to pass it.
-        schema = {"type": "boolean"}
-    elif cli_argv_renderer.is_list_valued(argument):
-        schema = {"type": "array", "items": scalar_schema(argument)}
-        if nargs == "+":
-            schema["minItems"] = 1
-        elif isinstance(nargs, int) and not isinstance(nargs, bool):
-            schema["minItems"] = nargs
-            schema["maxItems"] = nargs
-    else:
-        schema = scalar_schema(argument)
+    schema = agent_interface_contract.argument_schema(argument)
 
     help_text = argument.get("help")
     if help_text:
@@ -564,15 +529,6 @@ def property_schema(argument, path_capability=None):
             argument.get("default_type") != "argparse.SUPPRESS":
         schema["default"] = argument["default"]
 
-    extension = {
-        "option_strings": list(argument.get("option_strings") or []),
-        "action": action,
-    }
-    if nargs is not None:
-        extension["nargs"] = nargs
-    if argument.get("type") is not None:
-        extension["type"] = argument["type"]
-    schema[CLI_EXTENSION_KEY] = extension
     if path_capability is not None:
         schema[PATH_EXTENSION_KEY] = {
             "access": path_capability["access"],

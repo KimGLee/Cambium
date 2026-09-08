@@ -13,6 +13,8 @@ import Tools.execution.audit.audit_evidence_runtime as audit_evidence_runtime
 import Tools.execution.audit.audit_lifecycle_contract as audit_lifecycle_contract
 import Tools.execution.audit.batch_review_obligation_contract as batch_review_obligation_contract
 import Tools.execution.audit.audit_producer_chain as audit_producer_chain
+import Tools.execution.audit.substantive_review_contract as substantive_review_contract
+import Tools.knowledge.rendering.rendering_verification_contract as rendering_verification_contract
 import Tools.execution.audit.changed_scope_evidence_contract as changed_scope_evidence_contract
 import Tools.governance.control.metadata_execution_contract as metadata_execution_contract
 import Tools.governance.profile.profile_batch_judgment_contract as profile_batch_judgment_contract
@@ -129,7 +131,8 @@ def _external_reparse(item, status, obligation, *, disposition, token,
         "tool": None,
         "target": _target(item, obligation, status),
         "arguments": {},
-        "required_input": required_input,
+        "required_input": None,
+        "external_instruction": required_input,
         "reason_code": reason_code,
         "reason": reason,
     }
@@ -168,14 +171,8 @@ def _substantive_review_step(result, item, status, obligation, *, prior=None,
     arguments["page"] = obligation["target"]
     if prior is None:
         arguments["round"] = 1
-        required_input = {
-            "authoring_context_id": "string",
-            "reviewer_context_id": "string",
-            "reviewer_role": "string",
-            "verdict": "passed|changes-required",
-            "statement": "string",
-            "findings": "list",
-        }
+        fields = ("authoring_context_id", "reviewer_context_id", "reviewer_role",
+                  "verdict", "statement", "findings")
         reason_code = "substantive-review-round-one-requires-judgment"
     else:
         arguments.update({
@@ -183,13 +180,7 @@ def _substantive_review_step(result, item, status, obligation, *, prior=None,
             "round_1_receipt_id": prior["receipt_id"],
             "authoring_context_id": prior["authoring_context_id"],
         })
-        required_input = {
-            "reviewer_context_id": "string",
-            "reviewer_role": "string",
-            "verdict": "passed|escalated",
-            "statement": "string",
-            "findings": "exact round-1 finding reconciliation list",
-        }
+        fields = ("reviewer_context_id", "reviewer_role", "verdict", "statement", "findings")
         reason_code = "substantive-review-round-two-confirms-corrections"
     return {
         "status": "await-agent",
@@ -198,7 +189,12 @@ def _substantive_review_step(result, item, status, obligation, *, prior=None,
         "tool": None,
         "target": _target(item, obligation, status),
         "arguments": {},
-        "required_input": required_input,
+        "required_input": {
+            "parameters": {name: "finding" if name == "findings" else name for name in fields},
+            "required": list(fields),
+            "shapes": substantive_review_contract.review_input_shape(arguments["round"]),
+            "encodings": {"findings": "json-items"},
+        },
         "reason_code": reason_code,
         "reason": None,
         "resume_tool": _tool(result["root"],
@@ -244,11 +240,11 @@ def _missing_step(result, item, status, obligation):
                 "target": _target(item, obligation, status),
                 "arguments": {},
                 "required_input": {
-                    "rendering_mode": "registered rendering mode",
-                    "visual_trigger": "string|null",
-                    "unresolved_question": "string|null",
-                    "verification_target": "string|null",
-                    "verification_result": "string|null",
+                    "parameters": {name: name for name in (
+                        "rendering_mode", "visual_trigger", "unresolved_question",
+                        "verification_target", "verification_result")},
+                    "conditions": rendering_verification_contract.validate_contract(
+                        rendering_verification_contract.load_contract(result["root"]))["modes"],
                 },
                 "reason_code": "rendering-verification-requires-host-result",
                 "reason": None,
@@ -312,12 +308,13 @@ def _missing_step(result, item, status, obligation):
                            review_input_constraints=constraints),
             "arguments": {},
             "required_input": {
-                "reviewer_context_id": "string",
-                "reviewer_role": "string",
-                "verdict": "passed|changes-required",
-                "statement": "string",
-                "applicability_disposition": "applicable|not-applicable|null",
-                "applicability_reason": "string|null",
+                "parameters": {name: name for name in (
+                    "reviewer_context_id", "reviewer_role", "verdict", "statement",
+                    "applicability_disposition", "applicability_reason")},
+                "required": ["applicability_disposition"] if variant == "m-atomic-item" else [],
+                "shapes": {"applicability_disposition": {
+                    "enum": constraints["allowed_applicability_dispositions"]}},
+                "conditions": constraints,
             },
             "reason_code": "batch-page-review-requires-judgment",
             "reason": None,
@@ -355,8 +352,7 @@ def _missing_step(result, item, status, obligation):
             "target": _target(item, obligation, status),
             "arguments": {},
             "required_input": {
-                "reviewer_role": "string",
-                "statement": "string",
+                "parameters": {name: name for name in ("reviewer_role", "statement")},
             },
             "reason_code": "profile-batch-judgment-requires-authority",
             "reason": None,

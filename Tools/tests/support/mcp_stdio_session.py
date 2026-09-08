@@ -163,9 +163,10 @@ class MCPStdioSession:
             if action != "store":
                 settings["action"] = action
             if action not in {"store_true", "store_false", "count"}:
-                scalar = specification.get("items", specification).get("type")
-                settings["type"] = {"integer": int, "number": float}.get(
-                    scalar, str)
+                # Parse CLI text from its argparse provenance, not the JSON
+                # value union (which can also allow a literal null).
+                settings["type"] = {"int": int, "float": float, "bool": bool}.get(
+                    metadata.get("type"), str)
                 if "nargs" in metadata:
                     settings["nargs"] = metadata["nargs"]
             if options:

@@ -205,6 +205,31 @@ def load_contract(root=None, snapshots=None, *, cache_projection=False):
                               cache_projection=cache_projection)
 
 
+def review_input_shape(round_number, contract=None):
+    """Project finding fields and round choices from the existing review owner."""
+    contract = contract or _SHIPPED_CONTRACT
+    values = validate_contract(contract)
+    if round_number not in range(1, contract["round_cap"] + 1):
+        raise ValueError("review input round exceeds its contract")
+    fields = {}
+    for name, spec in values["finding_fields"].items():
+        field = {"type": ["string", "null"] if spec.get("nullable") else "string"}
+        if name == "severity":
+            field["enum"] = sorted(values["severities"])
+        elif name == "status":
+            field["enum"] = sorted(values["statuses"])
+        elif name == "round_1_finding_id":
+            field = {"type": "null"} if round_number == 1 else {"type": "string", "minLength": 1}
+        fields[name] = field
+    return {
+        "verdict": {"enum": [value for value in values["verdict_results"]
+                              if value != ("escalated" if round_number == 1 else "changes-required")]},
+        "findings": {"type": "array", "minItems": 0 if round_number == 1 else 1,
+                     "items": {"type": "object", "properties": fields,
+                               "required": sorted(fields), "additionalProperties": False}},
+    }
+
+
 def validate_review_receipt(record, contract=None):
     """Validate one review evidence record and return it unchanged."""
     contract = contract or _SHIPPED_CONTRACT

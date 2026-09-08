@@ -323,18 +323,11 @@ def _selective_groups(root, test_names):
 def _shard_label(root, tests):
     """Describe actual members, not a second manually maintained taxonomy.
 
-    Shards mix domains and test levels to balance load. Name their two largest
-    source modules and expose the remaining members in the job summary.
+    Shards mix domains and test levels to balance load. Use one representative
+    module as the short navigation label; the job summary lists all members.
     """
-    representatives = sorted(
-        tests, key=lambda name: (-_test_weight(root, name), name))[:2]
-    label = " + ".join(
-        name.removeprefix("test_").removesuffix(".py").replace("_", " ")
-        for name in representatives)
-    remaining = len(tests) - len(representatives)
-    if remaining:
-        label += " (+%d more modules)" % remaining
-    return label
+    representative = min(tests, key=lambda name: (-_test_weight(root, name), name))
+    return representative.removeprefix("test_").removesuffix(".py").replace("_", " ")
 
 
 def _matrix(root, versions, groups):

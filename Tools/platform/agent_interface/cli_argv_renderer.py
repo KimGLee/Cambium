@@ -7,19 +7,12 @@ choosing an interpreter and entrypoint, and adapting ``ArgvRenderError`` to
 their own public error vocabulary.
 """
 
+from Tools.platform.agent_interface import agent_interface_contract
+
 
 CLI_EXTENSION_KEY = "x-cambium-cli"
 STRUCTURED_OUTPUT_ARGUMENT = "json"
 STRUCTURED_OUTPUT_FLAG = "--json"
-DEFAULT_SCALAR_TYPE = "string"
-JSON_SCALAR_TYPES = {
-    "bool": "boolean",
-    "float": "number",
-    "int": "integer",
-    "str": "string",
-}
-LIST_ACTIONS = frozenset(("append", "append_const", "extend"))
-COUNT_ACTIONS = frozenset(("count",))
 
 
 class ArgvRenderError(ValueError):
@@ -61,78 +54,38 @@ def positional_order(schema):
 
 def render_value(name, declared_type, value):
     """Render one typed value as one argv token."""
+    try:
+        agent_interface_contract.validate_input({"type": declared_type}, value, field=name)
+    except ValueError as exc:
+        raise ArgvRenderError(str(exc), {"field": name, "reason": "invalid-type",
+                                        "expected": declared_type}) from exc
     if declared_type == "integer":
-        if isinstance(value, bool) or not isinstance(value, int):
-            raise ArgvRenderError(
-                "%s is declared integer; %r cannot be rendered onto argv" %
-                (name, value))
         return str(value)
     if declared_type == "number":
-        if isinstance(value, bool) or not isinstance(value, (int, float)):
-            raise ArgvRenderError(
-                "%s is declared number; %r cannot be rendered onto argv" %
-                (name, value))
         return str(value)
-    if not isinstance(value, str):
-        raise ArgvRenderError(
-            "%s is declared string; %r cannot be rendered onto argv" %
-            (name, value))
     return value
 
 
-def _scalar_type(argument):
-    declared = argument.get("type")
-    if declared is None:
-        return DEFAULT_SCALAR_TYPE
-    return JSON_SCALAR_TYPES.get(declared, DEFAULT_SCALAR_TYPE)
-
-
-def is_list_valued(argument):
-    nargs = argument.get("nargs")
-    if argument.get("action") in LIST_ACTIONS:
-        return True
-    if nargs in ("*", "+"):
-        return True
-    return isinstance(nargs, int) and not isinstance(nargs, bool) and nargs >= 1
+def _option_value(flag, value):
+    # Option-looking strings are values, not a second option. No shell or
+    # sentinel escaping is involved; this is argparse's own value spelling.
+    return [flag + "=" + value] if value.startswith("-") else [flag, value]
 
 
 def schema_from_compiled_tool(tool_record):
     """Project the argv-relevant schema from one compiled CLI tool record.
 
-    The projection deliberately contains only fields consumed by
-    ``build_argv``.  It does not reproduce MCP descriptions, path
-    capabilities, choices, defaults, or any other interface policy.
+    It shares mechanical expression, choices and cardinality with MCP and
+    Runner. It does not own path capabilities or domain acceptance policy.
     """
     properties = {}
     required = []
     for argument in tool_record.get("arguments") or []:
         name = argument["dest"]
-        action = argument.get("action")
-        nargs = argument.get("nargs")
-        if action in COUNT_ACTIONS:
-            property_schema = {"type": "integer"}
-        elif nargs == 0:
-            property_schema = {"type": "boolean"}
-        elif is_list_valued(argument):
-            property_schema = {
-                "type": "array",
-                "items": {"type": _scalar_type(argument)},
-            }
-        else:
-            property_schema = {"type": _scalar_type(argument)}
-        meta = {
-            "action": action,
-            "option_strings": list(argument.get("option_strings") or []),
-        }
-        if nargs is not None:
-            meta["nargs"] = nargs
-        if argument.get("type") is not None:
-            meta["type"] = argument["type"]
-        property_schema[CLI_EXTENSION_KEY] = meta
-        properties[name] = property_schema
+        properties[name] = agent_interface_contract.argument_schema(argument)
         if argument.get("required"):
             required.append(name)
-    schema = {"properties": properties}
+    schema = {"type": "object", "properties": properties, "additionalProperties": False}
     if required:
         schema["required"] = required
     return schema
@@ -154,6 +107,21 @@ def build_argv(tool_name, schema, arguments, *,
             "%s does not declare %s" %
             (tool_name, ", ".join(undeclared)),
             {"tool": tool_name, "undeclared": undeclared})
+
+    missing = sorted(set(schema.get("required", [])) - set(arguments))
+    if missing:
+        raise ArgvRenderError("%s misses required arguments: %s" %
+                              (tool_name, ", ".join(missing)),
+                              {"tool": tool_name, "reason": "missing-required", "fields": missing})
+    for key, value in arguments.items():
+        if key == transport_owned_argument:
+            continue
+        try:
+            agent_interface_contract.validate_input(properties[key], value, field=key)
+        except ValueError as exc:
+            raise ArgvRenderError(str(exc), {"tool": tool_name, "field": key,
+                                  "reason": "unrepresentable-input",
+                                  "expected": properties[key]}) from exc
 
     ignored = []
     positional_tokens = []
@@ -186,26 +154,42 @@ def build_argv(tool_name, schema, arguments, *,
         flag = option_flag(option_strings)
         value = arguments[key]
         declared_type = properties[key].get("type")
+        if value is None:
+            if meta.get("null_encoding") != "omit":
+                raise ArgvRenderError("%s has no null encoding" % key,
+                                      {"field": key, "reason": "null-not-expressible"})
+            continue
+        if isinstance(declared_type, list):
+            declared_type = next(item for item in declared_type if item != "null")
+        if meta.get("action") == "count":
+            option_tokens.extend([flag] * value)
+            continue
         if meta.get("action") == "store_true" or declared_type == "boolean":
-            if not isinstance(value, bool):
-                raise ArgvRenderError(
-                    "%s is a flag; %r cannot be rendered onto argv" %
-                    (key, value))
             if value:
                 option_tokens.append(flag)
             continue
         if meta.get("action") == "append" or declared_type == "array":
-            if not isinstance(value, list):
-                raise ArgvRenderError(
-                    "%s is a repeatable option; %r cannot be rendered onto "
-                    "argv" % (key, value))
             item_type = (properties[key].get("items") or {}).get("type")
-            for item in value:
+            nargs = meta.get("nargs")
+            if not value:
+                if nargs == "*":
+                    option_tokens.append(flag)
+                elif meta.get("empty_encoding") != "omit":
+                    raise ArgvRenderError("%s has no empty-list encoding" % key,
+                                          {"field": key, "reason": "empty-not-expressible"})
+                continue
+            if meta.get("action") == "extend" and nargs in ("*", "+"):
+                for item in value:
+                    option_tokens.extend(_option_value(flag, render_value(key, item_type, item)))
+                continue
+            if (meta.get("action") != "append" and nargs in ("*", "+")) or (type(nargs) is int and nargs > 0):
                 option_tokens.append(flag)
-                option_tokens.append(render_value(key, item_type, item))
+                option_tokens.extend(render_value(key, item_type, item) for item in value)
+                continue
+            for item in value:
+                option_tokens.extend(_option_value(flag, render_value(key, item_type, item)))
             continue
-        option_tokens.append(flag)
-        option_tokens.append(render_value(key, declared_type, value))
+        option_tokens.extend(_option_value(flag, render_value(key, declared_type, value)))
 
     tail = positional_tokens + option_tokens
     if transport_owned_argument in properties:

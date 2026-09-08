@@ -179,6 +179,29 @@ def validate_record_for_obligation(record, plan, plan_sha256, obligation,
     return record
 
 
+def rendering_input(rendering_mode, visual_trigger=None, unresolved_question=None,
+                    verification_target=None, verification_result=None, *, contract=None):
+    """Normalize and validate the existing record-input subset at either boundary."""
+    values = validate_contract(contract or _SHIPPED_CONTRACT)
+    mode = values["modes"].get(rendering_mode)
+    if mode is None:
+        raise ValueError("rendering_mode is not registered by K12/02")
+    fields = {"visual_trigger": visual_trigger, "unresolved_question": unresolved_question,
+              "verification_target": verification_target, "verification_result": verification_result}
+    for field, value in fields.items():
+        _support.validate_value(value, values["fields"][field], "rendering-verification." + field)
+    if not mode["escalation"] and fields["visual_trigger"] is None:
+        fields["visual_trigger"] = "not_applicable"
+    if mode["escalation"]:
+        invalid = [field for field, value in fields.items()
+                   if not isinstance(value, str) or not value or value != value.strip() or value == "not_applicable"]
+    else:
+        invalid = [] if fields["visual_trigger"] == "not_applicable" else ["visual_trigger"]
+    if invalid:
+        raise ValueError("rendering-verification record is invalid in: " + ", ".join(invalid))
+    return dict(fields, rendering_mode=rendering_mode, highest_level=mode["highest_level"])
+
+
 def validate_record(record, contract=None):
     """Validate one record-shape evidence object, without judging visuals."""
     contract = contract or _SHIPPED_CONTRACT
@@ -209,17 +232,13 @@ def validate_record(record, contract=None):
         mismatches.append("rendering_mode")
     elif record.get("highest_level") != mode["highest_level"]:
         mismatches.append("highest_level")
-    if mode is not None and mode["escalation"]:
-        for field in (
-                "visual_trigger", "unresolved_question",
-                "verification_target", "verification_result"):
-            value = record.get(field)
-            if (not isinstance(value, str) or not value or
-                    value.strip() != value or value == "not_applicable"):
-                mismatches.append(field)
-    elif mode is not None and record.get("visual_trigger") != \
-            "not_applicable":
-        mismatches.append("visual_trigger")
+    if mode is not None:
+        normalized = rendering_input(
+            **{field: record.get(field) for field in ("rendering_mode", "visual_trigger",
+                "unresolved_question", "verification_target", "verification_result")}, contract=contract)
+        # Stored records remain canonical; only producer inputs may omit the marker.
+        if normalized["visual_trigger"] != record.get("visual_trigger"):
+            mismatches.append("visual_trigger")
     if mismatches:
         raise ValueError(
             "rendering-verification record is invalid in: %s" %

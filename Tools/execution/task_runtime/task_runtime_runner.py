@@ -12,6 +12,7 @@ import os
 import subprocess
 import sys
 from dataclasses import dataclass
+from contextvars import ContextVar
 
 import Tools.execution.audit.audit_evidence_runtime as audit_evidence_runtime
 import Tools.execution.audit.audit_execution_runtime as audit_execution_runtime
@@ -19,6 +20,7 @@ import Tools.execution.audit.assemble_terminal_proof as assemble_terminal_proof
 import Tools.execution.audit.batch_review_receipt_contract as batch_review_receipt_contract
 import Tools.platform.common.kblib as kblib
 import Tools.platform.agent_interface.cli_argv_renderer as cli_argv_renderer
+import Tools.platform.agent_interface.agent_interface_contract as interface_contract
 import Tools.platform.agent_interface.compile_cli_contract as compile_cli_contract
 import Tools.platform.agent_interface.entrypoint_loader as entrypoint_loader
 import Tools.platform.agent_interface.tool_availability as tool_availability
@@ -26,11 +28,14 @@ import Tools.governance.control.metadata_execution_contract as metadata_executio
 import Tools.governance.profile.profile_admission as profile_admission
 import Tools.knowledge.rendering.profile_rendering_evidence_contract as profile_rendering
 import Tools.knowledge.rendering.static_render_runtime as static_render_runtime
+import Tools.knowledge.rendering.rendering_verification_contract as rendering_verification_contract
 from Tools.execution.task_runtime import queue_runtime
 import Tools.execution.task_runtime.queue_runtime.gate_registry as gate_registry
 import Tools.execution.task_runtime.runtime_paths as runtime_paths
 import Tools.execution.task_runtime.runtime_validation as runtime_validation
 import Tools.execution.task_runtime.task_runtime_action as task_runtime_action
+import Tools.execution.task_runtime.runtime_state_contract as runtime_state_contract
+import Tools.execution.audit.batch_review_obligation_contract as batch_review_obligation_contract
 from Tools.platform.common.primitives import catalog_record
 from Tools.platform.common.reporting import write_canonical_json, host_environment_boundary
 from Tools.platform.common.reporting import publication_result_reliable, observe_tool_output
@@ -49,10 +54,15 @@ MAINTENANCE_GATE_RECEIPT_PATH = runtime_paths.child_path(
     runtime_paths.RECEIPT_ROOT, "maintenance-gate.jsonl")
 TERMINAL_RECEIPT_PATH = runtime_paths.path_for("terminal-audit-receipts")
 TERMINAL_PROOF_PATH = assemble_terminal_proof.DEFAULT_PROOF_PATH
+_EXECUTION_OBSERVATION = ContextVar("runner_execution_observation", default=None)
 
 
 class RunnerError(ValueError):
     """The Runner cannot safely derive or execute one current action."""
+
+    def __init__(self, message, data=None):
+        super().__init__(message)
+        self.data = data
 
 
 @dataclass(frozen=True)
@@ -171,6 +181,24 @@ def _await(result, disposition, token, required_input, reason_code, *,
         reason_code=reason_code, plan_sha256=plan_sha256)
 
 
+def _route_input(result, token, fields, *, required=(), index=0,
+                 shapes=None, encodings=None):
+    route, _parameters = task_runtime_action.action_route_for_token(token)
+    tool = _capability_tool(result, _route_capability(route, index))
+    parameters = fields if isinstance(fields, dict) else {name: name for name in fields}
+    return interface_contract.input_binding(
+        _compiled_cli_tool(result["root"], tool), parameters,
+        required=required, shapes=shapes, encodings=encodings)
+
+
+def _producer_input(result, step):
+    if step.get("required_input") is None:
+        return None
+    return interface_contract.input_binding(
+        _compiled_cli_tool(result["root"], step["resume_tool"]),
+        arguments=step["resume_arguments"], **step["required_input"])
+
+
 def _capability_tool(result, capability_id):
     return metadata_execution_contract.capability_invocation_tool(
         capability_id, root=result["root"])
@@ -253,11 +281,10 @@ def _phase_action(result, item, phase_id):
             result, "activation-phase-delivery-invalid", target=target)
     if status["status"] == "acknowledge":
         return _await(
-            result, "await-agent", "ack-activation-phase", {
-                "phase_nonce": "nonce from the delivered phase payload",
-                "phase_delivery_receipt":
-                    "receipt_id returned with that payload",
-            }, "delivered-phase-needs-same-context-ack", target=target)
+            result, "await-agent", "ack-activation-phase", _route_input(
+                result, "ack-activation-phase", ("phase_nonce", "phase_delivery_receipt"),
+                required=("phase_nonce", "phase_delivery_receipt")),
+            "delivered-phase-needs-same-context-ack", target=target)
     if status["status"] != "deliver":
         return _repair(
             result, "unknown-activation-phase-status", target=target)
@@ -317,8 +344,10 @@ def _audit_action(result, item):
         phase_action = _phase_action(result, item, "batch-gate")
         if phase_action is not None:
             return phase_action
+        if step.get("external_instruction"):
+            target = dict(target, external_instruction=step["external_instruction"])
         return _await(
-            result, step["status"], step["token"], step["required_input"],
+            result, step["status"], step["token"], _producer_input(result, step),
             step["reason_code"], target=target, plan_sha256=plan_sha)
     if step["status"] == "repair":
         return _repair(result, step["reason_code"], target=target)
@@ -334,11 +363,9 @@ def _audit_action(result, item):
             result, item, delta_document, resolved=page_evidence)
     if delta is None or delta_errors:
         return _await(
-            result, "await-agent", "publish-candidate-delta", {
-                "proposal": (
-                    "repository-relative YAML path under %s; omit gate_receipts for Tool assembly" %
-                    runtime_paths.TRANSIENT_ROOT),
-            }, "batch-work-needs-candidate-delta",
+            result, "await-agent", "publish-candidate-delta", _route_input(
+                result, "publish-candidate-delta", ("proposal",)),
+            "batch-work-needs-candidate-delta",
             target={"batch_id": item["id"], "page_evidence_refs": page_evidence,
                     "candidate_delta_sha256": delta["sha256"] if delta else "absent"},
             plan_sha256=step["closure"]["audit_plan_sha256"])
@@ -358,9 +385,9 @@ def _audit_action(result, item):
         if phase_action is not None:
             return phase_action
         return _await(
-            result, "await-agent", "record-batch-review", {
-                "statement": "non-empty bounded integrator statement",
-            }, "pre-merge-closure-needs-integrator-attestation",
+            result, "await-agent", "record-batch-review", _route_input(
+                result, "record-batch-review", ("statement",)),
+            "pre-merge-closure-needs-integrator-attestation",
             target={"batch_id": item["id"]},
             plan_sha256=step["closure"]["audit_plan_sha256"])
     phase_action = _phase_action(result, item, "batch-gate")
@@ -428,13 +455,16 @@ def _resume_terminal(result, _route, _parameters, token):
 
 def _resume_task_transition(result, route, _parameters, token):
     paused = route.route_id == "resume-paused-task"
+    progress = result.get("progress") or {}
+    choices = [target for target in ("active", "paused", "cancelled")
+               if runtime_state_contract.task_transition_is_authorized(
+                   (progress.get("contract") or {}).get("completion_semantics"),
+                   progress.get("task_state"), target)]
     return _await(
-        result, "await-user", token, {
-            "task_transition": (
-                "active|cancelled" if paused else
-                "active|paused|cancelled"),
-            "checkpoint_summary": "string",
-        }, ("paused-task-needs-user-direction" if paused else
+        result, "await-user", token, _route_input(
+            result, token, {"task_transition": "transition", "checkpoint_summary": "checkpoint_summary"},
+            required=("checkpoint_summary",), shapes={"task_transition": {"enum": choices}}),
+        ("paused-task-needs-user-direction" if paused else
             "blocked-task-needs-user-direction"))
 
 
@@ -442,8 +472,6 @@ def _resume_external_reparse(result, route, _parameters, token):
     runtime = result.get("task_runtime") or {}
     target = {}
     reason = "runtime-boundary-needs-authoritative-external-change"
-    required = {"external_resolution": (
-        "use the named canonical owner, then derive the next action again")}
     if route.route_id == "reconcile-control-input":
         target = {
             "pending_guidance": list(runtime.get("pending_guidance") or []),
@@ -458,17 +486,17 @@ def _resume_external_reparse(result, route, _parameters, token):
         }
         reason = "recorded-hold-or-dependency-needs-resolution"
     return _await(
-        result, route.action_disposition, token, required, reason,
-        target=target)
+        result, route.action_disposition, token, None, reason,
+        target=dict(target, external_instruction=
+                    "Use the named canonical owner, then derive the next action again."))
 
 
 def _resume_terminal_audit(result, _route, _parameters, token):
     terminal = (result.get("progress") or {}).get("terminal_audit") or {}
     return _await(
-        result, "await-agent", token, {
-            "terminal_audit_input": (
-                "repository-relative .yaml/.json below .cambium/tmp"),
-        }, "completion-candidate-needs-terminal-audit-input",
+        result, "await-agent", token, _route_input(
+            result, token, ("terminal_audit_input",), index=2),
+        "completion-candidate-needs-terminal-audit-input",
         target={
             "task_id": (result.get("progress") or {}).get("task_id"),
             "candidate_queue_check_receipt":
@@ -536,10 +564,13 @@ def _resume_standards_revalidation(result, route, parameters, token):
     aggregate_id = _current_standards_revalidation_aggregate(result, batch_id)
     if aggregate_id is None:
         return _await(
-            result, "await-agent", token, {
-                "boundary_gate_receipts": (
-                    "mapping of required Gate ID to current receipt ID"),
-            }, "standards-revalidation-needs-current-boundary-evidence",
+            result, "await-agent", token, _route_input(
+                result, token, {"boundary_gate_receipts": "boundary_gate_receipt"},
+                required=("boundary_gate_receipts",),
+                shapes={"boundary_gate_receipts": {"type": "object", "properties": {},
+                    "additionalProperties": {"type": "string", "minLength": 1}}},
+                encodings={"boundary_gate_receipts": "key-value-items"}),
+            "standards-revalidation-needs-current-boundary-evidence",
             target={"batch_id": batch_id})
     item = (result.get("items_by_id") or {}).get(batch_id) or {}
     if item.get("state") == "queued":
@@ -581,15 +612,12 @@ def _resume_standards_revalidation(result, route, parameters, token):
 def _resume_batch_close_request(result, _route, parameters, _token):
     batch_id = parameters["batch_id"]
     return _await(
-        result, "await-agent", "run-batch-close-gate", {
-            "integrator": "string",
-            "reviewer": "string",
-            "review_attestation": "non-empty independent statement",
-            "accept_candidate_id": "list",
-            "accept_candidate_type": "list",
-            "accept_while_unchanged_id": "list",
-            "accept_while_unchanged_type": "list",
-        }, "post-delta-close-needs-independent-attestation",
+        result, "await-agent", "run-batch-close-gate", _route_input(
+            result, "run-batch-close-gate", ("integrator", "reviewer", "review_attestation",
+                "accept_candidate_id", "accept_candidate_type",
+                "accept_while_unchanged_id", "accept_while_unchanged_type"),
+            required=("integrator", "reviewer", "review_attestation")),
+        "post-delta-close-needs-independent-attestation",
         target={"batch_id": batch_id})
 
 
@@ -616,11 +644,9 @@ def _resume_enter_completion_candidate(result, route, _parameters, token):
 
 def _resume_maintenance_completion_gate(result, _route, _parameters, token):
     return _await(
-        result, "await-agent", token, {
-            "budget_manifest": "closed manifest path under .cambium/receipts",
-            "before_coverage_sha256": "Coverage before-image fingerprint",
-            "before_watermark_sha256": "watermark before-image fingerprint",
-        }, "maintenance-completion-evidence-needs-publication",
+        result, "await-agent", token, _route_input(
+            result, token, ("budget_manifest", "before_coverage_sha256", "before_watermark_sha256")),
+        "maintenance-completion-evidence-needs-publication",
         target={"task_id": (result.get("progress") or {}).get("task_id")})
 
 
@@ -767,15 +793,16 @@ def _compiled_cli_contract(root):
 
 
 def _compiled_cli_tool(root, tool):
+    document = _compiled_cli_contract(root)
     matches = [
-        row for row in _compiled_cli_contract(root)["tools"]
+        row for row in document["tools"]
         if isinstance(row, dict) and row.get("tool") == tool
     ]
     if len(matches) != 1:
         raise RunnerError(
             "compiled CLI contract resolves %s to %d entries" %
             (tool, len(matches)))
-    return matches[0]
+    return dict(matches[0], invocation_contract_source_hash=document.get("source_hash"))
 
 
 def _compiled_entrypoint(root, tool, record):
@@ -823,11 +850,14 @@ def _render_command(tool, script, schema, values):
             cli_argv_renderer.STRUCTURED_OUTPUT_ARGUMENT,
             transport_owned_flag=cli_argv_renderer.STRUCTURED_OUTPUT_FLAG)
     except cli_argv_renderer.ArgvRenderError as exc:
-        raise RunnerError(exc.message) from exc
+        raise RunnerError(exc.message, exc.data) from exc
     return [sys.executable, script] + tail
 
 
 def _run_command(root, tool, arguments):
+    observation = _EXECUTION_OBSERVATION.get()
+    if observation is not None:
+        observation.update(stage="parameter-admission", current_tool=tool)
     (script, schema, values, workspace_argument, output_contract,
      host_boundary) = _command_inputs(root, tool, arguments)
     retained_root = path_capability.controlled_root_fd()
@@ -847,10 +877,17 @@ def _run_command(root, tool, arguments):
                                        root_fd, os.environ,
                                        inherited_records=inherited) as binding:
             command = _render_command(tool, script, schema, binding["arguments"])
+            if observation is not None:
+                observation["stage"] = "dispatch"
             completed = kblib.run_cambium_subprocess(
                 command, text=True,
                 stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=False,
                 path_binding=binding, preexec_fn=lambda: os.fchdir(root_fd))
+            if observation is not None:
+                child = {"tool": tool, "tool_returncode": completed.returncode,
+                         "output": completed.stdout, "diagnostics": completed.stderr}
+                observation["substeps"].append(child)
+                observation["stage"] = "output-admission"
         completed.tool_returncode = completed.returncode
         selected = dict(binding["arguments"])
         if cli_argv_renderer.STRUCTURED_OUTPUT_FLAG in command[2:]:
@@ -867,6 +904,9 @@ def _run_command(root, tool, arguments):
         if binding["acknowledgement_error"]:
             errors.append(binding["acknowledgement_error"])
         completed.invocation_errors = errors
+        if observation is not None:
+            child.update(invocation_errors=errors, observation=observed)
+            observation["stage"] = "handler-read-back"
         if errors:
             completed.returncode = 1
         return completed
@@ -970,7 +1010,8 @@ def _await_host_environment(result, batch_id, probe, constructs):
     request = preparation_request(diagnostics)
     if request["capability_id"] != capability:
         raise RunnerError("Host preparation route differs from its request owner")
-    return _await(result, "await-host", route.token_template, {
+    return _await(result, "await-host", route.token_template, None,
+        "host-environment-not-ready", target={
         "host_preparation": {
             **request,
             "tool": _capability_tool(result, capability),
@@ -979,7 +1020,6 @@ def _await_host_environment(result, batch_id, probe, constructs):
                 "then query the Runner again. A supplied ready assertion is "
                 "not accepted."),
         },
-    }, "host-environment-not-ready", target={
         "batch_id": batch_id, "runtime_result": probe["result"],
         "diagnostics": probe["findings"],
     })
@@ -1158,15 +1198,9 @@ def _internal_step(root, action):
 
 
 def _require_input(action, supplied):
-    if not isinstance(supplied, dict):
-        raise RunnerError("await action input must be a mapping")
-    allowed = set(action["required_input"])
-    extra = sorted(set(supplied) - allowed)
-    if extra:
-        raise RunnerError(
-            "await action input has unsupported field(s): %s" %
-            ", ".join(extra))
-    return supplied
+    if action["required_input"] is None:
+        raise RunnerError("external resolution has no submittable input")
+    return interface_contract.bind_input(action["required_input"], supplied)
 
 
 def _current_audit_step(root, action):
@@ -1186,17 +1220,8 @@ def _await_external_reparse(_root, action, _supplied, _route):
 
 
 def _await_task_transition(root, action, supplied, route):
-    token = action["token"]
-    transition = supplied.get("task_transition")
-    allowed = ({"active", "cancelled"} if token == "resume-paused-task" else
-               {"active", "paused", "cancelled"})
-    if transition not in allowed:
-        raise RunnerError(
-            "%s requires task_transition in %s" %
-            (token, ", ".join(sorted(allowed))))
-    summary = supplied.get("checkpoint_summary")
-    if not isinstance(summary, str) or not summary.strip():
-        raise RunnerError("%s requires checkpoint_summary" % token)
+    transition = supplied["transition"]
+    summary = supplied["checkpoint_summary"]
     result = runtime_validation.validate_runtime(root)
     return _run_command(
         root, metadata_execution_contract.capability_invocation_tool(
@@ -1212,18 +1237,6 @@ def _await_task_transition(root, action, supplied, route):
 
 
 def _await_maintenance_completion_gate(root, _action, supplied, route):
-    required = {
-        "budget_manifest",
-        "before_coverage_sha256",
-        "before_watermark_sha256",
-    }
-    missing = sorted(
-        field for field in required
-        if not isinstance(supplied.get(field), str) or
-        not supplied[field].strip())
-    if missing:
-        raise RunnerError(
-            "maintenance completion input misses: %s" % ", ".join(missing))
     published = _run_command(
         root, metadata_execution_contract.capability_invocation_tool(
             _route_capability(route, 0), root=root), {
@@ -1262,18 +1275,7 @@ def _await_maintenance_completion_gate(root, _action, supplied, route):
 
 
 def _await_standards_revalidation(root, action, supplied, route):
-    boundary = supplied.get("boundary_gate_receipts")
-    if not isinstance(boundary, dict):
-        raise RunnerError(
-            "Standards revalidation requires boundary_gate_receipts as a "
-            "mapping")
-    malformed = sorted(
-        key for key, value in boundary.items()
-        if not isinstance(key, str) or not key.strip() or
-        not isinstance(value, str) or not value.strip())
-    if malformed:
-        raise RunnerError(
-            "Standards revalidation boundary receipt mapping is invalid")
+    boundary = supplied["boundary_gate_receipt"]
     batch_id = action["target"].get("batch_id")
     receipt_path = runtime_paths.child_path(
         runtime_paths.RECEIPT_ROOT,
@@ -1282,10 +1284,7 @@ def _await_standards_revalidation(root, action, supplied, route):
         root, metadata_execution_contract.capability_invocation_tool(
             _route_capability(route), root=root), {
                 "require_revalidation": batch_id,
-                "boundary_gate_receipt": [
-                    "%s=%s" % (gate_id, receipt_id)
-                    for gate_id, receipt_id in sorted(boundary.items())
-                ],
+                "boundary_gate_receipt": boundary,
                 "receipts": receipt_path,
                 "json": True,
             })
@@ -1301,10 +1300,8 @@ def _await_standards_revalidation(root, action, supplied, route):
 
 
 def _await_terminal_audit(root, action, supplied, route):
-    input_path = supplied.get("terminal_audit_input")
-    if not isinstance(input_path, str) or not input_path:
-        raise RunnerError(
-            "run-terminal-audit requires terminal_audit_input")
+    input_path = supplied["terminal_audit_input"]
+    assemble_terminal_proof.read_terminal_audit_input(root, input_path)
 
     queue_completed = _run_command(
         root, metadata_execution_contract.capability_invocation_tool(
@@ -1408,19 +1405,21 @@ def _await_audit_producer(root, action, supplied, _route):
         raise RunnerError("awaited audit action is no longer current")
     arguments = dict(step["resume_arguments"])
     arguments.update(supplied)
-    if token == "record-substantive-review":
-        findings = arguments.pop("findings", [])
-        arguments["finding"] = [json.dumps(
-            row, ensure_ascii=False, sort_keys=True,
-            separators=(",", ":")) for row in findings]
+    if token == "record-batch-page-review":
+        batch_review_obligation_contract.validate_review_input(
+            step["target"]["review_input_constraints"],
+            arguments.get("applicability_disposition"), arguments.get("applicability_reason"))
+    elif token == "record-rendering-verification":
+        rendering_verification_contract.rendering_input(
+            **{field: arguments.get(field) for field in ("rendering_mode", "visual_trigger",
+                "unresolved_question", "verification_target", "verification_result")},
+            contract=rendering_verification_contract.load_contract(root))
     arguments["apply"] = True
     return _run_command(root, step["resume_tool"], arguments)
 
 
 def _await_candidate_delta(root, action, supplied, route):
-    proposal = supplied.get("proposal")
-    if not isinstance(proposal, str) or not proposal:
-        raise RunnerError("publish-candidate-delta requires proposal")
+    proposal = supplied["proposal"]
     return _run_command(
         root, metadata_execution_contract.capability_invocation_tool(
             _route_capability(route), root=root), {
@@ -1432,9 +1431,7 @@ def _await_candidate_delta(root, action, supplied, route):
 
 
 def _await_batch_review(root, action, supplied, route):
-    statement = supplied.get("statement")
-    if not isinstance(statement, str) or not statement.strip():
-        raise RunnerError("record-batch-review requires statement")
+    statement = supplied["statement"]
     return _run_command(
         root, metadata_execution_contract.capability_invocation_tool(
             _route_capability(route), root=root), {
@@ -1447,13 +1444,6 @@ def _await_batch_review(root, action, supplied, route):
 
 
 def _await_batch_close(root, action, supplied, route):
-    required = {"integrator", "reviewer", "review_attestation"}
-    missing = sorted(
-        key for key in required
-        if not isinstance(supplied.get(key), str) or
-        not supplied[key].strip())
-    if missing:
-        raise RunnerError("batch-close input misses: %s" % ", ".join(missing))
     arguments = {"batch": action["target"].get("batch_id"), "json": True}
     arguments.update(supplied)
     return _run_command(
@@ -1464,10 +1454,6 @@ def _await_batch_close(root, action, supplied, route):
 def _await_activation_ack(root, action, supplied, route):
     phase_nonce = supplied.get("phase_nonce")
     delivery_receipt = supplied.get("phase_delivery_receipt")
-    if (not isinstance(phase_nonce, str) or not phase_nonce or
-            not isinstance(delivery_receipt, str) or not delivery_receipt):
-        raise RunnerError(
-            "activation phase ack requires nonce and delivery receipt")
     batch_id = action["target"].get("batch_id")
     phase_id = action["target"].get("phase_id")
     part_index = action["target"].get("part_index")
@@ -1574,17 +1560,26 @@ def execute(root, expected_action_id, input_record=None):
 
 def _execute_observed(root, action, input_record=None):
     """Use this call's observed action; the selected writer still performs CAS."""
-    if action["disposition"] == "invoke":
-        if input_record is not None:
-            raise RunnerError("invoke action does not accept input_record")
-        completed = _internal_step(root, action)
-    elif action["disposition"] in task_runtime_action.AWAIT_DISPOSITIONS:
-        if input_record is None:
-            raise RunnerError("await action requires input_record")
-        completed = _continue_awaited(root, action, input_record)
-    else:
-        raise RunnerError(
-            "%s action cannot be executed" % action["disposition"])
+    observation = {"stage": "action-input", "current_tool": None, "substeps": []}
+    context = _EXECUTION_OBSERVATION.set(observation)
+    completed = None
+    failure = None
+    try:
+        if action["disposition"] == "invoke":
+            if input_record is not None:
+                raise RunnerError("invoke action does not accept input_record")
+            completed = _internal_step(root, action)
+        elif action["disposition"] in task_runtime_action.AWAIT_DISPOSITIONS:
+            if input_record is None:
+                raise RunnerError("await action requires input_record")
+            completed = _continue_awaited(root, action, input_record)
+        else:
+            raise RunnerError("%s action cannot be executed" % action["disposition"])
+    except (OSError, TypeError, UnicodeError, ValueError, kblib.YamlSubsetError) as exc:
+        failure = {"stage": observation["stage"], "tool": observation["current_tool"],
+                   "message": str(exc), "details": getattr(exc, "data", None)}
+    finally:
+        _EXECUTION_OBSERVATION.reset(context)
     try:
         next_value = next_action(root)
     except HostEnvironmentUnavailable as exc:
@@ -1598,13 +1593,20 @@ def _execute_observed(root, action, input_record=None):
     else:
         next_error = None
     return {
-        "executed_action_id": action["action_id"],
-        "executed_token": action["token"],
-        "returncode": completed.returncode,
-        "tool_returncode": getattr(completed, "tool_returncode", completed.returncode),
+        "requested_action_id": action["action_id"],
+        "executed_action_id": action["action_id"] if observation["substeps"] or completed is not None else None,
+        "executed_token": action["token"] if observation["substeps"] or completed is not None else None,
+        "execution_status": ("dispatch-unresolved" if failure and observation["stage"] == "dispatch" else
+                             "not-dispatched" if failure and not observation["substeps"] else
+                             "stopped-after-dispatch" if failure else "returned"),
+        "failure": failure,
+        "substeps": observation["substeps"],
+        "returncode": completed.returncode if completed is not None else 1,
+        "tool_returncode": getattr(completed, "tool_returncode", completed.returncode)
+            if completed is not None else None,
         "invocation_errors": getattr(completed, "invocation_errors", []),
-        "output": completed.stdout,
-        "diagnostics": completed.stderr,
+        "output": completed.stdout if completed is not None else "",
+        "diagnostics": completed.stderr if completed is not None else failure["message"],
         "next_action": next_value,
         "next_action_error": next_error,
     }
@@ -1629,6 +1631,9 @@ def run_until_boundary(root, *, max_steps=64):
             "invocation_errors": outcome.get("invocation_errors", []),
             "output": outcome["output"],
             "diagnostics": outcome["diagnostics"],
+            "execution_status": outcome["execution_status"],
+            "failure": outcome["failure"],
+            "substeps": outcome["substeps"],
         })
         if outcome["returncode"] != 0:
             return {
@@ -1720,8 +1725,8 @@ def main(argv=None):
         if args.max_steps != 64 and not args.run_until_boundary:
             raise ValueError("--max-steps requires --run-until-boundary")
         if args.execute:
-            input_record = _input_record(args.root, args.input) or \
-                _proposal_record(args.proposal)
+            input_record = (_input_record(args.root, args.input) if args.input is not None
+                            else _proposal_record(args.proposal))
             result = execute(
                 args.root, args.execute, input_record=input_record)
         elif args.run_until_boundary:

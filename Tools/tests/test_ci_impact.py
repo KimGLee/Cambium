@@ -207,9 +207,9 @@ class CiMatrixPresentationContractTests(unittest.TestCase):
         cases = (
             (["test_queue.py"], "queue"),
             (["test_batch_close.py", "test_audit_evidence.py"],
-             "audit evidence + batch close"),
+             "audit evidence"),
             (list(reversed(weights)),
-             "audit evidence + batch close (+2 more modules)"),
+             "audit evidence"),
         )
         with mock.patch.object(
                 ci_impact, "_test_weight",

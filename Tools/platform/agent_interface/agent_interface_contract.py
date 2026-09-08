@@ -7,7 +7,8 @@ governance judgment; those responsibilities remain with its consumers.
 """
 
 PROJECTION_ARTIFACT_KIND = "agent-interface-projection"
-PROJECTION_SCHEMA_VERSION = 5
+PROJECTION_SCHEMA_VERSION = 6
+CLI_CONTRACT_SCHEMA_VERSION = 11
 MCP_FORM = "mcp"
 
 PATH_EXTENSION_KEY = "x-cambium-path"
@@ -25,6 +26,176 @@ INTERFACE_PROJECTION_ENV = "CAMBIUM_INTERFACE_PROJECTION"
 PATH_CAPABILITIES_ENV = "CAMBIUM_PATH_CAPABILITIES"
 PATH_CAPABILITIES_ACK_ENV = "CAMBIUM_PATH_CAPABILITIES_ACK_FD"
 WORKSPACE_FD_ENV = "CAMBIUM_WORKSPACE_FD"
+
+
+def nullable_argument(action):
+    """Declare null as the existing omitted-argument None, never a new value.
+
+    Call next to the actual argparse declaration. Optional/default None alone
+    does not opt a parameter into this representation.
+    """
+    if (not action.option_strings or action.required or
+            action.default is not None or action.nargs == 0):
+        raise ValueError("nullable argument requires an optional None default")
+    action.cambium_null_encoding = "omit"
+    return action
+
+
+def argument_expression(action):
+    """Capture and validate only explicitly declared expression metadata."""
+    encoding = getattr(action, "cambium_null_encoding", None)
+    if encoding is None:
+        return {}
+    if encoding != "omit":
+        raise ValueError("unknown argument null encoding")
+    nullable_argument(action)
+    return {"null_encoding": encoding}
+
+
+def argument_schema(argument):
+    """One mechanical projection for CLI encoding, MCP and Runner bindings."""
+    scalar_type = {"bool": "boolean", "float": "number", "int": "integer",
+                   "str": "string"}.get(argument.get("type"), "string")
+    scalar = {"type": scalar_type}
+    if argument.get("choices"):
+        scalar["enum"] = list(argument["choices"])
+    action, nargs = argument.get("action"), argument.get("nargs")
+    sequence = (action in ("append", "append_const", "extend") or
+                nargs in ("*", "+") or type(nargs) is int and nargs >= 1)
+    if action == "count":
+        schema = {"type": "integer", "minimum": 0}
+    elif nargs == 0:
+        schema = {"type": "boolean"}
+    elif sequence:
+        schema = {"type": "array", "items": scalar}
+        if nargs == "+" or (nargs != "*" and
+                            (argument.get("required") or
+                             argument.get("default") != [])):
+            schema["minItems"] = 1
+        if type(nargs) is int and action not in ("append", "extend"):
+            schema.update(minItems=nargs, maxItems=nargs)
+    else:
+        schema = scalar
+    meta = {"action": action,
+            "option_strings": list(argument.get("option_strings") or [])}
+    if nargs is not None:
+        meta["nargs"] = nargs
+    if argument.get("type") is not None:
+        meta["type"] = argument["type"]
+    expression = argument.get("expression") or {}
+    if expression:
+        if (expression != {"null_encoding": "omit"} or
+                argument.get("required") or argument.get("default") is not None or
+                not meta["option_strings"] or nargs == 0):
+            raise ValueError("invalid compiled argument expression")
+        meta.update(expression)
+        schema["type"] = [schema["type"], "null"]
+        if "enum" in schema:
+            schema["enum"].append(None)
+    if sequence and argument.get("default") == []:
+        meta["empty_encoding"] = "omit"
+    schema["x-cambium-cli"] = meta
+    return schema
+
+
+def validate_input(schema, value, *, field="input"):
+    """Validate the small structural vocabulary emitted by these bindings.
+
+    Domain predicates and authorization remain in their existing owners. No
+    coercion, defaults, filesystem access or caller values in error messages.
+    """
+    declared = schema.get("type")
+    types = declared if isinstance(declared, list) else [declared]
+    actual = ("null" if value is None else "boolean" if type(value) is bool else
+              "integer" if type(value) is int else "number" if type(value) is float else
+              "string" if isinstance(value, str) else "array" if isinstance(value, list) else
+              "object" if isinstance(value, dict) else "unsupported")
+    if actual not in types and not (actual == "integer" and "number" in types):
+        raise ValueError("%s requires %s" % (field, "/".join(types)))
+    if "enum" in schema and not any(type(value) is type(item) and value == item
+                                    for item in schema["enum"]):
+        raise ValueError("%s is outside the declared choices" % field)
+    if actual == "object":
+        properties = schema.get("properties", {})
+        missing = sorted(set(schema.get("required", [])) - set(value))
+        if missing:
+            raise ValueError("%s misses required fields: %s" % (field, ", ".join(missing)))
+        for key, item in value.items():
+            child = properties.get(key, schema.get("additionalProperties", False))
+            if not isinstance(key, str) or child is False:
+                raise ValueError("%s has an unsupported field" % field)
+            if isinstance(child, dict):
+                validate_input(child, item, field=field + "." + key)
+    elif actual == "array":
+        if len(value) < schema.get("minItems", 0) or len(value) > schema.get("maxItems", float("inf")):
+            raise ValueError("%s violates declared list cardinality" % field)
+        for item in value:
+            validate_input(schema["items"], item, field=field + "[]")
+    elif actual == "string" and len(value) < schema.get("minLength", 0):
+        raise ValueError("%s is shorter than its declared minimum" % field)
+    elif actual in ("number", "integer"):
+        import math
+        if (actual == "number" and not math.isfinite(value)) or value < schema.get("minimum", -float("inf")):
+            raise ValueError("%s is outside its numeric bounds" % field)
+    return value
+
+
+def input_binding(tool_record, parameters, *, required=(), shapes=None,
+                  encodings=None, arguments=None, conditions=None):
+    """Project an existing route's source-to-parameter binding, not a registry."""
+    import hashlib
+    import json
+    by_name = {row["dest"]: row for row in tool_record["arguments"]}
+    properties = {}
+    encodings = dict(encodings or {})
+    bound = dict(arguments or {})
+    required = set(required)
+    for source, destination in parameters.items():
+        if destination not in by_name or destination in bound:
+            raise ValueError("input binding has an absent or machine-owned destination")
+        argument = by_name[destination]
+        schema = argument_schema(argument)
+        if argument.get("help"):
+            schema["description"] = argument["help"]
+        if source in (shapes or {}):
+            schema.update(shapes[source])
+        if argument.get("required"):
+            required.add(source)
+        properties[source] = schema
+    if not required.issubset(parameters) or not set(encodings).issubset(parameters):
+        raise ValueError("input binding refers to an undeclared source")
+    if len(set(parameters.values())) != len(parameters):
+        raise ValueError("input binding repeats a destination")
+    if any(value not in ("json-items", "key-value-items") for value in encodings.values()):
+        raise ValueError("input binding has an undeclared structural encoding")
+    result = {"type": "object", "properties": properties,
+              "required": sorted(required), "additionalProperties": False,
+              "x-cambium-binding": {"tool": tool_record["tool"],
+                  "parameters": dict(parameters), "encodings": encodings,
+                  "arguments": bound,
+                  "source_fingerprint": "sha256:" + hashlib.sha256(json.dumps(
+                      tool_record, ensure_ascii=False, sort_keys=True,
+                      separators=(",", ":"), allow_nan=False).encode("utf-8")).hexdigest()}}
+    if conditions:
+        result["x-cambium-owner-conditions"] = conditions
+    return result
+
+
+def bind_input(schema, supplied):
+    """Admit exposed source fields and encode them without identity overrides."""
+    import json
+    validate_input(schema, supplied)
+    binding = schema["x-cambium-binding"]
+    result = dict(binding["arguments"])
+    for source, value in supplied.items():
+        encoding = binding["encodings"].get(source)
+        if encoding == "json-items":
+            value = [json.dumps(item, ensure_ascii=False, sort_keys=True,
+                                separators=(",", ":")) for item in value]
+        elif encoding == "key-value-items":
+            value = [key + "=" + item for key, item in sorted(value.items())]
+        result[binding["parameters"][source]] = value
+    return result
 
 
 def validate_output_contract(contract):
