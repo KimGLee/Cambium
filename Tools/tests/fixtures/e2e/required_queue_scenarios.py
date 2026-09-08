@@ -280,16 +280,17 @@ class RequiredQueueE2EScenarioCase(RequiredQueueFixture,
             self._drain_activation_delivery()
         return self.mcp_session.run_cli(name, *arguments)
 
-    def _drain_activation_delivery(self):
+    def _drain_activation_delivery(self, action=None):
         """Act only on the Runner's currently due delivery/ack handoff.
 
         The original scenario still owns its business actions. The Host
         context returns nonces from actual delivered payloads, never from a
         hand-written Receipt or an independently chosen phase sequence.
         """
-        observed = self.mcp_session.run_cli("run_task.py", str(self.root))
-        self.assertEqual(0, observed.returncode, observed.mcp_result)
-        action = json.loads(observed.stdout)
+        if action is None:
+            observed = self.mcp_session.run_cli("run_task.py", str(self.root))
+            self.assertEqual(0, observed.returncode, observed.mcp_result)
+            action = json.loads(observed.stdout)
         deliveries = {}
         seen_actions = set()
         while action["token"] in {
@@ -331,6 +332,7 @@ class RequiredQueueE2EScenarioCase(RequiredQueueFixture,
             observed = self.mcp_session.run_cli("run_task.py", str(self.root))
             self.assertEqual(0, observed.returncode, observed.mcp_result)
             action = json.loads(observed.stdout)
+        return action
 
     def prepare_premerge_audit_evidence(self, batch_id):
         if self.MCP_TRANSPORT:

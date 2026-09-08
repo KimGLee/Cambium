@@ -19,7 +19,7 @@ from Tools.execution.task_runtime import queue_runtime
 import Tools.execution.audit.assemble_terminal_proof as assemble_terminal_proof
 import Tools.execution.audit.audit_dimension_contract as audit_dimension_contract
 import Tools.execution.audit.audit_evidence_runtime as audit_evidence_runtime
-from Tools.execution.audit import audit_execution_runtime, batch_review_obligation_contract, check_batch_close
+from Tools.execution.audit import batch_review_obligation_contract, check_batch_close
 import Tools.execution.task_runtime.runtime_validation as runtime_validation  # noqa: E402
 import Tools.platform.common.kblib as kblib
 import Tools.execution.task_runtime.runtime_paths as runtime_paths
@@ -71,13 +71,17 @@ class RequiredQueueLifecycleEndToEndTests(RequiredQueueE2EScenarioCase):
             "always", "when-status-fields-apply",
             "when-failure-behavior-is-genuinely-not-applicable",
         }
+        action = None
         for _ in range(2 * len(obligations) + 10):
-            runtime = runtime_validation.validate_runtime(self.root)
-            self.assertEqual([], runtime["errors"])
-            step = audit_execution_runtime.next_stage_step(
-                runtime, runtime["items_by_id"][batch_id], "pre-merge", required_state="open")
-            if step["status"] == "complete":
+            # Consume the Runner's already reread next action. Only a direct
+            # writer outside Runner requires a fresh observation; the fixture
+            # does not run a parallel audit-stage planner on every iteration.
+            action = self._drain_activation_delivery(action)
+            self.assertEqual(batch_id, action["target"]["batch_id"], action)
+            if action["token"] == "publish-candidate-delta":
                 if withdrew:
+                    runtime = runtime_validation.validate_runtime(self.root)
+                    self.assertEqual([], runtime["errors"])
                     self.assertNotEqual(old_review["receipt_id"],
                                         reviewed[old_review["obligation_id"]]["receipt_id"])
                     self.assertNotIn(old_review["receipt_id"],
@@ -108,19 +112,22 @@ class RequiredQueueLifecycleEndToEndTests(RequiredQueueE2EScenarioCase):
                     self.assertEqual("confirmed", applied["stdout_json"]["publication"]["record_confirmation"], applied)
                 self.assertEqual(history, register.read_bytes())
                 withdrew = True
+                action = None
                 continue
-            if step["status"] == "invoke":
-                tool, arguments = step["tool"], dict(step["arguments"])
+            if action["disposition"] == "invoke":
+                tool, arguments = action["tool"], dict(action["arguments"])
                 outcome = self.mcp_session.call(tool, dict(arguments, root=str(self.root), apply=True))
+                action = None
             else:
-                self.assertIn(step["token"], ("record-batch-page-review", "record-rendering-verification"), step)
-                tool, arguments = step["resume_tool"], {}
-                if step["token"] == "record-rendering-verification":
+                self.assertIn(action["token"], ("record-batch-page-review", "record-rendering-verification"), action)
+                tool = action["required_input"]["x-cambium-binding"]["tool"]
+                arguments = {}
+                if action["token"] == "record-rendering-verification":
                     arguments["rendering_mode"] = "source-only"
                 else:
-                    obligation = obligations[step["resume_arguments"]["obligation_id"]]
+                    obligation = obligations[action["target"]["obligation_id"]]
                     spec = batch_review_obligation_contract.obligation_spec_for_rule(obligation["owner_rule_id"])
-                    constraints = step["target"]["review_input_constraints"]
+                    constraints = action["target"]["review_input_constraints"]
                     applicable = (spec["applicability"] in applicable_fixture_conditions or
                                   constraints["required_consumption_obligation_ids"])
                     arguments.update(
@@ -130,11 +137,6 @@ class RequiredQueueLifecycleEndToEndTests(RequiredQueueE2EScenarioCase):
                         applicability_reason=None)
                     if not applicable:
                         arguments["applicability_reason"] = "This isolated synthetic concept contains no corresponding construct or external claim."
-                self._drain_activation_delivery()
-                observed = self.mcp_session.call("run_task", {"root": str(self.root)})
-                self.assertEqual(0, observed["exit_code"], observed)
-                action = observed["stdout_json"]
-                self.assertEqual(step["token"], action["token"], action)
                 relative_input = runtime_paths.TRANSIENT_ROOT + "/e2e-audit-input.json"
                 (self.root / relative_input).write_text(json.dumps(arguments), encoding="utf-8")
                 outcome = self.mcp_session.call("run_task", {
@@ -143,6 +145,9 @@ class RequiredQueueLifecycleEndToEndTests(RequiredQueueE2EScenarioCase):
                 execution = outcome["stdout_json"]
                 self.assertEqual(0, execution["returncode"], execution)
                 self.assertEqual(tool, execution["substeps"][-1]["tool"])
+                self.assertIsNone(execution["next_action_error"], execution)
+                self.assertIsNotNone(execution["next_action"], execution)
+                action = execution["next_action"]
                 outcome = dict(outcome, stdout_json=json.loads(execution["output"]))
             self.assertEqual(0, outcome["exit_code"], outcome)
             if tool == "record_batch_page_review":
