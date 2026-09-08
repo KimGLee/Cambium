@@ -139,7 +139,7 @@ jobs:
           {
             printf '## %s\n\n' "$TEST_LABEL"
             printf 'Shard: `%s` · Python: `%s`\n\n' "$SHARD" "$PYTHON_VERSION"
-            printf 'Names highlight the two largest test source modules, not exclusive domains or test levels. The complete file list below is authoritative for this job.\n\n'
+            printf 'The name highlights one representative module, not an exclusive domain or test level. The complete file list below is authoritative for this job.\n\n'
             printf '%s\n' "$TEST_FILES" | tr ',' '\n' | while IFS= read -r test_file; do
               printf -- '- `Tools/tests/%s`\n' "$test_file"
             done

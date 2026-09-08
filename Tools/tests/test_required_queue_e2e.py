@@ -22,6 +22,7 @@ import Tools.execution.audit.audit_evidence_runtime as audit_evidence_runtime
 from Tools.execution.audit import batch_review_obligation_contract, check_batch_close
 import Tools.execution.task_runtime.runtime_validation as runtime_validation  # noqa: E402
 import Tools.platform.common.kblib as kblib
+from Tools.platform.agent_interface import agent_interface_contract
 import Tools.execution.task_runtime.runtime_paths as runtime_paths
 from Tools.tests.fixtures.e2e import RequiredQueueE2EScenarioCase
 
@@ -64,6 +65,7 @@ class RequiredQueueLifecycleEndToEndTests(RequiredQueueE2EScenarioCase):
         reviewed = {}
         withdrew = False
         old_review = None
+        runner_review_exercised = False
         # One representative lifecycle uses the real execution projection.
         # These are the fixture reviewer's semantic inputs, not a second
         # obligation registry or a production auto-approval algorithm.
@@ -80,6 +82,7 @@ class RequiredQueueLifecycleEndToEndTests(RequiredQueueE2EScenarioCase):
             self.assertEqual(batch_id, action["target"]["batch_id"], action)
             if action["token"] == "publish-candidate-delta":
                 if withdrew:
+                    self.assertTrue(runner_review_exercised)
                     runtime = runtime_validation.validate_runtime(self.root)
                     self.assertEqual([], runtime["errors"])
                     self.assertNotEqual(old_review["receipt_id"],
@@ -137,18 +140,34 @@ class RequiredQueueLifecycleEndToEndTests(RequiredQueueE2EScenarioCase):
                         applicability_reason=None)
                     if not applicable:
                         arguments["applicability_reason"] = "This isolated synthetic concept contains no corresponding construct or external claim."
-                relative_input = runtime_paths.TRANSIENT_ROOT + "/e2e-audit-input.json"
-                (self.root / relative_input).write_text(json.dumps(arguments), encoding="utf-8")
-                outcome = self.mcp_session.call("run_task", {
-                    "root": str(self.root), "execute": action["action_id"], "input": relative_input})
-                self.assertEqual(0, outcome["exit_code"], outcome)
-                execution = outcome["stdout_json"]
-                self.assertEqual(0, execution["returncode"], execution)
-                self.assertEqual(tool, execution["substeps"][-1]["tool"])
-                self.assertIsNone(execution["next_action_error"], execution)
-                self.assertIsNotNone(execution["next_action"], execution)
-                action = execution["next_action"]
-                outcome = dict(outcome, stdout_json=json.loads(execution["output"]))
+                # T7 owns one real nullable M handoff and the rendering
+                # handoff, not the full input matrix for every M atom. Other
+                # obligations still use their real MCP producer and consume
+                # the Runner's current machine binding. T2/T3/T5 own input
+                # combinations and producer acceptance predicates.
+                exercise_runner = (
+                    action["token"] == "record-rendering-verification" or
+                    (not runner_review_exercised and
+                     arguments.get("applicability_disposition") == "applicable"))
+                if exercise_runner:
+                    relative_input = runtime_paths.TRANSIENT_ROOT + "/e2e-audit-input.json"
+                    (self.root / relative_input).write_text(json.dumps(arguments), encoding="utf-8")
+                    outcome = self.mcp_session.call("run_task", {
+                        "root": str(self.root), "execute": action["action_id"], "input": relative_input})
+                    self.assertEqual(0, outcome["exit_code"], outcome)
+                    execution = outcome["stdout_json"]
+                    self.assertEqual(0, execution["returncode"], execution)
+                    self.assertEqual(tool, execution["substeps"][-1]["tool"])
+                    self.assertIsNone(execution["next_action_error"], execution)
+                    self.assertIsNotNone(execution["next_action"], execution)
+                    if action["token"] == "record-batch-page-review":
+                        runner_review_exercised = True
+                    action = execution["next_action"]
+                    outcome = dict(outcome, stdout_json=json.loads(execution["output"]))
+                else:
+                    bound = agent_interface_contract.bind_input(action["required_input"], arguments)
+                    outcome = self.mcp_session.call(tool, dict(bound, root=str(self.root), apply=True))
+                    action = None
             self.assertEqual(0, outcome["exit_code"], outcome)
             if tool == "record_batch_page_review":
                 receipt_id = outcome["stdout_json"]["receipt_id"]
