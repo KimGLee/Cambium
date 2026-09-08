@@ -249,7 +249,16 @@ class SealLifecycleIntegrationTests(unittest.TestCase):
                 [seal_receipt["receipt_id"]], cold["seals"])
             self.assertIn(seal_receipt["receipt_id"], catalog)
             self.assertNotIn(seal_receipt["receipt_id"], catalog.cold)
-            historical = catalog.resolve_sealed(history_receipt["receipt_id"])
+            visible = receipt_store.adoption_filtered_catalog(catalog, [])
+            hidden = receipt_store.adoption_filtered_catalog(
+                catalog, [history_receipt["receipt_id"]])
+            with mock.patch.object(kblib, "read_receipt_bytes",
+                                   wraps=kblib.read_receipt_bytes) as read:
+                historical = catalog.resolve_sealed(history_receipt["receipt_id"])
+                self.assertIs(historical[1], visible.resolve_sealed(
+                    history_receipt["receipt_id"])[1])
+                self.assertIsNone(hidden.resolve_sealed(history_receipt["receipt_id"]))
+                read.assert_called_once()
             self.assertEqual(
                 (_sealed_segment(root).relative_to(root).as_posix(),
                  history_receipt),

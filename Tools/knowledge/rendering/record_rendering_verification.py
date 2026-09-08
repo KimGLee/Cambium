@@ -330,54 +330,43 @@ def main(argv=None):
         obligation_id=context["obligation"]["obligation_id"],
         receipt_id=receipt["receipt_id"])
     try:
-        with kblib.runtime_write_lock(
-                context["root"], owner_metadata=operation) as lease:
-            with kblib.no_authoritative_write_guard(lease):
-                locked = audit_producer_runtime.require_runtime_current(
-                    context["root"], context["authority"],
-                    "before rendering-record publication")
-                locked_item, _ = audit_producer_runtime.open_batch(
-                    locked, args.batch)
-                locked_stage = audit_evidence_runtime.resolve_stage_plan(
-                    locked, locked_item, "pre-merge", required_state="open")
-                if (locked_stage["audit_plan_path"] != args.plan or
-                        locked_stage["audit_plan_sha256"] !=
-                        context["plan_sha256"] or
-                        locked_stage["plan"] != context["plan"]):
-                    raise RenderingVerificationError(
-                        "AuditPlan changed before rendering-record publication")
-                audit_producer_runtime.require_pages_current(
-                    context["root"], context["frozen"],
-                    "before rendering-record publication")
-                locked_contract = \
-                    rendering_verification_contract.load_contract(
-                        context["root"])
-                rebuilt = build_record(
-                    root=context["root"], plan=context["plan"],
-                    plan_sha256=context["plan_sha256"],
-                    obligation=context["obligation"],
-                    frozen=context["frozen"],
-                    rendering_mode=args.rendering_mode,
-                    visual_trigger=args.visual_trigger,
-                    unresolved_question=args.unresolved_question,
-                    verification_target=args.verification_target,
-                    verification_result=args.verification_result,
-                    contract=locked_contract)
-                for field in ("receipt_id", "checked_at"):
-                    rebuilt[field] = receipt[field]
-                if rebuilt != receipt:
-                    raise RenderingVerificationError(
-                        "rendering-record bindings changed before publication")
-                before = kblib.receipt_append_observation(
-                    receipt_absolute, [receipt])
-            outcome, error, _ = publication.append(
-                receipt_absolute, [receipt], before=before)
-            if outcome != "present" or error is not None:
-                if outcome == "absent":
-                    lease.mark_reconciled()
+        with publication.locked_append(context['root'], receipt_absolute, [receipt],
+                operation=operation, label="record_rendering_verification publication"):
+            locked = audit_producer_runtime.require_runtime_current(
+                context["root"], context["authority"],
+                "before rendering-record publication")
+            locked_item, _ = audit_producer_runtime.open_batch(
+                locked, args.batch)
+            locked_stage = audit_evidence_runtime.resolve_stage_plan(
+                locked, locked_item, "pre-merge", required_state="open")
+            if (locked_stage["audit_plan_path"] != args.plan or
+                    locked_stage["audit_plan_sha256"] !=
+                    context["plan_sha256"] or
+                    locked_stage["plan"] != context["plan"]):
                 raise RenderingVerificationError(
-                    "rendering-record publication outcome=%s error=%s" %
-                    (outcome, error))
+                    "AuditPlan changed before rendering-record publication")
+            audit_producer_runtime.require_pages_current(
+                context["root"], context["frozen"],
+                "before rendering-record publication")
+            locked_contract = \
+                rendering_verification_contract.load_contract(
+                    context["root"])
+            rebuilt = build_record(
+                root=context["root"], plan=context["plan"],
+                plan_sha256=context["plan_sha256"],
+                obligation=context["obligation"],
+                frozen=context["frozen"],
+                rendering_mode=args.rendering_mode,
+                visual_trigger=args.visual_trigger,
+                unresolved_question=args.unresolved_question,
+                verification_target=args.verification_target,
+                verification_result=args.verification_result,
+                contract=locked_contract)
+            for field in ("receipt_id", "checked_at"):
+                rebuilt[field] = receipt[field]
+            if rebuilt != receipt:
+                raise RenderingVerificationError(
+                    "rendering-record bindings changed before publication")
     except (OSError, TypeError, UnicodeError, ValueError,
             kblib.RuntimeStateLockedError) as exc:
         reporting.write_canonical_json(reporting.publication_result(

@@ -452,61 +452,51 @@ def main(argv=None):
         obligation_id=obligation["obligation_id"],
         receipt_id=receipt["receipt_id"])
     try:
-        with kblib.runtime_write_lock(root, owner_metadata=operation) as lease:
-            with kblib.no_authoritative_write_guard(lease):
-                locked = audit_producer_runtime.require_runtime_current(
-                    root, authority, "before batch-page review publication")
-                locked_item, _locked_activation = \
-                    audit_producer_runtime.open_batch(locked, args.batch)
-                (_locked_absolute, locked_plan, locked_plan_sha256,
-                 _locked_plan_snapshot) = _resolve_current_plan(
-                     root, args.plan, locked, locked_item)
-                if (locked_plan != plan or
-                        locked_plan_sha256 != plan_sha256):
-                    raise audit_producer_runtime.AuditProducerError(
-                        "resolved AuditPlan changed before evidence publication")
-                _require_plan_bytes_current(root, args.plan, plan_snapshot)
-                locked_tiers = _coverage_tiers(
-                    locked, locked_item["manifest"])
-                locked_registry = batch_contract.load_registry(root)
-                if batch_contract.registry_sha256(
-                        locked_registry) != registry_digest:
-                    raise audit_producer_runtime.AuditProducerError(
-                        "batch-review registry changed before publication")
-                locked_closure = batch_contract.validate_plan_base_closure(
-                    plan, locked_item["manifest"], locked_tiers,
-                    locked_registry)
-                if locked_closure["s_selection"] != closure["s_selection"]:
-                    raise audit_producer_runtime.AuditProducerError(
-                        "S selection changed before publication")
-                audit_producer_runtime.require_pages_current(
-                    root, (page_snapshot,),
-                    "before batch-page review publication")
-                locked_consumed = _current_consumed_records(
-                    locked, locked_item, args.consumed_evidence_ref,
-                    plan=plan, plan_sha256=plan_sha256,
-                    obligation=obligation, spec=spec,
-                    page=args.page,
-                    disposition=args.applicability_disposition,
-                    registry=locked_registry)
-                if locked_consumed != consumed:
-                    raise audit_producer_runtime.AuditProducerError(
-                        "consumed evidence changed before publication")
-                _require_no_current_attempt(
-                    locked, locked_item, plan, plan_sha256, obligation, spec,
-                    page_snapshot, locked_registry)
-                batch_contract.validate_producer_receipt(
-                    receipt, locked_registry)
-                before = kblib.receipt_append_observation(
-                    receipt_absolute, [receipt])
-            outcome, error, _details = publication.append(
-                receipt_absolute, [receipt], before=before)
-            if outcome != "present" or error is not None:
-                if outcome == "absent":
-                    lease.mark_reconciled()
+        with publication.locked_append(root, receipt_absolute, [receipt],
+                operation=operation, label="record_batch_page_review publication"):
+            locked = audit_producer_runtime.require_runtime_current(
+                root, authority, "before batch-page review publication")
+            locked_item, _locked_activation = \
+                audit_producer_runtime.open_batch(locked, args.batch)
+            (_locked_absolute, locked_plan, locked_plan_sha256,
+             _locked_plan_snapshot) = _resolve_current_plan(
+                 root, args.plan, locked, locked_item)
+            if (locked_plan != plan or
+                    locked_plan_sha256 != plan_sha256):
                 raise audit_producer_runtime.AuditProducerError(
-                    "batch-page review publication outcome=%s error=%s" %
-                    (outcome, error))
+                    "resolved AuditPlan changed before evidence publication")
+            _require_plan_bytes_current(root, args.plan, plan_snapshot)
+            locked_tiers = _coverage_tiers(
+                locked, locked_item["manifest"])
+            locked_registry = batch_contract.load_registry(root)
+            if batch_contract.registry_sha256(
+                    locked_registry) != registry_digest:
+                raise audit_producer_runtime.AuditProducerError(
+                    "batch-review registry changed before publication")
+            locked_closure = batch_contract.validate_plan_base_closure(
+                plan, locked_item["manifest"], locked_tiers,
+                locked_registry)
+            if locked_closure["s_selection"] != closure["s_selection"]:
+                raise audit_producer_runtime.AuditProducerError(
+                    "S selection changed before publication")
+            audit_producer_runtime.require_pages_current(
+                root, (page_snapshot,),
+                "before batch-page review publication")
+            locked_consumed = _current_consumed_records(
+                locked, locked_item, args.consumed_evidence_ref,
+                plan=plan, plan_sha256=plan_sha256,
+                obligation=obligation, spec=spec,
+                page=args.page,
+                disposition=args.applicability_disposition,
+                registry=locked_registry)
+            if locked_consumed != consumed:
+                raise audit_producer_runtime.AuditProducerError(
+                    "consumed evidence changed before publication")
+            _require_no_current_attempt(
+                locked, locked_item, plan, plan_sha256, obligation, spec,
+                page_snapshot, locked_registry)
+            batch_contract.validate_producer_receipt(
+                receipt, locked_registry)
     except (OSError, TypeError, ValueError,
             kblib.RuntimeStateLockedError) as exc:
         reporting.write_canonical_json(reporting.publication_result(

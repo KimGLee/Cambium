@@ -192,7 +192,9 @@ Runtime data belongs in `.cambium/`, not `Tools/`. [`runtime_paths.py`](executio
 
 ### Audit evidence hand-off
 
-[`audit_evidence_runtime`](execution/audit/audit_evidence_runtime.py) resolves complete attempt sets for producers, completion, and stage consumers; supplying one ID cannot hide conflicts. Evidence-kind owners validate bindings. Stage and history rules remain in [K12/19](<../kernel/K12 Quality Assurance/19 Incremental Audit Planning.md>). `evidence_evaluation` reuses facts only within one read-only evaluation; writers obtain fresh lock-time checks, retain CAS, and read back results.
+[`audit_evidence_runtime`](execution/audit/audit_evidence_runtime.py) resolves complete attempt sets for producers, completion, and stage consumers; supplying one ID cannot hide conflicts. Evidence-kind owners validate bindings. Stage and history rules remain in [K12/19](<../kernel/K12 Quality Assurance/19 Incremental Audit Planning.md>). `evidence_evaluation` shares mechanical facts; an explicit `evidence_observation` scope also shares the stage resolution used by status and closure projections. Leaving that read-only scope retires the observation. Writers obtain fresh lock-time checks, retain CAS, and read back results; no persisted cache can authorize evidence.
+
+Append-only producers share `ReceiptPublication.locked_append` in [`kblib`](platform/common/kblib.py). The producer still owns its preconditions, exact record acceptance and resulting-state verification. Ledger transactions retain their own transaction owner. [`audit_receipt_contract`](execution/audit/audit_receipt_contract.py) owns the single mechanical AuditReceipt projection used by completion and the atomic close transaction; precursor evidence and final receipts remain distinct objects.
 
 For an open batch, create its AuditPlan and invoke the producer named by each due obligation:
 
@@ -290,7 +292,7 @@ python3 Tools/generate_tool_catalog.py . --check
 
 Generation writes both views; `--check` recomputes and compares bytes without writing.
 
-[`test-ownership.yaml`](test-ownership.yaml) owns test responsibility, level, lifecycle and method overrides. [`TEST_CATALOG.md`](TEST_CATALOG.md) and `compiled/test-catalog.json` join it with source/fixture facts for navigation and execution:
+[`test-ownership.yaml`](test-ownership.yaml) owns test responsibility, level, lifecycle and method overrides. [`TEST_CATALOG.md`](TEST_CATALOG.md) and `compiled/test-catalog.json` join it with source/fixture facts for navigation and execution. Shared E2E audit actions live in `tests/support/batch_close_fixture.py`; `tests/fixtures/integration/checkpoint_contract.py` reconstructs and validates static checkpoints without replaying their producers. The representative build/MCP E2E retains the full lifecycle; maintenance completion starts from the existing validated closed checkpoint:
 
 ```text
 python3 Tools/generate_test_catalog.py .

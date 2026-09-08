@@ -87,7 +87,7 @@ def _scalar_type(argument):
     return JSON_SCALAR_TYPES.get(declared, DEFAULT_SCALAR_TYPE)
 
 
-def _is_list_valued(argument):
+def is_list_valued(argument):
     nargs = argument.get("nargs")
     if argument.get("action") in LIST_ACTIONS:
         return True
@@ -113,7 +113,7 @@ def schema_from_compiled_tool(tool_record):
             property_schema = {"type": "integer"}
         elif nargs == 0:
             property_schema = {"type": "boolean"}
-        elif _is_list_valued(argument):
+        elif is_list_valued(argument):
             property_schema = {
                 "type": "array",
                 "items": {"type": _scalar_type(argument)},

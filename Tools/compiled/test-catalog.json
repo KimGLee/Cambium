@@ -52,7 +52,7 @@
       "owner": "Tools/tests/fixtures/e2e/batch_close_scenarios.py",
       "path": "Tools/tests/fixtures/integration/batch_close_applied_checkpoint",
       "purpose": "Generated current-contract applied batch checkpoint for close producer integrations",
-      "tree_sha256": "sha256:f12b579a90ccf986e185ddf3013f8dca9523a87187f79f17e26162079f668720"
+      "tree_sha256": "sha256:27f67cbe6d3eb70e0a43c4301b38bc1fccc3737d471da8b6ff28cb9aa6acc746"
     },
     {
       "bytes": 111590,
@@ -63,7 +63,7 @@
       "owner": "Tools/tests/fixtures/e2e/batch_close_scenarios.py",
       "path": "Tools/tests/fixtures/integration/batch_close_state_mutating_checkpoint",
       "purpose": "Generated applied checkpoint for the hostile registered-verifier recovery path",
-      "tree_sha256": "sha256:67b5c54eda6012ccf5ef134e04a366f5a44e27eae353e8e8167e418b72d475b8"
+      "tree_sha256": "sha256:a9cad8a19b6063ae6fcf25ac7b42fe437c5f7c294b6fa5c6ae0709e1210a7373"
     },
     {
       "bytes": 394972,
@@ -74,7 +74,7 @@
       "owner": "Tools/tests/fixtures/e2e/required_queue_scenarios.py",
       "path": "Tools/tests/fixtures/integration/maintenance_closed_checkpoint",
       "purpose": "Generated and validated current-contract maintenance-closed integration checkpoint",
-      "tree_sha256": "sha256:903caffca0e6cb2e9813369d26a4c3e70928db7c5fa736f0c6b1f903b6279506"
+      "tree_sha256": "sha256:04cdc24b77c16722ab7f708d7ccf36e7ab4bcfcc01a9f3b722f83deb62e589d3"
     },
     {
       "bytes": 388270,
@@ -85,7 +85,7 @@
       "owner": "Tools/tests/fixtures/e2e/required_queue_scenarios.py",
       "path": "Tools/tests/fixtures/integration/terminal_closed_checkpoint",
       "purpose": "Generated current-contract terminal-profile checkpoint with both batches closed",
-      "tree_sha256": "sha256:7a2a686b526bbf97d7edeff8d055a449be0a0ee74fe48c7d0c39e74d67377f7f"
+      "tree_sha256": "sha256:a56b49bae05711d898ec2d22321ee06051e70b3939c1944c39cff41603b12df6"
     },
     {
       "bytes": 104791,
@@ -96,7 +96,7 @@
       "owner": "Tools/tests/fixtures/e2e/update_queue_scenarios.py",
       "path": "Tools/tests/fixtures/integration/update_queue_merge_admission_checkpoint",
       "purpose": "Generated current-contract open Queue checkpoint with complete pre-merge evidence",
-      "tree_sha256": "sha256:594ffa8e77d423da08124455d2c8781586a0e8c375c9862cdbde54f3e9f49044"
+      "tree_sha256": "sha256:30a2b095a6300c67dbfaf207bdd97d17c81d9ed6dae4d9fc66979a77a1c6bfc1"
     },
     {
       "bytes": 107299,
@@ -107,7 +107,7 @@
       "owner": "Tools/tests/fixtures/e2e/update_queue_scenarios.py",
       "path": "Tools/tests/fixtures/integration/update_queue_merged_checkpoint",
       "purpose": "Generated and validated current-contract merge-ready Queue integration checkpoint",
-      "tree_sha256": "sha256:dcb9d06b608c759d88b25818e6c716be5565dde234fdc94062a46a5d802fa354"
+      "tree_sha256": "sha256:41704e47f7be471553de170798e2279aeb754cdf25dd05bfdd4c456ccf977b90"
     },
     {
       "bytes": 34560,
@@ -118,7 +118,7 @@
       "owner": "Tools/tests/fixtures/e2e/update_queue_scenarios.py",
       "path": "Tools/tests/fixtures/integration/update_queue_open_checkpoint",
       "purpose": "Generated current-contract open Queue checkpoint before page work begins",
-      "tree_sha256": "sha256:af604fa0f4bca1a5e784422fe59c7205794f11d686578239193a0bfc2c30295f"
+      "tree_sha256": "sha256:cf2f3e79f409537ee5caa55a9f0db4497e47e9bcb1fc85ffda79cf88de6a8946"
     },
     {
       "bytes": 29591,
@@ -129,7 +129,7 @@
       "owner": "Tools/tests/fixtures/e2e/update_queue_scenarios.py",
       "path": "Tools/tests/fixtures/integration/update_queue_planning_ready_checkpoint",
       "purpose": "Generated current-contract planning checkpoint with one current ready-gate Receipt",
-      "tree_sha256": "sha256:a16e3eafcae8dc03dbd20a94e558132398959dea2e9425ddc3070bb235a527c5"
+      "tree_sha256": "sha256:7ef6928f972c54d87495f71314772a0ef5bbb6cf2267e6190918e702c033e267"
     }
   ],
   "fixtures": [
@@ -366,7 +366,7 @@
       ],
       "effects": {
         "file_copies": 1,
-        "full_repository_copies": 3,
+        "full_repository_copies": 2,
         "process_calls": 0,
         "temp_resources": 3
       },
@@ -431,7 +431,7 @@
       ],
       "effects": {
         "file_copies": 0,
-        "full_repository_copies": 3,
+        "full_repository_copies": 2,
         "process_calls": 0,
         "temp_resources": 3
       },
@@ -456,7 +456,7 @@
       ],
       "effects": {
         "file_copies": 0,
-        "full_repository_copies": 2,
+        "full_repository_copies": 1,
         "process_calls": 0,
         "temp_resources": 1
       },
@@ -659,6 +659,8 @@
       "consumer_detection": "python-import-closure",
       "consumers": [
         "Tools/tests/test_check_batch_close.py",
+        "Tools/tests/test_check_queue.py",
+        "Tools/tests/test_required_queue_e2e.py",
         "Tools/tests/test_update_queue.py"
       ],
       "effects": {
@@ -1058,6 +1060,7 @@
       },
       "fixture_dependencies": [
         "Tools/tests/fixtures/integration/checkpoint_contract.py",
+        "Tools/tests/support/batch_close_fixture.py",
         "Tools/tests/support/coverage_delta_fixture.py",
         "Tools/tests/support/initial_task_plan_fixture.py",
         "Tools/tests/support/profile_fixture.py"
@@ -1144,10 +1147,11 @@
       "effects": {
         "file_copies": 0,
         "full_repository_copies": 0,
-        "process_calls": 3,
+        "process_calls": 2,
         "temp_resources": 0
       },
       "fixture_dependencies": [
+        "Tools/tests/support/batch_close_fixture.py",
         "Tools/tests/support/coverage_delta_fixture.py",
         "Tools/tests/support/initial_task_plan_fixture.py"
       ],
@@ -9569,7 +9573,7 @@
                 },
                 "first_use_builds": {
                   "Tools/tests/fixtures/integration/update_queue_checkpoints.py:_validated_checkpoint_template[dynamic]": {
-                    "file_copies": 3,
+                    "file_copies": 0,
                     "full_repository_copies": 1,
                     "process_calls": 0,
                     "temp_resources": 1
@@ -9599,7 +9603,7 @@
               }
             },
             "transitive_effects": {
-              "file_copies": 3,
+              "file_copies": 0,
               "full_repository_copies": 2,
               "process_calls": 0,
               "temp_resources": 2
@@ -9607,14 +9611,14 @@
             "triggered_once_per_process": {
               "builds": {
                 "Tools/tests/fixtures/integration/update_queue_checkpoints.py:_validated_checkpoint_template[dynamic]": {
-                  "file_copies": 3,
+                  "file_copies": 0,
                   "full_repository_copies": 1,
                   "process_calls": 0,
                   "temp_resources": 1
                 }
               },
               "effects": {
-                "file_copies": 3,
+                "file_copies": 0,
                 "full_repository_copies": 1,
                 "process_calls": 0,
                 "temp_resources": 1
@@ -9704,7 +9708,7 @@
                 },
                 "first_use_builds": {
                   "Tools/tests/fixtures/integration/update_queue_checkpoints.py:_validated_checkpoint_template[dynamic]": {
-                    "file_copies": 3,
+                    "file_copies": 0,
                     "full_repository_copies": 1,
                     "process_calls": 0,
                     "temp_resources": 1
@@ -9734,7 +9738,7 @@
               }
             },
             "transitive_effects": {
-              "file_copies": 3,
+              "file_copies": 0,
               "full_repository_copies": 2,
               "process_calls": 0,
               "temp_resources": 2
@@ -9742,14 +9746,14 @@
             "triggered_once_per_process": {
               "builds": {
                 "Tools/tests/fixtures/integration/update_queue_checkpoints.py:_validated_checkpoint_template[dynamic]": {
-                  "file_copies": 3,
+                  "file_copies": 0,
                   "full_repository_copies": 1,
                   "process_calls": 0,
                   "temp_resources": 1
                 }
               },
               "effects": {
-                "file_copies": 3,
+                "file_copies": 0,
                 "full_repository_copies": 1,
                 "process_calls": 0,
                 "temp_resources": 1
@@ -9839,7 +9843,7 @@
                 },
                 "first_use_builds": {
                   "Tools/tests/fixtures/integration/update_queue_checkpoints.py:_validated_checkpoint_template[dynamic]": {
-                    "file_copies": 3,
+                    "file_copies": 0,
                     "full_repository_copies": 1,
                     "process_calls": 0,
                     "temp_resources": 1
@@ -9869,7 +9873,7 @@
               }
             },
             "transitive_effects": {
-              "file_copies": 3,
+              "file_copies": 0,
               "full_repository_copies": 2,
               "process_calls": 1,
               "temp_resources": 2
@@ -9877,14 +9881,14 @@
             "triggered_once_per_process": {
               "builds": {
                 "Tools/tests/fixtures/integration/update_queue_checkpoints.py:_validated_checkpoint_template[dynamic]": {
-                  "file_copies": 3,
+                  "file_copies": 0,
                   "full_repository_copies": 1,
                   "process_calls": 0,
                   "temp_resources": 1
                 }
               },
               "effects": {
-                "file_copies": 3,
+                "file_copies": 0,
                 "full_repository_copies": 1,
                 "process_calls": 0,
                 "temp_resources": 1
@@ -9974,7 +9978,7 @@
                 },
                 "first_use_builds": {
                   "Tools/tests/fixtures/integration/update_queue_checkpoints.py:_validated_checkpoint_template[dynamic]": {
-                    "file_copies": 3,
+                    "file_copies": 0,
                     "full_repository_copies": 1,
                     "process_calls": 0,
                     "temp_resources": 1
@@ -10004,7 +10008,7 @@
               }
             },
             "transitive_effects": {
-              "file_copies": 3,
+              "file_copies": 0,
               "full_repository_copies": 2,
               "process_calls": 0,
               "temp_resources": 2
@@ -10012,14 +10016,14 @@
             "triggered_once_per_process": {
               "builds": {
                 "Tools/tests/fixtures/integration/update_queue_checkpoints.py:_validated_checkpoint_template[dynamic]": {
-                  "file_copies": 3,
+                  "file_copies": 0,
                   "full_repository_copies": 1,
                   "process_calls": 0,
                   "temp_resources": 1
                 }
               },
               "effects": {
-                "file_copies": 3,
+                "file_copies": 0,
                 "full_repository_copies": 1,
                 "process_calls": 0,
                 "temp_resources": 1
@@ -10109,7 +10113,7 @@
                 },
                 "first_use_builds": {
                   "Tools/tests/fixtures/integration/update_queue_checkpoints.py:_validated_checkpoint_template[dynamic]": {
-                    "file_copies": 3,
+                    "file_copies": 0,
                     "full_repository_copies": 1,
                     "process_calls": 0,
                     "temp_resources": 1
@@ -10139,7 +10143,7 @@
               }
             },
             "transitive_effects": {
-              "file_copies": 3,
+              "file_copies": 0,
               "full_repository_copies": 2,
               "process_calls": 0,
               "temp_resources": 2
@@ -10147,14 +10151,14 @@
             "triggered_once_per_process": {
               "builds": {
                 "Tools/tests/fixtures/integration/update_queue_checkpoints.py:_validated_checkpoint_template[dynamic]": {
-                  "file_copies": 3,
+                  "file_copies": 0,
                   "full_repository_copies": 1,
                   "process_calls": 0,
                   "temp_resources": 1
                 }
               },
               "effects": {
-                "file_copies": 3,
+                "file_copies": 0,
                 "full_repository_copies": 1,
                 "process_calls": 0,
                 "temp_resources": 1
@@ -10244,7 +10248,7 @@
                 },
                 "first_use_builds": {
                   "Tools/tests/fixtures/integration/update_queue_checkpoints.py:_validated_checkpoint_template[dynamic]": {
-                    "file_copies": 3,
+                    "file_copies": 0,
                     "full_repository_copies": 1,
                     "process_calls": 0,
                     "temp_resources": 1
@@ -10274,7 +10278,7 @@
               }
             },
             "transitive_effects": {
-              "file_copies": 3,
+              "file_copies": 0,
               "full_repository_copies": 2,
               "process_calls": 0,
               "temp_resources": 2
@@ -10282,14 +10286,14 @@
             "triggered_once_per_process": {
               "builds": {
                 "Tools/tests/fixtures/integration/update_queue_checkpoints.py:_validated_checkpoint_template[dynamic]": {
-                  "file_copies": 3,
+                  "file_copies": 0,
                   "full_repository_copies": 1,
                   "process_calls": 0,
                   "temp_resources": 1
                 }
               },
               "effects": {
-                "file_copies": 3,
+                "file_copies": 0,
                 "full_repository_copies": 1,
                 "process_calls": 0,
                 "temp_resources": 1
@@ -10339,7 +10343,7 @@
       "scenario_first_use_builds": {
         "Tools/tests/fixtures/integration/update_queue_checkpoints.py:_validated_checkpoint_template[dynamic]": {
           "effects": {
-            "file_copies": 3,
+            "file_copies": 0,
             "full_repository_copies": 1,
             "process_calls": 0,
             "temp_resources": 1
@@ -33092,7 +33096,7 @@
                 },
                 "first_use_builds": {
                   "Tools/tests/fixtures/integration/update_queue_checkpoints.py:_validated_checkpoint_template[dynamic]": {
-                    "file_copies": 3,
+                    "file_copies": 0,
                     "full_repository_copies": 1,
                     "process_calls": 0,
                     "temp_resources": 1
@@ -33152,7 +33156,7 @@
               }
             },
             "transitive_effects": {
-              "file_copies": 3,
+              "file_copies": 0,
               "full_repository_copies": 2,
               "process_calls": 0,
               "temp_resources": 2
@@ -33160,14 +33164,14 @@
             "triggered_once_per_process": {
               "builds": {
                 "Tools/tests/fixtures/integration/update_queue_checkpoints.py:_validated_checkpoint_template[dynamic]": {
-                  "file_copies": 3,
+                  "file_copies": 0,
                   "full_repository_copies": 1,
                   "process_calls": 0,
                   "temp_resources": 1
                 }
               },
               "effects": {
-                "file_copies": 3,
+                "file_copies": 0,
                 "full_repository_copies": 1,
                 "process_calls": 0,
                 "temp_resources": 1
@@ -33444,7 +33448,7 @@
       "scenario_first_use_builds": {
         "Tools/tests/fixtures/integration/update_queue_checkpoints.py:_validated_checkpoint_template[dynamic]": {
           "effects": {
-            "file_copies": 3,
+            "file_copies": 0,
             "full_repository_copies": 1,
             "process_calls": 0,
             "temp_resources": 1
@@ -36182,10 +36186,10 @@
                 },
                 "first_use_builds": {
                   "Tools/tests/fixtures/integration/batch_close_checkpoints.py:_validated_checkpoint_template[dynamic]": {
-                    "file_copies": 1,
-                    "full_repository_copies": 2,
+                    "file_copies": 0,
+                    "full_repository_copies": 1,
                     "process_calls": 0,
-                    "temp_resources": 2
+                    "temp_resources": 1
                   }
                 },
                 "fixture_entrypoints": [
@@ -36212,25 +36216,25 @@
               }
             },
             "transitive_effects": {
-              "file_copies": 1,
-              "full_repository_copies": 3,
+              "file_copies": 0,
+              "full_repository_copies": 2,
               "process_calls": 1,
-              "temp_resources": 3
+              "temp_resources": 2
             },
             "triggered_once_per_process": {
               "builds": {
                 "Tools/tests/fixtures/integration/batch_close_checkpoints.py:_validated_checkpoint_template[dynamic]": {
-                  "file_copies": 1,
-                  "full_repository_copies": 2,
+                  "file_copies": 0,
+                  "full_repository_copies": 1,
                   "process_calls": 0,
-                  "temp_resources": 2
+                  "temp_resources": 1
                 }
               },
               "effects": {
-                "file_copies": 1,
-                "full_repository_copies": 2,
+                "file_copies": 0,
+                "full_repository_copies": 1,
                 "process_calls": 0,
-                "temp_resources": 2
+                "temp_resources": 1
               }
             }
           },
@@ -36324,10 +36328,10 @@
                 },
                 "first_use_builds": {
                   "Tools/tests/fixtures/integration/batch_close_checkpoints.py:_validated_checkpoint_template[dynamic]": {
-                    "file_copies": 1,
-                    "full_repository_copies": 2,
+                    "file_copies": 0,
+                    "full_repository_copies": 1,
                     "process_calls": 0,
-                    "temp_resources": 2
+                    "temp_resources": 1
                   }
                 },
                 "fixture_entrypoints": [
@@ -36354,25 +36358,25 @@
               }
             },
             "transitive_effects": {
-              "file_copies": 1,
-              "full_repository_copies": 3,
+              "file_copies": 0,
+              "full_repository_copies": 2,
               "process_calls": 0,
-              "temp_resources": 3
+              "temp_resources": 2
             },
             "triggered_once_per_process": {
               "builds": {
                 "Tools/tests/fixtures/integration/batch_close_checkpoints.py:_validated_checkpoint_template[dynamic]": {
-                  "file_copies": 1,
-                  "full_repository_copies": 2,
+                  "file_copies": 0,
+                  "full_repository_copies": 1,
                   "process_calls": 0,
-                  "temp_resources": 2
+                  "temp_resources": 1
                 }
               },
               "effects": {
-                "file_copies": 1,
-                "full_repository_copies": 2,
+                "file_copies": 0,
+                "full_repository_copies": 1,
                 "process_calls": 0,
-                "temp_resources": 2
+                "temp_resources": 1
               }
             }
           },
@@ -37476,10 +37480,10 @@
                 },
                 "first_use_builds": {
                   "Tools/tests/fixtures/integration/batch_close_checkpoints.py:_validated_checkpoint_template[dynamic]": {
-                    "file_copies": 1,
-                    "full_repository_copies": 2,
+                    "file_copies": 0,
+                    "full_repository_copies": 1,
                     "process_calls": 0,
-                    "temp_resources": 2
+                    "temp_resources": 1
                   }
                 },
                 "fixture_entrypoints": [
@@ -37506,25 +37510,25 @@
               }
             },
             "transitive_effects": {
-              "file_copies": 1,
-              "full_repository_copies": 3,
+              "file_copies": 0,
+              "full_repository_copies": 2,
               "process_calls": 0,
-              "temp_resources": 3
+              "temp_resources": 2
             },
             "triggered_once_per_process": {
               "builds": {
                 "Tools/tests/fixtures/integration/batch_close_checkpoints.py:_validated_checkpoint_template[dynamic]": {
-                  "file_copies": 1,
-                  "full_repository_copies": 2,
+                  "file_copies": 0,
+                  "full_repository_copies": 1,
                   "process_calls": 0,
-                  "temp_resources": 2
+                  "temp_resources": 1
                 }
               },
               "effects": {
-                "file_copies": 1,
-                "full_repository_copies": 2,
+                "file_copies": 0,
+                "full_repository_copies": 1,
                 "process_calls": 0,
-                "temp_resources": 2
+                "temp_resources": 1
               }
             }
           },
@@ -37686,10 +37690,10 @@
       "scenario_first_use_builds": {
         "Tools/tests/fixtures/integration/batch_close_checkpoints.py:_validated_checkpoint_template[dynamic]": {
           "effects": {
-            "file_copies": 1,
-            "full_repository_copies": 2,
+            "file_copies": 0,
+            "full_repository_copies": 1,
             "process_calls": 0,
-            "temp_resources": 2
+            "temp_resources": 1
           },
           "full_lifecycle": false,
           "triggered_by": [
@@ -42624,7 +42628,7 @@
       "semantics": "terminal_proof_dimension_coverage_contract"
     },
     {
-      "case_count": 22,
+      "case_count": 23,
       "cases": [
         {
           "consumer_only": false,
@@ -43759,7 +43763,7 @@
         {
           "consumer_only": true,
           "disposition": "keep",
-          "duplicate_group": null,
+          "duplicate_group": "receipt-path-safety-owner-and-transport",
           "effects": {
             "file_copies": 0,
             "full_repository_copies": 0,
@@ -44815,6 +44819,137 @@
             "e2e_builder_entrypoints": [],
             "fixture_entrypoints": [
               "Tools/tests/fixtures/integration/required_queue_checkpoints.py:GeneratedRequiredQueueCheckpointCase.setUpClass",
+              "Tools/tests/fixtures/integration/required_queue_checkpoints.py:MaintenanceClosedCheckpointCase.maintenance_evidence_ids",
+              "Tools/tests/fixtures/integration/required_queue_checkpoints.py:MaintenanceClosedCheckpointCase.setUp",
+              "Tools/tests/support/required_queue_fixture.py:RequiredQueueFixture.run_tool",
+              "Tools/tests/support/required_queue_fixture.py:RequiredQueueFixture.task_transition"
+            ],
+            "full_lifecycle": false,
+            "full_lifecycle_entrypoints": [],
+            "lifecycle_signals": [
+              "task_transition:complete"
+            ],
+            "recurring_effects": {
+              "file_copies": 0,
+              "full_repository_copies": 1,
+              "process_calls": 3,
+              "temp_resources": 1
+            },
+            "scopes": {
+              "direct_method": {
+                "builder_triggers": [],
+                "e2e_builder_entrypoints": [],
+                "effects": {
+                  "file_copies": 0,
+                  "full_repository_copies": 0,
+                  "process_calls": 3,
+                  "temp_resources": 0
+                },
+                "first_use_builds": {},
+                "fixture_entrypoints": [
+                  "Tools/tests/fixtures/integration/required_queue_checkpoints.py:MaintenanceClosedCheckpointCase.maintenance_evidence_ids",
+                  "Tools/tests/support/required_queue_fixture.py:RequiredQueueFixture.run_tool",
+                  "Tools/tests/support/required_queue_fixture.py:RequiredQueueFixture.task_transition"
+                ],
+                "full_lifecycle": false,
+                "full_lifecycle_entrypoints": [],
+                "lifecycle_signals": [
+                  "task_transition:complete"
+                ]
+              },
+              "per_class": {
+                "builder_triggers": [],
+                "e2e_builder_entrypoints": [],
+                "effects": {
+                  "file_copies": 0,
+                  "full_repository_copies": 1,
+                  "process_calls": 0,
+                  "temp_resources": 1
+                },
+                "first_use_builds": {},
+                "fixture_entrypoints": [
+                  "Tools/tests/fixtures/integration/required_queue_checkpoints.py:GeneratedRequiredQueueCheckpointCase.setUpClass"
+                ],
+                "full_lifecycle": false,
+                "full_lifecycle_entrypoints": [],
+                "lifecycle_signals": []
+              },
+              "per_method": {
+                "builder_triggers": [],
+                "e2e_builder_entrypoints": [],
+                "effects": {
+                  "file_copies": 0,
+                  "full_repository_copies": 0,
+                  "process_calls": 0,
+                  "temp_resources": 0
+                },
+                "first_use_builds": {},
+                "fixture_entrypoints": [
+                  "Tools/tests/fixtures/integration/required_queue_checkpoints.py:MaintenanceClosedCheckpointCase.setUp"
+                ],
+                "full_lifecycle": false,
+                "full_lifecycle_entrypoints": [],
+                "lifecycle_signals": []
+              },
+              "per_process": {
+                "builder_triggers": [],
+                "e2e_builder_entrypoints": [],
+                "effects": {
+                  "file_copies": 0,
+                  "full_repository_copies": 0,
+                  "process_calls": 0,
+                  "temp_resources": 0
+                },
+                "first_use_builds": {},
+                "fixture_entrypoints": [],
+                "full_lifecycle": false,
+                "full_lifecycle_entrypoints": [],
+                "lifecycle_signals": []
+              }
+            },
+            "transitive_effects": {
+              "file_copies": 0,
+              "full_repository_copies": 1,
+              "process_calls": 3,
+              "temp_resources": 1
+            },
+            "triggered_once_per_process": {
+              "builds": {},
+              "effects": {
+                "file_copies": 0,
+                "full_repository_copies": 0,
+                "process_calls": 0,
+                "temp_resources": 0
+              }
+            }
+          },
+          "level": "integration",
+          "lifecycle": "current",
+          "override": "MaintenanceCompletionCheckpointIntegrationTests.test_maintenance_gate_is_resumable_and_completes_without_terminal_proof",
+          "owner": "Tools/execution/task_runtime/queue_runtime/maintenance.py",
+          "owner_contract_symbol": "maintenance.maintenance_completion_gate_errors",
+          "parallel_safe": false,
+          "path": "Tools/tests/test_check_queue.py",
+          "primary_owner_test": "test_check_queue.MaintenanceCompletionCheckpointIntegrationTests.test_maintenance_gate_is_resumable_and_completes_without_terminal_proof",
+          "selector": "MaintenanceCompletionCheckpointIntegrationTests.test_maintenance_gate_is_resumable_and_completes_without_terminal_proof",
+          "semantics": "maintenance_gate_to_task_completion_checkpoint",
+          "test_id": "test_check_queue.MaintenanceCompletionCheckpointIntegrationTests.test_maintenance_gate_is_resumable_and_completes_without_terminal_proof"
+        },
+        {
+          "consumer_only": false,
+          "disposition": "keep",
+          "duplicate_group": null,
+          "effects": {
+            "file_copies": 0,
+            "full_repository_copies": 0,
+            "process_calls": 0,
+            "temp_resources": 0
+          },
+          "execution": {
+            "builder_triggers": [],
+            "e2e_builder_entrypoints": [],
+            "fixture_entrypoints": [
+              "Tools/tests/fixtures/integration/required_queue_checkpoints.py:GeneratedRequiredQueueCheckpointCase.setUpClass",
               "Tools/tests/fixtures/integration/required_queue_checkpoints.py:MaintenanceClosedCheckpointCase.setUp"
             ],
             "full_lifecycle": false,
@@ -45169,6 +45304,7 @@
         "Tools/tests/fixtures/contract/task_progress_objects.py",
         "Tools/tests/fixtures/integration/checkpoint_contract.py",
         "Tools/tests/fixtures/integration/required_queue_checkpoints.py",
+        "Tools/tests/support/batch_close_fixture.py",
         "Tools/tests/support/canonical_registry_fixture.py",
         "Tools/tests/support/coverage_delta_fixture.py",
         "Tools/tests/support/initial_task_plan_fixture.py",
@@ -45178,7 +45314,7 @@
         "Tools/tests/support/required_queue_fixture.py"
       ],
       "lifecycle": "current",
-      "override_count": 6,
+      "override_count": 7,
       "owner": "Tools/execution/task_runtime/check_queue.py",
       "parallel_safe": true,
       "path": "Tools/tests/test_check_queue.py",
@@ -106008,7 +106144,7 @@
                 },
                 "first_use_builds": {
                   "Tools/tests/fixtures/integration/update_queue_checkpoints.py:_validated_checkpoint_template[dynamic]": {
-                    "file_copies": 3,
+                    "file_copies": 0,
                     "full_repository_copies": 1,
                     "process_calls": 0,
                     "temp_resources": 1
@@ -106039,7 +106175,7 @@
               }
             },
             "transitive_effects": {
-              "file_copies": 3,
+              "file_copies": 0,
               "full_repository_copies": 2,
               "process_calls": 0,
               "temp_resources": 2
@@ -106047,14 +106183,14 @@
             "triggered_once_per_process": {
               "builds": {
                 "Tools/tests/fixtures/integration/update_queue_checkpoints.py:_validated_checkpoint_template[dynamic]": {
-                  "file_copies": 3,
+                  "file_copies": 0,
                   "full_repository_copies": 1,
                   "process_calls": 0,
                   "temp_resources": 1
                 }
               },
               "effects": {
-                "file_copies": 3,
+                "file_copies": 0,
                 "full_repository_copies": 1,
                 "process_calls": 0,
                 "temp_resources": 1
@@ -106105,7 +106241,7 @@
       "scenario_first_use_builds": {
         "Tools/tests/fixtures/integration/update_queue_checkpoints.py:_validated_checkpoint_template[dynamic]": {
           "effects": {
-            "file_copies": 3,
+            "file_copies": 0,
             "full_repository_copies": 1,
             "process_calls": 0,
             "temp_resources": 1
@@ -109368,7 +109504,7 @@
         {
           "consumer_only": false,
           "disposition": "keep",
-          "duplicate_group": null,
+          "duplicate_group": "cold-projection-owner-and-seal-consumer",
           "effects": {
             "file_copies": 0,
             "full_repository_copies": 0,
@@ -109468,7 +109604,7 @@
           },
           "level": "contract",
           "lifecycle": "current",
-          "override": null,
+          "override": "ReceiptReferenceRegistryContractTests.test_cold_projection_is_the_stable_union_of_graph_consumers",
           "owner": "Tools/execution/evidence/receipt_reference_contract.py",
           "owner_contract_symbol": "receipt_reference_contract.RECEIPT_REFERENCE_SPECS",
           "parallel_safe": true,
@@ -109720,7 +109856,7 @@
       },
       "fixture_dependencies": [],
       "lifecycle": "current",
-      "override_count": 3,
+      "override_count": 4,
       "owner": "Tools/execution/evidence/receipt_reference_contract.py",
       "parallel_safe": true,
       "path": "Tools/tests/test_receipt_reference_contract.py",
@@ -118060,168 +118196,8 @@
       "semantics": "rendering_verification_contract"
     },
     {
-      "case_count": 2,
+      "case_count": 1,
       "cases": [
-        {
-          "consumer_only": false,
-          "disposition": "keep",
-          "duplicate_group": null,
-          "effects": {
-            "file_copies": 0,
-            "full_repository_copies": 0,
-            "process_calls": 0,
-            "temp_resources": 0
-          },
-          "execution": {
-            "builder_triggers": [
-              "Tools/tests/support/required_queue_fixture.py:_template[base]"
-            ],
-            "e2e_builder_entrypoints": [
-              "Tools/tests/support/required_queue_fixture.py:_template"
-            ],
-            "fixture_entrypoints": [
-              "Tools/tests/fixtures/e2e/required_queue_scenarios.py:RequiredQueueE2EScenarioCase.setUp",
-              "Tools/tests/support/required_queue_fixture.py:RequiredQueueFixture.merge_and_close",
-              "Tools/tests/support/required_queue_fixture.py:RequiredQueueFixture.run_tool",
-              "Tools/tests/support/required_queue_fixture.py:RequiredQueueFixture.task_transition",
-              "Tools/tests/support/required_queue_fixture.py:RequiredQueueFixture.use_maintenance_completion",
-              "Tools/tests/support/required_queue_fixture.py:RequiredQueueFixture.write_maintenance_evidence"
-            ],
-            "full_lifecycle": true,
-            "full_lifecycle_entrypoints": [
-              "source:two-batch-close+task-complete"
-            ],
-            "lifecycle_signals": [
-              "merge_and_close:B1",
-              "merge_and_close:B2",
-              "task_transition:complete"
-            ],
-            "recurring_effects": {
-              "file_copies": 0,
-              "full_repository_copies": 1,
-              "process_calls": 27,
-              "temp_resources": 1
-            },
-            "scopes": {
-              "direct_method": {
-                "builder_triggers": [],
-                "e2e_builder_entrypoints": [],
-                "effects": {
-                  "file_copies": 0,
-                  "full_repository_copies": 0,
-                  "process_calls": 27,
-                  "temp_resources": 0
-                },
-                "first_use_builds": {},
-                "fixture_entrypoints": [
-                  "Tools/tests/support/required_queue_fixture.py:RequiredQueueFixture.merge_and_close",
-                  "Tools/tests/support/required_queue_fixture.py:RequiredQueueFixture.run_tool",
-                  "Tools/tests/support/required_queue_fixture.py:RequiredQueueFixture.task_transition",
-                  "Tools/tests/support/required_queue_fixture.py:RequiredQueueFixture.use_maintenance_completion",
-                  "Tools/tests/support/required_queue_fixture.py:RequiredQueueFixture.write_maintenance_evidence"
-                ],
-                "full_lifecycle": false,
-                "full_lifecycle_entrypoints": [],
-                "lifecycle_signals": [
-                  "merge_and_close:B1",
-                  "merge_and_close:B2",
-                  "task_transition:complete"
-                ]
-              },
-              "per_class": {
-                "builder_triggers": [],
-                "e2e_builder_entrypoints": [],
-                "effects": {
-                  "file_copies": 0,
-                  "full_repository_copies": 0,
-                  "process_calls": 0,
-                  "temp_resources": 0
-                },
-                "first_use_builds": {},
-                "fixture_entrypoints": [],
-                "full_lifecycle": false,
-                "full_lifecycle_entrypoints": [],
-                "lifecycle_signals": []
-              },
-              "per_method": {
-                "builder_triggers": [
-                  "Tools/tests/support/required_queue_fixture.py:_template[base]"
-                ],
-                "e2e_builder_entrypoints": [
-                  "Tools/tests/support/required_queue_fixture.py:_template"
-                ],
-                "effects": {
-                  "file_copies": 0,
-                  "full_repository_copies": 1,
-                  "process_calls": 0,
-                  "temp_resources": 1
-                },
-                "first_use_builds": {
-                  "Tools/tests/support/required_queue_fixture.py:_template[base]": {
-                    "file_copies": 3,
-                    "full_repository_copies": 1,
-                    "process_calls": 0,
-                    "temp_resources": 1
-                  }
-                },
-                "fixture_entrypoints": [
-                  "Tools/tests/fixtures/e2e/required_queue_scenarios.py:RequiredQueueE2EScenarioCase.setUp"
-                ],
-                "full_lifecycle": false,
-                "full_lifecycle_entrypoints": [],
-                "lifecycle_signals": []
-              },
-              "per_process": {
-                "builder_triggers": [],
-                "e2e_builder_entrypoints": [],
-                "effects": {
-                  "file_copies": 0,
-                  "full_repository_copies": 0,
-                  "process_calls": 0,
-                  "temp_resources": 0
-                },
-                "first_use_builds": {},
-                "fixture_entrypoints": [],
-                "full_lifecycle": false,
-                "full_lifecycle_entrypoints": [],
-                "lifecycle_signals": []
-              }
-            },
-            "transitive_effects": {
-              "file_copies": 3,
-              "full_repository_copies": 2,
-              "process_calls": 27,
-              "temp_resources": 2
-            },
-            "triggered_once_per_process": {
-              "builds": {
-                "Tools/tests/support/required_queue_fixture.py:_template[base]": {
-                  "file_copies": 3,
-                  "full_repository_copies": 1,
-                  "process_calls": 0,
-                  "temp_resources": 1
-                }
-              },
-              "effects": {
-                "file_copies": 3,
-                "full_repository_copies": 1,
-                "process_calls": 0,
-                "temp_resources": 1
-              }
-            }
-          },
-          "level": "e2e",
-          "lifecycle": "current",
-          "override": null,
-          "owner": "kernel/K13 Task Runtime and Execution Control/runtime-state-model.json",
-          "owner_contract_symbol": "required_queue_current_build_and_maintenance_e2e",
-          "parallel_safe": false,
-          "path": "Tools/tests/test_required_queue_e2e.py",
-          "primary_owner_test": "test_required_queue_e2e.MaintenanceCompletionEndToEndTests.test_maintenance_gate_is_resumable_and_completes_without_terminal_proof",
-          "selector": "MaintenanceCompletionEndToEndTests.test_maintenance_gate_is_resumable_and_completes_without_terminal_proof",
-          "semantics": "required_queue_current_build_and_maintenance_e2e",
-          "test_id": "test_required_queue_e2e.MaintenanceCompletionEndToEndTests.test_maintenance_gate_is_resumable_and_completes_without_terminal_proof"
-        },
         {
           "consumer_only": false,
           "disposition": "keep",
@@ -118374,12 +118350,12 @@
           "lifecycle": "current",
           "override": null,
           "owner": "kernel/K13 Task Runtime and Execution Control/runtime-state-model.json",
-          "owner_contract_symbol": "required_queue_current_build_and_maintenance_e2e",
+          "owner_contract_symbol": "required_queue_current_build_mcp_e2e",
           "parallel_safe": false,
           "path": "Tools/tests/test_required_queue_e2e.py",
           "primary_owner_test": "test_required_queue_e2e.RequiredQueueLifecycleEndToEndTests.test_real_terminal_proof_receipt_completes_task",
           "selector": "RequiredQueueLifecycleEndToEndTests.test_real_terminal_proof_receipt_completes_task",
-          "semantics": "required_queue_current_build_and_maintenance_e2e",
+          "semantics": "required_queue_current_build_mcp_e2e",
           "test_id": "test_required_queue_e2e.RequiredQueueLifecycleEndToEndTests.test_real_terminal_proof_receipt_completes_task"
         }
       ],
@@ -118401,6 +118377,7 @@
         "Tools/tests/fixtures/e2e/required_queue_scenarios.py",
         "Tools/tests/fixtures/integration/checkpoint_contract.py",
         "Tools/tests/fixtures/integration/required_queue_checkpoints.py",
+        "Tools/tests/support/batch_close_fixture.py",
         "Tools/tests/support/canonical_registry_fixture.py",
         "Tools/tests/support/coverage_delta_fixture.py",
         "Tools/tests/support/initial_task_plan_fixture.py",
@@ -118416,18 +118393,6 @@
       "parallel_safe": false,
       "path": "Tools/tests/test_required_queue_e2e.py",
       "scenario_first_use_builds": {
-        "Tools/tests/support/required_queue_fixture.py:_template[base]": {
-          "effects": {
-            "file_copies": 3,
-            "full_repository_copies": 1,
-            "process_calls": 0,
-            "temp_resources": 1
-          },
-          "full_lifecycle": false,
-          "triggered_by": [
-            "test_required_queue_e2e.MaintenanceCompletionEndToEndTests.test_maintenance_gate_is_resumable_and_completes_without_terminal_proof"
-          ]
-        },
         "Tools/tests/support/required_queue_fixture.py:_template[initial-plan]": {
           "effects": {
             "file_copies": 1,
@@ -118441,7 +118406,7 @@
           ]
         }
       },
-      "semantics": "required_queue_current_build_and_maintenance_e2e"
+      "semantics": "required_queue_current_build_mcp_e2e"
     },
     {
       "case_count": 3,
@@ -120474,7 +120439,7 @@
       "semantics": "current_runtime_path_registry_closure"
     },
     {
-      "case_count": 16,
+      "case_count": 17,
       "cases": [
         {
           "consumer_only": false,
@@ -121274,6 +121239,119 @@
           "effects": {
             "file_copies": 0,
             "full_repository_copies": 0,
+            "process_calls": 0,
+            "temp_resources": 0
+          },
+          "execution": {
+            "builder_triggers": [],
+            "e2e_builder_entrypoints": [],
+            "fixture_entrypoints": [],
+            "full_lifecycle": false,
+            "full_lifecycle_entrypoints": [],
+            "lifecycle_signals": [],
+            "recurring_effects": {
+              "file_copies": 0,
+              "full_repository_copies": 0,
+              "process_calls": 0,
+              "temp_resources": 0
+            },
+            "scopes": {
+              "direct_method": {
+                "builder_triggers": [],
+                "e2e_builder_entrypoints": [],
+                "effects": {
+                  "file_copies": 0,
+                  "full_repository_copies": 0,
+                  "process_calls": 0,
+                  "temp_resources": 0
+                },
+                "first_use_builds": {},
+                "fixture_entrypoints": [],
+                "full_lifecycle": false,
+                "full_lifecycle_entrypoints": [],
+                "lifecycle_signals": []
+              },
+              "per_class": {
+                "builder_triggers": [],
+                "e2e_builder_entrypoints": [],
+                "effects": {
+                  "file_copies": 0,
+                  "full_repository_copies": 0,
+                  "process_calls": 0,
+                  "temp_resources": 0
+                },
+                "first_use_builds": {},
+                "fixture_entrypoints": [],
+                "full_lifecycle": false,
+                "full_lifecycle_entrypoints": [],
+                "lifecycle_signals": []
+              },
+              "per_method": {
+                "builder_triggers": [],
+                "e2e_builder_entrypoints": [],
+                "effects": {
+                  "file_copies": 0,
+                  "full_repository_copies": 0,
+                  "process_calls": 0,
+                  "temp_resources": 0
+                },
+                "first_use_builds": {},
+                "fixture_entrypoints": [],
+                "full_lifecycle": false,
+                "full_lifecycle_entrypoints": [],
+                "lifecycle_signals": []
+              },
+              "per_process": {
+                "builder_triggers": [],
+                "e2e_builder_entrypoints": [],
+                "effects": {
+                  "file_copies": 0,
+                  "full_repository_copies": 0,
+                  "process_calls": 0,
+                  "temp_resources": 0
+                },
+                "first_use_builds": {},
+                "fixture_entrypoints": [],
+                "full_lifecycle": false,
+                "full_lifecycle_entrypoints": [],
+                "lifecycle_signals": []
+              }
+            },
+            "transitive_effects": {
+              "file_copies": 0,
+              "full_repository_copies": 0,
+              "process_calls": 0,
+              "temp_resources": 0
+            },
+            "triggered_once_per_process": {
+              "builds": {},
+              "effects": {
+                "file_copies": 0,
+                "full_repository_copies": 0,
+                "process_calls": 0,
+                "temp_resources": 0
+              }
+            }
+          },
+          "level": "unit",
+          "lifecycle": "current",
+          "override": "ReceiptSafetyTests.test_append_transaction_keeps_owner_validation_and_uncertainty_boundary",
+          "owner": "Tools/platform/common/kblib.py",
+          "owner_contract_symbol": "kblib.ReceiptPublication.locked_append",
+          "parallel_safe": true,
+          "path": "Tools/tests/test_runtime_safety.py",
+          "primary_owner_test": "test_runtime_safety.ReceiptSafetyTests.test_append_transaction_keeps_owner_validation_and_uncertainty_boundary",
+          "selector": "ReceiptSafetyTests.test_append_transaction_keeps_owner_validation_and_uncertainty_boundary",
+          "semantics": "append_only_publication_transaction_boundary",
+          "test_id": "test_runtime_safety.ReceiptSafetyTests.test_append_transaction_keeps_owner_validation_and_uncertainty_boundary"
+        },
+        {
+          "consumer_only": false,
+          "disposition": "keep",
+          "duplicate_group": null,
+          "effects": {
+            "file_copies": 0,
+            "full_repository_copies": 0,
             "process_calls": 1,
             "temp_resources": 0
           },
@@ -121609,7 +121687,7 @@
         {
           "consumer_only": false,
           "disposition": "keep",
-          "duplicate_group": null,
+          "duplicate_group": "receipt-path-safety-owner-and-transport",
           "effects": {
             "file_copies": 0,
             "full_repository_copies": 0,
@@ -122300,7 +122378,7 @@
       },
       "fixture_dependencies": [],
       "lifecycle": "current",
-      "override_count": 15,
+      "override_count": 16,
       "owner": "Tools/platform/common/kblib.py",
       "parallel_safe": true,
       "path": "Tools/tests/test_runtime_safety.py",
@@ -125105,7 +125183,7 @@
         {
           "consumer_only": true,
           "disposition": "keep",
-          "duplicate_group": null,
+          "duplicate_group": "cold-projection-owner-and-seal-consumer",
           "effects": {
             "file_copies": 0,
             "full_repository_copies": 0,
@@ -144657,10 +144735,10 @@
                 },
                 "first_use_builds": {
                   "Tools/tests/fixtures/integration/batch_close_checkpoints.py:_validated_checkpoint_template[dynamic]": {
-                    "file_copies": 1,
-                    "full_repository_copies": 2,
+                    "file_copies": 0,
+                    "full_repository_copies": 1,
                     "process_calls": 0,
-                    "temp_resources": 2
+                    "temp_resources": 1
                   }
                 },
                 "fixture_entrypoints": [
@@ -144687,25 +144765,25 @@
               }
             },
             "transitive_effects": {
-              "file_copies": 1,
-              "full_repository_copies": 3,
+              "file_copies": 0,
+              "full_repository_copies": 2,
               "process_calls": 0,
-              "temp_resources": 3
+              "temp_resources": 2
             },
             "triggered_once_per_process": {
               "builds": {
                 "Tools/tests/fixtures/integration/batch_close_checkpoints.py:_validated_checkpoint_template[dynamic]": {
-                  "file_copies": 1,
-                  "full_repository_copies": 2,
+                  "file_copies": 0,
+                  "full_repository_copies": 1,
                   "process_calls": 0,
-                  "temp_resources": 2
+                  "temp_resources": 1
                 }
               },
               "effects": {
-                "file_copies": 1,
-                "full_repository_copies": 2,
+                "file_copies": 0,
+                "full_repository_copies": 1,
                 "process_calls": 0,
-                "temp_resources": 2
+                "temp_resources": 1
               }
             }
           },
@@ -144792,7 +144870,7 @@
                 },
                 "first_use_builds": {
                   "Tools/tests/fixtures/integration/update_queue_checkpoints.py:_validated_checkpoint_template[dynamic]": {
-                    "file_copies": 3,
+                    "file_copies": 0,
                     "full_repository_copies": 1,
                     "process_calls": 0,
                     "temp_resources": 1
@@ -144822,7 +144900,7 @@
               }
             },
             "transitive_effects": {
-              "file_copies": 3,
+              "file_copies": 0,
               "full_repository_copies": 2,
               "process_calls": 1,
               "temp_resources": 2
@@ -144830,14 +144908,14 @@
             "triggered_once_per_process": {
               "builds": {
                 "Tools/tests/fixtures/integration/update_queue_checkpoints.py:_validated_checkpoint_template[dynamic]": {
-                  "file_copies": 3,
+                  "file_copies": 0,
                   "full_repository_copies": 1,
                   "process_calls": 0,
                   "temp_resources": 1
                 }
               },
               "effects": {
-                "file_copies": 3,
+                "file_copies": 0,
                 "full_repository_copies": 1,
                 "process_calls": 0,
                 "temp_resources": 1
@@ -144927,10 +145005,10 @@
                 },
                 "first_use_builds": {
                   "Tools/tests/fixtures/integration/batch_close_checkpoints.py:_validated_checkpoint_template[dynamic]": {
-                    "file_copies": 1,
-                    "full_repository_copies": 2,
+                    "file_copies": 0,
+                    "full_repository_copies": 1,
                     "process_calls": 0,
-                    "temp_resources": 2
+                    "temp_resources": 1
                   }
                 },
                 "fixture_entrypoints": [
@@ -144957,25 +145035,25 @@
               }
             },
             "transitive_effects": {
-              "file_copies": 1,
-              "full_repository_copies": 3,
+              "file_copies": 0,
+              "full_repository_copies": 2,
               "process_calls": 2,
-              "temp_resources": 3
+              "temp_resources": 2
             },
             "triggered_once_per_process": {
               "builds": {
                 "Tools/tests/fixtures/integration/batch_close_checkpoints.py:_validated_checkpoint_template[dynamic]": {
-                  "file_copies": 1,
-                  "full_repository_copies": 2,
+                  "file_copies": 0,
+                  "full_repository_copies": 1,
                   "process_calls": 0,
-                  "temp_resources": 2
+                  "temp_resources": 1
                 }
               },
               "effects": {
-                "file_copies": 1,
-                "full_repository_copies": 2,
+                "file_copies": 0,
+                "full_repository_copies": 1,
                 "process_calls": 0,
-                "temp_resources": 2
+                "temp_resources": 1
               }
             }
           },
@@ -145062,7 +145140,7 @@
                 },
                 "first_use_builds": {
                   "Tools/tests/fixtures/integration/update_queue_checkpoints.py:_validated_checkpoint_template[dynamic]": {
-                    "file_copies": 3,
+                    "file_copies": 0,
                     "full_repository_copies": 1,
                     "process_calls": 0,
                     "temp_resources": 1
@@ -145092,7 +145170,7 @@
               }
             },
             "transitive_effects": {
-              "file_copies": 3,
+              "file_copies": 0,
               "full_repository_copies": 2,
               "process_calls": 0,
               "temp_resources": 2
@@ -145100,14 +145178,14 @@
             "triggered_once_per_process": {
               "builds": {
                 "Tools/tests/fixtures/integration/update_queue_checkpoints.py:_validated_checkpoint_template[dynamic]": {
-                  "file_copies": 3,
+                  "file_copies": 0,
                   "full_repository_copies": 1,
                   "process_calls": 0,
                   "temp_resources": 1
                 }
               },
               "effects": {
-                "file_copies": 3,
+                "file_copies": 0,
                 "full_repository_copies": 1,
                 "process_calls": 0,
                 "temp_resources": 1
@@ -145197,7 +145275,7 @@
                 },
                 "first_use_builds": {
                   "Tools/tests/fixtures/integration/update_queue_checkpoints.py:_validated_checkpoint_template[dynamic]": {
-                    "file_copies": 3,
+                    "file_copies": 0,
                     "full_repository_copies": 1,
                     "process_calls": 0,
                     "temp_resources": 1
@@ -145227,7 +145305,7 @@
               }
             },
             "transitive_effects": {
-              "file_copies": 3,
+              "file_copies": 0,
               "full_repository_copies": 2,
               "process_calls": 0,
               "temp_resources": 2
@@ -145235,14 +145313,14 @@
             "triggered_once_per_process": {
               "builds": {
                 "Tools/tests/fixtures/integration/update_queue_checkpoints.py:_validated_checkpoint_template[dynamic]": {
-                  "file_copies": 3,
+                  "file_copies": 0,
                   "full_repository_copies": 1,
                   "process_calls": 0,
                   "temp_resources": 1
                 }
               },
               "effects": {
-                "file_copies": 3,
+                "file_copies": 0,
                 "full_repository_copies": 1,
                 "process_calls": 0,
                 "temp_resources": 1
@@ -145332,7 +145410,7 @@
                 },
                 "first_use_builds": {
                   "Tools/tests/fixtures/integration/update_queue_checkpoints.py:_validated_checkpoint_template[dynamic]": {
-                    "file_copies": 3,
+                    "file_copies": 0,
                     "full_repository_copies": 1,
                     "process_calls": 0,
                     "temp_resources": 1
@@ -145362,7 +145440,7 @@
               }
             },
             "transitive_effects": {
-              "file_copies": 3,
+              "file_copies": 0,
               "full_repository_copies": 2,
               "process_calls": 0,
               "temp_resources": 2
@@ -145370,14 +145448,14 @@
             "triggered_once_per_process": {
               "builds": {
                 "Tools/tests/fixtures/integration/update_queue_checkpoints.py:_validated_checkpoint_template[dynamic]": {
-                  "file_copies": 3,
+                  "file_copies": 0,
                   "full_repository_copies": 1,
                   "process_calls": 0,
                   "temp_resources": 1
                 }
               },
               "effects": {
-                "file_copies": 3,
+                "file_copies": 0,
                 "full_repository_copies": 1,
                 "process_calls": 0,
                 "temp_resources": 1
@@ -145467,7 +145545,7 @@
                 },
                 "first_use_builds": {
                   "Tools/tests/fixtures/integration/update_queue_checkpoints.py:_validated_checkpoint_template[dynamic]": {
-                    "file_copies": 3,
+                    "file_copies": 0,
                     "full_repository_copies": 1,
                     "process_calls": 0,
                     "temp_resources": 1
@@ -145497,7 +145575,7 @@
               }
             },
             "transitive_effects": {
-              "file_copies": 3,
+              "file_copies": 0,
               "full_repository_copies": 2,
               "process_calls": 0,
               "temp_resources": 2
@@ -145505,14 +145583,14 @@
             "triggered_once_per_process": {
               "builds": {
                 "Tools/tests/fixtures/integration/update_queue_checkpoints.py:_validated_checkpoint_template[dynamic]": {
-                  "file_copies": 3,
+                  "file_copies": 0,
                   "full_repository_copies": 1,
                   "process_calls": 0,
                   "temp_resources": 1
                 }
               },
               "effects": {
-                "file_copies": 3,
+                "file_copies": 0,
                 "full_repository_copies": 1,
                 "process_calls": 0,
                 "temp_resources": 1
@@ -145602,7 +145680,7 @@
                 },
                 "first_use_builds": {
                   "Tools/tests/fixtures/integration/update_queue_checkpoints.py:_validated_checkpoint_template[dynamic]": {
-                    "file_copies": 3,
+                    "file_copies": 0,
                     "full_repository_copies": 1,
                     "process_calls": 0,
                     "temp_resources": 1
@@ -145632,7 +145710,7 @@
               }
             },
             "transitive_effects": {
-              "file_copies": 3,
+              "file_copies": 0,
               "full_repository_copies": 2,
               "process_calls": 0,
               "temp_resources": 2
@@ -145640,14 +145718,14 @@
             "triggered_once_per_process": {
               "builds": {
                 "Tools/tests/fixtures/integration/update_queue_checkpoints.py:_validated_checkpoint_template[dynamic]": {
-                  "file_copies": 3,
+                  "file_copies": 0,
                   "full_repository_copies": 1,
                   "process_calls": 0,
                   "temp_resources": 1
                 }
               },
               "effects": {
-                "file_copies": 3,
+                "file_copies": 0,
                 "full_repository_copies": 1,
                 "process_calls": 0,
                 "temp_resources": 1
@@ -145737,7 +145815,7 @@
                 },
                 "first_use_builds": {
                   "Tools/tests/fixtures/integration/update_queue_checkpoints.py:_validated_checkpoint_template[dynamic]": {
-                    "file_copies": 3,
+                    "file_copies": 0,
                     "full_repository_copies": 1,
                     "process_calls": 0,
                     "temp_resources": 1
@@ -145767,7 +145845,7 @@
               }
             },
             "transitive_effects": {
-              "file_copies": 3,
+              "file_copies": 0,
               "full_repository_copies": 2,
               "process_calls": 1,
               "temp_resources": 2
@@ -145775,14 +145853,14 @@
             "triggered_once_per_process": {
               "builds": {
                 "Tools/tests/fixtures/integration/update_queue_checkpoints.py:_validated_checkpoint_template[dynamic]": {
-                  "file_copies": 3,
+                  "file_copies": 0,
                   "full_repository_copies": 1,
                   "process_calls": 0,
                   "temp_resources": 1
                 }
               },
               "effects": {
-                "file_copies": 3,
+                "file_copies": 0,
                 "full_repository_copies": 1,
                 "process_calls": 0,
                 "temp_resources": 1
@@ -145872,7 +145950,7 @@
                 },
                 "first_use_builds": {
                   "Tools/tests/fixtures/integration/update_queue_checkpoints.py:_validated_checkpoint_template[dynamic]": {
-                    "file_copies": 3,
+                    "file_copies": 0,
                     "full_repository_copies": 1,
                     "process_calls": 0,
                     "temp_resources": 1
@@ -145902,7 +145980,7 @@
               }
             },
             "transitive_effects": {
-              "file_copies": 3,
+              "file_copies": 0,
               "full_repository_copies": 2,
               "process_calls": 0,
               "temp_resources": 2
@@ -145910,14 +145988,14 @@
             "triggered_once_per_process": {
               "builds": {
                 "Tools/tests/fixtures/integration/update_queue_checkpoints.py:_validated_checkpoint_template[dynamic]": {
-                  "file_copies": 3,
+                  "file_copies": 0,
                   "full_repository_copies": 1,
                   "process_calls": 0,
                   "temp_resources": 1
                 }
               },
               "effects": {
-                "file_copies": 3,
+                "file_copies": 0,
                 "full_repository_copies": 1,
                 "process_calls": 0,
                 "temp_resources": 1
@@ -146007,7 +146085,7 @@
                 },
                 "first_use_builds": {
                   "Tools/tests/fixtures/integration/update_queue_checkpoints.py:_validated_checkpoint_template[dynamic]": {
-                    "file_copies": 3,
+                    "file_copies": 0,
                     "full_repository_copies": 1,
                     "process_calls": 0,
                     "temp_resources": 1
@@ -146037,7 +146115,7 @@
               }
             },
             "transitive_effects": {
-              "file_copies": 3,
+              "file_copies": 0,
               "full_repository_copies": 2,
               "process_calls": 0,
               "temp_resources": 2
@@ -146045,14 +146123,14 @@
             "triggered_once_per_process": {
               "builds": {
                 "Tools/tests/fixtures/integration/update_queue_checkpoints.py:_validated_checkpoint_template[dynamic]": {
-                  "file_copies": 3,
+                  "file_copies": 0,
                   "full_repository_copies": 1,
                   "process_calls": 0,
                   "temp_resources": 1
                 }
               },
               "effects": {
-                "file_copies": 3,
+                "file_copies": 0,
                 "full_repository_copies": 1,
                 "process_calls": 0,
                 "temp_resources": 1
@@ -146897,10 +146975,10 @@
       "scenario_first_use_builds": {
         "Tools/tests/fixtures/integration/batch_close_checkpoints.py:_validated_checkpoint_template[dynamic]": {
           "effects": {
-            "file_copies": 1,
-            "full_repository_copies": 2,
+            "file_copies": 0,
+            "full_repository_copies": 1,
             "process_calls": 0,
-            "temp_resources": 2
+            "temp_resources": 1
           },
           "full_lifecycle": false,
           "triggered_by": [
@@ -146910,7 +146988,7 @@
         },
         "Tools/tests/fixtures/integration/update_queue_checkpoints.py:_validated_checkpoint_template[dynamic]": {
           "effects": {
-            "file_copies": 3,
+            "file_copies": 0,
             "full_repository_copies": 1,
             "process_calls": 0,
             "temp_resources": 1
@@ -147275,7 +147353,7 @@
                 },
                 "first_use_builds": {
                   "Tools/tests/fixtures/integration/update_queue_checkpoints.py:_validated_checkpoint_template[dynamic]": {
-                    "file_copies": 3,
+                    "file_copies": 0,
                     "full_repository_copies": 1,
                     "process_calls": 0,
                     "temp_resources": 1
@@ -147305,7 +147383,7 @@
               }
             },
             "transitive_effects": {
-              "file_copies": 3,
+              "file_copies": 0,
               "full_repository_copies": 2,
               "process_calls": 0,
               "temp_resources": 2
@@ -147313,14 +147391,14 @@
             "triggered_once_per_process": {
               "builds": {
                 "Tools/tests/fixtures/integration/update_queue_checkpoints.py:_validated_checkpoint_template[dynamic]": {
-                  "file_copies": 3,
+                  "file_copies": 0,
                   "full_repository_copies": 1,
                   "process_calls": 0,
                   "temp_resources": 1
                 }
               },
               "effects": {
-                "file_copies": 3,
+                "file_copies": 0,
                 "full_repository_copies": 1,
                 "process_calls": 0,
                 "temp_resources": 1
@@ -148318,7 +148396,7 @@
       "scenario_first_use_builds": {
         "Tools/tests/fixtures/integration/update_queue_checkpoints.py:_validated_checkpoint_template[dynamic]": {
           "effects": {
-            "file_copies": 3,
+            "file_copies": 0,
             "full_repository_copies": 1,
             "process_calls": 0,
             "temp_resources": 1
@@ -151435,36 +151513,36 @@
     "fixture_bundles": 8,
     "fixture_source_effects": {
       "file_copies": 15,
-      "full_repository_copies": 23,
-      "process_calls": 11,
+      "full_repository_copies": 20,
+      "process_calls": 10,
       "temp_resources": 17
     },
     "fixtures": 48,
     "levels": {
       "contract": 554,
-      "e2e": 4,
+      "e2e": 3,
       "historical-read-only": 1,
-      "integration": 235,
+      "integration": 236,
       "slow": 68,
-      "unit": 419
+      "unit": 420
     },
     "method_transitive_exposure": {
-      "e2e_builder": 2,
-      "file_copies": 79,
-      "full_lifecycle": 2,
+      "e2e_builder": 1,
+      "file_copies": 55,
+      "full_lifecycle": 1,
       "full_repository_copies": 51,
       "process_calls": 35,
       "temp_resources": 311
     },
-    "module_scenario_first_use_builds": 16,
-    "parallel_safe_cases": 1079,
+    "module_scenario_first_use_builds": 15,
+    "parallel_safe_cases": 1080,
     "source_effects": {
       "file_copies": 7,
       "full_repository_copies": 15,
       "process_calls": 36,
       "temp_resources": 138
     },
-    "test_cases": 1281,
+    "test_cases": 1282,
     "test_modules": 134
   }
 }

@@ -8,6 +8,7 @@ producer dependency here would create both a circular import and a second
 interpretation of current runtime state.
 """
 
+from contextlib import contextmanager
 import os
 import stat
 
@@ -69,7 +70,8 @@ class _EvidenceFacts:
     The context is private to a copied runtime view and is not returned or
     persisted. A new public invocation (including a writer's locked recheck)
     starts a new context. Record keys include their bytes, not just IDs;
-    candidate selection, currentness and stage verdicts are never cached.
+    candidate selection and currentness are resolved by the consumer. Only
+    an explicit evidence_observation scope can share a stage resolution.
     """
 
     def __init__(self, result, *, enabled=True):
@@ -198,6 +200,25 @@ def evidence_evaluation(result):
     return {**result, "_audit_evidence_facts": _EvidenceFacts(result),
             "current_receipt_catalog": current_receipt_catalog(result),
             "receipt_catalog": historical_receipt_catalog(result)}
+
+
+@contextmanager
+def evidence_observation(result):
+    """Share stage projections only within one explicitly read-only action.
+
+    This is not a persistent valid-evidence cache. Each invocation, locked
+    rebuild and resulting-state read starts another observation. Leaving the
+    block retires its stage results even if a caller retains the view.
+    """
+    view = dict(result)
+    view.pop("_audit_evidence_facts", None)
+    view = evidence_evaluation(view)
+    view["_audit_stage_resolutions"] = {}
+    try:
+        yield view
+    finally:
+        view.pop("_audit_stage_resolutions").clear()
+        view.pop("_audit_evidence_facts", None)
 
 
 def _current_page_artifact_fingerprint(root, relative, *, snapshot=None,
@@ -2290,11 +2311,16 @@ def _required_obligation_records(result, item, plan, plan_sha256, catalog,
                                  reconciliation_rows=None):
     """Select only current terminal evidence; preserve attempts as history."""
     result = evidence_evaluation(result)
-    selected = []
-    for obligation in obligations:
-        resolution = _required_obligation_resolution(
+    rows = [(obligation, _required_obligation_resolution(
             result, item, plan, plan_sha256, catalog, obligation,
-            require_current=require_current)
+            require_current=require_current)) for obligation in obligations]
+    return _accepted_obligation_records(
+        result, plan, rows, reconciliation_rows=reconciliation_rows)
+
+
+def _accepted_obligation_records(result, plan, rows, *, reconciliation_rows=None):
+    selected = []
+    for obligation, resolution in rows:
         status = resolution["status"]
         if status == "missing":
             raise AuditEvidenceMissing(
@@ -2343,14 +2369,14 @@ def _stage_requires_live_currentness(due_stage, required_state):
     return required_state is None or required_state == due_state
 
 
-def stage_evidence_status(result, item, due_stage, required_state=None):
-    """Return one typed status for every frozen obligation due at a stage.
-
-    This is a read-only projection over the same validators used by the final
-    closure consumer.  It therefore gives an orchestrator a machine result
-    without making it parse diagnostic prose or maintain a second evidence
-    predicate.
-    """
+def _resolve_stage_evidence(result, item, due_stage, required_state):
+    cache = result.get("_audit_stage_resolutions")
+    # The item and catalog are immutable inputs during this scoped action.
+    # A caller projecting a candidate uses a different catalog identity.
+    key = (_record_sha256(item), id(current_receipt_catalog(result)),
+           due_stage, required_state)
+    if cache is not None and key in cache:
+        return cache[key]
     result = evidence_evaluation(result)
     catalog = current_receipt_catalog(result)
     relative, plan, plan_sha256 = _resolve_current_plan(
@@ -2358,17 +2384,27 @@ def stage_evidence_status(result, item, due_stage, required_state=None):
     _require_current_profile_rendering_contract_state(result, item, plan)
     obligations = [row for row in plan["obligations"]
                    if row["due_stage"] == due_stage]
-    if not obligations:
+    resolved = [(obligation, _required_obligation_resolution(
+            result, item, plan, plan_sha256, catalog, obligation,
+            require_current=_stage_requires_live_currentness(
+                due_stage, required_state))) for obligation in obligations]
+    value = result, relative, plan, plan_sha256, resolved
+    if cache is not None:
+        cache[key] = value
+    return value
+
+
+def stage_evidence_status(result, item, due_stage, required_state=None):
+    """Project statuses from the same stage resolution the closure consumes."""
+    result, relative, plan, plan_sha256, resolved = _resolve_stage_evidence(
+        result, item, due_stage, required_state)
+    if not resolved:
         raise AuditEvidenceError(
             "AuditPlan %s has no obligations due at %s" %
             (plan["plan_id"], due_stage))
     rows = []
     reconciliation_rows = []
-    for obligation in obligations:
-        resolution = _required_obligation_resolution(
-            result, item, plan, plan_sha256, catalog, obligation,
-            require_current=_stage_requires_live_currentness(
-                due_stage, required_state))
+    for obligation, resolution in resolved:
         status = resolution["status"]
         record = resolution["record"]
         reused = resolution["reused"]
@@ -2434,16 +2470,11 @@ def current_consumption_evidence_ids(result, item, plan, plan_sha256,
 
 def stage_evidence_closure(result, item, due_stage, required_state=None):
     """Resolve every obligation due at one stage across all evidence kinds."""
-    result = evidence_evaluation(result)
-    catalog = current_receipt_catalog(result)
-    relative, plan, plan_sha256 = _resolve_current_plan(
-        result, item, catalog, required_state=required_state)
-    _require_current_profile_rendering_contract_state(result, item, plan)
+    result, relative, plan, plan_sha256, resolved = _resolve_stage_evidence(
+        result, item, due_stage, required_state)
     reconciliation_rows = []
-    selected = _required_stage_records(
-        result, item, plan, plan_sha256, catalog, due_stage,
-        require_current=_stage_requires_live_currentness(
-            due_stage, required_state),
+    selected = _accepted_obligation_records(
+        result, plan, resolved,
         reconciliation_rows=reconciliation_rows)
     reconciliation = _reconciliation_projection(reconciliation_rows)
     if reconciliation["audit_evidence_unresolved_count"] != 0:
@@ -2636,6 +2667,7 @@ __all__ = [
     'closed_plan_closure_errors',
     'combine_plan_reconciliations',
     'current_consumption_evidence_ids',
+    'evidence_observation',
     'reconciliation_from_bindings',
     'resolve_stage_plan',
     'terminal_dimension_evidence',

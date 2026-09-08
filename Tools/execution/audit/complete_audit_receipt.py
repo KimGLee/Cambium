@@ -12,7 +12,6 @@ import sys
 import Tools.execution.audit.audit_evidence_runtime as audit_evidence_runtime
 import Tools.execution.audit.audit_producer_runtime as audit_producer_runtime
 import Tools.execution.audit.audit_receipt_contract as audit_receipt_contract
-import Tools.execution.audit.audit_receipt_finalizer as audit_receipt_finalizer
 import Tools.platform.common.kblib as kblib
 import Tools.execution.task_runtime.runtime_paths as runtime_paths
 from Tools.platform.common import reporting
@@ -62,7 +61,7 @@ def build_audit_receipt(*, plan, plan_sha256, obligation, evidence, seq=1):
         "completed AuditPlan obligation %s from producer evidence %s" %
         (obligation["obligation_id"], evidence["receipt_id"]), seq,
         receipt_type_id=audit_receipt_contract.RECEIPT_TYPE_ID)
-    return audit_receipt_finalizer.finalize_audit_receipt_record(
+    return audit_receipt_contract.project_new_passing_audit_receipt(
         receipt_id=seed["receipt_id"],
         scope=(evidence.get("scope") or []) + [obligation["target"]],
         plan=plan,
@@ -146,47 +145,37 @@ def main(argv=None):
         obligation_id=args.obligation_id[0],
         receipt_id=receipt["receipt_id"])
     try:
-        with kblib.runtime_write_lock(root, owner_metadata=operation) as lease:
-            with kblib.no_authoritative_write_guard(lease):
-                locked = audit_producer_runtime.require_runtime_current(
-                    root, authority, "before AuditReceipt publication")
-                locked_item, _locked_activation = \
-                    audit_producer_runtime.open_batch(locked, args.batch)
-                (_locked_absolute, locked_plan, locked_plan_sha256,
-                 _locked_frozen) = _load_current_plan(
-                     root, args.plan, locked, locked_item)
-                if (locked_plan != plan or
-                        locked_plan_sha256 != plan_sha256):
-                    raise audit_producer_runtime.AuditProducerError(
-                        "resolved AuditPlan changed before evidence publication")
-                audit_producer_runtime.require_pages_current(
-                    root, frozen, "before AuditReceipt publication")
-                locked = audit_evidence_runtime.evidence_evaluation(locked)
-                for obligation, evidence, candidate, _ in pending:
-                    current_evidence, existing = audit_evidence_runtime.require_completion_evidence(
-                        locked, locked_item, plan, plan_sha256, obligation,
-                        evidence["receipt_id"])
-                    if current_evidence != evidence:
-                        raise audit_producer_runtime.AuditProducerError("producer evidence changed before AuditReceipt publication")
-                    if existing is not None:
-                        raise audit_producer_runtime.AuditProducerError("AuditReceipt evidence appeared before publication")
-                    proposed = audit_evidence_runtime.obligation_evidence_resolution(
-                        locked, locked_item, plan, plan_sha256, obligation,
-                        proposed_record=candidate)
-                    if proposed["status"] != "satisfied":
-                        raise audit_producer_runtime.AuditProducerError(
-                            "proposed AuditReceipt does not discharge its obligation: %s" %
-                            proposed.get("reason"))
-                before = kblib.receipt_append_observation(
-                    receipt_absolute, new_receipts)
-            outcome, error, _ = publication.append(
-                receipt_absolute, new_receipts, before=before)
-            if outcome != "present" or error is not None:
-                if outcome == "absent":
-                    lease.mark_reconciled()
+        with publication.locked_append(root, receipt_absolute, new_receipts,
+                operation=operation, label="complete_audit_receipt publication"):
+            locked = audit_producer_runtime.require_runtime_current(
+                root, authority, "before AuditReceipt publication")
+            locked_item, _locked_activation = \
+                audit_producer_runtime.open_batch(locked, args.batch)
+            (_locked_absolute, locked_plan, locked_plan_sha256,
+             _locked_frozen) = _load_current_plan(
+                 root, args.plan, locked, locked_item)
+            if (locked_plan != plan or
+                    locked_plan_sha256 != plan_sha256):
                 raise audit_producer_runtime.AuditProducerError(
-                    "AuditReceipt publication outcome=%s error=%s" %
-                    (outcome, error))
+                    "resolved AuditPlan changed before evidence publication")
+            audit_producer_runtime.require_pages_current(
+                root, frozen, "before AuditReceipt publication")
+            locked = audit_evidence_runtime.evidence_evaluation(locked)
+            for obligation, evidence, candidate, _ in pending:
+                current_evidence, existing = audit_evidence_runtime.require_completion_evidence(
+                    locked, locked_item, plan, plan_sha256, obligation,
+                    evidence["receipt_id"])
+                if current_evidence != evidence:
+                    raise audit_producer_runtime.AuditProducerError("producer evidence changed before AuditReceipt publication")
+                if existing is not None:
+                    raise audit_producer_runtime.AuditProducerError("AuditReceipt evidence appeared before publication")
+                proposed = audit_evidence_runtime.obligation_evidence_resolution(
+                    locked, locked_item, plan, plan_sha256, obligation,
+                    proposed_record=candidate)
+                if proposed["status"] != "satisfied":
+                    raise audit_producer_runtime.AuditProducerError(
+                        "proposed AuditReceipt does not discharge its obligation: %s" %
+                        proposed.get("reason"))
     except (OSError, TypeError, ValueError,
             kblib.RuntimeStateLockedError) as exc:
         reporting.write_canonical_json(reporting.publication_result(

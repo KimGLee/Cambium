@@ -348,6 +348,8 @@ def read_receipt_records(path, observation=None):
         if (not isinstance(observation, kblib.ReceiptObservation) or
                 observation["path"] != kblib.validate_receipt_output_path(path)):
             raise AuditProducerError("receipt read-back observation targets another register")
+        if observation.records is not None:
+            return list(observation.records)
         content = observation.content
     text = content.decode("utf-8")
     for line_number, line in enumerate(text.splitlines(), 1):

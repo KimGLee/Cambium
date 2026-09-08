@@ -99,7 +99,7 @@ def initialize_task_plan_scenario(walker):
     walker.assertEqual(planning_receipt, result["progress"]["initial_task_plan_receipt"])
     walker.assertEqual([("B1", "queued"), ("B2", "queued")],
         [(row["id"], row["state"]) for row in result["queue"]["required_queue"]])
-    walker.compose_page_inputs()
+    walker.compile_profile_artifacts()
     return {"initial_task_plan_receipt": planning_receipt, "initial_task_plan_path": plan_path}
 
 

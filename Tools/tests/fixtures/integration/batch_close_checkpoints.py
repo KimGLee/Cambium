@@ -6,17 +6,14 @@ fixture's deterministic Profile/Tool dependency bundle, validate the stored
 after-image, and copy that legal applied checkpoint per method.
 """
 
-import json
 from pathlib import Path
 import shutil
 import tempfile
 import unittest
 
-from Tools.execution.task_runtime import runtime_validation
 from Tools.tests.fixtures.integration.checkpoint_contract import (
+    validate_checkpoint_manifest, reconstruct_checkpoint,
     PERSISTED_PATHS,
-    file_records,
-    tree_sha256,
 )
 from Tools.tests.support.batch_close_fixture import (
     BatchCloseRuntimeActions,
@@ -90,7 +87,6 @@ def install_batch_close_dependencies(destination, scenario="applied"):
 
 def _validate_manifest(scenario):
     checkpoint_root, manifest_path = CHECKPOINTS[scenario]
-    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
     expected = {
         "schema_version": 1,
         "checkpoint_id": "batch-close-%s-current" % scenario,
@@ -103,19 +99,7 @@ def _validate_manifest(scenario):
         "persisted_paths": list(PERSISTED_PATHS),
         "dependency_builder": DEPENDENCY_BUILDER,
     }
-    for field, value in expected.items():
-        if manifest.get(field) != value:
-            raise AssertionError(
-                "batch-close checkpoint %s has stale %s" %
-                (scenario, field))
-    records = file_records(checkpoint_root)
-    if manifest.get("files") != records:
-        raise AssertionError(
-            "batch-close checkpoint %s file manifest is stale" % scenario)
-    if manifest.get("tree_sha256") != tree_sha256(records):
-        raise AssertionError(
-            "batch-close checkpoint %s tree fingerprint is stale" %
-            scenario)
+    manifest = validate_checkpoint_manifest(checkpoint_root, manifest_path, expected)
     return checkpoint_root, manifest
 
 
@@ -129,18 +113,8 @@ def _validated_checkpoint_template(scenario):
     checkpoint_root, manifest = _validate_manifest(scenario)
     holder = tempfile.TemporaryDirectory()
     root = Path(holder.name) / "repo"
-    shutil.copytree(checkpoint_root, root)
-    install_batch_close_dependencies(root, scenario)
-    reconstructed = file_records(root)
-    if manifest.get("validated_tree_sha256") != \
-            tree_sha256(reconstructed):
-        raise AssertionError(
-            "batch-close checkpoint dependencies changed; regenerate it")
-    result = runtime_validation.validate_runtime(root)
-    if result["errors"]:
-        raise AssertionError(
-            "batch-close checkpoint fails the current runtime contract: %s" %
-            result["errors"])
+    reconstruct_checkpoint(checkpoint_root, root, manifest,
+                           lambda target: install_batch_close_dependencies(target, scenario))
     artifacts = dict(manifest.get("artifacts") or {})
     _VALIDATED_TEMPLATES[scenario] = (holder, root, artifacts)
     return root, dict(artifacts)

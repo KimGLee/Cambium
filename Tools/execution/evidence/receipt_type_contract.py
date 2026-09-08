@@ -180,10 +180,18 @@ def _validator(owner):
 
 
 def current_receipt_errors(record, lifecycle, *, root=None, registry=None):
-    """Validate one body for one current-contract catalog lifecycle."""
+    """Validate one body once for all requested current catalog lifecycles.
+
+    Lifecycle eligibility and body validity are separate proofs. A catalog
+    loading both history and hot use supplies both modes in one invocation;
+    neither view may bypass its eligibility rule or run a private validator.
+    """
     errors = []
-    if lifecycle not in _SUPPORTED_LIFECYCLES:
-        return ["unknown Receipt catalog lifecycle %r" % lifecycle]
+    lifecycles = (lifecycle,) if isinstance(lifecycle, str) else lifecycle
+    if (not isinstance(lifecycles, (tuple, list)) or not lifecycles or
+            any(not isinstance(mode, str) or mode not in _SUPPORTED_LIFECYCLES
+                for mode in lifecycles)):
+        return ["unknown Receipt catalog lifecycle %r" % (lifecycle,)]
     if not isinstance(record, dict):
         return ["Receipt body must be a mapping"]
     receipt_type_id = record.get("receipt_type_id")
@@ -199,9 +207,11 @@ def current_receipt_errors(record, lifecycle, *, root=None, registry=None):
     if registration is None:
         return ["Receipt type %s is not registered by a current producer" %
                 receipt_type_id]
-    if lifecycle not in registration.catalog_lifecycle:
-        return ["Receipt type %s is not admitted to the %s catalog" %
-                (receipt_type_id, lifecycle)]
+    errors = ["Receipt type %s is not admitted to the %s catalog" %
+              (receipt_type_id, mode) for mode in dict.fromkeys(lifecycles)
+              if mode not in registration.catalog_lifecycle]
+    if errors:
+        return errors
     try:
         validator = _validator(registration.validator_owner)
         owned_errors = validator(record, root=root)

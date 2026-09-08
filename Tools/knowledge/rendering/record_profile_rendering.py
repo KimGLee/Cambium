@@ -147,28 +147,22 @@ def main(argv=None):
             TOOL, "record-profile-rendering", result, authority, batch_id=args.batch,
             plan_id=stage["plan"]["plan_id"], obligation_id=args.obligation_id[0],
             receipt_id=receipt["receipt_id"])
-        with kblib.runtime_write_lock(root, owner_metadata=operation) as lease:
-            with kblib.no_authoritative_write_guard(lease):
-                locked = producer_runtime.require_runtime_current(root, authority, "before rendering publication")
-                locked_item, _ = producer_runtime.open_batch(locked, args.batch)
-                current_stage = audit_evidence_runtime.resolve_stage_plan(
-                    locked, locked_item, "pre-merge", required_state="open", plan_path=args.plan)
-                if current_stage["plan"] != stage["plan"] or current_stage["audit_plan_sha256"] != stage["audit_plan_sha256"]:
-                    raise ValueError("AuditPlan changed before rendering publication")
-                producer_runtime.require_pages_current(root, frozen, "before rendering publication")
-                producer_runtime.require_computation_current(root, locked, binding)
-                for (obligation, _), receipt in zip(pairs, receipts):
-                    _context(root, args.batch, args.plan, obligation["obligation_id"],
-                        shared=(root, locked, authority, locked_item, current_stage, frozen))
-                    contract.validate_record_for_obligation(
-                        receipt, stage["plan"], stage["audit_plan_sha256"], obligation,
-                        root=root, evaluation=locked["_profile_authorized_view"]["_evaluation"])
-                before = kblib.receipt_append_observation(receipt_path, receipts)
-            outcome, error, _ = publication.append(receipt_path, receipts, before=before)
-            if outcome != "present" or error is not None:
-                if outcome == "absent":
-                    lease.mark_reconciled()
-                raise ValueError("rendering publication outcome=%s error=%s" % (outcome, error))
+        with publication.locked_append(root, receipt_path, receipts,
+                operation=operation, label="record_profile_rendering publication"):
+            locked = producer_runtime.require_runtime_current(root, authority, "before rendering publication")
+            locked_item, _ = producer_runtime.open_batch(locked, args.batch)
+            current_stage = audit_evidence_runtime.resolve_stage_plan(
+                locked, locked_item, "pre-merge", required_state="open", plan_path=args.plan)
+            if current_stage["plan"] != stage["plan"] or current_stage["audit_plan_sha256"] != stage["audit_plan_sha256"]:
+                raise ValueError("AuditPlan changed before rendering publication")
+            producer_runtime.require_pages_current(root, frozen, "before rendering publication")
+            producer_runtime.require_computation_current(root, locked, binding)
+            for (obligation, _), receipt in zip(pairs, receipts):
+                _context(root, args.batch, args.plan, obligation["obligation_id"],
+                    shared=(root, locked, authority, locked_item, current_stage, frozen))
+                contract.validate_record_for_obligation(
+                    receipt, stage["plan"], stage["audit_plan_sha256"], obligation,
+                    root=root, evaluation=locked["_profile_authorized_view"]["_evaluation"])
         ids = {row["receipt_id"] for row in receipts}
         persisted = [row for row in producer_runtime.read_receipt_records(
                          receipt_path, observation=publication.observation)
