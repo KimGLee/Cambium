@@ -214,6 +214,7 @@ modules:
     domain: audit
     layer: application
     public:
+      - AuditEvidenceError
       - AuditPlanMissing
       - batch_review_evidence
       - candidate_page_evidence
@@ -221,6 +222,7 @@ modules:
       - closed_plan_closure_errors
       - combine_plan_reconciliations
       - continue_evidence_observation
+      - current_batch_review_receipt
       - current_consumption_evidence_ids
       - evidence_evaluation
       - evidence_observation
@@ -437,6 +439,7 @@ modules:
       - PRODUCER_TOOL_VERSION
       - RECEIPT_TYPE_ID
       - current_receipt_errors
+      - judgment_binding
   - module: execution.audit.changed_scope_evidence_contract
     path: Tools/execution/audit/changed_scope_evidence_contract.py
     area: execution
@@ -760,6 +763,7 @@ modules:
       - reference_ids
       - reference_spec
       - reference_specs
+      - walk_body_dependencies
       - walk_receipt_closure
   - module: execution.evidence.receipt_type_contract
     path: Tools/execution/evidence/receipt_type_contract.py
@@ -1397,6 +1401,7 @@ modules:
       - CurrentReceiptCatalog
       - HistoricalReceiptCatalog
       - QUEUE_TRANSITION_RECEIPT_TYPE_ID
+      - ReceiptRegisterError
       - adoption_filtered_catalog
       - cold_path_within_root
       - cold_receipt_store
@@ -1405,9 +1410,12 @@ modules:
       - delta_gate_receipt_ids
       - historical_receipt_catalog
       - make_queue_receipt
+      - read_receipt_register
       - receipt_catalog
       - receipt_group_sha256
+      - register_observation
       - require_receipt
+      - require_register_member
   - module: execution.task_runtime.queue_runtime.repofs
     path: Tools/execution/task_runtime/queue_runtime/repofs.py
     area: execution
@@ -1454,7 +1462,6 @@ modules:
       - activation_phase_delivery_status
       - batch_review_judgment_errors
       - batch_review_receipt_errors
-      - judgment_record_set_sha256
       - resolve_activation_phase_receipt
       - task_phase_delivery_errors
   - module: execution.task_runtime.queue_runtime.runtime
@@ -1858,6 +1865,7 @@ modules:
       - evidence_fingerprints
       - expand_requirements
       - expected_projection
+      - judgment_observation
       - load_bound_plan
       - receipt_binding_errors
       - requirement_set_sha256

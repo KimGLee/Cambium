@@ -1491,6 +1491,15 @@ def _main(argv=None):
                 if snapshot != pre_snapshot:
                     runtime_errors.append(
                         "repository content changed before checks started")
+                if not runtime_errors:
+                    # Reject an unusable frozen pre-merge handoff before any
+                    # child producer can publish. This is not a verdict cache:
+                    # the publication boundary below observes it again.
+                    with audit_evidence_runtime.evidence_observation(
+                            runtime) as observed:
+                        pre_merge_binding = \
+                            audit_evidence_runtime.batch_review_evidence(
+                                observed, item, required_state="merge-ready")
                 if profile_view is None:
                     corpus_plan_check = {
                         "required": False,
@@ -1845,8 +1854,14 @@ def _main(argv=None):
                 audit_evidence_runtime.reconciliation_from_bindings(
                     post_delta_closure["bindings"],
                     producer_refs_by_obligation)
-            pre_merge_binding = audit_evidence_runtime.batch_review_evidence(
-                runtime, item, required_state="merge-ready")
+            with audit_evidence_runtime.evidence_observation(
+                    runtime) as observed:
+                current_pre_merge_binding = \
+                    audit_evidence_runtime.batch_review_evidence(
+                        observed, item, required_state="merge-ready")
+            if current_pre_merge_binding != pre_merge_binding:
+                raise ValueError(
+                    "frozen pre-merge evidence changed during close checks")
             pre_merge_reconciliation = {
                 field: pre_merge_binding[field]
                 for field in

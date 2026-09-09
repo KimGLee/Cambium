@@ -185,6 +185,55 @@ class WorkSpecStabilityContractTests(unittest.TestCase):
 class MultiRegisterPublicationContractTests(unittest.TestCase):
     """Own the mechanical publication order and catalog path topology."""
 
+    def test_unusable_pre_merge_handoff_rejects_before_child_publication(self):
+        # Only admission/semantic owners are isolated. The real close entry,
+        # write lock and no-write guard prove the publication boundary; no
+        # earlier Task or Batch lifecycle is constructed.
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory).resolve()
+            (root / ".cambium/tmp").mkdir(parents=True)
+            runtime = {
+                "root": str(root), "errors": [], "receipt_catalog": {},
+                "current_receipt_catalog": {},
+                "queue": {"task_id": "T1", "selected_profile_manifest": "P1"},
+                "items_by_id": {"B1": {"id": "B1", "state": "merge-ready"}},
+                "pending_delta_applies": {"status": "close-required", "current": [
+                    {"batch": "B1", "selected_receipt": "apply-1"}]},
+                "_writer_locks": [{"path": ".cambium/tmp/state-writer.lock"}],
+                **{field: "sha256:" + "a" * 64 for field in (
+                    "coverage_sha256", "queue_sha256", "progress_sha256")},
+            }
+            failure = check_batch_close.audit_evidence_runtime.AuditEvidenceError(
+                "selected pre-merge evidence is unavailable")
+            with mock.patch.object(runtime_validation, "validate_runtime",
+                                   return_value=runtime), \
+                    mock.patch.object(check_batch_close.revalidation,
+                                      "current_attempt_evidence_barrier", return_value=None), \
+                    mock.patch.object(check_batch_close.profile_view_contract,
+                                      "profile_load_authorized_view", return_value=({}, [])), \
+                    mock.patch.object(check_batch_close.batch_settlement,
+                                      "current_settlement_report", return_value={"errors": []}), \
+                    mock.patch.object(check_batch_close.batch_settlement,
+                                      "close_binding", return_value={}), \
+                    mock.patch.object(check_batch_close, "_make_receipt",
+                                      return_value={"receipt_id": "close-1"}), \
+                    mock.patch.object(kblib, "repository_snapshot_sha256",
+                                      return_value="sha256:" + "b" * 64), \
+                    mock.patch.object(check_batch_close.audit_evidence_runtime,
+                                      "batch_review_evidence", side_effect=failure) as handoff, \
+                    mock.patch.object(check_batch_close, "_corpus_plan_close_check") as corpus, \
+                    mock.patch.object(check_batch_close, "_run_receipting_command") as child, \
+                    mock.patch.object(check_batch_close, "_append_receipts") as publish:
+                code, output, errors = _produce_close(root)
+            self.assertEqual(1, code, output + errors)
+            self.assertIn(str(failure), output)
+            handoff.assert_called_once()
+            corpus.assert_not_called()
+            child.assert_not_called()
+            publish.assert_not_called()
+            self.assertFalse((root / ".cambium/tmp/state-writer.lock").exists())
+            self.assertFalse((root / ".cambium/receipts").exists())
+
     def test_preflight_catalog_uses_each_machine_owned_register(self):
         close = {"receipt_id": "raw-1"}
         audit = {"receipt_id": "audit-1", "record_kind": "audit-receipt"}
@@ -416,6 +465,29 @@ class AppliedBatchCloseTests(BatchCloseCheckpointCase):
         closed = runtime_validation.validate_runtime(self.root)
         self.assertEqual([], closed["errors"])
         self.assertEqual("closed", closed["items_by_id"]["B1"]["state"])
+
+        # A current close still consumed by Coverage must retain the complete
+        # replay body closure, including its plan-selected AuditReceipts in
+        # their named register. The seal owner decides retention; this seam
+        # checks its output against the actual close/Terminal consumers.
+        from Tools.execution.evidence import seal_receipts
+        from Tools.execution.audit import audit_evidence_runtime
+        from Tools.execution.task_runtime.queue_runtime import receipts as receipt_store
+        candidates = seal_receipts.plan_seal(str(self.root), closed)
+        sealing_ids = {identity for rows in candidates.values()
+                       for identity, _body in rows}
+        self.assertNotIn(close_gate, sealing_ids)
+        projected = audit_evidence_runtime.terminal_dimension_evidence(closed)
+        full_ids = {row["evidence_ref"] for row in projected
+                    if row["evidence_ref"] in audit_ids}
+        self.assertTrue(full_ids)
+        self.assertTrue(full_ids.isdisjoint(sealing_ids))
+        registered = receipt_store.read_receipt_register(
+            str(self.root), ".cambium/receipts/audit-receipts.jsonl")
+        for identity in full_ids:
+            receipt_store.require_register_member(
+                registered, identity,
+                closed["current_receipt_catalog"].resolve(identity)[1])
 
     def test_partial_multi_register_publication_retains_fail_closed_lock(self):
         program = r'''

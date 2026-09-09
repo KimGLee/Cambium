@@ -6,7 +6,7 @@
   "files": [
     {
       "path": ".cambium/deltas/B1.yaml",
-      "sha256": "sha256:5778d17c6ce4cfbba537ff5aca8354f387e1eea6a4ad3b600affd248e81690d9",
+      "sha256": "sha256:1be4244d54e1f556840a96654b0ba0dd03bf4698de3946c7ba378a2e42feb9ef",
       "size": 305
     },
     {
@@ -31,52 +31,52 @@
     },
     {
       "path": ".cambium/receipts/audit-receipts.jsonl",
-      "sha256": "sha256:e3d31c0d2175863a369615c811c5124c8408449070d1af95ca5cad90ea5f11f3",
+      "sha256": "sha256:9270e92a9989f154b28fd77a9a30b030873c94cbcee2ceacc17e3d7f637e85dc",
       "size": 11179
     },
     {
       "path": ".cambium/receipts/batch-page-reviews.jsonl",
-      "sha256": "sha256:0952f3641d07bed2117c294db2e21458ad329dabbc4afc816bdcab803bb940e1",
+      "sha256": "sha256:3aefd95e3d39949a058f723ad371b1d3a0794ff893d186287c8ecd8445b8eefc",
       "size": 2854
     },
     {
       "path": ".cambium/receipts/changed-scope-evidence.jsonl",
-      "sha256": "sha256:020ec874f46c80c222fadd52d7376e5e186397354a6c2086b1e6b6c7f7a41a52",
+      "sha256": "sha256:be29c5d63b3133d4e9e20b815542973a378185402d20355a0f9d8b5c4d2d9fd4",
       "size": 25037
     },
     {
       "path": ".cambium/receipts/gate-attestations.jsonl",
-      "sha256": "sha256:36f3aec07bd5d6805e866b02f1126862fb9e430d731180a5fc3ceeae4d28ee64",
+      "sha256": "sha256:94e0bd2aeb6c000e67fb3fc7ad23bee0697d918f1448275d3686d3574b3380d6",
       "size": 14567
     },
     {
       "path": ".cambium/receipts/gates.jsonl",
-      "sha256": "sha256:05853f27641db25835101eaf2b104235c8fcbfaf03b8007c075f4d8353d3d77e",
+      "sha256": "sha256:782ba96d8c0f71d7fb74abf99c2c78c65500148dfff40d150816401f30ed058e",
       "size": 8120
     },
     {
       "path": ".cambium/receipts/queue-transitions.jsonl",
-      "sha256": "sha256:766c4013bc1c6f39ac03668afd3ccd594c97745c3b1264a06d155e70224a65c5",
+      "sha256": "sha256:da0fa1e7eebfb22d885c40f75bfdd143b111fbfdb1ca1e35f10da69e58e1b0d8",
       "size": 4955
     },
     {
       "path": ".cambium/receipts/rendering-verification.jsonl",
-      "sha256": "sha256:fe6663098cd2076dfc7cf4981455a92b03b5870c1341631214c34b82a8266f45",
+      "sha256": "sha256:e54cbfff9e1a8b2d9fa5d39123f0950b8bf46466864fb2d0ddb4031fc4a81b90",
       "size": 2005
     },
     {
       "path": ".cambium/receipts/standards-adoptions.jsonl",
-      "sha256": "sha256:67dc48ee97cded4ae30e8bf9dc2147ed2084dd0dbc46fea96e99f9ac8049ea8a",
+      "sha256": "sha256:0c8f063020b05eff0df53259cc01e6a2f7efda02893cf08e383667a185dabc18",
       "size": 2314
     },
     {
       "path": ".cambium/receipts/task-plans.jsonl",
-      "sha256": "sha256:38f81c005a70a63a8c33ca74f3463176ea563f57087e2e46ab9c8d2b86f6cee3",
+      "sha256": "sha256:2a408fd872afc419e7847b01ffdea0397c7c98f2853ea2e05914bbae8828facf",
       "size": 1740
     },
     {
       "path": ".cambium/receipts/task-transitions.jsonl",
-      "sha256": "sha256:9b66946f0bf8652b061b2c19274748a29fe6fcdef24279e24e49e240c472ef8c",
+      "sha256": "sha256:abc8852e7720d6fe59957cd8931482da1d069eb226b15de89b6762058b6d48f9",
       "size": 2843
     },
     {
@@ -86,12 +86,12 @@
     },
     {
       "path": ".cambium/state/progress_ledger.yaml",
-      "sha256": "sha256:d7397d21f2657c5ba42e1fabcdd2b15cdde97588abc962df537d865af19995ce",
+      "sha256": "sha256:99dbbc0d7b9d7b8daf36a3f9e0ab34d3c30cd0fbcf56a270efeebaf604e2c484",
       "size": 2396
     },
     {
       "path": ".cambium/state/required_queue.yaml",
-      "sha256": "sha256:3cd0d625b343aab8a94523f482700eebc845a100e9c88e38c658813258a199cf",
+      "sha256": "sha256:f946842187a24945b2b34444c0e5c70a160a283218f2438798cae0a072a440b6",
       "size": 1445
     },
     {
@@ -101,12 +101,12 @@
     },
     {
       "path": ".cambium/tmp/receipt-append.free",
-      "sha256": "sha256:fc23438872b1ec6b2a720a4a4e3d82d17c6509cb5b52c6ce6ab25fb783c9e08a",
+      "sha256": "sha256:0f76917747d0ccedaa3b8310f5ccb0a4618f3f87db28dea909c784cc16b1a9a8",
       "size": 103
     },
     {
-      "path": ".cambium/work_specs/audit-plans/audit-plan-B1-2488f20e41bf9010.yaml",
-      "sha256": "sha256:a0b2c0e982e1579d1a287a3b44ce7f68798eb49390f7a6a2338eb203fb151552",
+      "path": ".cambium/work_specs/audit-plans/audit-plan-B1-2b9bf830cca0ec9c.yaml",
+      "sha256": "sha256:35f7b611555f047d2f5ba86289ac325efa473a739097446b3f02272cf44ce122",
       "size": 14284
     },
     {
@@ -129,6 +129,6 @@
   "scenario": "merged-b1",
   "scenario_dependency_builder": "Tools.tests.fixtures.integration.update_queue_checkpoints.install_update_queue_profile",
   "schema_version": 1,
-  "tree_sha256": "sha256:05fc115421810c5f1bb9a6838caa3a6ddf5e9b6256f238108045042c8c1b7e00",
-  "validated_tree_sha256": "sha256:ec61f9aea8a5fce30a8f059ad2a0a4e78902125b66f30d35e08c3b441c740e29"
+  "tree_sha256": "sha256:f1fecdf5e00e62ff5181b69d647f8cf3cd8902ad7cf5c7bc6c9172eda809155d",
+  "validated_tree_sha256": "sha256:84558f86df8c81b65bf5e809960ad7ca66c3063f2c0c8258f4f91cf8add265e3"
 }

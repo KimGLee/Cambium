@@ -17,7 +17,6 @@ from contextvars import ContextVar
 import Tools.execution.audit.audit_evidence_runtime as audit_evidence_runtime
 import Tools.execution.audit.audit_execution_runtime as audit_execution_runtime
 import Tools.execution.audit.assemble_terminal_proof as assemble_terminal_proof
-import Tools.execution.audit.batch_review_receipt_contract as batch_review_receipt_contract
 import Tools.platform.common.kblib as kblib
 import Tools.platform.agent_interface.cli_argv_renderer as cli_argv_renderer
 import Tools.platform.agent_interface.agent_interface_contract as interface_contract
@@ -221,48 +220,11 @@ def _managed_candidate_delta(result, item):
 
 
 def _current_batch_review_wrapper(result, item, delta):
-    catalog = queue_runtime.current_receipt_catalog(result)
-    valid = []
-    invalid = []
-    for receipt_id, entry in sorted(catalog.items()):
-        record = catalog_record(entry)
-        if not isinstance(record, dict):
-            continue
-        if not (record.get("tool") ==
-                batch_review_receipt_contract.PRODUCER_TOOL and
-                record.get("check") ==
-                batch_review_receipt_contract.PRODUCER_CHECK and
-                record.get("receipt_type_id") ==
-                batch_review_receipt_contract.RECEIPT_TYPE_ID and
-                record.get("target") == item["id"] and
-                record.get("batch_id") == item["id"]):
-            continue
-        errors = queue_runtime.batch_review_receipt_errors(
-            catalog, receipt_id, item_id=item["id"],
-            task_id=(result.get("queue") or {}).get("task_id"),
-            activation_receipt_id=item.get("activation_receipt"),
-            delta_page_receipt_ids=delta.get("page_receipt_ids") or [])
-        errors.extend(queue_runtime.batch_review_judgment_errors(
-            result, item, record))
-        errors.extend(audit_evidence_runtime.wrapper_binding_errors(
-            result, item, record))
-        for field, expected in (
-                ("delta_path", delta.get("path")),
-                ("delta_sha256", delta.get("sha256"))):
-            if record.get(field) != expected:
-                errors.append("batch-review wrapper %s drifted" % field)
-        (invalid if errors else valid).append((receipt_id, errors))
-    if len(valid) > 1:
-        raise RunnerError(
-            "batch %s has multiple valid Batch Review wrappers: %s" %
-            (item["id"], ", ".join(row[0] for row in valid)))
-    if valid:
-        return valid[0][0]
-    if invalid:
-        raise RunnerError(
-            "batch %s has an invalid Batch Review wrapper: %s" %
-            (item["id"], "; ".join(invalid[0][1])))
-    return None
+    try:
+        record = audit_evidence_runtime.current_batch_review_receipt(result, item, delta)
+    except audit_evidence_runtime.AuditEvidenceError as exc:
+        raise RunnerError(str(exc)) from exc
+    return record["receipt_id"] if record is not None else None
 
 
 def _phase_action(result, item, phase_id):

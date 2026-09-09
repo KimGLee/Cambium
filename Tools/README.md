@@ -192,7 +192,7 @@ Runtime data belongs in `.cambium/`, not `Tools/`. [`runtime_paths.py`](executio
 
 ### Audit evidence hand-off
 
-[`audit_evidence_runtime`](execution/audit/audit_evidence_runtime.py) resolves complete attempt sets; supplying one ID cannot hide conflicts. Evidence-kind owners validate bindings under [K12/19](<../kernel/K12 Quality Assurance/19 Incremental Audit Planning.md>). `evidence_observation` shares facts and stage resolution within one read-only action, never across writes. Writers retain fresh locked checks, CAS and read-back.
+[`audit_evidence_runtime`](execution/audit/audit_evidence_runtime.py) selects live evidence when due; close/Terminal validate its frozen selection, reconciliation and acceptance dependencies. Readable history is not a passing candidate; withdrawal still removes authority. `evidence_observation` shares mechanical facts only within one read-only action. New observations, locked checks, CAS and read-back remain independent.
 
 Producers share `ReceiptPublication.locked_append` mechanics and `audit_receipt_contract` projections, not semantic authority.
 
@@ -254,7 +254,7 @@ Each CLI's `--help` states its write mode, output options, and required inputs. 
 
 Gate identity, receipt meaning, reuse, and completion authority remain with [K00/12](<../kernel/K00 Standards Control/12 Control Registry.md>) and [K12/07](<../kernel/K12 Quality Assurance/07 Audit Evidence Reuse and Invalidation.md>). A SHA-256 value binds bytes; it is not a signature. Actor and reviewer fields are recorded assertions unless an external authenticated runner supplies a stronger trust anchor. Do not collapse a documented HOLD exit into either success or failure; callers must preserve the tool's exact result.
 
-Publication and verdict are separate: a confirmed `changes-required` record is not passing evidence; a write error does not prove no bytes were written. Manual attestations use the same JSON envelope, with records under `receipts`. Envelopes are transient observations; catalogs validate persisted evidence.
+Publication is not verdict: confirmed `changes-required` is not passing evidence; failure does not prove no write. Exact declaration reuse confirms the original ID without appending. Manual outputs retain `receipts`; shared reporting projects I/O facts, while catalogs and evidence owners validate stored records.
 
 MCP and Runner share observation of raw exit codes, `output_reliable`, `invocation_reliable` and publication facts. Checker adapters validate the complete process before selecting a Gate. Outer failure never erases a committed child operation or authorizes retry.
 

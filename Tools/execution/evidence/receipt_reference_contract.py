@@ -790,14 +790,20 @@ def walk_receipt_closure(record, source_kind, resolve_body, closure,
 
 
 def walk_body_dependencies(record, source_kind, resolve_body,
-                           source_kind_resolver):
-    """Walk every body-required edge reachable from one current owner."""
+                           source_kind_resolver, *, acceptance_only=False):
+    """Walk declared body edges, optionally only the acceptance closure.
+
+    Retention/identity bodies and acceptance dependencies are different graph
+    policies. This projection never gives a referenced body selection authority.
+    """
     found = set()
     completed = set()
     active = set()
 
     def visit(body, kind):
         for reference in iter_receipt_references(body, kind, recursive=True):
+            if acceptance_only and not reference.spec.acceptance_dependency:
+                continue
             if reference.spec.materialization != \
                     MATERIALIZATION_BODY_REQUIRED:
                 continue

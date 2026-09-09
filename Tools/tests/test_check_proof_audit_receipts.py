@@ -317,6 +317,12 @@ class TerminalProofAuditReceiptConsumerIntegrationTests(unittest.TestCase):
             ["proof-dimension-receipt-missing"],
             [failure[0] for failure in failures],
         )
+        # Audit and Terminal registers are distinct. The dimension consumer
+        # must propagate its own register owner's rejection, not assume the
+        # Queue check already diagnosed this different file.
+        self.register.write_text("{", encoding="utf-8")
+        self.assertEqual(["proof-dimension-receipt-register-invalid"],
+                         [row[0] for row in self.validate(write=False)])
 
         current_only_producer = self.runtime()
         current_only_producer["current_receipt_catalog"] = {
@@ -702,9 +708,9 @@ class TerminalProofAssemblerUnitTests(unittest.TestCase):
                 mock.patch.object(
                     assemble_terminal_proof, "_receipt",
                     side_effect=receipts), mock.patch.object(
-                    assemble_terminal_proof, "_register_records",
+                    assemble_terminal_proof.receipt_catalogs, "read_receipt_register",
                     side_effect=lambda _root, relative: (
-                        {"corpus-pass": receipts[1]}
+                        {row["receipt_id"]: row for row in receipts}
                         if relative == runtime_paths.
                         TERMINAL_AUDIT_RECEIPT_PATH else {})), mock.patch.object(
                     assemble_terminal_proof, "_dimension_coverage",

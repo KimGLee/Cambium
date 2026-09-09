@@ -8,6 +8,9 @@ the resulting evidence record for every producer and consumer.
 """
 
 import os
+from contextlib import contextmanager
+from contextvars import ContextVar
+from copy import deepcopy
 
 import Tools.execution.audit.audit_fingerprint as audit_fingerprint
 import Tools.execution.audit.audit_lifecycle_contract as audit_lifecycle_contract
@@ -35,6 +38,38 @@ FINGERPRINT_BINDING = "evidence-time"
 
 
 _PLAN_BINDING_FIELDS = audit_lifecycle_contract.PLAN_BINDING_FIELDS
+_OBSERVATION_MEMO = ContextVar("profile_judgment_observation_memo", default=None)
+
+
+@contextmanager
+def judgment_observation(memo):
+    """Borrow the existing evidence facts, never persist a Profile verdict."""
+    token = _OBSERVATION_MEMO.set(memo)
+    try:
+        yield
+    finally:
+        _OBSERVATION_MEMO.reset(token)
+
+
+def _observed_binding(root, plan, plan_sha256, contract, item, profile_view,
+                      key, compute):
+    memo = _OBSERVATION_MEMO.get()
+    if memo is None:
+        return compute()
+    # The admitted typed model is immutable. Retain that exact model/view
+    # with the result so an object ID cannot be reused within this scope.
+    # Mutable plan/item/record/catalog inputs are keyed by their actual bytes.
+    inputs = kblib.canonical_json_bytes((plan, item, key))
+    model = (id(contract), id(profile_view.get("_evaluation")),
+             id(profile_view.get("_contract")),
+             id(profile_view.get("_metadata_execution_contract")))
+    # Retain inputs even if compute rejects and the facts memo stores only
+    # the error. This is lifetime bookkeeping, not another accepted result.
+    memo(("profile-judgment-model",) + model, lambda: (contract, profile_view))
+    identity = ("profile-judgment", os.fspath(root), plan_sha256, model, inputs)
+    _contract, _view, value = memo(
+        identity, lambda: (contract, profile_view, compute()))
+    return deepcopy(value)
 
 
 def requirement(contract, judgment_item_id):
@@ -148,6 +183,15 @@ def expected_projection(contract, judgment_item_id):
 
 def load_bound_plan(root, relative, plan_id, plan_sha256):
     """Load exactly the immutable plan identity named by a wrapper."""
+    memo = _OBSERVATION_MEMO.get()
+    if memo is None:
+        return _load_bound_plan(root, relative, plan_id, plan_sha256)
+    return deepcopy(memo(("profile-judgment-plan", os.fspath(root), relative,
+                          plan_id, plan_sha256), lambda:
+        _load_bound_plan(root, relative, plan_id, plan_sha256)))
+
+
+def _load_bound_plan(root, relative, plan_id, plan_sha256):
     if (not isinstance(relative, str) or
             os.path.dirname(relative) != runtime_paths.AUDIT_PLAN_ROOT or
             not relative.endswith(".yaml")):
@@ -297,6 +341,42 @@ def evidence_fingerprints(root, plan, obligation, contract, item, target,
 def receipt_binding_errors(root, plan, plan_sha256, contract, item, receipt,
                            profile_view, *, require_current=True):
     """Return stable-contract and, optionally, live-input differences."""
+    if require_current:
+        from Tools.governance.profile.profile_admission import contract_from_admitted_view
+        try:
+            if contract_from_admitted_view(root, profile_view) is not contract:
+                raise ValueError("current review uses a different Profile than its Gate evaluation")
+        except (OSError, TypeError, UnicodeError, ValueError) as exc:
+            return ["profile/AuditPlan binding: %s" % exc]
+    errors = _observed_binding(
+        root, plan, plan_sha256, contract, item, profile_view,
+        ("stable", receipt), lambda: _stable_receipt_binding_errors(
+            plan, plan_sha256, contract, item, receipt))
+    if errors or not require_current:
+        return errors
+
+    def current_errors():
+        try:
+            required = requirement(contract, receipt["judgment_item_id"])
+            expected = {"artifact_fingerprint": artifact_fingerprint(
+                root, item, required, receipt["target"])}
+        except (OSError, TypeError, UnicodeError, ValueError) as exc:
+            return ["profile/AuditPlan binding: %s" % exc]
+        if required.target_selector == "each-manifest-page":
+            try:
+                expected["semantic_content_sha256"] = semantic_content_fingerprint(
+                    root, receipt["target"], profile_view)
+            except (OSError, TypeError, UnicodeError, ValueError) as exc:
+                return ["semantic_content_sha256: %s" % exc]
+        return sorted(field for field, value in expected.items() if receipt.get(field) != value)
+
+    return _observed_binding(
+        root, plan, plan_sha256, contract, item, profile_view,
+        ("current", receipt), current_errors)
+
+
+def _stable_receipt_binding_errors(plan, plan_sha256, contract, item, receipt):
+    """The one Profile/Plan acceptance predicate, independent of live page IO."""
     if not isinstance(receipt, dict):
         return ["receipt"]
     errors = []
@@ -312,12 +392,6 @@ def receipt_binding_errors(root, plan, plan_sha256, contract, item, receipt,
                 plan, obligation, required,
                 judgment_item(contract, required.judgment_item_id)),
         }
-        if require_current:
-            from Tools.governance.profile.profile_admission import contract_from_admitted_view
-            if contract_from_admitted_view(root, profile_view) is not contract:
-                raise ValueError("current review uses a different Profile than its Gate evaluation")
-            fingerprints["artifact_fingerprint"] = artifact_fingerprint(
-                root, item, required, receipt.get("target"))
     except (OSError, TypeError, UnicodeError, ValueError) as exc:
         return ["profile/AuditPlan binding: %s" % exc]
     expected = {field: plan[field] for field in _PLAN_BINDING_FIELDS}
@@ -363,13 +437,6 @@ def receipt_binding_errors(root, plan, plan_sha256, contract, item, receipt,
         if not audit_plan_contract.is_sha256(
                 receipt.get("semantic_content_sha256")):
             errors.append("semantic_content_sha256")
-        elif require_current:
-            try:
-                expected["semantic_content_sha256"] = \
-                    semantic_content_fingerprint(
-                        root, obligation["target"], profile_view)
-            except (OSError, TypeError, UnicodeError, ValueError) as exc:
-                errors.append("semantic_content_sha256: %s" % exc)
     else:
         expected["semantic_content_sha256"] = None
     if not audit_plan_contract.is_sha256(
@@ -435,16 +502,11 @@ def current_receipt_errors(record, *, root=None):
     return sorted(set(errors))
 
 
-def current_judgment_attempt(root, plan, plan_sha256, contract, item,
-                             profile_view, catalog, target,
-                             judgment_item_id):
-    """Return the sole live-current attempt for one Profile obligation."""
+def _judgment_attempt_records(catalog, item):
+    """Project only this activation's records; this does not accept them."""
     if not isinstance(catalog, dict):
         raise ValueError("Profile judgment catalog must be a mapping")
-    obligation, _required, _judgment, _record, _expanded = \
-        resolve_obligation(
-            plan, contract, item, target, judgment_item_id)
-    attempts = []
+    records = {}
     for catalog_id, entry in catalog.items():
         record = catalog_record(entry)
         if not isinstance(record, dict):
@@ -455,10 +517,19 @@ def current_judgment_attempt(root, plan, plan_sha256, contract, item,
                 record.get("record_kind") == RECORD_KIND and
                 record.get("batch_id") == item.get("id") and
                 record.get("activation_receipt_id") ==
-                item.get("activation_receipt") and
-                record.get("target") == target and
-                record.get("judgment_item_id") == judgment_item_id):
-            attempts.append(record)
+                item.get("activation_receipt")):
+            records[catalog_id] = record
+    return records
+
+
+def current_judgment_attempt(root, plan, plan_sha256, contract, item,
+                             profile_view, catalog, target,
+                             judgment_item_id):
+    """Return the sole live-current attempt for one Profile obligation."""
+    resolve_obligation(plan, contract, item, target, judgment_item_id)
+    attempts = [row for row in _judgment_attempt_records(catalog, item).values()
+                if row.get("target") == target and
+                row.get("judgment_item_id") == judgment_item_id]
 
     def validate(record, require_current):
         errors = receipt_binding_errors(
@@ -481,6 +552,19 @@ def current_judgment_attempt(root, plan, plan_sha256, contract, item,
 def current_judgment_receipts(root, plan, plan_sha256, contract, item,
                               profile_view, catalog):
     """Resolve the complete unique current Profile judgment set."""
+    # Admission is deliberately not cached with the mechanical selection.
+    from Tools.governance.profile.profile_admission import contract_from_admitted_view
+    if contract_from_admitted_view(root, profile_view) is not contract:
+        raise ValueError("current judgment set uses a different admitted Profile")
+    records = _judgment_attempt_records(catalog, item)
+    return _observed_binding(
+        root, plan, plan_sha256, contract, item, profile_view,
+        ("current-set", records), lambda: _current_judgment_receipts(
+            root, plan, plan_sha256, contract, item, profile_view, records))
+
+
+def _current_judgment_receipts(root, plan, plan_sha256, contract, item,
+                               profile_view, catalog):
     expected = expand_requirements(contract, item)
     expected_keys = sorted(
         (row["target"], row["judgment_item_id"]) for row in expected)
@@ -497,19 +581,8 @@ def current_judgment_receipts(root, plan, plan_sha256, contract, item,
         selected.append(record)
 
     expected_key_set = set(expected_keys)
-    for catalog_id, entry in catalog.items():
-        record = catalog_record(entry)
-        if not isinstance(record, dict) or record.get("receipt_id") != \
-                catalog_id:
-            continue
-        if (record.get("tool") == PRODUCER_TOOL and
-                record.get("check") == PRODUCER_CHECK and
-                record.get("record_kind") == RECORD_KIND and
-                record.get("batch_id") == item.get("id") and
-                record.get("activation_receipt_id") ==
-                item.get("activation_receipt") and
-                (record.get("target"), record.get("judgment_item_id")) not in
-                expected_key_set):
+    for record in catalog.values():
+        if (record.get("target"), record.get("judgment_item_id")) not in expected_key_set:
             raise ValueError(
                 "current activation contains an unexpected Profile judgment "
                 "attempt (%s, %s)" %
@@ -535,6 +608,7 @@ __all__ = [
     'current_judgment_receipts',
     'expand_requirements',
     'expected_projection',
+    'judgment_observation',
     'load_bound_plan',
     'current_receipt_errors',
     'receipt_binding_errors',

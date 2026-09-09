@@ -2,11 +2,11 @@ schema_version: 2
 task_id: fixture-task
 task_state: active
 task_transition_receipts:
-  - audit-update_task-20260909T090326Z-7ea7b9bf311d4531bbf5637a2e15f37c-0001
+  - audit-update_task-20260909T182316Z-4d3bce1e95be43428bdd83b41933b4d7-0001
 required_queue_path: .cambium/state/required_queue.yaml
 queue_revision: 2
 queue_state_revision: 6
-required_queue_sha256: sha256:f4f89cb9606f42ceb612debb65397a62730e943a445295b2a87ced40cf195a6a
+required_queue_sha256: sha256:01f02e154d7290915a9c83cc6a61e2afeef28daddffbaea8c703276b8f35770e
 initial_queue_receipt: audit-fixture-initial-queue
 contract:
   contract_version: c1
@@ -44,12 +44,12 @@ contract:
     mode: user-only
     allowed_change_classes: []
 checkpoint:
-  recorded_at: 2026-09-09T09:03:25Z
+  recorded_at: 2026-09-09T18:23:15Z
   summary: first Required Queue batch B1 opened
   task_state: active
-  task_transition_receipt: audit-update_task-20260909T090326Z-7ea7b9bf311d4531bbf5637a2e15f37c-0001
+  task_transition_receipt: audit-update_task-20260909T182316Z-4d3bce1e95be43428bdd83b41933b4d7-0001
   coverage_sha256: sha256:525ad2fb5bef548a88b38c320342589556e3d7e2cff82ccb841dd8926d317001
-  required_queue_sha256: sha256:f35f5a80c205da3c3dfc20d1b03ee604c984e36b8a882f8dd7f214dc917c9221
+  required_queue_sha256: sha256:56dc4ac7c9fff9306055814ca942e1b0b6ed91cb36cc1cbf59d5f7d6fb34fc0c
   queue_revision: 2
   queue_state_revision: 1
 terminal_audit:

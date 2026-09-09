@@ -455,23 +455,6 @@ def task_phase_delivery_errors(result, phase_id, *, actor_context_id=None):
     return errors
 
 
-def judgment_record_set_sha256(records):
-    """Hash the exact actual judgment set the batch-review wrapper binds."""
-    identity = sorted(
-        (
-            {
-                "target": row["target"],
-                "judgment_item_id": row["judgment_item_id"],
-                "receipt_id": row["receipt_id"],
-            }
-            for row in records
-        ),
-        key=lambda row: (row["judgment_item_id"], row["target"],
-                         row["receipt_id"]),
-    )
-    return kblib.sha256_bytes(kblib.canonical_json_bytes(identity))
-
-
 def batch_review_judgment_errors(result, item, wrapper_receipt):
     """Prove the Profile's frozen judgment obligations are exactly answered.
 
@@ -553,20 +536,16 @@ def batch_review_judgment_errors(result, item, wrapper_receipt):
             "%s Profile judgment attempt resolution failed: %s" %
             (item_id, exc))
         return errors
-    expected_bound = sorted(row["receipt_id"] for row in selected)
+    binding = batch_review_receipt_contract.judgment_binding(selected)
+    expected_bound = binding["judgment_receipt_ids"]
     if bound != expected_bound:
         errors.append(
             "%s batch review wrapper binds stale or incomplete judgment "
             "receipts: expected=%s actual=%s" %
             (item_id, expected_bound, bound))
-    actual = [{
-        "target": row["target"],
-        "judgment_item_id": row["judgment_item_id"],
-        "receipt_id": row["receipt_id"],
-    } for row in selected]
     if (not errors and
             wrapper.get("judgment_record_set_sha256") !=
-            judgment_record_set_sha256(actual)):
+            binding["judgment_record_set_sha256"]):
         errors.append(
             "%s batch review wrapper judgment_record_set_sha256 does not "
             "bind the exact actual judgment set" % item_id)

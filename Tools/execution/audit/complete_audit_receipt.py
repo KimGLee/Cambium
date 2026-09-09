@@ -126,7 +126,7 @@ def main(argv=None):
     if not pending:
         publication.confirmed = True
         reporting.write_canonical_json(reporting.publication_result(
-            publication, status="already-present", reused=True,
+            publication, status="already-present",
             receipt_id=receipt["receipt_id"], receipt_path=args.receipts,
             result=receipt["result"],
             receipt_ids=[row["receipt_id"] for row in receipts]))

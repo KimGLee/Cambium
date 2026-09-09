@@ -6,12 +6,17 @@ extraction, materialization policy, closure, and the current/history authority
 split at the catalog connection.
 """
 
+import json
+import tempfile
 import unittest
+from unittest import mock
+from pathlib import Path
 
 from Tools.execution.evidence import receipt_reference_contract as graph
 from Tools.execution.evidence import receipt_type_contract
 from Tools.execution.audit import batch_review_obligation_contract
 from Tools.execution.audit import substantive_review_contract
+from Tools.execution.task_runtime.queue_runtime import receipts
 from Tools.execution.task_runtime.queue_runtime.receipts import (
     CurrentReceiptCatalog,
     HistoricalReceiptCatalog,
@@ -256,6 +261,79 @@ class ReceiptReferenceClosureContractTests(unittest.TestCase):
             graph.walk_receipt_closure(
                 root, graph.SOURCE_WRITER_OPERATION, cyclic.get,
                 graph.WRITER_TRANSACTION_CLOSURE, self.source_kind)
+
+    def test_acceptance_body_projection_preserves_dependency_not_retention_edges(self):
+        second = {"opening_transition_receipt": "opening", "round_1_receipt_id": "first"}
+        first = {"opening_transition_receipt": "opening", "round_1_receipt_id": None}
+        records = {"first": first, "opening": {}}
+        kind = lambda row: graph.SOURCE_SUBSTANTIVE_REVIEW if "round_1_receipt_id" in row else None
+        for acceptance_only in (False, True):
+            with self.subTest(acceptance_only=acceptance_only):
+                expected = {ref.receipt_id for ref in graph.iter_receipt_references(
+                    second, graph.SOURCE_SUBSTANTIVE_REVIEW)
+                    if not acceptance_only or ref.spec.acceptance_dependency}
+                self.assertEqual(expected, graph.walk_body_dependencies(
+                    second, graph.SOURCE_SUBSTANTIVE_REVIEW, records.get, kind,
+                    acceptance_only=acceptance_only))
+        for replacement, error in ((None, graph.UnresolvedBodyReference),
+                                   (second, graph.ReferenceCycleError)):
+            with self.subTest(replacement=replacement):
+                with self.assertRaises(error):
+                    graph.walk_body_dependencies(second, graph.SOURCE_SUBSTANTIVE_REVIEW,
+                        {"first": replacement}.get, kind, acceptance_only=True)
+
+
+class ReceiptRegisterContractTests(unittest.TestCase):
+    """The one mechanical register index; no evidence authority is constructed."""
+
+    def test_register_rejects_malformed_and_duplicate_rows(self):
+        from Tools.execution.audit import audit_evidence_runtime
+        from Tools.platform.common import kblib
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            relative = ".cambium/receipts/register.jsonl"
+            path = root / relative
+            path.parent.mkdir(parents=True)
+            record = {"receipt_id": "R", "details": "one immutable observation"}
+            line = json.dumps(record)
+            path.write_text("\n" + line + "\n\n", encoding="utf-8")
+            with mock.patch.object(kblib, "read_receipt_bytes", wraps=kblib.read_receipt_bytes) as read:
+                with audit_evidence_runtime.evidence_observation({"root": str(root)}) as view:
+                    first = receipts.read_receipt_register(root, relative)
+                    first["R"]["details"] = "consumer mutation"
+                    self.assertEqual({"R": record}, receipts.read_receipt_register(root, relative))
+                    self.assertEqual(1, read.call_count)
+                    with audit_evidence_runtime.evidence_observation(view):
+                        self.assertEqual({"R": record}, receipts.read_receipt_register(root, relative))
+                    self.assertEqual(2, read.call_count)
+                    self.assertEqual({"R": record}, receipts.read_receipt_register(root, relative))
+                    self.assertEqual(2, read.call_count)
+                # An explicit new observation captures new bytes, not the old
+                # named-path memo, even when the receipt ID has not changed.
+                path.write_text(json.dumps(dict(record, details="new bytes")), encoding="utf-8")
+                with audit_evidence_runtime.evidence_observation(view):
+                    self.assertEqual("new bytes", receipts.read_receipt_register(root, relative)["R"]["details"])
+                self.assertEqual(3, read.call_count)
+            for source, kind in (
+                    ("{", "register-invalid"), ("[]", "register-invalid"),
+                    ("{}", "register-invalid"), ('{"receipt_id": " "}', "register-invalid"),
+                    (line + "\n" + line, "id-duplicate")):
+                with self.subTest(source=source):
+                    path.write_text(source, encoding="utf-8")
+                    with self.assertRaises(receipts.ReceiptRegisterError) as error:
+                        receipts.read_receipt_register(root, relative)
+                    self.assertEqual(kind, error.exception.kind)
+
+    def test_membership_never_supplies_missing_current_authority(self):
+        record = {"receipt_id": "R", "details": "frozen bytes"}
+        self.assertEqual(record, receipts.require_register_member({"R": record}, "R", dict(record)))
+        for rows, current, kind in (
+                ({}, record, "missing"),
+                ({"R": record}, None, "catalog-mismatch"),
+                ({"R": record}, dict(record, details="different bytes"), "catalog-mismatch")):
+            with self.subTest(kind=kind), self.assertRaises(receipts.ReceiptRegisterError) as error:
+                receipts.require_register_member(rows, "R", current)
+            self.assertEqual(kind, error.exception.kind)
 
 
 class CurrentReceiptAuthorityHistoryTests(unittest.TestCase):

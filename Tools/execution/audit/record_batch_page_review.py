@@ -176,7 +176,9 @@ def current_review_attempt(result, item, plan, plan_sha256, obligation, spec,
         return record
 
     def validate_current(record):
-        validate_stable(record)
+        # unique_current_attempt already proved the stable Plan/variant and
+        # applicability contract. Only the still-independent live inputs
+        # remain here; stable rejection must never be classified as stale.
         text = page_snapshot.snapshot.read_text()
         consumed = _current_consumed_records(
             result, item, record.get("consumed_evidence_refs"),

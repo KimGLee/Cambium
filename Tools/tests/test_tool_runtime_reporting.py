@@ -121,7 +121,7 @@ class CanonicalJsonOutputTests(unittest.TestCase):
                 publication.confirmed = confirmed
                 publication.error = OSError(error) if error else None
                 result = reporting.publication_result(
-                    publication, status=status, reused=reused,
+                    publication, status=status,
                     result="fail", verdict="changes-required")
                 self.assertIs(applied, result["applied"])
                 self.assertEqual(expected_status, result["status"])
@@ -134,15 +134,6 @@ class CanonicalJsonOutputTests(unittest.TestCase):
                                  (result["result"], result["verdict"]))
                 self.assertEqual(expected_status != "uncertain",
                                  reporting.publication_result_reliable(result))
-
-    def test_reuse_cannot_claim_a_new_append_or_unconfirmed_record(self):
-        publication = kblib.ReceiptPublication()
-        with self.assertRaisesRegex(ValueError, "reuse requires"):
-            reporting.publication_result(publication, status="already-present", reused=True)
-        publication.outcome = "present"
-        publication.confirmed = True
-        with self.assertRaisesRegex(ValueError, "reuse requires"):
-            reporting.publication_result(publication, status="already-present", reused=True)
 
     def test_publication_decoder_rejects_contradictory_or_incomplete_facts(self):
         publication = kblib.ReceiptPublication()

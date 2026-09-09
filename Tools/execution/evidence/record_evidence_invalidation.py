@@ -89,7 +89,7 @@ def main(argv=None):
             queue_runtime.require_runtime_authority_current(root, authority, "correction retry")
             publication.confirmed = True
             reporting.write_publication_result(
-                publication, json_output=args.json, status="recorded", reused=True,
+                publication, json_output=args.json, status="recorded",
                 receipt_id=event["receipt_id"], receipt_path=DEFAULT_RECEIPTS,
                 receipts=[event], current_evidence_deficits=runtime.get("current_evidence_deficits", []))
             return 0
@@ -133,7 +133,6 @@ def main(argv=None):
         return 1
     reporting.write_publication_result(
         publication, json_output=args.json, status="recorded",
-        reused=publication.confirmed and publication.outcome == "not-attempted",
         receipt_id=event["receipt_id"], receipt_path=DEFAULT_RECEIPTS,
         receipts=[event], current_evidence_deficits=proposed.get("current_evidence_deficits", []))
     return 0
