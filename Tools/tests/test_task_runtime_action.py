@@ -284,17 +284,15 @@ class TaskRuntimeActionTests(unittest.TestCase):
                     self.assertTrue(callable(handler.invoke))
 
     def test_every_action_capability_resolves_to_one_real_entrypoint(self):
-        document = operation_contract.load_operation_capabilities(REPOSITORY)
-        by_id = {entry["capability_id"]: entry
-                 for entry in document["capabilities"]}
+        lookup = operation_contract.CapabilityLookup(REPOSITORY)
         runner_path = "Tools/execution/task_runtime/task_runtime_runner.py"
         for route in contract.ACTION_ROUTES:
             for capability_id in route.capability_chain:
                 with self.subTest(route=route.route_id,
                                   capability=capability_id):
-                    entry = by_id[capability_id]
-                    tool = operation_contract.capability_invocation_tool(
-                        capability_id, root=REPOSITORY, document=document)
+                    entry = lookup.entry(capability_id)
+                    self.assertIsNotNone(entry)
+                    tool = lookup.invocation_tool(capability_id)
                     self.assertTrue((TOOLS / (tool + ".py")).is_file())
                     self.assertTrue(
                         entry["implementation_owner"] == runner_path or
