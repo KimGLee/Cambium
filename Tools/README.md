@@ -2,7 +2,7 @@
 
 `Tools/` contains Cambium's deterministic programs. This README provides navigation and operating guidance; linked owners define the contracts.
 
-Most Python mechanics use the standard library. The Agent starts with [Host preparation](#host-preparation), which composes the TOML/CUE and optional rendering providers. Dependency bindings belong to Host configuration, not Profile or `.cambium`.
+Start with [Host preparation](#host-preparation). Dependency bindings belong to Host configuration, not Profile or `.cambium`.
 
 ## Responsibility boundary
 
@@ -213,7 +213,7 @@ Ready obligations may be grouped with repeated `--obligation-id` (paired `--evid
 
 `CLI → compiled CLI contract → MCP projection → Host configuration`
 
-MCP and Runner derive their complete invocation schemas from the same projection owner. Types, cardinality, effective defaults and path-consumption declarations travel together; the argv renderer does not strip admission metadata or create its own path policy.
+MCP and Runner share the complete schema projection: types, defaults and path-consumption declarations.
 
 The target fixes storage: `source-distribution` owns `Tools/compiled/`; `carried-runtime` may write only:
 
@@ -243,12 +243,6 @@ Use `--help` and `--sources` before regenerating or installing a host product. [
 
 Each tool binds one reusable `output_contracts` declaration: always JSON, mode-selected JSON, or text. Compiler and MCP project that binding. Empty success requires an explicit mode allowance; `--json` alone proves nothing.
 
-Nested calls use two existing boundaries: same-scope children retain their admitted I/O and after-image channel; independently admitted Runner children have their own scope and ACK channel. The path owner propagates actual snapshot consumption only to matching retained parent inputs. Reading a subtree or a narrowed transaction input does not complete the parent's entire scope. Independent overlapping write scopes are refused before dispatch; they are not converted into read acknowledgements.
-
-MCP and Runner share invocation observation. `exit_code` / `tool_returncode`, `output_reliable`, input-consumption settlement and publication facts remain separate. An outer failure can follow a committed child operation: preserve its `substeps` and publication result, inspect authoritative state read-only, and do not infer that retrying is safe. Checker adapters validate the complete process result before selecting a particular Gate; a selected passing Gate never erases an abnormal process exit.
-
-The representative Required Queue E2E drives activation, audit, Delta publication, Batch Review, merge-ready, apply and close through the real MCP `run_task` entry. Its semantic inputs are fixture judgments, not production auto-approval. The same scenario retains Task Terminal Proof coverage; adjacent owner tests use local checkpoints instead of replaying this lifecycle.
-
 ## Results and evidence
 
 Each CLI's `--help` states its write mode, output options, and required inputs. Where supported:
@@ -262,17 +256,17 @@ Gate identity, receipt meaning, reuse, and completion authority remain with [K00
 
 Publication and verdict are separate: a confirmed `changes-required` record is not passing evidence; a write error does not prove no bytes were written. Manual attestations use the same JSON envelope, with records under `receipts`. Envelopes are transient observations; catalogs validate persisted evidence.
 
-MCP retains `exit_code`, its process-code `verdict`, `output_reliable` and `invocation_reliable`. Output or capability confirmation failures stop without discarding publication facts. Runner uses the same path admission, with child-specific acknowledgements and no capability widening.
+MCP and Runner share observation of raw exit codes, `output_reliable`, `invocation_reliable` and publication facts. Checker adapters validate the complete process before selecting a Gate. Outer failure never erases a committed child operation or authorizes retry.
 
 Fill only the Runner's generated `required_input` properties; `x-cambium-binding` retains machine-selected identities. CLI declarations own shapes; domain contracts own conditions. `required_input: null` means external resolution, not a submittable readiness assertion.
 
 Omission, `null` and `[]` are distinct. Only declared nullable arguments encode null by omission. In `record_batch_page_review`, omitted `consumed_evidence_ref` means derive, while `[]` asserts an empty set. Unrepresentable values fail rather than widening scope.
 
-Execution responses retain substeps and failure stages. Pre-dispatch rejection has no child return code; later failures and `next_action_error` preserve prior publication observations without authorizing retries or creating a runtime log.
+Responses retain substeps and failure stages. Pre-dispatch rejection has no child return code; after later failure or `next_action_error`, inspect authoritative state read-only.
 
 Entrypoint wrappers declare Host boundaries. The shared MCP/Runner output observer preserves diagnostics and prior output on Host handoff; it requires a stop, not a passing Receipt or a no-write claim.
 
-Receipt observation reads the append after-image, not cached input. Internal Receipt targets use the invocation descriptor. This does not extend to every directory scan, transaction or Host operation; those owners retain their existing locks, hashes, CAS and completion checks.
+Same-scope children retain admitted I/O and after-image handling. Independent child scopes propagate only actual matching snapshot reads, never widened scope or overlapping writes. See [path admission](platform/repository/path_admission.py) and [path capabilities](platform/repository/path_capability.py).
 
 Two input roles may reference the same retained snapshot. Their canonical path, target and parent identities must agree before physical read authority can be shared; the read acknowledges those equivalent path capabilities, not the roles' governance meaning. Write capabilities are not coalesced, and same-mode write aliases remain refused.
 
@@ -306,9 +300,9 @@ make slow
 make full
 ```
 
-Generators write Markdown/JSON projections; `--check` recomputes their bytes. Each selected test file runs once. Only wholly `parallel_safe` files overlap; `full` does not repeat mixed-level files. Build/MCP owns the complete E2E; maintenance starts at a validated closed checkpoint.
+Generators write Markdown/JSON projections; `--check` recomputes their bytes. Each selected file runs once; only wholly `parallel_safe` files overlap. Required Queue E2E drives real MCP `run_task` through closed, then verifies Terminal Proof. Adjacent integrations consume static checkpoints, not lifecycle replay.
 
-`Tools/run_tests.py full --report /tmp/cambium-test-costs.json` writes a new external diagnostic file with module, method, fixture and Tool times. Inclusive times already contain their children. CI uses recent main-run median costs with an explicit fallback, not to select or skip tests. Main still runs full verification.
+`Tools/run_tests.py full --report /tmp/cambium-test-costs.json` records module, method, fixture and Tool times; inclusive times contain their children. CI uses recent main-run medians for scheduling, not test omission. Main retains full verification.
 
 Runner source views are invocation-scoped and recheck component discovery/bytes, projection and environment. Runtime rechecks may reuse owner-authorized Profile/Standards views, never an old verdict. Independent producer admission, locked currentness and after-image read-back remain.
 
