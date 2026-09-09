@@ -210,6 +210,49 @@ def observe_tool_output(contract, stdout, exit_code, arguments, *, host_boundary
     return observation
 
 
+def observe_invocation(contract, stdout, exit_code, arguments, *,
+                       binding, host_boundary=False):
+    """Settle transport facts once; preserve output even if invocation fails.
+
+    A failed business operation can still have consumed its input. Missing
+    consumption on a claimed clean/HOLD return is an invocation failure, not
+    permission to retry a child that may already have committed.
+    """
+    observed = observe_tool_output(
+        contract, stdout, exit_code, arguments, host_boundary=host_boundary)
+    errors = []
+    if type(exit_code) is not int or exit_code not in agent_interface_contract.PROCESS_VERDICTS:
+        errors.append("unregistered process exit code: %r" % exit_code)
+    if binding["acknowledgement_error"]:
+        errors.append(binding["acknowledgement_error"])
+    if exit_code in (0, 2) and binding["missing"]:
+        errors.append("child did not consume admitted paths: %s" % binding["missing"])
+    observed.update(invocation_errors=errors, invocation_reliable=not errors)
+    return observed
+
+
+def validate_receipt_process(exit_code, receipts):
+    """Check a complete checker result before any domain-specific projection.
+
+    Fail and candidate results may be reliable observations; the consuming
+    Gate/scan decides which are acceptable. This checks neither currentness
+    nor authorization and never rewrites the actual process code.
+    """
+    if type(exit_code) is not int or exit_code not in agent_interface_contract.PROCESS_VERDICTS:
+        raise ValueError("checker returned an unregistered exit code: %r" % exit_code)
+    if not isinstance(receipts, list) or not receipts or any(
+            not isinstance(receipt, dict) for receipt in receipts):
+        raise ValueError("checker must emit one nonempty Receipt array")
+    try:
+        calculated = kblib.exit_code(receipts)
+    except (KeyError, TypeError, ValueError) as exc:
+        raise ValueError("checker emitted an invalid result: %s" % exc) from exc
+    if calculated != exit_code:
+        raise ValueError("checker exit %d disagrees with receipt results (expected %d)" %
+                         (exit_code, calculated))
+    return receipts
+
+
 def write_publication_result(publication, *, json_output, status, errors=(), **fields):
     """Emit the same operation facts through JSON or the existing human mode."""
     payload = publication_result(publication, status=status, errors=errors, **fields)

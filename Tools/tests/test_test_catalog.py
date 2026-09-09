@@ -127,6 +127,24 @@ class TestRunnerSelectionContractTests(unittest.TestCase):
                             row["outcome"] == "raised" for row in report["scopes"]))
         self.assertNotIn("setUpClass", vars(module.Probe))
 
+    def test_progress_survives_interruption_without_claiming_a_test_result(self):
+        module = ModuleType("cost_interrupt")
+        module.Probe = type("Probe", (unittest.TestCase,), {
+            "__module__": module.__name__,
+            "test_stop": lambda self: (_ for _ in ()).throw(KeyboardInterrupt())})
+        with tempfile.TemporaryDirectory() as temporary, \
+                mock.patch.dict(sys.modules, {module.__name__: module}):
+            report, progress = Path(temporary) / "final.json", Path(temporary) / "progress.jsonl"
+            with self.assertRaises(KeyboardInterrupt):
+                test_runner.child_main([str(report), str(progress), "cost_interrupt.Probe"])
+            self.assertFalse(report.exists())
+            rows = [json.loads(line) for line in progress.read_text().splitlines()]
+            self.assertEqual("incomplete", rows[0]["state"])
+            self.assertTrue(any(row.get("kind") == "discovery" for row in rows))
+            self.assertFalse(any(row.get("successful") or row.get("status") == "passed"
+                                 or row.get("kind") == "test-run-finished" for row in rows))
+            self.assertTrue(any(row.get("outcome") == "raised" for row in rows))
+
 
 class SyntheticCatalogWorkspace:
     """Write one minimal independent manifest and source graph."""

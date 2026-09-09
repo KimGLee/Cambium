@@ -438,9 +438,12 @@ def run_source_gate(root, plan, target, trace):
         raise ChangedScopeProducerError(
             "scoped Gate emitted no readable receipt array: %s; stderr=%s" %
             (exc, detail or "<empty>"))
-    if not isinstance(receipts, list):
+    try:
+        reporting.validate_receipt_process(completed.returncode, receipts)
+    except ValueError as exc:
         raise ChangedScopeProducerError(
-            "scoped Gate JSON output must be one receipt array")
+            "scoped Gate process is unreliable (exit %r): %s; stderr=%s" %
+            (completed.returncode, exc, completed.stderr.strip()[-2000:])) from exc
     exit_code, selected = select_source_gate_receipts(receipts, gate)
     summaries = [record for record in selected
                  if record.get("check") == trace["existing_check"]]

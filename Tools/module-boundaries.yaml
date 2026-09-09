@@ -220,6 +220,7 @@ modules:
       - candidate_page_evidence_errors
       - closed_plan_closure_errors
       - combine_plan_reconciliations
+      - continue_evidence_observation
       - current_consumption_evidence_ids
       - evidence_evaluation
       - evidence_observation
@@ -315,6 +316,7 @@ modules:
       - precursor_chain_for_obligation
       - precursor_chain_for_spec
       - precursor_record_matches
+      - producer_chain_observation
       - require_precursor_record
   - module: execution.audit.audit_producer_runtime
     path: Tools/execution/audit/audit_producer_runtime.py
@@ -1769,6 +1771,7 @@ modules:
     layer: contract
     public:
       - AuthorizedProjectionRules
+      - CapabilityLookup
       - CompiledMetadataExecutionContract
       - DEFAULT_CAPABILITIES_PATH
       - IMPLEMENTATION_ROLE_KEYS
@@ -2437,9 +2440,11 @@ modules:
       - PATH_CAPABILITIES_ACK_ENV
       - PATH_CAPABILITIES_ENV
       - PATH_EXTENSION_KEY
+      - PROCESS_VERDICTS
       - PROJECTION_ARTIFACT_KIND
       - PROJECTION_SCHEMA_VERSION
       - SOURCE_DISTRIBUTION_TARGET
+      - UNREADABLE_VERDICT
       - WORKSPACE_ENV
       - WORKSPACE_EXTENSION_KEY
       - WORKSPACE_FD_ENV
@@ -2724,11 +2729,13 @@ modules:
       - JsonReceiptCollector
       - RedirectedJsonReceipts
       - host_environment_boundary
+      - observe_invocation
       - observe_tool_output
       - publication_result
       - publication_result_reliable
       - run_redirected_json
       - validate_publication_result
+      - validate_receipt_process
       - write_canonical_json
       - write_canonical_json_array
       - write_publication_result
@@ -2870,6 +2877,7 @@ modules:
     domain: repository
     layer: infrastructure
     public:
+      - DelegationScope
       - PathAdmissionError
       - admit_paths
       - canonical_spelling
@@ -2889,6 +2897,7 @@ modules:
       - cache_tree
       - cached_file
       - cached_tree
+      - child_invocation
       - controlled_root_fd
       - current_file_bytes
       - effective_target

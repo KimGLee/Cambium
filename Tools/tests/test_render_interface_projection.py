@@ -200,6 +200,25 @@ class CurrentContractProjectionTests(unittest.TestCase):
                     if projector.PATH_EXTENSION_KEY in schema
                 }
                 self.assertEqual(actual_paths, expected_paths)
+        # Runner must receive the complete admission contract, not just an
+        # argv-shaped projection. Derive expectations from every compiled
+        # Tool, including CLI-only paths and omitted effective defaults.
+        for record in self.contract["tools"]:
+            schema = projector.cli_argv_renderer.schema_from_compiled_tool(record)
+            expected_paths = {
+                entry["argument"]: {key: deepcopy(value) for key, value in entry.items()
+                                    if key not in {"argument", "runtime_path_id"}}
+                for entry in record["agent_interface"]["path_arguments"]}
+            with self.subTest(runner_tool=record["tool"]):
+                self.assertEqual(expected_paths, {
+                    name: prop[projector.PATH_EXTENSION_KEY]
+                    for name, prop in schema["properties"].items()
+                    if projector.PATH_EXTENSION_KEY in prop})
+                for argument in record["arguments"]:
+                    if (argument.get("default") is not None and
+                            argument.get("default_type") != "argparse.SUPPRESS"):
+                        self.assertEqual(argument["default"],
+                                         schema["properties"][argument["dest"]].get("default"))
 
     def test_envelope_binds_owner_bytes_and_has_no_unowned_fields(self):
         self.assertEqual(
@@ -245,7 +264,7 @@ class ArgumentProjectionTests(unittest.TestCase):
         )
         for name, changes, expected, absent in cases:
             with self.subTest(case=name):
-                schema = projector.property_schema(argument(**changes))
+                schema = projector.agent_interface_contract.argument_schema(argument(**changes))
                 for key, value in expected.items():
                     self.assertEqual(schema[key], value)
                 for key in absent:

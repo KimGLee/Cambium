@@ -350,15 +350,11 @@ def _receipting_result(command, label, returncode, stdout, receipts):
                 if receipt.get("result") == "fail"]
     candidates = [receipt for receipt in receipts
                   if receipt.get("result") == "candidate"]
-    # 0 and 2 are the two codes a checker may exit while still having reached a
-    # verdict; 1 is a failure or unreliable evidence.  A usage error also exits
-    # 1 (kblib.ArgumentParser), so a mis-typed command can no longer arrive here
-    # wearing the HOLD code.  Nothing below rests on that alone: the receipts
-    # this checker actually wrote are cross-checked against the code just after,
-    # and a run that exits 2 without candidate receipts is reported either way.
-    valid_exit = returncode in (0, 2)
-    expected_exit = 2 if candidates and not failures else (1 if failures else 0)
     errors = []
+    try:
+        reporting.validate_receipt_process(returncode, receipts)
+    except ValueError as exc:
+        errors.append(str(exc))
     receipt_ids = []
     for index, receipt in enumerate(receipts):
         for field in ("receipt_id", "tool", "tool_version", "check",
@@ -366,9 +362,6 @@ def _receipting_result(command, label, returncode, stdout, receipts):
             if not isinstance(receipt.get(field), str) or not receipt.get(field):
                 errors.append("checker receipt %d has invalid %s" %
                               (index + 1, field))
-        if receipt.get("result") not in ("pass", "fail", "candidate"):
-            errors.append("checker receipt %d has unsupported result %r" %
-                          (index + 1, receipt.get("result")))
         if receipt.get("invalidated_by") is not None:
             errors.append("checker receipt %d is already invalidated" %
                           (index + 1))
@@ -376,17 +369,10 @@ def _receipting_result(command, label, returncode, stdout, receipts):
             receipt_ids.append(receipt["receipt_id"])
     if len(receipt_ids) != len(set(receipt_ids)):
         errors.append("checker repeated a receipt_id")
-    if not receipts:
-        errors.append("checker produced no machine-readable receipts")
-    if not valid_exit:
-        errors.append("checker exited %d" % returncode)
     if failures:
         errors.extend("%s %s: %s" % (
             receipt.get("check"), receipt.get("target"),
             receipt.get("details")) for receipt in failures)
-    if receipts and returncode != expected_exit:
-        errors.append("checker exit %d disagrees with receipt results (expected %d)" %
-                      (returncode, expected_exit))
     return {
         "label": label,
         "command": list(command),

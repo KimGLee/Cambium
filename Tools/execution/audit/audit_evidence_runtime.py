@@ -141,10 +141,9 @@ class _EvidenceFacts:
         return self.memo(("metadata-page", relative), capture)
 
     def chain(self, obligation):
-        return self.memo(("producer-chain", _record_sha256(obligation)),
-            lambda: audit_producer_chain.precursor_chain_for_obligation(
-                obligation, root=self.root, evaluation=self.evaluation,
-                contract_loader=self.contract))
+        return audit_producer_chain.precursor_chain_for_obligation(
+            obligation, root=self.root, evaluation=self.evaluation,
+            contract_loader=self.contract)
 
     def validate(self, owner, validator, record, *, contract=None):
         contract = contract if contract is not None else self.contract(owner)
@@ -215,10 +214,27 @@ def evidence_observation(result):
     view = evidence_evaluation(view)
     view["_audit_stage_resolutions"] = {}
     try:
-        yield view
+        with audit_producer_chain.producer_chain_observation(
+                view["_audit_evidence_facts"].memo):
+            yield view
     finally:
         view.pop("_audit_stage_resolutions").clear()
         view.pop("_audit_evidence_facts", None)
+
+
+@contextmanager
+def continue_evidence_observation(result):
+    """Join this admitted view's active read, or start a fresh standalone read.
+
+    Explicit evidence_observation calls always create a new boundary. This
+    continuation is only for nested read-only consumers of that same view.
+    """
+    if (isinstance(result.get("_audit_evidence_facts"), _EvidenceFacts) and
+            "_audit_stage_resolutions" in result):
+        yield result
+    else:
+        with evidence_observation(result) as observed:
+            yield observed
 
 
 def _current_page_artifact_fingerprint(root, relative, *, snapshot=None,

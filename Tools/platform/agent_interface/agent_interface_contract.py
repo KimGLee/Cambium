@@ -27,6 +27,10 @@ PATH_CAPABILITIES_ENV = "CAMBIUM_PATH_CAPABILITIES"
 PATH_CAPABILITIES_ACK_ENV = "CAMBIUM_PATH_CAPABILITIES_ACK_FD"
 WORKSPACE_FD_ENV = "CAMBIUM_WORKSPACE_FD"
 
+# Process observations, not evidence acceptance or publication facts.
+PROCESS_VERDICTS = {0: "clean", 1: "failed_or_unreliable", 2: "hold"}
+UNREADABLE_VERDICT = "unreadable"
+
 
 def nullable_argument(action):
     """Declare null as the existing omitted-argument None, never a new value.
@@ -52,7 +56,7 @@ def argument_expression(action):
     return {"null_encoding": encoding}
 
 
-def argument_schema(argument):
+def argument_schema(argument, path_capability=None):
     """One mechanical projection for CLI encoding, MCP and Runner bindings."""
     scalar_type = {"bool": "boolean", "float": "number", "int": "integer",
                    "str": "string"}.get(argument.get("type"), "string")
@@ -95,6 +99,21 @@ def argument_schema(argument):
     if sequence and argument.get("default") == []:
         meta["empty_encoding"] = "omit"
     schema["x-cambium-cli"] = meta
+    if argument.get("help"):
+        schema["description"] = argument["help"]
+    if (argument.get("default") is not None and
+            argument.get("default_type") != "argparse.SUPPRESS"):
+        schema["default"] = argument["default"]
+    if path_capability is not None:
+        schema[PATH_EXTENSION_KEY] = {
+            "access": path_capability["access"],
+            "consumption": path_capability["consumption"],
+            "constraint": path_capability["constraint"],
+            "value": path_capability["value"],
+            "suffixes": list(path_capability["suffixes"]),
+            "active_when_any": list(path_capability["active_when_any"]),
+            "inactive_when_any": list(path_capability["inactive_when_any"]),
+        }
     return schema
 
 

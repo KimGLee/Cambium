@@ -284,6 +284,29 @@ def subprocess_kwargs():
     }
 
 
+@contextmanager
+def child_invocation(tool, arguments, workspace_root, workspace_fd, environment):
+    """Admit another Tool and settle actual delegated reads into this scope.
+
+    Parent records come only from the current validated descriptor manifest.
+    The lower admission owner builds/checks the correspondence; this I/O
+    owner alone acknowledges consumption in the parent's existing channel.
+    No business verdict or write confirmation is inferred from an ACK.
+    """
+    inherited = subprocess_kwargs().get("env_overrides")
+    parent_scope = None
+    if inherited is not None:
+        root_fd = controlled_root_fd()
+        identity = os.fstat(root_fd)
+        forwarded = json.loads(inherited[PATH_CAPABILITIES_ENV])["capabilities"]
+        parent_scope = path_admission.DelegationScope(
+            (identity.st_dev, identity.st_ino),
+            tuple(MappingProxyType(row) for row in forwarded), acknowledge)
+    with path_admission.invocation(tool, arguments, workspace_root, workspace_fd,
+                                   environment, parent_scope=parent_scope) as binding:
+        yield binding
+
+
 def controlled_root_fd():
     """Return the pinned invocation root, including an empty path manifest."""
     if not os.environ.get(PATH_CAPABILITIES_ENV):

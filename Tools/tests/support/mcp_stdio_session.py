@@ -147,6 +147,15 @@ class MCPStdioSession:
             raise AssertionError("scenario operation is not exposed: %s" % name)
         return self.tools[name]
 
+    def call_checked(self, name, arguments):
+        """Positive scenario boundary; negative tests keep the raw call API."""
+        envelope = self.call(name, arguments)
+        if (envelope.get("exit_code") != 0 or
+                envelope.get("output_reliable") is not True or
+                envelope.get("invocation_reliable") is not True):
+            raise AssertionError("MCP operation did not settle successfully: %s" % envelope)
+        return envelope
+
     def run_cli(self, filename, *argv):
         """Reuse a scenario's inputs while executing only the real MCP path."""
         name = Path(filename).stem

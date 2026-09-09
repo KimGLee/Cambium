@@ -1008,25 +1008,99 @@ class PathCapabilityUnitTests(unittest.TestCase):
             fd = os.open(root, os.O_RDONLY | os.O_DIRECTORY)
             try:
                 with path_admission.invocation(tool, args, str(root), fd, os.environ) as parent:
-                    with path_admission.invocation(tool, args, str(root), fd, os.environ,
-                                                   inherited_records=parent["rows"]) as child:
-                        self.assertNotEqual(parent["rows"][0]["capability_id"],
-                                            child["rows"][0]["capability_id"])
-                    prop[mcp_server.PATH_EXTENSION_KEY]["consumption"] = "append"
-                    with self.assertRaises(path_admission.PathAdmissionError):
-                        with path_admission.invocation(tool, args, str(root), fd, os.environ,
-                                                       inherited_records=parent["rows"]):
-                            self.fail("mode escalation admitted")
-                    prop[mcp_server.PATH_EXTENSION_KEY]["consumption"] = "snapshot"
-                    replacement = root / "replacement"
-                    replacement.write_text("{}\n", encoding="utf-8")
-                    replacement.replace(target)
-                    with self.assertRaises(path_admission.PathAdmissionError):
-                        with path_admission.invocation(tool, args, str(root), fd, os.environ,
-                                                       inherited_records=parent["rows"]):
-                            self.fail("replacement admitted")
+                    with mock.patch.dict(os.environ, parent["env"], clear=True), \
+                            mock.patch.object(path_capability, "_MANIFEST_CACHE", None):
+                        with path_capability.child_invocation(tool, args, str(root), fd, os.environ) as child:
+                            self.assertNotEqual(parent["rows"][0]["capability_id"],
+                                                child["rows"][0]["capability_id"])
+                        prop[mcp_server.PATH_EXTENSION_KEY]["consumption"] = "append"
+                        with self.assertRaises(path_admission.PathAdmissionError):
+                            with path_capability.child_invocation(tool, args, str(root), fd, os.environ):
+                                self.fail("mode escalation admitted")
+                        prop[mcp_server.PATH_EXTENSION_KEY]["consumption"] = "snapshot"
+                        replacement = root / "replacement"
+                        replacement.write_text("{}\n", encoding="utf-8")
+                        replacement.replace(target)
+                        with self.assertRaises(path_admission.PathAdmissionError):
+                            with path_capability.child_invocation(tool, args, str(root), fd, os.environ):
+                                self.fail("replacement admitted")
             finally:
                 os.close(fd)
+
+    def test_nested_read_settles_only_consumed_parent_inputs(self):
+        from Tools.platform.common import kblib
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary).resolve()
+            for name in ("input", "other"):
+                (root / name).write_text(name)
+            prop = _string("input", "--input", path_access="read")
+            tool = {"name": "parent", "workspace_argument": "root", "schema": {
+                "properties": {"root": _string("root"), "input": prop, "other": prop}}}
+            fd = os.open(root, os.O_RDONLY | os.O_DIRECTORY)
+            try:
+                with path_admission.invocation(tool, {"root": str(root), "input": "input", "other": "other"},
+                                               str(root), fd, os.environ) as parent:
+                    with mock.patch.dict(os.environ, parent["env"], clear=True), \
+                            mock.patch.object(path_capability, "_MANIFEST_CACHE", None), \
+                            mock.patch.object(path_capability, "_ACKNOWLEDGED", set()):
+                        with path_capability.child_invocation(tool, {"root": str(root), "input": "input"},
+                                                               str(root), fd, os.environ) as child:
+                            with mock.patch.dict(os.environ, child["env"], clear=True), \
+                                    mock.patch.object(path_capability, "_MANIFEST_CACHE", None), \
+                                    mock.patch.object(path_capability, "_ACKNOWLEDGED", set()):
+                                self.assertEqual("input", kblib.read_text(root / "input"))
+                        self.assertEqual([], child["missing"])
+                self.assertEqual([parent["rows"][1]["capability_id"]], parent["missing"])
+            finally:
+                os.close(fd)
+
+    def test_delegation_does_not_complete_unread_writes_subtrees_or_bad_ack(self):
+        from Tools.platform.common import kblib
+        cases = ("unread", "subtree", "transaction", "append", "replace", "alias", "foreign", "partial")
+        for case in cases:
+            with self.subTest(case=case), tempfile.TemporaryDirectory() as temporary:
+                root = Path(temporary).resolve()
+                (root / "tree").mkdir()
+                (root / "tree/input").write_text("payload")
+                prop = _string("input", "--input", path_access="read")
+                if case in ("transaction", "append", "replace"):
+                    prop[mcp_server.PATH_EXTENSION_KEY].update(access="write", consumption=case)
+                parent_tool = {"name": "parent", "workspace_argument": "root", "schema": {
+                    "properties": {"root": _string("root"), "input": prop, "alias": prop}}}
+                parent_args = {"root": str(root), "input": "tree" if case == "subtree" else "tree/input"}
+                if case == "alias":
+                    parent_args["alias"] = "tree/input"
+                child_prop = _string("input", "--input", path_access="read")
+                child_tool = {"name": "child", "workspace_argument": "root", "schema": {
+                    "properties": {"root": _string("root"), "input": child_prop}}}
+                fd = os.open(root, os.O_RDONLY | os.O_DIRECTORY)
+                try:
+                    with path_admission.invocation(parent_tool, parent_args, str(root), fd, os.environ) as parent:
+                        with mock.patch.dict(os.environ, parent["env"], clear=True), \
+                                mock.patch.object(path_capability, "_MANIFEST_CACHE", None), \
+                                mock.patch.object(path_capability, "_ACKNOWLEDGED", set()):
+                            if case in ("append", "replace"):
+                                with self.assertRaises(path_admission.PathAdmissionError):
+                                    with path_capability.child_invocation(child_tool, {"root": str(root), "input": "tree/input"},
+                                                                           str(root), fd, os.environ):
+                                        self.fail("write scope admitted as a snapshot")
+                            else:
+                                with path_capability.child_invocation(child_tool, {"root": str(root), "input": "tree/input"},
+                                                                       str(root), fd, os.environ) as child:
+                                    with mock.patch.dict(os.environ, child["env"], clear=True), \
+                                            mock.patch.object(path_capability, "_MANIFEST_CACHE", None), \
+                                            mock.patch.object(path_capability, "_ACKNOWLEDGED", set()):
+                                        if case not in ("unread", "partial"):
+                                            self.assertEqual("payload", kblib.read_text(root / "tree/input"))
+                                        ack_fd = int(child["env"][mcp_server.agent_interface_contract.PATH_CAPABILITIES_ACK_ENV])
+                                        if case == "foreign":
+                                            os.write(ack_fd, b"foreign\n")
+                                        if case == "partial":
+                                            os.write(ack_fd, child["rows"][0]["capability_id"].encode())
+                                self.assertEqual(case in ("foreign", "partial"), bool(child["acknowledgement_error"]))
+                    self.assertEqual(0 if case == "alias" else 1, len(parent["missing"]))
+                finally:
+                    os.close(fd)
 
     def test_acknowledgement_names_only_the_exact_consumed_record(self):
         rows = (
@@ -1429,6 +1503,38 @@ class PathCapabilityIsolationTests(ArgvTests):
             json.loads((receipts / "displaced.jsonl.displaced").read_text(
                 encoding="utf-8")),
         )
+
+    @catalog_effects(process_calls=3)
+    def test_independent_nested_scopes_propagate_only_real_reads_through_hold(self):
+        child_contract = {"name": "nested", "workspace_argument": "root", "schema": {
+            "properties": {"root": _string("root"),
+                           "scope": _string("scope", "--scope", path_access="read")}}}
+        source = self.reader_source(
+            "import os,sys\n"
+            "from Tools.platform.repository import path_capability\n"
+            "depth=2 if a.count is None else a.count\n"
+            "if depth:\n"
+            " tool=" + repr(child_contract) + "\n"
+            " root=os.environ['CAMBIUM_WORKSPACE_ROOT']\n"
+            " with path_capability.child_invocation(tool,{'root':root,'scope':a.scope},"
+            "root,path_capability.controlled_root_fd(),os.environ) as binding:\n"
+            "  c=kblib.run_cambium_subprocess([sys.executable,__file__,a.first,a.second,"
+            "'--root',root,'--scope',a.scope,'--count',str(depth-1)],"
+            "path_binding=binding,text=True,capture_output=True,check=False)\n"
+            " print(json.dumps({'missing':binding['missing'],'ack_error':binding['acknowledgement_error'],"
+            "'child':json.loads(c.stdout)}))\n"
+            " sys.exit(c.returncode)\n"
+            "print(json.dumps({'read':kblib.read_text(a.scope)}))\n"
+            "sys.exit(2)\n")
+        distribution, server = self.distribution_for(source, "read", "snapshot")
+        (distribution.workspace / "input.txt").write_text("real input")
+        response = self.call(server, "input.txt")["result"]
+        envelope = response["structuredContent"]
+        self.assertTrue(envelope["invocation_reliable"], envelope)
+        self.assertTrue(envelope["output_reliable"], envelope)
+        self.assertEqual(2, envelope["exit_code"])
+        self.assertEqual({"missing": [], "ack_error": None, "child": {
+            "missing": [], "ack_error": None, "child": {"read": "real input"}}}, envelope["stdout_json"])
 
     @catalog_effects(process_calls=1)
     def test_nested_child_receives_advanced_append_capability(self):
@@ -2105,7 +2211,7 @@ class LiveStdioTests(unittest.TestCase):
             sorted(tool["name"] for tool in artifact["tools"]))
         envelope = responses[2]["result"]["structuredContent"]
         self.assertEqual(envelope["tool"], "check_moc")
-        self.assertIn(envelope["verdict"], mcp_server.VERDICTS.values())
+        self.assertIn(envelope["verdict"], mcp_server.agent_interface_contract.PROCESS_VERDICTS.values())
         self.assertEqual(envelope["stdout_parse"], "parsed")
         self.assertEqual(responses[3]["error"]["code"],
                          mcp_server.METHOD_NOT_FOUND)
