@@ -111,7 +111,7 @@ def initialize_task_plan_scenario(walker):
                  runtime_paths.PROGRESS_PATH):
         walker.assertFalse((walker.root / path).exists(), path)
     initialized = walker.run_tool("init_state.py", "--plan", plan_path, "--apply", "--json")
-    walker.assertEqual(0, initialized.returncode, initialized.stdout)
+    walker.assertEqual(0, initialized.returncode, (initialized.stdout, initialized.stderr))
     queue = kblib.load_yaml_file(walker.root / runtime_paths.QUEUE_PATH)
     progress = kblib.load_yaml_file(walker.root / runtime_paths.PROGRESS_PATH)
     planning_receipt = progress["initial_task_plan_receipt"]
@@ -123,7 +123,7 @@ def initialize_task_plan_scenario(walker):
         "--expected-sha256", kblib.sha256_file(walker.root / runtime_paths.QUEUE_PATH),
         "--expected-coverage-sha256", kblib.sha256_file(walker.root / runtime_paths.COVERAGE_PATH),
         "--expected-progress-sha256", kblib.sha256_file(walker.root / runtime_paths.PROGRESS_PATH))
-    walker.assertEqual(0, materialized.returncode, materialized.stdout)
+    walker.assertEqual(0, materialized.returncode, (materialized.stdout, materialized.stderr))
     result = runtime_validation.validate_runtime(walker.root)
     walker.assertEqual([], result["errors"])
     walker.assertEqual(planning_receipt, result["progress"]["initial_task_plan_receipt"])

@@ -103,8 +103,8 @@ Usage: python3 check_proof.py <proof.yaml> [--ledger coverage_ledger.yaml]
 """
 from Tools.platform.repository.repository import repository_source_root
 
-import json
 import os
+from contextlib import nullcontext
 from pathlib import Path
 import re
 import sys
@@ -341,6 +341,26 @@ def _current_receipt_evidence(root, receipt_id, *, field, check_prefix,
             (field, receipt_id),
         )]
     return receipt, []
+
+
+def _proof_register(root, relative, check_prefix):
+    """Adapt the register owner's diagnostics to the existing proof checks."""
+    try:
+        return receipt_catalogs.read_receipt_register(root, relative), []
+    except receipt_catalogs.ReceiptRegisterError as exc:
+        return None, [_queue_linkage_failure(
+            "%s-%s" % (check_prefix, exc.kind), str(relative), str(exc))]
+
+
+def _proof_register_member(records, receipt_id, current, check_prefix, target):
+    if records is None or current is None:
+        # The caller already reported unavailable IO/current authority.
+        return None, []
+    try:
+        return receipt_catalogs.require_register_member(records, receipt_id, current), []
+    except receipt_catalogs.ReceiptRegisterError as exc:
+        return None, [_queue_linkage_failure(
+            "%s-%s" % (check_prefix, exc.kind), target, str(exc))]
 
 
 def _terminal_reconciliation_failures(proof, runtime):
@@ -719,32 +739,11 @@ def _validate_dimension_coverage_evidence(
     if not audit_rows:
         return failures
     receipt_path_raw = proof.get("audit_receipt_register")
-    try:
-        receipt_path = Path(kblib.managed_repository_path(
-            str(root), receipt_path_raw, runtime_paths.RECEIPT_ROOT,
-            suffixes=(".jsonl",), must_exist=True,
-        ))
-    except (OSError, TypeError, ValueError):
-        # The Queue linkage pass already reported the unreadable register with
-        # its precise diagnosis; do not duplicate that failure here.
+    records, register_failures = _proof_register(
+        root, receipt_path_raw, "proof-dimension-receipt")
+    failures.extend(register_failures)
+    if records is None:
         return failures
-    if not receipt_path.is_file():
-        return failures
-    try:
-        lines = receipt_path.read_text(encoding="utf-8").splitlines()
-    except (OSError, UnicodeError):
-        return failures
-    records = {}
-    for line in lines:
-        if not line.strip():
-            continue
-        try:
-            record = json.loads(line)
-        except json.JSONDecodeError:
-            continue
-        if not isinstance(record, dict):
-            continue
-        records.setdefault(record.get("receipt_id"), []).append(record)
     for receipt_id, row in sorted(audit_rows.items()):
         dimension = row["dimension"]
         target = "Terminal Proof#dimension_coverage#%s" % dimension
@@ -757,23 +756,10 @@ def _validate_dimension_coverage_evidence(
         if membership_failures:
             failures.extend(membership_failures)
             continue
-        matches = records.get(receipt_id, [])
-        if len(matches) != 1:
-            failures.append(_queue_linkage_failure(
-                "proof-dimension-receipt-missing", target,
-                "%s cites receipt %r, which must identify exactly one record "
-                "in %s; found %d" %
-                (dimension, receipt_id, receipt_path_raw, len(matches)),
-            ))
-            continue
-        record = matches[0]
-        if current != record:
-            failures.append(_queue_linkage_failure(
-                "proof-dimension-receipt-catalog-mismatch", target,
-                "%s cites AuditReceipt %r, but the named register bytes differ "
-                "from the same receipt_id in the current receipt catalog" %
-                (dimension, receipt_id),
-            ))
+        record, register_failures = _proof_register_member(
+            records, receipt_id, current, "proof-dimension-receipt", target)
+        failures.extend(register_failures)
+        if record is None:
             continue
         try:
             audit_receipt_contract.validate_audit_receipt(
@@ -921,84 +907,15 @@ def _validate_required_queue_linkage(root, proof, progress_ledger,
         check_prefix="proof-queue-receipt", runtime=runtime,
     )
     failures.extend(membership_failures)
-    try:
-        receipt_path = Path(kblib.managed_repository_path(
-            str(root), receipt_path_raw, runtime_paths.RECEIPT_ROOT,
-            suffixes=(".jsonl",), must_exist=True,
-        ))
-        receipt_path_error = None
-    except (OSError, TypeError, ValueError) as exc:
-        receipt_path = None
-        receipt_path_error = str(exc)
-    matching_receipts = []
-    if receipt_path_error or receipt_path is None or not receipt_path.is_file():
-        failures.append(_queue_linkage_failure(
-            "proof-queue-receipt-register-unreadable",
-            str(receipt_path_raw),
-            "terminal_audit_receipt_register is missing or unsafe: %s" %
-            (receipt_path_error or "not a regular file"),
-        ))
-    else:
-        try:
-            receipt_lines = receipt_path.read_text(encoding="utf-8").splitlines()
-        except (OSError, UnicodeError) as exc:
-            failures.append(_queue_linkage_failure(
-                "proof-queue-receipt-register-unreadable",
-                str(receipt_path_raw),
-                "cannot read terminal_audit_receipt_register: %s" % exc,
-            ))
-        else:
-            seen_receipt_ids = set()
-            register_reliable = True
-            for line_number, line in enumerate(receipt_lines, 1):
-                if not line.strip():
-                    continue
-                try:
-                    receipt = json.loads(line)
-                except json.JSONDecodeError as exc:
-                    register_reliable = False
-                    failures.append(_queue_linkage_failure(
-                        "proof-queue-receipt-register-invalid",
-                        "%s:%d" % (receipt_path_raw, line_number),
-                        "malformed JSONL receipt: %s" % exc,
-                    ))
-                    continue
-                if not isinstance(receipt, dict):
-                    register_reliable = False
-                    failures.append(_queue_linkage_failure(
-                        "proof-queue-receipt-register-invalid",
-                        "%s:%d" % (receipt_path_raw, line_number),
-                        "receipt line must be a JSON object",
-                    ))
-                    continue
-                current_id = receipt.get("receipt_id")
-                if current_id in seen_receipt_ids:
-                    register_reliable = False
-                    failures.append(_queue_linkage_failure(
-                        "proof-queue-receipt-id-duplicate",
-                        "%s:%d" % (receipt_path_raw, line_number),
-                        "receipt_id %r appears more than once" % current_id,
-                    ))
-                seen_receipt_ids.add(current_id)
-                if current_id == receipt_id:
-                    matching_receipts.append(receipt)
+    records, register_failures = _proof_register(
+        root, receipt_path_raw, "proof-queue-receipt")
+    failures.extend(register_failures)
+    receipt, register_failures = _proof_register_member(
+        records, receipt_id, current_receipt, "proof-queue-receipt",
+        "%s#%s" % (receipt_path_raw, receipt_id))
+    failures.extend(register_failures)
 
-            if register_reliable and len(matching_receipts) != 1:
-                failures.append(_queue_linkage_failure(
-                    "proof-queue-receipt-missing", str(receipt_path_raw),
-                    "queue_check_receipt %r must identify exactly one receipt; "
-                    "found %d" % (receipt_id, len(matching_receipts)),
-                ))
-
-    if len(matching_receipts) == 1 and queue is not None:
-        receipt = matching_receipts[0]
-        if current_receipt is not None and receipt != current_receipt:
-            failures.append(_queue_linkage_failure(
-                "proof-queue-receipt-catalog-mismatch",
-                "%s#%s" % (receipt_path_raw, receipt_id),
-                "the named register record differs from the same receipt_id "
-                "in the current receipt catalog",
-            ))
+    if receipt is not None and queue is not None:
         for field, expected in (
                 ("tool", "check_queue"),
                 ("tool_version", QUEUE_TOOL_VERSION),
@@ -1047,79 +964,16 @@ def _validate_corpus_plan_linkage(
         runtime=runtime,
     )
     failures.extend(membership_failures)
-    try:
-        receipt_path = Path(kblib.managed_repository_path(
-            str(root), receipt_path_raw, runtime_paths.RECEIPT_ROOT,
-            suffixes=(".jsonl",), must_exist=True,
-        ))
-        receipt_path_error = None
-    except (OSError, TypeError, ValueError) as exc:
-        receipt_path = None
-        receipt_path_error = str(exc)
-    if receipt_path_error or receipt_path is None or not receipt_path.is_file():
-        return [(_queue_linkage_failure(
-            "proof-corpus-plan-receipt-register-unreadable",
-            str(receipt_path_raw),
-            "terminal_audit_receipt_register is missing or unsafe: %s" %
-            (receipt_path_error or "not a regular file")))], False
-
-    matches = []
     semantic_id = proof.get("corpus_plan_semantic_acceptance_receipt")
-    semantic_matches = []
-    seen = set()
-    register_reliable = True
-    try:
-        lines = receipt_path.read_text(encoding="utf-8").splitlines()
-    except (OSError, UnicodeError) as exc:
-        return [(_queue_linkage_failure(
-            "proof-corpus-plan-receipt-register-unreadable",
-            str(receipt_path_raw),
-            "cannot read terminal_audit_receipt_register: %s" % exc))], False
-    for line_number, line in enumerate(lines, 1):
-        if not line.strip():
-            continue
-        try:
-            receipt = json.loads(line)
-        except json.JSONDecodeError as exc:
-            register_reliable = False
-            failures.append(_queue_linkage_failure(
-                "proof-corpus-plan-receipt-register-invalid",
-                "%s:%d" % (receipt_path_raw, line_number),
-                "malformed JSONL receipt: %s" % exc))
-            continue
-        if not isinstance(receipt, dict):
-            register_reliable = False
-            failures.append(_queue_linkage_failure(
-                "proof-corpus-plan-receipt-register-invalid",
-                "%s:%d" % (receipt_path_raw, line_number),
-                "receipt line must be a JSON object"))
-            continue
-        current_id = receipt.get("receipt_id")
-        if current_id in seen:
-            register_reliable = False
-            failures.append(_queue_linkage_failure(
-                "proof-corpus-plan-receipt-id-duplicate",
-                "%s:%d" % (receipt_path_raw, line_number),
-                "receipt_id %r appears more than once" % current_id))
-        seen.add(current_id)
-        if current_id == receipt_id:
-            matches.append(receipt)
-        if semantic_id is not None and current_id == semantic_id:
-            semantic_matches.append(receipt)
-    if register_reliable and len(matches) != 1:
-        failures.append(_queue_linkage_failure(
-            "proof-corpus-plan-receipt-missing", str(receipt_path_raw),
-            "corpus_plan_check_receipt %r must identify exactly one receipt; "
-            "found %d" % (receipt_id, len(matches))))
-    if len(matches) != 1:
+    records, register_failures = _proof_register(
+        root, receipt_path_raw, "proof-corpus-plan-receipt")
+    failures.extend(register_failures)
+    structural, register_failures = _proof_register_member(
+        records, receipt_id, current_structural, "proof-corpus-plan-receipt",
+        "%s#%s" % (receipt_path_raw, receipt_id))
+    failures.extend(register_failures)
+    if structural is None:
         return failures, False
-
-    if current_structural is not None and matches[0] != current_structural:
-        failures.append(_queue_linkage_failure(
-            "proof-corpus-plan-receipt-catalog-mismatch",
-            "%s#%s" % (receipt_path_raw, receipt_id),
-            "the named register record differs from the same receipt_id in "
-            "the current receipt catalog"))
 
     if not isinstance(authorized_profile_view, dict):
         failures.append(_queue_linkage_failure(
@@ -1156,7 +1010,7 @@ def _validate_corpus_plan_linkage(
             "cannot resolve current Corpus Planning bytes: %s" % exc))
         return failures, False
     receipt_errors = check_corpus_plan.pass_receipt_errors(
-        str(root), matches[0], expected_binding=expected_binding,
+        str(root), structural, expected_binding=expected_binding,
         require_runtime=True)
     for detail in receipt_errors:
         failures.append(_queue_linkage_failure(
@@ -1221,21 +1075,12 @@ def _validate_corpus_plan_linkage(
                     runtime=runtime,
                 )
             failures.extend(semantic_membership_failures)
-            if len(semantic_matches) != 1:
-                failures.append(_queue_linkage_failure(
-                    "proof-corpus-plan-semantic-receipt-missing",
-                    str(receipt_path_raw),
-                    "corpus_plan_semantic_acceptance_receipt %r must "
-                    "identify exactly one receipt; found %d" %
-                    (semantic_id, len(semantic_matches))))
-            else:
-                semantic = semantic_matches[0]
-                if current_semantic is not None and semantic != current_semantic:
-                    failures.append(_queue_linkage_failure(
-                        "proof-corpus-plan-semantic-receipt-catalog-mismatch",
-                        "%s#%s" % (receipt_path_raw, semantic_id),
-                        "the named register record differs from the same "
-                        "receipt_id in the current receipt catalog"))
+            semantic, register_failures = _proof_register_member(
+                records, semantic_id, current_semantic,
+                "proof-corpus-plan-semantic-receipt",
+                "%s#%s" % (receipt_path_raw, semantic_id))
+            failures.extend(register_failures)
+            if semantic is not None:
                 if semantic.get("structural_check_receipt") != receipt_id:
                     failures.append(_queue_linkage_failure(
                         "proof-corpus-plan-semantic-structural-mismatch",
@@ -2555,14 +2400,25 @@ def _main():
 
     queue_cross_fail = 0
     queue_linkage_checked = False
+    corpus_plan_cross_fail = 0
+    corpus_plan_linkage_checked = False
     if args.root and root is not None and root.is_dir():
-        queue_failures, queue_live_check_passed = (
-            _validate_required_queue_linkage(
-                root, proof, progress_ledger,
-                coverage_sha256, proof_progress_sha256,
-                runtime=current_runtime,
-            )
-        )
+        # One read-only completion decision shares named-register IO and
+        # mechanical evidence facts. Missing admission stays missing; no new
+        # runtime validation or history fallback is created here.
+        observation = (audit_evidence_runtime.evidence_observation(current_runtime)
+                       if isinstance(current_runtime, dict) else nullcontext(None))
+        with observation as observed:
+            queue_failures, queue_live_check_passed = _validate_required_queue_linkage(
+                root, proof, progress_ledger, coverage_sha256, proof_progress_sha256,
+                runtime=observed)
+            dimension_evidence_failures = _validate_dimension_coverage_evidence(
+                root, proof, cited_dimension_receipts, runtime=observed,
+                registered_dimensions=registered_dimensions)
+            corpus_failures, corpus_plan_linkage_checked = _validate_corpus_plan_linkage(
+                root, proof, proof_progress_sha256, runtime=observed,
+                authorized_profile_view=authorized_profile_view,
+                repository_snapshot_sha256=repository_snapshot_sha256)
         queue_cross_fail = len(queue_failures)
         for check, target, details in queue_failures:
             seq += 1
@@ -2573,25 +2429,12 @@ def _main():
             queue_live_check_passed and not queue_failures
         )
 
-    if args.root and root is not None and root.is_dir():
-        dimension_evidence_failures = _validate_dimension_coverage_evidence(
-            root, proof, cited_dimension_receipts, runtime=current_runtime,
-            registered_dimensions=registered_dimensions)
         dimension_bad += len(dimension_evidence_failures)
         for check, target, details in dimension_evidence_failures:
             seq += 1
             receipts.append(_make_receipt(
                 TOOL, TOOL_VERSION, check, target, "fail", details, seq))
 
-    corpus_plan_cross_fail = 0
-    corpus_plan_linkage_checked = False
-    if args.root and root is not None and root.is_dir():
-        corpus_failures, corpus_plan_linkage_checked = (
-            _validate_corpus_plan_linkage(
-                root, proof, proof_progress_sha256,
-                runtime=current_runtime,
-                authorized_profile_view=authorized_profile_view,
-                repository_snapshot_sha256=repository_snapshot_sha256))
         corpus_plan_cross_fail = len(corpus_failures)
         for check, target, details in corpus_failures:
             seq += 1

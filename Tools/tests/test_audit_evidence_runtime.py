@@ -7,8 +7,12 @@ and the adjacent stage to Batch Review hand-off without runtime replay.
 """
 
 import copy
+import contextlib
+import io
+import json
 from pathlib import Path
 from types import SimpleNamespace
+import tempfile
 import unittest
 from unittest import mock
 
@@ -20,6 +24,7 @@ import Tools.execution.audit.audit_obligation_projection as projection  # noqa: 
 import Tools.execution.audit.audit_plan_contract as plan_contract  # noqa: E402
 import Tools.execution.audit.audit_producer_runtime as producer_runtime  # noqa: E402
 import Tools.execution.audit.audit_receipt_contract as receipt_contract  # noqa: E402
+import Tools.execution.audit.batch_review_receipt_contract as wrapper_contract
 import Tools.execution.audit.complete_audit_receipt as complete_receipt  # noqa: E402
 import Tools.execution.audit.record_substantive_review as review_producer  # noqa: E402
 import Tools.execution.audit.substantive_review_contract as review_contract  # noqa: E402
@@ -143,6 +148,59 @@ class CurrentEvidenceCheckpoint:
         duplicate["invalidated_by"] = invalidated_by
         return duplicate
 
+    def bind_review(self, closure):
+        """Bind one real-shape wrapper, without replaying a batch."""
+        from Tools.execution.task_runtime.queue_runtime import review as queue_review
+        self.catalog["activation"] = {
+            "receipt_id": "activation", "tool": queue_review.TOOL,
+            "tool_version": queue_review.TOOL_VERSION, "check": queue_review.GATE_CHECK,
+            "gate_id": "required-queue-admission", "queue_check_mode": "require-ready:B001",
+            "target": queue_review.QUEUE_PATH, "task_id": self.plan["task_id"],
+            "activation_protocol": queue_review.card_activation.ACTIVATION_PROTOCOL,
+            "result": "pass", "invalidated_by": None,
+            "review_requirement_set_sha256": digest("requirements"),
+        }
+        wrapper = {
+            "receipt_id": "wrapper", "receipt_type_id": wrapper_contract.RECEIPT_TYPE_ID,
+            "tool": wrapper_contract.PRODUCER_TOOL,
+            "tool_version": wrapper_contract.PRODUCER_TOOL_VERSION,
+            "check": wrapper_contract.PRODUCER_CHECK,
+            "gate_id": wrapper_contract.GATE_ID, "target": self.item["id"],
+            "batch_id": self.item["id"], "result": "pass", "invalidated_by": None,
+            "details": "reviewed", "checked_at": self.plan["generated_at"],
+            "actor_role": "integrator", "attestation_statement": "approved",
+            "activation_receipt_id": "activation", "delta_path": "Delta.md",
+            "delta_sha256": digest("delta"), "delta_page_receipt_ids": [],
+            "review_requirement_set_sha256": digest("requirements"),
+            **wrapper_contract.judgment_binding(()),
+            **{key: self.plan[key] for key in (
+                "task_id", "upstream_revision_id", "selected_profile_manifest")},
+            **closure,
+        }
+        self.assertEqual([], wrapper_contract.current_receipt_errors(wrapper))
+        self.catalog["wrapper"] = wrapper
+        self.item.update(state="merge-ready", batch_receipts=["wrapper"],
+                         activation_receipt="activation")
+        return wrapper
+
+
+    def review_record(self, identity, *, prior=None, blocking=False):
+        record = self.copy_with_id(self.review, identity)
+        if blocking:
+            record.update({"result": "fail", "verdict": "changes-required",
+                           "findings": [{"finding_id": "F1", "severity": "major",
+                               "statement": "A qualification is missing",
+                               "status": "open", "round_1_finding_id": None}]})
+        if prior is not None:
+            record.update({"round": 2, "round_1_receipt_id": prior["receipt_id"],
+                           "findings": [{**row, "finding_id": "confirm-" + row["finding_id"],
+                               "status": "closed", "round_1_finding_id": row["finding_id"]}
+                               for row in prior["findings"]]})
+        review_contract.validate_review_receipt(record)
+        if prior is not None:
+            review_contract.validate_review_pair(prior, record)
+        return record
+
 
 class AuditEvidenceReconciliationContractTests(CurrentEvidenceCheckpoint,
                                                 unittest.TestCase):
@@ -163,23 +221,6 @@ class AuditEvidenceReconciliationContractTests(CurrentEvidenceCheckpoint,
                     runtime.require_substantive_review_attempt(
                         self.result, self.item, self.plan, self.plan_sha256,
                         self.obligation, round_number=1)
-
-    def review_record(self, identity, *, prior=None, blocking=False):
-        record = self.copy_with_id(self.review, identity)
-        if blocking:
-            record.update({"result": "fail", "verdict": "changes-required",
-                           "findings": [{"finding_id": "F1", "severity": "major",
-                               "statement": "A qualification is missing",
-                               "status": "open", "round_1_finding_id": None}]})
-        if prior is not None:
-            record.update({"round": 2, "round_1_receipt_id": prior["receipt_id"],
-                           "findings": [{**row, "finding_id": "confirm-" + row["finding_id"],
-                               "status": "closed", "round_1_finding_id": row["finding_id"]}
-                               for row in prior["findings"]]})
-        review_contract.validate_review_receipt(record)
-        if prior is not None:
-            review_contract.validate_review_pair(prior, record)
-        return record
 
     def test_unreconciled_findings_cannot_be_hidden_by_a_new_first_round(self):
         first = self.review_record("review-first", blocking=True)
@@ -498,10 +539,267 @@ class AuditEvidenceReconciliationContractTests(CurrentEvidenceCheckpoint,
             runtime.validate_plan_reconciliation(wrong_digest)
 
 
+class BatchReviewPublicationIntegrationTests(CurrentEvidenceCheckpoint,
+                                            unittest.TestCase):
+
+    def test_wrapper_publication_reuses_exact_declaration_and_rechecks_under_lock(self):
+        from Tools.execution.audit import record_batch_review as producer
+        from Tools.execution.evidence import manual_attestation
+        from Tools.execution.task_runtime import task_runtime_runner as runner
+        from Tools.execution.task_runtime.queue_runtime import receipts as receipt_store
+
+        relative = ".cambium/work_specs/audit-plans/current.yaml"
+        delta = {"path": "Delta.md", "sha256": digest("delta"), "page_receipt_ids": []}
+        with contextlib.ExitStack() as stack:
+            root = Path(stack.enter_context(tempfile.TemporaryDirectory()))
+            (root / ".cambium/tmp").mkdir(parents=True)
+            # Install only the immutable contracts this local seam reads,
+            # not a repository or an executable lifecycle fixture.
+            for path in (*projection._BASE_PROJECTION_SOURCE_PATHS,
+                         receipt_contract.AUDIT_RECEIPT_CONTRACT_PATH):
+                destination = root / path
+                destination.parent.mkdir(parents=True, exist_ok=True)
+                destination.write_bytes((REPOSITORY / path).read_bytes())
+            (root / self.obligation["target"]).write_bytes(
+                (REPOSITORY / self.obligation["target"]).read_bytes())
+            register = root / producer.DEFAULT_RECEIPTS
+            register.parent.mkdir(parents=True)
+            stack.enter_context(mock.patch.object(runtime, "_resolve_current_plan",
+                return_value=(relative, self.plan, self.plan_sha256)))
+            stack.enter_context(mock.patch.object(runtime, "_require_current_profile_rendering_contract_state"))
+            # The admitted runtime uses this repository's installed producer
+            # registry; do not copy every CLI merely to revalidate its source.
+            registry = runtime.receipt_type_contract.load_receipt_type_registry(REPOSITORY)
+            stack.enter_context(mock.patch.object(runtime.receipt_type_contract,
+                "load_receipt_type_registry", return_value=registry))
+            artifact = stack.enter_context(mock.patch.object(runtime._EvidenceFacts, "page_artifact",
+                return_value=self.review["artifact_fingerprint"]))
+            # Profile admission and candidate file resolution are independent
+            # owners. The stage, wrapper selector, builder, validator, lock,
+            # append and exact read-back below are real.
+            stack.enter_context(mock.patch.object(producer.queue_review,
+                "batch_review_judgment_errors", return_value=[]))
+            stack.enter_context(mock.patch.object(producer, "_current_judgment_receipts", return_value=[]))
+            stack.enter_context(mock.patch.object(producer, "_managed_candidate_delta", return_value=delta))
+            self.bind_review(runtime.batch_review_evidence(self.result, self.item))
+            del self.catalog["wrapper"]
+            self.item.update(state="open", batch_receipts=[])
+
+            def observed():
+                records = dict(self.catalog)
+                if register.exists():
+                    records.update(receipt_store.read_receipt_register(root, producer.DEFAULT_RECEIPTS))
+                return {**self.result, "root": str(root), "errors": [],
+                        "queue": {"task_id": self.plan["task_id"]},
+                        "current_receipt_catalog": receipt_store.Catalog({
+                            identity: (producer.DEFAULT_RECEIPTS, row) for identity, row in records.items()})}
+
+            def make_receipt(tool, version, check, target, result, details, seq, **kwargs):
+                return {"receipt_id": "attempt-" + str(make.call_count),
+                        "checked_at": self.plan["generated_at"], "tool": tool,
+                        "tool_version": version, "check": check, "target": target,
+                        "result": result, "details": details, "invalidated_by": None,
+                        "receipt_type_id": kwargs["receipt_type_id"],
+                        **{key: self.plan[key] for key in (
+                            "task_id", "upstream_revision_id", "selected_profile_manifest")}}
+
+            make = stack.enter_context(mock.patch.object(kblib, "make_receipt", side_effect=make_receipt))
+            stack.enter_context(mock.patch.object(producer_runtime, "admitted_runtime",
+                side_effect=lambda _root: (str(root), observed(), {})))
+            stack.enter_context(mock.patch.object(producer_runtime, "runtime_lock_metadata",
+                return_value={"tool": producer.CLI_TOOL, "action": "record-batch-review"}))
+            fresh = stack.enter_context(mock.patch.object(manual_attestation.runtime_validation,
+                "validate_runtime", side_effect=lambda *_args, **_kwargs: observed()))
+            stack.enter_context(mock.patch.object(manual_attestation.queue_runtime,
+                "runtime_authority_validation_kwargs", return_value={}))
+            stack.enter_context(mock.patch.object(manual_attestation.queue_runtime,
+                "require_runtime_authority_current"))
+
+            def submit(statement="approved"):
+                output = io.StringIO()
+                with contextlib.redirect_stdout(output):
+                    code = producer.main([str(root), "--batch", self.item["id"],
+                        "--actor-role", "integrator", "--statement", statement, "--apply", "--json"])
+                return code, json.loads(output.getvalue())
+
+            code, first = submit()
+            self.assertEqual(0, code, first)
+            first_bytes = register.read_bytes()
+            first_id = first["receipt_id"]
+            self.assertEqual(2, fresh.call_count)  # locked admission and after-image
+            code, retry = submit()
+            self.assertEqual(0, code, retry)
+            self.assertEqual(first_id, retry["receipt_id"])
+            self.assertEqual(first_bytes, register.read_bytes())
+            self.assertEqual(3, fresh.call_count)  # reuse still re-admits under lock
+            code, changed = submit("a different declaration")
+            self.assertEqual(1, code, changed)
+            self.assertIn("different declaration", str(changed))
+            self.assertEqual(first_bytes, register.read_bytes())
+
+            revised = self.copy_with_id(self.review, "revised-review")
+            revised["artifact_fingerprint"] = digest("revised-content")
+            artifact.return_value = revised["artifact_fingerprint"]
+            full = complete_receipt.build_audit_receipt(plan=self.plan,
+                plan_sha256=self.plan_sha256, obligation=self.obligation, evidence=revised)
+            full["receipt_id"] = "revised-full"
+            self.catalog.update({row["receipt_id"]: row for row in (revised, full)})
+            code, revised_result = submit()
+            self.assertEqual(0, code, revised_result)
+            self.assertNotEqual(first_id, revised_result["receipt_id"])
+            self.assertTrue(register.read_bytes().startswith(first_bytes))
+            rows = receipt_store.read_receipt_register(root, producer.DEFAULT_RECEIPTS)
+            self.assertEqual(2, len(rows))
+            self.assertEqual(revised_result["receipt_id"], runner._current_batch_review_wrapper(
+                observed(), self.item, delta))
+
+            def conflict_under_lock(*_args, **_kwargs):
+                self.catalog["racing-wrapper"] = self.copy_with_id(
+                    rows[revised_result["receipt_id"]], "racing-wrapper")
+                return observed()
+            fresh.side_effect = conflict_under_lock
+            before_conflict = register.read_bytes()
+            code, conflict = submit()
+            self.assertEqual(1, code, conflict)
+            self.assertIn("multiple current", str(conflict))
+            self.assertEqual(before_conflict, register.read_bytes())
+            self.assertFalse((root / ".cambium/tmp/state-writer.lock").exists())
+
+
 class AuditEvidenceCheckpointIntegrationTests(CurrentEvidenceCheckpoint,
                                               unittest.TestCase):
 
+    def test_wrapper_selection_allows_stale_history_but_rejects_conflict_and_corruption(self):
+        from Tools.execution.task_runtime.queue_runtime import review as queue_review
+        old_review = self.copy_with_id(self.review, "old-review")
+        old_review["artifact_fingerprint"] = digest("previous-page")
+        old_full = complete_receipt.build_audit_receipt(
+            plan=self.plan, plan_sha256=self.plan_sha256, obligation=self.obligation,
+            evidence=old_review)
+        old_full["receipt_id"] = "old-full"
+        self.catalog.clear()
+        self.catalog.update({row["receipt_id"]: row for row in (old_review, old_full)})
+        relative = ".cambium/work_specs/audit-plans/current.yaml"
+        delta = {"path": "Delta.md", "sha256": digest("delta"), "page_receipt_ids": []}
+        def selected_wrapper():
+            observed = {**self.result, "current_receipt_catalog": {
+                identity: ("fixture.jsonl", record) for identity, record in self.catalog.items()}}
+            return runtime.current_batch_review_receipt(observed, self.item, delta)
+        with mock.patch.object(runtime, "_resolve_current_plan",
+                               return_value=(relative, self.plan, self.plan_sha256)), \
+                mock.patch.object(runtime, "_require_current_profile_rendering_contract_state"), \
+                mock.patch.object(queue_review, "batch_review_judgment_errors", return_value=[]):
+            with mock.patch.object(runtime._EvidenceFacts, "page_artifact",
+                                   return_value=old_review["artifact_fingerprint"]):
+                old = self.bind_review(runtime.batch_review_evidence(self.result, self.item))
+                self.item.update(state="open", batch_receipts=[])
+                self.assertIs(old, selected_wrapper())
+            self.catalog.update({row["receipt_id"]: row for row in (self.review, self.full)})
+            self.assertIsNone(selected_wrapper())
+            new = self.bind_review(runtime.batch_review_evidence(self.result, self.item))
+            new["receipt_id"] = "new-wrapper"
+            self.catalog.update({"wrapper": old, "new-wrapper": new})
+            self.item.update(state="open", batch_receipts=[])
+            self.assertIs(new, selected_wrapper())
+            self.catalog["duplicate"] = self.copy_with_id(new, "duplicate")
+            with self.assertRaisesRegex(runtime.AuditEvidenceError, "multiple current"):
+                selected_wrapper()
+            del self.catalog["duplicate"]
+            old["tool_version"] = "invalid"
+            with self.assertRaisesRegex(runtime.AuditEvidenceError, "invalid stable"):
+                selected_wrapper()
+
+    def test_round_two_dependency_reaches_terminal_without_becoming_a_candidate(self):
+        from Tools.execution.audit import batch_close_contract
+        from Tools.execution.evidence import evidence_invalidation_contract as invalidation
+        from Tools.execution.task_runtime.queue_runtime import receipts as receipt_store
+        first = self.review_record("first", blocking=True)
+        first["artifact_fingerprint"] = digest("before-correction")
+        second = self.review_record("second", prior=first)
+        full = complete_receipt.build_audit_receipt(
+            plan=self.plan, plan_sha256=self.plan_sha256,
+            obligation=self.obligation, evidence=second)
+        self.catalog.clear()
+        self.catalog.update({row["receipt_id"]: row for row in (first, second, full)})
+        relative = ".cambium/work_specs/audit-plans/current.yaml"
+        with mock.patch.object(runtime, "_resolve_current_plan",
+                               return_value=(relative, self.plan, self.plan_sha256)), \
+                mock.patch.object(runtime, "_require_current_profile_rendering_contract_state"):
+            closure = runtime.batch_review_evidence(self.result, self.item)
+            self.bind_review(closure)
+            self.item.update(state="closed", close_gate_receipt="close")
+            close = {"receipt_id": "close", "result": "pass", "invalidated_by": None,
+                     "receipt_type_id": batch_close_contract.GATE_RECEIPT_TYPE_ID,
+                     **{key: value for key, value in closure.items()
+                        if key not in {"audit_evidence_bindings", "audit_evidence_set_sha256"}}}
+            self.catalog["close"] = close
+            postdelta = {
+                "stage_plan": {"audit_plan_path": relative, "plan": self.plan,
+                               "audit_plan_sha256": self.plan_sha256},
+                "reconciliation": runtime._reconciliation_projection([]),
+                "final_by_obligation": {},
+            }
+            # Only the independent post-Delta owner is outside this L evidence
+            # seam. The selected stage and real L/Receipt validators are not mocked.
+            with mock.patch.object(runtime, "_post_delta_evidence_closure", return_value=postdelta):
+                def terminal():
+                    return runtime._closed_batch_dimension_evidence(
+                        runtime.evidence_evaluation(self.result), self.item,
+                        self.catalog, {self.obligation["dimension"]})
+                self.assertEqual([full["receipt_id"]], [row["evidence_ref"] for row in terminal()])
+                self.assertNotIn(first["receipt_id"], closure["audit_evidence_reconciliation"][0]["produced_evidence_refs"])
+                for failure in ("missing", "withdrawn", "corrupt"):
+                    with self.subTest(failure=failure):
+                        if failure == "missing":
+                            del self.catalog[first["receipt_id"]]
+                        elif failure == "withdrawn":
+                            self.result["invalidated_evidence_receipt_ids"] = [first["receipt_id"]]
+                        else:
+                            self.catalog[first["receipt_id"]] = {**first, "tool_version": "invalid"}
+                        with self.assertRaises(runtime.AuditEvidenceError):
+                            terminal()
+                        self.catalog[first["receipt_id"]] = first
+                        self.result["invalidated_evidence_receipt_ids"] = []
+                self.assertEqual("closed", self.item["state"])
+                self.assertEqual("fail", first["result"])
+
+                # Feed an actual correction through the registered acceptance
+                # graph, not just an injected invalidated-ID list. Activation
+                # is an independent non-propagating admission boundary.
+                history = receipt_store.HistoricalReceiptCatalog({
+                    identity: ("fixture.jsonl", body) for identity, body in self.catalog.items()
+                    if identity != "activation"})
+                event = invalidation.build_event(
+                    event_id="withdraw-round-one", reason="incorrect-result",
+                    decision={"mode": "explicit-user", "actor_role": "user",
+                              "reviewer_context_id": None, "authority_reference": "user-decision",
+                              "statement": "Withdraw this exact declaration."},
+                    subjects=[first], authority=self.plan,
+                    checked_at=self.plan["generated_at"])
+                history[event["receipt_id"]] = ("corrections.jsonl", event)
+                before = copy.deepcopy(dict(history))
+                view = invalidation.invalidation_view(history, root=REPOSITORY)
+                self.assertEqual({first["receipt_id"], second["receipt_id"],
+                                  full["receipt_id"], "wrapper", "close"}, set(view["affected"]))
+                self.result.update(receipt_catalog=history,
+                    current_receipt_catalog=receipt_store.adoption_filtered_catalog(history, view["affected"]),
+                    invalidated_evidence_receipt_ids=list(view["affected"]),
+                    evidence_invalidation_view=view)
+                with self.assertRaises(runtime.AuditEvidenceError):
+                    terminal()
+                self.assertIn("close", runtime.terminal_plan_reconciliation(
+                    self.result)["invalidated_receipts"])
+                self.assertEqual("closed", self.item["state"])
+                self.assertEqual(before, dict(history))
+
     def test_stage_and_batch_review_share_one_current_checkpoint(self):
+        old_review = self.copy_with_id(self.review, "old-review")
+        old_review["artifact_fingerprint"] = digest("before-revision")
+        old_full = complete_receipt.build_audit_receipt(
+            plan=self.plan, plan_sha256=self.plan_sha256,
+            obligation=self.obligation, evidence=old_review)
+        old_full["receipt_id"] = "old-full"
+        self.catalog.update({row["receipt_id"]: row for row in (old_review, old_full)})
         resolved = (
             ".cambium/work_specs/audit-plans/current.yaml",
             self.plan,
@@ -544,17 +842,56 @@ class AuditEvidenceCheckpointIntegrationTests(CurrentEvidenceCheckpoint,
         # Closing uses the same pre-merge projection both to validate the
         # wrapper and to build reconciliation. The post-Delta owner is a
         # separate seam; stop there rather than constructing a full batch.
-        closing = {**self.item, "batch_receipts": ["wrapper"]}
-        result = {**self.result, "current_receipt_catalog": {
-            **self.catalog, "wrapper": {**closure, "receipt_id": "wrapper"}}}
-        with mock.patch.object(runtime, "batch_review_evidence",
-                               return_value=closure) as premerge, \
+        frozen = self.bind_review(closure)
+        with mock.patch.object(runtime, "_resolve_current_plan", return_value=resolved), \
+                mock.patch.object(runtime, "_require_current_profile_rendering_contract_state"), \
+                mock.patch.object(runtime, "_final_attempt_errors",
+                                  wraps=runtime._final_attempt_errors) as final_check, \
+                mock.patch.object(runtime, "batch_review_evidence",
+                                  wraps=runtime.batch_review_evidence) as premerge, \
                 mock.patch.object(runtime, "_post_delta_evidence_closure",
                                   side_effect=runtime.AuditEvidenceError(
                                       "post-Delta owner seam")):
-            errors = runtime.closed_plan_closure_errors(result, closing, {})
+            errors = runtime.closed_plan_closure_errors(self.result, self.item, {})
+            after = runtime.batch_review_evidence(
+                self.result, self.item, required_state="merge-ready")
+        self.assertEqual(closure, after)
+        self.assertEqual(closure, {key: frozen[key] for key in closure})
+        self.assertEqual(sorted([old_review["receipt_id"], old_full["receipt_id"]]),
+                         after["audit_evidence_reconciliation"][0]["invalidated_evidence_refs"])
         self.assertEqual(["closed AuditPlan evidence is invalid: post-Delta owner seam"], errors)
-        premerge.assert_called_once()
+        self.assertEqual(2, premerge.call_count)
+        self.assertEqual(2, final_check.call_count)
+        self.assertTrue(all(call.args[-1]["receipt_id"] == self.full["receipt_id"]
+                            and call.kwargs["require_current"] is False
+                            for call in final_check.call_args_list))
+
+    def test_frozen_stage_rejects_unbound_source_and_changed_selected_body(self):
+        relative = ".cambium/work_specs/audit-plans/current.yaml"
+        with mock.patch.object(runtime, "_resolve_current_plan",
+                               return_value=(relative, self.plan, self.plan_sha256)), \
+                mock.patch.object(runtime, "_require_current_profile_rendering_contract_state"):
+            closure = runtime.batch_review_evidence(self.result, self.item)
+            wrapper = self.bind_review(closure)
+            cases = (
+                ("source", lambda: self.item.update(batch_receipts=[])),
+                ("activation", lambda: wrapper.update(activation_receipt_id="other")),
+                ("unresolved", lambda: wrapper.update(audit_evidence_unresolved_count=1)),
+                ("binding", lambda: wrapper["audit_evidence_bindings"][0].update(
+                    evidence_sha256=digest("different body"))),
+                ("selected-body", lambda: self.full.update(verifier="forged")),
+            )
+            for label, mutate in cases:
+                saved_wrapper, saved_full = copy.deepcopy(wrapper), copy.deepcopy(self.full)
+                with self.subTest(label=label):
+                    mutate()
+                    with self.assertRaises(runtime.AuditEvidenceError):
+                        runtime.batch_review_evidence(self.result, self.item, required_state="merge-ready")
+                wrapper.clear()
+                wrapper.update(saved_wrapper)
+                self.full.clear()
+                self.full.update(saved_full)
+                self.item["batch_receipts"] = ["wrapper"]
 
 
 class TerminalDimensionEvidenceProjectionTests(unittest.TestCase):
@@ -672,14 +1009,19 @@ class TerminalDimensionEvidenceProjectionTests(unittest.TestCase):
         self.assertEqual([], errors)
         return view
 
-    def _resolution(self, obligation):
-        record = self.records[self.refs[obligation["obligation_id"]]]
+    def _premerge_closure(self):
+        """Input from the independently tested frozen-stage owner."""
+        rows = [row for row in self.close["audit_evidence_reconciliation"]
+                if row["due_stage"] == "pre-merge"]
         return {
-            "status": "satisfied",
-            "record": record,
-            "reused": False,
-            "reason": None,
-            "attempts": [],
+            "audit_plan_id": self.plan["plan_id"],
+            "audit_plan_path": self.plan_path,
+            "audit_plan_sha256": self.plan_sha256,
+            "audit_evidence_bindings": [
+                {"obligation_id": row["obligation_id"],
+                 "evidence_ref": self.refs[row["obligation_id"]]}
+                for row in rows],
+            **runtime._reconciliation_projection(rows),
         }
 
     def _postdelta_closure(self):
@@ -714,21 +1056,11 @@ class TerminalDimensionEvidenceProjectionTests(unittest.TestCase):
         }
 
     def project(self):
-        def resolve(_result, _item, _plan, _sha, catalog, obligation,
-                    require_current):
-            # The final-evidence owner can consume other obligations (M
-            # consumes atoms). Keep the complete close-selected checkpoint,
-            # while excluding all unselected attempts and other batches.
-            self.assertEqual({ref for row in self.close["audit_evidence_reconciliation"]
-                              for ref in row["produced_evidence_refs"]}, set(catalog))
-            self.assertFalse(require_current)
-            return self._resolution(obligation)
-
         with mock.patch.object(
                 runtime, "_post_delta_evidence_closure",
                 return_value=self._postdelta_closure()), mock.patch.object(
-                runtime, "_required_obligation_resolution",
-                side_effect=resolve):
+                runtime, "batch_review_evidence",
+                side_effect=lambda *_args, **_kwargs: self._premerge_closure()):
             return runtime.terminal_dimension_evidence(self.result)
 
     def test_m_and_profile_evidence_project_but_dimensionless_and_na_do_not(self):
@@ -759,51 +1091,12 @@ class TerminalDimensionEvidenceProjectionTests(unittest.TestCase):
             self.project()
 
         self.result["invalidated_evidence_receipt_ids"] = []
-        original = self._resolution
-
-        def stale(obligation):
-            value = original(obligation)
-            if obligation["obligation_id"] == "m-content":
-                value.update({
-                    "status": "missing", "record": None,
-                    "reason": "owner rejected stale input",
-                })
-            return value
-
-        with mock.patch.object(self, "_resolution", side_effect=stale):
+        with mock.patch.object(self, "_premerge_closure", side_effect=
+                               runtime.AuditEvidenceError("owner rejected evidence")):
             with self.assertRaisesRegex(
                 runtime.AuditEvidenceError,
-                "no current selected evidence"):
+                "owner rejected evidence"):
                 self.project()
-
-    def test_close_reconciliation_scopes_current_records_and_rejects_history(self):
-        reconciliation = {
-            "selected_evidence_ref": "selected-final",
-            "selected_disposition": "produced",
-            "produced_evidence_refs": ["selected-final", "selected-raw"],
-        }
-        current = {
-            "selected-final": {"receipt_id": "selected-final"},
-            "selected-raw": {"receipt_id": "selected-raw"},
-            "foreign-final": {"receipt_id": "foreign-final"},
-            "foreign-raw": {"receipt_id": "foreign-raw"},
-        }
-        scoped = runtime._reconciled_current_catalog(
-            current, reconciliation, batch_id="B001",
-            obligation_id="m-content")
-        self.assertEqual(
-            {"selected-final", "selected-raw"}, set(scoped))
-
-        historical_only = {
-            "foreign-final": current["foreign-final"],
-            "foreign-raw": current["foreign-raw"],
-        }
-        with self.assertRaisesRegex(
-                runtime.AuditEvidenceError,
-                "absent from the current receipt catalog"):
-            runtime._reconciled_current_catalog(
-                historical_only, reconciliation, batch_id="B001",
-                obligation_id="m-content")
 
     def test_post_delta_reconciliation_must_equal_owner_closure(self):
         rows = copy.deepcopy(

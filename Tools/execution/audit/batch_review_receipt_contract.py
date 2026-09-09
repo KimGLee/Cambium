@@ -7,6 +7,7 @@ the wrapper into a second owner of those records.
 """
 
 import Tools.execution.task_runtime.queue_runtime.canon as queue_canon
+import Tools.platform.common.kblib as kblib
 
 RECEIPT_TYPE_ID = "batch-review-wrapper-v2"
 PRODUCER_TOOL = queue_canon.MANUAL_ATTESTATION_TOOL
@@ -27,6 +28,19 @@ RECEIPT_FIELDS = frozenset({
     "audit_evidence_unresolved_count", "review_requirement_set_sha256",
     "judgment_receipt_ids", "judgment_record_set_sha256",
 })
+
+
+def judgment_binding(records):
+    """Project the exact Profile judgment identities into the wrapper fields."""
+    identity = sorted(({
+        "target": row["target"], "judgment_item_id": row["judgment_item_id"],
+        "receipt_id": row["receipt_id"],
+    } for row in records), key=lambda row: (
+        row["judgment_item_id"], row["target"], row["receipt_id"]))
+    return {
+        "judgment_receipt_ids": sorted(row["receipt_id"] for row in identity),
+        "judgment_record_set_sha256": kblib.sha256_bytes(kblib.canonical_json_bytes(identity)),
+    }
 
 
 def current_receipt_errors(record, *, root=None):
@@ -86,4 +100,5 @@ __all__ = [
     'PRODUCER_TOOL_VERSION',
     'RECEIPT_TYPE_ID',
     'current_receipt_errors',
+    'judgment_binding',
 ]

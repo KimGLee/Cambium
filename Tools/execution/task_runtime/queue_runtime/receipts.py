@@ -13,6 +13,9 @@ cannot be resolved is not evidence, and no caller gets to decide otherwise.
 import json
 import os
 import stat
+from contextlib import contextmanager
+from contextvars import ContextVar
+from copy import deepcopy
 
 import Tools.platform.common.kblib as kblib
 import Tools.execution.task_runtime.runtime_paths as runtime_paths
@@ -31,6 +34,92 @@ from Tools.execution.task_runtime.queue_runtime.primitives import nonempty_strin
 
 QUEUE_TRANSITION_RECEIPT_TYPE_ID = \
     runtime_state_contract.QUEUE_TRANSITION_REPLAY_PROTOCOL
+_REGISTER_MEMO = ContextVar("receipt_register_observation_memo", default=None)
+
+
+@contextmanager
+def register_observation(memo):
+    """Use an existing read-only evidence window, not a second cache owner."""
+    token = _REGISTER_MEMO.set(memo)
+    try:
+        yield
+    finally:
+        _REGISTER_MEMO.reset(token)
+
+
+class ReceiptRegisterError(ValueError):
+    """A named register cannot prove exact membership, not an authority verdict."""
+
+    def __init__(self, kind, detail):
+        super().__init__(kind, detail)
+        self.kind = kind
+
+    def __str__(self):
+        return self.args[1]
+
+
+def read_receipt_register(root, relative):
+    """Read one safe, collision-free JSONL register through the IO owner.
+
+    This is only a mechanical index. Current/historical/sealed admission and
+    each evidence kind's acceptance remain separate; a readable row never
+    becomes current authority merely because it is in this result.
+    """
+    memo = _REGISTER_MEMO.get()
+    if memo is None:
+        return _read_receipt_register(root, relative)
+    return deepcopy(memo(("receipt-register", os.fspath(root), relative),
+                         lambda: _read_receipt_register(root, relative)))
+
+
+def _read_receipt_register(root, relative):
+    try:
+        path = kblib.managed_repository_path(
+            root, relative, runtime_paths.RECEIPT_ROOT,
+            suffixes=(".jsonl",))
+        # Namespace admission can carry the invocation's before-image.
+        # Existence belongs to the I/O owner's fresh, no-follow observation:
+        # an append target absent at admission may now contain the receipt.
+        exists, content = kblib.read_receipt_bytes(path)
+        if not exists:
+            raise FileNotFoundError(path)
+        lines = content.decode("utf-8").splitlines()
+    except (OSError, TypeError, UnicodeError, ValueError) as exc:
+        raise ReceiptRegisterError(
+            "register-unreadable", "cannot read receipt register %s: %s" %
+            (relative, exc)) from exc
+    records = {}
+    for line_number, line in enumerate(lines, 1):
+        if not line.strip():
+            continue
+        label = "%s:%d" % (relative, line_number)
+        try:
+            record = json.loads(line)
+        except json.JSONDecodeError as exc:
+            raise ReceiptRegisterError(
+                "register-invalid", "malformed receipt %s: %s" % (label, exc)) from exc
+        if not isinstance(record, dict) or not nonempty_string(record.get("receipt_id")):
+            raise ReceiptRegisterError(
+                "register-invalid", "receipt %s must be a JSON object with a receipt_id" % label)
+        identity = record["receipt_id"]
+        if identity in records:
+            raise ReceiptRegisterError(
+                "id-duplicate", "duplicate receipt_id %s in %s" % (identity, label))
+        records[identity] = record
+    return records
+
+
+def require_register_member(records, receipt_id, current_record):
+    """Prove exact named-register membership against an independently admitted row."""
+    record = records.get(receipt_id)
+    if record is None:
+        raise ReceiptRegisterError(
+            "missing", "%r must identify exactly one receipt in the named register" % receipt_id)
+    if not isinstance(current_record, dict) or record != current_record:
+        raise ReceiptRegisterError(
+            "catalog-mismatch", "the named register record differs from the same receipt_id "
+            "in the current receipt catalog: %s" % receipt_id)
+    return record
 
 
 def make_queue_receipt(action, target, result, details, seq=1, **fields):
@@ -350,47 +439,13 @@ def receipt_catalog(root, errors):
         for name in sorted(filenames):
             if not name.endswith(".jsonl"):
                 continue
-            full = os.path.join(dirpath, name)
-            relative = os.path.relpath(full, root)
+            relative = os.path.relpath(os.path.join(dirpath, name), root)
             try:
-                stat_result = os.lstat(full)
-            except OSError as exc:
-                errors.append("cannot stat receipt register %s: %s" %
-                              (relative, exc))
+                records = read_receipt_register(root, relative)
+            except ReceiptRegisterError as exc:
+                errors.append(str(exc))
                 continue
-            if os.path.islink(full) or not os.path.isfile(full):
-                errors.append("receipt register is not a regular file: %s" % relative)
-                continue
-            if stat_result.st_nlink != 1:
-                errors.append("receipt register must not be hard-linked: %s" % relative)
-                continue
-            try:
-                exists, content = kblib.read_receipt_bytes(full)
-                if not exists:
-                    raise FileNotFoundError(full)
-                lines = content.decode("utf-8").splitlines()
-            except (OSError, UnicodeError) as exc:
-                errors.append("cannot read receipt register %s: %s" %
-                              (relative, exc))
-                continue
-            for line_number, line in enumerate(lines, 1):
-                if not line.strip():
-                    continue
-                try:
-                    receipt = json.loads(line)
-                except json.JSONDecodeError as exc:
-                    errors.append("malformed receipt %s:%d: %s" %
-                                  (relative, line_number, exc))
-                    continue
-                if not isinstance(receipt, dict):
-                    errors.append("receipt %s:%d must be a JSON object" %
-                                  (relative, line_number))
-                    continue
-                receipt_id = receipt.get("receipt_id")
-                if not nonempty_string(receipt_id):
-                    errors.append("receipt %s:%d has no receipt_id" %
-                                  (relative, line_number))
-                    continue
+            for receipt_id, receipt in records.items():
                 if receipt_id in seen_receipt_paths:
                     errors.append("duplicate receipt_id %s in %s and %s" %
                                   (receipt_id, seen_receipt_paths[receipt_id],
@@ -402,8 +457,8 @@ def receipt_catalog(root, errors):
                     registry=type_registry)
                 if admission_errors:
                     errors.extend(
-                        "receipt %s:%d is not a current-contract Receipt: %s" %
-                        (relative, line_number, error)
+                        "receipt %s#%s is not a current-contract Receipt: %s" %
+                        (relative, receipt_id, error)
                         for error in admission_errors)
                     continue
                 catalog[receipt_id] = (relative, receipt)

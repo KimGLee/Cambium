@@ -441,6 +441,12 @@ tests:
         semantics: audit_evidence_stage_to_batch_review_checkpoint
         owner_contract_symbol: audit_evidence_runtime.stage_evidence_closure
         parallel_safe: true
+      - selector: BatchReviewPublicationIntegrationTests.*
+        owner: Tools/execution/audit/record_batch_review.py
+        level: integration
+        semantics: batch_review_exact_declaration_locked_publication
+        owner_contract_symbol: record_batch_review.main
+        parallel_safe: true
       - selector: TerminalDimensionEvidenceProjectionTests.*
         level: integration
         semantics: terminal_plan_bound_dimension_evidence_projection
@@ -2169,6 +2175,18 @@ tests:
         level: historical-read-only
         semantics: current_history_catalog_authority_split
         owner_contract_symbol: receipts.adoption_filtered_catalog
+        parallel_safe: true
+      - selector: ReceiptRegisterContractTests.test_register_rejects_malformed_and_duplicate_rows
+        owner: Tools/execution/task_runtime/queue_runtime/receipts.py
+        level: integration
+        semantics: named_receipt_register_mechanical_index
+        owner_contract_symbol: receipts.read_receipt_register
+        parallel_safe: true
+      - selector: ReceiptRegisterContractTests.test_membership_never_supplies_missing_current_authority
+        owner: Tools/execution/task_runtime/queue_runtime/receipts.py
+        level: unit
+        semantics: named_receipt_register_exact_current_membership
+        owner_contract_symbol: receipts.require_register_member
         parallel_safe: true
   - path: Tools/tests/test_record_batch_review.py
     owner: Tools/execution/audit/record_batch_review.py

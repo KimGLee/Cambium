@@ -8,7 +8,6 @@ from one admitted current runtime view. The produced Proof is still consumed
 by ``check_proof``; assembly never grants completion authority.
 """
 
-import json
 import os
 import sys
 
@@ -101,34 +100,6 @@ def _receipt(result, receipt_id, *, label, expected, gate_id=None):
     return record
 
 
-def _register_records(root, relative):
-    absolute = _receipt_register_path(root, relative)
-    records = {}
-    for line_number, line in enumerate(
-            kblib.read_text(absolute).splitlines(), 1):
-        if not line.strip():
-            continue
-        try:
-            record = json.loads(line)
-        except json.JSONDecodeError as exc:
-            raise TerminalProofAssemblyError(
-                "%s:%d is malformed JSONL: %s" %
-                (relative, line_number, exc)) from exc
-        if not isinstance(record, dict):
-            raise TerminalProofAssemblyError(
-                "%s:%d is not a receipt mapping" %
-                (relative, line_number))
-        receipt_id = record.get("receipt_id")
-        if not isinstance(receipt_id, str) or not receipt_id:
-            raise TerminalProofAssemblyError(
-                "%s:%d has no receipt_id" % (relative, line_number))
-        if receipt_id in records:
-            raise TerminalProofAssemblyError(
-                "%s repeats receipt_id %s" % (relative, receipt_id))
-        records[receipt_id] = record
-    return records
-
-
 def _profile_receipt_dimensions(result):
     view = result.get("_profile_authorized_view")
     contract = view.get("_contract") if isinstance(view, dict) else None
@@ -174,10 +145,13 @@ def _dimension_coverage(result, register_records, semantic_input):
                 "plan-bound dimension evidence %s is not current" %
                 receipt_id)
         if row["evidence_kind"] == "audit-receipt":
-            if register_records.get(receipt_id) != current_record:
+            try:
+                receipt_catalogs.require_register_member(
+                    register_records, receipt_id, current_record)
+            except receipt_catalogs.ReceiptRegisterError as exc:
                 raise TerminalProofAssemblyError(
                     "current AuditReceipt %s is absent from or differs in "
-                    "the canonical AuditReceipt register" % receipt_id)
+                    "the canonical AuditReceipt register: %s" % (receipt_id, exc)) from exc
             try:
                 audit_receipt_contract.validate_audit_receipt(
                     current_record, contract=contract,
@@ -244,10 +218,13 @@ def _semantic_acceptance_receipt(
             "not this Terminal Proof structural receipt %r" % (
                 record.get("structural_check_receipt"),
                 structural_receipt_id))
-    if terminal_register_records.get(receipt_id) != record:
+    try:
+        receipt_catalogs.require_register_member(
+            terminal_register_records, receipt_id, record)
+    except receipt_catalogs.ReceiptRegisterError as exc:
         raise TerminalProofAssemblyError(
             "current Corpus Planning semantic acceptance %s is absent from "
-            "or differs in the Terminal Audit receipt register" % receipt_id)
+            "or differs in the Terminal Audit receipt register: %s" % (receipt_id, exc)) from exc
     return receipt_id
 
 
@@ -298,15 +275,18 @@ def assemble_terminal_proof(
         expected={
             "result": "pass",
         }, gate_id="corpus-plan-structure")
-    register_records = _register_records(root, audit_receipt_register)
-    terminal_register_records = _register_records(
-        root, terminal_audit_receipt_register)
-    if terminal_register_records.get(corpus_receipt["receipt_id"]) != \
-            corpus_receipt:
+    try:
+        register_records = receipt_catalogs.read_receipt_register(
+            root, audit_receipt_register)
+        terminal_register_records = receipt_catalogs.read_receipt_register(
+            root, terminal_audit_receipt_register)
+        receipt_catalogs.require_register_member(
+            terminal_register_records, queue_receipt["receipt_id"], queue_receipt)
+        receipt_catalogs.require_register_member(
+            terminal_register_records, corpus_receipt["receipt_id"], corpus_receipt)
+    except receipt_catalogs.ReceiptRegisterError as exc:
         raise TerminalProofAssemblyError(
-            "current Corpus Plan structure receipt %s is absent from or "
-            "differs in the Terminal Audit receipt register" %
-            corpus_receipt["receipt_id"])
+            "Terminal Proof register binding is unavailable: %s" % exc) from exc
     repository_snapshot = kblib.repository_snapshot_sha256(root)
     reconciliation = audit_evidence_runtime.terminal_plan_reconciliation(result)
     proof = {

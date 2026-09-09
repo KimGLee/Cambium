@@ -101,11 +101,6 @@ def build_batch_review_receipt(result, item, delta_binding, audit_binding,
         raise ValueError("batch has no current activation receipt")
 
     judgments = _current_judgment_receipts(result, item, audit_binding)
-    actual = [{
-        "target": row.get("target"),
-        "judgment_item_id": row.get("judgment_item_id"),
-        "receipt_id": row.get("receipt_id"),
-    } for row in judgments]
 
     receipt = kblib.make_receipt(
         RECEIPT_TOOL, TOOL_VERSION, CHECK, item.get("id"), "pass",
@@ -141,10 +136,7 @@ def build_batch_review_receipt(result, item, delta_binding, audit_binding,
     requirement_sha = activation.get("review_requirement_set_sha256")
     receipt.update({
         "review_requirement_set_sha256": requirement_sha,
-        "judgment_receipt_ids": sorted(
-            row["receipt_id"] for row in actual),
-        "judgment_record_set_sha256":
-            queue_review.judgment_record_set_sha256(actual),
+        **batch_review_receipt_contract.judgment_binding(judgments),
     })
     receipt_errors = batch_review_receipt_contract.current_receipt_errors(
         receipt)
@@ -212,8 +204,22 @@ def _observed_context(root, result, authority, batch_id, actor_role, statement):
     validate_batch_review_receipt(
         result, item, receipt, delta_binding=delta_binding,
         audit_binding=audit_binding)
+    receipt = _reuse_current_declaration(result, item, delta_binding, receipt)
     return (root, result, authority, item, delta_binding, audit_binding,
             receipt)
+
+
+def _reuse_current_declaration(result, item, delta, candidate):
+    """Reuse only identical attestation content, not merely equal evidence IDs."""
+    existing = audit_evidence_runtime.current_batch_review_receipt(result, item, delta)
+    if existing is None:
+        return candidate
+    generated = {"receipt_id", "checked_at"}
+    if ({key: value for key, value in candidate.items() if key not in generated} !=
+            {key: value for key, value in existing.items() if key not in generated}):
+        raise ValueError("a current Batch Review already binds a different declaration; "
+                         "retry cannot replace its statement or authority")
+    return existing
 
 
 def main(argv=None):
@@ -267,13 +273,14 @@ def main(argv=None):
     )
     try:
         def rebuild(locked):
-            locked_item, _activation = audit_producer_runtime.open_batch(
-                locked, args.batch)
-            locked_delta = _managed_candidate_delta(root, locked, locked_item)
-            locked_audit = _audit_plan_evidence(locked, locked_item)
-            return build_batch_review_receipt(
-                locked, locked_item, locked_delta, locked_audit,
-                args.actor_role, args.statement)
+            with audit_evidence_runtime.evidence_observation(locked) as observed:
+                locked_item, _activation = audit_producer_runtime.open_batch(observed, args.batch)
+                locked_delta = _managed_candidate_delta(root, observed, locked_item)
+                locked_audit = _audit_plan_evidence(observed, locked_item)
+                candidate = build_batch_review_receipt(
+                    observed, locked_item, locked_delta, locked_audit,
+                    args.actor_role, args.statement)
+                return _reuse_current_declaration(observed, locked_item, locked_delta, candidate)
 
         def validate(locked, candidate):
             with audit_evidence_runtime.evidence_observation(locked) as observed:
@@ -286,6 +293,8 @@ def main(argv=None):
                     observed, locked_item, candidate,
                     delta_binding=locked_delta,
                     audit_binding=locked_audit)
+                if _reuse_current_declaration(observed, locked_item, locked_delta, candidate) != candidate:
+                    raise ValueError("a current Batch Review appeared before publication; retry")
 
         receipt = manual_attestation.publish_receipt(
             root, receipt_path, receipt, authority=authority,

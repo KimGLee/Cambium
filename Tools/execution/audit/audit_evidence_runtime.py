@@ -22,6 +22,10 @@ import Tools.execution.audit.audit_receipt_contract as audit_receipt_contract
 import Tools.execution.audit.batch_close_audit as batch_close_audit
 import Tools.execution.audit.batch_close_contract as batch_close_contract
 import Tools.execution.audit.batch_review_obligation_contract as batch_review_obligation_contract
+import Tools.execution.audit.batch_review_receipt_contract as batch_review_receipt_contract
+import Tools.execution.evidence.receipt_reference_contract as receipt_reference_contract
+import Tools.execution.evidence.receipt_type_contract as receipt_type_contract
+import Tools.execution.evidence.evidence_attempt_runtime as evidence_attempt_runtime
 import Tools.knowledge.rendering.changed_scope_rendering_checks as changed_scope_rendering_checks
 import Tools.execution.audit.changed_scope_evidence_contract as changed_scope_evidence_contract
 import Tools.execution.audit.changed_scope_evidence_runtime as changed_scope_evidence_runtime
@@ -41,6 +45,7 @@ from Tools.execution.task_runtime.queue_runtime.property_state import (
 from Tools.execution.task_runtime.queue_runtime.receipts import (
     current_receipt_catalog,
     historical_receipt_catalog,
+    register_observation,
 )
 from Tools.platform.common.primitives import catalog_record
 
@@ -215,7 +220,10 @@ def evidence_observation(result):
     view["_audit_stage_resolutions"] = {}
     try:
         with audit_producer_chain.producer_chain_observation(
-                view["_audit_evidence_facts"].memo):
+                view["_audit_evidence_facts"].memo), \
+                profile_batch_judgment_contract.judgment_observation(
+                    view["_audit_evidence_facts"].memo), \
+                register_observation(view["_audit_evidence_facts"].memo):
             yield view
     finally:
         view.pop("_audit_stage_resolutions").clear()
@@ -277,7 +285,10 @@ _RECONCILIATION_ROW_FIELDS = (
 def _current_record(catalog, receipt_id, label):
     if not isinstance(receipt_id, str) or not receipt_id:
         raise AuditEvidenceError("%s has no receipt identity" % label)
-    receipt = catalog_record(catalog.get(receipt_id))
+    entry = catalog.get(receipt_id)
+    if entry is None and hasattr(catalog, "resolve"):
+        entry = catalog.resolve(receipt_id)
+    receipt = catalog_record(entry)
     if not isinstance(receipt, dict):
         raise AuditEvidenceError(
             "%s %s is absent from the current receipt catalog" %
@@ -721,7 +732,8 @@ def _batch_page_binding_errors(result, catalog, root, plan, plan_sha256,
         facts.batch_record(record, registry)
         spec = batch_review_obligation_contract.obligation_spec_for_rule(
             obligation.get("owner_rule_id"), registry)
-        current_receipt_ids = None
+        current_receipt_ids = (catalog.selected_ids
+                               if isinstance(catalog, _FrozenEvidenceView) else None)
         if require_current:
             current_receipt_ids = frozenset()
             if (spec.get("tier") == "M" and
@@ -1451,9 +1463,9 @@ def _required_obligation_resolution_unchecked(
         elif artifact_state == "invalidated":
             attempts.append(_attempt_summary(record, "invalidated"))
         else:
-            current_errors = _final_attempt_errors(
+            current_errors = (_final_attempt_errors(
                 result, item, plan, plan_sha256, catalog, obligation, record,
-                require_current=require_current)
+                require_current=True) if require_current else [])
             if artifact_state == "stale" or current_errors:
                 attempts.append(_attempt_summary(record, "stale"))
             elif _is_terminal_pass(obligation, record):
@@ -2114,27 +2126,180 @@ def _post_delta_evidence_closure(
     }
 
 
-def _reconciled_current_catalog(catalog, reconciliation, *, batch_id,
-                                obligation_id):
-    """Materialize only the current records selected by one close row."""
-    selected = reconciliation.get("selected_evidence_ref")
-    produced = reconciliation.get("produced_evidence_refs")
-    if (reconciliation.get("selected_disposition") != "produced" or
-            not isinstance(selected, str) or not selected or
-            not isinstance(produced, list) or selected not in produced):
-        raise AuditEvidenceError(
-            "closed batch %s obligation %s has no produced reconciliation "
-            "selection" % (batch_id, obligation_id))
-    scoped = {}
-    for receipt_id in produced:
-        if not isinstance(receipt_id, str) or not receipt_id:
-            raise AuditEvidenceError(
-                "closed batch %s obligation %s has an invalid produced "
-                "evidence reference" % (batch_id, obligation_id))
-        scoped[receipt_id] = _current_record(
-            catalog, receipt_id,
-            "closed reconciliation evidence for %s" % obligation_id)
-    return scoped
+class _FrozenEvidenceView(dict):
+    """Enumerate frozen candidates; read exact dependencies without selecting them.
+
+    Constructed only by the stage owner after validating its bound projection.
+    Neither the source catalog nor this observation-local view is a new owner.
+    """
+
+    def __init__(self, result, catalog, rows):
+        super().__init__()
+        self.selected_ids = frozenset(row["selected_evidence_ref"] for row in rows)
+        self._bodies = {}
+        invalidated = set(result.get("invalidated_evidence_receipt_ids") or ())
+
+        def body(receipt_id):
+            if receipt_id not in self._bodies:
+                record = _current_record(catalog, receipt_id, "frozen evidence dependency")
+                if receipt_id in invalidated or record.get("invalidated_by") is not None:
+                    raise AuditEvidenceError("frozen evidence dependency %s is invalidated" % receipt_id)
+                self._bodies[receipt_id] = record
+            return self._bodies[receipt_id]
+
+        for row in rows:
+            if (row["unresolved"] or row["selected_disposition"] != "produced" or
+                    row["selected_evidence_ref"] not in row["produced_evidence_refs"]):
+                raise AuditEvidenceError("frozen obligation %s has no produced selection" % row["obligation_id"])
+            for receipt_id in row["produced_evidence_refs"]:
+                self[receipt_id] = body(receipt_id)
+
+        facts = result.get("_audit_evidence_facts") or _EvidenceFacts(result)
+        registry = facts.memo(("receipt-type-registry",), lambda:
+            receipt_type_contract.load_receipt_type_registry(result["root"]))
+        def source_kind(record):
+            return receipt_type_contract.reference_source_kind(record, registry=registry)
+
+        for record in self.values():
+            kind = source_kind(record)
+            if kind is not None:
+                receipt_reference_contract.walk_body_dependencies(
+                    record, kind, body, source_kind, acceptance_only=True)
+
+    def get(self, key, default=None):
+        return self._bodies.get(key, default)
+
+
+def _frozen_stage_resolution(result, item, plan, plan_sha256, projection, due_stage):
+    """Verify the selected stage without replacing its immutable history."""
+    projection = validate_plan_reconciliation(projection)
+    rows = projection["audit_evidence_reconciliation"]
+    obligations = {row["obligation_id"]: row for row in plan["obligations"]
+                   if row["due_stage"] == due_stage}
+    if {row["obligation_id"] for row in rows} != set(obligations) or any(
+            row["due_stage"] != due_stage for row in rows):
+        raise AuditEvidenceError("frozen reconciliation differs from the complete stage obligation set")
+    view = _FrozenEvidenceView(result, current_receipt_catalog(result), rows)
+    resolved = []
+    for row in rows:
+        obligation = obligations[row["obligation_id"]]
+        resolution = _required_obligation_resolution(
+            result, item, plan, plan_sha256, view, obligation, require_current=False)
+        record = resolution.get("record")
+        if (resolution["status"] != "satisfied" or not isinstance(record, dict) or
+                record.get("receipt_id") != row["selected_evidence_ref"]):
+            raise AuditEvidenceError("frozen obligation %s is %s: %s" % (
+                row["obligation_id"], resolution["status"], resolution.get("reason")))
+        # Recompute only produced identities. Preserve the original stale and
+        # superseded history; a narrowed read view cannot reconstruct it.
+        produced = {attempt["receipt_id"] for attempt in resolution["attempts"]
+                    if attempt["state"] in {"accepted", "current"}}
+        if produced != set(row["produced_evidence_refs"]):
+            raise AuditEvidenceError("frozen obligation %s has unbound produced evidence" % row["obligation_id"])
+        resolved.append((obligation, resolution))
+    return resolved, projection
+
+
+def _bound_review_projection(result, item, plan, relative, plan_sha256):
+    """Read the sole Batch Review already frozen by the admitted Queue item."""
+    references = item.get("batch_receipts")
+    if not isinstance(references, list) or len(references) != 1:
+        raise AuditEvidenceError("batch must bind exactly one Batch Review wrapper")
+    wrapper = _current_record(current_receipt_catalog(result), references[0], "Batch Review wrapper")
+    _validate_review_identity(result, item, plan, relative, plan_sha256, wrapper)
+    return wrapper
+
+
+def _validate_review_identity(result, item, plan, relative, plan_sha256, wrapper):
+    """Stable wrapper identity, shared by live attempts and frozen consumption."""
+    errors = batch_review_receipt_contract.current_receipt_errors(wrapper)
+    expected = {
+        "audit_plan_id": plan["plan_id"], "audit_plan_path": relative,
+        "audit_plan_sha256": plan_sha256, "batch_id": item["id"],
+        "activation_receipt_id": item.get("activation_receipt"),
+        **{field: plan[field] for field in (
+            "task_id", "upstream_revision_id", "selected_profile_manifest")},
+    }
+    errors.extend(field for field, value in expected.items() if wrapper.get(field) != value)
+    if wrapper["receipt_id"] in set(result.get("invalidated_evidence_receipt_ids") or ()):
+        errors.append("invalidated wrapper")
+    if errors:
+        raise AuditEvidenceError("frozen Batch Review binding is invalid: %s" % ", ".join(errors))
+
+
+def current_batch_review_receipt(result, item, delta):
+    """Select the unique live wrapper, retaining legal stale attempts as history.
+
+    This is an observation, not attestation or write authorization. The
+    producer still confirms the exact statement and re-admits under its lock.
+    """
+    from Tools.execution.task_runtime.queue_runtime import review as queue_review
+    result, relative, plan, plan_sha256, resolved, _frozen = _resolve_stage_evidence(
+        result, item, "pre-merge", "open")
+    live = _stage_projection(result, relative, plan, plan_sha256, resolved)
+    catalog = current_receipt_catalog(result)
+    attempts = []
+    invalidated = set(result.get("invalidated_evidence_receipt_ids") or ())
+    for identity, entry in catalog.items():
+        record = catalog_record(entry)
+        if not isinstance(record, dict) or record.get("receipt_type_id") != \
+                batch_review_receipt_contract.RECEIPT_TYPE_ID:
+            continue
+        if record.get("batch_id") != item["id"] and record.get("target") != item["id"]:
+            continue
+        if identity != record.get("receipt_id"):
+            raise AuditEvidenceError("Batch Review catalog identity differs from its body")
+        if identity in invalidated or record.get("invalidated_by") is not None:
+            continue
+        attempts.append(record)
+
+    def stable(record):
+        _validate_review_identity(result, item, plan, relative, plan_sha256, record)
+        _review_stage_evidence(result, item, plan, relative, plan_sha256, record)
+        errors = queue_review.batch_review_receipt_errors(
+            catalog, record["receipt_id"], item_id=item["id"], task_id=plan["task_id"],
+            activation_receipt_id=item.get("activation_receipt"),
+            delta_page_receipt_ids=record["delta_page_receipt_ids"])
+        if errors:
+            raise AuditEvidenceError("; ".join(errors))
+
+    def current(record):
+        errors = _wrapper_projection_errors(record, live)
+        errors.extend(queue_review.batch_review_judgment_errors(result, item, record))
+        expected = {"delta_path": delta.get("path"), "delta_sha256": delta.get("sha256"),
+                    "delta_page_receipt_ids": sorted(set(delta.get("page_receipt_ids") or []))}
+        errors.extend("Batch Review %s differs from current Delta" % field
+                      for field, value in expected.items() if record.get(field) != value)
+        if errors:
+            raise AuditEvidenceError("; ".join(errors))
+
+    try:
+        return evidence_attempt_runtime.unique_current_attempt(
+            attempts, validate_stable=stable, validate_current=current,
+            label="Batch Review wrapper")
+    except evidence_attempt_runtime.EvidenceAttemptError as exc:
+        raise AuditEvidenceError(str(exc)) from exc
+
+
+def _review_stage_evidence(result, item, plan, relative, plan_sha256, wrapper):
+    """Verify one wrapper's audit and Profile bindings through their owners."""
+    rows, history = _frozen_stage_resolution(
+        result, item, plan, plan_sha256,
+        {field: wrapper[field] for field in audit_reconciliation_contract.projection_fields()},
+        "pre-merge")
+    bound = _stage_projection(result, relative, plan, plan_sha256, rows, history)
+    errors = _wrapper_projection_errors(wrapper, bound)
+    judgments = [resolution["record"] for obligation, resolution in rows
+                 if obligation["evidence_kind"] == profile_batch_judgment_contract.RECORD_KIND]
+    expected = batch_review_receipt_contract.judgment_binding(judgments)
+    activation = _current_record(current_receipt_catalog(result), item.get("activation_receipt"),
+                                 "Batch Review activation")
+    expected["review_requirement_set_sha256"] = activation.get("review_requirement_set_sha256")
+    errors.extend("Batch Review %s differs from its frozen Profile binding" % field
+                  for field, value in expected.items() if wrapper.get(field) != value)
+    if errors:
+        raise AuditEvidenceError("; ".join(errors))
+    return rows, bound
 
 
 def _closed_batch_dimension_evidence(
@@ -2192,15 +2357,15 @@ def _closed_batch_dimension_evidence(
             "closed batch %s reconciliation does not cover its complete "
             "AuditPlan" % batch_id)
 
-    # Reconcile at the batch boundary, not one obligation at a time. An M
-    # consumes atom cites other obligations selected by this same close.
-    # Keep that frozen dependency closure available to the original owner,
-    # without admitting unselected attempts or evidence from another batch.
-    scoped_catalog = {}
-    for obligation_id, reconciled in reconciliation.items():
-        scoped_catalog.update(_reconciled_current_catalog(
-            catalog, reconciled, batch_id=batch_id,
-            obligation_id=obligation_id))
+    # The same bound stage consumer serves close, closed and Terminal. Do
+    # not create a produced-only catalog here or rediscover earlier choices.
+    premerge = batch_review_evidence(result, item, required_state="closed")
+    if any(premerge.get(field) != value for field, value in expected_close.items()):
+        raise AuditEvidenceError("closed batch stages bind different AuditPlans")
+    premerge_rows = {row["obligation_id"]: row for row in
+                     premerge["audit_evidence_reconciliation"]}
+    premerge_bindings = {row["obligation_id"]: row for row in
+                         premerge["audit_evidence_bindings"]}
 
     rows = []
     selected_refs = set()
@@ -2218,11 +2383,13 @@ def _closed_batch_dimension_evidence(
                 isinstance(record, dict) and expected_row == reconciled
             ) else "invalid"
         else:
-            resolution = _required_obligation_resolution(
-                result, item, plan, plan_sha256, scoped_catalog, obligation,
-                require_current=False)
-            record = resolution.get("record")
-            resolution_status = resolution.get("status")
+            binding = premerge_bindings.get(obligation_id)
+            record = (_current_record(catalog, binding["evidence_ref"],
+                                      "frozen Terminal evidence")
+                      if isinstance(binding, dict) else None)
+            resolution_status = "satisfied" if (
+                isinstance(record, dict) and premerge_rows.get(obligation_id) == reconciled
+            ) else "invalid"
         selected = (record.get("receipt_id")
                     if isinstance(record, dict) else None)
         if (resolution_status != "satisfied" or
@@ -2322,18 +2489,6 @@ def terminal_dimension_evidence(result):
     return tuple(rows)
 
 
-def _required_obligation_records(result, item, plan, plan_sha256, catalog,
-                                 obligations, *, require_current,
-                                 reconciliation_rows=None):
-    """Select only current terminal evidence; preserve attempts as history."""
-    result = evidence_evaluation(result)
-    rows = [(obligation, _required_obligation_resolution(
-            result, item, plan, plan_sha256, catalog, obligation,
-            require_current=require_current)) for obligation in obligations]
-    return _accepted_obligation_records(
-        result, plan, rows, reconciliation_rows=reconciliation_rows)
-
-
 def _accepted_obligation_records(result, plan, rows, *, reconciliation_rows=None):
     selected = []
     for obligation, resolution in rows:
@@ -2359,32 +2514,6 @@ def _accepted_obligation_records(result, plan, rows, *, reconciliation_rows=None
     return selected
 
 
-def _required_stage_records(result, item, plan, plan_sha256, catalog,
-                            due_stage, *, require_current,
-                            reconciliation_rows=None):
-    obligations = [row for row in plan["obligations"]
-                   if row["due_stage"] == due_stage]
-    return _required_obligation_records(
-        result, item, plan, plan_sha256, catalog, obligations,
-        require_current=require_current,
-        reconciliation_rows=reconciliation_rows)
-
-
-def _stage_requires_live_currentness(due_stage, required_state):
-    """Whether the consumer is still at the obligation's production stage.
-
-    Evidence-time inputs are recomputed while an obligation is due.  Once the
-    lifecycle has legally advanced, downstream consumers prove the immutable
-    stage evidence and explicit invalidation history; they must not reinterpret
-    a later Queue/Progress after-image as the earlier obligation input.
-    """
-    due_state = {
-        "pre-merge": "open",
-        "post-delta-close": "merge-ready",
-    }.get(due_stage)
-    return required_state is None or required_state == due_state
-
-
 def _resolve_stage_evidence(result, item, due_stage, required_state):
     cache = result.get("_audit_stage_resolutions")
     # The item and catalog are immutable inputs during this scoped action.
@@ -2397,14 +2526,22 @@ def _resolve_stage_evidence(result, item, due_stage, required_state):
     catalog = current_receipt_catalog(result)
     relative, plan, plan_sha256 = _resolve_current_plan(
         result, item, catalog, required_state=required_state)
-    _require_current_profile_rendering_contract_state(result, item, plan)
     obligations = [row for row in plan["obligations"]
                    if row["due_stage"] == due_stage]
-    resolved = [(obligation, _required_obligation_resolution(
+    frozen = None
+    if due_stage == "pre-merge" and item.get("state") in {"merge-ready", "closed"}:
+        wrapper = _bound_review_projection(result, item, plan, relative, plan_sha256)
+        resolved, frozen = _review_stage_evidence(result, item, plan, relative, plan_sha256, wrapper)
+    elif ((due_stage == "pre-merge" and item.get("state") == "open") or
+          (due_stage == "post-delta-close" and item.get("state") == "merge-ready")):
+        _require_current_profile_rendering_contract_state(result, item, plan)
+        resolved = [(obligation, _required_obligation_resolution(
             result, item, plan, plan_sha256, catalog, obligation,
-            require_current=_stage_requires_live_currentness(
-                due_stage, required_state))) for obligation in obligations]
-    value = result, relative, plan, plan_sha256, resolved
+            require_current=True)) for obligation in obligations]
+    else:
+        raise AuditEvidenceError("stage %s cannot be resolved in Queue state %r" %
+                                 (due_stage, item.get("state")))
+    value = result, relative, plan, plan_sha256, resolved, frozen
     if cache is not None:
         cache[key] = value
     return value
@@ -2412,7 +2549,7 @@ def _resolve_stage_evidence(result, item, due_stage, required_state):
 
 def stage_evidence_status(result, item, due_stage, required_state=None):
     """Project statuses from the same stage resolution the closure consumes."""
-    result, relative, plan, plan_sha256, resolved = _resolve_stage_evidence(
+    result, relative, plan, plan_sha256, resolved, frozen = _resolve_stage_evidence(
         result, item, due_stage, required_state)
     if not resolved:
         raise AuditEvidenceError(
@@ -2434,9 +2571,12 @@ def stage_evidence_status(result, item, due_stage, required_state=None):
             "reason": reason,
             "attempts": list(resolution["attempts"]),
         })
-        reconciliation_rows.append(_reconciliation_row(
-            result, plan, obligation, resolution))
-    projection = _reconciliation_projection(reconciliation_rows)
+        if frozen is None:
+            reconciliation_rows.append(_reconciliation_row(
+                result, plan, obligation, resolution))
+    projection = ({field: frozen[field] for field in
+                   audit_reconciliation_contract.projection_fields()}
+                  if frozen is not None else _reconciliation_projection(reconciliation_rows))
     return {
         "audit_plan_id": plan["plan_id"],
         "audit_plan_path": relative,
@@ -2486,13 +2626,21 @@ def current_consumption_evidence_ids(result, item, plan, plan_sha256,
 
 def stage_evidence_closure(result, item, due_stage, required_state=None):
     """Resolve every obligation due at one stage across all evidence kinds."""
-    result, relative, plan, plan_sha256, resolved = _resolve_stage_evidence(
+    result, relative, plan, plan_sha256, resolved, frozen = _resolve_stage_evidence(
         result, item, due_stage, required_state)
+    if frozen is not None:
+        return dict(frozen)
+    return _stage_projection(result, relative, plan, plan_sha256, resolved)
+
+
+def _stage_projection(result, relative, plan, plan_sha256, resolved, reconciliation=None):
+    """Project bindings once; frozen consumers retain the source history."""
     reconciliation_rows = []
     selected = _accepted_obligation_records(
         result, plan, resolved,
-        reconciliation_rows=reconciliation_rows)
-    reconciliation = _reconciliation_projection(reconciliation_rows)
+        reconciliation_rows=reconciliation_rows if reconciliation is None else None)
+    if reconciliation is None:
+        reconciliation = _reconciliation_projection(reconciliation_rows)
     if reconciliation["audit_evidence_unresolved_count"] != 0:
         raise AuditEvidenceError(
             "audit evidence reconciliation contains unresolved obligations")
@@ -2676,6 +2824,7 @@ def closed_plan_closure_errors(result, item, close_receipt):
 
 
 __all__ = [
+    'current_batch_review_receipt',
     'AuditPlanMissing',
     'batch_review_evidence',
     'candidate_page_evidence',

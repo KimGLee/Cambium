@@ -220,21 +220,60 @@ class ProfileBatchJudgmentContractTests(unittest.TestCase):
             "_profile_authorized_view": {"_contract": self.contract},
         }
         catalog = {"judgment-1": ("receipts/judgments.jsonl", receipt)}
-        with self.observed_page(text, SHA_D):
-            selected = audit_evidence_runtime._required_stage_records(
-                result, self.item, self.plan, SHA_A, catalog, "pre-merge",
-                require_current=True)
-        self.assertEqual("judgment-1", selected[0][1]["receipt_id"])
+        with self.observed_page(text, SHA_D), \
+                mock.patch.object(contract_module, "_stable_receipt_binding_errors",
+                                  wraps=contract_module._stable_receipt_binding_errors) as stable, \
+                mock.patch.object(contract_module, "artifact_fingerprint",
+                                  wraps=contract_module.artifact_fingerprint) as artifact:
+            def stage(observed):
+                return audit_evidence_runtime.obligation_evidence_resolution(
+                    observed, self.item, self.plan, SHA_A, self.obligation)
+
+            def judgments(observed):
+                return contract_module.current_judgment_receipts(
+                    result["root"], self.plan, SHA_A, self.contract, self.item,
+                    result["_profile_authorized_view"],
+                    observed["current_receipt_catalog"])
+
+            with audit_evidence_runtime.evidence_observation(
+                    {**result, "current_receipt_catalog": catalog}) as observed:
+                selected = stage(observed)
+                self.assertEqual("judgment-1", judgments(observed)[0]["receipt_id"])
+                self.assertEqual(selected, stage(observed))
+                disposable = judgments(observed)
+                disposable[0]["details"] = "caller-local mutation"
+                self.assertNotEqual(disposable, judgments(observed))
+                self.assertEqual(1, stable.call_count)
+                self.assertEqual(1, artifact.call_count)
+                # An explicit nested observation is fresh, even for the same
+                # admitted view. The outer scope's continuation stays local.
+                with audit_evidence_runtime.evidence_observation(observed) as fresh:
+                    self.assertEqual(selected, stage(fresh))
+                    judgments(fresh)
+                self.assertEqual(2, stable.call_count)
+                self.assertEqual(2, artifact.call_count)
+                self.assertEqual(selected, stage(observed))
+                self.assertEqual(2, stable.call_count)
+                # Same identity, changed bytes: do not reuse the old set or
+                # stable pass. The original owner must reject the bad role.
+                observed["current_receipt_catalog"]["judgment-1"] = (
+                    "receipts/judgments.jsonl", dict(receipt, reviewer_role="other"))
+                with self.assertRaisesRegex(ValueError, "reviewer_role"):
+                    judgments(observed)
+                self.assertEqual(3, stable.call_count)
+                self.assertEqual(2, artifact.call_count)
+        self.assertEqual("satisfied", selected["status"])
+        self.assertEqual("judgment-1", selected["record"]["receipt_id"])
 
         for field in ("artifact_fingerprint", "semantic_content_sha256"):
             with self.subTest(field=field), self.observed_page(text, SHA_D):
                 drifted = copy.deepcopy(receipt)
                 drifted[field] = SHA_C
                 catalog = {"judgment-1": ("receipts/judgments.jsonl", drifted)}
-                with self.assertRaisesRegex(ValueError, "no current terminal"):
-                    audit_evidence_runtime._required_stage_records(
-                        result, self.item, self.plan, SHA_A, catalog,
-                        "pre-merge", require_current=True)
+                selected = audit_evidence_runtime.obligation_evidence_resolution(
+                    {**result, "current_receipt_catalog": catalog}, self.item,
+                    self.plan, SHA_A, self.obligation)
+                self.assertEqual("missing", selected["status"])
 
     def test_shared_attempt_resolver_allows_stale_successor(self):
         predecessor = self.build()
@@ -265,11 +304,12 @@ class ProfileBatchJudgmentContractTests(unittest.TestCase):
             "_profile_authorized_view": {"_contract": self.contract},
         }
         with self.observed_page(after, SHA_B):
-            terminal = audit_evidence_runtime._required_stage_records(
-                result, self.item, self.plan, SHA_A, catalog, "pre-merge",
-                require_current=True)
+            terminal = audit_evidence_runtime.obligation_evidence_resolution(
+                {**result, "current_receipt_catalog": catalog}, self.item,
+                self.plan, SHA_A, self.obligation)
+        self.assertEqual("satisfied", terminal["status"])
         self.assertEqual("judgment-successor",
-                         terminal[0][1]["receipt_id"])
+                         terminal["record"]["receipt_id"])
 
     def test_shared_attempt_resolver_rejects_duplicate_current(self):
         first = self.build()

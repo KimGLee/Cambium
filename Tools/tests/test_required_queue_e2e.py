@@ -73,6 +73,9 @@ class RequiredQueueLifecycleEndToEndTests(RequiredQueueE2EScenarioCase):
         action = self.mcp_session.call_checked("run_task", {"root": str(self.root)})["stdout_json"]
         deliveries, obligations, reviews = {}, {}, {}
         withdrawn = False
+        revised = False
+        before_revision_register = None
+        before_revision_ids = set()
         seen = set()
         original_review = None
         original_plan = None
@@ -83,11 +86,28 @@ class RequiredQueueLifecycleEndToEndTests(RequiredQueueE2EScenarioCase):
             # A deliberate semantic withdrawal makes the same frozen
             # obligation due again. Nonprogress is checked within one such
             # externally changed epoch, not across the corrective write.
-            position = (action["action_id"], withdrawn)
+            position = (action["action_id"], withdrawn, revised)
             self.assertNotIn(position, seen, action)
             seen.add(position)
             semantic, proposal = None, None
             if token == "publish-candidate-delta":
+                if batch_id == "B2" and not revised:
+                    # A natural content revision is not a correction event.
+                    # Exercise it once on the small S batch, not by replaying
+                    # every M checklist item or adding another lifecycle.
+                    register = self.root / runtime_paths.AUDIT_RECEIPT_REGISTER_PATH
+                    before_revision_register = register.read_bytes()
+                    before_revision_ids = {row["receipt_id"] for row in (
+                        json.loads(line) for line in before_revision_register.splitlines())
+                        if row.get("plan_id") == plan["plan_id"] and row.get("due_stage") == "pre-merge"}
+                    self.assertTrue(before_revision_ids)
+                    page = self.root / object_path
+                    page.write_text(page.read_text(encoding="utf-8") +
+                        "\nThis synthetic example illustrates only the declared local concept.\n",
+                        encoding="utf-8")
+                    revised = True
+                    action = self.mcp_session.call_checked("run_task", {"root": str(self.root)})["stdout_json"]
+                    continue
                 if batch_id == "B1" and not withdrawn:
                     original_review = next(row for row in reviews.values()
                         if obligations[row["obligation_id"]]["owner_rule_id"] ==
@@ -151,6 +171,18 @@ class RequiredQueueLifecycleEndToEndTests(RequiredQueueE2EScenarioCase):
                     self.assertNotEqual(original_review["receipt_id"],
                                         reviews[original_review["obligation_id"]]["receipt_id"])
                     self.assertNotIn(original_review["receipt_id"], queue_runtime.current_receipt_catalog(runtime))
+                if revised:
+                    self.assertTrue((self.root / runtime_paths.AUDIT_RECEIPT_REGISTER_PATH).
+                                    read_bytes().startswith(before_revision_register))
+                    close_id = runtime["items_by_id"][batch_id]["close_gate_receipt"]
+                    close = queue_runtime.current_receipt_catalog(runtime).resolve(close_id)[1]
+                    rows = close["audit_evidence_reconciliation"]
+                    selected = {row["selected_evidence_ref"] for row in rows}
+                    natural_history = {identity for row in rows
+                                       for identity in row["invalidated_evidence_refs"]}
+                    self.assertTrue(before_revision_ids & natural_history)
+                    self.assertFalse(selected & natural_history)
+                    self.assertFalse(before_revision_ids & set(runtime.get("invalidated_evidence_receipt_ids", [])))
                 trace = [row for row in self.runner_trace if row["batch"] == batch_id]
                 tokens = [row["action"] for row in trace]
                 for required in ("activate-ready-batch", "prepare-audit-plan", "deliver-activation-phase",

@@ -138,7 +138,7 @@ def validate_publication_result(payload):
     return payload
 
 
-def publication_result(publication, *, status, errors=(), reused=False, **fields):
+def publication_result(publication, *, status, errors=(), **fields):
     """Project append facts separately from the producer-owned business result.
 
     This transient response is not a Receipt and never authorizes consumption.
@@ -146,9 +146,12 @@ def publication_result(publication, *, status, errors=(), reused=False, **fields
     """
     if not isinstance(publication, kblib.ReceiptPublication):
         raise TypeError("publication result requires Receipt I/O facts")
-    if reused and (publication.outcome != "not-attempted" or
-                   not publication.confirmed):
-        raise ValueError("reuse requires confirmed existing evidence without an append")
+    # Reuse is a projection of the publication owner's observed facts, not
+    # another caller-supplied account of the same operation. This also covers
+    # an idempotent hit discovered only during the locked rebuild.
+    if "reused" in fields:
+        raise TypeError("publication reuse is derived from confirmed I/O facts")
+    reused = publication.confirmed and publication.outcome == "not-attempted"
     messages = list(errors)
     if publication.error is not None and str(publication.error) not in messages:
         messages.append(str(publication.error))

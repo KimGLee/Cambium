@@ -161,7 +161,7 @@ source_files:
   - Tools/stamp_cards.py
   - Tools/update_queue.py
   - Tools/update_task.py
-source_hash: sha256:775dd4431cbf812b15bd3d943fe85d0459a9135dbe6b966841a3ec28870d70ab
+source_hash: sha256:ca0ac483dcb236e84dc2f8e45ad27241593a6c1b6ec5e89e17c0f4c258c82e6d
 agent_interface_policy:
   path: Tools/agent-interface-policy.yaml
   sha256: sha256:16cbe961699c6a473c9f28d7b1e9b6b1a79bdc6c410ffc8f115ed2f70feee803
@@ -1384,7 +1384,7 @@ tools:
     host_environment_boundary: true
     implementation_module: Tools.execution.audit.assemble_terminal_proof
     implementation_path: Tools/execution/audit/assemble_terminal_proof.py
-    implementation_source_hash: sha256:c08480a70633e56b1f7cadeb3fcf30695a17e5a65fd235b005299fed9c4eec6f
+    implementation_source_hash: sha256:28396fc49a11c1b3558e47c1daba51c0f135c5f704e94f9dfb466bc452fc07bc
     description: Assemble one current K12/16 Terminal Proof
     arguments:
       - dest: root
@@ -1501,7 +1501,7 @@ tools:
     receipt_extensions_extraction: complete
     receipt_extension_sources:
       - path: Tools/execution/audit/assemble_terminal_proof.py
-        sha256: sha256:c08480a70633e56b1f7cadeb3fcf30695a17e5a65fd235b005299fed9c4eec6f
+        sha256: sha256:28396fc49a11c1b3558e47c1daba51c0f135c5f704e94f9dfb466bc452fc07bc
     agent_interface:
       exposure: mcp
       workspace_argument: root
@@ -1580,7 +1580,7 @@ tools:
     host_environment_boundary: true
     implementation_module: Tools.execution.audit.check_batch_close
     implementation_path: Tools/execution/audit/check_batch_close.py
-    implementation_source_hash: sha256:d1ae2003c5fcf7dfbf2e4ff2a44d97f9f10cb3935c1da7b36e16ee2b691fd3d8
+    implementation_source_hash: sha256:b3d5f9198943f438abd1b1eb9cf26149f19c9fbda3b505ee9ba3d5485869ec4d
     description: Run and publish the K12/09 batch-close evidence bundle
     arguments:
       - dest: root
@@ -1796,7 +1796,7 @@ tools:
     receipt_extensions_extraction: partial
     receipt_extension_sources:
       - path: Tools/execution/audit/check_batch_close.py
-        sha256: sha256:d1ae2003c5fcf7dfbf2e4ff2a44d97f9f10cb3935c1da7b36e16ee2b691fd3d8
+        sha256: sha256:b3d5f9198943f438abd1b1eb9cf26149f19c9fbda3b505ee9ba3d5485869ec4d
       - path: Tools/execution/planning/check_corpus_plan.py
         sha256: sha256:f6373ef6afab811b30e6897da706d00cfcb024c7e864b0351a8c719fb19980de
       - path: Tools/execution/task_runtime/queue_check_receipt.py
@@ -2849,7 +2849,7 @@ tools:
     host_environment_boundary: true
     implementation_module: Tools.execution.audit.check_proof
     implementation_path: Tools/execution/audit/check_proof.py
-    implementation_source_hash: sha256:ec171128edf49d5eb2195ded3f3bafa58a5d1baee8622fabdb43355c9ab8aa97
+    implementation_source_hash: sha256:d29cccb6a57e08e05d28cd8cb18f646494caf29d68aa95f3e2173062ce5e3055
     description: Terminal Proof completeness and zero-condition check
     arguments:
       - dest: proof
@@ -2930,7 +2930,7 @@ tools:
     receipt_extensions_extraction: partial
     receipt_extension_sources:
       - path: Tools/execution/audit/check_proof.py
-        sha256: sha256:ec171128edf49d5eb2195ded3f3bafa58a5d1baee8622fabdb43355c9ab8aa97
+        sha256: sha256:d29cccb6a57e08e05d28cd8cb18f646494caf29d68aa95f3e2173062ce5e3055
       - path: Tools/platform/common/kblib.py
         sha256: sha256:1918c7f79bfb3220bc0c65c3ba6febbf8b87c039d54ba2eff5683a86d29022ea
     agent_interface:
@@ -4298,7 +4298,7 @@ tools:
     host_environment_boundary: true
     implementation_module: Tools.execution.audit.complete_audit_receipt
     implementation_path: Tools/execution/audit/complete_audit_receipt.py
-    implementation_source_hash: sha256:9f0c7200e7927be9816a983f6c85cf9a3a81e4653984cf919cb76187b09168e1
+    implementation_source_hash: sha256:dcf457134b056358c9bb17e9d611bcd6c99a7878a6b8bae3979364ada59fa540
     description: Complete one plan obligation into a full AuditReceipt
     arguments:
       - dest: root
@@ -4382,7 +4382,7 @@ tools:
     receipt_extensions_extraction: complete
     receipt_extension_sources:
       - path: Tools/execution/audit/complete_audit_receipt.py
-        sha256: sha256:9f0c7200e7927be9816a983f6c85cf9a3a81e4653984cf919cb76187b09168e1
+        sha256: sha256:dcf457134b056358c9bb17e9d611bcd6c99a7878a6b8bae3979364ada59fa540
       - path: Tools/platform/common/kblib.py
         sha256: sha256:1918c7f79bfb3220bc0c65c3ba6febbf8b87c039d54ba2eff5683a86d29022ea
     agent_interface:
@@ -6230,7 +6230,7 @@ tools:
     host_environment_boundary: true
     implementation_module: Tools.execution.audit.record_batch_page_review
     implementation_path: Tools/execution/audit/record_batch_page_review.py
-    implementation_source_hash: sha256:f60c27ef6ecb981a1155261e3bc2b0ee66462a5d75894e7dc8dbcc653d99d536
+    implementation_source_hash: sha256:f18b2240e789c99a1d3c63b590c42436081f791da674f54fcf11ed07f4f7a8d7
     description: Record one plan-bound Batch Review page judgment
     arguments:
       - dest: root
@@ -6439,7 +6439,7 @@ tools:
     receipt_extensions_extraction: partial
     receipt_extension_sources:
       - path: Tools/execution/audit/record_batch_page_review.py
-        sha256: sha256:f60c27ef6ecb981a1155261e3bc2b0ee66462a5d75894e7dc8dbcc653d99d536
+        sha256: sha256:f18b2240e789c99a1d3c63b590c42436081f791da674f54fcf11ed07f4f7a8d7
       - path: Tools/platform/common/kblib.py
         sha256: sha256:1918c7f79bfb3220bc0c65c3ba6febbf8b87c039d54ba2eff5683a86d29022ea
     agent_interface:
@@ -6491,7 +6491,7 @@ tools:
     host_environment_boundary: true
     implementation_module: Tools.execution.audit.record_batch_review
     implementation_path: Tools/execution/audit/record_batch_review.py
-    implementation_source_hash: sha256:7ffbc146c8e1099319233935805bfa6240ce19d277e106f92395363cda385c3b
+    implementation_source_hash: sha256:bf4d59905105616fbdc21447ab96d080f5d5d393b5144529d4ce4f3e59fce5d8
     description: Record one current, evidence-complete Batch Review wrapper
     arguments:
       - dest: root
@@ -6585,8 +6585,6 @@ tools:
       - delta_path
       - delta_sha256
       - gate_id
-      - judgment_receipt_ids
-      - judgment_record_set_sha256
       - review_requirement_set_sha256
       - selected_profile_manifest
       - task_id
@@ -6594,7 +6592,7 @@ tools:
     receipt_extensions_extraction: partial
     receipt_extension_sources:
       - path: Tools/execution/audit/record_batch_review.py
-        sha256: sha256:7ffbc146c8e1099319233935805bfa6240ce19d277e106f92395363cda385c3b
+        sha256: sha256:bf4d59905105616fbdc21447ab96d080f5d5d393b5144529d4ce4f3e59fce5d8
       - path: Tools/platform/common/kblib.py
         sha256: sha256:1918c7f79bfb3220bc0c65c3ba6febbf8b87c039d54ba2eff5683a86d29022ea
     agent_interface:
@@ -6639,7 +6637,7 @@ tools:
     host_environment_boundary: true
     implementation_module: Tools.execution.audit.record_changed_scope_evidence
     implementation_path: Tools/execution/audit/record_changed_scope_evidence.py
-    implementation_source_hash: sha256:70740ae99c307a9e35c9264890109d7402999a01933d1621e5161de9a1a2fa33
+    implementation_source_hash: sha256:8c609bb15f5605c8d0c7c95af5e668bf0acb29bd586ae476394b1b0943f9ba29
     description: Record exact plan-bound K12/05 changed-scope evidence
     arguments:
       - dest: root
@@ -6781,7 +6779,7 @@ tools:
     receipt_extensions_extraction: complete
     receipt_extension_sources:
       - path: Tools/execution/audit/record_changed_scope_evidence.py
-        sha256: sha256:70740ae99c307a9e35c9264890109d7402999a01933d1621e5161de9a1a2fa33
+        sha256: sha256:8c609bb15f5605c8d0c7c95af5e668bf0acb29bd586ae476394b1b0943f9ba29
       - path: Tools/platform/common/kblib.py
         sha256: sha256:1918c7f79bfb3220bc0c65c3ba6febbf8b87c039d54ba2eff5683a86d29022ea
     agent_interface:
@@ -6963,7 +6961,7 @@ tools:
     host_environment_boundary: true
     implementation_module: Tools.execution.evidence.record_evidence_invalidation
     implementation_path: Tools/execution/evidence/record_evidence_invalidation.py
-    implementation_source_hash: sha256:6c85face15d51a099cdd70c733bebde457b841804c4affae8f5ef406a4c1b651
+    implementation_source_hash: sha256:bfc80889fcf198c27a7e6b510d7248d599f92ecb47f01f43305a48a2ddf45615
     description: Record an authorized evidence invalidation without changing historical bytes
     arguments:
       - dest: root
@@ -7097,7 +7095,7 @@ tools:
     receipt_extensions_extraction: complete
     receipt_extension_sources:
       - path: Tools/execution/evidence/record_evidence_invalidation.py
-        sha256: sha256:6c85face15d51a099cdd70c733bebde457b841804c4affae8f5ef406a4c1b651
+        sha256: sha256:bfc80889fcf198c27a7e6b510d7248d599f92ecb47f01f43305a48a2ddf45615
     agent_interface:
       exposure: mcp
       workspace_argument: root
@@ -9323,7 +9321,7 @@ tools:
     host_environment_boundary: true
     implementation_module: Tools.execution.task_runtime.task_runtime_runner
     implementation_path: Tools/execution/task_runtime/task_runtime_runner.py
-    implementation_source_hash: sha256:d2e848a18b06fa673d530eded636deef47c82dcfb850fafd0e5592d2b0546768
+    implementation_source_hash: sha256:1d172924ecfa7544bbfd5454e9eb1faacd88710d36d171956936b6dbfb177226
     description: Read the current Task Runtime action, execute that exact action, or advance deterministic actions to the next semantic boundary.
     arguments:
       - dest: root
@@ -9415,7 +9413,7 @@ tools:
     receipt_extensions_extraction: complete
     receipt_extension_sources:
       - path: Tools/execution/task_runtime/task_runtime_runner.py
-        sha256: sha256:d2e848a18b06fa673d530eded636deef47c82dcfb850fafd0e5592d2b0546768
+        sha256: sha256:1d172924ecfa7544bbfd5454e9eb1faacd88710d36d171956936b6dbfb177226
     agent_interface:
       exposure: mcp
       workspace_argument: root
