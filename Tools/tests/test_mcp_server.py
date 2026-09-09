@@ -954,11 +954,14 @@ class PathCapabilityUnitTests(unittest.TestCase):
     def test_receipt_observation_uses_after_image_not_initial_existence_or_cache(self):
         from Tools.platform.common import kblib
         from Tools.execution.audit import audit_producer_runtime
+        from Tools.execution.task_runtime.queue_runtime import receipts
         for existing, declared in ((False, True), (True, True), (False, False)):
             with self.subTest(existing=existing, declared=declared), \
                     tempfile.TemporaryDirectory() as temporary:
                 root = Path(temporary).resolve()
-                target = root / "receipts.jsonl"
+                target = root / ".cambium/receipts/observed.jsonl"
+                target.parent.mkdir(parents=True)
+                relative = target.relative_to(root).as_posix()
                 if existing:
                     target.write_text('{"receipt_id":"old"}\n', encoding="utf-8")
                 prior = target.read_bytes() if existing else b""
@@ -967,7 +970,7 @@ class PathCapabilityUnitTests(unittest.TestCase):
                 tool = {"name": "receipt-owner", "workspace_argument": "root",
                         "schema": {"properties": {"root": _string("root"),
                                                   **({"receipts": prop} if declared else {})}}}
-                args = {"root": str(root), **({"receipts": target.name} if declared else {})}
+                args = {"root": str(root), **({"receipts": relative} if declared else {})}
                 fd = os.open(root, os.O_RDONLY | os.O_DIRECTORY)
                 advanced = {}
                 try:
@@ -976,7 +979,10 @@ class PathCapabilityUnitTests(unittest.TestCase):
                                 mock.patch.object(path_capability, "_MANIFEST_CACHE", None), \
                                 mock.patch.object(path_capability, "_ADVANCED_TARGETS", advanced), \
                                 mock.patch.object(path_capability, "_ACKNOWLEDGED", set()), \
-                                mock.patch.object(path_capability, "_TREE_BYTES", {target.name: (b"stale", None)}):
+                                mock.patch.object(path_capability, "_TREE_BYTES", {relative: (b"stale", None)}):
+                            if not existing:
+                                with self.assertRaises(receipts.ReceiptRegisterError):
+                                    receipts.read_receipt_register(root, relative)
                             publication = kblib.ReceiptPublication()
                             receipt = {"receipt_id": "new"}
                             outcome, error, _ = publication.append(target, [receipt])
@@ -987,6 +993,7 @@ class PathCapabilityUnitTests(unittest.TestCase):
                                 target, observation=publication.observation)
                             self.assertEqual(receipt, rows[-1])
                             self.assertEqual(target.read_bytes(), kblib.read_receipt_bytes(target)[1])
+                            self.assertEqual(receipt, receipts.read_receipt_register(root, relative)["new"])
                             if declared:
                                 with self.assertRaises(ValueError):
                                     path_capability.inherited_capability(target, "snapshot")

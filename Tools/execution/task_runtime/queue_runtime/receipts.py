@@ -76,7 +76,10 @@ def _read_receipt_register(root, relative):
     try:
         path = kblib.managed_repository_path(
             root, relative, runtime_paths.RECEIPT_ROOT,
-            suffixes=(".jsonl",), must_exist=True)
+            suffixes=(".jsonl",))
+        # Namespace admission can carry the invocation's before-image.
+        # Existence belongs to the I/O owner's fresh, no-follow observation:
+        # an append target absent at admission may now contain the receipt.
         exists, content = kblib.read_receipt_bytes(path)
         if not exists:
             raise FileNotFoundError(path)
