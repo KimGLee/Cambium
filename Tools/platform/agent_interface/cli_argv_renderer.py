@@ -73,16 +73,21 @@ def _option_value(flag, value):
 
 
 def schema_from_compiled_tool(tool_record):
-    """Project the argv-relevant schema from one compiled CLI tool record.
+    """Project one complete invocation schema from a compiled CLI tool record.
 
     It shares mechanical expression, choices and cardinality with MCP and
-    Runner. It does not own path capabilities or domain acceptance policy.
+    Runner, including effective defaults and declared path admission metadata.
+    It does not define path capabilities or domain acceptance policy.
     """
     properties = {}
     required = []
+    path_capabilities = {item["argument"]: item
+                         for item in (tool_record.get("agent_interface") or {}).get(
+                             "path_arguments", [])}
     for argument in tool_record.get("arguments") or []:
         name = argument["dest"]
-        properties[name] = agent_interface_contract.argument_schema(argument)
+        properties[name] = agent_interface_contract.argument_schema(
+            argument, path_capability=path_capabilities.get(name))
         if argument.get("required"):
             required.append(name)
     schema = {"type": "object", "properties": properties, "additionalProperties": False}

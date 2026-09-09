@@ -629,6 +629,24 @@ class ChangedScopeEvidenceContractTests(
             producer.select_source_gate_receipts(
                 [sibling], check_vocab.GATE_ID)
 
+        for returncode in (9, -9, 1, 2):
+            with self.subTest(inconsistent_process=returncode), \
+                    mock.patch.object(producer.kblib, "run_cambium_subprocess",
+                        return_value=types.SimpleNamespace(returncode=returncode,
+                            stdout=json.dumps(expected), stderr="process observation")), \
+                    self.assertRaises(ValueError):
+                producer.run_source_gate(ROOT, case["plan"],
+                                         case["obligation"]["target"], trace)
+        for sibling_result, process_code in (("pass", 0), ("fail", 1), ("candidate", 2)):
+            sibling["result"] = sibling_result
+            with self.subTest(sibling=sibling_result), mock.patch.object(
+                    producer.kblib, "run_cambium_subprocess", return_value=types.SimpleNamespace(
+                        returncode=process_code, stdout=json.dumps(expected + [sibling]), stderr="")):
+                selected_code, selected, _binding = producer.run_source_gate(
+                    ROOT, case["plan"], case["obligation"]["target"], trace)
+                self.assertEqual(0, selected_code)
+                self.assertEqual(expected, selected)
+
 
 class ChangedScopeEvidenceIntegrationTests(
         ChangedScopeEvidenceFixtures, unittest.TestCase):

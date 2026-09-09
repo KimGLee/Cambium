@@ -363,7 +363,9 @@ class TaskRuntimeRunnerContractTests(unittest.TestCase):
                     mock.patch.object(runner.path_admission, "invocation", side_effect=admission), \
                     mock.patch.object(runner.kblib, "run_cambium_subprocess",
                                       return_value=completed(stdout='{"receipt_id":"committed-one"}\n')) as process, \
-                    mock.patch.object(runner, "observe_tool_output", return_value={"output_reliable": True}), \
+                    mock.patch.object(runner, "observe_invocation", return_value={
+                        "output_reliable": True, "invocation_reliable": True,
+                        "invocation_errors": []}), \
                     mock.patch.object(runner, "next_action", side_effect=ValueError("read-back unavailable")):
                 outcome = runner._execute_observed(str(TOOLS.parent), action)
             self.assertEqual(expected_calls, process.call_count)

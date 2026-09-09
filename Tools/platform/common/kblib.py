@@ -2339,6 +2339,9 @@ def runtime_receipt_identity(root):
     return dict(identity)
 
 
+RECEIPT_RESULTS = ("pass", "fail", "candidate")
+
+
 def make_receipt(tool, tool_version, check, target, result, details, seq,
                  *, receipt_type_id, root=None, identity=None):
     """Build one typed Receipt; result is pass / fail / candidate.
@@ -2352,7 +2355,7 @@ def make_receipt(tool, tool_version, check, target, result, details, seq,
     mandatory: an untyped object cannot enter any current Cambium Receipt
     catalog.
     """
-    assert result in ("pass", "fail", "candidate"), result
+    assert result in RECEIPT_RESULTS, result
     if not isinstance(receipt_type_id, str) or not receipt_type_id:
         raise ValueError("receipt_type_id must be non-empty text")
     now = time.time()
@@ -2968,6 +2971,8 @@ def _append_receipt_lines(absolute, lines, exclusive=False):
 def exit_code(receipts):
     """Shared exit codes: 1 = at least one fail; 2 = no fail but candidates; 0 = all pass."""
     results = {r["result"] for r in receipts}
+    if not results.issubset(RECEIPT_RESULTS):
+        raise ValueError("unsupported Receipt result")
     if "fail" in results:
         return 1
     if "candidate" in results:

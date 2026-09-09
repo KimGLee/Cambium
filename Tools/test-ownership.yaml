@@ -2336,8 +2336,9 @@ tests:
         parallel_safe: true
       - selector: ArgumentProjectionTests.test_argument_shape_matrix
         level: unit
+        owner: Tools/platform/agent_interface/agent_interface_contract.py
         semantics: argparse_json_schema_projection
-        owner_contract_symbol: render_interface_projection.property_schema
+        owner_contract_symbol: agent_interface_contract.argument_schema
         parallel_safe: true
       - selector: ArgumentProjectionTests.test_record_schema_preserves_closed_classification_not_owner_ids
         level: unit

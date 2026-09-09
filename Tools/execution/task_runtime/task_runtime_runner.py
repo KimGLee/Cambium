@@ -38,7 +38,7 @@ import Tools.execution.task_runtime.runtime_state_contract as runtime_state_cont
 import Tools.execution.audit.batch_review_obligation_contract as batch_review_obligation_contract
 from Tools.platform.common.primitives import catalog_record
 from Tools.platform.common.reporting import write_canonical_json, host_environment_boundary
-from Tools.platform.common.reporting import publication_result_reliable, observe_tool_output
+from Tools.platform.common.reporting import publication_result_reliable, observe_invocation
 from Tools.platform.repository import path_admission, path_capability
 from Tools.platform.common.host_environment import HostEnvironmentUnavailable, preparation_request
 
@@ -884,14 +884,10 @@ def _run_command(root, tool, arguments):
         retained = os.fstat(root_fd)
         if (actual.st_dev, actual.st_ino) != (retained.st_dev, retained.st_ino):
             raise RunnerError("Runner root differs from the invocation workspace")
-        parent = path_capability.subprocess_kwargs().get("env_overrides", {})
-        inherited = json.loads(parent.get(path_capability.PATH_CAPABILITIES_ENV,
-                                         '{"capabilities":[]}'))["capabilities"]
         description = {"name": tool, "schema": schema,
                        "workspace_argument": workspace_argument}
-        with path_admission.invocation(description, values, os.path.abspath(root),
-                                       root_fd, os.environ,
-                                       inherited_records=inherited) as binding:
+        with path_capability.child_invocation(description, values, os.path.abspath(root),
+                                               root_fd, os.environ) as binding:
             command = _render_command(tool, script, schema, binding["arguments"])
             if observation is not None:
                 observation["stage"] = "dispatch"
@@ -908,17 +904,14 @@ def _run_command(root, tool, arguments):
         selected = dict(binding["arguments"])
         if cli_argv_renderer.STRUCTURED_OUTPUT_FLAG in command[2:]:
             selected[cli_argv_renderer.STRUCTURED_OUTPUT_ARGUMENT] = True
-        observed = observe_tool_output(
+        observed = observe_invocation(
             output_contract, completed.stdout.encode("utf-8"),
-            completed.returncode, selected, host_boundary=host_boundary)
-        errors = []
+            completed.returncode, selected, binding=binding,
+            host_boundary=host_boundary)
+        errors = list(observed["invocation_errors"])
         if not observed["output_reliable"]:
             errors.append(observed.get("stdout_parse_error") or
                           "child output requires a stop or unresolved operation review")
-        if completed.returncode in (0, 2) and binding["missing"]:
-            errors.append("child did not consume admitted paths: %s" % binding["missing"])
-        if binding["acknowledgement_error"]:
-            errors.append(binding["acknowledgement_error"])
         completed.invocation_errors = errors
         if observation is not None:
             child.update(invocation_errors=errors, observation=observed)

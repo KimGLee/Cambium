@@ -10,6 +10,7 @@ import stat
 import contextlib
 import json
 import uuid
+from dataclasses import dataclass
 
 from Tools.platform.agent_interface.agent_interface_contract import PATH_EXTENSION_KEY
 from Tools.platform.agent_interface import agent_interface_contract as interface
@@ -22,44 +23,81 @@ class PathAdmissionError(ValueError):
         self.data = data or {}
 
 
+@dataclass(frozen=True)
+class DelegationScope:
+    """Validated parent authority and its local consumption sink, never wire input."""
+
+    workspace_identity: tuple
+    records: tuple
+    acknowledge: object
+
+
+def _delegated_inputs(rows, workspace_fd, parent_scope):
+    if parent_scope is None:
+        return {}
+    if not isinstance(parent_scope, DelegationScope):
+        raise PathAdmissionError("child requires a validated parent delegation scope")
+    identity = os.fstat(workspace_fd)
+    if ((identity.st_dev, identity.st_ino) != parent_scope.workspace_identity or
+            not callable(parent_scope.acknowledge)):
+        raise PathAdmissionError("child delegation differs from the parent workspace")
+    delegated = {}
+    for row in rows:
+        for parent in parent_scope.records:
+            exact = row["spelling"] == parent["spelling"]
+            nested = (parent["kind"] == "directory" and
+                      (parent["spelling"] == "." or
+                       row["spelling"].startswith(parent["spelling"] + "/")))
+            if not (exact or nested):
+                continue
+            if (parent["consumption"] != "transaction" and
+                    parent["consumption"] != row["consumption"]):
+                raise PathAdmissionError("child cannot widen inherited path mode")
+            inherited_target, opened = retain_path(
+                "delegated child", row["argument"], workspace_fd,
+                parent["spelling"], parent, 0)
+            try:
+                expected = (parent["target_dev"], parent["target_ino"])
+                if (inherited_target["target_dev"], inherited_target["target_ino"]) != expected:
+                    raise PathAdmissionError("child path no longer names inherited effective target")
+                if exact and (row["target_dev"], row["target_ino"]) != expected:
+                    raise PathAdmissionError("child input differs from the retained parent object")
+            finally:
+                for fd in opened:
+                    os.close(fd)
+            # Independent write admissions cannot settle/advance their parent's
+            # write scope through a read ACK. Current Runner outer inputs are
+            # snapshots. Same-scope writer children retain their existing I/O
+            # channel through kblib, including its after-image machinery.
+            if row["consumption"] != "snapshot":
+                raise PathAdmissionError(
+                    "independent child cannot delegate a parent write scope; "
+                    "use the admitted writer's same-scope I/O")
+            if exact and parent["consumption"] == "snapshot":
+                delegated.setdefault(row["capability_id"], []).append(parent)
+            # A subtree read is not consumption of the full parent tree, and
+            # a narrowed snapshot cannot complete a parent transaction scope.
+    return delegated
+
+
 @contextlib.contextmanager
 def invocation(tool, arguments, workspace_root, workspace_fd, environment,
-               *, inherited_records=()):
+               *, parent_scope=None):
     """Own the lifetime of one invocation's root, arguments, FDs and ACKs.
 
     The orchestrator supplies an already authorized Tool selection. No registry
     is loaded here, and a child invocation gets its own consumption channel.
     """
     rows, descriptors = admit_paths(tool, arguments, workspace_root, workspace_fd)
+    scope = uuid.uuid4().hex
+    for row in rows:
+        row["capability_id"] = scope + ":" + row["capability_id"]
     try:
-        for row in rows:
-            for parent in inherited_records:
-                exact = row["spelling"] == parent["spelling"]
-                nested = (parent["kind"] == "directory" and
-                          (parent["spelling"] == "." or
-                           row["spelling"].startswith(parent["spelling"] + "/")))
-                if not (exact or nested):
-                    continue
-                if (parent["consumption"] != "transaction" and
-                        parent["consumption"] != row["consumption"]):
-                    raise PathAdmissionError("child cannot widen inherited path mode")
-                inherited_target, opened = retain_path(
-                    tool["name"], row["argument"], workspace_fd,
-                    parent["spelling"], parent, 0)
-                try:
-                    if (inherited_target["target_dev"], inherited_target["target_ino"]) != (
-                            parent["target_dev"], parent["target_ino"]):
-                        raise PathAdmissionError("child path no longer names inherited effective target")
-                finally:
-                    for fd in opened:
-                        os.close(fd)
+        delegated = _delegated_inputs(rows, workspace_fd, parent_scope)
     except BaseException:
         for fd in descriptors:
             os.close(fd)
         raise
-    scope = uuid.uuid4().hex
-    for row in rows:
-        row["capability_id"] = scope + ":" + row["capability_id"]
     values = dict(arguments)
     values[tool["workspace_argument"]] = "."
     for name, prop in tool["schema"]["properties"].items():
@@ -97,7 +135,10 @@ def invocation(tool, arguments, workspace_root, workspace_fd, environment,
                 observed += chunk
             binding["acknowledgement_error"] = None
             try:
-                acknowledged = set(observed.decode("utf-8").splitlines())
+                decoded = observed.decode("utf-8")
+                acknowledged = set(decoded.splitlines())
+                if decoded and not decoded.endswith("\n"):
+                    binding["acknowledgement_error"] = "partial capability acknowledgement"
             except UnicodeError as exc:
                 acknowledged = set()
                 binding["acknowledgement_error"] = str(exc)
@@ -106,6 +147,15 @@ def invocation(tool, arguments, workspace_root, workspace_fd, environment,
                 binding["acknowledgement_error"] = "foreign capability acknowledgement"
             binding["acknowledged"] = sorted(acknowledged & required)
             binding["missing"] = sorted(required - acknowledged)
+            binding["delegated_consumptions"] = []
+            if not binding["acknowledgement_error"]:
+                try:
+                    for child_id in binding["acknowledged"]:
+                        for parent in delegated.get(child_id, ()):
+                            parent_scope.acknowledge(parent)
+                            binding["delegated_consumptions"].append(parent["capability_id"])
+                except (OSError, ValueError) as exc:
+                    binding["acknowledgement_error"] = "parent consumption settlement failed: %s" % exc
         finally:
             os.close(ack_read)
 

@@ -518,57 +518,9 @@ def read_contract(path):
 # ---------------------------------------------------------------------------
 
 
-def property_schema(argument, path_capability=None):
-    """One JSON Schema property for one declared argument."""
-    schema = agent_interface_contract.argument_schema(argument)
-
-    help_text = argument.get("help")
-    if help_text:
-        schema["description"] = help_text
-    if argument.get("default") is not None and \
-            argument.get("default_type") != "argparse.SUPPRESS":
-        schema["default"] = argument["default"]
-
-    if path_capability is not None:
-        schema[PATH_EXTENSION_KEY] = {
-            "access": path_capability["access"],
-            "consumption": path_capability["consumption"],
-            "constraint": path_capability["constraint"],
-            "value": path_capability["value"],
-            "suffixes": list(path_capability["suffixes"]),
-            "active_when_any": list(path_capability["active_when_any"]),
-            "inactive_when_any": list(
-                path_capability["inactive_when_any"]),
-        }
-    return schema
-
-
-def input_schema(record):
-    """The MCP `inputSchema` for one tool record of the compiled contract."""
-    properties = {}
-    required = []
-    path_capabilities = {
-        item["argument"]: item
-        for item in record["agent_interface"].get("path_arguments") or []
-    }
-    for argument in record["arguments"]:
-        dest = argument["dest"]
-        properties[dest] = property_schema(
-            argument, path_capability=path_capabilities.get(dest))
-        if argument.get("required"):
-            required.append(dest)
-    schema = {
-        "type": "object",
-        "properties": properties,
-        "additionalProperties": False,
-    }
-    if required:
-        schema["required"] = required
-    return schema
-
-
 def mcp_tool(record):
-    tool = {"name": record["tool"], "inputSchema": input_schema(record)}
+    tool = {"name": record["tool"],
+            "inputSchema": cli_argv_renderer.schema_from_compiled_tool(record)}
     tool[OUTPUT_EXTENSION_KEY] = dict(record["agent_interface"]["output"])
     tool[HOST_BOUNDARY_EXTENSION_KEY] = record["host_environment_boundary"]
     tool[WORKSPACE_EXTENSION_KEY] = {

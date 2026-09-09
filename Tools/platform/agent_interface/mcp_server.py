@@ -294,12 +294,6 @@ HOST_BOUNDARY_EXTENSION_KEY = agent_interface_contract.HOST_BOUNDARY_EXTENSION_K
 
 # The whole of this layer's understanding of a tool's outcome. Nothing else
 # in this file decides what a run meant.
-VERDICTS = {
-    0: "clean",
-    1: "failed_or_unreliable",
-    2: "hold",
-}
-UNREADABLE_VERDICT = "unreadable"
 
 # A stream is echoed back for a person to read, not stored, so a runaway
 # scan does not have to travel through the host intact. Parsing happens
@@ -849,14 +843,6 @@ def run_tool(tool, arguments, workspace_root, workspace_fd, environ):
             INTERNAL_ERROR, "%s could not be executed: %s" % (tool["name"], exc),
             {"tool": tool["name"]}) from exc
     acknowledged = binding["acknowledged"]
-    invocation_errors = []
-    if binding["acknowledgement_error"]:
-        invocation_errors.append(binding["acknowledgement_error"])
-    if completed.returncode in (0, 2) and binding["missing"]:
-        invocation_errors.append(
-            "%s completed without consuming retained path capability(s): %s" %
-            (tool["name"], ", ".join(binding["missing"])))
-
     report_text = completed.stderr.decode("utf-8", errors="replace")
     report, report_truncated = clip(report_text)
 
@@ -865,9 +851,10 @@ def run_tool(tool, arguments, workspace_root, workspace_fd, environ):
     output_arguments = dict(binding["arguments"])
     if tool["output"]["mode"] == "json-option":
         output_arguments[tool["output"]["json_argument"]] = tool["output"]["json_value"]
-    observed = reporting.observe_tool_output(
+    observed = reporting.observe_invocation(
         tool["output"], completed.stdout, completed.returncode, output_arguments,
-        host_boundary=tool["host_environment_boundary"])
+        binding=binding, host_boundary=tool["host_environment_boundary"])
+    invocation_errors = observed["invocation_errors"]
     parse_state = observed["stdout_parse"]
     parse_error = observed.get("stdout_parse_error")
     stdout_echo = None
@@ -877,7 +864,8 @@ def run_tool(tool, arguments, workspace_root, workspace_fd, environ):
         if decoded.strip():
             stdout_echo, stdout_truncated = clip(decoded)
     code = completed.returncode
-    verdict = VERDICTS.get(code, UNREADABLE_VERDICT)
+    verdict = agent_interface_contract.PROCESS_VERDICTS.get(
+        code, agent_interface_contract.UNREADABLE_VERDICT)
 
     envelope = {
         "tool": tool["name"],
@@ -888,7 +876,7 @@ def run_tool(tool, arguments, workspace_root, workspace_fd, environ):
         "verdict_source": "process exit code",
         "stdout_parse": parse_state,
         "output_reliable": observed["output_reliable"],
-        "invocation_reliable": not invocation_errors,
+        "invocation_reliable": observed["invocation_reliable"],
         "invocation_errors": invocation_errors,
         "missing_path_capabilities": binding["missing"],
         "report": report,
@@ -907,10 +895,15 @@ def run_tool(tool, arguments, workspace_root, workspace_fd, environ):
     if ignored:
         envelope["transport_owned_arguments_ignored"] = ignored
 
-    lines = ["%s/%s: exit_code=%d verdict=%s output_reliable=%s"
+    lines = ["%s/%s: exit_code=%d verdict=%s output_reliable=%s invocation_reliable=%s"
              % (SERVER_NAME, tool["name"], code, verdict,
-                str(observed["output_reliable"]).lower())]
-    if verdict == UNREADABLE_VERDICT:
+                str(observed["output_reliable"]).lower(),
+                str(observed["invocation_reliable"]).lower())]
+    if invocation_errors:
+        lines.append("invocation did not settle reliably: %s. Returned child "
+                     "operation facts are preserved; do not infer non-execution or retry." %
+                     "; ".join(invocation_errors))
+    if verdict == agent_interface_contract.UNREADABLE_VERDICT:
         lines.append(
             "exit code %d has no defined meaning in this distribution; it "
             "has not been read as a verdict." % code)

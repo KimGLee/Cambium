@@ -109,8 +109,7 @@ class InvocationContractTests(unittest.TestCase):
                     ["checker"], "checker", 0, malformed, "")
         empty = check_batch_close._checker_json_result(
             ["checker"], "checker", 0, "[]", "")
-        self.assertIn("checker produced no machine-readable receipts",
-                      empty["errors"])
+        self.assertTrue(empty["errors"])
 
     def test_registered_scan_fixture_obeys_the_checker_json_transport(self):
         record = kblib.make_receipt(

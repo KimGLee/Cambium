@@ -29,6 +29,7 @@ import tempfile
 from types import SimpleNamespace
 
 import Tools.platform.common.kblib as kblib
+from Tools.platform.common import reporting
 from Tools.execution.evidence import receipt_type_contract
 import Tools.governance.control.metadata_execution_contract as metadata_execution_contract
 import Tools.knowledge.metadata.metadata_property_state as metadata_property_state
@@ -409,13 +410,7 @@ def validate_registered_scan_receipts(
     if (not allowed or len(allowed) != len(set(allowed)) or
             any(value not in {"pass", "candidate"} for value in allowed)):
         raise ValueError("registered scan allowed results are invalid")
-    if (not isinstance(exit_code, int) or isinstance(exit_code, bool) or
-            exit_code not in (0, 1, 2)):
-        raise ValueError("registered scan returned an unregistered exit code")
-    calculated = kblib.exit_code(records)
-    if calculated != exit_code:
-        raise ValueError(
-            "registered scan exit code differs from its emitted receipt set")
+    reporting.validate_receipt_process(exit_code, records)
     noncurrent = [record for record in records
                   if record.get("result") == "fail" or
                   record.get("invalidated_by") is not None]

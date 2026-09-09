@@ -52,7 +52,7 @@
       "owner": "Tools/tests/fixtures/e2e/batch_close_scenarios.py",
       "path": "Tools/tests/fixtures/integration/batch_close_applied_checkpoint",
       "purpose": "Generated current-contract applied batch checkpoint for close producer integrations",
-      "tree_sha256": "sha256:3067c1fcf29fc9b656a9709f8a76a0062083f803f36c4d7a86632f84489bc629"
+      "tree_sha256": "sha256:0fddf6e999576e74971539bf2b2449992a14e99cb53f271fd69748f031cad913"
     },
     {
       "bytes": 111590,
@@ -63,7 +63,7 @@
       "owner": "Tools/tests/fixtures/e2e/batch_close_scenarios.py",
       "path": "Tools/tests/fixtures/integration/batch_close_state_mutating_checkpoint",
       "purpose": "Generated applied checkpoint for the hostile registered-verifier recovery path",
-      "tree_sha256": "sha256:dfafd94be8f5ce12ebfd9dfc1c6f7029e20c87034e3ca8083c2c22fba4165fd0"
+      "tree_sha256": "sha256:cd066f14069d39355f9e37d72fdf36b3a711333dbe9155cc0754c9d8c4510551"
     },
     {
       "bytes": 394972,
@@ -74,7 +74,7 @@
       "owner": "Tools/tests/fixtures/e2e/required_queue_scenarios.py",
       "path": "Tools/tests/fixtures/integration/maintenance_closed_checkpoint",
       "purpose": "Generated and validated current-contract maintenance-closed integration checkpoint",
-      "tree_sha256": "sha256:f19e0e208b477eea19681e58b03b90e74234c73460af92a4e2d2fa8c4cc6b539"
+      "tree_sha256": "sha256:1b30d9d0b0ed68c13ea89261a2a7faa9008bd6114c42e5c4f8da355f7643b6df"
     },
     {
       "bytes": 388270,
@@ -85,7 +85,7 @@
       "owner": "Tools/tests/fixtures/e2e/required_queue_scenarios.py",
       "path": "Tools/tests/fixtures/integration/terminal_closed_checkpoint",
       "purpose": "Generated current-contract terminal-profile checkpoint with both batches closed",
-      "tree_sha256": "sha256:b5a00399ae4866d50e72a31a9cbfa6b3e9f35e92f1e7cda3b802bf3b58c447d9"
+      "tree_sha256": "sha256:5225805f3a44bebd26c842769235025876b9dc769f85c71710f2a86016338fe7"
     },
     {
       "bytes": 104791,
@@ -96,7 +96,7 @@
       "owner": "Tools/tests/fixtures/e2e/update_queue_scenarios.py",
       "path": "Tools/tests/fixtures/integration/update_queue_merge_admission_checkpoint",
       "purpose": "Generated current-contract open Queue checkpoint with complete pre-merge evidence",
-      "tree_sha256": "sha256:cd6fb878d3053cdcb663f3696bf980c808ac80c8f768e76c2b6c538ebaa49b3d"
+      "tree_sha256": "sha256:d9950f8d10b56ef747151072c84e5646c18d5b5863e5cf0151b9b07d4f314220"
     },
     {
       "bytes": 107299,
@@ -107,7 +107,7 @@
       "owner": "Tools/tests/fixtures/e2e/update_queue_scenarios.py",
       "path": "Tools/tests/fixtures/integration/update_queue_merged_checkpoint",
       "purpose": "Generated and validated current-contract merge-ready Queue integration checkpoint",
-      "tree_sha256": "sha256:4011c973a50d659c69904844e0a81bd85e61023684e1ad810e9cdf7d865a3069"
+      "tree_sha256": "sha256:aaa8f1754a44539ece3b3f387b00c96b0e9cfdbc5fb41b3b9edb9a2d39e90a69"
     },
     {
       "bytes": 34560,
@@ -118,7 +118,7 @@
       "owner": "Tools/tests/fixtures/e2e/update_queue_scenarios.py",
       "path": "Tools/tests/fixtures/integration/update_queue_open_checkpoint",
       "purpose": "Generated current-contract open Queue checkpoint before page work begins",
-      "tree_sha256": "sha256:1d190ca80addf71173cc9b86a8f8dc8c3b71cc9e316a8b6315cbae8d987d8a9f"
+      "tree_sha256": "sha256:813b5f43eed667b895b841834b5bf893e2bb3917368250660b5f83820811bc50"
     },
     {
       "bytes": 29591,
@@ -129,7 +129,7 @@
       "owner": "Tools/tests/fixtures/e2e/update_queue_scenarios.py",
       "path": "Tools/tests/fixtures/integration/update_queue_planning_ready_checkpoint",
       "purpose": "Generated current-contract planning checkpoint with one current ready-gate Receipt",
-      "tree_sha256": "sha256:19d986e5671991aee369e6e6ce4b65d589eee24d32ce031727d5764b7cb04029"
+      "tree_sha256": "sha256:d3238361a5f57523c447a5f9c9197e5f87f2e6b6e0c3ff9be0c22bb71c6b88b8"
     }
   ],
   "fixtures": [
@@ -328,7 +328,7 @@
       ],
       "effects": {
         "file_copies": 2,
-        "full_repository_copies": 3,
+        "full_repository_copies": 2,
         "process_calls": 2,
         "temp_resources": 1
       },
@@ -78681,7 +78681,7 @@
       "semantics": "repository_managed_content_set"
     },
     {
-      "case_count": 53,
+      "case_count": 56,
       "cases": [
         {
           "consumer_only": false,
@@ -81698,6 +81698,130 @@
           "effects": {
             "file_copies": 0,
             "full_repository_copies": 0,
+            "process_calls": 3,
+            "temp_resources": 0
+          },
+          "execution": {
+            "builder_triggers": [],
+            "e2e_builder_entrypoints": [],
+            "fixture_entrypoints": [
+              "Tools/tests/support/canonical_registry_fixture.py:install_isolated_tool_registry_bundle"
+            ],
+            "full_lifecycle": false,
+            "full_lifecycle_entrypoints": [],
+            "lifecycle_signals": [],
+            "recurring_effects": {
+              "file_copies": 1,
+              "full_repository_copies": 0,
+              "process_calls": 3,
+              "temp_resources": 1
+            },
+            "scopes": {
+              "direct_method": {
+                "builder_triggers": [],
+                "e2e_builder_entrypoints": [],
+                "effects": {
+                  "file_copies": 0,
+                  "full_repository_copies": 0,
+                  "process_calls": 3,
+                  "temp_resources": 0
+                },
+                "first_use_builds": {},
+                "fixture_entrypoints": [],
+                "full_lifecycle": false,
+                "full_lifecycle_entrypoints": [],
+                "lifecycle_signals": []
+              },
+              "per_class": {
+                "builder_triggers": [],
+                "e2e_builder_entrypoints": [],
+                "effects": {
+                  "file_copies": 1,
+                  "full_repository_copies": 0,
+                  "process_calls": 0,
+                  "temp_resources": 1
+                },
+                "first_use_builds": {},
+                "fixture_entrypoints": [
+                  "Tools/tests/support/canonical_registry_fixture.py:install_isolated_tool_registry_bundle"
+                ],
+                "full_lifecycle": false,
+                "full_lifecycle_entrypoints": [],
+                "lifecycle_signals": []
+              },
+              "per_method": {
+                "builder_triggers": [],
+                "e2e_builder_entrypoints": [],
+                "effects": {
+                  "file_copies": 0,
+                  "full_repository_copies": 0,
+                  "process_calls": 0,
+                  "temp_resources": 0
+                },
+                "first_use_builds": {},
+                "fixture_entrypoints": [],
+                "full_lifecycle": false,
+                "full_lifecycle_entrypoints": [],
+                "lifecycle_signals": []
+              },
+              "per_process": {
+                "builder_triggers": [],
+                "e2e_builder_entrypoints": [],
+                "effects": {
+                  "file_copies": 0,
+                  "full_repository_copies": 0,
+                  "process_calls": 0,
+                  "temp_resources": 0
+                },
+                "first_use_builds": {},
+                "fixture_entrypoints": [],
+                "full_lifecycle": false,
+                "full_lifecycle_entrypoints": [],
+                "lifecycle_signals": []
+              }
+            },
+            "transitive_effects": {
+              "file_copies": 1,
+              "full_repository_copies": 0,
+              "process_calls": 3,
+              "temp_resources": 1
+            },
+            "triggered_once_per_process": {
+              "builds": {},
+              "effects": {
+                "file_copies": 0,
+                "full_repository_copies": 0,
+                "process_calls": 0,
+                "temp_resources": 0
+              }
+            }
+          },
+          "level": "slow",
+          "lifecycle": "current",
+          "override": "PathCapabilityIsolationTests.*",
+          "owner": "Tools/platform/repository/path_capability.py",
+          "owner_contract_symbol": "path_capability_security_recovery_isolation",
+          "owner_reference": {
+            "kind": "invariant",
+            "owner": "Tools/platform/repository/path_capability.py",
+            "status": "declared",
+            "target": "path_capability_security_recovery_isolation"
+          },
+          "owner_reference_kind": null,
+          "parallel_safe": false,
+          "path": "Tools/tests/test_mcp_server.py",
+          "primary_owner_test": "test_mcp_server.PathCapabilityIsolationTests.test_independent_nested_scopes_propagate_only_real_reads_through_hold",
+          "selector": "PathCapabilityIsolationTests.test_independent_nested_scopes_propagate_only_real_reads_through_hold",
+          "semantics": "path_capability_security_recovery_isolation",
+          "test_id": "test_mcp_server.PathCapabilityIsolationTests.test_independent_nested_scopes_propagate_only_real_reads_through_hold"
+        },
+        {
+          "consumer_only": false,
+          "disposition": "keep",
+          "duplicate_group": null,
+          "effects": {
+            "file_copies": 0,
+            "full_repository_copies": 0,
             "process_calls": 1,
             "temp_resources": 0
           },
@@ -83051,6 +83175,126 @@
             "file_copies": 0,
             "full_repository_copies": 0,
             "process_calls": 0,
+            "temp_resources": 1
+          },
+          "execution": {
+            "builder_triggers": [],
+            "e2e_builder_entrypoints": [],
+            "fixture_entrypoints": [],
+            "full_lifecycle": false,
+            "full_lifecycle_entrypoints": [],
+            "lifecycle_signals": [],
+            "recurring_effects": {
+              "file_copies": 0,
+              "full_repository_copies": 0,
+              "process_calls": 0,
+              "temp_resources": 1
+            },
+            "scopes": {
+              "direct_method": {
+                "builder_triggers": [],
+                "e2e_builder_entrypoints": [],
+                "effects": {
+                  "file_copies": 0,
+                  "full_repository_copies": 0,
+                  "process_calls": 0,
+                  "temp_resources": 1
+                },
+                "first_use_builds": {},
+                "fixture_entrypoints": [],
+                "full_lifecycle": false,
+                "full_lifecycle_entrypoints": [],
+                "lifecycle_signals": []
+              },
+              "per_class": {
+                "builder_triggers": [],
+                "e2e_builder_entrypoints": [],
+                "effects": {
+                  "file_copies": 0,
+                  "full_repository_copies": 0,
+                  "process_calls": 0,
+                  "temp_resources": 0
+                },
+                "first_use_builds": {},
+                "fixture_entrypoints": [],
+                "full_lifecycle": false,
+                "full_lifecycle_entrypoints": [],
+                "lifecycle_signals": []
+              },
+              "per_method": {
+                "builder_triggers": [],
+                "e2e_builder_entrypoints": [],
+                "effects": {
+                  "file_copies": 0,
+                  "full_repository_copies": 0,
+                  "process_calls": 0,
+                  "temp_resources": 0
+                },
+                "first_use_builds": {},
+                "fixture_entrypoints": [],
+                "full_lifecycle": false,
+                "full_lifecycle_entrypoints": [],
+                "lifecycle_signals": []
+              },
+              "per_process": {
+                "builder_triggers": [],
+                "e2e_builder_entrypoints": [],
+                "effects": {
+                  "file_copies": 0,
+                  "full_repository_copies": 0,
+                  "process_calls": 0,
+                  "temp_resources": 0
+                },
+                "first_use_builds": {},
+                "fixture_entrypoints": [],
+                "full_lifecycle": false,
+                "full_lifecycle_entrypoints": [],
+                "lifecycle_signals": []
+              }
+            },
+            "transitive_effects": {
+              "file_copies": 0,
+              "full_repository_copies": 0,
+              "process_calls": 0,
+              "temp_resources": 1
+            },
+            "triggered_once_per_process": {
+              "builds": {},
+              "effects": {
+                "file_copies": 0,
+                "full_repository_copies": 0,
+                "process_calls": 0,
+                "temp_resources": 0
+              }
+            }
+          },
+          "level": "unit",
+          "lifecycle": "current",
+          "override": "PathCapabilityUnitTests.*",
+          "owner": "Tools/platform/repository/path_capability.py",
+          "owner_contract_symbol": "path_capability_machine_owner",
+          "owner_reference": {
+            "kind": "invariant",
+            "owner": "Tools/platform/repository/path_capability.py",
+            "status": "declared",
+            "target": "path_capability_machine_owner"
+          },
+          "owner_reference_kind": null,
+          "parallel_safe": true,
+          "path": "Tools/tests/test_mcp_server.py",
+          "primary_owner_test": "test_mcp_server.PathCapabilityUnitTests.test_delegation_does_not_complete_unread_writes_subtrees_or_bad_ack",
+          "selector": "PathCapabilityUnitTests.test_delegation_does_not_complete_unread_writes_subtrees_or_bad_ack",
+          "semantics": "path_capability_machine_owner",
+          "test_id": "test_mcp_server.PathCapabilityUnitTests.test_delegation_does_not_complete_unread_writes_subtrees_or_bad_ack"
+        },
+        {
+          "consumer_only": false,
+          "disposition": "keep",
+          "duplicate_group": null,
+          "effects": {
+            "file_copies": 0,
+            "full_repository_copies": 0,
+            "process_calls": 0,
             "temp_resources": 0
           },
           "execution": {
@@ -83282,6 +83526,126 @@
           "selector": "PathCapabilityUnitTests.test_named_target_accepts_only_the_retained_unique_final_name",
           "semantics": "path_capability_machine_owner",
           "test_id": "test_mcp_server.PathCapabilityUnitTests.test_named_target_accepts_only_the_retained_unique_final_name"
+        },
+        {
+          "consumer_only": false,
+          "disposition": "keep",
+          "duplicate_group": null,
+          "effects": {
+            "file_copies": 0,
+            "full_repository_copies": 0,
+            "process_calls": 0,
+            "temp_resources": 1
+          },
+          "execution": {
+            "builder_triggers": [],
+            "e2e_builder_entrypoints": [],
+            "fixture_entrypoints": [],
+            "full_lifecycle": false,
+            "full_lifecycle_entrypoints": [],
+            "lifecycle_signals": [],
+            "recurring_effects": {
+              "file_copies": 0,
+              "full_repository_copies": 0,
+              "process_calls": 0,
+              "temp_resources": 1
+            },
+            "scopes": {
+              "direct_method": {
+                "builder_triggers": [],
+                "e2e_builder_entrypoints": [],
+                "effects": {
+                  "file_copies": 0,
+                  "full_repository_copies": 0,
+                  "process_calls": 0,
+                  "temp_resources": 1
+                },
+                "first_use_builds": {},
+                "fixture_entrypoints": [],
+                "full_lifecycle": false,
+                "full_lifecycle_entrypoints": [],
+                "lifecycle_signals": []
+              },
+              "per_class": {
+                "builder_triggers": [],
+                "e2e_builder_entrypoints": [],
+                "effects": {
+                  "file_copies": 0,
+                  "full_repository_copies": 0,
+                  "process_calls": 0,
+                  "temp_resources": 0
+                },
+                "first_use_builds": {},
+                "fixture_entrypoints": [],
+                "full_lifecycle": false,
+                "full_lifecycle_entrypoints": [],
+                "lifecycle_signals": []
+              },
+              "per_method": {
+                "builder_triggers": [],
+                "e2e_builder_entrypoints": [],
+                "effects": {
+                  "file_copies": 0,
+                  "full_repository_copies": 0,
+                  "process_calls": 0,
+                  "temp_resources": 0
+                },
+                "first_use_builds": {},
+                "fixture_entrypoints": [],
+                "full_lifecycle": false,
+                "full_lifecycle_entrypoints": [],
+                "lifecycle_signals": []
+              },
+              "per_process": {
+                "builder_triggers": [],
+                "e2e_builder_entrypoints": [],
+                "effects": {
+                  "file_copies": 0,
+                  "full_repository_copies": 0,
+                  "process_calls": 0,
+                  "temp_resources": 0
+                },
+                "first_use_builds": {},
+                "fixture_entrypoints": [],
+                "full_lifecycle": false,
+                "full_lifecycle_entrypoints": [],
+                "lifecycle_signals": []
+              }
+            },
+            "transitive_effects": {
+              "file_copies": 0,
+              "full_repository_copies": 0,
+              "process_calls": 0,
+              "temp_resources": 1
+            },
+            "triggered_once_per_process": {
+              "builds": {},
+              "effects": {
+                "file_copies": 0,
+                "full_repository_copies": 0,
+                "process_calls": 0,
+                "temp_resources": 0
+              }
+            }
+          },
+          "level": "unit",
+          "lifecycle": "current",
+          "override": "PathCapabilityUnitTests.*",
+          "owner": "Tools/platform/repository/path_capability.py",
+          "owner_contract_symbol": "path_capability_machine_owner",
+          "owner_reference": {
+            "kind": "invariant",
+            "owner": "Tools/platform/repository/path_capability.py",
+            "status": "declared",
+            "target": "path_capability_machine_owner"
+          },
+          "owner_reference_kind": null,
+          "parallel_safe": true,
+          "path": "Tools/tests/test_mcp_server.py",
+          "primary_owner_test": "test_mcp_server.PathCapabilityUnitTests.test_nested_read_settles_only_consumed_parent_inputs",
+          "selector": "PathCapabilityUnitTests.test_nested_read_settles_only_consumed_parent_inputs",
+          "semantics": "path_capability_machine_owner",
+          "test_id": "test_mcp_server.PathCapabilityUnitTests.test_nested_read_settles_only_consumed_parent_inputs"
         },
         {
           "consumer_only": false,
@@ -85088,14 +85452,14 @@
       "effective_effects": {
         "file_copies": 1,
         "full_repository_copies": 0,
-        "process_calls": 13,
-        "temp_resources": 8
+        "process_calls": 16,
+        "temp_resources": 10
       },
       "effects": {
         "file_copies": 1,
         "full_repository_copies": 0,
-        "process_calls": 12,
-        "temp_resources": 8
+        "process_calls": 15,
+        "temp_resources": 10
       },
       "fixture_dependencies": [
         "Tools/tests/support/canonical_registry_fixture.py",
@@ -121022,13 +121386,13 @@
           "level": "unit",
           "lifecycle": "current",
           "override": "ArgumentProjectionTests.test_argument_shape_matrix",
-          "owner": "Tools/platform/agent_interface/render_interface_projection.py",
-          "owner_contract_symbol": "render_interface_projection.property_schema",
+          "owner": "Tools/platform/agent_interface/agent_interface_contract.py",
+          "owner_contract_symbol": "agent_interface_contract.argument_schema",
           "owner_reference": {
             "kind": "python-symbol",
-            "owner": "Tools/platform/agent_interface/render_interface_projection.py",
+            "owner": "Tools/platform/agent_interface/agent_interface_contract.py",
             "status": "resolved",
-            "target": "property_schema"
+            "target": "argument_schema"
           },
           "owner_reference_kind": null,
           "parallel_safe": true,
@@ -125599,15 +125963,13 @@
             "temp_resources": 0
           },
           "execution": {
-            "builder_triggers": [
-              "Tools/tests/support/required_queue_fixture.py:_template[initial-plan]"
-            ],
-            "e2e_builder_entrypoints": [
-              "Tools/tests/support/required_queue_fixture.py:_template"
-            ],
+            "builder_triggers": [],
+            "e2e_builder_entrypoints": [],
             "fixture_entrypoints": [
+              "Tools/tests/fixtures/e2e/required_queue_scenarios.py:RequiredQueueE2EScenarioCase.execute_runner",
+              "Tools/tests/fixtures/e2e/required_queue_scenarios.py:RequiredQueueE2EScenarioCase.invoke_tool",
+              "Tools/tests/fixtures/e2e/required_queue_scenarios.py:RequiredQueueE2EScenarioCase.proposal_path",
               "Tools/tests/fixtures/e2e/required_queue_scenarios.py:RequiredQueueE2EScenarioCase.setUp",
-              "Tools/tests/support/required_queue_fixture.py:RequiredQueueFixture.merge_and_close",
               "Tools/tests/support/required_queue_fixture.py:RequiredQueueFixture.run_tool",
               "Tools/tests/support/required_queue_fixture.py:RequiredQueueFixture.task_transition"
             ],
@@ -125623,8 +125985,8 @@
             ],
             "recurring_effects": {
               "file_copies": 3,
-              "full_repository_copies": 1,
-              "process_calls": 29,
+              "full_repository_copies": 0,
+              "process_calls": 5,
               "temp_resources": 1
             },
             "scopes": {
@@ -125634,12 +125996,14 @@
                 "effects": {
                   "file_copies": 0,
                   "full_repository_copies": 0,
-                  "process_calls": 29,
+                  "process_calls": 5,
                   "temp_resources": 0
                 },
                 "first_use_builds": {},
                 "fixture_entrypoints": [
-                  "Tools/tests/support/required_queue_fixture.py:RequiredQueueFixture.merge_and_close",
+                  "Tools/tests/fixtures/e2e/required_queue_scenarios.py:RequiredQueueE2EScenarioCase.execute_runner",
+                  "Tools/tests/fixtures/e2e/required_queue_scenarios.py:RequiredQueueE2EScenarioCase.invoke_tool",
+                  "Tools/tests/fixtures/e2e/required_queue_scenarios.py:RequiredQueueE2EScenarioCase.proposal_path",
                   "Tools/tests/support/required_queue_fixture.py:RequiredQueueFixture.run_tool",
                   "Tools/tests/support/required_queue_fixture.py:RequiredQueueFixture.task_transition"
                 ],
@@ -125668,26 +126032,15 @@
                 "lifecycle_signals": []
               },
               "per_method": {
-                "builder_triggers": [
-                  "Tools/tests/support/required_queue_fixture.py:_template[initial-plan]"
-                ],
-                "e2e_builder_entrypoints": [
-                  "Tools/tests/support/required_queue_fixture.py:_template"
-                ],
+                "builder_triggers": [],
+                "e2e_builder_entrypoints": [],
                 "effects": {
                   "file_copies": 3,
-                  "full_repository_copies": 1,
+                  "full_repository_copies": 0,
                   "process_calls": 0,
                   "temp_resources": 1
                 },
-                "first_use_builds": {
-                  "Tools/tests/support/required_queue_fixture.py:_template[initial-plan]": {
-                    "file_copies": 1,
-                    "full_repository_copies": 3,
-                    "process_calls": 1,
-                    "temp_resources": 3
-                  }
-                },
+                "first_use_builds": {},
                 "fixture_entrypoints": [
                   "Tools/tests/fixtures/e2e/required_queue_scenarios.py:RequiredQueueE2EScenarioCase.setUp"
                 ],
@@ -125712,25 +126065,18 @@
               }
             },
             "transitive_effects": {
-              "file_copies": 4,
-              "full_repository_copies": 4,
-              "process_calls": 30,
-              "temp_resources": 4
+              "file_copies": 3,
+              "full_repository_copies": 0,
+              "process_calls": 5,
+              "temp_resources": 1
             },
             "triggered_once_per_process": {
-              "builds": {
-                "Tools/tests/support/required_queue_fixture.py:_template[initial-plan]": {
-                  "file_copies": 1,
-                  "full_repository_copies": 3,
-                  "process_calls": 1,
-                  "temp_resources": 3
-                }
-              },
+              "builds": {},
               "effects": {
-                "file_copies": 1,
-                "full_repository_copies": 3,
-                "process_calls": 1,
-                "temp_resources": 3
+                "file_copies": 0,
+                "full_repository_copies": 0,
+                "process_calls": 0,
+                "temp_resources": 0
               }
             }
           },
@@ -125787,20 +126133,7 @@
       "owner": "kernel/K13 Task Runtime and Execution Control/runtime-state-model.json",
       "parallel_safe": false,
       "path": "Tools/tests/test_required_queue_e2e.py",
-      "scenario_first_use_builds": {
-        "Tools/tests/support/required_queue_fixture.py:_template[initial-plan]": {
-          "effects": {
-            "file_copies": 1,
-            "full_repository_copies": 3,
-            "process_calls": 1,
-            "temp_resources": 3
-          },
-          "full_lifecycle": false,
-          "triggered_by": [
-            "test_required_queue_e2e.RequiredQueueLifecycleEndToEndTests.test_real_terminal_proof_receipt_completes_task"
-          ]
-        }
-      },
+      "scenario_first_use_builds": {},
       "semantics": "required_queue_current_build_mcp_e2e"
     },
     {
@@ -148649,7 +148982,7 @@
       "semantics": "tool_runtime_primitives"
     },
     {
-      "case_count": 22,
+      "case_count": 24,
       "cases": [
         {
           "consumer_only": false,
@@ -149126,10 +149459,250 @@
           "owner_reference_kind": null,
           "parallel_safe": true,
           "path": "Tools/tests/test_tool_runtime_reporting.py",
+          "primary_owner_test": "test_tool_runtime_reporting.CanonicalJsonOutputTests.test_complete_checker_process_is_validated_before_gate_selection",
+          "selector": "CanonicalJsonOutputTests.test_complete_checker_process_is_validated_before_gate_selection",
+          "semantics": "tool_runtime_reporting",
+          "test_id": "test_tool_runtime_reporting.CanonicalJsonOutputTests.test_complete_checker_process_is_validated_before_gate_selection"
+        },
+        {
+          "consumer_only": false,
+          "disposition": "keep",
+          "duplicate_group": null,
+          "effects": {
+            "file_copies": 0,
+            "full_repository_copies": 0,
+            "process_calls": 0,
+            "temp_resources": 0
+          },
+          "execution": {
+            "builder_triggers": [],
+            "e2e_builder_entrypoints": [],
+            "fixture_entrypoints": [],
+            "full_lifecycle": false,
+            "full_lifecycle_entrypoints": [],
+            "lifecycle_signals": [],
+            "recurring_effects": {
+              "file_copies": 0,
+              "full_repository_copies": 0,
+              "process_calls": 0,
+              "temp_resources": 0
+            },
+            "scopes": {
+              "direct_method": {
+                "builder_triggers": [],
+                "e2e_builder_entrypoints": [],
+                "effects": {
+                  "file_copies": 0,
+                  "full_repository_copies": 0,
+                  "process_calls": 0,
+                  "temp_resources": 0
+                },
+                "first_use_builds": {},
+                "fixture_entrypoints": [],
+                "full_lifecycle": false,
+                "full_lifecycle_entrypoints": [],
+                "lifecycle_signals": []
+              },
+              "per_class": {
+                "builder_triggers": [],
+                "e2e_builder_entrypoints": [],
+                "effects": {
+                  "file_copies": 0,
+                  "full_repository_copies": 0,
+                  "process_calls": 0,
+                  "temp_resources": 0
+                },
+                "first_use_builds": {},
+                "fixture_entrypoints": [],
+                "full_lifecycle": false,
+                "full_lifecycle_entrypoints": [],
+                "lifecycle_signals": []
+              },
+              "per_method": {
+                "builder_triggers": [],
+                "e2e_builder_entrypoints": [],
+                "effects": {
+                  "file_copies": 0,
+                  "full_repository_copies": 0,
+                  "process_calls": 0,
+                  "temp_resources": 0
+                },
+                "first_use_builds": {},
+                "fixture_entrypoints": [],
+                "full_lifecycle": false,
+                "full_lifecycle_entrypoints": [],
+                "lifecycle_signals": []
+              },
+              "per_process": {
+                "builder_triggers": [],
+                "e2e_builder_entrypoints": [],
+                "effects": {
+                  "file_copies": 0,
+                  "full_repository_copies": 0,
+                  "process_calls": 0,
+                  "temp_resources": 0
+                },
+                "first_use_builds": {},
+                "fixture_entrypoints": [],
+                "full_lifecycle": false,
+                "full_lifecycle_entrypoints": [],
+                "lifecycle_signals": []
+              }
+            },
+            "transitive_effects": {
+              "file_copies": 0,
+              "full_repository_copies": 0,
+              "process_calls": 0,
+              "temp_resources": 0
+            },
+            "triggered_once_per_process": {
+              "builds": {},
+              "effects": {
+                "file_copies": 0,
+                "full_repository_copies": 0,
+                "process_calls": 0,
+                "temp_resources": 0
+              }
+            }
+          },
+          "level": "unit",
+          "lifecycle": "current",
+          "override": null,
+          "owner": "Tools/platform/common/reporting.py",
+          "owner_contract_symbol": "tool_runtime_reporting",
+          "owner_reference": {
+            "kind": "invariant",
+            "owner": "Tools/platform/common/reporting.py",
+            "status": "declared",
+            "target": "tool_runtime_reporting"
+          },
+          "owner_reference_kind": null,
+          "parallel_safe": true,
+          "path": "Tools/tests/test_tool_runtime_reporting.py",
           "primary_owner_test": "test_tool_runtime_reporting.CanonicalJsonOutputTests.test_host_handoff_is_not_a_receipt_or_a_claim_that_nothing_was_written",
           "selector": "CanonicalJsonOutputTests.test_host_handoff_is_not_a_receipt_or_a_claim_that_nothing_was_written",
           "semantics": "tool_runtime_reporting",
           "test_id": "test_tool_runtime_reporting.CanonicalJsonOutputTests.test_host_handoff_is_not_a_receipt_or_a_claim_that_nothing_was_written"
+        },
+        {
+          "consumer_only": false,
+          "disposition": "keep",
+          "duplicate_group": null,
+          "effects": {
+            "file_copies": 0,
+            "full_repository_copies": 0,
+            "process_calls": 0,
+            "temp_resources": 0
+          },
+          "execution": {
+            "builder_triggers": [],
+            "e2e_builder_entrypoints": [],
+            "fixture_entrypoints": [],
+            "full_lifecycle": false,
+            "full_lifecycle_entrypoints": [],
+            "lifecycle_signals": [],
+            "recurring_effects": {
+              "file_copies": 0,
+              "full_repository_copies": 0,
+              "process_calls": 0,
+              "temp_resources": 0
+            },
+            "scopes": {
+              "direct_method": {
+                "builder_triggers": [],
+                "e2e_builder_entrypoints": [],
+                "effects": {
+                  "file_copies": 0,
+                  "full_repository_copies": 0,
+                  "process_calls": 0,
+                  "temp_resources": 0
+                },
+                "first_use_builds": {},
+                "fixture_entrypoints": [],
+                "full_lifecycle": false,
+                "full_lifecycle_entrypoints": [],
+                "lifecycle_signals": []
+              },
+              "per_class": {
+                "builder_triggers": [],
+                "e2e_builder_entrypoints": [],
+                "effects": {
+                  "file_copies": 0,
+                  "full_repository_copies": 0,
+                  "process_calls": 0,
+                  "temp_resources": 0
+                },
+                "first_use_builds": {},
+                "fixture_entrypoints": [],
+                "full_lifecycle": false,
+                "full_lifecycle_entrypoints": [],
+                "lifecycle_signals": []
+              },
+              "per_method": {
+                "builder_triggers": [],
+                "e2e_builder_entrypoints": [],
+                "effects": {
+                  "file_copies": 0,
+                  "full_repository_copies": 0,
+                  "process_calls": 0,
+                  "temp_resources": 0
+                },
+                "first_use_builds": {},
+                "fixture_entrypoints": [],
+                "full_lifecycle": false,
+                "full_lifecycle_entrypoints": [],
+                "lifecycle_signals": []
+              },
+              "per_process": {
+                "builder_triggers": [],
+                "e2e_builder_entrypoints": [],
+                "effects": {
+                  "file_copies": 0,
+                  "full_repository_copies": 0,
+                  "process_calls": 0,
+                  "temp_resources": 0
+                },
+                "first_use_builds": {},
+                "fixture_entrypoints": [],
+                "full_lifecycle": false,
+                "full_lifecycle_entrypoints": [],
+                "lifecycle_signals": []
+              }
+            },
+            "transitive_effects": {
+              "file_copies": 0,
+              "full_repository_copies": 0,
+              "process_calls": 0,
+              "temp_resources": 0
+            },
+            "triggered_once_per_process": {
+              "builds": {},
+              "effects": {
+                "file_copies": 0,
+                "full_repository_copies": 0,
+                "process_calls": 0,
+                "temp_resources": 0
+              }
+            }
+          },
+          "level": "unit",
+          "lifecycle": "current",
+          "override": null,
+          "owner": "Tools/platform/common/reporting.py",
+          "owner_contract_symbol": "tool_runtime_reporting",
+          "owner_reference": {
+            "kind": "invariant",
+            "owner": "Tools/platform/common/reporting.py",
+            "status": "declared",
+            "target": "tool_runtime_reporting"
+          },
+          "owner_reference_kind": null,
+          "parallel_safe": true,
+          "path": "Tools/tests/test_tool_runtime_reporting.py",
+          "primary_owner_test": "test_tool_runtime_reporting.CanonicalJsonOutputTests.test_invocation_observation_separates_ack_output_and_process_result",
+          "selector": "CanonicalJsonOutputTests.test_invocation_observation_separates_ack_output_and_process_result",
+          "semantics": "tool_runtime_reporting",
+          "test_id": "test_tool_runtime_reporting.CanonicalJsonOutputTests.test_invocation_observation_separates_ack_output_and_process_result"
         },
         {
           "consumer_only": false,
@@ -161483,7 +162056,7 @@
     "fixture_bundles": 8,
     "fixture_source_effects": {
       "file_copies": 16,
-      "full_repository_copies": 21,
+      "full_repository_copies": 20,
       "process_calls": 12,
       "temp_resources": 17
     },
@@ -161493,31 +162066,31 @@
       "e2e": 3,
       "historical-read-only": 1,
       "integration": 236,
-      "slow": 68,
-      "unit": 388
+      "slow": 69,
+      "unit": 392
     },
     "method_transitive_exposure": {
-      "e2e_builder": 1,
-      "file_copies": 55,
+      "e2e_builder": 0,
+      "file_copies": 56,
       "full_lifecycle": 1,
-      "full_repository_copies": 51,
-      "process_calls": 35,
-      "temp_resources": 313
+      "full_repository_copies": 50,
+      "process_calls": 36,
+      "temp_resources": 316
     },
-    "module_scenario_first_use_builds": 15,
+    "module_scenario_first_use_builds": 14,
     "owner_references": {
       "contract-reference:declared": 8,
-      "invariant:declared": 549,
+      "invariant:declared": 554,
       "python-symbol:resolved": 733
     },
-    "parallel_safe_cases": 1088,
+    "parallel_safe_cases": 1092,
     "source_effects": {
       "file_copies": 7,
       "full_repository_copies": 15,
-      "process_calls": 36,
-      "temp_resources": 139
+      "process_calls": 39,
+      "temp_resources": 141
     },
-    "test_cases": 1290,
+    "test_cases": 1295,
     "test_modules": 134
   }
 }

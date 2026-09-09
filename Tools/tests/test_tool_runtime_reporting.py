@@ -17,6 +17,41 @@ from Tools.platform.common.host_environment import host_handoff
 
 
 class CanonicalJsonOutputTests(unittest.TestCase):
+    def test_invocation_observation_separates_ack_output_and_process_result(self):
+        contract = kblib.load_yaml_file(os.path.join(
+            TOOLS, "agent-interface-policy.yaml"))["output_contracts"]["json-option-object"]
+        payload = {"applied": True, "next_action_error": "read-back unavailable"}
+        for code, missing, ack_error, output, reliable, readable in (
+                (0, [], None, payload, True, True),
+                (0, ["unconsumed"], None, payload, False, True),
+                (2, ["unconsumed"], None, payload, False, True),
+                (1, [], None, payload, True, True),
+                (1, [], "foreign ACK", payload, False, True),
+                (9, [], None, payload, False, True),
+                (-9, [], None, payload, False, True),
+                (0, [], None, "broken JSON", True, False)):
+            with self.subTest(code=code, missing=missing, ack_error=ack_error, output=output):
+                raw = output.encode() if isinstance(output, str) else kblib.canonical_json_bytes(output)
+                observed = reporting.observe_invocation(
+                    contract, raw, code, {"json": True},
+                    binding={"missing": missing, "acknowledgement_error": ack_error})
+                self.assertEqual(reliable, observed["invocation_reliable"])
+                self.assertEqual(readable, observed["output_reliable"])
+                if readable:
+                    self.assertEqual(payload, observed["stdout_json"])
+
+    def test_complete_checker_process_is_validated_before_gate_selection(self):
+        for results, code in ((["pass"], 0), (["pass", "fail"], 1),
+                              (["pass", "candidate"], 2), (["candidate", "fail"], 1)):
+            rows = [{"result": result} for result in results]
+            self.assertIs(rows, reporting.validate_receipt_process(code, rows))
+            for bad_code in (-9, 9, True, *({0, 1, 2} - {code})):
+                with self.subTest(results=results, code=bad_code), self.assertRaises(ValueError):
+                    reporting.validate_receipt_process(bad_code, rows)
+        for malformed in (None, {}, [], [None], [{}], [{"result": "passed"}]):
+            with self.subTest(malformed=malformed), self.assertRaises(ValueError):
+                reporting.validate_receipt_process(0, malformed)
+
     def test_output_observation_keeps_declared_host_handoff_separate_from_payloads(self):
         contracts = kblib.load_yaml_file(os.path.join(
             TOOLS, "agent-interface-policy.yaml"))["output_contracts"]

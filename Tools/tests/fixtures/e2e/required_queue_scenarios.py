@@ -20,7 +20,7 @@ from Tools.execution.task_runtime import runtime_paths
 from Tools.platform.common import kblib
 from Tools.platform.agent_interface import agent_interface_contract
 from Tools.platform.distribution import upstream_component_boundary as component_boundary
-from Tools.platform.distribution.test_runner import measured
+from Tools.platform.distribution.test_runner import measured, measure_scope
 from Tools.tests.support.initial_task_plan_fixture import confirmed_initial_task_plan
 from Tools.tests.support.coverage_delta_fixture import premerge_delta_document
 from Tools.tests.support.mcp_stdio_session import MCPStdioSession
@@ -40,7 +40,6 @@ from Tools.tests.support.required_queue_fixture import (
     RequiredQueueFixture,
     RequiredQueueLifecycleDriver,
     _template,
-    install_terminal_proof_dependencies,
 )
 
 
@@ -54,9 +53,6 @@ def initialize_task_plan_scenario(walker):
     """
     walker.root.mkdir(parents=True)
     def dependencies(root, _profile):
-        if not walker.MCP_TRANSPORT:
-            install_terminal_proof_dependencies(root)
-            return
         # A Runner executes an adopter's carried Tools, not the source
         # distribution's MCP transport over an incomplete fixture workspace.
         # Stage this one E2E surface before adoption, deriving omissions from
@@ -257,100 +253,51 @@ class RequiredQueueE2EScenarioCase(RequiredQueueFixture,
                                    unittest.TestCase):
     """A private starting tree for one representative complete lifecycle."""
 
-    START_SCENARIO = "base"
-    MCP_TRANSPORT = False
-
     def invoke_tool(self, name, *arguments):
-        if not self.MCP_TRANSPORT:
-            return super().invoke_tool(name, *arguments)
         if not hasattr(self, "mcp_session"):
             server = self.root / "Tools/mcp_server.py"
-            environment = {}
-            if self.START_SCENARIO == "initial-plan":
-                projection = self.root / runtime_paths.path_for("derived-mcp-tools")
-                environment = {
-                    agent_interface_contract.INTERFACE_PROJECTION_ENV: str(projection.resolve()),
-                    agent_interface_contract.INTERFACE_SOURCE_HASH_ENV: kblib.sha256_file(projection),
-                }
+            projection = self.root / runtime_paths.path_for("derived-mcp-tools")
+            environment = {
+                agent_interface_contract.INTERFACE_PROJECTION_ENV: str(projection.resolve()),
+                agent_interface_contract.INTERFACE_SOURCE_HASH_ENV: kblib.sha256_file(projection),
+            }
             self.mcp_session = MCPStdioSession(
-                self.root, server=server if self.START_SCENARIO == "initial-plan" else None,
+                self.root, server=server,
                 env_overrides=environment)
             self.mcp_session.__enter__()
             self.addCleanup(self.mcp_session.close)
             self.mcp_session.initialize()
-        if name == "record_batch_page_review.py":
-            self._drain_activation_delivery()
         return self.mcp_session.run_cli(name, *arguments)
 
-    def _drain_activation_delivery(self, action=None):
-        """Act only on the Runner's currently due delivery/ack handoff.
+    def execute_runner(self, action, *, semantic_input=None, proposal=None):
+        """Execute the observed action, with no direct producer fallback."""
+        arguments = {"root": str(self.root), "execute": action["action_id"]}
+        if semantic_input is not None:
+            relative = runtime_paths.TRANSIENT_ROOT + "/e2e-action-input.json"
+            path = self.root / relative
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(json.dumps(semantic_input), encoding="utf-8")
+            arguments["input"] = relative
+        if proposal is not None:
+            arguments["proposal"] = proposal
+        with measure_scope("runner-action", action["token"]):
+            envelope = self.mcp_session.call_checked("run_task", arguments)
+        execution = envelope["stdout_json"]
+        self.assertEqual(0, execution["returncode"], execution)
+        self.assertIsNone(execution["next_action_error"], execution)
+        self.assertIsNotNone(execution["next_action"], execution)
+        for child in execution["substeps"]:
+            self.assertEqual([], child["invocation_errors"], child)
+            self.assertTrue(child["observation"]["output_reliable"], child)
+            self.assertTrue(child["observation"]["invocation_reliable"], child)
+        self.runner_trace.append({
+            "action": action["token"], "batch": action["target"].get("batch_id"),
+            "substeps": [child["tool"] for child in execution["substeps"]],
+        })
+        return execution
 
-        The original scenario still owns its business actions. The Host
-        context returns nonces from actual delivered payloads, never from a
-        hand-written Receipt or an independently chosen phase sequence.
-        """
-        if action is None:
-            observed = self.mcp_session.run_cli("run_task.py", str(self.root))
-            self.assertEqual(0, observed.returncode, observed.mcp_result)
-            action = json.loads(observed.stdout)
-        deliveries = {}
-        seen_actions = set()
-        while action["token"] in {
-                "deliver-activation-phase", "ack-activation-phase"}:
-            self.assertNotIn(action["action_id"], seen_actions, action)
-            seen_actions.add(action["action_id"])
-            target = action["target"]
-            key = (target["batch_id"], target["phase_id"],
-                   target["part_index"])
-            if action["token"] == "ack-activation-phase":
-                self.assertIn(key, deliveries, action)
-                delivered = deliveries[key]
-                tool = "check_queue"
-                arguments = {
-                    "root": str(self.root),
-                    "ack_activation_phase": target["batch_id"],
-                    "phase": target["phase_id"],
-                    "phase_part": target["part_index"],
-                    "phase_nonce": delivered["delivery_nonce"],
-                    "phase_delivery_receipt": delivered["receipt_id"],
-                    "receipts": runtime_paths.RECEIPT_ROOT +
-                        "/phase-ack-%s-%s-%s.jsonl" % key,
-                }
-            else:
-                tool = action["tool"]
-                arguments = dict(action["arguments"], root=str(self.root))
-            envelope = self.mcp_session.call(tool, arguments)
-            self.assertTrue(envelope["invocation_reliable"], envelope)
-            self.assertTrue(envelope["output_reliable"], envelope)
-            self.assertEqual(0, envelope["exit_code"], envelope)
-            if action["token"] == "deliver-activation-phase":
-                rows = envelope["stdout_json"]
-                self.assertEqual(1, len(rows), rows)
-                delivered = rows[0]
-                self.assertEqual(
-                    delivered["delivery_nonce"],
-                    delivered["activation_phase_payload"]["delivery_nonce"])
-                deliveries[key] = delivered
-            observed = self.mcp_session.run_cli("run_task.py", str(self.root))
-            self.assertEqual(0, observed.returncode, observed.mcp_result)
-            action = json.loads(observed.stdout)
-        return action
-
-    def prepare_premerge_audit_evidence(self, batch_id):
-        if self.MCP_TRANSPORT:
-            self._drain_activation_delivery()
-        return super().prepare_premerge_audit_evidence(batch_id)
-
-    def record_batch_review_wrapper(self, batch_id):
-        if self.MCP_TRANSPORT:
-            self._drain_activation_delivery()
-        return super().record_batch_review_wrapper(batch_id)
-
-    def write_delta(self, batch_id, object_path, receipt_id):
-        if not self.MCP_TRANSPORT:
-            return super().write_delta(batch_id, object_path, receipt_id)
-        # The scenario supplies authoring decisions, not a canonical Delta or
-        # a hand-picked evidence set. The real publisher resolves references.
+    def proposal_path(self, batch_id, object_path):
+        # Only authoring decisions: the producer resolves every evidence ID.
         proposal = premerge_delta_document(
             batch_id, object_path, [], generated_at="2026-08-04T00:00:00Z")
         proposal["pages"][0].pop("gate_receipts")
@@ -358,12 +305,7 @@ class RequiredQueueE2EScenarioCase(RequiredQueueFixture,
         absolute = self.root / relative
         absolute.parent.mkdir(parents=True, exist_ok=True)
         absolute.write_text(kblib.canonical_yaml(proposal), encoding="utf-8")
-        published = self.run_tool(
-            "publish_delta.py", "--batch", batch_id, "--proposal", relative,
-            "--expected-delta-sha256", "absent", "--apply")
-        self.assertEqual(0, published.returncode,
-                         (published.stdout, published.stderr))
-        return json.loads(published.stdout)["delta_path"]
+        return relative
 
     def setUp(self):
         self.temporary = tempfile.TemporaryDirectory()
@@ -371,8 +313,4 @@ class RequiredQueueE2EScenarioCase(RequiredQueueFixture,
         # Host binding and the carried compiler must share one root spelling,
         # including on macOS where /var is a symlink to /private/var.
         self.root = (Path(self.temporary.name) / "repo").resolve()
-        if self.START_SCENARIO == "initial-plan":
-            self.scenario = initialize_task_plan_scenario(self)
-            return
-        start_root, self.scenario = _template(self.START_SCENARIO)
-        shutil.copytree(start_root, self.root)
+        self.scenario = initialize_task_plan_scenario(self)
