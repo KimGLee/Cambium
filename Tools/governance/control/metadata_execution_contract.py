@@ -866,10 +866,7 @@ def load_operation_capabilities_snapshot(root=None, capabilities_path=None):
         raise MetadataExecutionContractError([
             "operation capabilities must be a mapping"
         ])
-    errors = _validate_capabilities(document)
-    if not errors:
-        errors.extend(capability_invocation_edge_errors(
-            document, repository))
+    errors = capability_invocation_edge_errors(document, repository)
     if errors:
         raise MetadataExecutionContractError(errors)
     return document, snapshot
@@ -908,46 +905,50 @@ def capability_entry(capability_id, kind, root=None, capabilities_path=None):
     return None
 
 
-def capability_entry_by_id(capability_id, root=None, capabilities_path=None,
-                           *, document=None):
-    """Return the globally unique registered capability, or ``None``.
+class CapabilityLookup:
+    """Queries over one strictly validated, retained registry snapshot.
 
-    ``document`` lets a caller resolve several related identities from one
-    already validated registry snapshot.  This prevents a producer chain from
-    combining entries read from different filesystem revisions.  Callers that
-    do not already own a snapshot retain the normal load-and-validate path.
+    Construction always validates source bytes and invocation edges. Entries
+    are detached copies; neither arbitrary dictionaries nor a caller's
+    'already validated' flag can create this view. This is not a currentness
+    verdict: a new observation must construct a new lookup.
     """
-    if document is None:
-        document = load_operation_capabilities(root, capabilities_path)
-    else:
-        document = validate_operation_capabilities_document(document)
-    matches = [entry for entry in document["capabilities"]
-               if entry["capability_id"] == capability_id]
-    if len(matches) > 1:
-        raise MetadataExecutionContractError([
-            "capability_id %s is not globally unique" % capability_id])
-    return copy.deepcopy(matches[0]) if matches else None
+
+    def __init__(self, root=None, capabilities_path=None):
+        document, self.snapshot = load_operation_capabilities_snapshot(
+            root, capabilities_path)
+        self._entries = {row["capability_id"]: copy.deepcopy(row)
+                         for row in document["capabilities"]}
+
+    def entry(self, capability_id):
+        return copy.deepcopy(self._entries.get(capability_id))
+
+    def invocation_tool(self, capability_id):
+        entry = self.entry(capability_id)
+        if entry is None:
+            raise ValueError("unknown Tool capability %s" % capability_id)
+        path = entry.get(INVOCATION_OWNER_KEY)
+        if (not isinstance(path, str) or
+                INVOCATION_OWNER_RE.fullmatch(path) is None):
+            raise ValueError(
+                "Tool capability %s has no valid public invocation owner" %
+                capability_id)
+        return os.path.basename(path)[:-3]
+
+
+def capability_entry_by_id(capability_id, root=None, capabilities_path=None):
+    """Return one capability from a fresh, fully validated observation."""
+    return CapabilityLookup(root, capabilities_path).entry(capability_id)
 
 
 def capability_invocation_tool(capability_id, root=None,
-                               capabilities_path=None, *, document=None):
+                               capabilities_path=None):
     """Resolve one capability's declared public Tool entrypoint name.
 
     The operation registry owns this implementation route.  Callers must not
     infer it from a similarly named module or maintain a private mapping.
     """
-    entry = capability_entry_by_id(
-        capability_id, root=root, capabilities_path=capabilities_path,
-        document=document)
-    if entry is None:
-        raise ValueError("unknown Tool capability %s" % capability_id)
-    path = entry.get(INVOCATION_OWNER_KEY)
-    if (not isinstance(path, str) or
-            INVOCATION_OWNER_RE.fullmatch(path) is None):
-        raise ValueError(
-            "Tool capability %s has no valid public invocation owner" %
-            capability_id)
-    return os.path.basename(path)[:-3]
+    return CapabilityLookup(root, capabilities_path).invocation_tool(capability_id)
 
 
 def capability_registered(capability_id, kind, root=None,

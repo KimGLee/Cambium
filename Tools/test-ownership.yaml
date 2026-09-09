@@ -468,6 +468,10 @@ tests:
     semantics: audit_lifecycle_closure
     parallel_safe: true
     overrides:
+      - selector: AuditLifecycleClosureTests.test_one_observation_joins_once_without_skipping_canonical_validation
+        owner: Tools/execution/audit/audit_producer_chain.py
+        semantics: observation_scoped_producer_join_preserves_canonical_validation
+        owner_contract_symbol: audit_producer_chain.producer_chain_observation
       - selector: AuditLifecycleClosureTests.test_chain_and_runtime_route_use_the_same_explicit_authority_root
         level: integration
         semantics: audit_lifecycle_current_repository_route_seam
@@ -1672,6 +1676,10 @@ tests:
     disposition: keep
     semantics: metadata_contract_projections
     parallel_safe: true
+    overrides:
+      - selector: MetadataContractProjectionTests.test_capability_snapshot_queries_validate_once_and_detach_entries
+        semantics: validated_capability_snapshot_detached_query_contract
+        owner_contract_symbol: metadata_execution_contract.CapabilityLookup
   - path: Tools/tests/test_metadata_execution_contract.py
     owner: Tools/governance/control/metadata_execution_contract.py
     level: contract
@@ -2852,6 +2860,10 @@ tests:
         level: unit
         semantics: unittest_cost_scopes_preserve_fixture_and_result_lifecycle
         owner_contract_symbol: test_runner.run_measured_tests
+      - selector: TestRunnerSelectionContractTests.test_progress_survives_interruption_without_claiming_a_test_result
+        owner: Tools/platform/distribution/test_runner.py
+        semantics: interrupted_cost_diagnostics_cannot_claim_test_completion
+        owner_contract_symbol: test_runner.child_main
       - selector: TestCatalogProjectionIntegrationTests.*
         level: integration
         semantics: test_catalog_repository_projection_freshness

@@ -70,14 +70,12 @@ def projection_capability(root, errors):
     """Bind this renderer's root-owned capability declaration."""
     relative = metadata_execution_contract.DEFAULT_CAPABILITIES_PATH
     try:
-        document, snapshot = metadata_execution_contract.\
-            load_operation_capabilities_snapshot(root, relative)
+        lookup = metadata_execution_contract.CapabilityLookup(root, relative)
+        snapshot = lookup.snapshot
     except metadata_execution_contract.MetadataExecutionContractError as exc:
         errors.append("cannot bind Tool capability registry: %s" % exc)
         return None, None
-    entry = metadata_execution_contract.capability_entry_by_id(
-        CAPABILITY_ID, document=document
-    )
+    entry = lookup.entry(CAPABILITY_ID)
     if entry is None or entry.get("kind") != CAPABILITY_KIND:
         errors.append(
             "projection capability %r is not uniquely registered" %

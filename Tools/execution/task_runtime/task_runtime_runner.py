@@ -700,7 +700,8 @@ def next_action(root):
         admission.clear()
         admission[os.path.realpath(os.path.abspath(root))] = result
     try:
-        return _resume_action(result)
+        with audit_evidence_runtime.evidence_observation(result) as observed:
+            return _resume_action(observed)
     except HostEnvironmentUnavailable as exc:
         return _await_host_environment(result, None, {
             "result": "needs-preparation", "findings": [str(exc)],

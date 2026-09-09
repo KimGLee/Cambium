@@ -199,7 +199,9 @@ jobs:
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # pinned upstream commit
         with:
           name: test-costs-${{ matrix.python-version }}-${{ matrix.shard }}
-          path: ${{ runner.temp }}/test-costs.json
+          path: |
+            ${{ runner.temp }}/test-costs.json
+            ${{ runner.temp }}/test-costs.progress/*.jsonl
           if-no-files-found: ignore
           retention-days: 14
 

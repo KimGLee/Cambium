@@ -220,6 +220,7 @@ modules:
       - candidate_page_evidence_errors
       - closed_plan_closure_errors
       - combine_plan_reconciliations
+      - continue_evidence_observation
       - current_consumption_evidence_ids
       - evidence_evaluation
       - evidence_observation
@@ -315,6 +316,7 @@ modules:
       - precursor_chain_for_obligation
       - precursor_chain_for_spec
       - precursor_record_matches
+      - producer_chain_observation
       - require_precursor_record
   - module: execution.audit.audit_producer_runtime
     path: Tools/execution/audit/audit_producer_runtime.py
@@ -1769,6 +1771,7 @@ modules:
     layer: contract
     public:
       - AuthorizedProjectionRules
+      - CapabilityLookup
       - CompiledMetadataExecutionContract
       - DEFAULT_CAPABILITIES_PATH
       - IMPLEMENTATION_ROLE_KEYS

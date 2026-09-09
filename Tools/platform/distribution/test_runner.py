@@ -46,7 +46,7 @@ def measure_scope(kind: str, identity: str):
     if state is None:
         yield
         return
-    stack, rows = state
+    stack, rows, on_scope = state
     frame = {"kind": kind, "identity": identity, "children": 0.0}
     parent = stack[-1] if stack else None
     stack.append(frame)
@@ -62,11 +62,14 @@ def measure_scope(kind: str, identity: str):
         stack.pop()
         if parent is not None:
             parent["children"] += elapsed
-        rows.append({"kind": kind, "identity": identity,
+        row = {"kind": kind, "identity": identity,
                      "parent": None if parent is None else parent["identity"],
                      "elapsed": elapsed,
                      "exclusive": max(0.0, elapsed - frame["children"]),
-                     "outcome": outcome})
+                     "outcome": outcome}
+        rows.append(row)
+        if on_scope is not None:
+            on_scope(dict(row))
 
 
 def measured(kind: str, identity: str):
@@ -139,10 +142,10 @@ def _instrument_fixtures(suite):
         yield
 
 
-def run_measured_tests(test_ids, *, stream=None):
+def run_measured_tests(test_ids, *, stream=None, on_scope=None):
     """Run one selected module in this already isolated child, without Catalog."""
     rows = []
-    token = _MEASUREMENTS.set(([], rows))
+    token = _MEASUREMENTS.set(([], rows, on_scope))
     try:
         with measure_scope("discovery", "unittest-load"):
             suite = unittest.defaultTestLoader.loadTestsFromNames(test_ids)
@@ -172,8 +175,29 @@ def run_measured_tests(test_ids, *, stream=None):
 def child_main(argv=None):
     """Private test-process entry; its report cannot select or authorize work."""
     args = sys.argv[1:] if argv is None else argv
-    report, *test_ids = args
-    value = run_measured_tests(test_ids)
+    report, progress, *test_ids = args
+    # Each child owns a separate external diagnostic file. Completed scopes
+    # are flushed immediately; a killed child never emits a successful run.
+    with ExitStack() as cleanup:
+        handle = None
+        if progress:
+            try:
+                handle = cleanup.enter_context(pathlib.Path(progress).open("x", encoding="utf-8"))
+            except OSError as exc:
+                print("test runner: progress unavailable: %s" % exc, file=sys.stderr)
+        def emit(value):
+            nonlocal handle
+            if handle is not None:
+                try:
+                    handle.write(json.dumps(value, sort_keys=True) + "\n")
+                    handle.flush()
+                except OSError as exc:
+                    print("test runner: progress unavailable: %s" % exc, file=sys.stderr)
+                    handle = None
+        emit({"kind": "test-cost-progress", "state": "incomplete", "selected": test_ids})
+        value = run_measured_tests(test_ids, on_scope=emit)
+        emit({"kind": "test-run-finished", "state": "complete",
+              "successful": value["successful"], "tests_run": value["tests_run"]})
     pathlib.Path(report).write_text(json.dumps(value, sort_keys=True) + "\n", encoding="utf-8")
     return 0 if value["successful"] else 1
 
@@ -280,6 +304,7 @@ def _run_child(
     python: str,
     root: pathlib.Path,
     env: dict[str, str],
+    progress_path: pathlib.Path | None = None,
 ) -> GroupResult:
     """The only subprocess boundary used by the catalog runner."""
     started = time.monotonic()
@@ -289,7 +314,8 @@ def _run_child(
             report = pathlib.Path(temporary) / "result.json"
             result = kblib.run_cambium_subprocess(
                 [python, "-c", "from Tools.platform.distribution.test_runner import child_main; "
-                 "raise SystemExit(child_main())", str(report), *group.test_ids],
+                 "raise SystemExit(child_main())", str(report),
+                 str(progress_path) if progress_path else "", *group.test_ids],
                 cwd=str(root), env=env, check=False, stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE, text=True)
             try:
@@ -503,12 +529,22 @@ def main(argv=None) -> int:
         print("test runner: FAIL: %s" % exc, file=sys.stderr)
         return 1
     reports = []
+    progress_dir = None
+    if report_path is not None:
+        candidate = report_path.with_suffix(".progress")
+        try:
+            candidate.mkdir(parents=True, exist_ok=False)
+            progress_dir = candidate
+        except OSError as exc:
+            print("test runner: progress unavailable: %s" % exc, file=sys.stderr)
     def run_child(group):
         try:
             source_hash = hashlib.sha256((root / group.path).read_bytes()).hexdigest()
         except OSError:
             source_hash = None  # Diagnostics do not redefine test admission.
-        result = _run_child(group, python=args.python or sys.executable, root=root, env=env)
+        result = _run_child(group, python=args.python or sys.executable, root=root, env=env,
+                            progress_path=progress_dir / (group.module + ".jsonl")
+                            if progress_dir else None)
         reports.append({"path": group.path, "test_ids": list(group.test_ids),
                         "test_source_sha256": source_hash,
                         "elapsed": result.elapsed, "exit": result.returncode,

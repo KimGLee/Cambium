@@ -41,6 +41,39 @@ class AuditLifecycleClosureTests(unittest.TestCase):
         self.assertEqual(1, len(rows), capability_id)
         return rows[0]
 
+    def test_one_observation_joins_once_without_skipping_canonical_validation(self):
+        spec = next(row for row in self.specs
+                    if row["owner_rule_id"] == "k12-05-guidance-state-zero-counts")
+        obligation = projection.resolve_obligation_definition(spec, "Progress.guidance_queue")
+        result = {"root": str(REPOSITORY), "receipt_catalog": {}, "current_receipt_catalog": {}}
+        with mock.patch.object(capabilities, "load_operation_capabilities_snapshot",
+                               wraps=capabilities.load_operation_capabilities_snapshot) as load, \
+                mock.patch.object(producer_chain, "_registered_producer",
+                                  wraps=producer_chain._registered_producer) as join:
+            with evidence_runtime.evidence_observation(result) as observed:
+                expected = producer_chain.precursor_chain_for_spec(spec, root=REPOSITORY)
+                actual = producer_chain.precursor_chain_for_obligation(obligation, root=REPOSITORY)
+                self.assertEqual(expected, actual)
+                actual["precursor_tool"] = "forged"
+                record = {"record_kind": expected["precursor_record_kind"],
+                          "tool": expected["precursor_tool"], "check": expected["precursor_check"]}
+                self.assertEqual(expected, producer_chain.require_precursor_record(
+                    record, obligation, root=REPOSITORY))
+                with self.assertRaises(ValueError):
+                    producer_chain.precursor_chain_for_obligation(
+                        dict(obligation, producer_capability="forged"), root=REPOSITORY)
+                with self.assertRaises(ValueError):
+                    producer_chain.require_precursor_record(
+                        dict(record, tool="forged"), obligation, root=REPOSITORY)
+                self.assertEqual(1, load.call_count)
+                self.assertEqual(2, join.call_count)  # Precursor and finalizer, once.
+                with evidence_runtime.evidence_observation(observed):
+                    self.assertEqual(expected, producer_chain.precursor_chain_for_spec(spec, root=REPOSITORY))
+                self.assertEqual(2, load.call_count)
+            self.assertIsNone(producer_chain._OBSERVATION_MEMO.get())
+            self.assertEqual(expected, producer_chain.precursor_chain_for_spec(spec, root=REPOSITORY))
+            self.assertEqual(3, load.call_count)
+
     def test_every_kernel_spec_has_one_tool_execution_route(self):
         routes = [execution_runtime.producer_route(row) for row in self.specs]
 
@@ -72,22 +105,9 @@ class AuditLifecycleClosureTests(unittest.TestCase):
                 self.assertNotEqual(chain["precursor_capability"],
                                     chain["final_producer_capability"])
 
-    def test_complete_chain_resolves_from_one_capability_snapshot(self):
-        spec = projection.obligation_spec_for_rule(
-            "k12-02-level0-mermaid-fence-closure", REPOSITORY)
-        original = capabilities.load_operation_capabilities
-        with mock.patch.object(
-                capabilities, "load_operation_capabilities",
-                wraps=original) as load:
-            chain = producer_chain.precursor_chain_for_spec(
-                spec, root=REPOSITORY)
-        self.assertEqual("changed-scope-evidence-adapter-v1",
-                         chain["precursor_capability"])
-        self.assertEqual(1, load.call_count)
-
     def test_changed_scope_contract_import_does_not_resolve_capabilities(self):
         with mock.patch.object(
-                capabilities, "load_operation_capabilities",
+                capabilities, "load_operation_capabilities_snapshot",
                 side_effect=AssertionError(
                     "capabilities may be resolved only at a call boundary")):
             reloaded = importlib.reload(changed_scope)

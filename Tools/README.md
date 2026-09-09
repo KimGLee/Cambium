@@ -302,7 +302,7 @@ make full
 
 Generators write Markdown/JSON projections; `--check` recomputes their bytes. Each selected file runs once; only wholly `parallel_safe` files overlap. Required Queue E2E drives real MCP `run_task` through closed, then verifies Terminal Proof. Adjacent integrations consume static checkpoints, not lifecycle replay.
 
-`Tools/run_tests.py full --report /tmp/cambium-test-costs.json` records module, method, fixture and Tool times; inclusive times contain their children. CI uses recent main-run medians for scheduling, not test omission. Main retains full verification.
+`Tools/run_tests.py full --report /tmp/cambium-test-costs.json` records nested costs; `.progress/*.jsonl` beside the report preserves completed scopes after interruption, not a passing verdict. CI uses main-run medians for scheduling, never omission. Main retains full verification.
 
 Runner source views are invocation-scoped and recheck component discovery/bytes, projection and environment. Runtime rechecks may reuse owner-authorized Profile/Standards views, never an old verdict. Independent producer admission, locked currentness and after-image read-back remain.
 

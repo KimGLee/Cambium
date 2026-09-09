@@ -5,6 +5,7 @@ import copy
 from pathlib import Path
 import sys
 import unittest
+from unittest import mock
 
 
 TOOLS = Path(__file__).resolve().parents[1]
@@ -35,6 +36,28 @@ def assignment_value(module, name):
 
 
 class MetadataContractProjectionTests(unittest.TestCase):
+    def test_capability_snapshot_queries_validate_once_and_detach_entries(self):
+        owner = metadata_execution_contract
+        with mock.patch.object(owner, "_validate_capabilities",
+                               wraps=owner._validate_capabilities) as validate:
+            lookup = owner.CapabilityLookup(REPOSITORY)
+            identity = "audit-receipt-producer-v1"
+            for _ in range(4):
+                entry = lookup.entry(identity)
+                self.assertEqual("complete_audit_receipt", lookup.invocation_tool(identity))
+                entry["invocation_owner"] = "Tools/forged.py"
+            self.assertEqual(1, validate.call_count)
+            self.assertEqual("Tools/complete_audit_receipt.py", lookup.entry(identity)["invocation_owner"])
+            self.assertIsNone(lookup.entry("missing"))
+            with self.assertRaisesRegex(ValueError, "unknown Tool capability"):
+                lookup.invocation_tool("missing")
+            self.assertEqual(1, validate.call_count)
+        # Fresh reads cannot inherit an earlier successful observation.
+        with mock.patch.object(owner, "capability_invocation_edge_errors",
+                               return_value=["changed adapter"]):
+            with self.assertRaisesRegex(ValueError, "changed adapter"):
+                owner.CapabilityLookup(REPOSITORY)
+
     def test_owner_record_shape_is_one_identity_preserving_projection(self):
         keys = metadata_execution_contract.source_adapter_owner_record_keys(
             "coverage-property-state-v1")

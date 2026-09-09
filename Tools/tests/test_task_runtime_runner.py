@@ -48,6 +48,23 @@ def completed(returncode=0, stdout="{}\n", stderr=""):
 
 
 class TaskRuntimeRunnerUnitTests(unittest.TestCase):
+    def test_next_action_owns_one_read_scope_and_retires_it_before_return(self):
+        state = parsed_runtime_state()
+        observed_views = []
+        def resume(view):
+            observed_views.append(view)
+            with runner.audit_evidence_runtime.continue_evidence_observation(view) as joined:
+                self.assertIs(view, joined)
+            return {"token": "example"}
+        with mock.patch.object(runner.runtime_validation, "validate_runtime", return_value=state), \
+                mock.patch.object(runner, "_resume_action", side_effect=resume):
+            self.assertEqual({"token": "example"}, runner.next_action("/fixture"))
+            self.assertEqual({"token": "example"}, runner.next_action("/fixture"))
+        self.assertIsNot(observed_views[0], observed_views[1])
+        for view in [state, *observed_views]:
+            self.assertNotIn("_audit_evidence_facts", view)
+            self.assertNotIn("_audit_stage_resolutions", view)
+
     def test_audit_recheck_reuses_only_authorized_sources_before_dispatch(self):
         prior = parsed_runtime_state()
         current = parsed_runtime_state()

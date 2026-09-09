@@ -14,6 +14,10 @@ map.
 """
 
 from copy import deepcopy
+from contextlib import contextmanager
+from contextvars import ContextVar
+
+from Tools.platform.common import kblib
 
 import Tools.execution.audit.audit_lifecycle_contract as lifecycle
 import Tools.execution.audit.audit_obligation_projection as projection
@@ -34,6 +38,28 @@ _CHAIN_FIELDS = (
     "precursor_record_kind", "precursor_tool", "precursor_capability",
     "precursor_check",
 )
+
+_OBSERVATION_MEMO = ContextVar("audit_producer_chain_memo", default=None)
+
+
+@contextmanager
+def producer_chain_observation(memo):
+    """Use the evidence owner's mechanical facts for this read only.
+
+    No second store or persisted chain is created. The canonical spec is
+    still checked by each public entry, and record/plan acceptance remains
+    with its contract. A fresh evidence observation supplies a fresh memo.
+    """
+    token = _OBSERVATION_MEMO.set(memo)
+    try:
+        yield
+    finally:
+        _OBSERVATION_MEMO.reset(token)
+
+
+def _observed(key, compute):
+    memo = _OBSERVATION_MEMO.get()
+    return compute() if memo is None else memo(("producer-chain",) + key, compute)
 
 
 def _definition_candidates(spec, obligation):
@@ -141,17 +167,12 @@ def finalizer_capability_for_spec(spec):
     return FINAL_AUDIT_RECEIPT_CAPABILITY
 
 
-def _registered_producer(capability_id, capability_document, *, root=None):
-    # ``root`` is the adopting repository whose frozen Kernel projection is
-    # being validated. The executable capability registry belongs to this
-    # installed Tool package, so it resolves from the module's source root
-    # rather than assuming every read-only fixture mirrors the Tool tree.
-    del root
+def _registered_producer(capability_id, lookup):
+    # The lookup belongs to the installed Tool package, not the adopting
+    # repository whose frozen Kernel projection was validated by the caller.
     try:
-        entry = capabilities.capability_entry_by_id(
-            capability_id, document=capability_document)
-        tool = capabilities.capability_invocation_tool(
-            capability_id, document=capability_document)
+        entry = lookup.entry(capability_id)
+        tool = lookup.invocation_tool(capability_id)
     except (TypeError, ValueError) as exc:
         raise AuditProducerChainError(
             "producer capability %r has no unique public entrypoint: %s" %
@@ -206,24 +227,26 @@ def _chain_for_validated_spec(spec, *, root=None, snapshots=None,
     # Precursor and finalizer must resolve from the same installed capability
     # registry snapshot.  Reopening the file between these lookups could join
     # identities from two revisions into a chain that never existed.
-    capability_document = capabilities.load_operation_capabilities()
-    _entry, tool = _registered_producer(
-        capability_id, capability_document, root=root)
-    _registered_producer(finalizer, capability_document, root=root)
+    lookup = _observed(("capabilities",), capabilities.CapabilityLookup)
     route, record_kind = _record_contract(
         spec, root=root, snapshots=snapshots, contract_loader=contract_loader)
-    chain = {
-        "execution_route": route,
-        "final_evidence_kind": spec["evidence_kind"],
-        "final_producer_capability": finalizer,
-        "precursor_record_kind": record_kind,
-        "precursor_tool": tool,
-        "precursor_capability": capability_id,
-        "precursor_check": spec["producer_check"],
-    }
-    if tuple(chain) != _CHAIN_FIELDS:
-        raise AssertionError("AuditReceipt producer-chain fields drifted")
-    return chain
+    def join():
+        _entry, tool = _registered_producer(capability_id, lookup)
+        _registered_producer(finalizer, lookup)
+        chain = {
+            "execution_route": route,
+            "final_evidence_kind": spec["evidence_kind"],
+            "final_producer_capability": finalizer,
+            "precursor_record_kind": record_kind,
+            "precursor_tool": tool,
+            "precursor_capability": capability_id,
+            "precursor_check": spec["producer_check"],
+        }
+        if tuple(chain) != _CHAIN_FIELDS:
+            raise AssertionError("AuditReceipt producer-chain fields drifted")
+        return chain
+    return deepcopy(_observed(("join", kblib.canonical_json_bytes(spec),
+                               route, record_kind), join))
 
 
 def precursor_chain_for_obligation(obligation, *, root=None,
@@ -261,5 +284,6 @@ __all__ = [
     'precursor_chain_for_obligation',
     'precursor_chain_for_spec',
     'precursor_record_matches',
+    'producer_chain_observation',
     'require_precursor_record',
 ]
