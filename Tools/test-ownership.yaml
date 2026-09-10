@@ -1033,6 +1033,12 @@ tests:
       - selector: CiMatrixPresentationContractTests.test_history_is_bounded_main_only_and_network_failure_falls_back
         semantics: bounded_read_only_ci_history
         owner_contract_symbol: ci_impact._historical_costs
+      - selector: CiMatrixPresentationContractTests.test_required_budget_*
+        semantics: complete_required_attempt_job_and_time_acceptance
+        owner_contract_symbol: ci_impact.required_budget_verdict
+      - selector: CiMatrixPresentationContractTests.test_budget_metadata_*
+        semantics: complete_official_attempt_metadata_read
+        owner_contract_symbol: ci_impact._run_metadata
       - selector: SelectedTestRunnerDelegationContractTests.*
         semantics: ci_exact_selection_delegates_to_catalog_execution_owner
         owner_contract_symbol: ci_impact.run_selected_tests
@@ -2873,6 +2879,10 @@ tests:
         owner: Tools/platform/distribution/test_runner.py
         semantics: file_process_isolation_preserves_selected_levels
         owner_contract_symbol: test_runner.module_groups
+      - selector: TestRunnerSelectionContractTests.test_deadline_*
+        owner: Tools/platform/distribution/test_runner.py
+        semantics: shared_deadline_admission_and_incomplete_case_accounting
+        owner_contract_symbol: test_runner.main
       - selector: TestRunnerSelectionContractTests.test_cost_*
         owner: Tools/platform/distribution/test_runner.py
         level: unit
@@ -2887,6 +2897,12 @@ tests:
         semantics: test_catalog_repository_projection_freshness
         owner_contract_symbol: test_catalog.build_catalog
         parallel_safe: false
+      - selector: TestRunnerDeadlineIntegrationTests.*
+        owner: Tools/platform/distribution/test_runner.py
+        level: integration
+        semantics: bounded_test_process_descendant_and_fixture_cleanup
+        owner_contract_symbol: test_runner.main
+        parallel_safe: true
   - path: Tools/tests/test_tool_availability.py
     owner: Tools/platform/agent_interface/tool_availability.py
     level: contract

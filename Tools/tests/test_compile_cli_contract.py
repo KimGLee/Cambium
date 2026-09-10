@@ -319,8 +319,25 @@ class CompilerFixtureContractTests(unittest.TestCase):
             if module_name not in analyzer.modules:
                 extracted.append(module_name)
             return original(analyzer, module_name, source_text)
-        with mock.patch.object(compiler._ReceiptExtensionAnalyzer, "_load_module", load):
+        with mock.patch.object(compiler._ReceiptExtensionAnalyzer, "_load_module", load), \
+                mock.patch.object(compiler, "_scope_nodes", wraps=compiler._scope_nodes) as walk:
             second = compiler.render(self.fixture.compile())
+            # Reading the same helper from another CLI may reuse syntax, not
+            # graph-dependent resolution or another tool's mutable result.
+            shared = analyzers[0].modules
+            source = shared["Tools.fixture_receipts"]["source"]
+            separate = compiler._ReceiptExtensionAnalyzer(str(self.fixture.root), shared)
+            expected = separate.analyze("Tools.fixture_receipts", source)
+            count = walk.call_count
+            self.assertEqual(expected, compiler._ReceiptExtensionAnalyzer(
+                str(self.fixture.root), shared).analyze("Tools.fixture_receipts", source))
+            self.assertEqual(count, walk.call_count)
+            scopes = [id(call.args[0]) for call in walk.call_args_list]
+            self.assertEqual(len(scopes), len(set(scopes)))
+            # Parser-only scopes were already classified during source
+            # discovery. They do not pay another full AST receipt walk.
+            self.assertNotIn("main", [getattr(call.args[0], "name", None)
+                                      for call in walk.call_args_list])
         self.assertEqual(first, second)
         self.assertEqual(len(extracted), len(set(extracted)))
         self.assertEqual(1, len({id(analyzer.modules) for analyzer in analyzers}))

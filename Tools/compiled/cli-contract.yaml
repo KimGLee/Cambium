@@ -161,10 +161,10 @@ source_files:
   - Tools/stamp_cards.py
   - Tools/update_queue.py
   - Tools/update_task.py
-source_hash: sha256:ca0ac483dcb236e84dc2f8e45ad27241593a6c1b6ec5e89e17c0f4c258c82e6d
+source_hash: sha256:6aa9a511450ff2dd8d04981845017bb16fade9df4b512fa2f94d0399d6633887
 agent_interface_policy:
   path: Tools/agent-interface-policy.yaml
-  sha256: sha256:16cbe961699c6a473c9f28d7b1e9b6b1a79bdc6c410ffc8f115ed2f70feee803
+  sha256: sha256:b6a3ae872ce7a82ef0ddf4b7fd2a49949f99781353d0b10ff31bef2dcc91eec5
 runtime_path_registry:
   path: Tools/execution/task_runtime/runtime_paths.py
   sha256: sha256:adb71db6ddfefe5d2eeaa73943a662332b3f5bc953a2c01a3847d0782d661aea
@@ -3919,7 +3919,7 @@ tools:
     host_environment_boundary: false
     implementation_module: Tools.platform.agent_interface.compile_cli_contract
     implementation_path: Tools/platform/agent_interface/compile_cli_contract.py
-    implementation_source_hash: sha256:c26b67a7450c0f7ec92fa9250d8e9b33ce00121484c0ba9abd1fa72cd4ecc567
+    implementation_source_hash: sha256:7d9175fd9d6a83c02335219a17aa6b6150255a278857084de691e480dd8f2201
     description: Compile the machine-readable CLI invocation contract from every Tools/*.py argparse declaration.
     arguments:
       - dest: root
@@ -3975,7 +3975,7 @@ tools:
     receipt_extensions_extraction: complete
     receipt_extension_sources:
       - path: Tools/platform/agent_interface/compile_cli_contract.py
-        sha256: sha256:c26b67a7450c0f7ec92fa9250d8e9b33ce00121484c0ba9abd1fa72cd4ecc567
+        sha256: sha256:7d9175fd9d6a83c02335219a17aa6b6150255a278857084de691e480dd8f2201
       - path: Tools/platform/common/kblib.py
         sha256: sha256:1918c7f79bfb3220bc0c65c3ba6febbf8b87c039d54ba2eff5683a86d29022ea
     agent_interface:
@@ -9463,7 +9463,7 @@ tools:
     host_environment_boundary: false
     implementation_module: Tools.platform.distribution.test_runner
     implementation_path: Tools/platform/distribution/test_runner.py
-    implementation_source_hash: sha256:d14955e2f41167f26ddcdf54297d1aa1c1d924d5a743894b939fceb44cb7834e
+    implementation_source_hash: sha256:16d517e3dbec650e52cfc0d906390a7ead588db55aad7d29a002e58cbbe77cc0
     description: Run catalog-owned tests with bounded, file-level isolation. The ownership manifest decides which cases are safe to overlap. One child process always receives every selected case from one test module, so failures remain attributable to a file and module-local process state is never split across workers. Modules not declared ``parallel_safe`` run serially.
     arguments:
       - dest: suite
@@ -9548,17 +9548,29 @@ tools:
         action: store
         type: null
         help: write a new low-authority JSON cost report outside the repository
+      - dest: deadline
+        option_strings:
+          - --deadline
+        required: false
+        default: null
+        default_type: NoneType
+        choices: null
+        nargs: null
+        action: store
+        type: float
+        help: shared absolute Unix execution deadline; no per-file budget reset
     mutually_exclusive_groups: []
     receipt_extensions: []
     receipt_extensions_extraction: complete
     receipt_extension_sources:
       - path: Tools/platform/distribution/test_runner.py
-        sha256: sha256:d14955e2f41167f26ddcdf54297d1aa1c1d924d5a743894b939fceb44cb7834e
+        sha256: sha256:16d517e3dbec650e52cfc0d906390a7ead588db55aad7d29a002e58cbbe77cc0
     agent_interface:
       exposure: cli-only
       workspace_argument: root
       workspace_access: read
       value_arguments:
+        - deadline
         - jobs
         - list_only
         - python

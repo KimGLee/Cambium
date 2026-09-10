@@ -269,9 +269,18 @@ class RequiredQueueE2EScenarioCase(RequiredQueueFixture,
             self.mcp_session.initialize()
         return self.mcp_session.run_cli(name, *arguments)
 
-    def execute_runner(self, action, *, semantic_input=None, proposal=None):
-        """Execute the observed action, with no direct producer fallback."""
-        arguments = {"root": str(self.root), "execute": action["action_id"]}
+    def execute_runner_actions(self, action, *, semantic_input=None, proposal=None):
+        """Use the existing continuous mode between semantic boundaries.
+
+        Closing is kept as an exact single action: the next batch must not
+        start before this scenario has verified the closed after-image.
+        Every real child result remains visible; one outer request is not
+        reported as one unit of governance work.
+        """
+        continuous = action["disposition"] == "invoke" and action["token"] != "close-applied-batch"
+        arguments = {"root": str(self.root)}
+        arguments.update({"run_until_boundary": True} if continuous else
+                         {"execute": action["action_id"]})
         if semantic_input is not None:
             relative = runtime_paths.TRANSIENT_ROOT + "/e2e-action-input.json"
             path = self.root / relative
@@ -280,20 +289,33 @@ class RequiredQueueE2EScenarioCase(RequiredQueueFixture,
             arguments["input"] = relative
         if proposal is not None:
             arguments["proposal"] = proposal
-        with measure_scope("runner-action", action["token"]):
+        kind = "runner-continuation" if continuous else "runner-action"
+        with measure_scope(kind, action["token"]) as counts:
             envelope = self.mcp_session.call_checked("run_task", arguments)
-        execution = envelope["stdout_json"]
-        self.assertEqual(0, execution["returncode"], execution)
-        self.assertIsNone(execution["next_action_error"], execution)
-        self.assertIsNotNone(execution["next_action"], execution)
-        for child in execution["substeps"]:
-            self.assertEqual([], child["invocation_errors"], child)
-            self.assertTrue(child["observation"]["output_reliable"], child)
-            self.assertTrue(child["observation"]["invocation_reliable"], child)
-        self.runner_trace.append({
-            "action": action["token"], "batch": action["target"].get("batch_id"),
-            "substeps": [child["tool"] for child in execution["substeps"]],
-        })
+            execution = envelope["stdout_json"]
+            self.assertIsNone(execution.get("next_action_error"), execution)
+            self.assertIsNotNone(execution["next_action"], execution)
+            if not continuous:
+                self.assertEqual(action["action_id"], execution["executed_action_id"])
+                execution = {"executed": [dict(execution, action_id=execution["executed_action_id"],
+                                               token=execution["executed_token"])],
+                             "next_action": execution["next_action"]}
+            self.assertTrue(execution["executed"], execution)
+            self.assertEqual(action["action_id"], execution["executed"][0]["action_id"])
+            for step in execution["executed"]:
+                self.assertEqual(0, step["returncode"], step)
+                token = "action:" + step["token"]
+                counts[token] = counts.get(token, 0) + 1
+                for child in step["substeps"]:
+                    self.assertEqual([], child["invocation_errors"], child)
+                    self.assertTrue(child["observation"]["output_reliable"], child)
+                    self.assertTrue(child["observation"]["invocation_reliable"], child)
+                    key = "child:" + child["tool"]
+                    counts[key] = counts.get(key, 0) + 1
+                self.runner_trace.append({
+                    "action": step["token"], "batch": action["target"].get("batch_id"),
+                    "substeps": [child["tool"] for child in step["substeps"]],
+                })
         return execution
 
     def proposal_path(self, batch_id, object_path):

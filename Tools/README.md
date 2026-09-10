@@ -300,9 +300,11 @@ make slow
 make full
 ```
 
-Generators write Markdown/JSON projections; `--check` recomputes their bytes. Each selected file runs once; only wholly `parallel_safe` files overlap. Required Queue E2E drives real MCP `run_task` through closed, then verifies Terminal Proof. Adjacent integrations consume static checkpoints, not lifecycle replay.
+Generators write Markdown/JSON projections; `--check` recomputes their bytes. Each selected file runs once; only wholly `parallel_safe` files overlap. Required Queue E2E drives real MCP `run_task` through closed, then verifies Terminal Proof. It uses the existing continuous mode between semantic boundaries and records every inner action and producer; closing remains a single action so the next batch cannot start before its after-image is verified. Adjacent integrations consume static checkpoints, not lifecycle replay.
 
 `Tools/run_tests.py full --report /tmp/cambium-test-costs.json` records nested costs; `.progress/*.jsonl` beside the report preserves completed scopes after interruption, not a passing verdict. CI uses main-run medians for scheduling, never omission. Main retains full verification.
+
+The required workflow budget is owned by `.github/scripts/ci_impact.py`: about 300 seconds is the target and 360 seconds the limit for the whole attempt, including preparation and the final gate. All jobs consume one deadline; `run_tests --deadline` stops isolated test groups without reporting unexecuted cases as completed. The gate checks the current attempt, and publication verifies its actual completion time. Missing advisory history does not remove tests; a functional pass alone does not prove the budget was met. Nested cost scopes include work counts, so fewer outer requests cannot hide unchanged inner execution.
 
 Runner source views are invocation-scoped and recheck component discovery/bytes, projection and environment. Runtime rechecks may reuse owner-authorized Profile/Standards views, never an old verdict. Independent producer admission, locked currentness and after-image read-back remain.
 

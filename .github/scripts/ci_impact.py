@@ -21,6 +21,7 @@ is visible in the GitHub Actions job summary.
 
 import argparse
 from dataclasses import dataclass
+from datetime import datetime, timezone
 import io
 import json
 import math
@@ -30,6 +31,7 @@ import re
 import statistics
 import subprocess
 import sys
+import time
 import zipfile
 
 REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
@@ -46,8 +48,162 @@ import Tools.platform.distribution.test_runner as test_runner  # noqa: E402
 
 
 PYTHON_VERSIONS = ("3.10", "3.14")
+CI_TARGET_SECONDS = 300
+CI_LIMIT_SECONDS = 360
 MAX_SELECTIVE_TESTS = 24
 TEST_NAME_RE = re.compile(r"test_[a-z0-9_]+\.py\Z")
+
+
+def _timestamp(value):
+    if not isinstance(value, str) or not value.endswith("Z"):
+        raise ValueError("CI metadata requires a UTC timestamp")
+    return datetime.fromisoformat(value[:-1] + "+00:00").timestamp()
+
+
+def required_job_names(plan):
+    """Derive exact required job membership from the selection, not timings."""
+    names = ["Impact plan", "ci-required"]
+    names.extend("Contracts · Py%s" % row["python-version"]
+                 for row in plan["check_matrix"]["include"])
+    if plan["run_tests"]:
+        names.extend("%s · Py%s" % (row["test-label"], row["python-version"])
+                     for row in plan["test_matrix"]["include"])
+    if len(names) != len(set(names)):
+        raise ValueError("required job identities must be unique")
+    return sorted(names)
+
+
+def run_budget(run, *, run_id, attempt, observed_at):
+    """One engineering deadline for an entire official workflow attempt.
+
+    First-attempt queue time remains inside the budget. A rerun uses its
+    official attempt start, while retaining elapsed time since first creation.
+    This is CI acceptance, never a governance or Receipt verdict.
+    """
+    if (not isinstance(run, dict) or type(run_id) is not int or type(attempt) is not int or
+            run_id < 1 or attempt < 1 or run.get("id") != run_id or
+            run.get("run_attempt") != attempt):
+        raise ValueError("CI metadata does not identify the requested run/attempt")
+    created = _timestamp(run.get("created_at"))
+    started = _timestamp(run.get("run_started_at"))
+    now = _timestamp(observed_at)
+    if not created <= started <= now:
+        raise ValueError("CI run timestamps are inconsistent")
+    origin = created if attempt == 1 else started
+    elapsed = now - origin
+    return {
+        "run_id": run_id, "attempt": attempt,
+        "origin": run["created_at"] if attempt == 1 else run["run_started_at"],
+        "deadline": origin + CI_LIMIT_SECONDS,
+        "target_seconds": CI_TARGET_SECONDS, "limit_seconds": CI_LIMIT_SECONDS,
+        "elapsed_seconds": elapsed, "since_creation_seconds": now - created,
+        "run_start_delay_seconds": started - created if attempt == 1 else None,
+        "remaining_seconds": max(0, CI_LIMIT_SECONDS - elapsed),
+        "within_limit": elapsed <= CI_LIMIT_SECONDS,
+        "target_met": elapsed <= CI_TARGET_SECONDS,
+    }
+
+
+def required_budget_verdict(run, jobs, expected, *, run_id, attempt,
+                            observed_at, final=False):
+    """Verify coverage and wall time without adding parallel job durations.
+
+    An executing gate proves only an observation. Publication must call this
+    again with final=True and the gate's real completed_at. Unknown skipped
+    placeholders cannot satisfy a required job or mask a missing matrix row.
+    """
+    if (not isinstance(expected, list) or not expected or
+            any(not isinstance(name, str) or not name for name in expected) or
+            len(expected) != len(set(expected)) or
+            not {"Impact plan", "ci-required"}.issubset(expected)):
+        raise ValueError("required job membership is missing or ambiguous")
+    if not isinstance(jobs, list):
+        raise ValueError("CI job metadata must be a list")
+    by_name = {}
+    identities = set()
+    for job in jobs:
+        if (not isinstance(job, dict) or job.get("run_id") != run_id or job.get("run_attempt") != attempt or
+                type(job.get("id")) is not int or job["id"] in identities):
+            raise ValueError("job metadata repeats or belongs to another run/attempt")
+        identities.add(job["id"])
+        name = job.get("name")
+        if name not in expected:
+            if job.get("conclusion") == "skipped" and job.get("status") == "completed":
+                continue
+            raise ValueError("unexpected active job in required workflow: %s" % name)
+        if name in by_name:
+            raise ValueError("required job name is ambiguous: %s" % name)
+        by_name[name] = job
+    if set(by_name) != set(expected):
+        raise ValueError("required job metadata is incomplete")
+    gate = by_name["ci-required"]
+    finish = gate.get("completed_at") if final else observed_at
+    budget = run_budget(run, run_id=run_id, attempt=attempt, observed_at=finish)
+    if _timestamp(finish) > _timestamp(observed_at):
+        raise ValueError("completed gate is later than the metadata observation")
+    origin = _timestamp(budget["origin"])
+    job_waits = {}
+    for name, job in by_name.items():
+        start = _timestamp(job.get("started_at"))
+        if not origin <= start <= _timestamp(finish):
+            raise ValueError("job start is outside the current attempt")
+        if name == "ci-required" and not final:
+            if job.get("status") != "in_progress" or job.get("completed_at") is not None:
+                raise ValueError("gate observation is not from the executing gate")
+        elif (job.get("status") != "completed" or job.get("conclusion") != "success" or
+              not start <= _timestamp(job.get("completed_at")) <= _timestamp(finish)):
+            raise ValueError("required job did not complete successfully: %s" % name)
+        created = job.get("created_at")
+        if created is not None and not origin <= _timestamp(created) <= start:
+            raise ValueError("job creation is outside the current attempt")
+        job_waits[name] = start - _timestamp(created) if created is not None else None
+    return {**budget, "final": final, "required_jobs": sorted(by_name),
+            "job_start_delay_seconds": job_waits,
+            "job_wait_basis": "created_at to started_at; includes scheduling/dependency delay; not subtracted",
+            "result": "passed" if budget["within_limit"] else "budget-exceeded"}
+
+
+def _utc_now():
+    return datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+
+
+def _run_metadata(repository, run_id, attempt, *, include_jobs=False):
+    """Read one official attempt, including every job page when requested."""
+    if (not re.fullmatch(r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+", repository or "") or
+            type(run_id) is not int or run_id < 1 or
+            type(attempt) is not int or attempt < 1):
+        raise ValueError("repository, run ID and attempt are required")
+    endpoint = "repos/%s/actions/runs/%d/attempts/%d" % (repository, run_id, attempt)
+    # Bound this whole metadata read, not each page independently.
+    stop = time.monotonic() + 15
+    def api(path, paginate=False):
+        remaining = stop - time.monotonic()
+        if remaining <= 0:
+            raise ValueError("CI metadata read deadline exceeded")
+        response = subprocess.run(
+            ["gh", "api", path] + (["--paginate", "--slurp"] if paginate else []),
+            check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+            timeout=remaining)
+        return json.loads(response.stdout)
+    run = api(endpoint)
+    if not include_jobs:
+        return run, []
+    pages = api(endpoint + "/jobs?per_page=100", paginate=True)
+    if not isinstance(pages, list) or not pages:
+        raise ValueError("CI job pages are missing")
+    if not all(isinstance(page, dict) for page in pages):
+        raise ValueError("CI job pages must be objects")
+    count = pages[0].get("total_count")
+    if type(count) is not int or count < 1:
+        raise ValueError("CI job count is missing")
+    jobs = []
+    for page in pages:
+        if page.get("total_count") != count or not isinstance(page.get("jobs"), list):
+            raise ValueError("CI job pages are inconsistent")
+        jobs.extend(page["jobs"])
+    if len(jobs) != count:
+        raise ValueError("CI job pagination is incomplete")
+    return run, jobs
 
 FULL_EXACT_PATHS = {
     ".gitignore",
@@ -261,15 +417,22 @@ FULL_SHARD_COUNT = 10
 SHARD_WORKERS = 2
 
 
-def _historical_costs(repository):
+def _historical_costs(repository, *, deadline=None):
     """Read at most two successful main runs; absence cannot suppress tests."""
     result = {"samples": {}, "runs": [], "status": "unavailable"}
     if not re.fullmatch(r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+", repository or ""):
         return result
+    # Advisory placement cannot consume the verification budget while retrying
+    # several independent network timeouts. Missing history keeps all tests.
+    allowance = min(5, deadline - time.time()) if deadline is not None else 5
+    stop = time.monotonic() + allowance
     def api(path):
+        remaining = stop - time.monotonic()
+        if remaining <= 0:
+            raise ValueError("advisory CI history deadline exceeded")
         completed = subprocess.run(
             ["gh", "api", "repos/%s/%s" % (repository, path)],
-            check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=25)
+            check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=remaining)
         return completed.stdout
     try:
         runs = json.loads(api(
@@ -531,7 +694,11 @@ def _write_github_outputs(path, plan):
         "run_tests": str(plan["run_tests"]).lower(),
         "check_matrix": compact(plan["check_matrix"]),
         "test_matrix": compact(plan["test_matrix"]),
+        "required_jobs": compact(required_job_names(plan)),
+        "job_timeout_minutes": str(math.ceil(CI_LIMIT_SECONDS / 60)),
     }
+    if "budget" in plan:
+        values["deadline"] = str(plan["budget"]["deadline"])
     with Path(path).open("a", encoding="utf-8") as handle:
         for key, value in values.items():
             handle.write("%s=%s\n" % (key, value))
@@ -550,7 +717,7 @@ def validate_selected_tests(root, value):
     return names
 
 
-def run_selected_tests(root, value, jobs=SHARD_WORKERS, report=None):
+def run_selected_tests(root, value, jobs=SHARD_WORKERS, report=None, deadline=None):
     """Delegate an exact shard to the same catalog runner as local full runs.
 
     CI owns impact selection, not another loader or isolation policy. The
@@ -563,7 +730,8 @@ def run_selected_tests(root, value, jobs=SHARD_WORKERS, report=None):
     return test_runner.main([
         "full", "--root", str(root), "--python", sys.executable,
         "--test-files", ",".join(names), "--jobs", str(jobs),
-    ] + (["--report", report] if report else []))
+    ] + (["--report", report] if report else [])
+      + (["--deadline", str(deadline)] if deadline is not None else []))
 
 
 def _parser():
@@ -578,6 +746,22 @@ def _parser():
     plan_parser.add_argument("--plan-path")
     plan_parser.add_argument("--github-output")
     plan_parser.add_argument("--cost-history", action="store_true", help="read advisory costs from recent successful main runs")
+    plan_parser.add_argument("--ci-budget", action="store_true",
+                             help="bind the plan to the official workflow attempt deadline")
+
+    budget_parser = subparsers.add_parser("budget")
+    budget_parser.add_argument("--repository", required=True)
+    budget_parser.add_argument("--run-id", type=int, required=True)
+    budget_parser.add_argument("--attempt", type=int, required=True)
+    budget_parser.add_argument("--expected-jobs", required=True,
+                               help="exact JSON job list from the impact plan")
+    budget_parser.add_argument("--final", action="store_true",
+                               help="require the gate's actual completed_at for publication")
+
+    step_parser = subparsers.add_parser("run-step",
+        help="execute a Linux CI preparation/check command within the shared deadline")
+    step_parser.add_argument("--deadline", type=float, required=True)
+    step_parser.add_argument("argv", nargs=argparse.REMAINDER)
 
     validate_parser = subparsers.add_parser("validate")
     validate_parser.add_argument("--root", default=".")
@@ -588,11 +772,40 @@ def _parser():
     run_parser.add_argument("--jobs", type=int, default=SHARD_WORKERS,
                             help="parallel-safe files per CI shard (default: %(default)s)")
     run_parser.add_argument("--report", help="new cost report outside the repository")
+    run_parser.add_argument("--deadline", type=float,
+                            help="shared workflow execution deadline")
     return parser
 
 
 def main(argv=None):
     args = _parser().parse_args(argv)
+    if args.command == "run-step":
+        command = args.argv[1:] if args.argv[:1] == ["--"] else args.argv
+        remaining = args.deadline - time.time()
+        if not command or not math.isfinite(remaining) or remaining <= 0:
+            print("ci-budget: no command or no execution time remaining", file=sys.stderr)
+            return 124
+        try:
+            # Replace this adapter; GNU timeout owns the temporary process
+            # group. Test modules instead use the catalog runner's deadline
+            # so their progress and owned fixture cleanup survive expiry.
+            os.execvp("timeout", ["timeout", "--kill-after=1s", "--",
+                                  str(remaining), *command])
+        except OSError as error:
+            print("ci-budget: cannot start bounded CI step: %s" % error, file=sys.stderr)
+            return 1
+        return 0
+    if args.command == "budget":
+        try:
+            run, jobs = _run_metadata(args.repository, args.run_id, args.attempt, include_jobs=True)
+            verdict = required_budget_verdict(
+                run, jobs, json.loads(args.expected_jobs), run_id=args.run_id,
+                attempt=args.attempt, observed_at=_utc_now(), final=args.final)
+        except (OSError, ValueError, TypeError, KeyError, subprocess.SubprocessError) as error:
+            print("ci-budget: cannot establish required result: %s" % error, file=sys.stderr)
+            return 1
+        print(json.dumps(verdict, sort_keys=True, indent=2))
+        return 0 if verdict["result"] == "passed" else 1
     root = Path(args.root).resolve()
     if args.command == "validate":
         try:
@@ -607,7 +820,7 @@ def main(argv=None):
         return 0
     if args.command == "run-tests":
         try:
-            return run_selected_tests(root, args.tests, args.jobs, args.report)
+            return run_selected_tests(root, args.tests, args.jobs, args.report, args.deadline)
         except ValueError as error:
             print("ci-impact: %s" % error, file=sys.stderr)
             return 1
@@ -620,7 +833,19 @@ def main(argv=None):
         merge_base = args.base or ""
         changes = []
     plan = plan_changes(root, changes, event=args.event)
-    history = _historical_costs(os.environ.get("GITHUB_REPOSITORY")) if args.cost_history else {
+    if args.ci_budget:
+        try:
+            run_id = int(os.environ["GITHUB_RUN_ID"])
+            attempt = int(os.environ["GITHUB_RUN_ATTEMPT"])
+            run, _jobs = _run_metadata(os.environ["GITHUB_REPOSITORY"], run_id, attempt)
+            plan["budget"] = run_budget(run, run_id=run_id, attempt=attempt, observed_at=_utc_now())
+            if not plan["budget"]["within_limit"]:
+                raise ValueError("workflow budget expired before scheduling")
+        except (OSError, ValueError, TypeError, KeyError, subprocess.SubprocessError) as error:
+            print("ci-budget: %s" % error, file=sys.stderr)
+            return 1
+    history = _historical_costs(os.environ.get("GITHUB_REPOSITORY"),
+        deadline=plan.get("budget", {}).get("deadline")) if args.cost_history else {
         "samples": {}, "runs": [], "status": "not-requested"}
     if plan["run_tests"]:
         plan["test_matrix"] = _matrix(root, plan["check_versions"], plan["selected_tests"],
@@ -631,6 +856,7 @@ def main(argv=None):
     plan["base_sha"] = args.base or ""
     plan["head_sha"] = args.head or ""
     plan["merge_base_sha"] = merge_base
+    plan["required_jobs"] = required_job_names(plan)
     rendered = json.dumps(plan, ensure_ascii=False, indent=2, sort_keys=True)
     print(rendered)
     if args.plan_path:

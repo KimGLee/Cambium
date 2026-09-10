@@ -282,6 +282,7 @@ modules:
       - SUBSTANTIVE_REGISTRY_PATH
       - composed_obligation_specs
       - load_changed_scope_registry
+      - obligation_projection_observation
       - obligation_spec_for_rule
       - profile_registered_scan_spec
       - profile_rendering_specs
@@ -2641,6 +2642,7 @@ modules:
       - extract_frontmatter
       - headings_of
       - inherited_path_capability
+      - inherited_path_capability_subprocess
       - iter_managed_md_files
       - iter_md_files
       - load_metadata_profile_contract

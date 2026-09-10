@@ -144,58 +144,60 @@ class RequiredQueueLifecycleEndToEndTests(RequiredQueueE2EScenarioCase):
                 semantic = self.fixture_close_input()
             else:
                 self.assertEqual("invoke", action["disposition"], action)
-            execution = self.execute_runner(action, semantic_input=semantic, proposal=proposal)
-            child_output = json.loads(execution["output"])
-            if token == "prepare-audit-plan":
-                plan_path = self.root / child_output["plan_path"]
-                original_plan = plan_path.read_bytes()
-                plan = kblib.load_yaml_file(plan_path)
-                obligations = {row["obligation_id"]: row for row in plan["obligations"]}
-            elif token == "deliver-activation-phase":
-                self.assertEqual(1, len(child_output))
-                delivered = child_output[0]
-                self.assertEqual(delivered["delivery_nonce"], delivered["activation_phase_payload"]["delivery_nonce"])
-                deliveries[(target["phase_id"], target["part_index"])] = delivered
-            elif token == "record-batch-page-review":
-                receipt_id = child_output["receipt_id"]
-                row = next(json.loads(line) for line in
-                    (self.root / runtime_paths.BATCH_PAGE_REVIEW_RECEIPT_PATH).read_text().splitlines()
-                    if json.loads(line)["receipt_id"] == receipt_id)
-                reviews[row["obligation_id"]] = row
-            elif token == "close-applied-batch":
-                runtime = runtime_validation.validate_runtime(self.root)
-                self.assertEqual([], runtime["errors"])
-                self.assertEqual("closed", runtime["items_by_id"][batch_id]["state"])
-                self.assertEqual(original_plan, plan_path.read_bytes())
-                if original_review is not None:
-                    self.assertNotEqual(original_review["receipt_id"],
-                                        reviews[original_review["obligation_id"]]["receipt_id"])
-                    self.assertNotIn(original_review["receipt_id"], queue_runtime.current_receipt_catalog(runtime))
-                if revised:
-                    self.assertTrue((self.root / runtime_paths.AUDIT_RECEIPT_REGISTER_PATH).
-                                    read_bytes().startswith(before_revision_register))
-                    close_id = runtime["items_by_id"][batch_id]["close_gate_receipt"]
-                    close = queue_runtime.current_receipt_catalog(runtime).resolve(close_id)[1]
-                    rows = close["audit_evidence_reconciliation"]
-                    selected = {row["selected_evidence_ref"] for row in rows}
-                    natural_history = {identity for row in rows
-                                       for identity in row["invalidated_evidence_refs"]}
-                    self.assertTrue(before_revision_ids & natural_history)
-                    self.assertFalse(selected & natural_history)
-                    self.assertFalse(before_revision_ids & set(runtime.get("invalidated_evidence_receipt_ids", [])))
-                trace = [row for row in self.runner_trace if row["batch"] == batch_id]
-                tokens = [row["action"] for row in trace]
-                for required in ("activate-ready-batch", "prepare-audit-plan", "deliver-activation-phase",
-                                 "ack-activation-phase", "publish-candidate-delta", "record-batch-review",
-                                 "transition-batch-merge-ready", "apply-delta", "run-batch-close-gate",
-                                 "close-applied-batch"):
-                    self.assertIn(required, tokens, tokens)
-                self.assertLess(tokens.index("publish-candidate-delta"), tokens.index("record-batch-review"))
-                self.assertLess(tokens.index("transition-batch-merge-ready"), tokens.index("apply-delta"))
-                # No direct producer, publisher or close bypass inside a batch.
-                self.assertLessEqual({call["name"] for call in self.mcp_session.calls[initial_call:]},
-                                     {"run_task", "record_evidence_invalidation"})
-                return
+            execution = self.execute_runner_actions(action, semantic_input=semantic, proposal=proposal)
+            for step in execution["executed"]:
+                token = step["token"]
+                child_output = json.loads(step["output"])
+                if token == "prepare-audit-plan":
+                    plan_path = self.root / child_output["plan_path"]
+                    original_plan = plan_path.read_bytes()
+                    plan = kblib.load_yaml_file(plan_path)
+                    obligations = {row["obligation_id"]: row for row in plan["obligations"]}
+                elif token == "deliver-activation-phase":
+                    self.assertEqual(1, len(child_output))
+                    delivered = child_output[0]
+                    self.assertEqual(delivered["delivery_nonce"], delivered["activation_phase_payload"]["delivery_nonce"])
+                    deliveries[(delivered["phase_id"], delivered["part_index"])] = delivered
+                elif token == "record-batch-page-review":
+                    receipt_id = child_output["receipt_id"]
+                    row = next(json.loads(line) for line in
+                        (self.root / runtime_paths.BATCH_PAGE_REVIEW_RECEIPT_PATH).read_text().splitlines()
+                        if json.loads(line)["receipt_id"] == receipt_id)
+                    reviews[row["obligation_id"]] = row
+                elif token == "close-applied-batch":
+                    runtime = runtime_validation.validate_runtime(self.root)
+                    self.assertEqual([], runtime["errors"])
+                    self.assertEqual("closed", runtime["items_by_id"][batch_id]["state"])
+                    self.assertEqual(original_plan, plan_path.read_bytes())
+                    if original_review is not None:
+                        self.assertNotEqual(original_review["receipt_id"],
+                                            reviews[original_review["obligation_id"]]["receipt_id"])
+                        self.assertNotIn(original_review["receipt_id"], queue_runtime.current_receipt_catalog(runtime))
+                    if revised:
+                        self.assertTrue((self.root / runtime_paths.AUDIT_RECEIPT_REGISTER_PATH).
+                                        read_bytes().startswith(before_revision_register))
+                        close_id = runtime["items_by_id"][batch_id]["close_gate_receipt"]
+                        close = queue_runtime.current_receipt_catalog(runtime).resolve(close_id)[1]
+                        rows = close["audit_evidence_reconciliation"]
+                        selected = {row["selected_evidence_ref"] for row in rows}
+                        natural_history = {identity for row in rows
+                                           for identity in row["invalidated_evidence_refs"]}
+                        self.assertTrue(before_revision_ids & natural_history)
+                        self.assertFalse(selected & natural_history)
+                        self.assertFalse(before_revision_ids & set(runtime.get("invalidated_evidence_receipt_ids", [])))
+                    trace = [row for row in self.runner_trace if row["batch"] == batch_id]
+                    tokens = [row["action"] for row in trace]
+                    for required in ("activate-ready-batch", "prepare-audit-plan", "deliver-activation-phase",
+                                     "ack-activation-phase", "publish-candidate-delta", "record-batch-review",
+                                     "transition-batch-merge-ready", "apply-delta", "run-batch-close-gate",
+                                     "close-applied-batch"):
+                        self.assertIn(required, tokens, tokens)
+                    self.assertLess(tokens.index("publish-candidate-delta"), tokens.index("record-batch-review"))
+                    self.assertLess(tokens.index("transition-batch-merge-ready"), tokens.index("apply-delta"))
+                    # No direct producer, publisher or close bypass inside a batch.
+                    self.assertLessEqual({call["name"] for call in self.mcp_session.calls[initial_call:]},
+                                         {"run_task", "record_evidence_invalidation"})
+                    return
             action = execution["next_action"]
         self.fail("MCP Runner did not reach closed within the bounded lifecycle")
 

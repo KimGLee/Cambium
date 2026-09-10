@@ -4,9 +4,12 @@ import hashlib
 import io
 from contextlib import redirect_stdout
 import json
+import os
 from pathlib import Path
 import tempfile
+import subprocess
 import sys
+import time
 from types import ModuleType
 import unittest
 from unittest import mock
@@ -65,6 +68,22 @@ class TestRunnerSelectionContractTests(unittest.TestCase):
         self.assertIn("mode=serial", output.getvalue())
         self.assertIn("selected=2 completed=2", output.getvalue())
 
+    def test_deadline_admission_and_failure_do_not_report_unexecuted_cases(self):
+        with mock.patch.object(test_runner, "_catalog") as catalog:
+            for deadline in ("nan", "inf", "-1", "1"):
+                with self.subTest(deadline=deadline):
+                    self.assertNotEqual(0, test_runner.main(["full", "--deadline", deadline]))
+            catalog.assert_not_called()
+        groups = test_runner.module_groups(self.catalog(),
+            test_runner.select_test_ids(self.catalog(), "full"))
+        with mock.patch.object(test_runner.subprocess, "Popen") as launch, \
+                redirect_stdout(io.StringIO()):
+            result = test_runner._execute_suite("full", groups, jobs=1,
+                run_child=lambda group: test_runner._run_child(
+                    group, python=sys.executable, root=ROOT, env={}, deadline=time.monotonic() - 1))
+        self.assertEqual((124, 0, 1), result)
+        launch.assert_not_called()
+
     def test_cost_scopes_attribute_real_hooks_without_repeating_shared_fixtures(self):
         module = ModuleType("cost_probe")
         calls = []
@@ -72,8 +91,10 @@ class TestRunnerSelectionContractTests(unittest.TestCase):
             calls.append("class")
             cls.addClassCleanup(lambda: calls.append("class-cleanup"))
         def method(case):
-            with test_runner.measure_scope("checkpoint", "local-input"):
+            with test_runner.measure_scope("checkpoint", "local-input") as counts:
                 calls.append("method")
+                counts["action:review"] = 2
+                counts["child:producer"] = 3
         module.setUpModule = lambda: calls.append("module")
         module.tearDownModule = lambda: calls.append("module-cleanup")
         probe = type("Probe", (unittest.TestCase,), {
@@ -95,6 +116,9 @@ class TestRunnerSelectionContractTests(unittest.TestCase):
         rows = report["scopes"]
         self.assertEqual(2, len([row for row in rows if row["kind"] == "case"]))
         self.assertEqual(2, len([row for row in rows if row["kind"] == "checkpoint"]))
+        self.assertEqual([{"action:review": 2, "child:producer": 3}] * 2,
+                         [row["counts"] for row in rows if row["kind"] == "checkpoint"])
+        self.assertTrue(all("counts" not in row for row in rows if row["kind"] != "checkpoint"))
         self.assertTrue(all(0 <= row["exclusive"] <= row["elapsed"] for row in rows))
         # Root scopes partition wall time. Nested rows are not added again.
         roots = sum(row["elapsed"] for row in rows if row["parent"] is None)
@@ -569,6 +593,44 @@ class TestCatalogContractTests(unittest.TestCase):
         self.assertEqual(catalog["schema_version"],
                          rendered["schema_version"])
         self.assertEqual(1, rendered["summary"]["test_cases"])
+
+
+class TestRunnerDeadlineIntegrationTests(unittest.TestCase):
+    """One bounded process seam; no governance repository or lifecycle."""
+
+    @unittest.skipUnless(os.name == "posix", "CI deadline requires POSIX process isolation")
+    def test_deadline_terminates_descendants_and_reclaims_private_fixture_space(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            source = '''import json, os, subprocess, sys, tempfile, time, unittest
+from pathlib import Path
+class Probe(unittest.TestCase):
+    def test_timeout(self):
+        child = subprocess.Popen([sys.executable, "-c", "import signal,time; signal.signal(signal.SIGTERM, signal.SIG_IGN); time.sleep(60)"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        resource = tempfile.mkdtemp(prefix="owned-test-resource-")
+        Path("probe.json").write_text(json.dumps({"pid": child.pid, "resource": resource, "tmpdir": os.environ["TMPDIR"]}))
+        time.sleep(60)
+'''
+            (root / "deadline_probe.py").write_text(source, encoding="utf-8")
+            env = {**os.environ, "PYTHONPATH": os.pathsep.join((str(ROOT), str(root))),
+                   "PYTHONDONTWRITEBYTECODE": "1"}
+            group = test_runner.TestGroup("deadline_probe", "deadline_probe.py",
+                ("deadline_probe.Probe.test_timeout",), False)
+            progress = root / "progress.jsonl"
+            result = test_runner._run_child(group, python=sys.executable, root=root,
+                env=env, progress_path=progress, deadline=time.monotonic() + 3)
+            self.assertEqual(124, result.returncode)
+            self.assertIsNone(result.measurement)
+            self.assertIn("deadline exceeded", result.stderr)
+            observed = json.loads((root / "probe.json").read_text())
+            self.assertFalse(Path(observed["resource"]).exists())
+            self.assertFalse(Path(observed["tmpdir"]).exists())
+            status = subprocess.run(["ps", "-o", "stat=", "-p", str(observed["pid"])],
+                text=True, capture_output=True, check=False).stdout.strip()
+            self.assertTrue(not status or status.startswith("Z"), status)
+            rows = [json.loads(line) for line in progress.read_text().splitlines()]
+            self.assertEqual("incomplete", rows[0]["state"])
+            self.assertFalse(any(row.get("kind") == "test-run-finished" for row in rows))
 
 
 class TestCatalogProjectionIntegrationTests(unittest.TestCase):

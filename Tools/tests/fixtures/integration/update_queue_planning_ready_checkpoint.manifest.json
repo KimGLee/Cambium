@@ -1,6 +1,6 @@
 {
   "artifacts": {
-    "ready_gate": "audit-check_queue-20260909T184338Z-50ba7312b11a40cbae6f3cecec3abce3-0001"
+    "ready_gate": "audit-check_queue-20260910T091111Z-00a923bc9dc44b70afdfd285c7ba238e-0001"
   },
   "checkpoint_id": "update-queue-planning-ready-current",
   "current_contract_owner": "Tools.execution.task_runtime.runtime_validation.validate_runtime",
@@ -28,17 +28,17 @@
     },
     {
       "path": ".cambium/receipts/gates.jsonl",
-      "sha256": "sha256:eb7127837ae120fe7beb445b0b35551c0d303b1600850a1d7b744eb20690b465",
+      "sha256": "sha256:0c151bfc110c99762053248813fd51c5de3535b47a975e6553eb9c8e31167c9a",
       "size": 8120
     },
     {
       "path": ".cambium/receipts/standards-adoptions.jsonl",
-      "sha256": "sha256:30d5db8f9a8a25c28065f566d7a042e68009c8d34b9aac5b4b3d097b7c49ee35",
+      "sha256": "sha256:e0792cdc7784750ec741d320fde196a50fd9c297fc90e64357f53a444dd7bc6d",
       "size": 2314
     },
     {
       "path": ".cambium/receipts/task-plans.jsonl",
-      "sha256": "sha256:66ea69c4066abf3afa35becf1703b3267b8d9b903b09439209b54bb2a0bc73fe",
+      "sha256": "sha256:bcc39ed2f0c3494c3026da5753a2da4d2567f0026b051dc68eab2e595db8c617",
       "size": 1740
     },
     {
@@ -68,7 +68,7 @@
     },
     {
       "path": ".cambium/tmp/receipt-append.free",
-      "sha256": "sha256:78365cf795a4584e37e528c24f245068ded880d985689d4ff1baee1fdbc4f378",
+      "sha256": "sha256:86c5f71c2ce31b09998ba97897806fdf0976bb2e6c1ce1e35841e9d072e2f8e5",
       "size": 91
     },
     {
@@ -91,6 +91,6 @@
   "scenario": "planning-ready",
   "scenario_dependency_builder": "Tools.tests.fixtures.integration.update_queue_checkpoints.install_update_queue_profile",
   "schema_version": 1,
-  "tree_sha256": "sha256:016fecc8363e67bfc5c629609744e0ade8f2a07e3a04820cf3cc019b1e356bd7",
-  "validated_tree_sha256": "sha256:ded4104d1b95f7a02f7138c9beed962414a2943400a5bafc90d6f025172603ec"
+  "tree_sha256": "sha256:cb105ff633a6db9e8e854bcd7fc6f6821b3ffcb2c1b5d683d51a066bf050d3ac",
+  "validated_tree_sha256": "sha256:1aa41575c0226471b79910c82fde71b6213b0a23d0dd8a2482671297579cfbae"
 }

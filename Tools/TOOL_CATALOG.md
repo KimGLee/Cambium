@@ -10,8 +10,8 @@ Regenerate with `python3 Tools/generate_tool_catalog.py .`. Verify without writi
 | Source | Exact-byte SHA-256 |
 |---|---|
 | `Tools/tool-taxonomy.yaml` | `sha256:44c6a46acf604ab28023a4028fb026bf11b01582093450bd113ff3527c95998f` |
-| `Tools/module-boundaries.yaml` | `sha256:f38e2261c980d3870937218110b3837b3e2e5ab48b84818a1e2aed3c26a82438` |
-| `Tools/agent-interface-policy.yaml` | `sha256:16cbe961699c6a473c9f28d7b1e9b6b1a79bdc6c410ffc8f115ed2f70feee803` |
+| `Tools/module-boundaries.yaml` | `sha256:35f5814e5a860c5f04f851034ac4d47b4dad0dc39caced19f3ec10cf04f8c747` |
+| `Tools/agent-interface-policy.yaml` | `sha256:b6a3ae872ce7a82ef0ddf4b7fd2a49949f99781353d0b10ff31bef2dcc91eec5` |
 | `Tools/operation-capabilities.yaml` | `sha256:d6c672632ff29288fd15d1df5a4b85b7cabbf9e34a292cf0782bb9269c741a02` |
 
 Static consumption, private access, and dependency facts come from `Tools/platform/distribution/module_boundary_facts.py` over shipped production Python modules; its excluded directories are `__pycache__`, `compiled`, `schemas`, `tests`. CLI and MCP exposure and the shared Host transport come only from `Tools/agent-interface-policy.yaml`. The static Python scan deliberately excludes `subprocess-cli`, `registry-driven-dynamic-import`; registered capability relationships and MCP subprocess routes are listed separately below rather than being mislabeled as Python symbol imports.
@@ -25,12 +25,12 @@ Static consumption, private access, and dependency facts come from `Tools/platfo
 | declared cli tools | 68 |
 | mcp tools | 50 |
 | host transports | 1 |
-| static public api symbols | 1563 |
+| static public api symbols | 1565 |
 | declared unused static public apis | 74 |
 | declared public apis without observed consumers | 32 |
 | registered capability relationships | 150 |
 | registered symbol relationships | 80 |
-| source public exports | 348 |
+| source public exports | 349 |
 | source public exports undeclared | 0 |
 | declared transport consumptions | 50 |
 | static private consumptions | 0 |
@@ -97,7 +97,7 @@ Machine-contract loading, closed validation, pure projection, and stable predica
 | `execution.audit.audit_dimension_contract` | `Tools/execution/audit/audit_dimension_contract.py` | python-module | `execution / audit / contract` | static Python (7 symbols / 8 consumers) |
 | `execution.audit.audit_fingerprint` | `Tools/execution/audit/audit_fingerprint.py` | python-module | `execution / audit / contract` | static Python (4 symbols / 10 consumers) |
 | `execution.audit.audit_lifecycle_contract` | `Tools/execution/audit/audit_lifecycle_contract.py` | python-module | `execution / audit / contract` | static Python (11 symbols / 12 consumers) |
-| `execution.audit.audit_obligation_projection` | `Tools/execution/audit/audit_obligation_projection.py` | python-module | `execution / audit / contract` | static Python (13 symbols / 6 consumers) |
+| `execution.audit.audit_obligation_projection` | `Tools/execution/audit/audit_obligation_projection.py` | python-module | `execution / audit / contract` | static Python (14 symbols / 6 consumers) |
 | `execution.audit.audit_plan_contract` | `Tools/execution/audit/audit_plan_contract.py` | python-module | `execution / audit / contract` | static Python (12 symbols / 8 consumers) |
 | `execution.audit.audit_producer_chain` | `Tools/execution/audit/audit_producer_chain.py` | python-module | `execution / audit / contract` | static Python (7 symbols / 7 consumers) |
 | `execution.audit.audit_receipt_contract` | `Tools/execution/audit/audit_receipt_contract.py` | python-module | `execution / audit / contract` | static Python (5 symbols / 8 consumers), registered Python symbol (1 consumers) |
@@ -642,7 +642,7 @@ Repository IO, serialization, locking, transport, generation, and other Tool-own
 | Module | Path | Type | Responsibility class | Interface exposure |
 |---|---|---|---|---|
 | `platform.common.host_toolchain` | `Tools/platform/common/host_toolchain.py` | python-module | `platform / common / infrastructure` | static Python (11 symbols / 6 consumers) |
-| `platform.common.kblib` | `Tools/platform/common/kblib.py` | python-module | `platform / common / infrastructure` | static Python (85 symbols / 152 consumers) |
+| `platform.common.kblib` | `Tools/platform/common/kblib.py` | python-module | `platform / common / infrastructure` | static Python (86 symbols / 152 consumers) |
 | `platform.common.locked_download` | `Tools/platform/common/locked_download.py` | python-module | `platform / common / infrastructure` | static Python (1 symbols / 2 consumers) |
 | `platform.common.primitives` | `Tools/platform/common/primitives.py` | python-module | `platform / common / infrastructure` | static Python (8 symbols / 38 consumers) |
 | `platform.common.receipts` | `Tools/platform/common/receipts.py` | python-module | `platform / common / infrastructure` | static Python (1 symbols / 2 consumers) |
@@ -773,6 +773,7 @@ Repository IO, serialization, locking, transport, generation, and other Tool-own
 | `execution.audit.audit_obligation_projection.SUBSTANTIVE_REGISTRY_PATH` | `execution.audit.audit_producer_chain` | declared |
 | `execution.audit.audit_obligation_projection.composed_obligation_specs` | `execution.audit.prepare_audit_plan` | declared |
 | `execution.audit.audit_obligation_projection.load_changed_scope_registry` | `execution.audit.changed_scope_evidence_contract` | declared |
+| `execution.audit.audit_obligation_projection.obligation_projection_observation` | `execution.audit.audit_evidence_runtime` | declared |
 | `execution.audit.audit_obligation_projection.obligation_spec_for_rule` | `execution.audit.audit_producer_chain`, `execution.audit.changed_scope_evidence_contract`, `execution.audit.record_changed_scope_evidence`, `knowledge.rendering.record_rendering_verification` | declared |
 | `execution.audit.audit_obligation_projection.profile_registered_scan_spec` | `execution.audit.changed_scope_evidence_contract` | declared |
 | `execution.audit.audit_obligation_projection.profile_rendering_specs` | `execution.audit.audit_producer_chain` | declared |
@@ -2043,6 +2044,7 @@ Repository IO, serialization, locking, transport, generation, and other Tool-own
 | `platform.common.kblib.extract_frontmatter` | `execution.audit.prepare_audit_plan`, `execution.context_delivery.card_activation`, `execution.context_delivery.read_set_contract`, `execution.task_runtime.queue_runtime.control_plane`, `execution.task_runtime.queue_runtime.property_state`, `knowledge.content.check_links`, `knowledge.content.check_residual_content`, `knowledge.metadata.check_freshness`, `knowledge.metadata.check_page_contract`, `knowledge.metadata.check_vocab`, `knowledge.metadata.metadata_page_state_contract`, `knowledge.metadata.page_frontmatter_contract`, `knowledge.structure.boundary_contract`, `knowledge.structure.repository_structure`, `platform.distribution.stamp_cards` | declared |
 | `platform.common.kblib.headings_of` | `governance.profile.profile_contract`, `knowledge.content.check_links`, `knowledge.metadata.check_page_contract`, `knowledge.structure.check_structure` | declared |
 | `platform.common.kblib.inherited_path_capability` | `execution.audit.check_proof`, `execution.evidence.seal_receipts`, `execution.planning.check_corpus_plan`, `governance.control.run_gates`, `governance.profile.check_profile`, `governance.profile.profile_admission`, `knowledge.content.check_residual_content`, `knowledge.metadata.check_freshness`, `knowledge.metadata.check_vocab`, `knowledge.structure.render_boundary_projection` | declared |
+| `platform.common.kblib.inherited_path_capability_subprocess` | `platform.distribution.test_runner` | declared |
 | `platform.common.kblib.iter_managed_md_files` | `knowledge.content.check_links`, `knowledge.content.duplicate_check`, `knowledge.metadata.check_vocab` | declared |
 | `platform.common.kblib.iter_md_files` | `knowledge.metadata.check_page_contract`, `knowledge.structure.check_boundary_contract`, `knowledge.structure.render_boundary_projection` | declared |
 | `platform.common.kblib.load_metadata_profile_contract` | `governance.profile.profile_contract` | declared |
@@ -2343,6 +2345,7 @@ Repository IO, serialization, locking, transport, generation, and other Tool-own
 | `execution.audit.audit_obligation_projection.composed_obligation_specs` | yes | `execution.audit.prepare_audit_plan` |
 | `execution.audit.audit_obligation_projection.load_changed_scope_registry` | yes | `execution.audit.changed_scope_evidence_contract` |
 | `execution.audit.audit_obligation_projection.obligation_spec_for_rule` | yes | `execution.audit.audit_producer_chain`, `execution.audit.changed_scope_evidence_contract`, `execution.audit.record_changed_scope_evidence`, `knowledge.rendering.record_rendering_verification` |
+| `execution.audit.audit_obligation_projection.obligation_projection_observation` | yes | `execution.audit.audit_evidence_runtime` |
 | `execution.audit.audit_obligation_projection.profile_registered_scan_spec` | yes | `execution.audit.changed_scope_evidence_contract` |
 | `execution.audit.audit_obligation_projection.required_obligation` | yes | `execution.audit.prepare_audit_plan` |
 | `execution.audit.audit_obligation_projection.resolve_obligation_definition` | yes | `execution.audit.audit_producer_chain`, `execution.audit.changed_scope_evidence_contract`, `execution.audit.prepare_audit_plan`, `execution.audit.record_changed_scope_evidence` |

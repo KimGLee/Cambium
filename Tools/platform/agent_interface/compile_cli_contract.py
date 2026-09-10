@@ -73,6 +73,7 @@ import argparse
 import ast
 import os
 import sys
+from collections import deque
 from contextlib import contextmanager
 from contextvars import ContextVar
 from copy import deepcopy
@@ -988,8 +989,27 @@ class _ReceiptExtensionAnalyzer:
             raise ContractError(
                 "receipt source %s does not parse: %s" %
                 (relative, exc)) from exc
+        functions = {
+            node.name: node for node in tree.body
+            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+        }
+        top_functions = set(functions.values())
+        receipt_scopes = set()
         bindings = {}
-        for node in ast.walk(tree):
+        # Preserve ast.walk's breadth-first import ordering while recording
+        # which top-level scopes can contain receipt construction. Without a
+        # factory call a scope cannot create a receipt alias or extension;
+        # parser/business-only functions need no second receipt-analysis walk.
+        # Nested definitions conservatively mark their enclosing scope, so
+        # this index can overselect but never omit a lexical factory use.
+        pending = deque([(tree, tree)])
+        while pending:
+            node, scope = pending.popleft()
+            if node in top_functions:
+                scope = node
+            if isinstance(node, ast.Call) and _is_receipt_factory(node):
+                receipt_scopes.add(scope)
+            pending.extend((child, scope) for child in ast.iter_child_nodes(node))
             if isinstance(node, ast.Import):
                 for alias in node.names:
                     if alias.asname:
@@ -1005,10 +1025,6 @@ class _ReceiptExtensionAnalyzer:
                     qualified = "%s.%s" % (owner, alias.name) \
                         if owner else alias.name
                     bindings[alias.asname or alias.name] = qualified
-        functions = {
-            node.name: node for node in tree.body
-            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
-        }
         info = {
             "module": module_name,
             "path": relative,
@@ -1016,6 +1032,11 @@ class _ReceiptExtensionAnalyzer:
             "tree": tree,
             "bindings": bindings,
             "functions": functions,
+            "receipt_scopes": {
+                scope: (frozenset(), False, ())
+                for scope in (tree, *functions.values())
+                if scope not in receipt_scopes
+            },
         }
         self.modules[module_name] = info
         return info
@@ -1128,11 +1149,18 @@ class _ReceiptExtensionAnalyzer:
                         for keyword in value.keywords))
         return set(), False
 
-    def _analyze_scope(self, info, scope):
+    def _scope_facts(self, scope):
+        """Extract only lexical facts, independent of the factory call graph.
+
+        A shared helper's syntax need not be walked again for every CLI that
+        calls it. Factory resolution is deliberately excluded: recursion and
+        partial results still belong to each analyzer's traversal.
+        """
         result = self._empty()
         nodes = list(_scope_nodes(scope))
         receipt_names = set()
         assignments = {}
+        factory_calls = []
 
         for node in nodes:
             if isinstance(node, (ast.Assign, ast.AnnAssign)):
@@ -1162,7 +1190,7 @@ class _ReceiptExtensionAnalyzer:
 
         for node in nodes:
             if isinstance(node, ast.Call) and _is_receipt_factory(node):
-                self._merge(result, self._factory(info, node))
+                factory_calls.append(node)
 
             if isinstance(node, ast.Call) and \
                     isinstance(node.func, ast.Attribute) and \
@@ -1194,6 +1222,19 @@ class _ReceiptExtensionAnalyzer:
                     else:
                         result["partial"] = True
 
+        return (frozenset(result["fields"]), result["partial"],
+                tuple(factory_calls))
+
+    def _analyze_scope(self, info, scope):
+        facts = info["receipt_scopes"].get(scope)
+        if facts is None:
+            facts = self._scope_facts(scope)
+            info["receipt_scopes"][scope] = facts
+        fields, partial, factory_calls = facts
+        result = {"fields": set(fields), "sources": set(),
+                  "partial": partial}
+        for call in factory_calls:
+            self._merge(result, self._factory(info, call))
         result["fields"].difference_update(self.common_envelope_fields)
         return result
 
