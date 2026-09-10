@@ -277,7 +277,10 @@ class RequiredQueueE2EScenarioCase(RequiredQueueFixture,
         Every real child result remains visible; one outer request is not
         reported as one unit of governance work.
         """
-        continuous = action["disposition"] == "invoke" and action["token"] != "close-applied-batch"
+        review_inputs = (semantic_input is not None and
+                         "initial_action_id" in semantic_input and "reviews" in semantic_input)
+        continuous = (review_inputs or (action["disposition"] == "invoke" and
+                                       action["token"] != "close-applied-batch"))
         arguments = {"root": str(self.root)}
         arguments.update({"run_until_boundary": True} if continuous else
                          {"execute": action["action_id"]})
@@ -298,7 +301,7 @@ class RequiredQueueE2EScenarioCase(RequiredQueueFixture,
             if not continuous:
                 self.assertEqual(action["action_id"], execution["executed_action_id"])
                 execution = {"executed": [dict(execution, action_id=execution["executed_action_id"],
-                                               token=execution["executed_token"])],
+                                               token=execution["executed_token"], target=action["target"])],
                              "next_action": execution["next_action"]}
             self.assertTrue(execution["executed"], execution)
             self.assertEqual(action["action_id"], execution["executed"][0]["action_id"])
@@ -313,7 +316,7 @@ class RequiredQueueE2EScenarioCase(RequiredQueueFixture,
                     key = "child:" + child["tool"]
                     counts[key] = counts.get(key, 0) + 1
                 self.runner_trace.append({
-                    "action": step["token"], "batch": action["target"].get("batch_id"),
+                    "action": step["token"], "batch": step["target"].get("batch_id"),
                     "substeps": [child["tool"] for child in step["substeps"]],
                 })
         return execution

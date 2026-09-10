@@ -161,7 +161,7 @@ source_files:
   - Tools/stamp_cards.py
   - Tools/update_queue.py
   - Tools/update_task.py
-source_hash: sha256:1d1a5f008b0e4bd110ee9df9072d8726b493f92703762ee9ecd4769696dc6c81
+source_hash: sha256:990f2f4bcf9255c756cbfdb0d4a3c286e4bbe2185736e35fb049c4f09607b937
 agent_interface_policy:
   path: Tools/agent-interface-policy.yaml
   sha256: sha256:b6a3ae872ce7a82ef0ddf4b7fd2a49949f99781353d0b10ff31bef2dcc91eec5
@@ -9321,7 +9321,7 @@ tools:
     host_environment_boundary: true
     implementation_module: Tools.execution.task_runtime.task_runtime_runner
     implementation_path: Tools/execution/task_runtime/task_runtime_runner.py
-    implementation_source_hash: sha256:172fc36289cac3d9bcd07d1141bd3de50f7eb81a0eb61651564ab9783b85d376
+    implementation_source_hash: sha256:7f9b0e9629ebe3ba14ce448b96ef9cca42669cb78249965c299afcd9587d6843
     description: Read the current Task Runtime action, execute that exact action, or advance deterministic actions to the next semantic boundary.
     arguments:
       - dest: root
@@ -9355,7 +9355,7 @@ tools:
         nargs: 0
         action: store_true
         type: null
-        help: advance invoke actions until Agent, user, Host, repair, or terminal
+        help: advance invoke actions to a boundary, or deliver explicit same-page review inputs
       - dest: input
         option_strings:
           - --input
@@ -9366,7 +9366,7 @@ tools:
         nargs: null
         action: store
         type: null
-        help: repository-relative JSON object below .cambium/tmp for await input
+        help: "JSON below .cambium/tmp: one await input for --execute, or initial_action_id and reviews [{obligation_id, input}] for same-page --run-until-boundary"
       - dest: proposal
         option_strings:
           - --proposal
@@ -9388,7 +9388,7 @@ tools:
         nargs: null
         action: store
         type: int
-        help: maximum deterministic actions for --run-until-boundary
+        help: maximum actions for --run-until-boundary
       - dest: json
         option_strings:
           - --json
@@ -9413,7 +9413,7 @@ tools:
     receipt_extensions_extraction: complete
     receipt_extension_sources:
       - path: Tools/execution/task_runtime/task_runtime_runner.py
-        sha256: sha256:172fc36289cac3d9bcd07d1141bd3de50f7eb81a0eb61651564ab9783b85d376
+        sha256: sha256:7f9b0e9629ebe3ba14ce448b96ef9cca42669cb78249965c299afcd9587d6843
     agent_interface:
       exposure: mcp
       workspace_argument: root

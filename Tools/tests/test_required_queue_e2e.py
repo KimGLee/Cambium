@@ -135,7 +135,25 @@ class RequiredQueueLifecycleEndToEndTests(RequiredQueueE2EScenarioCase):
                 semantic = {"phase_nonce": delivered["delivery_nonce"],
                             "phase_delivery_receipt": delivered["receipt_id"]}
             elif token == "record-batch-page-review":
-                semantic = self.fixture_review_input(action, obligations)
+                # Deliver individually authored answers together, not an
+                # aggregate pass. The original plan owns membership; Runner
+                # selects order and stops at any intervening prerequisite.
+                # A withdrawn or naturally stale current item is included
+                # again even though its immutable older record still exists.
+                answers = []
+                for identity, obligation in obligations.items():
+                    if (obligation["evidence_kind"] != "batch-page-review-record" or
+                            obligation["target"] != target["page"] or
+                            (identity in reviews and identity != target["obligation_id"])):
+                        continue
+                    candidate = {"target": {
+                        "obligation_id": identity,
+                        "review_input_constraints": batch_review_obligation_contract.review_input_constraints(
+                            list(obligations.values()), obligation),
+                    }}
+                    answers.append({"obligation_id": identity,
+                                    "input": self.fixture_review_input(candidate, obligations)})
+                semantic = {"initial_action_id": action["action_id"], "reviews": answers}
             elif token == "record-rendering-verification":
                 semantic = {"rendering_mode": "source-only"}
             elif token == "record-batch-review":

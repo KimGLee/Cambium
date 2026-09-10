@@ -10,7 +10,7 @@ Regenerate with `python3 Tools/generate_tool_catalog.py .`. Verify without writi
 | Source | Exact-byte SHA-256 |
 |---|---|
 | `Tools/tool-taxonomy.yaml` | `sha256:44c6a46acf604ab28023a4028fb026bf11b01582093450bd113ff3527c95998f` |
-| `Tools/module-boundaries.yaml` | `sha256:3b8587bf17b32368779d248014facd9b0c822c78f77054dfefc264cd1dd3f0d9` |
+| `Tools/module-boundaries.yaml` | `sha256:f9e96382b8cb200f74c1dd973c7b79cdb9004e3be47cf23ec38e64991a531aaa` |
 | `Tools/agent-interface-policy.yaml` | `sha256:b6a3ae872ce7a82ef0ddf4b7fd2a49949f99781353d0b10ff31bef2dcc91eec5` |
 | `Tools/operation-capabilities.yaml` | `sha256:d6c672632ff29288fd15d1df5a4b85b7cabbf9e34a292cf0782bb9269c741a02` |
 
@@ -25,12 +25,12 @@ Static consumption, private access, and dependency facts come from `Tools/platfo
 | declared cli tools | 68 |
 | mcp tools | 50 |
 | host transports | 1 |
-| static public api symbols | 1567 |
+| static public api symbols | 1569 |
 | declared unused static public apis | 74 |
 | declared public apis without observed consumers | 32 |
 | registered capability relationships | 150 |
 | registered symbol relationships | 80 |
-| source public exports | 351 |
+| source public exports | 353 |
 | source public exports undeclared | 0 |
 | declared transport consumptions | 50 |
 | static private consumptions | 0 |
@@ -286,7 +286,7 @@ Machine-contract loading, closed validation, pure projection, and stable predica
 | `execution.task_runtime.queue_runtime.task_record` | `Tools/execution/task_runtime/queue_runtime/task_record.py` | python-module | `execution / task-runtime / contract` | static Python (3 symbols / 3 consumers) |
 | `execution.task_runtime.queue_runtime.work_spec` | `Tools/execution/task_runtime/queue_runtime/work_spec.py` | python-module | `execution / task-runtime / contract` | static Python (3 symbols / 4 consumers) |
 | `execution.task_runtime.runtime_state_contract` | `Tools/execution/task_runtime/runtime_state_contract.py` | python-module | `execution / task-runtime / contract` | static Python (50 symbols / 39 consumers) |
-| `execution.task_runtime.task_runtime_action` | `Tools/execution/task_runtime/task_runtime_action.py` | python-module | `execution / task-runtime / contract` | static Python (7 symbols / 3 consumers) |
+| `execution.task_runtime.task_runtime_action` | `Tools/execution/task_runtime/task_runtime_action.py` | python-module | `execution / task-runtime / contract` | static Python (9 symbols / 3 consumers) |
 
 ##### Layer: `entrypoint`
 
@@ -1601,6 +1601,8 @@ Repository IO, serialization, locking, transport, generation, and other Tool-own
 | `execution.task_runtime.task_runtime_action.action_route` | `execution.task_runtime.task_runtime_runner` | declared |
 | `execution.task_runtime.task_runtime_action.action_route_for_token` | `execution.task_runtime.check_queue`, `execution.task_runtime.task_runtime_runner` | declared |
 | `execution.task_runtime.task_runtime_action.build_action` | `execution.task_runtime.task_runtime_runner` | declared |
+| `execution.task_runtime.task_runtime_action.page_review_input_scope` | `execution.task_runtime.task_runtime_runner` | declared |
+| `execution.task_runtime.task_runtime_action.page_review_inputs` | `execution.task_runtime.task_runtime_runner` | declared |
 | `execution.task_runtime.task_runtime_action.resume_action_token` | `execution.task_runtime.queue_runtime.resume` | declared |
 | `execution.task_runtime.task_runtime_action.resume_recommendation` | `execution.task_runtime.check_queue` | declared |
 | `execution.task_runtime.task_runtime_runner.main` | `run_task` | declared |
@@ -2075,7 +2077,7 @@ Repository IO, serialization, locking, transport, generation, and other Tool-own
 | `platform.common.kblib.registered_repository_artifact_path` | `governance.control.metadata_execution_contract`, `knowledge.metadata.compose_page_contract`, `knowledge.metadata.compose_vocab`, `platform.agent_interface.compile_cli_contract`, `platform.agent_interface.render_host_configs`, `platform.agent_interface.render_interface_projection` | declared |
 | `platform.common.kblib.render_boundary_projection_lines` | `knowledge.structure.check_boundary_contract`, `knowledge.structure.render_boundary_projection` | declared |
 | `platform.common.kblib.repository_content_files` | `knowledge.structure.check_moc`, `knowledge.structure.repository_structure`, `platform.distribution.test_catalog` | declared |
-| `platform.common.kblib.repository_file_snapshot` | `execution.audit.check_proof`, `execution.context_delivery.read_set_contract`, `execution.evidence.metadata_gate_runtime`, `execution.planning.check_corpus_plan`, `execution.task_runtime.queue_runtime.property_state`, `governance.control.metadata_execution_contract`, `governance.profile.check_profile`, `governance.profile.profile_admission`, `governance.profile.profile_candidate`, `governance.profile.profile_contract`, `governance.profile.scaffold_profile`, `governance.standards.adoption_lineage_contract`, `governance.standards.standards_state`, `knowledge.structure.check_structure`, `knowledge.structure.render_structure_projection`, `platform.repository.repository` | declared |
+| `platform.common.kblib.repository_file_snapshot` | `execution.audit.check_proof`, `execution.context_delivery.read_set_contract`, `execution.evidence.metadata_gate_runtime`, `execution.planning.check_corpus_plan`, `execution.task_runtime.queue_runtime.property_state`, `execution.task_runtime.task_runtime_runner`, `governance.control.metadata_execution_contract`, `governance.profile.check_profile`, `governance.profile.profile_admission`, `governance.profile.profile_candidate`, `governance.profile.profile_contract`, `governance.profile.scaffold_profile`, `governance.standards.adoption_lineage_contract`, `governance.standards.standards_state`, `knowledge.structure.check_structure`, `knowledge.structure.render_structure_projection`, `platform.repository.repository` | declared |
 | `platform.common.kblib.repository_parent_tree_snapshot` | `execution.planning.check_corpus_plan` | declared |
 | `platform.common.kblib.repository_path` | `execution.audit.check_batch_close`, `execution.context_delivery.card_contract`, `execution.context_delivery.read_set_contract`, `execution.planning.check_corpus_plan`, `execution.task_runtime.apply_delta`, `execution.task_runtime.queue_runtime.adoption`, `execution.task_runtime.queue_runtime.control_plane`, `execution.task_runtime.queue_runtime.repofs`, `execution.task_runtime.queue_runtime.task_contract`, `execution.task_runtime.task_runtime_runner`, `governance.control.control_registry_contract`, `governance.profile.apply_profile_adoption`, `governance.profile.profile_candidate`, `governance.profile.scaffold_profile`, `knowledge.content.maintenance_candidates`, `knowledge.metadata.check_freshness`, `platform.distribution.check_kernel_size`, `platform.distribution.stamp_cards`, `platform.distribution.upstream_component_boundary` | declared |
 | `platform.common.kblib.repository_snapshot_sha256` | `execution.audit.assemble_terminal_proof`, `execution.audit.audit_producer_runtime`, `execution.audit.changed_scope_evidence_runtime`, `execution.audit.check_batch_close`, `execution.audit.check_proof`, `execution.evidence.metadata_gate_runtime`, `execution.evidence.record_gate_result`, `execution.planning.check_corpus_plan`, `execution.planning.record_corpus_acceptance`, `execution.task_runtime.queue_check_receipt`, `execution.task_runtime.queue_runtime.locks`, `execution.task_runtime.queue_runtime.resume`, `execution.task_runtime.queue_runtime.revalidation`, `execution.task_runtime.update_queue`, `execution.task_runtime.update_task`, `knowledge.metadata.apply_metadata_transition` | declared |
@@ -2540,6 +2542,8 @@ Repository IO, serialization, locking, transport, generation, and other Tool-own
 | `execution.task_runtime.task_runtime_action.action_route` | yes | `execution.task_runtime.task_runtime_runner` |
 | `execution.task_runtime.task_runtime_action.action_route_for_token` | yes | `execution.task_runtime.check_queue`, `execution.task_runtime.task_runtime_runner` |
 | `execution.task_runtime.task_runtime_action.build_action` | yes | `execution.task_runtime.task_runtime_runner` |
+| `execution.task_runtime.task_runtime_action.page_review_input_scope` | yes | `execution.task_runtime.task_runtime_runner` |
+| `execution.task_runtime.task_runtime_action.page_review_inputs` | yes | `execution.task_runtime.task_runtime_runner` |
 | `execution.task_runtime.task_runtime_action.resume_action_token` | yes | `execution.task_runtime.queue_runtime.resume` |
 | `execution.task_runtime.task_runtime_action.resume_recommendation` | yes | `execution.task_runtime.check_queue` |
 | `execution.task_runtime.task_runtime_runner.main` | yes | `run_task` |

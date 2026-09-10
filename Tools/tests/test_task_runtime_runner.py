@@ -268,6 +268,78 @@ class TaskRuntimeRunnerUnitTests(unittest.TestCase):
         self.assertIs(boundary, result["next_action"])
         self.assertEqual(2, observe.call_count)  # One before and one resulting-state observation.
 
+        # Collection delivery is a Runner boundary, not a second producer or
+        # an atomic transaction. Parsed in-memory states suffice here.
+        def review(identity, *, binding=invoke["binding"], **target):
+            fields = dict(invoke)
+            fields.pop("action_id")
+            fields.update(binding=binding, disposition="await-agent", token="record-batch-page-review",
+                          capability_id=None, tool=None, arguments={}, required_input={
+                              "type": "object", "properties": {}, "additionalProperties": False,
+                              "x-cambium-binding": {}}, target={
+                              "batch_id": "B1", "page": "Topics/A.md", "plan_id": "plan-one",
+                              "audit_plan_sha256": "sha256:" + "a" * 64,
+                              "obligation_id": identity, **target})
+            return action_contract.build_action(**fields)
+
+        first, second = review("one"), review("two")
+        inputs = {"initial_action_id": first["action_id"], "reviews": [
+            {"obligation_id": "two", "input": {"statement": "Second answer."}},
+            {"obligation_id": "one", "input": {"statement": "First answer."}},
+        ]}
+        stable = SimpleNamespace(repository_path="Topics/A.md", data=b"same page")
+        success = dict(failed, returncode=0, diagnostics="", output='{"receipt_id":"one"}',
+                       next_action=second)
+        with mock.patch.object(runner, "next_action", return_value=first), \
+                mock.patch.object(runner.kblib, "repository_file_snapshot", return_value=stable), \
+                mock.patch.object(runner, "_execute_observed", side_effect=[
+                    success, dict(success, next_action=invoke, output='{"receipt_id":"two"}')]) as dispatch:
+            delivered = runner.run_until_boundary("/fixture", input_record=inputs)
+        self.assertEqual(["one", "two"], [row["target"]["obligation_id"] for row in delivered["executed"]])
+        self.assertEqual(["First answer.", "Second answer."],
+                         [call.args[2]["statement"] for call in dispatch.call_args_list])
+        self.assertEqual([], delivered["remaining_input_ids"])
+        self.assertIs(invoke, delivered["next_action"])
+        self.assertIsNone(runner._AUDIT_RESUMPTIONS.get())
+
+        for next_value in (invoke, review("not-supplied"), review("two", page="Topics/B.md"),
+                           review("two", plan_id="plan-two"),
+                           review("two", binding=dict(invoke["binding"], queue_revision=99)),
+                           review("two", audit_plan_sha256="sha256:" + "b" * 64)):
+            with self.subTest(boundary=next_value["target"]), \
+                    mock.patch.object(runner, "next_action", return_value=first), \
+                    mock.patch.object(runner.kblib, "repository_file_snapshot", return_value=stable), \
+                    mock.patch.object(runner, "_execute_observed", return_value=dict(success, next_action=next_value)) as dispatch:
+                stopped = runner.run_until_boundary("/fixture", input_record=inputs)
+            self.assertEqual(1, dispatch.call_count)
+            self.assertEqual(["two"], stopped["remaining_input_ids"])
+            self.assertIs(next_value, stopped["next_action"])
+
+        # Retain every completed result on page mutation, nonprogress, a
+        # delivery limit or a later uncertain/failed writer. No auto retry.
+        for cause in ("page-change", "nonprogress", "limit", "uncertain"):
+            outcomes = [dict(success, next_action=first if cause == "nonprogress" else second)]
+            if cause == "uncertain":
+                outcomes.append(dict(failed, execution_status="dispatch-unresolved",
+                                     failure={"stage": "dispatch"}, next_action=second))
+            snapshots = [stable, stable, SimpleNamespace(data=b"changed page")]
+            with self.subTest(cause=cause), \
+                    mock.patch.object(runner, "next_action", return_value=first), \
+                    mock.patch.object(runner.kblib, "repository_file_snapshot",
+                                      side_effect=snapshots if cause == "page-change" else None,
+                                      return_value=stable), \
+                    mock.patch.object(runner, "_execute_observed", side_effect=outcomes) as dispatch:
+                stopped = runner.run_until_boundary("/fixture", input_record=inputs,
+                                                    max_steps=1 if cause == "limit" else 64)
+            self.assertEqual(success["output"], stopped["executed"][0]["output"])
+            self.assertEqual(2 if cause == "uncertain" else 1, dispatch.call_count)
+            self.assertEqual([] if cause == "uncertain" else ["two"], stopped["remaining_input_ids"])
+            if cause != "uncertain":
+                self.assertIsNotNone(stopped["next_action_error"])
+            else:
+                self.assertEqual("dispatch-unresolved", stopped["executed"][1]["execution_status"])
+            self.assertIsNone(runner._AUDIT_RESUMPTIONS.get())
+
 
 class TaskRuntimeRunnerContractTests(unittest.TestCase):
     """One representative compiled-CLI consumption contract."""
@@ -285,7 +357,8 @@ class TaskRuntimeRunnerContractTests(unittest.TestCase):
         obligation = projection.required_obligation(projection.resolve_obligation_definition(
             owner, "Topics/A.md", trigger="new"))
         obligation["obligation_id"] = "obligation-one"
-        status = {"audit_plan_path": ".cambium/work_specs/audit-plans/p.yaml",
+        status = {"audit_plan_id": "plan-one",
+                  "audit_plan_path": ".cambium/work_specs/audit-plans/p.yaml",
                   "audit_plan_sha256": "sha256:" + "a" * 64,
                   "obligations": [{"obligation": obligation, "status": "missing"}]}
         result = parsed_runtime_state(root=str(TOOLS.parent))
@@ -336,6 +409,31 @@ class TaskRuntimeRunnerContractTests(unittest.TestCase):
                     self.assertRaisesRegex(runner.RunnerError, "next action changed"):
                 runner.execute(TOOLS.parent, action["action_id"], supplied)
             dispatch.assert_not_called()
+            self.assertIsNone(runner._AUDIT_RESUMPTIONS.get())
+            # The same original argument path is used by collection delivery;
+            # only the filesystem and subprocess boundary are replaced here.
+            step["target"]["obligation_id"] = "obligation-one"
+            initial = runner.next_action(TOOLS.parent)
+            later = dict(step, target=dict(step["target"], obligation_id="obligation-two"),
+                         resume_arguments=dict(step["resume_arguments"], obligation_id="obligation-two"))
+            terminal = resume_action("archive-terminal-runtime")
+            def select_after(observed):
+                return (terminal if select.call_count == 2 else
+                        runner._audit_action(observed, observed["items_by_id"]["B1"]))
+            select.reset_mock()
+            select.side_effect = [step, later]
+            captured.clear()
+            with mock.patch.object(runner, "_resume_action", side_effect=select_after), \
+                    mock.patch.object(runner.kblib, "repository_file_snapshot", return_value=SimpleNamespace(
+                        repository_path="Topics/A.md", data=b"stable page")), \
+                    mock.patch.object(runner, "_run_command", side_effect=parse_command):
+                delivered = runner.run_until_boundary(TOOLS.parent, input_record={
+                    "initial_action_id": initial["action_id"], "reviews": [
+                        {"obligation_id": identity, "input": supplied}
+                        for identity in ("obligation-one", "obligation-two")]})
+            self.assertEqual(["obligation-one", "obligation-two"], [row.obligation_id for row in captured])
+            self.assertEqual([0, 0], [row["returncode"] for row in delivered["executed"]], delivered)
+            self.assertEqual([], delivered["remaining_input_ids"])
             self.assertIsNone(runner._AUDIT_RESUMPTIONS.get())
         with self.assertRaisesRegex(runner.RunnerError, "no current invocation step"):
             runner._await_audit_producer(TOOLS.parent, action, bound, None)

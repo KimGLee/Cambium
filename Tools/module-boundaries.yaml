@@ -304,8 +304,8 @@ modules:
       - load_contract
       - plan_contract_snapshot_sha256
       - plan_sha256
-      - serialization_observation
       - required_obligation_ids
+      - serialization_observation
       - validate_contract
       - validate_plan
       - validate_value
@@ -1707,6 +1707,8 @@ modules:
       - action_route
       - action_route_for_token
       - build_action
+      - page_review_input_scope
+      - page_review_inputs
       - resume_action_token
       - resume_recommendation
   - module: execution.task_runtime.task_runtime_runner

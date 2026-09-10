@@ -114,6 +114,24 @@ class TaskRuntimeActionTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "fields are not closed"):
             contract.validate_action(action)
 
+        fields = self.fields("await-agent")
+        fields.update(token="record-batch-page-review", target={
+            "batch_id": "B1", "page": "Topics/A.md", "plan_id": "plan-one",
+            "audit_plan_sha256": "sha256:" + "a" * 64, "obligation_id": "item-one"})
+        action = contract.build_action(**fields)
+        answer = {"obligation_id": "item-one", "input": {"statement": "Explicit review."}}
+        record = {"initial_action_id": action["action_id"], "reviews": [answer]}
+        self.assertEqual({"item-one": answer["input"]}, contract.page_review_inputs(record, action))
+        invalid = [dict(record, extra=True), dict(record, initial_action_id="other"),
+                   dict(record, reviews=[]), dict(record, reviews=[answer, answer]),
+                   dict(record, reviews=[dict(answer, input={})]),
+                   dict(record, reviews=[dict(answer, input="passed")]),
+                   dict(record, reviews=[dict(answer, obligation_id="other")]),
+                   dict(record, reviews=[dict(answer, extra=True)])]
+        for candidate in invalid:
+            with self.subTest(candidate=candidate), self.assertRaises(ValueError):
+                contract.page_review_inputs(candidate, action)
+
     def test_invoke_requires_typed_capability_and_mapping_arguments(self):
         for field in ("capability_id", "tool"):
             fields = self.fields()

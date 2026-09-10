@@ -605,6 +605,46 @@ def validate_action(record):
     return record
 
 
+def page_review_input_scope(action):
+    """Identity shared by page-review answers, not a permission to execute.
+
+    An answer set cannot follow another page, plan, producer or runtime
+    binding. Individual obligation selection and input acceptance still
+    belong to the current action and its registered producer.
+    """
+    if (action.get("disposition") != "await-agent" or
+            action.get("token") != "record-batch-page-review"):
+        return None
+    target = action["target"]
+    fields = ("batch_id", "page", "plan_id", "audit_plan_sha256")
+    values = tuple(require_trimmed_string(target.get(key), key) for key in fields)
+    return (kblib.canonical_json_bytes(action["binding"]), values)
+
+
+def page_review_inputs(record, action):
+    """Validate one transport collection; never fill or interpret answers."""
+    _closed_fields(record, {"initial_action_id", "reviews"}, "page review inputs")
+    validate_action(action)
+    if record["initial_action_id"] != action["action_id"]:
+        raise ValueError("page review inputs do not bind the current action")
+    if page_review_input_scope(action) is None:
+        raise ValueError("page review inputs require a current page-review action")
+    rows = record["reviews"]
+    if not isinstance(rows, list) or not rows:
+        raise ValueError("page review inputs require a non-empty reviews list")
+    inputs = {}
+    for row in rows:
+        _closed_fields(row, {"obligation_id", "input"}, "page review input row")
+        identity = require_trimmed_string(row["obligation_id"], "obligation_id")
+        if identity in inputs:
+            raise ValueError("page review inputs repeat an obligation")
+        _mapping(row["input"], "page review answer", nonempty=True)
+        inputs[identity] = dict(row["input"])
+    if action["target"]["obligation_id"] not in inputs:
+        raise ValueError("page review inputs omit the current obligation")
+    return inputs
+
+
 def build_action(**fields):
     """Build and validate one action, deriving rather than choosing its ID."""
     record = dict(fields)
@@ -625,6 +665,8 @@ __all__ = [
     'action_route',
     'action_route_for_token',
     'build_action',
+    'page_review_input_scope',
+    'page_review_inputs',
     'resume_action_token',
     'resume_recommendation',
 ]

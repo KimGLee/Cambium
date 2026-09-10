@@ -13,6 +13,7 @@ import subprocess
 import sys
 from dataclasses import dataclass
 from contextvars import ContextVar
+from contextlib import contextmanager
 
 import Tools.execution.audit.audit_evidence_runtime as audit_evidence_runtime
 import Tools.execution.audit.audit_execution_runtime as audit_execution_runtime
@@ -1363,8 +1364,8 @@ def _await_terminal_audit(root, action, supplied, route):
 
 def _await_audit_producer(root, action, supplied, _route):
     token = action["token"]
-    # execute() has just re-read runtime and compared the complete action ID
-    # with the caller's expectation. Consume that exact owner's step, rather
+    # The operation has just observed this action (and matched the caller's
+    # initial identity). Consume that exact owner's step, rather
     # than resolving a different obligation under the same token a second
     # time. It is scoped to this root and invocation, never supplied by a
     # caller or retained across producer dispatch/after-image observation.
@@ -1518,21 +1519,28 @@ def _continue_awaited(root, action, supplied):
     return handler.await_input(root, action, supplied, route)
 
 
-@compile_cli_contract.with_checked_views
-def execute(root, expected_action_id, input_record=None):
-    """Execute exactly the current action and return its authoritative result."""
+@contextmanager
+def _audit_resumption_scope():
+    """Retain only this operation's owner-resolved pending audit step."""
     pending = {}
     token = _AUDIT_RESUMPTIONS.set(pending)
     try:
-        action = next_action(root)
-        if action["action_id"] != expected_action_id:
-            raise RunnerError(
-                "next action changed; expected %s, current %s" %
-                (expected_action_id, action["action_id"]))
-        return _execute_observed(root, action, input_record)
+        yield
     finally:
         pending.clear()
         _AUDIT_RESUMPTIONS.reset(token)
+
+
+@compile_cli_contract.with_checked_views
+@_audit_resumption_scope()
+def execute(root, expected_action_id, input_record=None):
+    """Execute exactly the current action and return its authoritative result."""
+    action = next_action(root)
+    if action["action_id"] != expected_action_id:
+        raise RunnerError(
+            "next action changed; expected %s, current %s" %
+            (expected_action_id, action["action_id"]))
+    return _execute_observed(root, action, input_record)
 
 
 def _execute_observed(root, action, input_record=None):
@@ -1590,20 +1598,55 @@ def _execute_observed(root, action, input_record=None):
 
 
 @compile_cli_contract.with_checked_views
-def run_until_boundary(root, *, max_steps=64):
-    """Run deterministic invoke actions until a semantic or repair boundary."""
+@_audit_resumption_scope()
+def run_until_boundary(root, *, max_steps=64, input_record=None):
+    """Continue deterministic actions, or deliver explicit same-page answers.
+
+    An input collection only feeds consecutive page-review actions. It does
+    not execute another producer, infer an answer or create a batch
+    transaction. Every item uses the original independent writer and its
+    resulting-state read; earlier results survive a later refusal.
+    """
     if not isinstance(max_steps, int) or isinstance(max_steps, bool) or \
             max_steps < 1:
         raise RunnerError("max_steps must be a positive integer")
     executed = []
     action = next_action(root)
+    reviews = (task_runtime_action.page_review_inputs(input_record, action)
+               if input_record is not None else None)
+    scope = task_runtime_action.page_review_input_scope(action) if reviews is not None else None
+    page = (kblib.repository_file_snapshot(root, action["target"]["page"])
+            if reviews is not None else None)
+
+    def finish(next_value, error=None):
+        result = {"executed": executed, "next_action": next_value}
+        if error is not None:
+            result["next_action_error"] = error
+        if reviews is not None:
+            # Not attempted, not authorization to retry a failed/uncertain
+            # item. Such an item remains in executed with its actual outcome.
+            result["remaining_input_ids"] = sorted(reviews)
+        return result
+
     for _index in range(max_steps):
-        if action["disposition"] != "invoke":
-            return {"executed": executed, "next_action": action}
-        outcome = _execute_observed(root, action)
+        supplied = None
+        if reviews is not None:
+            try:
+                if (task_runtime_action.page_review_input_scope(action) != scope or
+                        action["target"]["obligation_id"] not in reviews):
+                    return finish(action)
+                if kblib.repository_file_snapshot(root, page.repository_path).data != page.data:
+                    return finish(action, "page changed during review input delivery")
+            except (OSError, TypeError, ValueError) as exc:
+                return finish(action, str(exc))
+            supplied = reviews.pop(action["target"]["obligation_id"])
+        elif action["disposition"] != "invoke":
+            return finish(action)
+        outcome = _execute_observed(root, action, supplied)
         executed.append({
             "action_id": action["action_id"],
             "token": action["token"],
+            "target": dict(action.get("target") or {}),
             "returncode": outcome["returncode"],
             "tool_returncode": outcome.get("tool_returncode", outcome["returncode"]),
             "invocation_errors": outcome.get("invocation_errors", []),
@@ -1614,19 +1657,17 @@ def run_until_boundary(root, *, max_steps=64):
             "substeps": outcome["substeps"],
         })
         if outcome["returncode"] != 0:
-            return {
-                "executed": executed,
-                "next_action": outcome["next_action"],
-                "next_action_error": outcome["next_action_error"],
-            }
+            return finish(outcome["next_action"], outcome["next_action_error"])
         if (outcome["next_action"] is not None and
                 outcome["next_action"]["action_id"] == action["action_id"]):
-            raise RunnerError(
-                "successful Tool invocation did not advance its action")
+            if reviews is not None:
+                return finish(outcome["next_action"], "successful Tool invocation did not advance its action")
+            raise RunnerError("successful Tool invocation did not advance its action")
         if outcome["next_action"] is None:
-            return {"executed": executed, "next_action": None,
-                    "next_action_error": outcome["next_action_error"]}
+            return finish(None, outcome["next_action_error"])
         action = outcome["next_action"]
+    if reviews is not None:
+        return finish(action, "max_steps reached before the review input boundary")
     raise RunnerError("max_steps reached before a boundary")
 
 
@@ -1676,11 +1717,12 @@ def main(argv=None):
         help="execute exactly this current action identity")
     mode.add_argument(
         "--run-until-boundary", action="store_true",
-        help="advance invoke actions until Agent, user, Host, repair, or terminal")
+        help="advance invoke actions to a boundary, or deliver explicit same-page review inputs")
     await_input = parser.add_mutually_exclusive_group()
     await_input.add_argument(
         "--input",
-        help=("repository-relative JSON object below %s for await input" %
+        help=("JSON below %s: one await input for --execute, or initial_action_id "
+              "and reviews [{obligation_id, input}] for same-page --run-until-boundary" %
               runtime_paths.TRANSIENT_ROOT))
     await_input.add_argument(
         "--proposal",
@@ -1688,7 +1730,7 @@ def main(argv=None):
               "action" % runtime_paths.TRANSIENT_ROOT))
     parser.add_argument(
         "--max-steps", type=int, default=64,
-        help="maximum deterministic actions for --run-until-boundary")
+        help="maximum actions for --run-until-boundary")
     parser.add_argument(
         "--json", action="store_true",
         help=("emit the canonical machine result; output is always JSON and "
@@ -1696,8 +1738,8 @@ def main(argv=None):
     args = parser.parse_args(argv)
 
     try:
-        if args.input and not args.execute:
-            raise ValueError("--input requires --execute")
+        if args.input and not (args.execute or args.run_until_boundary):
+            raise ValueError("--input requires --execute or --run-until-boundary")
         if args.proposal and not args.execute:
             raise ValueError("--proposal requires --execute")
         if args.max_steps != 64 and not args.run_until_boundary:
@@ -1709,7 +1751,8 @@ def main(argv=None):
                 args.root, args.execute, input_record=input_record)
         elif args.run_until_boundary:
             result = run_until_boundary(
-                args.root, max_steps=args.max_steps)
+                args.root, max_steps=args.max_steps,
+                input_record=_input_record(args.root, args.input))
         else:
             result = next_action(args.root)
     except (OSError, TypeError, UnicodeError, ValueError,

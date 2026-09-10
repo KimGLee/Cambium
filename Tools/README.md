@@ -188,6 +188,25 @@ python3 Tools/apply_delta.py --help
 python3 Tools/check_queue.py . --resume-status
 ```
 
+For a current `record-batch-page-review` action, an Agent may deliver explicitly reviewed answers for the same page together. Use the action's `action_id`, obligation IDs from its AuditPlan, and each action's original input fields; the Runner does not supply judgments or a page-wide default verdict.
+
+```json
+{
+  "initial_action_id": "<current action_id>",
+  "reviews": [
+    {"obligation_id": "<plan obligation ID>", "input": {"reviewer_context_id": "<review context>", "reviewer_role": "<authorized role>", "verdict": "passed", "statement": "<this item's review finding>", "applicability_disposition": "applicable", "applicability_reason": null}}
+  ]
+}
+```
+
+Save the explicit answers below `.cambium/tmp/`, then invoke:
+
+```text
+python3 Tools/run_task.py . --run-until-boundary --input .cambium/tmp/reviews.json
+```
+
+The current plan determines order. Each item uses the original isolated producer, admission, locked checks and resulting-state read. Delivery stops at a different page, plan or runtime binding, changed page bytes, an intervening prerequisite, an absent answer, or any failed/uncertain result. `executed` retains each actual action, target and outcome; `remaining_input_ids` means **not attempted**, not permission to retry a failed item. This is not one atomic transaction or an aggregate Receipt. The normal single-action `--execute ACTION_ID --input ...` remains available. Without `--input`, continuous mode still stops at semantic boundaries.
+
 Runtime data belongs in `.cambium/`, not `Tools/`. [`runtime_paths.py`](execution/task_runtime/runtime_paths.py) owns shared paths. Policy references `runtime_path_id`; the CLI compiler resolves its value and rejects unknown IDs, mismatched constraints or duplicate literal authorities.
 
 ### Audit evidence hand-off
