@@ -532,13 +532,23 @@ class CompilerProjectionLifecycleTests(unittest.TestCase):
             source = root / "Tools" / "owner.py"
             source.parent.mkdir()
             source.write_text("value = 1\n", encoding="utf-8")
-            validator = mock.Mock(return_value={"tools": [{"tool": "sample"}]})
+            validator = mock.Mock(return_value={
+                "artifact": "cli-invocation-contract", "source_hash": "source",
+                "projection_target": "carried-runtime",
+                "tools": [{"tool": "sample", "arguments": []},
+                          {"tool": "other", "arguments": []}]})
             def load(target="carried-runtime", raw=b"projection"):
-                return compiler.checked_projection(root, target, raw, validator, lambda: raw)
+                validator.return_value["projection_target"] = target
+                return compiler.checked_tool(root, target, raw, "sample", validator, lambda: raw)
             with compiler.checked_view_scope():
-                load()["tools"].clear()
-                self.assertEqual([{"tool": "sample"}], load()["tools"])
+                load()["arguments"].append("forged")
+                self.assertEqual({"tool": "sample", "arguments": [],
+                                  "invocation_contract_source_hash": "source"}, load())
                 self.assertEqual(1, validator.call_count)
+                with mock.patch.object(compiler, "deepcopy", wraps=copy.deepcopy) as detach:
+                    load()
+                self.assertEqual([mock.call({"tool": "sample", "arguments": []})],
+                                 detach.call_args_list)
                 # Runtime writes do not change the compiler's immutable input.
                 (root / ".cambium").mkdir()
                 (root / ".cambium" / "receipt").write_text("new", encoding="utf-8")
@@ -568,9 +578,17 @@ class CompilerProjectionLifecycleTests(unittest.TestCase):
                 return {}
             with compiler.checked_view_scope():
                 with self.assertRaisesRegex(compiler.ContractError, "inputs changed"):
-                    compiler.checked_projection(root, "carried-runtime", b"x", unstable, lambda: b"x")
+                    compiler.checked_tool(root, "carried-runtime", b"x", "sample", unstable, lambda: b"x")
                 load()
             self.assertEqual(12, validator.call_count)
+            with self.assertRaisesRegex(compiler.ContractError, "0 entries"):
+                compiler.checked_tool(root, "carried-runtime", b"projection", "absent",
+                                      validator, lambda: b"projection")
+            for invalid in ({}, dict(validator.return_value, projection_target="wrong"),
+                            dict(validator.return_value, tools=[{"tool": "sample"}] * 2)):
+                with self.assertRaises(compiler.ContractError):
+                    compiler.checked_tool(root, "carried-runtime", b"x", "sample",
+                                          lambda: invalid, lambda: b"x")
     """Integration: one local artifact distinguishes HOLD from bad evidence."""
 
     def test_write_check_stale_and_unreliable_evidence_share_one_lifecycle(self):

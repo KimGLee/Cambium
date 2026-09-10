@@ -65,6 +65,35 @@ class TaskRuntimeRunnerUnitTests(unittest.TestCase):
             self.assertNotIn("_audit_evidence_facts", view)
             self.assertNotIn("_audit_stage_resolutions", view)
 
+        # Reusing the existing source interpretation does not reuse a runtime
+        # result: each action/readback still calls the complete validator.
+        state["_metadata_execution_contract"] = object()
+        after = dict(state, queue={**state["queue"], "state_revision": 2})
+        authority = {"owner-pair": object()}
+        arguments = {"authorized_profile_view": state["_profile_authorized_view"],
+                     "authorized_active_standards_view": state["_active_standards_authorized_view"]}
+        with mock.patch.object(runner.runtime_validation, "validate_runtime",
+                               side_effect=[state, after, state]) as validate, \
+                mock.patch.object(runner.queue_runtime, "runtime_authority_context",
+                                  return_value=authority) as retain, \
+                mock.patch.object(runner.queue_runtime, "runtime_authority_validation_kwargs",
+                                  return_value=arguments) as rebind:
+            with runner._runner_operation_scope():
+                self.assertIs(state, runner._validate_runtime("/fixture"))
+                self.assertIs(after, runner._validate_runtime("/fixture"))
+            self.assertIsNone(runner._RUNTIME_INPUTS.get())
+            self.assertIs(state, runner._validate_runtime("/fixture"))
+        self.assertEqual([mock.call("/fixture"), mock.call("/fixture", **arguments),
+                          mock.call("/fixture")], validate.call_args_list)
+        retain.assert_called_once_with(state)
+        rebind.assert_called_once_with(authority)
+        with self.assertRaisesRegex(ValueError, "unreadable"), \
+                mock.patch.object(runner.runtime_validation, "validate_runtime",
+                                  side_effect=ValueError("unreadable")):
+            with runner._runner_operation_scope():
+                runner._validate_runtime("/fixture")
+        self.assertIsNone(runner._RUNTIME_INPUTS.get())
+
     def test_withdrawn_consumed_proof_is_an_explicit_owned_continuation(self):
         state = parsed_runtime_state()
         deficits = [{"code": "evidence-invalidated", "scope": "B1",
@@ -492,7 +521,10 @@ class TaskRuntimeRunnerContractTests(unittest.TestCase):
         contract = compile_cli_contract.compile_contract(
             root, tool_availability.CARRIED_RUNTIME)
         with mock.patch.object(
-                runner, "_compiled_cli_contract", return_value=contract):
+                runner, "_compiled_cli_tool", side_effect=lambda root, tool:
+                compile_cli_contract.checked_tool(
+                    root, tool_availability.CARRIED_RUNTIME, b"fixture", tool,
+                    lambda: contract, lambda: b"fixture")):
             delta = ".cambium/deltas/B1.yaml"
             inputs = runner._command_inputs(
                 root, "apply_delta", {
@@ -562,9 +594,9 @@ class TaskRuntimeRunnerContractTests(unittest.TestCase):
             first = {
                 "artifact": "cli-invocation-contract",
                 "projection_target": "carried-runtime",
-                "tools": [],
+                "tools": [{"tool": "sample", "arguments": []}],
             }
-            second = dict(first, tools=[{"tool": "sample"}])
+            second = dict(first, tools=[{"tool": "sample", "arguments": ["changed"]}])
             current = completed(returncode=0)
             with mock.patch.object(
                     runner, "_carried_cli_contract_currentness_check",
@@ -572,17 +604,17 @@ class TaskRuntimeRunnerContractTests(unittest.TestCase):
                 path.write_text(
                     compile_cli_contract.kblib.canonical_yaml(first),
                     encoding="utf-8")
-                loaded_first = runner._compiled_cli_contract(root)
-                self.assertEqual(loaded_first, runner._compiled_cli_contract(root))
+                loaded_first = runner._compiled_cli_tool(root, "sample")
+                self.assertEqual(loaded_first, runner._compiled_cli_tool(root, "sample"))
                 self.assertEqual(1, check.call_count)
                 path.write_text(
                     compile_cli_contract.kblib.canonical_yaml(second),
                     encoding="utf-8")
-                loaded_second = runner._compiled_cli_contract(root)
+                loaded_second = runner._compiled_cli_tool(root, "sample")
                 self.assertEqual(2, check.call_count)
 
-            self.assertEqual([], loaded_first["tools"])
-            self.assertEqual([{"tool": "sample"}], loaded_second["tools"])
+            self.assertEqual([], loaded_first["arguments"])
+            self.assertEqual(["changed"], loaded_second["arguments"])
 
 
 class TaskRuntimeRunnerCheckpointIntegrationTests(unittest.TestCase):

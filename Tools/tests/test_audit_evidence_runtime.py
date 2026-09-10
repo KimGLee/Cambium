@@ -842,12 +842,16 @@ class AuditEvidenceCheckpointIntegrationTests(CurrentEvidenceCheckpoint,
                     return_value=None), \
                 mock.patch.object(runtime, "_required_obligation_resolution",
                     wraps=runtime._required_obligation_resolution) as resolve, \
+                mock.patch.object(runtime, "_reconciliation_row",
+                    wraps=runtime._reconciliation_row) as reconcile, \
                 runtime.evidence_observation(self.result) as observed:
             status = runtime.stage_evidence_status(
                 observed, self.item, "pre-merge",
                 required_state="open")
+            reconcile.assert_not_called()
             closure = runtime.batch_review_evidence(
                 observed, self.item, required_state="open")
+            self.assertGreater(reconcile.call_count, 0)
             self.assertEqual(
                 [], runtime.wrapper_binding_errors(
                     observed, self.item, copy.deepcopy(closure),
@@ -861,9 +865,11 @@ class AuditEvidenceCheckpointIntegrationTests(CurrentEvidenceCheckpoint,
 
         self.assertEqual("satisfied", status["obligations"][0]["status"])
         self.assertEqual(status["audit_plan_id"], closure["audit_plan_id"])
-        self.assertEqual(
-            status["audit_evidence_reconciliation_sha256"],
-            closure["audit_evidence_reconciliation_sha256"])
+        self.assertEqual(status["obligations"][0]["evidence_ref"],
+                         closure["audit_evidence_bindings"][0]["evidence_ref"])
+        runtime.validate_plan_reconciliation({
+            field: closure[field]
+            for field in runtime.audit_reconciliation_contract.projection_fields()})
         self.assertEqual(
             self.full["receipt_id"],
             closure["audit_evidence_bindings"][0]["evidence_ref"])

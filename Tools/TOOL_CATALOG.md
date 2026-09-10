@@ -10,7 +10,7 @@ Regenerate with `python3 Tools/generate_tool_catalog.py .`. Verify without writi
 | Source | Exact-byte SHA-256 |
 |---|---|
 | `Tools/tool-taxonomy.yaml` | `sha256:44c6a46acf604ab28023a4028fb026bf11b01582093450bd113ff3527c95998f` |
-| `Tools/module-boundaries.yaml` | `sha256:f9e96382b8cb200f74c1dd973c7b79cdb9004e3be47cf23ec38e64991a531aaa` |
+| `Tools/module-boundaries.yaml` | `sha256:e92fd9ba86dae072cf8970ecbbc311e368d7129f56b73ea2859abde7c74b9ad7` |
 | `Tools/agent-interface-policy.yaml` | `sha256:b6a3ae872ce7a82ef0ddf4b7fd2a49949f99781353d0b10ff31bef2dcc91eec5` |
 | `Tools/operation-capabilities.yaml` | `sha256:d6c672632ff29288fd15d1df5a4b85b7cabbf9e34a292cf0782bb9269c741a02` |
 
@@ -1229,9 +1229,9 @@ Repository IO, serialization, locking, transport, generation, and other Tool-own
 | `execution.task_runtime.queue_runtime.resume_next_action` | `execution.task_runtime.check_queue`, `execution.task_runtime.queue_check_receipt`, `execution.task_runtime.task_runtime_runner` | declared |
 | `execution.task_runtime.queue_runtime.reviewed_without_current_evidence` | `execution.task_runtime.check_queue` | declared |
 | `execution.task_runtime.queue_runtime.runtime_admission_errors` | `execution.evidence.metadata_gate_runtime`, `execution.evidence.record_gate_result`, `execution.task_runtime.update_queue`, `knowledge.metadata.apply_metadata_transition` | declared |
-| `execution.task_runtime.queue_runtime.runtime_authority_context` | `execution.evidence.record_gate_attestation`, `execution.evidence.record_gate_result`, `execution.planning.apply_task_plan`, `execution.planning.compile_queue`, `execution.task_runtime.apply_amendment`, `execution.task_runtime.apply_contract_amendment`, `execution.task_runtime.apply_delta`, `execution.task_runtime.register_amendment`, `execution.task_runtime.update_queue`, `execution.task_runtime.update_task`, `knowledge.metadata.apply_metadata_transition` | declared |
+| `execution.task_runtime.queue_runtime.runtime_authority_context` | `execution.evidence.record_gate_attestation`, `execution.evidence.record_gate_result`, `execution.planning.apply_task_plan`, `execution.planning.compile_queue`, `execution.task_runtime.apply_amendment`, `execution.task_runtime.apply_contract_amendment`, `execution.task_runtime.apply_delta`, `execution.task_runtime.register_amendment`, `execution.task_runtime.task_runtime_runner`, `execution.task_runtime.update_queue`, `execution.task_runtime.update_task`, `knowledge.metadata.apply_metadata_transition` | declared |
 | `execution.task_runtime.queue_runtime.runtime_authority_lock_fields` | `execution.evidence.record_evidence_invalidation`, `execution.evidence.record_gate_attestation`, `execution.evidence.record_gate_result`, `execution.planning.compile_queue`, `execution.task_runtime.apply_amendment`, `execution.task_runtime.apply_contract_amendment`, `execution.task_runtime.apply_delta`, `execution.task_runtime.init_state`, `execution.task_runtime.register_amendment`, `execution.task_runtime.update_queue`, `execution.task_runtime.update_task`, `knowledge.metadata.apply_metadata_transition` | declared |
-| `execution.task_runtime.queue_runtime.runtime_authority_validation_kwargs` | `execution.evidence.manual_attestation`, `execution.evidence.record_evidence_invalidation`, `execution.evidence.record_gate_result`, `execution.planning.apply_task_plan`, `execution.planning.compile_queue`, `execution.task_runtime.apply_amendment`, `execution.task_runtime.apply_contract_amendment`, `execution.task_runtime.apply_delta`, `execution.task_runtime.register_amendment`, `execution.task_runtime.update_queue`, `execution.task_runtime.update_task`, `knowledge.metadata.apply_metadata_transition` | declared |
+| `execution.task_runtime.queue_runtime.runtime_authority_validation_kwargs` | `execution.evidence.manual_attestation`, `execution.evidence.record_evidence_invalidation`, `execution.evidence.record_gate_result`, `execution.planning.apply_task_plan`, `execution.planning.compile_queue`, `execution.task_runtime.apply_amendment`, `execution.task_runtime.apply_contract_amendment`, `execution.task_runtime.apply_delta`, `execution.task_runtime.register_amendment`, `execution.task_runtime.task_runtime_runner`, `execution.task_runtime.update_queue`, `execution.task_runtime.update_task`, `knowledge.metadata.apply_metadata_transition` | declared |
 | `execution.task_runtime.queue_runtime.runtime_metadata_execution_contract` | `execution.evidence.metadata_gate_runtime`, `execution.task_runtime.apply_delta`, `execution.task_runtime.update_queue` | declared |
 | `execution.task_runtime.queue_runtime.standards_adoption_plan_errors` | `governance.standards.adopt_standards` | declared |
 | `execution.task_runtime.queue_runtime.standards_gate_registry` | `governance.control.run_gates` | declared |
@@ -1972,7 +1972,7 @@ Repository IO, serialization, locking, transport, generation, and other Tool-own
 | `platform.agent_interface.compile_cli_contract.ContractError` | `execution.task_runtime.task_runtime_runner`, `governance.control.run_gates` | declared |
 | `platform.agent_interface.compile_cli_contract.TOOL` | `execution.task_runtime.task_runtime_runner` | declared |
 | `platform.agent_interface.compile_cli_contract.apply_gated_writer_tools` | `governance.control.run_gates` | declared |
-| `platform.agent_interface.compile_cli_contract.checked_projection` | `execution.task_runtime.task_runtime_runner` | declared |
+| `platform.agent_interface.compile_cli_contract.checked_tool` | `execution.task_runtime.task_runtime_runner` | declared |
 | `platform.agent_interface.compile_cli_contract.compile_contract` | `governance.control.run_gates` | declared |
 | `platform.agent_interface.compile_cli_contract.main` | `compile_cli_contract` | declared |
 | `platform.agent_interface.compile_cli_contract.with_checked_views` | `execution.task_runtime.task_runtime_runner` | declared |

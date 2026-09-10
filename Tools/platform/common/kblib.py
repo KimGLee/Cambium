@@ -124,6 +124,8 @@ class YamlSubsetError(ValueError):
 
 def strip_yaml_comment(line):
     """Strip inline comments (# must be at start of line or preceded by whitespace; # inside quotes is kept)."""
+    if "#" not in line:
+        return line.rstrip()
     out = []
     quote = None
     for idx, ch in enumerate(line):
@@ -300,6 +302,21 @@ def _parse_yaml_subset_by_exact_text(text):
     return value
 
 
+def _copy_yaml_tree(value):
+    """Detach the parser's plain containers; its scalars are immutable.
+
+    The restricted parser creates only dictionaries, lists and scalar values,
+    with no object hooks, aliases or cycles. General-purpose deepcopy's object
+    dispatch and identity graph therefore prove nothing additional here.
+    This is private to the parser, not a copier for caller-supplied objects.
+    """
+    if isinstance(value, dict):
+        return {key: _copy_yaml_tree(item) for key, item in value.items()}
+    if isinstance(value, list):
+        return [_copy_yaml_tree(item) for item in value]
+    return value
+
+
 def parse_yaml_subset(text):
     """Parse the restricted YAML subset into one caller-owned object.
 
@@ -311,7 +328,7 @@ def parse_yaml_subset(text):
     """
     if not isinstance(text, str):
         raise TypeError("restricted YAML input must be text")
-    return copy.deepcopy(_parse_yaml_subset_by_exact_text(text))
+    return _copy_yaml_tree(_parse_yaml_subset_by_exact_text(text))
 
 
 def parse_vocabulary_artifact(text):

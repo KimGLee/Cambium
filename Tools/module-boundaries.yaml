@@ -2502,7 +2502,7 @@ modules:
       - ContractError
       - TOOL
       - apply_gated_writer_tools
-      - checked_projection
+      - checked_tool
       - compile_contract
       - main
       - with_checked_views

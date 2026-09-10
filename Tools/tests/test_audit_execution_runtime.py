@@ -36,7 +36,6 @@ class AuditExecutionRuntimeTests(unittest.TestCase):
                 "obligation": self.obligation,
                 "status": "missing",
                 "evidence_ref": None,
-                "reused": False,
                 "reason": "found 0",
             }],
         }
@@ -207,7 +206,6 @@ class AuditExecutionRuntimeTests(unittest.TestCase):
             "obligation": obligation,
             "status": "missing",
             "evidence_ref": None,
-            "reused": False,
             "reason": "found 0",
         } for obligation in sorted(
             (consuming, emitting), key=lambda row: row["obligation_id"])]

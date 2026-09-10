@@ -56,6 +56,7 @@ TERMINAL_RECEIPT_PATH = runtime_paths.path_for("terminal-audit-receipts")
 TERMINAL_PROOF_PATH = assemble_terminal_proof.DEFAULT_PROOF_PATH
 _EXECUTION_OBSERVATION = ContextVar("runner_execution_observation", default=None)
 _AUDIT_RESUMPTIONS = ContextVar("runner_audit_resumptions", default=None)
+_RUNTIME_INPUTS = ContextVar("runner_runtime_inputs", default=None)
 
 
 class RunnerError(ValueError):
@@ -654,6 +655,29 @@ def _resume_action(result):
     return handler.resume(result, route, parameters, token)
 
 
+def _validate_runtime(root, **kwargs):
+    """Re-admit runtime, retaining only the owner's rebindable input pair.
+
+    Profile and Standards interpretation can survive a Queue/Receipt write;
+    runtime acceptance cannot. The existing validator rebinds their actual
+    source bytes on every call and independently reads all runtime state.
+    This operation-local handoff never retains its result or an audit verdict.
+    """
+    inputs = _RUNTIME_INPUTS.get()
+    canonical_root = os.path.realpath(os.path.abspath(os.fspath(root)))
+    context = inputs.get(canonical_root) if inputs is not None else None
+    if context is not None:
+        kwargs = dict(queue_runtime.runtime_authority_validation_kwargs(context),
+                      **kwargs)
+    result = runtime_validation.validate_runtime(root, **kwargs)
+    if (inputs is not None and context is None and not result.get("errors") and
+            result.get("_metadata_execution_contract") is not None):
+        # The authority owner validates the complete inseparable pair. Partial
+        # planning/repair observations have no such pair and are not retained.
+        inputs[canonical_root] = queue_runtime.runtime_authority_context(result)
+    return result
+
+
 @compile_cli_contract.with_checked_views
 def next_action(root):
     """Read one authoritative snapshot and return its typed next action."""
@@ -661,7 +685,7 @@ def next_action(root):
     # materialization.  The Runner admits that one empty-Queue boundary so it
     # can invoke the existing compiler; every non-empty Queue still receives
     # the ordinary full validation in the same validator.
-    result = runtime_validation.validate_runtime(
+    result = _validate_runtime(
         root, allow_unmaterialized_queue=True)
     try:
         with audit_evidence_runtime.evidence_observation(result) as observed:
@@ -709,8 +733,8 @@ def _carried_cli_contract_currentness_check(root):
         stderr=subprocess.PIPE, check=False)
 
 
-def _compiled_cli_contract(root):
-    """Validate and load this adopter runtime's carried CLI contract.
+def _compiled_cli_tool(root, tool):
+    """Consume one Tool row from the fully checked carried CLI contract.
 
     ``Tools/compiled/cli-contract.yaml`` describes the complete source
     distribution and is deliberately omitted from an adopter.  A Runner
@@ -753,37 +777,16 @@ def _compiled_cli_contract(root):
             raise RunnerError(
                 "validated carried-runtime CLI contract cannot be loaded: %s" %
                 exc) from exc
-        if not isinstance(document, dict) or \
-                document.get("artifact") != "cli-invocation-contract" or \
-                not isinstance(document.get("tools"), list):
-            raise RunnerError("compiled CLI contract has an invalid artifact shape")
-        if document.get("projection_target") != "carried-runtime":
-            raise RunnerError(
-                "Runner requires a carried-runtime CLI contract; found %r" %
-                document.get("projection_target"))
         return document
 
     def readback():
         with open(path, "rb") as handle:
             return handle.read()
     try:
-        return compile_cli_contract.checked_projection(
-            root, tool_availability.CARRIED_RUNTIME, before, validate, readback)
+        return compile_cli_contract.checked_tool(
+            root, tool_availability.CARRIED_RUNTIME, before, tool, validate, readback)
     except compile_cli_contract.ContractError as exc:
         raise RunnerError(str(exc)) from exc
-
-
-def _compiled_cli_tool(root, tool):
-    document = _compiled_cli_contract(root)
-    matches = [
-        row for row in document["tools"]
-        if isinstance(row, dict) and row.get("tool") == tool
-    ]
-    if len(matches) != 1:
-        raise RunnerError(
-            "compiled CLI contract resolves %s to %d entries" %
-            (tool, len(matches)))
-    return dict(matches[0], invocation_contract_source_hash=document.get("source_hash"))
 
 
 def _command_inputs(root, tool, arguments):
@@ -1008,7 +1011,7 @@ def _require_rendering_ready(result, batch_id):
 
 def _activate_ready_batch(root, batch_id, *,
                           standards_revalidation_receipt=None):
-    before = runtime_validation.validate_runtime(root)
+    before = _validate_runtime(root)
     if before.get("errors"):
         raise RunnerError("runtime invalid before activation: %s" %
                           "; ".join(before["errors"]))
@@ -1032,7 +1035,7 @@ def _activate_ready_batch(root, batch_id, *,
     if len(candidates) != 1:
         raise RunnerError(
             "activation Gate produced %d matching receipts" % len(candidates))
-    result = runtime_validation.validate_runtime(root)
+    result = _validate_runtime(root)
     if result.get("errors"):
         raise RunnerError(
             "runtime changed after activation Gate: %s" %
@@ -1057,7 +1060,7 @@ def _activate_ready_batch(root, batch_id, *,
             **arguments,
         })
     if completed.returncode == 0:
-        current = runtime_validation.validate_runtime(root)
+        current = _validate_runtime(root)
         item = (current.get("items_by_id") or {}).get(batch_id) or {}
         if item.get("state") != "open":
             raise RunnerError(
@@ -1091,7 +1094,7 @@ def _enter_completion_candidate(root):
         raise RunnerError(
             "completion Gate produced %d matching receipts" %
             len(candidates))
-    result = runtime_validation.validate_runtime(root)
+    result = _validate_runtime(root)
     if result.get("errors"):
         raise RunnerError(
             "runtime changed after completion Gate: %s" %
@@ -1110,7 +1113,7 @@ def _enter_completion_candidate(root):
                 "json": True,
             })
     if completed.returncode == 0:
-        current = runtime_validation.validate_runtime(root)
+        current = _validate_runtime(root)
         if (current.get("progress") or {}).get("task_state") != \
                 "completion-candidate":
             raise RunnerError(
@@ -1141,7 +1144,7 @@ def _invoke_activate_revalidated_batch(root, action):
 def _invoke_consume_standards_revalidation(root, action):
     completed = _run_command(root, action["tool"], action["arguments"])
     if completed.returncode == 0:
-        current = runtime_validation.validate_runtime(root)
+        current = _validate_runtime(root)
         batch_id = action["target"]["batch_id"]
         item = (current.get("items_by_id") or {}).get(batch_id) or {}
         outstanding = queue_runtime.outstanding_standards_revalidation(
@@ -1186,7 +1189,7 @@ def _await_external_reparse(_root, action, _supplied, _route):
 def _await_task_transition(root, action, supplied, route):
     transition = supplied["transition"]
     summary = supplied["checkpoint_summary"]
-    result = runtime_validation.validate_runtime(root)
+    result = _validate_runtime(root)
     return _run_command(
         root, metadata_execution_contract.capability_invocation_tool(
             _route_capability(route), root=root), {
@@ -1253,7 +1256,7 @@ def _await_standards_revalidation(root, action, supplied, route):
                 "json": True,
             })
     if completed.returncode == 0:
-        current = runtime_validation.validate_runtime(root)
+        current = _validate_runtime(root)
         aggregate_id = _current_standards_revalidation_aggregate(
             current, batch_id)
         if aggregate_id is None:
@@ -1336,7 +1339,7 @@ def _await_terminal_audit(root, action, supplied, route):
         checked, _registered_gate_predicate(root, "terminal-proof"),
         "Terminal Proof Gate")
 
-    current = runtime_validation.validate_runtime(root)
+    current = _validate_runtime(root)
     if current.get("errors"):
         raise RunnerError(
             "runtime changed after Terminal Proof Gate: %s" %
@@ -1355,7 +1358,7 @@ def _await_terminal_audit(root, action, supplied, route):
                 "json": True,
             })
     if completed.returncode == 0:
-        resulting = runtime_validation.validate_runtime(root)
+        resulting = _validate_runtime(root)
         if (resulting.get("progress") or {}).get("task_state") != "complete":
             raise RunnerError(
                 "Terminal completion writer succeeded without completing task")
@@ -1520,19 +1523,23 @@ def _continue_awaited(root, action, supplied):
 
 
 @contextmanager
-def _audit_resumption_scope():
-    """Retain only this operation's owner-resolved pending audit step."""
+def _runner_operation_scope():
+    """Retire pending steps and rebindable input objects at operation exit."""
     pending = {}
+    inputs = {}
     token = _AUDIT_RESUMPTIONS.set(pending)
+    input_token = _RUNTIME_INPUTS.set(inputs)
     try:
         yield
     finally:
         pending.clear()
         _AUDIT_RESUMPTIONS.reset(token)
+        inputs.clear()
+        _RUNTIME_INPUTS.reset(input_token)
 
 
 @compile_cli_contract.with_checked_views
-@_audit_resumption_scope()
+@_runner_operation_scope()
 def execute(root, expected_action_id, input_record=None):
     """Execute exactly the current action and return its authoritative result."""
     action = next_action(root)
@@ -1598,7 +1605,7 @@ def _execute_observed(root, action, input_record=None):
 
 
 @compile_cli_contract.with_checked_views
-@_audit_resumption_scope()
+@_runner_operation_scope()
 def run_until_boundary(root, *, max_steps=64, input_record=None):
     """Continue deterministic actions, or deliver explicit same-page answers.
 

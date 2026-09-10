@@ -2572,42 +2572,36 @@ def _resolve_stage_evidence(result, item, due_stage, required_state):
 
 
 def stage_evidence_status(result, item, due_stage, required_state=None):
-    """Project statuses from the same stage resolution the closure consumes."""
-    result, relative, plan, plan_sha256, resolved, frozen = _resolve_stage_evidence(
+    """Project routing fields from the same complete stage resolution.
+
+    Runner and candidate-page selection consume statuses and exact evidence
+    references, not a second accounting projection. Historical reconciliation
+    is produced by the closure/Terminal consumers when actually required.
+    """
+    result, relative, plan, plan_sha256, resolved, _frozen = _resolve_stage_evidence(
         result, item, due_stage, required_state)
     if not resolved:
         raise AuditEvidenceError(
             "AuditPlan %s has no obligations due at %s" %
             (plan["plan_id"], due_stage))
     rows = []
-    reconciliation_rows = []
     for obligation, resolution in resolved:
         status = resolution["status"]
         record = resolution["record"]
-        reused = resolution["reused"]
         reason = resolution["reason"]
         rows.append({
             "obligation": dict(obligation),
             "status": status,
             "evidence_ref": record.get("receipt_id")
                 if isinstance(record, dict) else None,
-            "reused": reused,
             "reason": reason,
-            "attempts": list(resolution["attempts"]),
         })
-        if frozen is None:
-            reconciliation_rows.append(_reconciliation_row(
-                result, plan, obligation, resolution))
-    projection = ({field: frozen[field] for field in
-                   audit_reconciliation_contract.projection_fields()}
-                  if frozen is not None else _reconciliation_projection(reconciliation_rows))
     return {
         "audit_plan_id": plan["plan_id"],
         "audit_plan_path": relative,
         "audit_plan_sha256": plan_sha256,
         "due_stage": due_stage,
         "obligations": rows,
-        **projection,
     }
 
 

@@ -1140,7 +1140,7 @@ tests:
       - selector: CompilerProjectionLifecycleTests.test_checked_view_rechecks_components_discovery_environment_and_target
         level: contract
         semantics: invocation_scoped_cli_input_identity_and_invalidation
-        owner_contract_symbol: compile_cli_contract.checked_projection
+        owner_contract_symbol: compile_cli_contract.checked_tool
       - selector: CompilerCliTransportTests.test_public_cli_transports_one_current_projection_check
         level: integration
         semantics: compile_cli_contract_public_transport

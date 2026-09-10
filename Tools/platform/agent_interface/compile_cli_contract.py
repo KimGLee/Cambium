@@ -165,17 +165,34 @@ def _view_input_identity(root, projection_target, artifact_bytes):
             component_boundary.component_content_identity(root))
 
 
-def checked_projection(root, projection_target, artifact_bytes, validate, readback):
-    """Consume the original full validator, then reuse only unchanged input.
+def checked_tool(root, projection_target, artifact_bytes, tool, validate, readback):
+    """Fully validate a projection, then detach only the requested Tool row.
 
     `validate` must perform the target root's full compiler check and byte
     read-back. No caller may supply a success bit or a prevalidated document.
     Outside an explicit operation scope the validator always runs. Returned
-    documents are private copies so consumers cannot mutate the stored view.
+    rows are private copies so consumers cannot mutate the stored view. The
+    complete artifact is still validated; a query does not narrow validation
+    to one tool or trust fields merely because they appear in the artifact.
     """
+    def select(document):
+        if (not isinstance(document, dict) or
+                document.get("artifact") != "cli-invocation-contract" or
+                not isinstance(document.get("tools"), list)):
+            raise ContractError("compiled CLI contract has an invalid artifact shape")
+        if document.get("projection_target") != projection_target:
+            raise ContractError("compiled CLI contract has a different projection target")
+        matches = [row for row in document["tools"]
+                   if isinstance(row, dict) and row.get("tool") == tool]
+        if len(matches) != 1:
+            raise ContractError("compiled CLI contract resolves %s to %d entries" %
+                                (tool, len(matches)))
+        return dict(deepcopy(matches[0]),
+                    invocation_contract_source_hash=document.get("source_hash"))
+
     views = _CHECKED_VIEWS.get()
     if views is None:
-        return validate()
+        return select(validate())
     root = os.path.realpath(os.path.abspath(os.fspath(root)))
     key = (root, projection_target)
     try:
@@ -184,13 +201,13 @@ def checked_projection(root, projection_target, artifact_bytes, validate, readba
         if existing is not None and existing[0] == before:
             if readback() != artifact_bytes:
                 raise ContractError("CLI projection changed during input observation")
-            return deepcopy(existing[1])
+            return select(existing[1])
         views.pop(key, None)
         document = validate()
         if before != _view_input_identity(root, projection_target, readback()):
             raise ContractError("CLI computation inputs changed during currentness validation")
         views[key] = (before, deepcopy(document))
-        return document
+        return select(document)
     except ContractError:
         views.pop(key, None)
         raise
@@ -1706,14 +1723,13 @@ def main(argv=None):
         except OSError as exc:
             print("%s --check: cannot read %s: %s" % (TOOL, output, exc))
             return 2
-        drift = _recorded_binding_drift(existing, contract)
-        if drift:
-            # Naming the specific mismatch matters more than "stale" here: a
-            # target or boundary mismatch is an artifact describing a
-            # different repository, which regenerating silently would hide.
-            print("%s --check: %s" % (TOOL, drift))
-            return 2
         if existing != text:
+            drift = _recorded_binding_drift(existing, contract)
+            if drift:
+                # Exact equality already proves every field agrees. Parse a
+                # differing artifact only to explain its binding mismatch.
+                print("%s --check: %s" % (TOOL, drift))
+                return 2
             print("%s --check: %s is stale or hand-edited; regenerate it "
                   "with `python3 Tools/compile_cli_contract.py . "
                   "--projection-target %s`"

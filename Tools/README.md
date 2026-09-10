@@ -327,6 +327,8 @@ The required workflow budget is owned by [ci_impact.py](../.github/scripts/ci_im
 
 Runner source views are invocation-scoped and recheck component discovery/bytes, projection and environment. Execution first re-derives and matches the caller's complete action identity, then consumes that invocation's exact audit step without a second stage selection. No step survives a producer dispatch or becomes a caller-supplied authorization. Independent producer admission, locked currentness and after-image read-back remain.
 
+During one Runner operation, repeated runtime reads may carry the original Profile/Standards input pair through the runtime owner's existing revalidation interface. Every read still rebinds actual source bytes and validates current Queue, Coverage, Progress and evidence; changed inputs fail closed. The pair is released at operation exit and is never a saved runtime result or a cross-request authorization cache.
+
 Within one runtime validation, review records share the registry owner's mechanical projection only while the registry and its contract dependencies have identical bytes. Every record still receives its own acceptance checks. A new validation, including locked or resulting-state validation, starts a new observation; this does not cache current authority or Receipt verdicts.
 
 When adding or changing a public CLI:
