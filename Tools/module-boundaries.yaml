@@ -304,6 +304,7 @@ modules:
       - load_contract
       - plan_contract_snapshot_sha256
       - plan_sha256
+      - serialization_observation
       - required_obligation_ids
       - validate_contract
       - validate_plan
@@ -417,6 +418,7 @@ modules:
       - load_registry
       - obligation_spec_for_rule
       - plan_projection_errors
+      - registry_observation
       - registry_sha256
       - resolve_consumed_evidence
       - review_input_constraints
@@ -2642,7 +2644,6 @@ modules:
       - extract_frontmatter
       - headings_of
       - inherited_path_capability
-      - inherited_path_capability_subprocess
       - iter_managed_md_files
       - iter_md_files
       - load_metadata_profile_contract
@@ -2653,6 +2654,7 @@ modules:
       - markdown_atx_heading
       - markdown_authority_lines
       - no_authoritative_write_guard
+      - open_cambium_subprocess
       - open_path_capability_parent
       - parse_scalar
       - parse_vocabulary_artifact

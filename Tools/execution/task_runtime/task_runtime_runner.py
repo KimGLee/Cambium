@@ -54,7 +54,7 @@ MAINTENANCE_GATE_RECEIPT_PATH = runtime_paths.child_path(
 TERMINAL_RECEIPT_PATH = runtime_paths.path_for("terminal-audit-receipts")
 TERMINAL_PROOF_PATH = assemble_terminal_proof.DEFAULT_PROOF_PATH
 _EXECUTION_OBSERVATION = ContextVar("runner_execution_observation", default=None)
-_ADMISSION_OBSERVATION = ContextVar("runner_admission_observation", default=None)
+_AUDIT_RESUMPTIONS = ContextVar("runner_audit_resumptions", default=None)
 
 
 class RunnerError(ValueError):
@@ -309,9 +309,14 @@ def _audit_action(result, item):
             return phase_action
         if step.get("external_instruction"):
             target = dict(target, external_instruction=step["external_instruction"])
-        return _await(
+        action = _await(
             result, step["status"], step["token"], _producer_input(result, step),
             step["reason_code"], target=target, plan_sha256=plan_sha)
+        pending = _AUDIT_RESUMPTIONS.get()
+        if pending is not None:
+            pending[(os.path.realpath(os.path.abspath(result["root"])),
+                     action["action_id"])] = step
+        return action
     if step["status"] == "repair":
         return _repair(result, step["reason_code"], target=target)
     if step["status"] != "complete":
@@ -657,10 +662,6 @@ def next_action(root):
     # the ordinary full validation in the same validator.
     result = runtime_validation.validate_runtime(
         root, allow_unmaterialized_queue=True)
-    admission = _ADMISSION_OBSERVATION.get()
-    if admission is not None:
-        admission.clear()
-        admission[os.path.realpath(os.path.abspath(root))] = result
     try:
         with audit_evidence_runtime.evidence_observation(result) as observed:
             return _resume_action(observed)
@@ -831,9 +832,9 @@ def _render_command(tool, script, schema, values):
 def _run_command(root, tool, arguments):
     # A child is an independent admission/write boundary. Never retain a
     # pre-dispatch runtime view for subsequent actions or resulting-state reads.
-    admission = _ADMISSION_OBSERVATION.get()
-    if admission is not None:
-        admission.clear()
+    pending = _AUDIT_RESUMPTIONS.get()
+    if pending is not None:
+        pending.clear()
     observation = _EXECUTION_OBSERVATION.get()
     if observation is not None:
         observation.update(stage="parameter-admission", current_tool=tool)
@@ -1175,28 +1176,6 @@ def _require_input(action, supplied):
     return interface_contract.bind_input(action["required_input"], supplied)
 
 
-def _recheck_audit_step(root, action):
-    """Re-read current runtime, reusing only the owner's admitted source views.
-
-    The runtime owner rechecks Profile/Standards identity and current bytes.
-    Queue, pages, evidence and the stage are read again, not taken from a cached
-    verdict. Independent producer admission, locked CAS and read-back remain.
-    """
-    prior = (_ADMISSION_OBSERVATION.get() or {}).get(
-        os.path.realpath(os.path.abspath(root)))
-    kwargs = {}
-    if prior is not None and not queue_runtime.runtime_admission_errors(prior):
-        kwargs = queue_runtime.runtime_authority_validation_kwargs(
-            queue_runtime.runtime_authority_context(prior))
-    result = runtime_validation.validate_runtime(root, **kwargs)
-    item = (result.get("items_by_id") or {}).get(
-        action["target"].get("batch_id"))
-    if not isinstance(item, dict) or item.get("state") != "open":
-        raise RunnerError("awaited audit action no longer targets an open batch")
-    return audit_execution_runtime.next_stage_step(
-        result, item, "pre-merge", required_state="open")
-
-
 def _await_external_reparse(_root, action, _supplied, _route):
     raise RunnerError(
         "action %s is resolved outside the Runner; derive a new action after "
@@ -1384,9 +1363,16 @@ def _await_terminal_audit(root, action, supplied, route):
 
 def _await_audit_producer(root, action, supplied, _route):
     token = action["token"]
-    step = _recheck_audit_step(root, action)
-    if step.get("token") != token:
-        raise RunnerError("awaited audit action is no longer current")
+    # execute() has just re-read runtime and compared the complete action ID
+    # with the caller's expectation. Consume that exact owner's step, rather
+    # than resolving a different obligation under the same token a second
+    # time. It is scoped to this root and invocation, never supplied by a
+    # caller or retained across producer dispatch/after-image observation.
+    pending = _AUDIT_RESUMPTIONS.get()
+    key = (os.path.realpath(os.path.abspath(root)), action["action_id"])
+    step = pending.pop(key, None) if pending is not None else None
+    if step is None or step.get("token") != token:
+        raise RunnerError("awaited audit action has no current invocation step")
     arguments = dict(step["resume_arguments"])
     arguments.update(supplied)
     if token == "record-batch-page-review":
@@ -1535,7 +1521,8 @@ def _continue_awaited(root, action, supplied):
 @compile_cli_contract.with_checked_views
 def execute(root, expected_action_id, input_record=None):
     """Execute exactly the current action and return its authoritative result."""
-    token = _ADMISSION_OBSERVATION.set({})
+    pending = {}
+    token = _AUDIT_RESUMPTIONS.set(pending)
     try:
         action = next_action(root)
         if action["action_id"] != expected_action_id:
@@ -1544,7 +1531,8 @@ def execute(root, expected_action_id, input_record=None):
                 (expected_action_id, action["action_id"]))
         return _execute_observed(root, action, input_record)
     finally:
-        _ADMISSION_OBSERVATION.reset(token)
+        pending.clear()
+        _AUDIT_RESUMPTIONS.reset(token)
 
 
 def _execute_observed(root, action, input_record=None):

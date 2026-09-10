@@ -628,11 +628,11 @@ def plan_changes(root, changes, event="pull_request"):
             python_changed = True
             continue
         if path == "Tools/README.md":
-            inventory_test = "test_tools_readme_inventory.py"
-            if (root / "Tools" / "tests" / inventory_test).is_file():
-                selected.add(inventory_test)
+            examples_test = "test_readme_examples.py"
+            if (root / "Tools" / "tests" / examples_test).is_file():
+                selected.add(examples_test)
             else:
-                full_reasons.append("Tools README inventory test is absent")
+                full_reasons.append("Tools README example/link check is absent")
             continue
         if path in CHECK_ONLY_ROOT_FILES or path.startswith(CHECK_ONLY_PREFIXES) \
                 or (path.endswith(".md") and

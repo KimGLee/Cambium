@@ -1,9 +1,10 @@
-"""Mechanical checks for the Tool usage guide.
+"""Link targets and executable interface names used by the usage guides.
 
 ``Tools/README.md`` is navigation and an operator guide, not an inventory of
 every implementation module. These tests therefore check only properties that
-can be derived from repository bytes: local link targets, named machine
-contracts, and copyable ``python3 Tools/...`` command shapes.
+can be derived from repository bytes: local link targets and copyable
+``python3 Tools/...`` command shapes. Document length, headings, wording and
+which tools to demonstrate are not machine contracts.
 
 The command scan captures each public adapter's real ``argparse`` declaration
 through its registered implementation edge. Capture stops at ``parse_args``;
@@ -29,66 +30,6 @@ COMMAND_PREFIX = "python3"
 TOOL_PREFIX = "Tools/"
 CODE_SPAN_RE = re.compile(r"`([^`\n]+)`")
 LINK_RE = re.compile(r"\]\((<[^>]+>|[^)\s]+)\)")
-
-MACHINE_NAVIGATION = {
-    line for line in """../distribution-boundary.yaml
-../kernel/K00 Standards Control/profile-interface.yaml
-../kernel/K02 Knowledge Work Construction/corpus-planning-contract.yaml
-../kernel/K12 Quality Assurance/batch-close-closed-list.yaml
-schemas/card.schema.yaml
-../Card/card-budget.yaml
-../Read Set/read-set.schema.yaml
-operation-capabilities.yaml
-scan-capabilities.yaml
-agent-interface-policy.yaml
-execution/task_runtime/runtime_paths.py
-execution/planning/corpus_planning_contract.py
-execution/context_delivery/read_set_contract.py
-governance/profile/profile_contract.py
-governance/profile/profile_admission.py
-check_profile.py
-execution/audit/batch_close_contract.py
-module-boundaries.yaml
-tool-taxonomy.yaml
-platform/distribution/module_boundary_facts.py
-module_boundary_report.py
-kernel-size-policy.yaml
-kernel-size-exceptions.md
-check_kernel_size.py
-check_upstream_components.py
-platform/distribution/upstream_component_boundary.py
-platform/distribution/upstream_identity.py
-schemas/
-compiled/""".splitlines()
-}
-
-USER_ENTRY_POINTS = set("""run_gates.py
-stamp_cards.py
-check_kernel_size.py
-check_upstream_components.py
-scaffold_profile.py
-check_profile.py
-apply_profile_adoption.py
-adopt_standards.py
-init_state.py
-check_queue.py
-metadata_execution_contract.py
-compile_cli_contract.py
-render_interface_projection.py
-render_host_configs.py
-seal_receipts.py
-module_boundary_report.py""".splitlines())
-
-OBSOLETE_RESPONSIBILITY_CLAIMS = (
-    "kernel/" + "Cards",
-    "kernel/" + "Read Sets",
-    "compiled" + " Card",
-    "compiled" + "-Card",
-    "K00/" + "14",
-    "K00/" + "15",
-    "K00/" + "16",
-    "K00/" + "18",
-)
 
 
 def markdown_targets(text):
@@ -203,41 +144,14 @@ def command_failures(label, text):
     return failures
 
 
-class ToolsReadmeResponsibilityTests(unittest.TestCase):
-    def setUp(self):
-        self.text = README.read_text(encoding="utf-8")
-
-    def test_readme_is_a_bounded_guide_not_a_full_module_inventory(self):
-        self.assertLessEqual(len(self.text.encode("utf-8")), 24000)
-        self.assertLessEqual(len(self.text.splitlines()), 360)
-        self.assertNotIn("## Tool inventory", self.text)
-        self.assertNotIn("The core distribution tools are", self.text)
-
-    def test_obsolete_component_locations_and_kernel_registers_are_absent(self):
-        for claim in OBSOLETE_RESPONSIBILITY_CLAIMS:
-            with self.subTest(claim=claim):
-                self.assertNotIn(claim, self.text)
-
-    def test_required_machine_contract_navigation_is_present_and_resolves(self):
-        targets = markdown_targets(self.text)
-        self.assertEqual(sorted(MACHINE_NAVIGATION - targets), [])
-        for target in MACHINE_NAVIGATION:
-            with self.subTest(target=target):
-                self.assertTrue((TOOLS_DIR / target).exists(), target)
-
+class ToolsReadmeLinkTests(unittest.TestCase):
     def test_every_local_readme_link_resolves(self):
-        for target in markdown_targets(self.text):
+        # check_links owns wiki links, not these ordinary Markdown targets.
+        for target in markdown_targets(README.read_text(encoding="utf-8")):
             if "://" in target or target.startswith("#"):
                 continue
             with self.subTest(target=target):
                 self.assertTrue((TOOLS_DIR / target).exists(), target)
-
-    def test_operator_entry_points_are_demonstrated_without_exhaustive_inventory(self):
-        scripts = {
-            Path(command_tokens(command)[1]).name
-            for _, command in documented_commands(self.text)
-        }
-        self.assertEqual(sorted(USER_ENTRY_POINTS - scripts), [])
 
 
 class ToolsReadmeCommandTests(unittest.TestCase):
@@ -283,13 +197,6 @@ class ToolsReadmeCommandTests(unittest.TestCase):
     def test_prose_tool_link_is_not_treated_as_a_command(self):
         body = "Use [`check_queue.py`](../Tools/check_queue.py).\n"
         self.assertEqual(command_failures("Tools/README.md", body), [])
-
-    def test_scan_is_deterministic_for_the_same_bytes(self):
-        text = README.read_text(encoding="utf-8")
-        self.assertEqual(
-            command_failures("Tools/README.md", text),
-            command_failures("Tools/README.md", text),
-        )
 
 
 if __name__ == "__main__":

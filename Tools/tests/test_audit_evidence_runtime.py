@@ -361,6 +361,35 @@ class AuditEvidenceReconciliationContractTests(CurrentEvidenceCheckpoint,
         self.assertTrue(all(old > new for old, new in zip(*counts)))
         self.assertNotIn("_audit_evidence_facts", self.result)
 
+        # Recursive M dependency consumers and the surrounding stage can
+        # ask for one obligation in the same explicit read-only observation.
+        # The selected result is private, and a new catalog, live/frozen
+        # mode or observation must still perform its own resolution.
+        with mock.patch.object(
+                runtime, "_required_obligation_resolution_unchecked",
+                wraps=runtime._required_obligation_resolution_unchecked) as resolve:
+            with runtime.evidence_observation(self.result) as observed:
+                def query(catalog=self.catalog, *, require_current=True):
+                    return runtime._required_obligation_resolution(
+                        observed, self.item, self.plan, self.plan_sha256,
+                        catalog, self.obligation,
+                        require_current=require_current)
+
+                selected = query()
+                selected["attempts"].clear()
+                self.assertEqual(outcomes[1], query())
+                self.assertEqual(1, resolve.call_count)
+                self.assertEqual("satisfied", query(require_current=False)["status"])
+                self.assertEqual(2, resolve.call_count)
+                candidate = self.copy_with_id(self.full, "competing-current-audit")
+                replacement = {**self.catalog, candidate["receipt_id"]: candidate}
+                self.assertEqual("ambiguous", query(replacement)["status"])
+                self.assertEqual(3, resolve.call_count)
+            with runtime.evidence_observation(self.result) as observed:
+                self.assertEqual(outcomes[1], query())
+            self.assertEqual(4, resolve.call_count)
+        self.assertNotIn("_audit_stage_resolutions", self.result)
+
         # New public evaluations must observe changed bytes, even under the
         # same Receipt ID. A coherent but false Sources/dependency pair must
         # not be accepted merely because those two stored fields agree.

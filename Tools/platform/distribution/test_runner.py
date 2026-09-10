@@ -327,19 +327,15 @@ def _run_child(
             # This boundary owns test-process lifetime, not business execution.
             # Keep authority forwarding at its existing owner; private TMPDIR
             # also makes interrupted fixture resources reclaimable by parent.
-            inherited = kblib.inherited_path_capability_subprocess()
-            environment = {**env, "TMPDIR": temporary,
-                           **inherited.get("env_overrides", {})}
-            descriptors = inherited.get("pass_fds", ())
-            process_options = {"pass_fds": descriptors} if descriptors else {}
+            environment = {**env, "TMPDIR": temporary}
             timed_out = False
-            with subprocess.Popen(
+            with kblib.open_cambium_subprocess(
                 [python, "-c", "from Tools.platform.distribution.test_runner import child_main; "
                  "raise SystemExit(child_main())", str(report),
                  str(progress_path) if progress_path else "", *group.test_ids],
                 cwd=str(root), env=environment, stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE, text=True,
-                start_new_session=os.name == "posix", **process_options) as process:
+                start_new_session=os.name == "posix") as process:
                 def terminate(signum):
                     try:
                         if os.name == "posix":

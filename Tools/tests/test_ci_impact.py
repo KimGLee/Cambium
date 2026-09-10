@@ -59,8 +59,8 @@ class CiImpactFixture(unittest.TestCase):
             "Tools/tests/test_run_leaf.py": "import run_leaf\n",
             "Tools/tests/test_charlie.py": "def test_charlie(): pass\n",
             "Tools/tests/test_mcp_server.py": "def test_transport(): pass\n",
-            "Tools/tests/test_tools_readme_inventory.py": (
-                "def test_inventory(): pass\n"),
+            "Tools/tests/test_readme_examples.py": (
+                "def test_examples(): pass\n"),
         }
         for relative, text in sources.items():
             path = cls.root / relative
@@ -109,12 +109,12 @@ class ChangedPathImpactContractTests(CiImpactFixture):
         self.assertEqual(["test_charlie.py"], direct["selected_tests"])
         self.assertEqual(["3.10", "3.14"], direct["check_versions"])
 
-        inventory = self.plan(("M", "Tools/README.md", ""))
-        self.assertEqual("selective", inventory["mode"])
+        examples = self.plan(("M", "Tools/README.md", ""))
+        self.assertEqual("selective", examples["mode"])
         self.assertEqual(
-            ["test_tools_readme_inventory.py"],
-            inventory["selected_tests"])
-        self.assertEqual(["3.14"], inventory["check_versions"])
+            ["test_readme_examples.py"],
+            examples["selected_tests"])
+        self.assertEqual(["3.14"], examples["check_versions"])
 
     def test_shared_authority_and_unclassified_paths_require_full(self):
         paths = (

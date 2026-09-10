@@ -2962,13 +2962,19 @@ tests:
         semantics: canonical_repository_relative_path_shape
         owner_contract_symbol: path_contract.canonical_repository_relative_path
         parallel_safe: true
-  - path: Tools/tests/test_tools_readme_inventory.py
+  - path: Tools/tests/test_readme_examples.py
     owner: Tools/README.md
     level: unit
     lifecycle: current
     disposition: keep
-    semantics: tools_readme_inventory
+    semantics: readme_links_and_command_examples
     parallel_safe: true
+    overrides:
+      - selector: ToolsReadmeCommandTests.test_documented_scripts_and_options_exist
+        owner: Tools/platform/agent_interface/entrypoint_loader.py
+        owner_contract_symbol: entrypoint_loader.capture_argument_parser
+        level: contract
+        semantics: documented_examples_use_current_cli_interface
   - path: Tools/tests/test_update_queue.py
     owner: Tools/execution/task_runtime/update_queue.py
     level: integration

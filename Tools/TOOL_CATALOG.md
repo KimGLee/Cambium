@@ -10,7 +10,7 @@ Regenerate with `python3 Tools/generate_tool_catalog.py .`. Verify without writi
 | Source | Exact-byte SHA-256 |
 |---|---|
 | `Tools/tool-taxonomy.yaml` | `sha256:44c6a46acf604ab28023a4028fb026bf11b01582093450bd113ff3527c95998f` |
-| `Tools/module-boundaries.yaml` | `sha256:35f5814e5a860c5f04f851034ac4d47b4dad0dc39caced19f3ec10cf04f8c747` |
+| `Tools/module-boundaries.yaml` | `sha256:3b8587bf17b32368779d248014facd9b0c822c78f77054dfefc264cd1dd3f0d9` |
 | `Tools/agent-interface-policy.yaml` | `sha256:b6a3ae872ce7a82ef0ddf4b7fd2a49949f99781353d0b10ff31bef2dcc91eec5` |
 | `Tools/operation-capabilities.yaml` | `sha256:d6c672632ff29288fd15d1df5a4b85b7cabbf9e34a292cf0782bb9269c741a02` |
 
@@ -25,12 +25,12 @@ Static consumption, private access, and dependency facts come from `Tools/platfo
 | declared cli tools | 68 |
 | mcp tools | 50 |
 | host transports | 1 |
-| static public api symbols | 1565 |
+| static public api symbols | 1567 |
 | declared unused static public apis | 74 |
 | declared public apis without observed consumers | 32 |
 | registered capability relationships | 150 |
 | registered symbol relationships | 80 |
-| source public exports | 349 |
+| source public exports | 351 |
 | source public exports undeclared | 0 |
 | declared transport consumptions | 50 |
 | static private consumptions | 0 |
@@ -98,13 +98,13 @@ Machine-contract loading, closed validation, pure projection, and stable predica
 | `execution.audit.audit_fingerprint` | `Tools/execution/audit/audit_fingerprint.py` | python-module | `execution / audit / contract` | static Python (4 symbols / 10 consumers) |
 | `execution.audit.audit_lifecycle_contract` | `Tools/execution/audit/audit_lifecycle_contract.py` | python-module | `execution / audit / contract` | static Python (11 symbols / 12 consumers) |
 | `execution.audit.audit_obligation_projection` | `Tools/execution/audit/audit_obligation_projection.py` | python-module | `execution / audit / contract` | static Python (14 symbols / 6 consumers) |
-| `execution.audit.audit_plan_contract` | `Tools/execution/audit/audit_plan_contract.py` | python-module | `execution / audit / contract` | static Python (12 symbols / 8 consumers) |
+| `execution.audit.audit_plan_contract` | `Tools/execution/audit/audit_plan_contract.py` | python-module | `execution / audit / contract` | static Python (13 symbols / 8 consumers) |
 | `execution.audit.audit_producer_chain` | `Tools/execution/audit/audit_producer_chain.py` | python-module | `execution / audit / contract` | static Python (7 symbols / 7 consumers) |
 | `execution.audit.audit_receipt_contract` | `Tools/execution/audit/audit_receipt_contract.py` | python-module | `execution / audit / contract` | static Python (5 symbols / 8 consumers), registered Python symbol (1 consumers) |
 | `execution.audit.audit_reconciliation_contract` | `Tools/execution/audit/audit_reconciliation_contract.py` | python-module | `execution / audit / contract` | static Python (1 symbols / 4 consumers) |
 | `execution.audit.batch_close_audit` | `Tools/execution/audit/batch_close_audit.py` | python-module | `execution / audit / contract` | static Python (4 symbols / 3 consumers) |
 | `execution.audit.batch_close_contract` | `Tools/execution/audit/batch_close_contract.py` | python-module | `execution / audit / contract` | static Python (13 symbols / 4 consumers), registered Python symbol (1 consumers) |
-| `execution.audit.batch_review_obligation_contract` | `Tools/execution/audit/batch_review_obligation_contract.py` | python-module | `execution / audit / contract` | static Python (22 symbols / 6 consumers), registered Python symbol (1 consumers) |
+| `execution.audit.batch_review_obligation_contract` | `Tools/execution/audit/batch_review_obligation_contract.py` | python-module | `execution / audit / contract` | static Python (23 symbols / 6 consumers), registered Python symbol (1 consumers) |
 | `execution.audit.batch_review_receipt_contract` | `Tools/execution/audit/batch_review_receipt_contract.py` | python-module | `execution / audit / contract` | static Python (7 symbols / 4 consumers), registered Python symbol (1 consumers) |
 | `execution.audit.changed_scope_evidence_contract` | `Tools/execution/audit/changed_scope_evidence_contract.py` | python-module | `execution / audit / contract` | static Python (34 symbols / 4 consumers), registered Python symbol (1 consumers) |
 | `execution.audit.changed_scope_runtime_checks` | `Tools/execution/audit/changed_scope_runtime_checks.py` | python-module | `execution / audit / contract` | static Python (6 symbols / 2 consumers) |
@@ -790,6 +790,7 @@ Repository IO, serialization, locking, transport, generation, and other Tool-own
 | `execution.audit.audit_plan_contract.plan_contract_snapshot_sha256` | `execution.audit.audit_evidence_runtime` | declared |
 | `execution.audit.audit_plan_contract.plan_sha256` | `execution.audit.audit_evidence_runtime`, `execution.audit.batch_review_obligation_contract`, `execution.audit.prepare_audit_plan`, `governance.profile.profile_batch_judgment_contract` | declared |
 | `execution.audit.audit_plan_contract.required_obligation_ids` | `execution.audit.prepare_audit_plan` | declared |
+| `execution.audit.audit_plan_contract.serialization_observation` | `execution.audit.audit_evidence_runtime` | declared |
 | `execution.audit.audit_plan_contract.validate_contract` | `execution.audit.audit_evidence_runtime`, `execution.audit.audit_obligation_projection`, `execution.audit.batch_review_obligation_contract`, `execution.audit.substantive_review_contract` | declared |
 | `execution.audit.audit_plan_contract.validate_plan` | `execution.audit.audit_evidence_runtime`, `execution.audit.batch_review_obligation_contract`, `execution.audit.prepare_audit_plan`, `governance.profile.profile_batch_judgment_contract` | declared |
 | `execution.audit.audit_plan_contract.validate_value` | `execution.audit.audit_receipt_contract`, `execution.audit.substantive_review_contract`, `knowledge.rendering.rendering_verification_contract` | declared |
@@ -857,6 +858,7 @@ Repository IO, serialization, locking, transport, generation, and other Tool-own
 | `execution.audit.batch_review_obligation_contract.load_registry` | `execution.audit.audit_evidence_runtime`, `execution.audit.audit_obligation_projection`, `execution.audit.prepare_audit_plan`, `execution.audit.record_batch_page_review` | declared |
 | `execution.audit.batch_review_obligation_contract.obligation_spec_for_rule` | `execution.audit.audit_evidence_runtime`, `execution.audit.record_batch_page_review` | declared |
 | `execution.audit.batch_review_obligation_contract.plan_projection_errors` | `execution.audit.record_batch_page_review` | declared |
+| `execution.audit.batch_review_obligation_contract.registry_observation` | `execution.audit.audit_evidence_runtime` | declared |
 | `execution.audit.batch_review_obligation_contract.registry_sha256` | `execution.audit.record_batch_page_review` | declared |
 | `execution.audit.batch_review_obligation_contract.resolve_consumed_evidence` | `execution.audit.record_batch_page_review` | declared |
 | `execution.audit.batch_review_obligation_contract.review_input_constraints` | `execution.audit.audit_execution_runtime` | declared |
@@ -1226,10 +1228,10 @@ Repository IO, serialization, locking, transport, generation, and other Tool-own
 | `execution.task_runtime.queue_runtime.resolve_activation_phase_receipt` | `execution.task_runtime.check_queue` | declared |
 | `execution.task_runtime.queue_runtime.resume_next_action` | `execution.task_runtime.check_queue`, `execution.task_runtime.queue_check_receipt`, `execution.task_runtime.task_runtime_runner` | declared |
 | `execution.task_runtime.queue_runtime.reviewed_without_current_evidence` | `execution.task_runtime.check_queue` | declared |
-| `execution.task_runtime.queue_runtime.runtime_admission_errors` | `execution.evidence.metadata_gate_runtime`, `execution.evidence.record_gate_result`, `execution.task_runtime.task_runtime_runner`, `execution.task_runtime.update_queue`, `knowledge.metadata.apply_metadata_transition` | declared |
-| `execution.task_runtime.queue_runtime.runtime_authority_context` | `execution.evidence.record_gate_attestation`, `execution.evidence.record_gate_result`, `execution.planning.apply_task_plan`, `execution.planning.compile_queue`, `execution.task_runtime.apply_amendment`, `execution.task_runtime.apply_contract_amendment`, `execution.task_runtime.apply_delta`, `execution.task_runtime.register_amendment`, `execution.task_runtime.task_runtime_runner`, `execution.task_runtime.update_queue`, `execution.task_runtime.update_task`, `knowledge.metadata.apply_metadata_transition` | declared |
+| `execution.task_runtime.queue_runtime.runtime_admission_errors` | `execution.evidence.metadata_gate_runtime`, `execution.evidence.record_gate_result`, `execution.task_runtime.update_queue`, `knowledge.metadata.apply_metadata_transition` | declared |
+| `execution.task_runtime.queue_runtime.runtime_authority_context` | `execution.evidence.record_gate_attestation`, `execution.evidence.record_gate_result`, `execution.planning.apply_task_plan`, `execution.planning.compile_queue`, `execution.task_runtime.apply_amendment`, `execution.task_runtime.apply_contract_amendment`, `execution.task_runtime.apply_delta`, `execution.task_runtime.register_amendment`, `execution.task_runtime.update_queue`, `execution.task_runtime.update_task`, `knowledge.metadata.apply_metadata_transition` | declared |
 | `execution.task_runtime.queue_runtime.runtime_authority_lock_fields` | `execution.evidence.record_evidence_invalidation`, `execution.evidence.record_gate_attestation`, `execution.evidence.record_gate_result`, `execution.planning.compile_queue`, `execution.task_runtime.apply_amendment`, `execution.task_runtime.apply_contract_amendment`, `execution.task_runtime.apply_delta`, `execution.task_runtime.init_state`, `execution.task_runtime.register_amendment`, `execution.task_runtime.update_queue`, `execution.task_runtime.update_task`, `knowledge.metadata.apply_metadata_transition` | declared |
-| `execution.task_runtime.queue_runtime.runtime_authority_validation_kwargs` | `execution.evidence.manual_attestation`, `execution.evidence.record_evidence_invalidation`, `execution.evidence.record_gate_result`, `execution.planning.apply_task_plan`, `execution.planning.compile_queue`, `execution.task_runtime.apply_amendment`, `execution.task_runtime.apply_contract_amendment`, `execution.task_runtime.apply_delta`, `execution.task_runtime.register_amendment`, `execution.task_runtime.task_runtime_runner`, `execution.task_runtime.update_queue`, `execution.task_runtime.update_task`, `knowledge.metadata.apply_metadata_transition` | declared |
+| `execution.task_runtime.queue_runtime.runtime_authority_validation_kwargs` | `execution.evidence.manual_attestation`, `execution.evidence.record_evidence_invalidation`, `execution.evidence.record_gate_result`, `execution.planning.apply_task_plan`, `execution.planning.compile_queue`, `execution.task_runtime.apply_amendment`, `execution.task_runtime.apply_contract_amendment`, `execution.task_runtime.apply_delta`, `execution.task_runtime.register_amendment`, `execution.task_runtime.update_queue`, `execution.task_runtime.update_task`, `knowledge.metadata.apply_metadata_transition` | declared |
 | `execution.task_runtime.queue_runtime.runtime_metadata_execution_contract` | `execution.evidence.metadata_gate_runtime`, `execution.task_runtime.apply_delta`, `execution.task_runtime.update_queue` | declared |
 | `execution.task_runtime.queue_runtime.standards_adoption_plan_errors` | `governance.standards.adopt_standards` | declared |
 | `execution.task_runtime.queue_runtime.standards_gate_registry` | `governance.control.run_gates` | declared |
@@ -2044,7 +2046,6 @@ Repository IO, serialization, locking, transport, generation, and other Tool-own
 | `platform.common.kblib.extract_frontmatter` | `execution.audit.prepare_audit_plan`, `execution.context_delivery.card_activation`, `execution.context_delivery.read_set_contract`, `execution.task_runtime.queue_runtime.control_plane`, `execution.task_runtime.queue_runtime.property_state`, `knowledge.content.check_links`, `knowledge.content.check_residual_content`, `knowledge.metadata.check_freshness`, `knowledge.metadata.check_page_contract`, `knowledge.metadata.check_vocab`, `knowledge.metadata.metadata_page_state_contract`, `knowledge.metadata.page_frontmatter_contract`, `knowledge.structure.boundary_contract`, `knowledge.structure.repository_structure`, `platform.distribution.stamp_cards` | declared |
 | `platform.common.kblib.headings_of` | `governance.profile.profile_contract`, `knowledge.content.check_links`, `knowledge.metadata.check_page_contract`, `knowledge.structure.check_structure` | declared |
 | `platform.common.kblib.inherited_path_capability` | `execution.audit.check_proof`, `execution.evidence.seal_receipts`, `execution.planning.check_corpus_plan`, `governance.control.run_gates`, `governance.profile.check_profile`, `governance.profile.profile_admission`, `knowledge.content.check_residual_content`, `knowledge.metadata.check_freshness`, `knowledge.metadata.check_vocab`, `knowledge.structure.render_boundary_projection` | declared |
-| `platform.common.kblib.inherited_path_capability_subprocess` | `platform.distribution.test_runner` | declared |
 | `platform.common.kblib.iter_managed_md_files` | `knowledge.content.check_links`, `knowledge.content.duplicate_check`, `knowledge.metadata.check_vocab` | declared |
 | `platform.common.kblib.iter_md_files` | `knowledge.metadata.check_page_contract`, `knowledge.structure.check_boundary_contract`, `knowledge.structure.render_boundary_projection` | declared |
 | `platform.common.kblib.load_metadata_profile_contract` | `governance.profile.profile_contract` | declared |
@@ -2055,6 +2056,7 @@ Repository IO, serialization, locking, transport, generation, and other Tool-own
 | `platform.common.kblib.markdown_atx_heading` | `execution.context_delivery.read_set_contract`, `platform.distribution.stamp_cards` | declared |
 | `platform.common.kblib.markdown_authority_lines` | `execution.context_delivery.read_set_contract`, `platform.distribution.stamp_cards` | declared |
 | `platform.common.kblib.no_authoritative_write_guard` | `execution.audit.check_batch_close`, `execution.evidence.record_gate_result`, `execution.evidence.seal_receipts`, `execution.planning.compile_queue`, `execution.task_runtime.apply_amendment`, `execution.task_runtime.apply_contract_amendment`, `execution.task_runtime.apply_delta`, `execution.task_runtime.register_amendment`, `execution.task_runtime.update_queue`, `execution.task_runtime.update_task`, `governance.standards.adopt_standards`, `knowledge.metadata.apply_metadata_transition` | declared |
+| `platform.common.kblib.open_cambium_subprocess` | `platform.distribution.test_runner` | declared |
 | `platform.common.kblib.open_path_capability_parent` | `knowledge.metadata.project_page_state` | declared |
 | `platform.common.kblib.parse_scalar` | `execution.planning.coverage_delta`, `knowledge.content.check_residual_content` | declared |
 | `platform.common.kblib.parse_vocabulary_artifact` | `knowledge.metadata.check_vocab`, `knowledge.metadata.compose_vocab` | declared |
@@ -2360,6 +2362,7 @@ Repository IO, serialization, locking, transport, generation, and other Tool-own
 | `execution.audit.audit_plan_contract.plan_contract_snapshot_sha256` | yes | `execution.audit.audit_evidence_runtime` |
 | `execution.audit.audit_plan_contract.plan_sha256` | yes | `execution.audit.audit_evidence_runtime`, `execution.audit.batch_review_obligation_contract`, `execution.audit.prepare_audit_plan`, `governance.profile.profile_batch_judgment_contract` |
 | `execution.audit.audit_plan_contract.required_obligation_ids` | yes | `execution.audit.prepare_audit_plan` |
+| `execution.audit.audit_plan_contract.serialization_observation` | yes | `execution.audit.audit_evidence_runtime` |
 | `execution.audit.audit_plan_contract.validate_contract` | yes | `execution.audit.audit_evidence_runtime`, `execution.audit.audit_obligation_projection`, `execution.audit.batch_review_obligation_contract`, `execution.audit.substantive_review_contract` |
 | `execution.audit.audit_plan_contract.validate_plan` | yes | `execution.audit.audit_evidence_runtime`, `execution.audit.batch_review_obligation_contract`, `execution.audit.prepare_audit_plan`, `governance.profile.profile_batch_judgment_contract` |
 | `execution.audit.audit_plan_contract.validate_value` | yes | `execution.audit.audit_receipt_contract`, `execution.audit.substantive_review_contract`, `knowledge.rendering.rendering_verification_contract` |
@@ -2404,6 +2407,7 @@ Repository IO, serialization, locking, transport, generation, and other Tool-own
 | `execution.audit.batch_review_obligation_contract.dependency_fingerprint` | yes | `execution.audit.record_batch_page_review` |
 | `execution.audit.batch_review_obligation_contract.load_registry` | yes | `execution.audit.audit_evidence_runtime`, `execution.audit.audit_obligation_projection`, `execution.audit.prepare_audit_plan`, `execution.audit.record_batch_page_review` |
 | `execution.audit.batch_review_obligation_contract.obligation_spec_for_rule` | yes | `execution.audit.audit_evidence_runtime`, `execution.audit.record_batch_page_review` |
+| `execution.audit.batch_review_obligation_contract.registry_observation` | yes | `execution.audit.audit_evidence_runtime` |
 | `execution.audit.batch_review_obligation_contract.registry_sha256` | yes | `execution.audit.record_batch_page_review` |
 | `execution.audit.batch_review_obligation_contract.select_s_targets` | yes | `execution.audit.prepare_audit_plan` |
 | `execution.audit.batch_review_obligation_contract.validate_plan_base_closure` | yes | `execution.audit.prepare_audit_plan`, `execution.audit.record_batch_page_review` |

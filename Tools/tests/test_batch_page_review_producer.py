@@ -1,6 +1,7 @@
 """Independent K12/14 registry, sampling, and producer-chain tests."""
 
 import copy
+from contextlib import nullcontext
 from math import ceil
 from pathlib import Path
 from types import SimpleNamespace
@@ -328,6 +329,28 @@ class BatchPageReviewProducerTests(unittest.TestCase):
             {row["group_id"]
              for row in self.registry["m_tier_source_groups"]},
             {row["source_group"] for row in raw_items})
+
+        # Repeated downstream lookups use this observation's complete owner
+        # validation, and copy only the selected atom. A fresh observation
+        # must validate anew; neither an explicit input nor corruption hides.
+        with mock.patch.object(contract, "_validate_registry", wraps=contract._validate_registry) as validate:
+            captured = contract.load_registry(REPOSITORY, cache_projection=True)
+            with contract.registry_observation(lambda: captured):
+                for rule in raw_rules:
+                    self.assertEqual(rule, contract.obligation_spec_for_rule(rule)["rule_id"])
+                first = contract.obligation_spec_for_rule(raw_rules[0])
+                first["rule_id"] = "not-an-owner"
+                self.assertEqual(raw_rules[0], contract.obligation_spec_for_rule(raw_rules[0])["rule_id"])
+                self.assertEqual(1, validate.call_count)
+                with self.assertRaises(ValueError):
+                    contract.obligation_spec_for_rule(raw_rules[0], {})
+                captured["m_tier_atomic_items"][-1]["dimension"] = "not-registered"
+                with self.assertRaisesRegex(ValueError, "base dimension"):
+                    contract.obligation_spec_for_rule(raw_rules[0])
+            before = validate.call_count
+            with contract.registry_observation(lambda: contract.load_registry(REPOSITORY, cache_projection=True)):
+                self.assertEqual(raw_rules[0], contract.obligation_spec_for_rule(raw_rules[0])["rule_id"])
+            self.assertEqual(before + 1, validate.call_count)
 
     def test_registry_is_strict_and_rejects_semantic_drift(self):
         changed = copy.deepcopy(self.registry)
@@ -903,6 +926,7 @@ class BatchPageReviewProducerTests(unittest.TestCase):
             "_profile_authorized_view": {},
         }
         current_snapshot = SimpleNamespace(exists=True, read_text=lambda: PAGE_TEXT)
+        resolve_consumption = audit_evidence_runtime.current_consumption_evidence_ids
         patches = (
             mock.patch.object(
                 audit_evidence_runtime.metadata_property_state,
@@ -944,11 +968,30 @@ class BatchPageReviewProducerTests(unittest.TestCase):
                     return_value=("plan.yaml", plan, plan_sha256)), mock.patch.object(
                     audit_evidence_runtime, "_require_current_profile_rendering_contract_state"), \
                     mock.patch.object(audit_evidence_runtime._EvidenceFacts, "page_snapshot",
-                                      return_value=current_snapshot):
-                selected = audit_evidence_runtime.stage_evidence_closure(
-                    {**result, "current_receipt_catalog": catalog},
-                    {"id": "B001", "state": "open"}, "pre-merge",
-                    required_state="open")["audit_evidence_bindings"]
+                                      return_value=current_snapshot), \
+                    mock.patch.object(audit_evidence_runtime,
+                                      "current_consumption_evidence_ids",
+                                      side_effect=resolve_consumption):
+                item = {"id": "B001", "state": "open"}
+                view = {**result, "current_receipt_catalog": catalog,
+                        "items_by_id": {"B001": item}}
+                selections, resolutions = [], []
+                for scoped in (False, True):
+                    observation = (audit_evidence_runtime.evidence_observation(view)
+                                   if scoped else nullcontext(view))
+                    with observation as observed, mock.patch.object(
+                            audit_evidence_runtime,
+                            "_required_obligation_resolution_unchecked",
+                            wraps=audit_evidence_runtime._required_obligation_resolution_unchecked
+                            ) as resolve:
+                        selections.append(audit_evidence_runtime.stage_evidence_closure(
+                            observed, item, "pre-merge", required_state="open"
+                        )["audit_evidence_bindings"])
+                        resolutions.append(resolve.call_count)
+                self.assertEqual(selections[0], selections[1])
+                self.assertEqual(len(plan["obligations"]), resolutions[1])
+                self.assertLess(resolutions[1], resolutions[0])
+                selected = selections[1]
         self.assertEqual(len(plan["obligations"]), len(selected))
         self.assertEqual(
             {row["obligation_id"] for row in plan["obligations"]},

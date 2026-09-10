@@ -213,7 +213,10 @@ class AuditExecutionRuntimeTests(unittest.TestCase):
             (consuming, emitting), key=lambda row: row["obligation_id"])]
         self.status["obligations"] = rows
 
-        step = self.project()
+        registry_owner = audit_execution_runtime.batch_review_obligation_contract
+        with mock.patch.object(registry_owner, "_validate_registry", wraps=registry_owner._validate_registry) as validate:
+            step = self.project()
+            self.assertEqual(1, validate.call_count)
 
         self.assertEqual("invoke", step["status"])
         self.assertEqual("record-changed-scope-evidence", step["token"])

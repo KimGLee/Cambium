@@ -65,37 +65,6 @@ class TaskRuntimeRunnerUnitTests(unittest.TestCase):
             self.assertNotIn("_audit_evidence_facts", view)
             self.assertNotIn("_audit_stage_resolutions", view)
 
-    def test_audit_recheck_reuses_only_authorized_sources_before_dispatch(self):
-        prior = parsed_runtime_state()
-        current = parsed_runtime_state()
-        current["items_by_id"]["B1"]["state"] = "open"
-        action = {"target": {"batch_id": "B1"}}
-        authority = object()
-        views = {"authorized_profile_view": {"current": "profile"},
-                 "authorized_active_standards_view": {"current": "standards"}}
-        token = runner._ADMISSION_OBSERVATION.set({"/fixture": prior})
-        try:
-            with mock.patch.object(runner.queue_runtime, "runtime_admission_errors", return_value=[]), \
-                    mock.patch.object(runner.queue_runtime, "runtime_authority_context", return_value=authority) as owner, \
-                    mock.patch.object(runner.queue_runtime, "runtime_authority_validation_kwargs", return_value=views), \
-                    mock.patch.object(runner.runtime_validation, "validate_runtime", return_value=current) as validate, \
-                    mock.patch.object(runner.audit_execution_runtime, "next_stage_step", return_value={"token": "current"}) as step:
-                self.assertEqual({"token": "current"}, runner._recheck_audit_step("/fixture", action))
-                owner.assert_called_once_with(prior)
-                validate.assert_called_once_with("/fixture", **views)
-                step.assert_called_once_with(current, current["items_by_id"]["B1"], "pre-merge", required_state="open")
-                validate.side_effect = ValueError("owner refuses changed source")
-                with self.assertRaisesRegex(ValueError, "changed source"):
-                    runner._recheck_audit_step("/fixture", action)
-                self.assertEqual(1, step.call_count)
-            with mock.patch.object(runner, "_command_inputs", side_effect=ValueError("stop before child")):
-                with self.assertRaises(ValueError):
-                    runner._run_command("/fixture", "sample", {})
-                self.assertEqual({}, runner._ADMISSION_OBSERVATION.get())
-        finally:
-            runner._ADMISSION_OBSERVATION.reset(token)
-        self.assertIsNone(runner._ADMISSION_OBSERVATION.get())
-
     def test_withdrawn_consumed_proof_is_an_explicit_owned_continuation(self):
         state = parsed_runtime_state()
         deficits = [{"code": "evidence-invalidated", "scope": "B1",
@@ -319,7 +288,8 @@ class TaskRuntimeRunnerContractTests(unittest.TestCase):
         status = {"audit_plan_path": ".cambium/work_specs/audit-plans/p.yaml",
                   "audit_plan_sha256": "sha256:" + "a" * 64,
                   "obligations": [{"obligation": obligation, "status": "missing"}]}
-        result = {"root": str(TOOLS.parent)}
+        result = parsed_runtime_state(root=str(TOOLS.parent))
+        result["items_by_id"]["B1"]["state"] = "open"
         step = execution._missing_step(result, {"id": "B1"}, status, obligation)
         with mock.patch.object(runner, "_compiled_cli_tool", return_value=cli):
             shape = runner._producer_input(result, step)
@@ -342,8 +312,32 @@ class TaskRuntimeRunnerContractTests(unittest.TestCase):
             captured.append(parser.parse_args(argv))
             return completed()
 
-        with mock.patch.object(runner, "_recheck_audit_step", return_value=step), \
-                mock.patch.object(runner, "_run_command", side_effect=parse_command):
+        with mock.patch.object(runner.runtime_validation, "validate_runtime", return_value=result) as validate, \
+                mock.patch.object(runner, "_phase_action", return_value=None), \
+                mock.patch.object(runner, "_compiled_cli_tool", return_value=cli), \
+                mock.patch.object(runner.audit_execution_runtime, "next_stage_step", return_value=step) as select, \
+                mock.patch.object(runner, "_resume_action", side_effect=lambda observed:
+                                  runner._audit_action(observed, observed["items_by_id"]["B1"])):
+            # The external observation is never a reusable execution grant.
+            action = runner.next_action(TOOLS.parent)
+            self.assertIsNone(runner._AUDIT_RESUMPTIONS.get())
+            select.reset_mock()
+            validate.reset_mock()
+            with mock.patch.object(runner, "_run_command", side_effect=parse_command) as dispatch:
+                outcome = runner.execute(TOOLS.parent, action["action_id"], supplied)
+                self.assertEqual(0, outcome["returncode"], outcome)
+                self.assertEqual(2, validate.call_count)  # fresh before, actual after
+                self.assertEqual(2, select.call_count)  # no third pre-dispatch resolution
+                dispatch.assert_called_once()
+            self.assertIsNone(runner._AUDIT_RESUMPTIONS.get())
+            # The token can be unchanged while the selected obligation changes.
+            step["target"]["obligation_id"] = "different-obligation"
+            with mock.patch.object(runner, "_run_command") as dispatch, \
+                    self.assertRaisesRegex(runner.RunnerError, "next action changed"):
+                runner.execute(TOOLS.parent, action["action_id"], supplied)
+            dispatch.assert_not_called()
+            self.assertIsNone(runner._AUDIT_RESUMPTIONS.get())
+        with self.assertRaisesRegex(runner.RunnerError, "no current invocation step"):
             runner._await_audit_producer(TOOLS.parent, action, bound, None)
         self.assertIsNone(captured[0].applicability_reason)
         self.assertEqual([], captured[0].consumed_evidence_ref)

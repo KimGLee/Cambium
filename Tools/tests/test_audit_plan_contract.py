@@ -5,6 +5,7 @@ from pathlib import Path
 import sys
 from types import SimpleNamespace
 import unittest
+from unittest import mock
 
 
 REPOSITORY = Path(__file__).resolve().parents[2]
@@ -32,6 +33,32 @@ class AuditPlanContractTests(unittest.TestCase):
         self.assertTrue(upstream_identity.is_full_commit_sha(
             plan["upstream_revision_id"]))
         self.assertRegex(contract.plan_sha256(plan), r"^sha256:[0-9a-f]{64}$")
+        expected = kblib.sha256_bytes(kblib.canonical_yaml(plan).encode("utf-8"))
+        material = {}
+        def memo(key, compute):
+            if key not in material:
+                material[key] = compute()
+            return material[key]
+        with mock.patch.object(kblib, "canonical_yaml", wraps=kblib.canonical_yaml) as serialize, \
+                mock.patch.object(contract, "validate_plan", wraps=contract.validate_plan) as validate:
+            with contract.serialization_observation(memo):
+                self.assertEqual(expected, contract.plan_sha256(plan))
+                self.assertEqual(expected, contract.plan_sha256(copy.deepcopy(plan)))
+                self.assertEqual(1, serialize.call_count)
+                self.assertEqual(2, validate.call_count)
+                with self.assertRaisesRegex(ValueError, "dimension is not registered"):
+                    contract.plan_sha256(plan, dimensions=())
+                plan["plan_id"] = "changed-plan-identity"
+                changed = contract.plan_sha256(plan)
+                self.assertNotEqual(expected, changed)
+                self.assertEqual(2, serialize.call_count)
+                plan["obligations"][0]["command"] = "not-a-plan-field"
+                with self.assertRaisesRegex(ValueError, "fields are not closed"):
+                    contract.plan_sha256(plan)
+                del plan["obligations"][0]["command"]
+            # No serialized value survives as an implicit cross-operation cache.
+            self.assertEqual(changed, contract.plan_sha256(plan))
+            self.assertEqual(3, serialize.call_count)
 
     def test_evidence_roles_resolve_from_the_canonical_registry(self):
         document = contract.load_contract()

@@ -161,6 +161,24 @@ class ProfileLoadEvaluation:
             os.path.abspath(os.fspath(root)))
         if effective_root != os.path.realpath(self.contract.root):
             raise ValueError("Profile evaluation belongs to a different repository root")
+        # The successful producer already closed the fixed, registry-linked
+        # and Profile-linked source set. Re-read that entire set through the
+        # same no-follow/singly-linked snapshot owner. If its exact aggregate
+        # identity is unchanged, the declarations defining the set are also
+        # unchanged: rediscovering and revalidating their shape adds no fact.
+        # No verdict or file observation is reused across this boundary.
+        with kblib.directory_listing_scope():
+            snapshots = {
+                relative: kblib.repository_file_snapshot(
+                    effective_root, relative, singly_linked=True)
+                for relative in sorted(self.normative_snapshots)
+            }
+        fingerprint = profile_load_inputs_fingerprint(snapshots)
+        if fingerprint == self.profile_load_inputs_sha256:
+            return snapshots, fingerprint
+        # A changed declaration can add a new implementation or owner. Keep
+        # the full producer's discovery and rejection behavior for that case;
+        # an old path list must not become the new authoritative closure.
         return canonical_profile_load_inputs(
             effective_root, additional_paths=self.normative_snapshots.keys())
 

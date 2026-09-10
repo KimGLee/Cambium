@@ -28,11 +28,18 @@ class SharedPrimitiveTests(unittest.TestCase):
         self.assertEqual({"values": [1]},
             platform_primitives.document_projection(snapshot, owner))
         self.assertEqual([1], calls)
+        selected = platform_primitives.document_projection(snapshot, owner, path=("values",))
+        selected.append(88)
+        self.assertEqual([1], platform_primitives.document_projection(snapshot, owner, path=("values",)))
+        self.assertIsNone(platform_primitives.document_projection(snapshot, owner, path=None))
+        self.assertEqual([1], calls)
+        with self.assertRaises(KeyError):
+            platform_primitives.document_projection(snapshot, owner, path=("missing",))
         self.assertEqual("different-owner",
             platform_primitives.document_projection(snapshot, lambda _: "different-owner"))
         snapshot["value"] = True  # bool == 1 must not match the captured bytes.
         with self.assertRaisesRegex(ValueError, "integer required"):
-            platform_primitives.document_projection(snapshot, owner)
+            platform_primitives.document_projection(snapshot, owner, path=None)
         uncached = platform_primitives.validated_document(original, owner)
         self.assertIs(original, uncached)
         platform_primitives.document_projection(uncached, owner)

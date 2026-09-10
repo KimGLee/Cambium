@@ -9,6 +9,7 @@ interpretation of current runtime state.
 """
 
 from contextlib import contextmanager
+from copy import deepcopy
 import os
 import stat
 
@@ -221,6 +222,10 @@ def evidence_observation(result):
     try:
         with audit_producer_chain.producer_chain_observation(
                 view["_audit_evidence_facts"].memo), \
+                audit_plan_contract.serialization_observation(
+                    view["_audit_evidence_facts"].memo), \
+                batch_review_obligation_contract.registry_observation(
+                    view["_audit_evidence_facts"].batch_registry), \
                 profile_batch_judgment_contract.judgment_observation(
                     view["_audit_evidence_facts"].memo), \
                 audit_obligation_projection.obligation_projection_observation(
@@ -1558,15 +1563,32 @@ def _required_obligation_resolution_unchecked(
 def _required_obligation_resolution(
         result, item, plan, plan_sha256, catalog, obligation, *,
         require_current):
-    """Resolve one obligation and enforce the closed status machine."""
+    """Resolve one obligation once in the existing read-only stage window.
+
+    M consumption edges and the outer stage may ask about the same source
+    obligation. They share this result only for the same inputs and catalog;
+    live and frozen queries remain distinct. Candidate catalogs are distinct
+    observations. Outside evidence_observation there is no result reuse.
+    """
+    cache = result.get("_audit_stage_resolutions")
+    key = None
+    if cache is not None:
+        key = ("obligation", _record_sha256(item), _record_sha256(plan),
+               plan_sha256, id(catalog), _record_sha256(obligation),
+               require_current)
+        if key in cache:
+            return deepcopy(cache[key])
     result = evidence_evaluation(result)
     resolution = _required_obligation_resolution_unchecked(
         result, item, plan, plan_sha256, catalog, obligation,
         require_current=require_current)
     try:
-        return audit_lifecycle_contract.validate_resolution(resolution)
+        resolution = audit_lifecycle_contract.validate_resolution(resolution)
     except audit_lifecycle_contract.AuditLifecycleContractError as exc:
         raise AuditEvidenceError(str(exc)) from exc
+    if cache is not None:
+        cache[key] = deepcopy(resolution)
+    return resolution
 
 
 def obligation_evidence_resolution(result, item, plan, plan_sha256,

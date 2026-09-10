@@ -349,6 +349,23 @@ class ProcessBoundaries(unittest.TestCase):
 
     def test_tool_modules_do_not_bypass_the_shared_subprocess_boundary(self):
         import ast
+        from unittest import mock
+        import Tools.platform.common.kblib as kblib
+
+        # Both wait styles use the same descriptor/environment owner. No
+        # child or runtime is needed to prove this connection.
+        for name, launch in (("run", kblib.run_cambium_subprocess),
+                             ("Popen", kblib.open_cambium_subprocess)):
+            with self.subTest(name=name), \
+                    mock.patch.object(kblib, "inherited_path_capability_subprocess", return_value={
+                        "pass_fds": (10, 11), "env_overrides": {"ACK": "11"}}), \
+                    mock.patch.object(kblib.subprocess, name) as child:
+                launch(["child"], env={"CALLER": "kept"}, pass_fds=(12,))
+                child.assert_called_once_with(["child"], env={"CALLER": "kept", "ACK": "11"},
+                                              pass_fds=(10, 11, 12))
+                child.reset_mock()
+                launch(["scoped-child"], path_binding={"env": {"SCOPE": "child"}, "pass_fds": (13,)})
+                child.assert_called_once_with(["scoped-child"], env={"SCOPE": "child"}, pass_fds=(13,))
 
         # mcp_server brokers the original descriptors; kblib owns the one
         # wrapper that merges them into subsequent Cambium process launches.

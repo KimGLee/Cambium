@@ -172,7 +172,7 @@ def current_review_attempt(result, item, plan, plan_sha256, obligation, spec,
             raise ValueError("batch-page attempt variant differs from plan")
         batch_contract.validate_plan_applicability(
             plan["obligations"], spec, obligation["target"],
-            record.get("applicability_disposition"), registry)
+            record.get("applicability_disposition"))
         return record
 
     def validate_current(record):

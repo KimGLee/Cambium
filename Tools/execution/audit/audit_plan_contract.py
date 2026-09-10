@@ -6,6 +6,8 @@ AuditPlan producers and consumers.
 """
 from Tools.platform.repository.repository import repository_source_root
 
+from contextlib import contextmanager
+from contextvars import ContextVar
 import os
 import re
 
@@ -32,6 +34,22 @@ _SHA256_RE = re.compile(r"sha256:[0-9a-f]{64}\Z")
 _UTC_RE = re.compile(
     r"[0-9]{4}-[0-9]{2}-[0-9]{2}T"
     r"[0-9]{2}:[0-9]{2}:[0-9]{2}(?:\.[0-9]+)?Z\Z")
+
+_SERIALIZATION_OBSERVATION = ContextVar("audit_plan_serialization", default=None)
+
+
+@contextmanager
+def serialization_observation(memo):
+    """Share exact-input serialization in the caller's existing read window.
+
+    This stores no validation or authority verdict. Every plan_sha256 call
+    still validates its plan, contract and allowed dimensions independently.
+    """
+    token = _SERIALIZATION_OBSERVATION.set(memo)
+    try:
+        yield
+    finally:
+        _SERIALIZATION_OBSERVATION.reset(token)
 
 
 def closed_string_list(value, label):
@@ -303,7 +321,12 @@ def validate_plan(plan, contract=None, dimensions=None):
 def plan_sha256(plan, contract=None, dimensions=None):
     """Return the hash of the canonical serialized AuditPlan bytes."""
     validate_plan(plan, contract=contract, dimensions=dimensions)
-    return kblib.sha256_bytes(kblib.canonical_yaml(plan).encode("utf-8"))
+    def serialize():
+        return kblib.sha256_bytes(kblib.canonical_yaml(plan).encode("utf-8"))
+    memo = _SERIALIZATION_OBSERVATION.get()
+    if memo is None:
+        return serialize()
+    return memo(("audit-plan-serialization", kblib.canonical_json_bytes(plan)), serialize)
 
 
 def contract_snapshot_sha256(*, task_id, upstream_revision_id,
@@ -389,6 +412,7 @@ __all__ = [
     'plan_contract_snapshot_sha256',
     'plan_sha256',
     'required_obligation_ids',
+    'serialization_observation',
     'validate_contract',
     'validate_plan',
     'validate_value',
