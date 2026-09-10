@@ -20,6 +20,7 @@ from Tools.execution.evidence import receipt_reference_contract
 from Tools.execution.evidence import receipt_type_contract
 from Tools.execution.evidence import evidence_invalidation_contract
 from Tools.execution.evidence import seal_receipts
+from Tools.execution.audit import batch_review_obligation_contract
 from Tools.execution.task_runtime import runtime_validation
 from Tools.execution.task_runtime.queue_runtime import receipts as receipt_store
 from Tools.knowledge.metadata import check_page_contract
@@ -241,7 +242,21 @@ class SealLifecycleIntegrationTests(unittest.TestCase):
             self.assertEqual(
                 [], seal_receipts.current_receipt_errors(seal_receipt))
 
-            catalog, cold, errors = _cold_result(root, seal_receipt)
+            # Cold body dispatch gets its own exact-input registry scope,
+            # without reusing hot admission or bypassing the real validator.
+            validate_body = receipt_type_contract.current_receipt_errors
+            scopes = []
+            def cold_admission(record, lifecycle, **kwargs):
+                self.assertEqual("cold", lifecycle)
+                scope = batch_review_obligation_contract._REGISTRY_OBSERVATION.get()
+                self.assertIsNotNone(scope)
+                scopes.append(scope)
+                return validate_body(record, lifecycle, **kwargs)
+            with mock.patch.object(receipt_type_contract, "current_receipt_errors", side_effect=cold_admission):
+                catalog, cold, errors = _cold_result(root, seal_receipt)
+            self.assertEqual(1, len(scopes))
+            self.assertIsNone(batch_review_obligation_contract._REGISTRY_OBSERVATION.get())
+            self.assertEqual({}, scopes[0]["documents"])
             self.assertEqual([], errors)
             self.assertEqual(
                 {history_receipt["receipt_id"]}, set(cold["index"]))

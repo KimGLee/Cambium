@@ -52,7 +52,7 @@
       "owner": "Tools/tests/fixtures/e2e/batch_close_scenarios.py",
       "path": "Tools/tests/fixtures/integration/batch_close_applied_checkpoint",
       "purpose": "Generated current-contract applied batch checkpoint for close producer integrations",
-      "tree_sha256": "sha256:8f9c00d97706f9900c8b05f55631998628626a5cb3e91e4d1154243dbbca6922"
+      "tree_sha256": "sha256:b1768bbf7b2ab35670892ec72cd4ff413ab76f6ef24a4fe81bd94c5b27dfc4db"
     },
     {
       "bytes": 111590,
@@ -63,7 +63,7 @@
       "owner": "Tools/tests/fixtures/e2e/batch_close_scenarios.py",
       "path": "Tools/tests/fixtures/integration/batch_close_state_mutating_checkpoint",
       "purpose": "Generated applied checkpoint for the hostile registered-verifier recovery path",
-      "tree_sha256": "sha256:2415d3866ec0306fd64576ac05e33655fc6dfc0191c73848be425b7848c436ab"
+      "tree_sha256": "sha256:581579969589b4c805865ab689c01927a59eec994774d451c36cf10c850e4e80"
     },
     {
       "bytes": 394972,
@@ -74,7 +74,7 @@
       "owner": "Tools/tests/fixtures/e2e/required_queue_scenarios.py",
       "path": "Tools/tests/fixtures/integration/maintenance_closed_checkpoint",
       "purpose": "Generated and validated current-contract maintenance-closed integration checkpoint",
-      "tree_sha256": "sha256:17d222f44e934c5643980bf24ac8093e6eb7465384beaec0464ce3aa58f330fa"
+      "tree_sha256": "sha256:3c730a399cc30ed37d3b9ec995166feb64e0962aa8aab60054a6b047133c8737"
     },
     {
       "bytes": 388270,
@@ -85,7 +85,7 @@
       "owner": "Tools/tests/fixtures/e2e/required_queue_scenarios.py",
       "path": "Tools/tests/fixtures/integration/terminal_closed_checkpoint",
       "purpose": "Generated current-contract terminal-profile checkpoint with both batches closed",
-      "tree_sha256": "sha256:8105dd600bb22d3b52a32d32bea184182f5f9e853ee2286241501da33f37ed90"
+      "tree_sha256": "sha256:a6a6fbc63c7fcda96f33420e49810aafa62703192f2cfe437a52eedac92d61bc"
     },
     {
       "bytes": 104791,
@@ -96,7 +96,7 @@
       "owner": "Tools/tests/fixtures/e2e/update_queue_scenarios.py",
       "path": "Tools/tests/fixtures/integration/update_queue_merge_admission_checkpoint",
       "purpose": "Generated current-contract open Queue checkpoint with complete pre-merge evidence",
-      "tree_sha256": "sha256:cfa9e329faa2c4260ec30b9844e82f9360d980a80fc3368711348c6196b279c4"
+      "tree_sha256": "sha256:c3b005dd184f3bd43713394e60f4011739d980771cbdaebfcc659eeda1a98f5f"
     },
     {
       "bytes": 107299,
@@ -107,7 +107,7 @@
       "owner": "Tools/tests/fixtures/e2e/update_queue_scenarios.py",
       "path": "Tools/tests/fixtures/integration/update_queue_merged_checkpoint",
       "purpose": "Generated and validated current-contract merge-ready Queue integration checkpoint",
-      "tree_sha256": "sha256:73d936d561f57c982c1d5df239ecd13d41e8f7f9f1f91a1c39f52ea3830ba9a1"
+      "tree_sha256": "sha256:224810d869aaa95411eec793724b357cf01d1d45b79e4b57d68be90db85a10ab"
     },
     {
       "bytes": 34560,
@@ -118,7 +118,7 @@
       "owner": "Tools/tests/fixtures/e2e/update_queue_scenarios.py",
       "path": "Tools/tests/fixtures/integration/update_queue_open_checkpoint",
       "purpose": "Generated current-contract open Queue checkpoint before page work begins",
-      "tree_sha256": "sha256:09d4513949fe593b5f394c6f6441cc11f3f812889cf73eadfc9fcf637c9924c1"
+      "tree_sha256": "sha256:29208fc62ce26668965e16918cb88589445e0126a1159c9deea5337379113b55"
     },
     {
       "bytes": 29591,
@@ -129,7 +129,7 @@
       "owner": "Tools/tests/fixtures/e2e/update_queue_scenarios.py",
       "path": "Tools/tests/fixtures/integration/update_queue_planning_ready_checkpoint",
       "purpose": "Generated current-contract planning checkpoint with one current ready-gate Receipt",
-      "tree_sha256": "sha256:8561ed5d5b1608217ab52a48d3c0de2bce5404ae72d8ed0af0388d98e358cf4a"
+      "tree_sha256": "sha256:be9534cdff07a9bf4ffdf1a54f2d4beb464ab1c7133019e17299372dda77fb6f"
     }
   ],
   "fixtures": [
@@ -117851,7 +117851,7 @@
             "file_copies": 0,
             "full_repository_copies": 0,
             "process_calls": 0,
-            "temp_resources": 0
+            "temp_resources": 1
           },
           "execution": {
             "builder_triggers": [],
@@ -117864,7 +117864,7 @@
               "file_copies": 0,
               "full_repository_copies": 0,
               "process_calls": 0,
-              "temp_resources": 0
+              "temp_resources": 1
             },
             "scopes": {
               "direct_method": {
@@ -117874,7 +117874,7 @@
                   "file_copies": 0,
                   "full_repository_copies": 0,
                   "process_calls": 0,
-                  "temp_resources": 0
+                  "temp_resources": 1
                 },
                 "first_use_builds": {},
                 "fixture_entrypoints": [],
@@ -117932,7 +117932,7 @@
               "file_copies": 0,
               "full_repository_copies": 0,
               "process_calls": 0,
-              "temp_resources": 0
+              "temp_resources": 1
             },
             "triggered_once_per_process": {
               "builds": {},
@@ -119169,13 +119169,13 @@
         "file_copies": 0,
         "full_repository_copies": 0,
         "process_calls": 0,
-        "temp_resources": 1
+        "temp_resources": 2
       },
       "effects": {
         "file_copies": 0,
         "full_repository_copies": 0,
         "process_calls": 0,
-        "temp_resources": 1
+        "temp_resources": 2
       },
       "fixture_dependencies": [],
       "lifecycle": "current",
@@ -163039,7 +163039,7 @@
       "full_lifecycle": 1,
       "full_repository_copies": 50,
       "process_calls": 37,
-      "temp_resources": 321
+      "temp_resources": 322
     },
     "module_scenario_first_use_builds": 14,
     "owner_references": {
@@ -163052,7 +163052,7 @@
       "file_copies": 7,
       "full_repository_copies": 15,
       "process_calls": 40,
-      "temp_resources": 146
+      "temp_resources": 147
     },
     "test_cases": 1303,
     "test_modules": 134

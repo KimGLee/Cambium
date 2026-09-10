@@ -340,14 +340,29 @@ class CurrentReceiptAuthorityHistoryTests(unittest.TestCase):
     """Minimal current/history catalog connection; no runtime replay."""
 
     def test_history_is_preserved_but_cannot_fall_back_into_current_authority(self):
-        history = HistoricalReceiptCatalog({
-            "hot-current": (
-                ".cambium/receipts/current.jsonl",
-                {"receipt_id": "hot-current", "result": "pass"}),
-            "hot-invalidated": (
-                ".cambium/receipts/current.jsonl",
-                {"receipt_id": "hot-invalidated", "result": "pass"}),
-        })
+        # This owner proves the namespace-to-typed-validator connection, not
+        # each body's predicate (which remains with its existing owner tests).
+        scopes = []
+        def body_admission(record, lifecycle, **_kwargs):
+            self.assertEqual(("hot", "historical"), lifecycle)
+            scope = batch_review_obligation_contract._REGISTRY_OBSERVATION.get()
+            self.assertIsNotNone(scope)
+            scopes.append(scope)
+            return []
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / ".cambium/receipts/current.jsonl"
+            path.parent.mkdir(parents=True)
+            path.write_text("".join(json.dumps({"receipt_id": identity, "result": "pass"}) + "\n"
+                                    for identity in ("hot-current", "hot-invalidated")))
+            errors = []
+            with mock.patch.object(receipt_type_contract, "load_receipt_type_registry", return_value={}), \
+                    mock.patch.object(receipt_type_contract, "current_receipt_errors", side_effect=body_admission):
+                history = receipts.receipt_catalog(directory, errors)
+            self.assertEqual([], errors)
+        self.assertEqual(2, len(scopes))
+        self.assertIs(scopes[0], scopes[1])
+        self.assertIsNone(batch_review_obligation_contract._REGISTRY_OBSERVATION.get())
+        self.assertEqual({}, scopes[0]["documents"])
         projection = {
             field: None for field in graph.IDENTITY_PROJECTION_FIELDS
         }
