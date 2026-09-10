@@ -69,7 +69,7 @@ def load_current_plan(root, relative, result, item):
     absolute, plan, digest, snapshot = _resolve_current_plan(
         root, relative, result, item)
     tiers = _coverage_tiers(result, item["manifest"])
-    registry = batch_contract.load_registry(root)
+    registry = batch_contract.load_registry(root, cache_projection=True)
     closure = batch_contract.validate_plan_base_closure(
         plan, item["manifest"], tiers, registry)
     frozen = audit_producer_runtime.freeze_manifest_pages(root, result, item)
@@ -221,7 +221,8 @@ def build_review_receipt(*, root, plan, plan_sha256, obligation, spec,
                          applicability_reason=None,
                          selection=None, registry=None, identity=None, seq=1):
     """Build one closed record from evidence-time page/dependency bytes."""
-    registry = registry or batch_contract.load_registry(root)
+    registry = (batch_contract.load_registry(root, cache_projection=True)
+                if registry is None else registry)
     reviewer_context_id = audit_producer_runtime.require_nonempty_string(
         reviewer_context_id, "reviewer context ID")
     reviewer_role = audit_producer_runtime.require_nonempty_string(
@@ -471,7 +472,7 @@ def main(argv=None):
             _require_plan_bytes_current(root, args.plan, plan_snapshot)
             locked_tiers = _coverage_tiers(
                 locked, locked_item["manifest"])
-            locked_registry = batch_contract.load_registry(root)
+            locked_registry = batch_contract.load_registry(root, cache_projection=True)
             if batch_contract.registry_sha256(
                     locked_registry) != registry_digest:
                 raise audit_producer_runtime.AuditProducerError(

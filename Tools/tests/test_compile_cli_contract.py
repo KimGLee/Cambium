@@ -308,6 +308,19 @@ class CompilerFixtureContractTests(unittest.TestCase):
                 "receipt_extension_sources"]
         }
         self.assertIn("Tools/fixture_receipts.py", imported_sources)
+        # The negative syntax index must not suppress normalized Python
+        # identifiers or mistake a Unicode line separator inside a string
+        # for a source line. Nested imports retain their lexical BFS binding.
+        source = (
+            'marker = "first\u2028second"\n'
+            'def build():\n'
+            '    from Tools.platform.common import kblib as receipts\n'
+            '    value = receipts.ｍake_receipt("x", "1", "c", "t", "pass", "d", 0)\n'
+            '    value["normalized_field"] = True\n'
+            '    return value\n')
+        fields, extraction, _sources = compiler._ReceiptExtensionAnalyzer(
+            str(self.fixture.root), {}).analyze("Tools.normalized", source)
+        self.assertEqual((["normalized_field"], "complete"), (fields, extraction))
 
     def test_same_owner_inputs_render_identically_without_process_replay(self):
         first = compiler.render(self.contract)

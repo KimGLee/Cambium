@@ -37,24 +37,28 @@ _REGISTRY_OBSERVATION = ContextVar("batch_review_registry_observation", default=
 
 
 @contextmanager
-def registry_observation(loader):
-    """Use the existing evidence observation's registry, not a global verdict.
+def registry_observation(root):
+    """Bound exact-input registry projections to one read-only operation.
 
-    The evidence owner captures and retires the source snapshot. Explicit
-    registry inputs always win; standalone operations retain their own load.
+    Each load still reads the registry and the two contracts used by its
+    validator. Only their mechanical projection is shared, never a Receipt
+    verdict. A nested operation starts a new scope; exit drops every value.
     """
-    token = _REGISTRY_OBSERVATION.set(loader)
+    observation = {"root": root, "documents": {}}
+    token = _REGISTRY_OBSERVATION.set(observation)
     try:
         yield
     finally:
+        observation["documents"].clear()
         _REGISTRY_OBSERVATION.reset(token)
 
 
 def _registry(registry):
     if registry is not None:
         return registry
-    loader = _REGISTRY_OBSERVATION.get()
-    return loader() if loader is not None else _SHIPPED_REGISTRY
+    observation = _REGISTRY_OBSERVATION.get()
+    return (load_registry(observation["root"], cache_projection=True)
+            if observation is not None else _SHIPPED_REGISTRY)
 
 _TOP_FIELDS = {
     "schema_version", "registry_id", "semantic_owner",
@@ -688,9 +692,32 @@ def load_registry(root=None, snapshots=None, *, cache_projection=False):
     else:
         text = kblib.read_text(os.path.join(
             root, *BATCH_REVIEW_OBLIGATION_REGISTRY_PATH.split("/")))
-    document = kblib.parse_yaml_subset(text)
-    return validated_document(document, _validate_registry,
-                              cache_projection=cache_projection)
+    observation = _REGISTRY_OBSERVATION.get()
+    if observation is None or not cache_projection:
+        document = kblib.parse_yaml_subset(text)
+        return validated_document(document, _validate_registry,
+                                  cache_projection=cache_projection)
+    # These are the exact dependency owners read by _validate_registry, not
+    # another allowed-value table. Reread their bytes on every lookup, so a
+    # changed/missing dependency cannot reuse the previous projection.
+    def dependency_bytes():
+        return tuple(kblib.read_text(os.path.join(
+            repository_source_root(owner.__file__), relative))
+            for owner, relative in (
+                (audit_plan_contract, audit_plan_contract.AUDIT_PLAN_CONTRACT_PATH),
+                (audit_dimension_contract, audit_dimension_contract.AUDIT_DIMENSION_BASE_PATH)))
+    dependencies = dependency_bytes()
+    key = (os.path.realpath(os.fspath(root)), text, dependencies)
+    documents = observation["documents"]
+    document = documents.get(key)
+    if document is None:
+        document = validated_document(
+            kblib.parse_yaml_subset(text), _validate_registry,
+            cache_projection=True)
+        if dependencies != dependency_bytes():
+            raise ValueError("batch-review registry dependencies changed during validation")
+        documents[key] = document
+    return document
 
 
 def _base_spec(values, *, tier, rule_id, applicability, acceptance,
@@ -1607,7 +1634,8 @@ def current_receipt_errors(record, *, root=None):
     """Return current hard-cut batch-page review record errors."""
     try:
         validate_producer_receipt(
-            record, registry=load_registry(root) if root is not None else None)
+            record, registry=load_registry(root, cache_projection=True)
+            if root is not None else None)
     except (OSError, TypeError, UnicodeError, ValueError,
             kblib.YamlSubsetError) as exc:
         return [str(exc)]

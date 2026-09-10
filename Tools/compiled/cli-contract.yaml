@@ -161,7 +161,7 @@ source_files:
   - Tools/stamp_cards.py
   - Tools/update_queue.py
   - Tools/update_task.py
-source_hash: sha256:2707a51dcd75ba5c4a3600d7e8d1bfa4864fc560cba183d71714c26aa1d34e36
+source_hash: sha256:1d1a5f008b0e4bd110ee9df9072d8726b493f92703762ee9ecd4769696dc6c81
 agent_interface_policy:
   path: Tools/agent-interface-policy.yaml
   sha256: sha256:b6a3ae872ce7a82ef0ddf4b7fd2a49949f99781353d0b10ff31bef2dcc91eec5
@@ -3919,7 +3919,7 @@ tools:
     host_environment_boundary: false
     implementation_module: Tools.platform.agent_interface.compile_cli_contract
     implementation_path: Tools/platform/agent_interface/compile_cli_contract.py
-    implementation_source_hash: sha256:7d9175fd9d6a83c02335219a17aa6b6150255a278857084de691e480dd8f2201
+    implementation_source_hash: sha256:7310997e9aaad240d5d013e91b028a95e80962aa3f09d13ae92d4781b59fac4f
     description: Compile the machine-readable CLI invocation contract from every Tools/*.py argparse declaration.
     arguments:
       - dest: root
@@ -3975,7 +3975,7 @@ tools:
     receipt_extensions_extraction: complete
     receipt_extension_sources:
       - path: Tools/platform/agent_interface/compile_cli_contract.py
-        sha256: sha256:7d9175fd9d6a83c02335219a17aa6b6150255a278857084de691e480dd8f2201
+        sha256: sha256:7310997e9aaad240d5d013e91b028a95e80962aa3f09d13ae92d4781b59fac4f
       - path: Tools/platform/common/kblib.py
         sha256: sha256:a5dc529505c2c8fd133771e21bf349718415f0739011ee3b287d082aef71698d
     agent_interface:
@@ -6230,7 +6230,7 @@ tools:
     host_environment_boundary: true
     implementation_module: Tools.execution.audit.record_batch_page_review
     implementation_path: Tools/execution/audit/record_batch_page_review.py
-    implementation_source_hash: sha256:a50200e5c435745a3cd894f3fd2ed7368046d56b34df7643d97d7c3f40bd1a4d
+    implementation_source_hash: sha256:3d0b4e1803b2f0dddf80ba57521423fb4ac696fa3fdd0e189758bc143b84fceb
     description: Record one plan-bound Batch Review page judgment
     arguments:
       - dest: root
@@ -6439,7 +6439,7 @@ tools:
     receipt_extensions_extraction: partial
     receipt_extension_sources:
       - path: Tools/execution/audit/record_batch_page_review.py
-        sha256: sha256:a50200e5c435745a3cd894f3fd2ed7368046d56b34df7643d97d7c3f40bd1a4d
+        sha256: sha256:3d0b4e1803b2f0dddf80ba57521423fb4ac696fa3fdd0e189758bc143b84fceb
       - path: Tools/platform/common/kblib.py
         sha256: sha256:a5dc529505c2c8fd133771e21bf349718415f0739011ee3b287d082aef71698d
     agent_interface:

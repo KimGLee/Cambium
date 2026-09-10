@@ -334,23 +334,37 @@ class BatchPageReviewProducerTests(unittest.TestCase):
         # validation, and copy only the selected atom. A fresh observation
         # must validate anew; neither an explicit input nor corruption hides.
         with mock.patch.object(contract, "_validate_registry", wraps=contract._validate_registry) as validate:
-            captured = contract.load_registry(REPOSITORY, cache_projection=True)
-            with contract.registry_observation(lambda: captured):
+            with contract.registry_observation(REPOSITORY):
+                captured = contract.load_registry(REPOSITORY, cache_projection=True)
+                before_queries = validate.call_count
                 for rule in raw_rules:
                     self.assertEqual(rule, contract.obligation_spec_for_rule(rule)["rule_id"])
                 first = contract.obligation_spec_for_rule(raw_rules[0])
                 first["rule_id"] = "not-an-owner"
                 self.assertEqual(raw_rules[0], contract.obligation_spec_for_rule(raw_rules[0])["rule_id"])
-                self.assertEqual(1, validate.call_count)
+                self.assertEqual(before_queries, validate.call_count)
                 with self.assertRaises(ValueError):
                     contract.obligation_spec_for_rule(raw_rules[0], {})
                 captured["m_tier_atomic_items"][-1]["dimension"] = "not-registered"
                 with self.assertRaisesRegex(ValueError, "base dimension"):
                     contract.obligation_spec_for_rule(raw_rules[0])
             before = validate.call_count
-            with contract.registry_observation(lambda: contract.load_registry(REPOSITORY, cache_projection=True)):
+            with contract.registry_observation(REPOSITORY):
                 self.assertEqual(raw_rules[0], contract.obligation_spec_for_rule(raw_rules[0])["rule_id"])
             self.assertEqual(before + 1, validate.call_count)
+
+            # Exact bytes, not path/mtime or scope membership, qualify reuse.
+            original_read = contract.kblib.read_text
+            dependency = audit_plan_contract.AUDIT_PLAN_CONTRACT_PATH
+            with contract.registry_observation(REPOSITORY):
+                contract.load_registry(REPOSITORY, cache_projection=True)
+                before = validate.call_count
+                def changed_dependency(path, *args, **kwargs):
+                    text = original_read(path, *args, **kwargs)
+                    return text + "\n" if str(path).endswith(dependency) else text
+                with mock.patch.object(contract.kblib, "read_text", side_effect=changed_dependency):
+                    contract.load_registry(REPOSITORY, cache_projection=True)
+                self.assertEqual(before + 1, validate.call_count)
 
     def test_registry_is_strict_and_rejects_semantic_drift(self):
         changed = copy.deepcopy(self.registry)
@@ -919,6 +933,26 @@ class BatchPageReviewProducerTests(unittest.TestCase):
             {row["rule_id"]
              for row in self.registry["m_tier_atomic_items"]},
             {row["rule_id"] for row in records})
+        # Catalog admission validates each body, but each invocation projects
+        # the full registry only once. It never reuses a previous body verdict
+        # or conceals an explicit malformed record.
+        with mock.patch.object(contract, "_validate_registry", wraps=contract._validate_registry) as validate:
+            for record in records:
+                self.assertEqual([], contract.current_receipt_errors(record, root=str(REPOSITORY)))
+            self.assertEqual(len(records), validate.call_count)
+            invalid = dict(records[0], dimension="unknown-dimension")
+            self.assertTrue(contract.current_receipt_errors(invalid, root=str(REPOSITORY)))
+            self.assertEqual(len(records) + 1, validate.call_count)
+            before = validate.call_count
+            with contract.registry_observation(REPOSITORY):
+                for record in records:
+                    self.assertEqual([], contract.current_receipt_errors(record, root=str(REPOSITORY)))
+                self.assertEqual(before + 1, validate.call_count)
+                self.assertTrue(contract.current_receipt_errors(invalid, root=str(REPOSITORY)))
+            # The next runtime observation performs a fresh owner validation.
+            with contract.registry_observation(REPOSITORY):
+                self.assertEqual([], contract.current_receipt_errors(records[0], root=str(REPOSITORY)))
+            self.assertEqual(before + 2, validate.call_count)
         catalog = {wiki["receipt_id"]: wiki}
         catalog.update({row["receipt_id"]: row for row in records})
         result = {

@@ -225,7 +225,7 @@ def evidence_observation(result):
                 audit_plan_contract.serialization_observation(
                     view["_audit_evidence_facts"].memo), \
                 batch_review_obligation_contract.registry_observation(
-                    view["_audit_evidence_facts"].batch_registry), \
+                    view["root"]), \
                 profile_batch_judgment_contract.judgment_observation(
                     view["_audit_evidence_facts"].memo), \
                 audit_obligation_projection.obligation_projection_observation(

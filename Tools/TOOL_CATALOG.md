@@ -104,7 +104,7 @@ Machine-contract loading, closed validation, pure projection, and stable predica
 | `execution.audit.audit_reconciliation_contract` | `Tools/execution/audit/audit_reconciliation_contract.py` | python-module | `execution / audit / contract` | static Python (1 symbols / 4 consumers) |
 | `execution.audit.batch_close_audit` | `Tools/execution/audit/batch_close_audit.py` | python-module | `execution / audit / contract` | static Python (4 symbols / 3 consumers) |
 | `execution.audit.batch_close_contract` | `Tools/execution/audit/batch_close_contract.py` | python-module | `execution / audit / contract` | static Python (13 symbols / 4 consumers), registered Python symbol (1 consumers) |
-| `execution.audit.batch_review_obligation_contract` | `Tools/execution/audit/batch_review_obligation_contract.py` | python-module | `execution / audit / contract` | static Python (23 symbols / 6 consumers), registered Python symbol (1 consumers) |
+| `execution.audit.batch_review_obligation_contract` | `Tools/execution/audit/batch_review_obligation_contract.py` | python-module | `execution / audit / contract` | static Python (23 symbols / 7 consumers), registered Python symbol (1 consumers) |
 | `execution.audit.batch_review_receipt_contract` | `Tools/execution/audit/batch_review_receipt_contract.py` | python-module | `execution / audit / contract` | static Python (7 symbols / 4 consumers), registered Python symbol (1 consumers) |
 | `execution.audit.changed_scope_evidence_contract` | `Tools/execution/audit/changed_scope_evidence_contract.py` | python-module | `execution / audit / contract` | static Python (34 symbols / 4 consumers), registered Python symbol (1 consumers) |
 | `execution.audit.changed_scope_runtime_checks` | `Tools/execution/audit/changed_scope_runtime_checks.py` | python-module | `execution / audit / contract` | static Python (6 symbols / 2 consumers) |
@@ -722,7 +722,7 @@ Repository IO, serialization, locking, transport, generation, and other Tool-own
 | `execution.audit.assemble_terminal_proof.DEFAULT_PROOF_PATH` | `execution.task_runtime.task_runtime_runner` | declared |
 | `execution.audit.assemble_terminal_proof.main` | `assemble_terminal_proof` | declared |
 | `execution.audit.assemble_terminal_proof.read_terminal_audit_input` | `execution.task_runtime.task_runtime_runner` | declared |
-| `execution.audit.audit_dimension_contract.AUDIT_DIMENSION_BASE_PATH` | `execution.audit.audit_obligation_projection`, `execution.audit.audit_plan_contract`, `governance.control.control_registry_contract`, `governance.profile.profile_contract` | declared |
+| `execution.audit.audit_dimension_contract.AUDIT_DIMENSION_BASE_PATH` | `execution.audit.audit_obligation_projection`, `execution.audit.audit_plan_contract`, `execution.audit.batch_review_obligation_contract`, `governance.control.control_registry_contract`, `governance.profile.profile_contract` | declared |
 | `execution.audit.audit_dimension_contract.BASE_RECEIPT_DIMENSIONS` | `execution.audit.assemble_terminal_proof`, `governance.control.control_registry_contract` | declared |
 | `execution.audit.audit_dimension_contract.BASE_RECEIPT_DIMENSION_ORDER` | `execution.audit.assemble_terminal_proof`, `execution.audit.check_proof`, `governance.control.control_registry_contract`, `governance.profile.profile_contract` | declared |
 | `execution.audit.audit_dimension_contract.EVIDENCE_ROLES` | `execution.audit.audit_plan_contract`, `governance.profile.profile_contract` | declared |
@@ -781,7 +781,7 @@ Repository IO, serialization, locking, transport, generation, and other Tool-own
 | `execution.audit.audit_obligation_projection.resolve_obligation_definition` | `execution.audit.audit_producer_chain`, `execution.audit.changed_scope_evidence_contract`, `execution.audit.prepare_audit_plan`, `execution.audit.record_changed_scope_evidence` | declared |
 | `execution.audit.audit_obligation_projection.validate_changed_scope_registry` | `execution.audit.changed_scope_evidence_contract` | declared |
 | `execution.audit.audit_obligation_projection.validate_plan_definition_authority` | `execution.audit.audit_evidence_runtime`, `execution.audit.prepare_audit_plan` | declared |
-| `execution.audit.audit_plan_contract.AUDIT_PLAN_CONTRACT_PATH` | `execution.audit.audit_obligation_projection` | declared |
+| `execution.audit.audit_plan_contract.AUDIT_PLAN_CONTRACT_PATH` | `execution.audit.audit_obligation_projection`, `execution.audit.batch_review_obligation_contract` | declared |
 | `execution.audit.audit_plan_contract.closed_string_list` | `execution.audit.audit_receipt_contract`, `execution.audit.substantive_review_contract`, `knowledge.rendering.rendering_verification_contract` | declared |
 | `execution.audit.audit_plan_contract.contract_snapshot_sha256` | `execution.audit.prepare_audit_plan` | declared |
 | `execution.audit.audit_plan_contract.field_specs` | `execution.audit.audit_receipt_contract`, `execution.audit.substantive_review_contract`, `knowledge.rendering.rendering_verification_contract` | declared |
@@ -858,7 +858,7 @@ Repository IO, serialization, locking, transport, generation, and other Tool-own
 | `execution.audit.batch_review_obligation_contract.load_registry` | `execution.audit.audit_evidence_runtime`, `execution.audit.audit_obligation_projection`, `execution.audit.prepare_audit_plan`, `execution.audit.record_batch_page_review` | declared |
 | `execution.audit.batch_review_obligation_contract.obligation_spec_for_rule` | `execution.audit.audit_evidence_runtime`, `execution.audit.record_batch_page_review` | declared |
 | `execution.audit.batch_review_obligation_contract.plan_projection_errors` | `execution.audit.record_batch_page_review` | declared |
-| `execution.audit.batch_review_obligation_contract.registry_observation` | `execution.audit.audit_evidence_runtime` | declared |
+| `execution.audit.batch_review_obligation_contract.registry_observation` | `execution.audit.audit_evidence_runtime`, `execution.task_runtime.runtime_validation` | declared |
 | `execution.audit.batch_review_obligation_contract.registry_sha256` | `execution.audit.record_batch_page_review` | declared |
 | `execution.audit.batch_review_obligation_contract.resolve_consumed_evidence` | `execution.audit.record_batch_page_review` | declared |
 | `execution.audit.batch_review_obligation_contract.review_input_constraints` | `execution.audit.audit_execution_runtime` | declared |
@@ -2302,7 +2302,7 @@ Repository IO, serialization, locking, transport, generation, and other Tool-own
 
 | Owner and symbol | Boundary declared | Observed consumers |
 |---|---|---|
-| `execution.audit.audit_dimension_contract.AUDIT_DIMENSION_BASE_PATH` | yes | `execution.audit.audit_obligation_projection`, `execution.audit.audit_plan_contract`, `governance.control.control_registry_contract`, `governance.profile.profile_contract` |
+| `execution.audit.audit_dimension_contract.AUDIT_DIMENSION_BASE_PATH` | yes | `execution.audit.audit_obligation_projection`, `execution.audit.audit_plan_contract`, `execution.audit.batch_review_obligation_contract`, `governance.control.control_registry_contract`, `governance.profile.profile_contract` |
 | `execution.audit.audit_dimension_contract.BASE_RECEIPT_DIMENSION_ORDER` | yes | `execution.audit.assemble_terminal_proof`, `execution.audit.check_proof`, `governance.control.control_registry_contract`, `governance.profile.profile_contract` |
 | `execution.audit.audit_dimension_contract.BASE_RECEIPT_DIMENSIONS` | yes | `execution.audit.assemble_terminal_proof`, `governance.control.control_registry_contract` |
 | `execution.audit.audit_dimension_contract.EVIDENCE_ROLES` | yes | `execution.audit.audit_plan_contract`, `governance.profile.profile_contract` |
@@ -2353,7 +2353,7 @@ Repository IO, serialization, locking, transport, generation, and other Tool-own
 | `execution.audit.audit_obligation_projection.resolve_obligation_definition` | yes | `execution.audit.audit_producer_chain`, `execution.audit.changed_scope_evidence_contract`, `execution.audit.prepare_audit_plan`, `execution.audit.record_changed_scope_evidence` |
 | `execution.audit.audit_obligation_projection.validate_changed_scope_registry` | yes | `execution.audit.changed_scope_evidence_contract` |
 | `execution.audit.audit_obligation_projection.validate_plan_definition_authority` | yes | `execution.audit.audit_evidence_runtime`, `execution.audit.prepare_audit_plan` |
-| `execution.audit.audit_plan_contract.AUDIT_PLAN_CONTRACT_PATH` | yes | `execution.audit.audit_obligation_projection` |
+| `execution.audit.audit_plan_contract.AUDIT_PLAN_CONTRACT_PATH` | yes | `execution.audit.audit_obligation_projection`, `execution.audit.batch_review_obligation_contract` |
 | `execution.audit.audit_plan_contract.closed_string_list` | yes | `execution.audit.audit_receipt_contract`, `execution.audit.substantive_review_contract`, `knowledge.rendering.rendering_verification_contract` |
 | `execution.audit.audit_plan_contract.contract_snapshot_sha256` | yes | `execution.audit.prepare_audit_plan` |
 | `execution.audit.audit_plan_contract.field_specs` | yes | `execution.audit.audit_receipt_contract`, `execution.audit.substantive_review_contract`, `knowledge.rendering.rendering_verification_contract` |
@@ -2407,7 +2407,7 @@ Repository IO, serialization, locking, transport, generation, and other Tool-own
 | `execution.audit.batch_review_obligation_contract.dependency_fingerprint` | yes | `execution.audit.record_batch_page_review` |
 | `execution.audit.batch_review_obligation_contract.load_registry` | yes | `execution.audit.audit_evidence_runtime`, `execution.audit.audit_obligation_projection`, `execution.audit.prepare_audit_plan`, `execution.audit.record_batch_page_review` |
 | `execution.audit.batch_review_obligation_contract.obligation_spec_for_rule` | yes | `execution.audit.audit_evidence_runtime`, `execution.audit.record_batch_page_review` |
-| `execution.audit.batch_review_obligation_contract.registry_observation` | yes | `execution.audit.audit_evidence_runtime` |
+| `execution.audit.batch_review_obligation_contract.registry_observation` | yes | `execution.audit.audit_evidence_runtime`, `execution.task_runtime.runtime_validation` |
 | `execution.audit.batch_review_obligation_contract.registry_sha256` | yes | `execution.audit.record_batch_page_review` |
 | `execution.audit.batch_review_obligation_contract.select_s_targets` | yes | `execution.audit.prepare_audit_plan` |
 | `execution.audit.batch_review_obligation_contract.validate_plan_base_closure` | yes | `execution.audit.prepare_audit_plan`, `execution.audit.record_batch_page_review` |

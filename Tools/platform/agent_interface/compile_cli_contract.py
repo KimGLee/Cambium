@@ -73,6 +73,7 @@ import argparse
 import ast
 import os
 import sys
+import unicodedata
 from collections import deque
 from contextlib import contextmanager
 from contextvars import ContextVar
@@ -993,23 +994,15 @@ class _ReceiptExtensionAnalyzer:
             node.name: node for node in tree.body
             if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
         }
-        top_functions = set(functions.values())
-        receipt_scopes = set()
         bindings = {}
-        # Preserve ast.walk's breadth-first import ordering while recording
-        # which top-level scopes can contain receipt construction. Without a
-        # factory call a scope cannot create a receipt alias or extension;
-        # parser/business-only functions need no second receipt-analysis walk.
-        # Nested definitions conservatively mark their enclosing scope, so
-        # this index can overselect but never omit a lexical factory use.
-        pending = deque([(tree, tree)])
+        # Imports are statements, never children of expressions. Preserve
+        # their original breadth-first order (including nested statements)
+        # without walking every business expression just to find imports.
+        pending = deque([tree])
         while pending:
-            node, scope = pending.popleft()
-            if node in top_functions:
-                scope = node
-            if isinstance(node, ast.Call) and _is_receipt_factory(node):
-                receipt_scopes.add(scope)
-            pending.extend((child, scope) for child in ast.iter_child_nodes(node))
+            node = pending.popleft()
+            pending.extend(child for child in ast.iter_child_nodes(node)
+                           if not isinstance(child, ast.expr))
             if isinstance(node, ast.Import):
                 for alias in node.names:
                     if alias.asname:
@@ -1025,6 +1018,20 @@ class _ReceiptExtensionAnalyzer:
                     qualified = "%s.%s" % (owner, alias.name) \
                         if owner else alias.name
                     bindings[alias.asname or alias.name] = qualified
+        # This is only a conservative negative index, not field extraction.
+        # Python normalizes identifiers with NFKC. Any factory recognized by
+        # _is_receipt_factory must contain both owner-defined fragments in
+        # its normalized source; comments/strings/nested definitions can only
+        # overselect. Selected scopes still use the unchanged AST analyzer.
+        lines = source_text.split("\n")
+        receipt_scopes = {}
+        for scope in (tree, *functions.values()):
+            text = source_text if scope is tree else "\n".join(
+                lines[scope.lineno - 1:scope.end_lineno])
+            normalized = unicodedata.normalize("NFKC", text)
+            if (RECEIPT_FACTORY_PREFIX not in normalized or
+                    RECEIPT_FACTORY_SUFFIX not in normalized):
+                receipt_scopes[scope] = (frozenset(), False, ())
         info = {
             "module": module_name,
             "path": relative,
@@ -1032,11 +1039,7 @@ class _ReceiptExtensionAnalyzer:
             "tree": tree,
             "bindings": bindings,
             "functions": functions,
-            "receipt_scopes": {
-                scope: (frozenset(), False, ())
-                for scope in (tree, *functions.values())
-                if scope not in receipt_scopes
-            },
+            "receipt_scopes": receipt_scopes,
         }
         self.modules[module_name] = info
         return info
