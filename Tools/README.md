@@ -47,7 +47,7 @@ Follow these owners instead of copying their field lists:
 | Profile storage and source mapping | [`profile-encoding.yaml`](governance/profile/profile-encoding.yaml), [`profile_layout_contract.py`](governance/profile/profile_layout_contract.py) |
 | Corpus Planning | [`corpus-planning-contract.yaml`](<../kernel/K02 Knowledge Work Construction/corpus-planning-contract.yaml>), [`corpus_planning_contract.py`](execution/planning/corpus_planning_contract.py) |
 | Audit dimensions and plan | [`audit-dimension-base.yaml`](<../kernel/K12 Quality Assurance/audit-dimension-base.yaml>), [`audit-plan-contract.yaml`](<../kernel/K12 Quality Assurance/audit-plan-contract.yaml>) |
-| Review and receipt contracts | [K12/12](<../kernel/K12 Quality Assurance/12 Substantive Correctness Review.md>), [K12/14](<../kernel/K12 Quality Assurance/14 Batch Review.md>), [`audit-receipt-contract.yaml`](<../kernel/K12 Quality Assurance/audit-receipt-contract.yaml>) |
+| Review and receipt contracts | [K12/12](<../kernel/K12 Quality Assurance/12 Substantive Correctness Review.md>), [K12/14](<../kernel/K12 Quality Assurance/14 Batch Review.md>), [`audit-fingerprint-contract.yaml`](<../kernel/K12 Quality Assurance/audit-fingerprint-contract.yaml>) |
 | Batch-close checklist | [`batch-close-closed-list.yaml`](<../kernel/K12 Quality Assurance/batch-close-closed-list.yaml>), [`batch_close_contract.py`](execution/audit/batch_close_contract.py) |
 | Policy extensions | [`contract-exception-policy-base.yaml`](<../kernel/K00 Standards Control/contract-exception-policy-base.yaml>) |
 | Installed scan and operation capabilities | [`scan-capabilities.yaml`](scan-capabilities.yaml), [`operation-capabilities.yaml`](operation-capabilities.yaml) |
@@ -177,6 +177,8 @@ The main runtime entry points are:
 - [`apply_delta.py`](apply_delta.py): preflight or apply one canonical runtime Delta from `--root` plus its repository-relative Delta path; Coverage is derived from the runtime contract and is not a caller-selected input;
 - [`check_proof.py`](check_proof.py): verify the terminal proof object and its bound state when invoked in root mode.
 
+Profile-load, Corpus Planning and Terminal Proof checkers return diagnostic details through their normal text or JSON reports. Their `--receipts` output appends only a genuine passing Gate; individual findings, failures and structural-only Terminal checks do not create governance Receipt identities. A readable report is not authorization. Preserve the report when diagnosing a failure, and use the existing Gate consumer to decide whether published evidence is acceptable.
+
 Queue compilation preserves declared targets; `queued -> open` materializes current Coverage for that batch only. Unopened batches remain planning-only: their pages are not reset, projected, or treated as reviewed. Task Plans do not supply runtime `authoring_status`, `gate_receipts`, or `property_state`.
 
 Use the live interfaces:
@@ -213,16 +215,19 @@ Runtime data belongs in `.cambium/`, not `Tools/`. [`runtime_paths.py`](executio
 
 [`audit_evidence_runtime`](execution/audit/audit_evidence_runtime.py) selects live evidence when due; close/Terminal validate its frozen selection, reconciliation and acceptance dependencies. Readable history is not a passing candidate; withdrawal still removes authority. `evidence_observation` shares mechanical facts only within one read-only action. New observations, locked checks, CAS and read-back remain independent.
 
-Producers share `ReceiptPublication.locked_append` mechanics and `audit_receipt_contract` projections, not semantic authority.
+Producers share `ReceiptPublication.locked_append` mechanics and the shared `audit_fingerprint` projection, not semantic authority.
+
+M atom results reference the original plan's obligation definition; their individual judgments, evidence references and fingerprints remain separately recorded and correctable. The seven emitted post-Delta Closed List facts are accepted against that plan at first publication, without a second full AuditReceipt. The eighth member keeps its native Gate. A close is authorized only by the final complete bundle: its existing reviewer attestation carries the shared plan reconciliation once, and the aggregate commits that exact evidence set. These changes do not remove independent substantive-review rounds or their acceptance boundaries.
+
+Changed-scope checks likewise publish their check fact and plan acceptance together. The Runner consumes that current accepted record directly, without a second full acceptance wrapper. Native Gate, candidate scans and review evidence keep their respective contracts; changed inputs, failed checks and withdrawn records cannot satisfy an obligation simply because publication previously succeeded.
 
 For an open batch, create its AuditPlan and invoke the producer named by each due obligation:
 
 ```text
 python3 Tools/prepare_audit_plan.py --help
-python3 Tools/complete_audit_receipt.py --help
 ```
 
-Ready obligations may be grouped with repeated `--obligation-id` (paired `--evidence-receipt` for finalization). Existing producers preserve evidence kinds, recheck inputs and serialize `--apply` writes. Batch Review requires pre-merge closure.
+Use each producer's declared input shape; supported multi-obligation calls retain individual result identities. Producers preserve evidence kinds, recheck inputs and serialize `--apply` writes. Batch Review requires complete pre-merge closure.
 
 `publish_delta` assembles omitted page `gate_receipts`; invalid explicit references fail. See [runtime policy](agent-interface-policy.yaml).
 

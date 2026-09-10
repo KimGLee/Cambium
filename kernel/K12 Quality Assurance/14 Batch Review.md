@@ -17,6 +17,8 @@ Gate merge rules (for tier determination see [[kernel/K00 Standards Control/07 E
 
 The registry also owns the M/S producer-evidence contract. A `consumes` atom has an exact selector or `hold`; a Tool cannot substitute an arbitrary pass. Sampled-S evidence remains dimensionless and is never fabricated as an `AuditReceipt`.
 
+M results reference their immutable AuditPlan and individual obligation rather than copying that obligation's stage, role, dimension, acceptance predicate and producer/consumer definition into every result. Each atom retains its own identity, applicability answer, review statement, consumed references and artifact/dependency/contract fingerprints. A consumer must resolve the exact bound obligation and registry item, not supply a default definition. Shared preparation does not turn these results into a single page verdict or an all-or-nothing group: each published atom remains independently correctable, and failure of a later submission does not undo earlier valid results. Unaffected results remain reusable under K12/07.
+
 **In-batch items** precede `merge-ready`; one current `batch-review` Gate receipt binds the batch, task, Delta evidence, complete applicable AuditPlan closure, and any Profile-registered judgments. Missing, extra, stale, or mis-bound evidence fails. **Global items** are verified during serial merge without repeating semantic review.
 
 In-batch items (merge-ready preconditions):
@@ -26,7 +28,7 @@ In-batch items (merge-ready preconditions):
 - Required expression migrations registered by the `Expression Layer Entry` are complete or have an explicit disposition and pass R05; any supplemental profile gate is also closed.
 - Changed-scope automated checks, manual content review, and the applicable
   rendering level are complete.
-- The [`AuditPlan`](audit-plan-contract.yaml) is complete; reuse is explicit, and each obligation retains its planned evidence kind. Only dimension-specific obligations produce an [`AuditReceipt`](audit-receipt-contract.yaml).
+- The [`AuditPlan`](audit-plan-contract.yaml) is complete; reuse is explicit, and each obligation retains its planned evidence kind. Every obligation is accepted through its native evidence contract and exact plan binding.
 - Page frontmatter projections of every page the batch touched agree with the
   post-delta Coverage owner state, per [[kernel/K08 Metadata and Status/07 Frontmatter Writer and Projection Authority|K08/07]]. A substantive change advances evidence-bound `last_content_modified` and invalidates the old review; `last_reviewed` returns only from review evidence for the current semantic fingerprint. Any `last_verified` change cites the separate verification evidence that earned it.
 - Each Profile-registered Batch Review Requirement has one current per-target judgment bound to its `profile-extension` plan row and fingerprints; close cannot reconstruct or accept a free-standing judgment.

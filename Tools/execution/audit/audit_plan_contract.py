@@ -276,12 +276,6 @@ def validate_plan(plan, contract=None, dimensions=None):
             raise ValueError(
                 "%s Profile obligation requires a registered Kernel "
                 "extension point" % label)
-        if (obligation["evidence_kind"] == "audit-receipt" and
-                (obligation["evidence_role"] != "emits" or
-                 obligation.get("dimension") is None)):
-            raise ValueError(
-                "%s AuditReceipt obligation must emit exactly one dimension" %
-                label)
         reuse_values = tuple(obligation.get(field) for field in (
             "evidence_ref", "reused_receipt_id", "reuse_reason"))
         if obligation["status"] == "required":

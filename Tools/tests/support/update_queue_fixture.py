@@ -122,7 +122,6 @@ class UpdateQueueFixture(AuditScenarioActions):
         plan_path = plan_result["plan_path"]
         plan = self.load(plan_path)
         page_receipts = []
-        produced_by_obligation = {}
 
         for obligation in plan["obligations"]:
             if (obligation.get("status") != "required" or
@@ -155,10 +154,6 @@ class UpdateQueueFixture(AuditScenarioActions):
                 self.assertEqual(0, produced.returncode, produced.stdout)
                 evidence = json.loads(produced.stdout)
                 page_receipts.append(evidence["receipt_id"])
-                produced_by_obligation[obligation["obligation_id"]] = {
-                    "evidence_receipt": evidence["receipt_id"],
-                    "audit_receipt": None,
-                }
                 continue
 
             if obligation["producer_check"] == "substantive_review":
@@ -192,26 +187,12 @@ class UpdateQueueFixture(AuditScenarioActions):
             evidence = json.loads(produced.stdout)
             if obligation["producer_check"] == "substantive_review":
                 page_receipts.append(evidence["receipt_id"])
-            audit_receipt_id = None
-            if obligation["evidence_kind"] == "audit-receipt":
-                completed = self.run_tool(
-                    "complete_audit_receipt.py", *common,
-                    "--evidence-receipt", evidence["receipt_id"],
-                    "--apply",
-                )
-                self.assertEqual(0, completed.returncode, completed.stdout)
-                audit_receipt_id = json.loads(completed.stdout)["receipt_id"]
-            produced_by_obligation[obligation["obligation_id"]] = {
-                "evidence_receipt": evidence["receipt_id"],
-                "audit_receipt": audit_receipt_id,
-            }
 
         self.assertEqual(1, len(page_receipts), plan)
         return {
             "plan": plan,
             "plan_path": plan_path,
             "page_receipt": page_receipts[0],
-            "produced_by_obligation": produced_by_obligation,
         }
 
 

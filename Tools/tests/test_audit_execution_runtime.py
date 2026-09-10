@@ -98,34 +98,6 @@ class AuditExecutionRuntimeTests(unittest.TestCase):
         self.assertNotIn("round_1_receipt_id", step["resume_arguments"])
         self.assert_execution_consumer(step["resume_capability_id"])
 
-    def test_existing_precursor_is_completed_not_reproduced(self):
-        self.use_substantive_obligation()
-        self.result["current_receipt_catalog"] = {
-            "review-1": ("receipts/reviews.jsonl", {
-                "receipt_id": "review-1",
-                "record_kind": "substantive-review-evidence",
-                "plan_id": "audit-plan-1",
-                "obligation_id": "obligation-1",
-            }),
-        }
-        self.status["obligations"][0].update({
-            "status": "ready-for-completion",
-            "evidence_ref": "review-1",
-            "reason": None,
-        })
-
-        step = self.project()
-
-        self.assertEqual("invoke", step["status"])
-        self.assertEqual("complete_audit_receipt", step["tool"])
-        self.assertEqual(["review-1"], step["arguments"]["evidence_receipt"])
-        self.assert_execution_consumer(step["capability_id"])
-        second = dict(self.obligation, obligation_id="obligation-2", target="Topics/B.md")
-        self.status["obligations"].append(dict(self.status["obligations"][0],
-            obligation=second, evidence_ref="review-2"))
-        grouped = self.project()
-        self.assertEqual(["review-1", "review-2"], grouped["arguments"]["evidence_receipt"])
-        self.assertEqual(["obligation-1", "obligation-2"], grouped["arguments"]["obligation_id"])
 
     def test_invalid_or_ambiguous_evidence_requires_repair(self):
         for state in ("invalid", "ambiguous"):

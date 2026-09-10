@@ -153,7 +153,7 @@ def current_receipt_errors(record, *, root=None):
         "tool_version": TOOL_VERSION, "check": CHECK,
         "owner_kind": "profile-extension",
         "kernel_extension_point": EXTENSION_POINT,
-        "evidence_kind": "audit-receipt", "evidence_role": "emits",
+        "evidence_kind": RECORD_KIND, "evidence_role": "emits",
         "dimension": "rendering", "due_stage": "pre-merge",
         "consumer_gate_id": "batch-review",
         "producer_capability": CAPABILITY_ID, "producer_gate_id": None,

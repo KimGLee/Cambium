@@ -161,12 +161,6 @@ modules:
     domain: planning
     layer: entrypoint
     public: []
-  - module: complete_audit_receipt
-    path: Tools/complete_audit_receipt.py
-    area: execution
-    domain: audit
-    layer: entrypoint
-    public: []
   - module: compose_page_contract
     path: Tools/compose_page_contract.py
     area: knowledge
@@ -228,7 +222,6 @@ modules:
       - evidence_observation
       - obligation_evidence_resolution
       - reconciliation_from_bindings
-      - require_completion_evidence
       - require_substantive_review_attempt
       - resolve_stage_plan
       - stage_evidence_closure
@@ -249,6 +242,10 @@ modules:
     domain: audit
     layer: contract
     public:
+      - AUDIT_FINGERPRINT_CONTRACT_PATH
+      - load_contract
+      - validate_contract
+      - page_artifact_fingerprint_contract
       - obligation_contract_fingerprint
       - page_artifact_fingerprint
       - page_set_artifact_fingerprint
@@ -260,9 +257,8 @@ modules:
     layer: contract
     public:
       - ATTEMPT_IDENTITY_FIELDS
-      - AUDIT_RECEIPT_RECORD_KIND
       - AuditLifecycleContractError
-      - CHANGED_SCOPE_PRECURSOR_RECORD_KIND
+      - CHANGED_SCOPE_RECORD_KIND
       - EVIDENCE_BINDING_FIELDS
       - OBLIGATION_BINDING_FIELDS
       - PLAN_BINDING_FIELDS
@@ -316,12 +312,11 @@ modules:
     layer: contract
     public:
       - AuditProducerChainError
-      - FINAL_AUDIT_RECEIPT_CAPABILITY
-      - precursor_chain_for_obligation
-      - precursor_chain_for_spec
-      - precursor_record_matches
+      - producer_chain_for_obligation
+      - producer_chain_for_spec
+      - producer_record_matches
       - producer_chain_observation
-      - require_precursor_record
+      - require_producer_record
   - module: execution.audit.audit_producer_runtime
     path: Tools/execution/audit/audit_producer_runtime.py
     area: execution
@@ -352,18 +347,6 @@ modules:
       - runtime_state_bindings
       - standards_bindings
       - validate_obligation_attempt_binding
-  - module: execution.audit.audit_receipt_contract
-    path: Tools/execution/audit/audit_receipt_contract.py
-    area: execution
-    domain: audit
-    layer: contract
-    public:
-      - RECEIPT_TYPE_ID
-      - current_receipt_errors
-      - load_contract
-      - page_artifact_fingerprint_contract
-      - project_new_passing_audit_receipt
-      - validate_audit_receipt
   - module: execution.audit.audit_reconciliation_contract
     path: Tools/execution/audit/audit_reconciliation_contract.py
     area: execution
@@ -377,7 +360,7 @@ modules:
     domain: audit
     layer: contract
     public:
-      - build_full_audit_receipt
+      - validate_member_evidence
       - build_post_delta_evidence_set
       - resolve_post_delta_projection
       - validate_post_delta_evidence_set
@@ -392,7 +375,6 @@ modules:
       - GATE_CHECK
       - GATE_ID
       - GATE_RECEIPT_TYPE_ID
-      - GLOBAL_REVIEW_RECEIPT_TYPE_ID
       - MEMBER_RECEIPT_TYPE_ID
       - PAGE_REVIEW_RECEIPT_TYPE_ID
       - REVIEW_ATTESTATION_RECEIPT_TYPE_ID
@@ -400,6 +382,7 @@ modules:
       - current_receipt_errors
       - load_batch_close_closed_list
       - validate_batch_close_closed_list
+      - review_context_errors
   - module: execution.audit.batch_review_obligation_contract
     path: Tools/execution/audit/batch_review_obligation_contract.py
     area: execution
@@ -428,6 +411,7 @@ modules:
       - validate_plan_applicability
       - validate_plan_base_closure
       - validate_producer_receipt
+      - validate_record_plan_binding
       - validate_receipt_consumption
       - validate_review_input
   - module: execution.audit.batch_review_receipt_contract
@@ -450,7 +434,7 @@ modules:
     layer: contract
     public:
       - ADAPTER_CAPABILITY_ID
-      - AUDIT_PRECURSOR_RECEIPT_TYPE_ID
+      - CHECK_RECEIPT_TYPE_ID
       - CANDIDATE_SET_RECEIPT_TYPE_ID
       - ChangedScopeEvidenceContractError
       - DIRECT_RECEIPT_TYPE_ID
@@ -480,8 +464,8 @@ modules:
       - runtime_contract_fingerprint
       - source_gate_selector
       - source_summary
-      - validate_audit_producer_record
-      - validate_audit_producer_record_for_plan
+      - validate_check_record
+      - validate_check_record_for_plan
       - validate_candidate_set_record_for_plan
       - validate_direct_record
       - validate_direct_record_for_plan
@@ -517,13 +501,6 @@ modules:
       - main
   - module: execution.audit.check_proof
     path: Tools/execution/audit/check_proof.py
-    area: execution
-    domain: audit
-    layer: application
-    public:
-      - main
-  - module: execution.audit.complete_audit_receipt
-    path: Tools/execution/audit/complete_audit_receipt.py
     area: execution
     domain: audit
     layer: application
@@ -593,8 +570,6 @@ modules:
     domain: audit
     layer: contract
     public:
-      - DIAGNOSTIC_CHECK
-      - DIAGNOSTIC_RECEIPT_TYPE_ID
       - GATE_CHECK
       - GATE_ID
       - GATE_RECEIPT_TYPE_ID
@@ -748,11 +723,10 @@ modules:
       - REVALIDATION_CLOSURE
       - ReceiptReferenceError
       - ResolvedReceipt
-      - SOURCE_AUDIT_RECEIPT
+      - SOURCE_PLAN_BOUND_CHECK
       - SOURCE_CANDIDATE_DELTA
       - SOURCE_CLOSE
       - SOURCE_CLOSE_ATTESTATION
-      - SOURCE_CLOSE_GLOBAL_REVIEW
       - SOURCE_COVERAGE
       - SOURCE_DELTA_APPLY
       - SOURCE_ITEM
@@ -836,7 +810,6 @@ modules:
       - SEMANTIC_ACCEPTANCE_TOOL_VERSION
       - acceptance_plan_errors
       - close_requirement
-      - current_diagnostic_receipt_errors
       - current_freshness_binding
       - current_gate_receipt_errors
       - main
@@ -1554,7 +1527,6 @@ modules:
       - AMENDMENT_DELTA_ROOT
       - AMENDMENT_RECEIPT_PATH
       - AUDIT_PLAN_ROOT
-      - AUDIT_RECEIPT_REGISTER_PATH
       - BATCH_CLOSE_RECEIPT_PATH
       - BATCH_JUDGMENT_RECEIPT_PATH
       - BATCH_PAGE_REVIEW_RECEIPT_PATH
@@ -1831,7 +1803,6 @@ modules:
       - TOOL
       - TOOL_VERSION
       - canonical_profile_load_inputs
-      - current_diagnostic_receipt_errors
       - current_gate_receipt_errors
       - evaluate_profile_load
       - finding_category

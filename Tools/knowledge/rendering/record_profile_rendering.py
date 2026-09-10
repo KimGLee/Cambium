@@ -71,7 +71,7 @@ def _context(root, batch, plan_path, obligation_id, *, shared=None):
         raise ValueError("rendering requires one exact AuditPlan obligation")
     obligation = matches[0]
     evaluation = result["_profile_authorized_view"]["_evaluation"]
-    chain = audit_producer_chain.precursor_chain_for_obligation(
+    chain = audit_producer_chain.producer_chain_for_obligation(
         obligation, root=root, evaluation=evaluation)
     if chain["execution_route"] != "profile-rendering" or obligation["status"] != "required":
         raise ValueError("obligation is not a required Profile rendering producer")

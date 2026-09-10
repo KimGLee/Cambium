@@ -23,7 +23,6 @@ REPOSITORY = Path(__file__).resolve().parents[2]
 TOOLS = REPOSITORY / "Tools"
 FIXTURE = TOOLS / "tests" / "fixtures" / "runtime_state" / "valid"
 
-from Tools.execution.audit import check_proof
 from Tools.execution.audit import terminal_proof_contract
 from Tools.execution.task_runtime import check_queue
 from Tools.execution.task_runtime import queue_check_receipt
@@ -426,12 +425,14 @@ class BuildCompletionPublicationRecoverySlowTests(CurrentRuntimeCase):
         proof_path = ".cambium/receipts/update-task-proof.yaml"
         absolute_proof = self.root / proof_path
         absolute_proof.write_text("proof: current\n", encoding="utf-8")
-        terminal = check_proof._make_receipt(
+        terminal = kblib.make_receipt(
             terminal_proof_contract.PRODUCER_TOOL,
             terminal_proof_contract.PRODUCER_TOOL_VERSION,
             terminal_proof_contract.GATE_CHECK,
             proof_path, "pass", "fixture Terminal Proof", 1,
+            receipt_type_id=terminal_proof_contract.GATE_RECEIPT_TYPE_ID,
         )
+        terminal["gate_id"] = terminal_proof_contract.GATE_ID
         terminal["checked_at"] = "2026-08-04T00:30:00Z"
         contract = result["progress"]["contract"]
         profile_view = result["_profile_authorized_view"]

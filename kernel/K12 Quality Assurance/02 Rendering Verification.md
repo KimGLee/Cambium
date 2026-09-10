@@ -38,9 +38,13 @@ After applicability has one canonical selector, the state is: no construct → `
 
 An unresolved-contract inventory may identify missing selectors or acceptance contracts only to prevent Tool-created obligations and false passes. An inventory entry is not completion evidence, an acceptance predicate, or a second specification, and cannot substitute for a typed contract.
 
+A registered Profile rendering result binds the page, immutable plan obligation, construct contract, compiler/renderer dependencies and output at first publication. Consumers accept this native `profile-rendering-evidence` through K12/07 without copying its facts. Each rule retains its applicability, acceptance, fingerprints, failure and withdrawal boundaries. Sharing computation cannot make a missing contract pass or merge separate rules into one verdict.
+
 ## Escalation Record
 
 [`rendering-verification-contract.yaml`](rendering-verification-contract.yaml) owns this record's shape and AuditPlan projection; it does not prove the underlying checks passed.
+
+The plan-bound `rendering-verification-evidence` record is accepted at its first formal publication, and later consumers validate that same record against its obligation and batch inputs. There is no separate AuditReceipt wrapper for this record-shape acceptance. Its declaration, precise proof boundary, invalidation and correction remain attached to the actual record; it cannot discharge compilation, layout or visual-review obligations.
 
 Each batch or audit records the highest level actually used with the following enumeration:
 

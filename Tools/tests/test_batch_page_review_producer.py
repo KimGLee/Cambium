@@ -18,9 +18,9 @@ sys.path.insert(0, str(TOOLS))
 import Tools.execution.audit.audit_plan_contract as audit_plan_contract  # noqa: E402
 import Tools.execution.audit.audit_obligation_projection as audit_obligation_projection  # noqa: E402
 import Tools.execution.audit.audit_evidence_runtime as audit_evidence_runtime  # noqa: E402
+import Tools.execution.audit.audit_lifecycle_contract as audit_lifecycle_contract
 import Tools.execution.audit.audit_fingerprint as audit_fingerprint
 import Tools.execution.audit.audit_producer_runtime as audit_producer_runtime  # noqa: E402
-import Tools.execution.audit.audit_receipt_contract as audit_receipt_contract  # noqa: E402
 import Tools.execution.audit.changed_scope_evidence_contract as changed_scope_contract
 import Tools.execution.audit.batch_review_obligation_contract as contract  # noqa: E402
 import Tools.platform.common.kblib as kblib  # noqa: E402
@@ -175,7 +175,8 @@ class BatchPageReviewProducerTests(unittest.TestCase):
         ]
         if rule_ids is None:
             specs = [row for row in available
-                     if row["evidence_kind"] == "audit-receipt"][:count]
+                     if row["evidence_kind"] ==
+                     audit_lifecycle_contract.CHANGED_SCOPE_RECORD_KIND][:count]
             self.assertEqual(count, len(specs))
         else:
             by_rule = {row["owner_rule_id"]: row for row in available}
@@ -202,6 +203,9 @@ class BatchPageReviewProducerTests(unittest.TestCase):
 
     def with_profile_rendering(self, plan, page):
         changed = copy.deepcopy(plan)
+        extension = next(row for row in changed_scope_contract.load_registry(
+            str(REPOSITORY))["extension_points"]
+            if row["extension_point_id"] == "k12-02-profile-rendering")
         obligation = {
             "obligation_id": "profile-rendering-0001",
             "owner_kind": "profile-extension",
@@ -212,7 +216,7 @@ class BatchPageReviewProducerTests(unittest.TestCase):
             "target": page,
             "applicability": "outer-pipe-markdown-table",
             "evidence_role": "emits",
-            "evidence_kind": "audit-receipt",
+            "evidence_kind": extension["evidence_kind"],
             "dimension": "rendering",
             "acceptance_predicate": "test-table-rendering",
             "producer_check": "profile_rendering",
@@ -253,45 +257,17 @@ class BatchPageReviewProducerTests(unittest.TestCase):
             "fingerprint_binding": obligation["fingerprint_binding"],
             "invalidated_by": None,
         }
-        if obligation["evidence_kind"] == "gate-receipt":
-            common.update({
-                "target": obligation["target"],
-                "partition": obligation["partition"],
-                "dimension": None,
-                "result": "pass",
-            })
-            return common
-        receipt = {
-            "schema_version": audit_receipt_contract.load_contract(
-                str(REPOSITORY))["schema_version"],
-            "receipt_type_id": audit_receipt_contract.RECEIPT_TYPE_ID,
-            **common,
-            "task_id": plan["task_id"],
-            "batch_id": plan["batch_id"],
-            "opening_transition_receipt":
-                plan["opening_transition_receipt"],
-            "upstream_revision_id": plan["upstream_revision_id"],
-            "active_standards_sha256": plan["active_standards_sha256"],
-            "selected_profile_manifest": plan["selected_profile_manifest"],
-            "profile_snapshot_sha256": plan["profile_snapshot_sha256"],
-            "profile_contract_fingerprint":
-                plan["profile_contract_fingerprint"],
-            "dimension": obligation["dimension"],
-            "scope": [obligation["target"]],
-            "artifact_fingerprint": SHA_A,
-            "dependency_fingerprint": SHA_B,
-            "contract_fingerprint": SHA_C,
-            "verifier": "test-producer",
-            "method": "test-producer@1.0.0/check",
-            "evidence_ref": "producer-evidence-%04d" % index,
-            "checked_at": "2026-08-29T00:00:00Z",
-            "review_due": obligation["review_due"],
-            "result": "passed",
-            "reused_receipt_id": None,
-            "reuse_reason": None,
-        }
-        audit_receipt_contract.validate_audit_receipt(receipt)
-        return receipt
+        # A selector's unit input, not a fabricated producer Receipt. The
+        # source owner proves its complete shape/currentness separately;
+        # these tests exercise the native handoff fields and exact references.
+        common.update({
+            "target": obligation["target"],
+            "partition": obligation["partition"],
+            "dimension": None if obligation["evidence_kind"] == "gate-receipt"
+                         else obligation["dimension"],
+            "result": "pass",
+        })
+        return common
 
     @staticmethod
     def frozen(path):
@@ -534,10 +510,19 @@ class BatchPageReviewProducerTests(unittest.TestCase):
             ["variants"]["m-atomic-item"]["instance_fields"])
         self.assertEqual(expected_fields, set(receipt))
 
-        changed = copy.deepcopy(receipt)
-        changed["dimension"] = None
-        with self.assertRaisesRegex(ValueError, "drifts"):
-            contract.validate_producer_receipt(changed, self.registry)
+        # The immutable obligation supplies the definition; there is no
+        # copied dimension/predicate to compare with another copied value.
+        forbidden = next(row["forbidden_fields"] for row in
+            self.registry["producer_evidence_contract"]["variants"]
+            if row["review_variant"] == "m-atomic-item")
+        self.assertTrue(set(forbidden).isdisjoint(receipt))
+        for field in ("owner_rule_id", "dimension", "due_stage", "acceptance_predicate"):
+            with self.subTest(field=field):
+                changed_obligation = dict(obligation, **{field: "foreign"})
+                with self.assertRaisesRegex(ValueError, field):
+                    contract.validate_record_plan_binding(
+                        receipt, plan, audit_plan_contract.plan_sha256(plan),
+                        changed_obligation, self.registry)
         changed = copy.deepcopy(receipt)
         changed["extra"] = "not allowed"
         with self.assertRaisesRegex(ValueError, "fields are not closed"):
@@ -603,7 +588,7 @@ class BatchPageReviewProducerTests(unittest.TestCase):
             contract.validate_receipt_consumption(
                 plan, plan_sha256, receipt, catalog, self.registry))
 
-    def test_m07_consumes_native_gate_and_full_audit_receipt(self):
+    def test_m07_consumes_native_gate_and_accepted_check(self):
         plan, manifest, tiers, _selection = self.full_plan(s_count=0)
         plan, source_obligations = self.with_same_page_changed_scope(
             plan, "M.md", rule_ids=(
@@ -625,12 +610,13 @@ class BatchPageReviewProducerTests(unittest.TestCase):
             for index, row in enumerate(source_obligations, 1))
         gate = next(row for row in dependencies
                     if row["record_kind"] == "gate-receipt")
-        full = next(row for row in dependencies
-                    if row["record_kind"] == "audit-receipt")
+        check = next(row for row in dependencies
+                     if row["record_kind"] ==
+                     audit_lifecycle_contract.CHANGED_SCOPE_RECORD_KIND)
         self.assertEqual("changed-scope-deterministic", gate["partition"])
-        self.assertNotIn("partition", full)
-        self.assertNotIn("target", full)
-        audit_receipt_contract.validate_audit_receipt(full)
+        self.assertEqual("changed-scope-deterministic", check["partition"])
+        self.assertEqual("M.md", check["target"])
+        self.assertNotIn("evidence_ref", check)
         kwargs = {
             "root": str(REPOSITORY), "plan": plan,
             "plan_sha256": audit_plan_contract.plan_sha256(plan),
@@ -638,7 +624,7 @@ class BatchPageReviewProducerTests(unittest.TestCase):
             "page_snapshot": self.frozen("M.md"),
             "reviewer_context_id": "review-context",
             "reviewer_role": "batch-reviewer", "verdict": "passed",
-            "statement": "native Gate and full AuditReceipt consumed",
+            "statement": "native Gate and accepted check consumed",
             "applicability_disposition": "applicable",
             "registry": self.registry, "identity": {},
         }
@@ -652,7 +638,7 @@ class BatchPageReviewProducerTests(unittest.TestCase):
             (0, "plan_id", "wrong-plan"),
             (1, "obligation_id", "wrong-obligation"),
             (0, "owner_rule_id", "wrong-owner"),
-            (1, "scope", ["Other.md"]),
+            (1, "target", "Other.md"),
         )
         for index, field, value in mutations:
             with self.subTest(field=field):

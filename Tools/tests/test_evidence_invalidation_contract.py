@@ -110,21 +110,21 @@ class EvidenceInvalidationContractTests(unittest.TestCase):
                 checked_at=self.event["checked_at"])
 
     def test_transitive_acceptance_not_history_or_custody(self):
-        full = {"receipt_id": "full", "receipt_type_id": "audit-receipt-v3",
-                "evidence_ref": "review-one", "opening_transition_receipt": "opened"}
         wrapper = {"receipt_id": "wrapper", "receipt_type_id": "batch-review-wrapper-v2",
-                   "audit_evidence_bindings": [{"evidence_ref": "full"}]}
+                   "audit_evidence_bindings": [{"evidence_ref": "review-one"}]}
         close = {"receipt_id": "close", "receipt_type_id": "batch-close-gate-v1",
                  "queue_consistency_receipt": "unrelated",
                  "delta_apply_receipt": "state-write",
-                 "global_review_receipt": "unrelated",
-                 "reviewer_attestation_receipt": "unrelated",
-                 "audit_evidence_reconciliation": [{"selected_evidence_ref": "full"}]}
+                 "reviewer_attestation_receipt": "attestation"}
+        attestation = {"receipt_id": "attestation",
+                       "receipt_type_id": "batch-close-review-attestation-v1",
+                       "audit_evidence_reconciliation": [{"selected_evidence_ref": "review-one"}]}
         unrelated = dict(self.subject, receipt_id="unrelated", consumed_evidence_refs=[])
-        self.catalog.update(full=full, wrapper=wrapper, close=close, unrelated=unrelated)
+        self.catalog.update(wrapper=wrapper, close=close,
+                            attestation=attestation, unrelated=unrelated)
         before = copy.deepcopy(self.catalog)
         view = contract.invalidation_view(self.catalog, registry=self.registry)
-        self.assertEqual({"review-one", "full", "wrapper", "close"}, set(view["affected"]))
+        self.assertEqual({"review-one", "wrapper", "attestation", "close"}, set(view["affected"]))
         self.assertEqual({"review-one"}, set(view["direct"]))
         self.assertNotIn(self.event["receipt_id"], view["affected"])
         self.assertEqual(before, self.catalog)
@@ -137,15 +137,15 @@ class EvidenceInvalidationContractTests(unittest.TestCase):
 
     def test_unknown_or_missing_dependency_is_not_zero_impact(self):
         self.catalog["consumer"] = {
-            "receipt_id": "consumer", "receipt_type_id": "audit-receipt-v3",
-            "evidence_ref": "missing"}
+            "receipt_id": "consumer", "receipt_type_id": "batch-page-review-record-v3",
+            "consumed_evidence_refs": ["missing"]}
         with self.assertRaisesRegex(ValueError, "dependency is absent"):
             contract.invalidation_view(self.catalog, registry=self.registry)
         self.catalog["consumer"]["receipt_type_id"] = "unknown-format"
         with self.assertRaisesRegex(ValueError, "no current producer"):
             contract.invalidation_view(self.catalog, registry=self.registry)
         self.catalog["consumer"].update(
-            receipt_type_id="audit-receipt-v3", evidence_ref="review-one")
+            receipt_type_id="batch-page-review-record-v3", consumed_evidence_refs=["review-one"])
         self.catalog["review-one"]["consumed_evidence_refs"] = ["consumer"]
         self.event["subjects"] = [contract.subject_binding(self.catalog["review-one"])]
         with self.assertRaisesRegex(ValueError, "circular proof"):

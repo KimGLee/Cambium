@@ -159,17 +159,7 @@ def current_review_attempt(result, item, plan, plan_sha256, obligation, spec,
 
     def validate_stable(record):
         batch_contract.validate_producer_receipt(record, registry)
-        audit_producer_runtime.validate_obligation_attempt_binding(
-            record, plan, plan_sha256, obligation)
-        errors = batch_contract.plan_projection_errors(obligation, spec)
-        if errors:
-            raise ValueError(
-                "batch-page obligation projection drifts in: %s" %
-                ", ".join(errors))
-        expected_variant = (
-            "m-atomic-item" if spec["tier"] == "M" else "s-sampled-page")
-        if record.get("review_variant") != expected_variant:
-            raise ValueError("batch-page attempt variant differs from plan")
+        batch_contract.validate_record_plan_binding(record, plan, plan_sha256, obligation, registry)
         batch_contract.validate_plan_applicability(
             plan["obligations"], spec, obligation["target"],
             record.get("applicability_disposition"))
@@ -229,11 +219,6 @@ def build_review_receipt(*, root, plan, plan_sha256, obligation, spec,
         reviewer_role, "reviewer role")
     statement = audit_producer_runtime.require_nonempty_string(
         statement, "review statement")
-    errors = batch_contract.plan_projection_errors(obligation, spec)
-    if errors:
-        raise audit_producer_runtime.AuditProducerError(
-            "batch-page obligation projection drifts in: %s" %
-            ", ".join(errors))
     if verdict not in {"passed", "changes-required"}:
         raise audit_producer_runtime.AuditProducerError(
             "batch-page verdict must be passed or changes-required")
@@ -307,15 +292,6 @@ def build_review_receipt(*, root, plan, plan_sha256, obligation, spec,
         "profile_contract_fingerprint":
             plan["profile_contract_fingerprint"],
         "tier": spec["tier"],
-        "partition": obligation["partition"],
-        "due_stage": spec["due_stage"],
-        "evidence_role": spec["evidence_role"],
-        "evidence_kind": spec["evidence_kind"],
-        "dimension": spec["dimension"],
-        "acceptance_predicate": spec["acceptance_predicate"],
-        "producer_capability": spec["producer_capability"],
-        "consumer_gate_id": spec["consumer_gate_id"],
-        "fingerprint_binding": spec["fingerprint_binding"],
         "artifact_fingerprint": artifact_fingerprint,
         "dependency_fingerprint": dependency,
         "contract_fingerprint": contract,
@@ -339,9 +315,21 @@ def build_review_receipt(*, root, plan, plan_sha256, obligation, spec,
         if selection is None:
             raise audit_producer_runtime.AuditProducerError(
                 "sampled S evidence requires the frozen selection")
+        receipt.update({
+        "partition": obligation["partition"],
+        "due_stage": spec["due_stage"],
+        "evidence_role": spec["evidence_role"],
+        "evidence_kind": spec["evidence_kind"],
+        "dimension": spec["dimension"],
+        "acceptance_predicate": spec["acceptance_predicate"],
+        "producer_capability": spec["producer_capability"],
+        "consumer_gate_id": spec["consumer_gate_id"],
+        "fingerprint_binding": spec["fingerprint_binding"],
+        })
         receipt.update(selection)
         receipt["selection_frozen_at"] = plan["generated_at"]
     batch_contract.validate_producer_receipt(receipt, registry)
+    batch_contract.validate_record_plan_binding(receipt, plan, plan_sha256, obligation, registry)
     batch_contract.validate_input_binding(
         receipt, page_snapshot.path, text,
         page_snapshot.semantic_content_fingerprint,

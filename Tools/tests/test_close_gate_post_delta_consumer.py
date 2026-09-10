@@ -54,22 +54,16 @@ class PostDeltaCloseConsumerTests(unittest.TestCase):
             self.stage, self.rows, self.profile)
         self.records = {}
         self.final_by_member = {}
-        self.producer_by_member = {}
         for index, pair in enumerate(self.projection, 1):
             row = pair["member"]
             obligation = pair["obligation"]
             member_id = row["member_id"]
             if row["evidence_kind"] == "gate-receipt":
                 final = objects.gate_evidence()
-                raw = final
             else:
-                raw = objects.producer_evidence(self.stage, obligation, index)
-                final = batch_close_audit.build_full_audit_receipt(
-                    self.stage, pair, raw)
-            self.records[raw["receipt_id"]] = raw
+                final = objects.producer_evidence(self.stage, obligation, index)
             self.records[final["receipt_id"]] = final
             self.final_by_member[member_id] = final
-            self.producer_by_member[member_id] = raw
 
         closure = batch_close_audit.build_post_delta_evidence_set(
             self.stage, self.projection, self.final_by_member, SHA_F)
@@ -86,20 +80,9 @@ class PostDeltaCloseConsumerTests(unittest.TestCase):
             member: record["receipt_id"]
             for member, record in self.final_by_member.items()
         }
-        producer_evidence = {
-            member: record["receipt_id"]
-            for member, record in self.producer_by_member.items()
-        }
         self.aggregate = {
             "receipt_id": "aggregate-1",
             "closed_list_evidence": evidence,
-            "closed_list_producer_evidence": producer_evidence,
-            **self.plan_binding,
-        }
-        self.global_review = {
-            "receipt_id": "global-1",
-            "closed_list_evidence": evidence,
-            **self.plan_binding,
         }
         self.attestation = {
             "receipt_id": "attestation-1",
@@ -154,7 +137,6 @@ class PostDeltaCloseConsumerTests(unittest.TestCase):
             "merged_snapshot_sha256": SHA_F,
             "integrator_id": "fixture-integrator",
             "reviewer_id": "fixture-reviewer",
-            "global_review_receipt": self.global_review["receipt_id"],
             "reviewer_attestation_receipt": self.attestation["receipt_id"],
             "page_review_receipts": [],
             "result": "pass",
@@ -162,21 +144,6 @@ class PostDeltaCloseConsumerTests(unittest.TestCase):
         })
         if mutate_aggregate is not None:
             mutate_aggregate(aggregate)
-        global_review = deepcopy(self.global_review)
-        global_review.update({
-            "tool": "check_batch_close",
-            "tool_version": check_batch_close.TOOL_VERSION,
-            "check": "batch_global_review",
-            "target": "B1",
-            "batch_id": "B1",
-            "task_id": "task-1",
-            "merged_snapshot_sha256": SHA_F,
-            "integrator_id": "fixture-integrator",
-            "reviewer_id": "fixture-reviewer",
-            "reviewer_attestation_receipt": self.attestation["receipt_id"],
-            "result": "pass",
-            "invalidated_by": None,
-        })
         attestation = deepcopy(self.attestation)
         attestation.update({
             "tool": "check_batch_close",
@@ -193,7 +160,7 @@ class PostDeltaCloseConsumerTests(unittest.TestCase):
             "invalidated_by": None,
         })
         catalog = self.catalog()
-        for record in (aggregate, global_review, attestation):
+        for record in (aggregate, attestation):
             catalog[record["receipt_id"]] = (
                 ".cambium/receipts/batch-close.jsonl", record)
         return close_gate.close_gate_receipt_errors(
@@ -253,23 +220,19 @@ class PostDeltaCloseConsumerTests(unittest.TestCase):
     def catalog(self):
         return {
             receipt_id: (
-                ".cambium/receipts/audit-receipts.jsonl"
-                if record.get("record_kind") == "audit-receipt" else
                 ".cambium/receipts/batch-close.jsonl",
                 record)
             for receipt_id, record in self.records.items()
         }
 
-    def errors(self, aggregate=None, global_review=None, attestation=None,
+    def errors(self, aggregate=None, attestation=None,
                catalog=None, root=None):
         return close_gate._post_delta_close_evidence_errors(
             self.catalog() if catalog is None else catalog,
             self.aggregate if aggregate is None else aggregate,
-            self.global_review if global_review is None else global_review,
             self.attestation if attestation is None else attestation,
             item_id="B1", task_id="task-1",
             merged_snapshot_sha256=SHA_F,
-            receipt_version=check_batch_close.TOOL_VERSION,
             root=root,
             profile_evaluation=self.evaluation, historical=False)
 
@@ -321,21 +284,21 @@ class PostDeltaCloseConsumerTests(unittest.TestCase):
                 member_id in error and "registry/plan binding" in error
                 for error in shipped_errors), shipped_errors)
 
-    def test_accepts_seven_full_audit_receipts_and_original_gate(self):
+    def test_accepts_seven_direct_member_facts_and_original_gate(self):
         errors, evidence_ids = self.errors()
         self.assertEqual([], errors)
         self.assertEqual(8, len(evidence_ids))
 
-    def test_current_full_audit_receipt_must_use_its_canonical_register(self):
+    def test_current_member_must_use_its_canonical_register(self):
         catalog = self.catalog()
         member = "structural_validity"
         receipt_id = self.aggregate["closed_list_evidence"][member]
         record = catalog[receipt_id][1]
         catalog[receipt_id] = (
-            ".cambium/receipts/batch-close.jsonl", record)
+            ".cambium/receipts/foreign.jsonl", record)
         errors, _ids = self.errors(catalog=catalog)
         self.assertTrue(any(
-            "must be stored in .cambium/receipts/audit-receipts.jsonl"
+            "must be stored in .cambium/receipts/batch-close.jsonl"
             in error for error in errors), errors)
 
     def test_manifest_page_contract_must_remain_original_gate_evidence(self):
@@ -343,69 +306,62 @@ class PostDeltaCloseConsumerTests(unittest.TestCase):
         gate_id = self.aggregate["closed_list_evidence"][
             "manifest_page_contract"]
         wrapped = dict(catalog[gate_id][1])
-        wrapped["record_kind"] = "audit-receipt"
+        wrapped["dimension"] = "content_and_depth"
         catalog[gate_id] = (catalog[gate_id][0], wrapped)
         errors, _ids = self.errors(catalog=catalog)
         self.assertTrue(any(
-            "original dimensionless Gate record" in error
+            "evidence.dimension" in error
             for error in errors), errors)
-
-    def test_raw_producer_receipt_cannot_replace_full_audit_receipt(self):
-        catalog = self.catalog()
-        member = "structural_validity"
-        receipt_id = self.aggregate["closed_list_evidence"][member]
-        raw = dict(self.producer_by_member[member])
-        raw["receipt_id"] = receipt_id
-        catalog[receipt_id] = (catalog[receipt_id][0], raw)
-        errors, _ids = self.errors(catalog=catalog)
-        self.assertTrue(any(
-            "full AuditReceipt" in error for error in errors), errors)
 
     def test_registry_rule_dimension_and_evidence_kind_are_enforced(self):
-        catalog = self.catalog()
-        member = "coverage_file_count"
-        receipt_id = self.aggregate["closed_list_evidence"][member]
-        changed = dict(catalog[receipt_id][1])
-        changed["owner_rule_id"] = "invented-rule"
-        changed["dimension"] = "rendering"
-        catalog[receipt_id] = (catalog[receipt_id][0], changed)
-        errors, _ids = self.errors(catalog=catalog)
-        self.assertTrue(any(
-            "registry/plan binding" in error or
-            "post-Delta evidence closure" in error
-            for error in errors), errors)
+        for field, value in (("rule_id", "invented-rule"), ("dimension", "rendering"),
+                             ("evidence_kind", "invented-evidence")):
+            with self.subTest(field=field):
+                attestation = deepcopy(self.attestation)
+                binding = next(row for row in attestation["post_delta_evidence_bindings"]
+                               if row["member_id"] == "coverage_file_count")
+                binding[field] = value
+                errors, _ids = self.errors(attestation=attestation)
+                self.assertTrue(any("registry/plan binding" in error or
+                                    "post-Delta evidence closure" in error for error in errors), errors)
 
-    def test_aggregate_set_hashes_are_recomputed(self):
-        aggregate = deepcopy(self.aggregate)
-        aggregate["post_delta_evidence_set_sha256"] = SHA_B
-        errors, _ids = self.errors(aggregate=aggregate)
-        self.assertTrue(any(
-            "post_delta_evidence_set_sha256" in error
-            for error in errors), errors)
+    def test_attestation_set_hash_count_and_plan_binding_are_validated(self):
+        for field, value, diagnostic in (
+                ("post_delta_evidence_set_sha256", SHA_B, "post_delta_evidence_set_sha256"),
+                ("post_delta_evidence_count", 7, "post_delta_evidence_count"),
+                ("audit_plan_sha256", SHA_B, "post-Delta evidence closure")):
+            with self.subTest(field=field):
+                attestation = dict(self.attestation, **{field: value})
+                errors, _ids = self.errors(attestation=attestation)
+                self.assertTrue(any(diagnostic in error for error in errors), errors)
 
-    def test_global_review_and_attestation_bind_same_plan_closure(self):
-        global_review = deepcopy(self.global_review)
-        global_review["audit_plan_sha256"] = SHA_B
-        attestation = deepcopy(self.attestation)
-        attestation["post_delta_evidence_count"] = 7
-        errors, _ids = self.errors(
-            global_review=global_review, attestation=attestation)
-        self.assertTrue(any(
-            "global review audit_plan_sha256" in error for error in errors),
-            errors)
-        self.assertTrue(any(
-            "reviewer attestation post_delta_evidence_count" in error
-            for error in errors), errors)
-
-    def test_raw_producer_evidence_must_remain_resolvable(self):
+    def test_direct_member_evidence_must_remain_resolvable(self):
         catalog = self.catalog()
         member = "controlled_vocabulary"
-        raw_id = self.aggregate["closed_list_producer_evidence"][member]
+        raw_id = self.aggregate["closed_list_evidence"][member]
         catalog.pop(raw_id)
         errors, _ids = self.errors(catalog=catalog)
         self.assertTrue(any(
-            member in error and "producer evidence" in error
+            member in error and "missing receipt" in error
             for error in errors), errors)
+
+    def test_close_references_one_real_review_context(self):
+        aggregate = dict(self.aggregate,
+            reviewer_attestation_receipt=self.attestation["receipt_id"],
+            task_id="task-1", batch_id="B1", merged_snapshot_sha256=SHA_F)
+        context = dict(self.attestation,
+            receipt_type_id=batch_close_contract.REVIEW_ATTESTATION_RECEIPT_TYPE_ID,
+            check="batch_global_review_attestation", result="pass", invalidated_by=None,
+            task_id="task-1", batch_id="B1", merged_snapshot_sha256=SHA_F)
+        self.assertEqual([], batch_close_contract.review_context_errors(aggregate, context))
+        self.assertTrue(batch_close_contract.review_context_errors(aggregate, None))
+        for field in ("receipt_id", "receipt_type_id", "check", "result",
+                      "invalidated_by", "task_id", "batch_id", "merged_snapshot_sha256"):
+            with self.subTest(field=field):
+                errors = batch_close_contract.review_context_errors(
+                    aggregate, dict(context, **{field: "foreign"}))
+                self.assertTrue(any(field in error for error in errors), errors)
+        self.assertTrue(set(self.plan_binding).isdisjoint(aggregate))
 
 
 if __name__ == "__main__":

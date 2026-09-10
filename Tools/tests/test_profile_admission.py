@@ -113,11 +113,11 @@ class ProfileAdmissionTests(unittest.TestCase):
             evaluation.contract, self.fixture.root)[0]
         with mock.patch.object(check_profile, "evaluate_profile_load",
                                side_effect=AssertionError("must reuse")):
-            chain = audit_producer_chain.precursor_chain_for_spec(
+            chain = audit_producer_chain.producer_chain_for_spec(
                 spec, root=self.fixture.root, evaluation=evaluation)
             self.assertEqual("profile-rendering", chain["execution_route"])
             with self.assertRaises(audit_producer_chain.AuditProducerChainError):
-                audit_producer_chain.precursor_chain_for_spec(spec, root=self.fixture.root)
+                audit_producer_chain.producer_chain_for_spec(spec, root=self.fixture.root)
 
     def test_reuse_requires_same_manifest_root_and_exact_gate_summary(self):
         manifest = self.evaluation.contract.manifest_repo_path

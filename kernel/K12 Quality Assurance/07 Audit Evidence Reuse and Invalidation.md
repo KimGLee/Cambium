@@ -11,7 +11,7 @@ This module specifies how verification evidence is reused across single pages, b
 1. Every layer repeating expensive manual review from scratch, wasting execution time and context;
 2. Continuing to rely on an old conclusion after content, dependencies, or rules have changed, merely because a page once passed.
 
-The core chain: changed objects, applicability conditions, and acceptance predicates generate one complete AuditPlan whose obligations name their legal evidence kinds; obligations that require dimension-specific audit evidence produce append-only AuditReceipt records carrying artifact / dependency / contract fingerprints. Receipts are reusable while predicates and fingerprints remain valid, relevant changes trigger invalidation, bounded expansion applies when local failures show systemic impact, and finally Terminal reconciliation runs on the frozen snapshot. Append-only and immutable mean protocol-level history preservation, not cryptographic tamper resistance.
+The core chain: changed objects, applicability conditions, and acceptance predicates generate one complete AuditPlan whose obligations name their legal evidence kinds; obligations produce their registered append-only native evidence carrying artifact / dependency / contract fingerprints. Receipts are reusable while predicates and fingerprints remain valid, relevant changes trigger invalidation, bounded expansion applies when local failures show systemic impact, and finally Terminal reconciliation runs on the frozen snapshot. Append-only and immutable mean protocol-level history preservation, not cryptographic tamper resistance.
 
 The `AuditPlan` a batch generates from this decision, and the checks that are incremental by default, are owned by [[kernel/K12 Quality Assurance/19 Incremental Audit Planning|Incremental Audit Planning]].
 
@@ -29,7 +29,7 @@ Each layer owns different questions; identical work must not be hidden behind di
 
 The same invariant MAY be reconfirmed at multiple layers, but each time the new audit object must be stated. For example, the Batch link check proves the graph still resolves after this batch's writes; the Terminal full-vault link check proves the final snapshot was not broken by subsequent batches.
 
-## Dimension-specific Audit Receipt
+## Dimension-specific Audit Evidence
 
 Audit evidence is stored per dimension; recording only a vague `reviewed: true` is not allowed. The sole machine authority for the base receipt-dimension namespace is [`audit-dimension-base.yaml`](audit-dimension-base.yaml). These dimensions separate structural, substantive, numeric, source/currentness, coverage/integration, rendering, and governance-contract evidence so that a pass in one concern cannot silently discharge another.
 
@@ -37,11 +37,17 @@ The `Audit Dimension Registry` MAY append profile-owned dimensions, but MUST NOT
 
 Which dimension a kernel judgment item files its verdict under, and whether it emits a receipt at all, is fixed by [[kernel/K12 Quality Assurance/08 Judgment Item Dimension Map#Item Map|K12/08]]; an item that consumes evidence produced elsewhere does not open a second receipt for the same audit object.
 
-One dimension-specific verification produces one append-only `AuditReceipt` protocol record. [`audit-receipt-contract.yaml`](audit-receipt-contract.yaml) is the sole normative source for its closed fields, shapes, result values, and serialization. Its `dimension` is mandatory and MUST resolve through the current Audit Dimension Registry.
+Check facts and plan acceptance are distinct responsibilities. For the current plan-bound substantive-review, changed-scope, rendering and post-Delta member contracts, first formal publication verifies both and appends the native evidence once. There is no independent later acceptance fact requiring a copied full AuditReceipt. Each result retains its exact obligation, input and stage binding, producer, acceptance predicate, failure history and correction boundary. A future independent adoption fact must have its own authorized acceptance contract rather than being inferred from a wrapper.
 
-An AuditPlan is not a demand that every obligation emit an AuditReceipt. It MAY consume any evidence kind admitted by its closed machine contract. In particular, `manifest_page_contract` consumes the dimensionless evidence of the registered `page-contract` Gate. That evidence remains a Gate record: a producer or consumer MUST NOT wrap it as an AuditReceipt or assign an arbitrary dimension merely to satisfy the AuditReceipt shape. A nullable AuditPlan `dimension` expresses this distinction; it does not make AuditReceipt dimensionless.
+An AuditPlan consumes the evidence kinds admitted by its closed machine contract. A dimension separates acceptance concerns; it does not prescribe a second object. In particular, `manifest_page_contract` consumes dimensionless `page-contract` Gate evidence. It MUST NOT acquire an arbitrary dimension or be normalized to another evidence kind merely for accounting.
 
-This page owns these AuditReceipt field meanings and evidence boundaries:
+K12/09 members assigned `batch-close-member-evidence` bind their check facts to the immutable plan, exact obligation and post-Delta inputs at first formal publication. That publication MUST perform the same acceptance checks later consumed by close and Terminal. The obligation retains its dimension, producer and acceptance predicate in the original plan; the fact MUST NOT be copied into another complete AuditReceipt merely to restate that binding. This direct acceptance does not discharge any other obligation or make a partial close bundle complete. The final close commit, input currentness checks, write read-back and independent withdrawal references remain required.
+
+Changed-scope rows assigned `changed-scope-check-evidence` follow K12/05's first-publication acceptance boundary. Check facts and their plan acceptance are distinct responsibilities, but they are not duplicate persistent objects. The common acceptance contract remains required during publication, later reference, invalidation, correction and final consumption; locked currentness checks and write read-back cannot be replaced by an earlier observation.
+
+K12/02 assigns the same first-publication responsibility to its native rendering-record and Profile rendering evidence. A record-shape declaration and an actual compiler or renderer result remain different facts with different acceptance predicates; direct acceptance does not combine them. Review rounds and any independently required later adoption fact keep their own boundaries rather than being removed by this normalization.
+
+This page owns these evidence meanings and boundaries. Each native contract binds them directly or by exact reference to its immutable AuditPlan; a reference must resolve to the same obligation, not a copied definition:
 
 - `scope`: the pages, module, batch, or vault-wide snapshot the receipt actually covers.
 - `acceptance_predicate`: the specific condition evaluated against the recorded scope and bytes; writing only `QA passed` is not allowed.
@@ -56,9 +62,9 @@ This page owns these AuditReceipt field meanings and evidence boundaries:
 
 The AuditPlan freezes the obligation definition when the batch opens; it does not prefill these three actual fingerprints. When the obligation reaches its declared due stage and the actual target exists, the producer recomputes and freezes the three fingerprints in the evidence. That due-stage resolution is immutably bound to the original AuditPlan and MUST NOT modify the plan or add an obligation. Reuse instead binds the exact historical receipt through `fingerprint_binding: reused-receipt` and re-proves the reuse gate below.
 
-`last_reviewed`, `last_verified`, file length, or `authoring_status` cannot substitute for an AuditReceipt.
+`last_reviewed`, `last_verified`, file length, or `authoring_status` cannot substitute for accepted audit evidence.
 
-Deterministic and manual producers assigned an `audit-receipt` obligation emit the same registered dimension-specific receipt contract. A producer-level record is lightweight evidence; when it enters the Audit Receipt Register, the AuditPlan layer binds the complete AuditReceipt identity and uses that producer record as its evidence reference. Producers assigned another admitted evidence kind retain that kind's registered contract and are never normalized into an AuditReceipt merely for uniformity.
+The exact page and page-set fingerprint protocol is owned by [`audit-fingerprint-contract.yaml`](audit-fingerprint-contract.yaml). Its serialization, path/body binding and included semantic frontmatter are unchanged by the removal of duplicate receipt packaging. First publication, later consumption, correction and close MUST use the same protocol. Semantic review rounds, failed records, locked input currentness and write read-back remain independent required boundaries.
 
 Receipts are stored by default in the Batch Contract, the Audit Report, or a separately managed index; the Coverage Ledger only needs to record the affected objects' latest valid receipt IDs and invalidation state, and complete receipts are not required to be copied into every knowledge page.
 

@@ -1019,15 +1019,6 @@ producer_evidence_contract:
     - profile_snapshot_sha256
     - profile_contract_fingerprint
     - tier
-    - partition
-    - due_stage
-    - evidence_role
-    - evidence_kind
-    - dimension
-    - acceptance_predicate
-    - producer_capability
-    - consumer_gate_id
-    - fingerprint_binding
     - artifact_fingerprint
     - dependency_fingerprint
     - contract_fingerprint
@@ -1046,6 +1037,15 @@ producer_evidence_contract:
         - rule_id
         - source_group
       forbidden_fields:
+        - partition
+        - due_stage
+        - evidence_role
+        - evidence_kind
+        - dimension
+        - acceptance_predicate
+        - producer_capability
+        - consumer_gate_id
+        - fingerprint_binding
         - sample_rule_id
         - sample_population_count
         - sample_population_targets
@@ -1057,13 +1057,22 @@ producer_evidence_contract:
         - selection_fingerprint
         - selection_frozen_at
       invariants:
-        - item_id, rule_id, source_group, check, evidence_role, dimension, acceptance_predicate, producer_capability, consumer_gate_id, due_stage, and partition equal the named registry item and its resolved trigger partition.
-        - dimension is exactly one registered receipt dimension.
+        - item_id, rule_id, source_group, and check name exactly one registry item. The plan_id, audit_plan_sha256, and obligation_id reference the immutable obligation definition; its partition, stage, role, dimension, predicate, producer, consumer, and fingerprint boundary are not copied into every atomic result.
+        - The referenced obligation dimension is exactly the registered item dimension; each item retains its own artifact, dependency, and contract fingerprints and independent correction identity.
         - An always-applicable item records applicable with a null reason; a conditional item records applicable with a null reason or not-applicable with a nonempty reason.
         - An emits item has an empty consumed_evidence_refs list. An applicable consumes item binds exactly the canonical evidence selected by its resolved consumption contract; an unresolved selector is HOLD. A not-applicable conditional consumes item binds no evidence.
     - review_variant: s-sampled-page
       tier: S
       required_fields:
+        - partition
+        - due_stage
+        - evidence_role
+        - evidence_kind
+        - dimension
+        - acceptance_predicate
+        - producer_capability
+        - consumer_gate_id
+        - fingerprint_binding
         - sample_rule_id
         - sample_population_count
         - sample_population_targets

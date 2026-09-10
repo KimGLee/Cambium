@@ -25,7 +25,7 @@ Every piece of content is accepted against the following kernel dimensions:
 
 The selected profile MAY add language, expression readiness, or other extension dimensions through the `Audit Dimension Registry`, but MUST NOT delete, replace, or weaken the kernel dimensions above.
 
-These eleven are acceptance vocabulary and grouping labels, not checks, and they are not the values an `AuditReceipt` `dimension` field may take. The map from each judgment item below to its receipt dimension is held by [[kernel/K12 Quality Assurance/08 Judgment Item Dimension Map|Judgment Item Dimension Map]].
+These eleven are acceptance vocabulary and grouping labels, not checks, and they are not the values an AuditPlan obligation `dimension` field may take. The map from each judgment item below to its receipt dimension is held by [[kernel/K12 Quality Assurance/08 Judgment Item Dimension Map|Judgment Item Dimension Map]].
 
 ## Single Note Review
 

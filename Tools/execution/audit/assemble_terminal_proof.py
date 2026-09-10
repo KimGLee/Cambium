@@ -13,7 +13,6 @@ import sys
 
 import Tools.execution.audit.audit_dimension_contract as audit_dimension_contract
 import Tools.execution.audit.audit_evidence_runtime as audit_evidence_runtime
-import Tools.execution.audit.audit_receipt_contract as audit_receipt_contract
 import Tools.execution.audit.terminal_proof_contract as terminal_proof_contract
 import Tools.execution.planning.check_corpus_plan as check_corpus_plan
 import Tools.execution.planning.corpus_planning_contract as corpus_planning_contract
@@ -33,7 +32,7 @@ TOOL_VERSION = "1.0.0"
 CAPABILITY_ID = "terminal-proof-producer-v1"
 DEFAULT_PROOF_PATH = runtime_paths.child_path(
     runtime_paths.RECEIPT_ROOT, "terminal-proof.yaml")
-DEFAULT_RECEIPT_REGISTER = runtime_paths.AUDIT_RECEIPT_REGISTER_PATH
+DEFAULT_DETERMINISTIC_RESULTS = runtime_paths.TERMINAL_AUDIT_RECEIPT_PATH
 
 
 class TerminalProofAssemblyError(ValueError):
@@ -115,7 +114,7 @@ def _profile_receipt_dimensions(result):
         if dimension not in audit_dimension_contract.BASE_RECEIPT_DIMENSIONS))
 
 
-def _dimension_coverage(result, register_records, semantic_input):
+def _dimension_coverage(result, semantic_input):
     dimensions = tuple(audit_dimension_contract.BASE_RECEIPT_DIMENSION_ORDER) + \
         _profile_receipt_dimensions(result)
     if len(dimensions) != len(set(dimensions)):
@@ -123,7 +122,6 @@ def _dimension_coverage(result, register_records, semantic_input):
             "selected Profile repeats a Kernel-owned audit dimension")
     by_dimension = {dimension: [] for dimension in dimensions}
     current = receipt_catalogs.current_receipt_catalog(result)
-    contract = audit_receipt_contract.load_contract(result["root"])
     try:
         evidence_rows = audit_evidence_runtime.terminal_dimension_evidence(
             result)
@@ -144,22 +142,6 @@ def _dimension_coverage(result, register_records, semantic_input):
             raise TerminalProofAssemblyError(
                 "plan-bound dimension evidence %s is not current" %
                 receipt_id)
-        if row["evidence_kind"] == "audit-receipt":
-            try:
-                receipt_catalogs.require_register_member(
-                    register_records, receipt_id, current_record)
-            except receipt_catalogs.ReceiptRegisterError as exc:
-                raise TerminalProofAssemblyError(
-                    "current AuditReceipt %s is absent from or differs in "
-                    "the canonical AuditReceipt register: %s" % (receipt_id, exc)) from exc
-            try:
-                audit_receipt_contract.validate_audit_receipt(
-                    current_record, contract=contract,
-                    dimensions=set(dimensions))
-            except (TypeError, ValueError) as exc:
-                raise TerminalProofAssemblyError(
-                    "current AuditReceipt %s is invalid: %s" %
-                    (receipt_id, exc)) from exc
         by_dimension[dimension].append(receipt_id)
 
     reasons = semantic_input["dimension_not_applicable_reasons"]
@@ -231,10 +213,9 @@ def _semantic_acceptance_receipt(
 def assemble_terminal_proof(
         root, semantic_input, *, queue_check_receipt,
         corpus_plan_check_receipt,
-        audit_receipt_register=DEFAULT_RECEIPT_REGISTER,
         terminal_audit_receipt_register=
             runtime_paths.TERMINAL_AUDIT_RECEIPT_PATH,
-        full_deterministic_results=DEFAULT_RECEIPT_REGISTER):
+        full_deterministic_results=DEFAULT_DETERMINISTIC_RESULTS):
     """Return one closed Proof derived from one current runtime snapshot."""
     root = os.path.realpath(os.path.abspath(root))
     semantic_input = terminal_proof_contract.validate_terminal_audit_input(
@@ -276,8 +257,6 @@ def assemble_terminal_proof(
             "result": "pass",
         }, gate_id="corpus-plan-structure")
     try:
-        register_records = receipt_catalogs.read_receipt_register(
-            root, audit_receipt_register)
         terminal_register_records = receipt_catalogs.read_receipt_register(
             root, terminal_audit_receipt_register)
         receipt_catalogs.require_register_member(
@@ -327,8 +306,7 @@ def assemble_terminal_proof(
         "rendering_evidence": semantic_input["rendering_evidence"],
         "audit_snapshot_id": "snapshot-" + repository_snapshot[7:23],
         "dimension_coverage": _dimension_coverage(
-            result, register_records, semantic_input),
-        "audit_receipt_register": audit_receipt_register,
+            result, semantic_input),
         "terminal_audit_receipt_register":
             terminal_audit_receipt_register,
         "reused_receipts": reconciliation["reused_receipts"],
@@ -363,13 +341,11 @@ def main(argv=None):
                         help="closed YAML/JSON below .cambium/tmp")
     parser.add_argument("--queue-check-receipt", required=True)
     parser.add_argument("--corpus-plan-check-receipt", required=True)
-    parser.add_argument("--audit-receipt-register",
-                        default=DEFAULT_RECEIPT_REGISTER)
     parser.add_argument(
         "--terminal-audit-receipt-register",
         default=runtime_paths.TERMINAL_AUDIT_RECEIPT_PATH)
     parser.add_argument("--full-deterministic-results",
-                        default=DEFAULT_RECEIPT_REGISTER)
+                        default=DEFAULT_DETERMINISTIC_RESULTS)
     parser.add_argument("--proof", default=DEFAULT_PROOF_PATH)
     parser.add_argument("--apply", action="store_true")
     parser.add_argument("--json", action="store_true")
@@ -377,7 +353,6 @@ def main(argv=None):
     root = os.path.realpath(os.path.abspath(args.root))
     try:
         semantic_input = read_terminal_audit_input(root, args.terminal_audit_input)
-        _receipt_register_path(root, args.audit_receipt_register)
         _receipt_register_path(root, args.terminal_audit_receipt_register)
         _receipt_register_path(root, args.full_deterministic_results)
         proof_absolute = _proof_path(root, args.proof)
@@ -385,7 +360,6 @@ def main(argv=None):
             root, semantic_input,
             queue_check_receipt=args.queue_check_receipt,
             corpus_plan_check_receipt=args.corpus_plan_check_receipt,
-            audit_receipt_register=args.audit_receipt_register,
             terminal_audit_receipt_register=
                 args.terminal_audit_receipt_register,
             full_deterministic_results=args.full_deterministic_results)

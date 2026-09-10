@@ -50,13 +50,12 @@ dimension_coverage:
   rendering: "not-applicable: no rendering trigger is present"
   guidance_and_contract:
     - audit-fixture-guidance-and-contract
-audit_receipt_register: .cambium/receipts/audit-receipts.jsonl
 terminal_audit_receipt_register: .cambium/receipts/terminal.jsonl
 reused_receipts: []
 superseded_receipts: []
 invalidated_receipts: []
 unresolved_invalidations: 0
-full_deterministic_results: .cambium/receipts/audit-receipts.jsonl
+full_deterministic_results: .cambium/receipts/terminal.jsonl
 incremental_manual_scope:
   - Topics/Example Topic.md
 sampling_scope_and_result: bounded sampling completed; all sampled objects passed

@@ -31,7 +31,6 @@ import Tools.execution.audit.audit_producer_runtime as audit_producer_runtime
 import Tools.execution.audit.changed_scope_evidence_contract as contract
 import Tools.execution.audit.changed_scope_evidence_runtime as evidence_runtime
 import Tools.execution.audit.changed_scope_runtime_checks as runtime_checks
-import Tools.execution.audit.complete_audit_receipt as complete_audit_receipt
 import Tools.execution.audit.record_changed_scope_evidence as producer
 import Tools.execution.audit.audit_execution_runtime as execution
 import Tools.execution.task_runtime.runtime_validation as runtime_validation
@@ -170,7 +169,7 @@ class ChangedScopeEvidenceFixtures:
             "frozen": frozen,
         }
 
-    def audit_precursor_case(self):
+    def check_case(self):
         rule_id = runtime_checks.GUIDANCE_RULE_ID
         row = self.row_for_rule(rule_id)
         trace = self.trace_for_rule(rule_id)
@@ -223,7 +222,7 @@ class ChangedScopeEvidenceFixtures:
             "frozen": frozen,
         }
         check_result = producer._runtime_check_result(context)
-        record = producer.build_audit_producer_record(
+        record = producer.build_check_record(
             context=context, check_result=check_result)
         return {**context, "record": record}
 
@@ -533,11 +532,11 @@ class ChangedScopeEvidenceContractTests(
     def test_current_record_kind_matrix_is_closed_and_plan_bound(self):
         direct = self.direct_case(
             check_page_contract.GATE_ID, "candidate", 2)
-        precursor = self.audit_precursor_case()
+        check_fact = self.check_case()
         candidate = self.candidate_set_case()
         cases = (
             ("direct", direct, direct["artifact_fingerprint"], None),
-            ("audit-precursor", precursor, None, None),
+            ("accepted-check", check_fact, None, None),
             ("profile-candidate", candidate, None,
              candidate["profile_evaluation"]),
         )
@@ -552,13 +551,13 @@ class ChangedScopeEvidenceContractTests(
 
     def test_record_identity_and_content_drift_matrix_fails_closed(self):
         direct = self.direct_case(check_vocab.GATE_ID)
-        precursor = self.audit_precursor_case()
+        check_fact = self.check_case()
         candidate = self.candidate_set_case()
 
         forged_direct = copy.deepcopy(direct["record"])
         forged_direct["dimension"] = "structure_and_links"
-        forged_precursor = copy.deepcopy(precursor["record"])
-        forged_precursor["check_owner_tool"] = "nearby-check-owner"
+        forged_check = copy.deepcopy(check_fact["record"])
+        forged_check["check_owner_tool"] = "nearby-check-owner"
         forged_candidate = copy.deepcopy(candidate["record"])
         forged_candidate["source_receipts"][0]["scan_id"] = "other-scan"
         forged_candidate["source_receipt_set_sha256"] = kblib.sha256_bytes(
@@ -568,8 +567,8 @@ class ChangedScopeEvidenceContractTests(
             ("direct-dimension", forged_direct,
              lambda value: contract.validate_direct_record(
                  value, self.registry, self.control, ROOT)),
-            ("precursor-owner", forged_precursor,
-             lambda value: contract.validate_audit_producer_record(
+            ("check-owner", forged_check,
+             lambda value: contract.validate_check_record(
                  value, self.registry, self.control, ROOT)),
             ("candidate-source", forged_candidate,
              lambda value: contract.validate_candidate_set_record(
@@ -583,11 +582,11 @@ class ChangedScopeEvidenceContractTests(
 
     def test_frozen_plan_drift_is_rejected_for_every_record_kind(self):
         direct = self.direct_case(check_vocab.GATE_ID)
-        precursor = self.audit_precursor_case()
+        check_fact = self.check_case()
         candidate = self.candidate_set_case()
         cases = (
             ("direct", direct, direct["artifact_fingerprint"], None),
-            ("audit-precursor", precursor, None, None),
+            ("accepted-check", check_fact, None, None),
             ("profile-candidate", candidate, None,
              candidate["profile_evaluation"]),
         )
@@ -651,7 +650,7 @@ class ChangedScopeEvidenceContractTests(
 class ChangedScopeEvidenceIntegrationTests(
         ChangedScopeEvidenceFixtures, unittest.TestCase):
 
-    def test_open_checkpoint_group_publishes_unique_evidence_and_completes_once(self):
+    def test_open_checkpoint_group_publishes_unique_accepted_evidence_once(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory) / "repo"
             install_update_queue_checkpoint(root, "open-b1")
@@ -678,12 +677,14 @@ class ChangedScopeEvidenceIntegrationTests(
                     execution.producer_route(
                         row, root=root, evaluation=evaluation) in {
                             "deterministic-direct-evidence",
-                            "deterministic-audit-precursor"}]
-                precursors = [row for row in obligations
-                              if row["evidence_kind"] == "audit-receipt"]
-                self.assertGreaterEqual(len(precursors), 2, precursors)
-                groups = ([precursors[0]], [row for row in obligations
-                                           if row is not precursors[0]])
+                            "deterministic-check"}]
+                checks = [row for row in obligations
+                          if execution.producer_route(
+                              row, root=root, evaluation=evaluation) ==
+                          "deterministic-check"]
+                self.assertGreaterEqual(len(checks), 2, checks)
+                groups = ([checks[0]], [row for row in obligations
+                                       if row is not checks[0]])
                 common = {
                     "root": ".", "batch": "B1",
                     "plan": stage["audit_plan_path"], "apply": True,
@@ -711,19 +712,6 @@ class ChangedScopeEvidenceIntegrationTests(
                     produced_pairs.extend(zip(group, identities))
                     before = current_bytes
 
-                pairs = [(row, identity) for row, identity in produced_pairs
-                         if row["evidence_kind"] == "audit-receipt"]
-                completed = session.call("complete_audit_receipt", {
-                    **common,
-                    "obligation_id": [row["obligation_id"] for row, _ in pairs],
-                    "evidence_receipt": [identity for _, identity in pairs],
-                })
-                self.assertEqual(0, completed["exit_code"], completed)
-                self.assertEqual("parsed", completed["stdout_parse"], completed)
-                self.assertEqual("confirmed", completed["stdout_json"][
-                    "publication"]["record_confirmation"], completed)
-                self.assertEqual(len(pairs), len(set(
-                    completed["stdout_json"]["receipt_ids"])))
             ids = [identity for _, identity in produced_pairs]
             self.assertEqual(len(obligations), len(set(ids)))
             # Consume the actual durable catalog, not the MCP return payload.
@@ -752,15 +740,15 @@ class ChangedScopeEvidenceIntegrationTests(
                 ROOT, direct["plan"], direct["plan_sha256"],
                 direct["obligation"], direct["record"]))
 
-        precursor = self.audit_precursor_case()
-        catalog = {precursor["record"]["receipt_id"]: precursor["record"]}
-        precursor["result"]["current_receipt_catalog"] = catalog
-        observed, existing = audit_evidence_runtime.require_completion_evidence(
-            precursor["result"], precursor["item"], precursor["plan"],
-            precursor["plan_sha256"], precursor["obligation"],
-            precursor["record"]["receipt_id"])
-        self.assertIs(precursor["record"], observed)
-        self.assertIsNone(existing)
+        check = self.check_case()
+        catalog = {check["record"]["receipt_id"]: check["record"]}
+        check["result"]["current_receipt_catalog"] = catalog
+        resolution = audit_evidence_runtime._required_obligation_resolution(
+            check["result"], check["item"], check["plan"],
+            check["plan_sha256"], catalog, check["obligation"],
+            require_current=True)
+        self.assertEqual("satisfied", resolution["status"], resolution)
+        self.assertIs(check["record"], resolution["record"])
 
         candidate = self.candidate_set_case()
         with mock.patch.object(
@@ -826,7 +814,7 @@ class ChangedScopeEvidenceIntegrationTests(
 
     def assert_input_change_allows_successor(self, case, change_input,
                                            changed_binding_field):
-        """Exercise one append-only producer/completer/consumer checkpoint."""
+        """Exercise first-publication acceptance and its current consumer."""
         result = case["result"]
         catalog = result["current_receipt_catalog"]
         plan, plan_sha256, obligation = (
@@ -841,48 +829,32 @@ class ChangedScopeEvidenceIntegrationTests(
                 result, case["item"], plan, plan_sha256, catalog, obligation,
                 require_current=True)
 
-        def precursor(seq):
-            record = producer.build_audit_producer_record(
+        def publish(seq):
+            record = producer.build_check_record(
                 context=case, check_result=producer._runtime_check_result(case),
                 seq=seq)
             catalog[record["receipt_id"]] = record
             return record
 
-        def finalize(record, seq):
-            evidence, existing = audit_evidence_runtime.require_completion_evidence(
-                result, case["item"], plan, plan_sha256, obligation,
-                record["receipt_id"])
-            self.assertIsNone(existing)
-            completed = complete_audit_receipt.build_audit_receipt(
-                plan=plan, plan_sha256=plan_sha256,
-                obligation=obligation, evidence=evidence, seq=seq)
-            catalog[completed["receipt_id"]] = completed
-            return completed
-
-        old = precursor(1)
-        old_final = finalize(old, 1)
-        before_records = kblib.canonical_json_bytes([old, old_final])
+        old = publish(1)
+        before_records = kblib.canonical_json_bytes([old])
         before_plan = kblib.canonical_json_bytes(plan)
         page_artifact = audit_producer_runtime.page_artifact_fingerprint(
             case["frozen"][0])
-        self.assertIs(old, producer.existing_audit_producer_record(case))
-        self.assertIs(old_final, current_final())
+        self.assertIs(old, producer.existing_check_record(case))
+        self.assertIs(old, current_final())
         self.assertEqual("satisfied", resolution()["status"])
 
         change_input()
-        self.assertIsNone(producer.existing_audit_producer_record(case))
+        self.assertIsNone(producer.existing_check_record(case))
         stale_resolution = resolution()
         self.assertEqual("missing", stale_resolution["status"])
         self.assertEqual({"stale"}, {
             attempt["state"] for attempt in stale_resolution["attempts"]})
-        # This is the regression: a stale final must not reserve completion.
+        # A stale accepted check must not reserve the current obligation.
         self.assertIsNone(current_final())
-        with self.assertRaisesRegex(ValueError, "missing"):
-            audit_evidence_runtime.require_completion_evidence(
-                result, case["item"], plan, plan_sha256, obligation,
-                old["receipt_id"])
 
-        new = precursor(2)
+        new = publish(2)
         self.assertEqual(old["artifact_fingerprint"], new["artifact_fingerprint"])
         self.assertEqual(old["check_result"], new["check_result"])
         self.assertNotEqual(old["dependency_fingerprint"],
@@ -891,22 +863,16 @@ class ChangedScopeEvidenceIntegrationTests(
             assertion = (self.assertNotEqual if field == changed_binding_field
                          else self.assertEqual)
             assertion(old["input_binding"][field], new["input_binding"][field])
-        self.assertIs(new, producer.existing_audit_producer_record(case))
-        ready = resolution()
-        self.assertEqual("ready-for-completion", ready["status"])
-        self.assertIs(new, ready["record"])
-        self.assertIsNone(current_final())
-
-        new_final = finalize(new, 2)
+        self.assertIs(new, producer.existing_check_record(case))
         for _ in range(2):
-            self.assertIs(new, producer.existing_audit_producer_record(case))
-            self.assertIs(new_final, current_final())
+            self.assertIs(new, producer.existing_check_record(case))
+            self.assertIs(new, current_final())
             satisfied = resolution()
             self.assertEqual("satisfied", satisfied["status"])
-            self.assertIs(new_final, satisfied["record"])
-        self.assertEqual(4, len(catalog))
+            self.assertIs(new, satisfied["record"])
+        self.assertEqual(2, len(catalog))
         self.assertEqual(before_records,
-                         kblib.canonical_json_bytes([old, old_final]))
+                         kblib.canonical_json_bytes([old]))
         self.assertEqual(before_plan, kblib.canonical_json_bytes(plan))
         current_pages = audit_producer_runtime.freeze_manifest_pages(
             case["root"], result, case["item"])

@@ -145,16 +145,6 @@ path_overrides:
     constraint: namespace
     runtime_path_id: task-plan-delta-root
     suffixes: [.yaml]
-  - tool: complete_audit_receipt
-    argument: plan
-    constraint: namespace
-    runtime_path_id: audit-plan-root
-    suffixes: [.yaml]
-  - tool: complete_audit_receipt
-    argument: receipts
-    constraint: exact
-    runtime_path_id: audit-receipt-register
-    suffixes: []
   - tool: check_boundary_contract
     argument: contract
     constraint: exact
@@ -201,11 +191,6 @@ path_overrides:
     runtime_path_id: transient-root
     suffixes: [.yaml, .json]
   - tool: assemble_terminal_proof
-    argument: audit_receipt_register
-    constraint: exact
-    runtime_path_id: audit-receipt-register
-    suffixes: []
-  - tool: assemble_terminal_proof
     argument: terminal_audit_receipt_register
     constraint: exact
     runtime_path_id: terminal-audit-receipts
@@ -213,7 +198,7 @@ path_overrides:
   - tool: assemble_terminal_proof
     argument: full_deterministic_results
     constraint: exact
-    runtime_path_id: audit-receipt-register
+    runtime_path_id: terminal-audit-receipts
     suffixes: []
   - tool: assemble_terminal_proof
     argument: proof
@@ -352,10 +337,6 @@ path_activation_overrides:
   - tool: compile_queue
     argument: replan_diff
     active_when_any: [apply_replan]
-    inactive_when_any: []
-  - tool: complete_audit_receipt
-    argument: receipts
-    active_when_any: [apply]
     inactive_when_any: []
   - tool: assemble_terminal_proof
     argument: proof
@@ -592,7 +573,7 @@ tools:
     workspace_argument: root
     workspace_access: write
     value_arguments: [queue_check_receipt, corpus_plan_check_receipt, apply, json]
-    read_paths: [terminal_audit_input, audit_receipt_register, terminal_audit_receipt_register, full_deterministic_results]
+    read_paths: [terminal_audit_input, terminal_audit_receipt_register, full_deterministic_results]
     write_paths: [proof]
     read_write_paths: []
     external_write: none
@@ -674,16 +655,6 @@ tools:
     value_arguments: [apply, apply_replan, amendment_id, expected_queue_revision, expected_state_revision, expected_sha256, expected_coverage_sha256, expected_progress_sha256, actor_role, json]
     read_paths: [coverage_proposal, replan_diff]
     write_paths: [output, receipts]
-    read_write_paths: []
-    external_write: none
-  - tool: complete_audit_receipt
-    output: receipt-publication
-    exposure: mcp
-    workspace_argument: root
-    workspace_access: write
-    value_arguments: [batch, obligation_id, evidence_receipt, apply]
-    read_paths: [plan]
-    write_paths: [receipts]
     read_write_paths: []
     external_write: none
   - tool: compose_page_contract

@@ -1,19 +1,14 @@
 """Owner-focused Terminal Proof dimension-evidence consumer tests.
 
 Closed shapes stay in process and derive their expected values from the
-Kernel-owned machine contracts.  The only temporary repository in this module
-joins plan-bound heterogeneous evidence and the full AuditReceipt subset to the
-Terminal Proof consumer; it does not replay Task, Queue, or Batch lifecycle
-setup.
+Kernel-owned machine contracts.  Native evidence acceptance is tested by its owner. This module verifies the
+closed-plan projection seam without replaying a lifecycle or copying records.
 """
 
 import copy
-import json
 import sys
-import tempfile
 import unittest
 from pathlib import Path
-from types import SimpleNamespace
 from unittest import mock
 
 
@@ -24,13 +19,8 @@ sys.path.insert(0, str(TOOLS))
 import Tools.execution.audit.check_proof as check_proof
 import Tools.execution.audit.assemble_terminal_proof as assemble_terminal_proof
 import Tools.execution.audit.audit_dimension_contract as audit_dimension_contract
-import Tools.execution.audit.audit_obligation_projection as audit_obligation_projection
-import Tools.execution.audit.audit_producer_runtime as audit_producer_runtime
-import Tools.execution.audit.complete_audit_receipt as complete_audit_receipt
-import Tools.execution.audit.record_substantive_review as record_substantive_review
 import Tools.execution.audit.terminal_proof_contract as terminal_proof_contract
 import Tools.execution.task_runtime.runtime_paths as runtime_paths
-from Tools.tests.support.canonical_registry_fixture import install_isolated_tool_registry_bundle
 from Tools.tests.support.profile_fixture import FIXTURE_UPSTREAM_REVISION
 
 
@@ -180,272 +170,48 @@ class TerminalProofDimensionCoverageUnitTests(unittest.TestCase):
         self.assertIn("proof-dimension-unregistered", checks)
 
 
-class TerminalProofAuditReceiptConsumerIntegrationTests(unittest.TestCase):
-    """Join plan-bound evidence and its AuditReceipt subset to the Proof."""
+class TerminalProofEvidenceConsumerTests(unittest.TestCase):
+    """Test the final projection seam; native acceptance has its own owner."""
 
-    @classmethod
-    def setUpClass(cls):
-        cls.temporary = tempfile.TemporaryDirectory()
-        cls.addClassCleanup(cls.temporary.cleanup)
-        cls.root = Path(cls.temporary.name)
-        install_isolated_tool_registry_bundle(cls.root)
-        cls.register_relative = ".cambium/receipts/audit-receipts.jsonl"
-        cls.register = cls.root / cls.register_relative
-        cls.register.parent.mkdir(parents=True)
-        cls.plan = {
-            "plan_id": "audit-plan-batch-1",
-            "task_id": "task-1",
-            "batch_id": "batch-1",
-            "opening_transition_receipt": "open-1",
-            "upstream_revision_id": FIXTURE_UPSTREAM_REVISION,
-            "active_standards_sha256": SHA_A,
-            "selected_profile_manifest": "profiles/test/profile.toml",
-            "profile_snapshot_sha256": SHA_B,
-            "profile_contract_fingerprint": SHA_C,
-        }
-        substantive = audit_obligation_projection.obligation_spec_for_rule(
-            "k12-12-substantive-correctness-review", root=cls.root)
-        definition = audit_obligation_projection.resolve_obligation_definition(
-            substantive, "Topics/Example.md", trigger="needs_rereview")
-        cls.obligation = audit_obligation_projection.required_obligation(
-            definition)
-        page_text = "# Example\n\nCurrent semantics.\n\n## Sources\n\n- source\n"
-        frozen_page = audit_producer_runtime.FrozenPage(
-            path=cls.obligation["target"],
-            page_sha256=SHA_A,
-            semantic_content_fingerprint=SHA_B,
-            snapshot=SimpleNamespace(read_text=lambda: page_text),
-        )
-        cls.producer = record_substantive_review.build_review_receipt(
-            root=cls.root,
-            result={},
-            plan=cls.plan,
-            plan_sha256=SHA_D,
-            obligation=cls.obligation,
-            page=cls.obligation["target"],
-            frozen=(frozen_page,),
-            authoring_context_id="author-1",
-            reviewer_context_id="reviewer-1",
-            reviewer_role="reviewer",
-            round_number=1,
-            verdict="passed",
-            findings=[],
-            statement="independent substantive review passed",
-        )
-        cls.receipt = complete_audit_receipt.build_audit_receipt(
-            plan=cls.plan,
-            plan_sha256=SHA_D,
-            obligation=cls.obligation,
-            evidence=cls.producer,
-        )
-
-    def write_register(self, record):
-        self.register.write_text(
-            json.dumps(record, sort_keys=True) + "\n", encoding="utf-8")
-
-    def runtime(self, record=None):
-        record = self.receipt if record is None else record
-        return {
-            "items_by_id": {"batch-1": {"id": "batch-1"}},
-            "current_receipt_catalog": {
-                record["receipt_id"]: (self.register_relative, record),
-                self.producer["receipt_id"]:
-                    (".cambium/receipts/producer.jsonl", self.producer),
-            },
-            "invalidated_evidence_receipt_ids": [],
-        }
-
-    def resolved_plan(self, **overrides):
-        result = {
-            "audit_plan_id": self.plan["plan_id"],
-            "audit_plan_path": (
-                ".cambium/work_specs/audit-plans/audit-plan-batch-1.yaml"),
-            "audit_plan_sha256": SHA_D,
-            "plan": self.plan,
-            "obligations": (self.obligation,),
-        }
-        result.update(overrides)
-        return result
-
-    def validate(self, record=None, runtime=None, *, write=True,
-                 cited_dimension=None, evidence_rows=None, cited=None):
-        record = self.receipt if record is None else record
-        if write:
-            self.write_register(record)
-        runtime = self.runtime(record) if runtime is None else runtime
-        dimension = (self.obligation["dimension"] if cited_dimension is None
-                     else cited_dimension)
-        if evidence_rows is None:
-            evidence_rows = ({
-                "batch_id": "batch-1",
-                "plan_id": self.plan["plan_id"],
-                "obligation_id": self.obligation["obligation_id"],
-                "dimension": self.obligation["dimension"],
-                "evidence_kind": "audit-receipt",
-                "evidence_ref": record["receipt_id"],
-            },)
-        if cited is None:
-            cited = {record["receipt_id"]: dimension}
-        with mock.patch.object(
-                check_proof.audit_evidence_runtime,
-                "terminal_dimension_evidence",
-                return_value=evidence_rows):
-            return check_proof._validate_dimension_coverage_evidence(
-                self.root,
-                {"audit_receipt_register": self.register_relative},
-                cited,
-                runtime)
-
-    def test_plan_bound_evidence_and_audit_subset_are_both_enforced(self):
-        """Exercise closed-plan selection plus the AuditReceipt register."""
-        self.assertEqual([], self.validate())
-
-        gate = {
-            "receipt_id": "gate-1",
-            "record_kind": "gate-receipt",
-            "dimension": "content_and_depth",
-            "result": "pass",
-        }
-        failures = self.validate(gate)
-        self.assertEqual(
-            ["proof-dimension-receipt-contract-invalid"],
-            [failure[0] for failure in failures])
-
-        self.register.write_text("", encoding="utf-8")
-        failures = self.validate(write=False)
-        self.assertEqual(
-            ["proof-dimension-receipt-missing"],
-            [failure[0] for failure in failures],
-        )
-        # Audit and Terminal registers are distinct. The dimension consumer
-        # must propagate its own register owner's rejection, not assume the
-        # Queue check already diagnosed this different file.
-        self.register.write_text("{", encoding="utf-8")
-        self.assertEqual(["proof-dimension-receipt-register-invalid"],
-                         [row[0] for row in self.validate(write=False)])
-
-        current_only_producer = self.runtime()
-        current_only_producer["current_receipt_catalog"] = {
-            self.producer["receipt_id"]:
-                (".cambium/receipts/producer.jsonl", self.producer),
-        }
-        reference_cases = (
-            (
-                "not-current",
-                current_only_producer,
-                "proof-dimension-receipt-not-current",
-            ),
-            (
-                "catalog-bytes",
-                self.runtime(dict(
-                    self.receipt,
-                    method="different@1.0.0/current-record")),
-                "proof-dimension-receipt-catalog-mismatch",
-            ),
-            (
-                "adoption-invalidated",
-                dict(
-                    self.runtime(),
-                    invalidated_evidence_receipt_ids=[
-                        self.receipt["receipt_id"]],
-                ),
-                "proof-dimension-receipt-invalidated-evidence",
-            ),
-        )
-        for label, runtime, expected in reference_cases:
-            with self.subTest(boundary=label):
-                failures = self.validate(runtime=runtime)
-                self.assertEqual(expected, failures[0][0], failures)
-
-        failures = self.validate(evidence_rows=())
-        self.assertIn(
-            "proof-dimension-evidence-foreign",
-            [failure[0] for failure in failures])
-
-        hetero = {
-            "receipt_id": "m-review-current",
-            "record_kind": "batch-page-review-record",
-            "result": "pass",
-        }
-        hetero_rows = ({
-            "batch_id": "batch-1",
-            "plan_id": self.plan["plan_id"],
-            "obligation_id": "m-content",
-            "dimension": "content_and_depth",
+    def test_plan_selected_evidence_is_exact_and_closure_errors_propagate(self):
+        rows = ({
+            "batch_id": "B1", "plan_id": "plan-1",
+            "obligation_id": "m-content", "dimension": "content_and_depth",
             "evidence_kind": "batch-page-review-record",
-            "evidence_ref": hetero["receipt_id"],
-        },)
-        self.register.write_text("", encoding="utf-8")
-        self.assertEqual([], self.validate(
-            hetero,
-            runtime={
-                "current_receipt_catalog": {
-                    hetero["receipt_id"]:
-                        (".cambium/receipts/batch-page-reviews.jsonl",
-                         hetero),
-                },
-                "invalidated_evidence_receipt_ids": [],
-            },
-            write=False,
-            evidence_rows=hetero_rows,
-        ))
-
-        profile = {
-            "receipt_id": "profile-language-current",
-            "record_kind": "page-batch-judgment-v2",
-            "result": "pass",
-        }
-        combined_rows = hetero_rows + ({
-            "batch_id": "batch-1",
-            "plan_id": self.plan["plan_id"],
-            "obligation_id": "profile-language",
-            "dimension": "language_quality",
+            "evidence_ref": "m-current",
+        }, {
+            "batch_id": "B1", "plan_id": "plan-1",
+            "obligation_id": "profile-language", "dimension": "language_quality",
             "evidence_kind": "page-batch-judgment-v2",
-            "evidence_ref": profile["receipt_id"],
-        },)
-        combined_runtime = {
-            "current_receipt_catalog": {
-                hetero["receipt_id"]:
-                    (".cambium/receipts/batch-page-reviews.jsonl", hetero),
-                profile["receipt_id"]:
-                    (".cambium/receipts/batch-judgments.jsonl", profile),
-            },
-            "invalidated_evidence_receipt_ids": [],
-        }
-        self.assertEqual([], self.validate(
-            hetero, runtime=combined_runtime, write=False,
-            evidence_rows=combined_rows,
-            cited={
-                hetero["receipt_id"]: "content_and_depth",
-                profile["receipt_id"]: "language_quality",
-            }))
-
-        missing = self.validate(
-            hetero, write=False, evidence_rows=hetero_rows, cited={})
-        self.assertIn(
-            "proof-dimension-evidence-missing",
-            [failure[0] for failure in missing])
-
-        dimensionless = dict(
-            hetero, receipt_id="dimensionless-page-contract")
-        foreign = self.validate(
-            dimensionless, write=False, evidence_rows=(),
-            cited={dimensionless["receipt_id"]: "structure_and_links"})
-        self.assertIn(
-            "proof-dimension-evidence-foreign",
-            [failure[0] for failure in foreign])
-
-        with mock.patch.object(
-                check_proof.audit_evidence_runtime,
-                "terminal_dimension_evidence",
-                side_effect=ValueError("selected evidence is stale")):
-            stale = check_proof._validate_dimension_coverage_evidence(
-                self.root,
-                {"audit_receipt_register": self.register_relative},
-                {hetero["receipt_id"]: "content_and_depth"},
-                combined_runtime)
-        self.assertEqual(
-            "proof-dimension-evidence-closure-invalid", stale[0][0])
+            "evidence_ref": "profile-current",
+        })
+        exact = {row["evidence_ref"]: row["dimension"] for row in rows}
+        cases = (
+            (exact, []),
+            ({"m-current": "content_and_depth"}, ["proof-dimension-evidence-missing"]),
+            ({**exact, "foreign-current": "structure_and_links"},
+             ["proof-dimension-evidence-foreign"]),
+            ({**exact, "dimensionless-page-contract": "structure_and_links"},
+             ["proof-dimension-evidence-foreign"]),
+            ({**exact, "m-current": "structure_and_links"},
+             ["proof-dimension-evidence-missing", "proof-dimension-evidence-mismatch"]),
+        )
+        runtime = {"test": "already validated closed runtime"}
+        for cited, expected in cases:
+            with self.subTest(cited=cited), mock.patch.object(
+                    check_proof.audit_evidence_runtime,
+                    "terminal_dimension_evidence", return_value=rows) as resolve:
+                failures = check_proof._validate_dimension_coverage_evidence(
+                    cited, runtime)
+                self.assertEqual(expected, [row[0] for row in failures])
+                resolve.assert_called_once_with(runtime)
+        for reason in ("stale input", "withdrawn evidence", "conflicting selection"):
+            with self.subTest(reason=reason), mock.patch.object(
+                    check_proof.audit_evidence_runtime,
+                    "terminal_dimension_evidence", side_effect=ValueError(reason)):
+                failures = check_proof._validate_dimension_coverage_evidence(
+                    exact, runtime)
+                self.assertEqual("proof-dimension-evidence-closure-invalid", failures[0][0])
 
 
 class TerminalProofContractTests(unittest.TestCase):
@@ -458,10 +224,6 @@ class TerminalProofContractTests(unittest.TestCase):
             set(audit_dimension_contract.BASE_RECEIPT_DIMENSION_ORDER),
             set(projection["dimension_coverage"]),
         )
-        self.assertNotEqual(
-            projection["audit_receipt_register"],
-            projection["terminal_audit_receipt_register"],
-        )
         self.assertEqual(
             terminal_proof_contract.render_template(contract),
             (TOOLS / "schemas/terminal_proof.template.yaml").read_text(
@@ -472,11 +234,6 @@ class TerminalProofContractTests(unittest.TestCase):
             terminal_proof_contract.validate_terminal_audit_input(
                 invalid, contract)
 
-        conflated = dict(projection)
-        conflated["audit_receipt_register"] = \
-            conflated["terminal_audit_receipt_register"]
-        with self.assertRaisesRegex(ValueError, "canonical path"):
-            terminal_proof_contract.validate_proof(conflated, contract)
 
     def test_closed_fields_and_fingerprints_derive_from_kernel_contract(self):
         contract = terminal_proof_contract.load_contract()
@@ -638,7 +395,7 @@ class TerminalProofAssemblerUnitTests(unittest.TestCase):
                 assemble_terminal_proof.audit_evidence_runtime,
                 "terminal_dimension_evidence", return_value=rows):
             coverage = assemble_terminal_proof._dimension_coverage(
-                runtime, {}, semantic)
+                runtime, semantic)
         self.assertEqual(
             [m_record["receipt_id"]], coverage["content_and_depth"])
         self.assertEqual(
@@ -658,7 +415,7 @@ class TerminalProofAssemblerUnitTests(unittest.TestCase):
                     assemble_terminal_proof.TerminalProofAssemblyError,
                     "reasons supplied despite current receipts"):
                 assemble_terminal_proof._dimension_coverage(
-                    runtime, {}, semantic)
+                    runtime, semantic)
 
     def test_assembler_derives_runtime_and_reconciliation_fields(self):
         runtime = {

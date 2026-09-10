@@ -69,7 +69,10 @@ class ReceiptReferenceRegistryContractTests(unittest.TestCase):
                 ("terminal-proof-gate-v2", {
                     "queue_check_receipt": "queue-proof",
                     "corpus_plan_check_receipt": "corpus-proof",
-                })):
+                })) + tuple(
+                    (identity, {"opening_transition_receipt": "opened"})
+                    for identity, row in registry.items()
+                    if row.reference_source_kind == graph.SOURCE_PLAN_BOUND_CHECK):
             with self.subTest(receipt_type_id=receipt_type_id):
                 record = dict(fields, receipt_type_id=receipt_type_id)
                 source = receipt_type_contract.reference_source_kind(

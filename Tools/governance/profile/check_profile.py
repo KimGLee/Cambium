@@ -39,7 +39,6 @@ GATE_ID = profile_contract.PROFILE_LOAD_GATE_ID
 GATE_CHECK = "profile-check-summary"
 GATE_DIMENSION = "guidance_and_contract"
 GATE_RECEIPT_TYPE_ID = "profile-load-gate-receipt-v1"
-DIAGNOSTIC_RECEIPT_TYPE_ID = "profile-load-diagnostic-receipt-v1"
 
 
 def current_gate_receipt_errors(record, *, root=None):
@@ -53,20 +52,6 @@ def current_gate_receipt_errors(record, *, root=None):
             errors.append("dimension must identify guidance_and_contract")
     return errors
 
-
-def current_diagnostic_receipt_errors(record, *, root=None):
-    """Validate a non-authorizing diagnostic emitted by check_profile."""
-    check = record.get("check") if isinstance(record, dict) else None
-    errors = receipt_type_contract.base_receipt_errors(
-        record, receipt_type_id=DIAGNOSTIC_RECEIPT_TYPE_ID,
-        tool=TOOL, tool_version=TOOL_VERSION,
-        checks=check if isinstance(check, str) and check != GATE_CHECK else ())
-    if isinstance(record, dict):
-        if record.get("gate_id") != GATE_ID:
-            errors.append("gate_id must identify profile-load")
-        if record.get("dimension") != GATE_DIMENSION:
-            errors.append("dimension must identify guidance_and_contract")
-    return errors
 
 # ``None`` has a public meaning for :func:`evaluate_profile_load`: omit Queue
 # identity from the in-memory receipts.  The CLI still needs its historical
@@ -83,7 +68,7 @@ class ProfileLoadEvaluation:
     same invocation emitted the passing Gate summary.  Consumers therefore
     cannot accidentally authorize a typed Profile from one observation beside
     metadata rules from another, or consume either object from a
-    fail/candidate evaluation.  ``findings`` contains only non-pass receipts;
+    fail/candidate evaluation.  ``findings`` contains non-pass check results;
     the authoritative pass receipt, when present, is available separately as
     ``summary_receipt``.
     """
@@ -521,7 +506,7 @@ def main(argv=None, *, _evaluation_out=None,
                     help="kernel execution-default override registry "
                          "(default: %s under --root)"
                          % DEFAULT_EXECUTION_DEFAULTS)
-    ap.add_argument("--receipts", help="JSONL path to append machine-readable receipts to")
+    ap.add_argument("--receipts", help="JSONL path to append the passing Profile-load Gate to; diagnostics stay in the report")
     ap.add_argument("--json", action="store_true",
                     help="write one deterministic JSON object (tool, root, "
                          "result, findings each carrying a closed "
@@ -576,8 +561,7 @@ def main(argv=None, *, _evaluation_out=None,
     else:
         effective_receipt_identity = dict(_receipt_identity or {})
 
-    receipts = []
-    seq = 0
+    results = []
     contract = None
     compiled_metadata = None
     profile_id = None
@@ -591,23 +575,14 @@ def main(argv=None, *, _evaluation_out=None,
     summary = None
 
     def add(check, target, result, details):
-        nonlocal seq
-        seq += 1
-        receipt = kblib.make_receipt(
-            TOOL, TOOL_VERSION, check, target, result, details, seq,
-            receipt_type_id=(GATE_RECEIPT_TYPE_ID
-                             if check == GATE_CHECK
-                             else DIAGNOSTIC_RECEIPT_TYPE_ID),
-            identity=effective_receipt_identity)
-        receipt["gate_id"] = GATE_ID
-        receipt["dimension"] = GATE_DIMENSION
-        receipts.append(receipt)
+        results.append({"check": check, "target": target,
+                         "result": result, "details": details})
 
     def finish(*, write_receipts=True):
         """Close one invocation and optionally expose its exact in-memory IR."""
-        exit_code = kblib.exit_code(receipts)
-        if write_receipts and _write_receipts:
-            kblib.write_receipts(args.receipts, receipts)
+        exit_code = kblib.exit_code(results)
+        if write_receipts and _write_receipts and summary is not None:
+            kblib.write_receipts(args.receipts, [summary])
         if args.json:
             # One deterministic structured-diagnostics object: same checks,
             # same order, same exit semantics as the human summary, plus the
@@ -625,7 +600,7 @@ def main(argv=None, *, _evaluation_out=None,
                         "details": receipt["details"],
                         "category": finding_category(receipt["check"]),
                     }
-                    for receipt in receipts
+                    for receipt in results
                     if receipt["result"] != "pass"
                 ],
             }, ensure_ascii=False, sort_keys=True, indent=2))
@@ -646,7 +621,7 @@ def main(argv=None, *, _evaluation_out=None,
             )
             _evaluation_out.update({
                 "exit_code": exit_code,
-                "receipts": tuple(receipts),
+                "results": tuple(results),
                 "contract": authorized_contract,
                 "metadata_execution_contract": authorized_metadata,
                 "profile_id": (
@@ -976,8 +951,8 @@ def main(argv=None, *, _evaluation_out=None,
                 "canonical input bytes changed while profile-load was "
                 "deriving its contract")
 
-    fails = [r for r in receipts if r["result"] == "fail"]
-    candidates = [r for r in receipts if r["result"] == "candidate"]
+    fails = [r for r in results if r["result"] == "fail"]
+    candidates = [r for r in results if r["result"] == "candidate"]
     if not fails and not candidates:
         add(GATE_CHECK, contract.manifest_repo_path, "pass",
             "profile_id=%s; structured_slots=%d; explicit_overrides=%d; "
@@ -986,7 +961,13 @@ def main(argv=None, *, _evaluation_out=None,
             "user confirmation"
             % (profile_id, len(contract.slot_values), len(registered),
                len(contract.dependency_edges)))
-        summary = receipts[-1]
+        summary = kblib.make_receipt(
+            TOOL, TOOL_VERSION, GATE_CHECK, contract.manifest_repo_path,
+            "pass", results[-1]["details"], 1,
+            receipt_type_id=GATE_RECEIPT_TYPE_ID,
+            identity=effective_receipt_identity)
+        summary["gate_id"] = GATE_ID
+        summary["dimension"] = GATE_DIMENSION
         summary["selected_profile_manifest"] = contract.manifest_repo_path
         summary["profile_snapshot_sha256"] = profile_snapshot_sha256
         summary["profile_contract_fingerprint"] = contract.fingerprint
@@ -1000,7 +981,7 @@ def main(argv=None, *, _evaluation_out=None,
     say("  interface=%s slots=%d explicit_overrides=%d"
         % (os.path.relpath(interface_path, root).replace(os.sep, "/"),
            len(contract.slot_values), len(registered)))
-    for r in receipts:
+    for r in results:
         if r["result"] == "fail":
             say("  [FAIL %s] %s — %s" % (r["check"], r["target"], r["details"]))
         elif r["result"] == "candidate":
@@ -1053,11 +1034,11 @@ def evaluate_profile_load(profile_dir, *, root, interface=None, defaults=None,
             ),
             _write_receipts=False,
         )
-    receipts = evaluation.get("receipts", ())
+    results = evaluation.get("results", ())
     return ProfileLoadEvaluation(
         exit_code=exit_code,
         findings=tuple(
-            receipt for receipt in receipts
+            receipt for receipt in results
             if receipt.get("result") != "pass"
         ),
         contract=evaluation.get("contract"),

@@ -1,60 +1,38 @@
 schema_version: 2
-plan_id: audit-plan-B1-dbc3e355f64e6543
+plan_id: audit-plan-B1-cf8ebf1e71415c16
 task_id: fixture-task
 batch_id: B1
-generated_at: 2026-09-10T14:15:55Z
+generated_at: 2026-09-10T17:16:55Z
 queue_revision: 2
 queue_state_revision: 1
-required_queue_sha256: sha256:87a1f95324734730f880924a77274d5221d2cdf9981bb1bf100fd75c4572ae86
+required_queue_sha256: sha256:f6c74f9117fbdb7ce3aab969dc61b7357123b6bb0eae8d2faf53c29e78258160
 upstream_revision_id: 0123456789abcdef0123456789abcdef01234567
 active_standards_sha256: sha256:c88c60b0b8479396d873dd70ce0f456b32f2f26cc2a5f8fa0b44d4a3eb96852e
 selected_profile_manifest: profiles/test-profile/profile.toml
 profile_snapshot_sha256: sha256:8104d84b6448ca0b45fb12af2818f10c875c4a52341e2e33bc8b3ba9fc1854de
 profile_contract_fingerprint: sha256:d75d782ab36a2ffcd19fe99feac215848890e61dca07b035410a29c8d3c05a6f
-opening_transition_receipt: audit-update_queue-20260910T141555Z-dca43ec4ea34444b893a52056d4d380f-0001
+opening_transition_receipt: audit-update_queue-20260910T171655Z-ed3db6cc502640c694fa3df7fff24372-0001
 artifact_snapshot_sha256: sha256:487879aefedab88367f2b05c296ff45507adfbb09afaf4e93dac3591896482ce
-contract_snapshot_sha256: sha256:d38feab8cefe371aadea0e75bd6d0dc6947d84ee859213b2874aa4b1f717ba01
+contract_snapshot_sha256: sha256:1ea00d80e2f7dccaed90c77ddfb5cd470fa544cf0ad1ee30433cbee7be39933c
 accepted_baseline_sha256: sha256:0a39a8a083c7f13f36ef3c6f560cd500fe035da63bc6d9dc2d0ff818f894d7e2
 obligations:
   - owner_kind: kernel
-    owner_rule_id: k12-02-rendering-verification-record
+    owner_rule_id: k12-05-frozen-task-contract-references
     kernel_extension_point: null
     partition: changed-scope-deterministic
     due_stage: pre-merge
     target: B1
-    applicability: every-batch
+    applicability: batch-contract-freezes-machine-checkable-component-references
     evidence_role: emits
-    evidence_kind: audit-receipt
-    dimension: rendering
-    acceptance_predicate: k12-02-rendering-verification-record
-    producer_capability: dedicated-rendering-verification-v1
+    evidence_kind: changed-scope-check-evidence
+    dimension: guidance_and_contract
+    acceptance_predicate: k12-05-frozen-task-contract-references
+    producer_capability: changed-scope-evidence-adapter-v1
     producer_gate_id: null
-    producer_check: changed_scope_rendering_escalation_record
+    producer_check: changed_scope_frozen_task_contract_references
     consumer_gate_id: batch-review
     fingerprint_binding: evidence-time
-    obligation_id: audit-obligation-113b762c4a62dfbc8aee01b0
-    review_due: null
-    status: required
-    evidence_ref: null
-    reused_receipt_id: null
-    reuse_reason: null
-  - owner_kind: kernel
-    owner_rule_id: k12-09-coverage-file-count
-    kernel_extension_point: null
-    partition: mandatory-full-deterministic
-    due_stage: post-delta-close
-    target: .
-    applicability: mandatory
-    evidence_role: emits
-    evidence_kind: audit-receipt
-    dimension: coverage_and_integration
-    acceptance_predicate: k12-09-coverage-file-count
-    producer_capability: batch-close-producer-v1
-    producer_gate_id: null
-    producer_check: closed_list_coverage_file_count
-    consumer_gate_id: batch-close
-    fingerprint_binding: evidence-time
-    obligation_id: audit-obligation-19e1e37cb0bb9f054a0b88a0
+    obligation_id: audit-obligation-1009563eda811c9053799b34
     review_due: null
     status: required
     evidence_ref: null
@@ -105,6 +83,50 @@ obligations:
     reused_receipt_id: null
     reuse_reason: null
   - owner_kind: kernel
+    owner_rule_id: k12-09-guidance-and-contract-continuity
+    kernel_extension_point: null
+    partition: mandatory-full-deterministic
+    due_stage: post-delta-close
+    target: .
+    applicability: mandatory
+    evidence_role: emits
+    evidence_kind: batch-close-member-evidence
+    dimension: guidance_and_contract
+    acceptance_predicate: k12-09-guidance-and-contract-continuity
+    producer_capability: batch-close-producer-v1
+    producer_gate_id: null
+    producer_check: closed_list_guidance_and_contract_continuity
+    consumer_gate_id: batch-close
+    fingerprint_binding: evidence-time
+    obligation_id: audit-obligation-40733204001602f70ebc52c3
+    review_due: null
+    status: required
+    evidence_ref: null
+    reused_receipt_id: null
+    reuse_reason: null
+  - owner_kind: kernel
+    owner_rule_id: k12-02-level0-fence-closure
+    kernel_extension_point: null
+    partition: changed-scope-deterministic
+    due_stage: pre-merge
+    target: Topics/A.md
+    applicability: every-changed-markdown-page
+    evidence_role: emits
+    evidence_kind: changed-scope-check-evidence
+    dimension: structure_and_links
+    acceptance_predicate: k12-02-level0-fence-closure
+    producer_capability: changed-scope-evidence-adapter-v1
+    producer_gate_id: null
+    producer_check: changed_scope_level0_fence_closure
+    consumer_gate_id: batch-review
+    fingerprint_binding: evidence-time
+    obligation_id: audit-obligation-42ec6dff57fd0f82842b993d
+    review_due: null
+    status: required
+    evidence_ref: null
+    reused_receipt_id: null
+    reuse_reason: null
+  - owner_kind: kernel
     owner_rule_id: k12-05-guidance-state-zero-counts
     kernel_extension_point: null
     partition: changed-scope-deterministic
@@ -112,7 +134,7 @@ obligations:
     target: Progress.guidance_queue
     applicability: every-batch-close
     evidence_role: emits
-    evidence_kind: audit-receipt
+    evidence_kind: changed-scope-check-evidence
     dimension: guidance_and_contract
     acceptance_predicate: k12-05-guidance-state-zero-counts
     producer_capability: changed-scope-evidence-adapter-v1
@@ -120,7 +142,29 @@ obligations:
     producer_check: changed_scope_guidance_state_zero_counts
     consumer_gate_id: batch-review
     fingerprint_binding: evidence-time
-    obligation_id: audit-obligation-4215d25bc7ed1b36da485238
+    obligation_id: audit-obligation-4932ad3ff5f59ceacb2debb2
+    review_due: null
+    status: required
+    evidence_ref: null
+    reused_receipt_id: null
+    reuse_reason: null
+  - owner_kind: kernel
+    owner_rule_id: k12-05-coverage-routing-state
+    kernel_extension_point: null
+    partition: changed-scope-deterministic
+    due_stage: pre-merge
+    target: Topics/A.md
+    applicability: changed-scope-includes-coverage-or-required-routing-state
+    evidence_role: emits
+    evidence_kind: changed-scope-check-evidence
+    dimension: coverage_and_integration
+    acceptance_predicate: k12-05-coverage-routing-state
+    producer_capability: changed-scope-evidence-adapter-v1
+    producer_gate_id: null
+    producer_check: changed_scope_coverage_routing_state
+    consumer_gate_id: batch-review
+    fingerprint_binding: evidence-time
+    obligation_id: audit-obligation-4988244dd2b36bbf79715593
     review_due: null
     status: required
     evidence_ref: null
@@ -149,6 +193,28 @@ obligations:
     reused_receipt_id: null
     reuse_reason: null
   - owner_kind: kernel
+    owner_rule_id: k12-09-coverage-file-count
+    kernel_extension_point: null
+    partition: mandatory-full-deterministic
+    due_stage: post-delta-close
+    target: .
+    applicability: mandatory
+    evidence_role: emits
+    evidence_kind: batch-close-member-evidence
+    dimension: coverage_and_integration
+    acceptance_predicate: k12-09-coverage-file-count
+    producer_capability: batch-close-producer-v1
+    producer_gate_id: null
+    producer_check: closed_list_coverage_file_count
+    consumer_gate_id: batch-close
+    fingerprint_binding: evidence-time
+    obligation_id: audit-obligation-5ac848ac97bc07bba9d83423
+    review_due: null
+    status: required
+    evidence_ref: null
+    reused_receipt_id: null
+    reuse_reason: null
+  - owner_kind: kernel
     owner_rule_id: k12-05-page-contract-candidates
     kernel_extension_point: null
     partition: changed-scope-deterministic
@@ -171,44 +237,22 @@ obligations:
     reused_receipt_id: null
     reuse_reason: null
   - owner_kind: kernel
-    owner_rule_id: k12-09-registered-residual-content
-    kernel_extension_point: null
-    partition: mandatory-full-deterministic
-    due_stage: post-delta-close
-    target: .
-    applicability: mandatory
-    evidence_role: emits
-    evidence_kind: audit-receipt
-    dimension: coverage_and_integration
-    acceptance_predicate: k12-09-registered-residual-content
-    producer_capability: batch-close-producer-v1
-    producer_gate_id: null
-    producer_check: closed_list_registered_residual_content
-    consumer_gate_id: batch-close
-    fingerprint_binding: evidence-time
-    obligation_id: audit-obligation-859d5c20dac12f1ec6603f43
-    review_due: null
-    status: required
-    evidence_ref: null
-    reused_receipt_id: null
-    reuse_reason: null
-  - owner_kind: kernel
-    owner_rule_id: k12-02-level0-fence-closure
+    owner_rule_id: k12-02-rendering-verification-record
     kernel_extension_point: null
     partition: changed-scope-deterministic
     due_stage: pre-merge
-    target: Topics/A.md
-    applicability: every-changed-markdown-page
+    target: B1
+    applicability: every-batch
     evidence_role: emits
-    evidence_kind: audit-receipt
-    dimension: structure_and_links
-    acceptance_predicate: k12-02-level0-fence-closure
-    producer_capability: changed-scope-evidence-adapter-v1
+    evidence_kind: rendering-verification-evidence
+    dimension: rendering
+    acceptance_predicate: k12-02-rendering-verification-record
+    producer_capability: dedicated-rendering-verification-v1
     producer_gate_id: null
-    producer_check: changed_scope_level0_fence_closure
+    producer_check: changed_scope_rendering_escalation_record
     consumer_gate_id: batch-review
     fingerprint_binding: evidence-time
-    obligation_id: audit-obligation-957aa501d95166f7ed2f4c45
+    obligation_id: audit-obligation-7acdd4ef8b185eada9710b89
     review_due: null
     status: required
     evidence_ref: null
@@ -237,50 +281,6 @@ obligations:
     reused_receipt_id: null
     reuse_reason: null
   - owner_kind: kernel
-    owner_rule_id: k12-09-guidance-and-contract-continuity
-    kernel_extension_point: null
-    partition: mandatory-full-deterministic
-    due_stage: post-delta-close
-    target: .
-    applicability: mandatory
-    evidence_role: emits
-    evidence_kind: audit-receipt
-    dimension: guidance_and_contract
-    acceptance_predicate: k12-09-guidance-and-contract-continuity
-    producer_capability: batch-close-producer-v1
-    producer_gate_id: null
-    producer_check: closed_list_guidance_and_contract_continuity
-    consumer_gate_id: batch-close
-    fingerprint_binding: evidence-time
-    obligation_id: audit-obligation-b1b9771b935451ab7a963fe4
-    review_due: null
-    status: required
-    evidence_ref: null
-    reused_receipt_id: null
-    reuse_reason: null
-  - owner_kind: kernel
-    owner_rule_id: k12-05-frozen-task-contract-references
-    kernel_extension_point: null
-    partition: changed-scope-deterministic
-    due_stage: pre-merge
-    target: B1
-    applicability: batch-contract-freezes-machine-checkable-component-references
-    evidence_role: emits
-    evidence_kind: audit-receipt
-    dimension: guidance_and_contract
-    acceptance_predicate: k12-05-frozen-task-contract-references
-    producer_capability: changed-scope-evidence-adapter-v1
-    producer_gate_id: null
-    producer_check: changed_scope_frozen_task_contract_references
-    consumer_gate_id: batch-review
-    fingerprint_binding: evidence-time
-    obligation_id: audit-obligation-c956e0ba5024cd967f9960c3
-    review_due: null
-    status: required
-    evidence_ref: null
-    reused_receipt_id: null
-    reuse_reason: null
-  - owner_kind: kernel
     owner_rule_id: k12-09-wiki-link-resolution
     kernel_extension_point: null
     partition: mandatory-full-deterministic
@@ -288,7 +288,7 @@ obligations:
     target: .
     applicability: mandatory
     evidence_role: emits
-    evidence_kind: audit-receipt
+    evidence_kind: batch-close-member-evidence
     dimension: structure_and_links
     acceptance_predicate: k12-09-wiki-link-resolution
     producer_capability: batch-close-producer-v1
@@ -296,73 +296,7 @@ obligations:
     producer_check: closed_list_wiki_link_resolution
     consumer_gate_id: batch-close
     fingerprint_binding: evidence-time
-    obligation_id: audit-obligation-ddbd6eb726689ef635f4a1ba
-    review_due: null
-    status: required
-    evidence_ref: null
-    reused_receipt_id: null
-    reuse_reason: null
-  - owner_kind: kernel
-    owner_rule_id: k12-09-controlled-vocabulary
-    kernel_extension_point: null
-    partition: mandatory-full-deterministic
-    due_stage: post-delta-close
-    target: .
-    applicability: mandatory
-    evidence_role: emits
-    evidence_kind: audit-receipt
-    dimension: guidance_and_contract
-    acceptance_predicate: k12-09-controlled-vocabulary
-    producer_capability: batch-close-producer-v1
-    producer_gate_id: null
-    producer_check: closed_list_controlled_vocabulary
-    consumer_gate_id: batch-close
-    fingerprint_binding: evidence-time
-    obligation_id: audit-obligation-eaa2a2049e3a18517e5c6bbc
-    review_due: null
-    status: required
-    evidence_ref: null
-    reused_receipt_id: null
-    reuse_reason: null
-  - owner_kind: kernel
-    owner_rule_id: k12-05-coverage-routing-state
-    kernel_extension_point: null
-    partition: changed-scope-deterministic
-    due_stage: pre-merge
-    target: Topics/A.md
-    applicability: changed-scope-includes-coverage-or-required-routing-state
-    evidence_role: emits
-    evidence_kind: audit-receipt
-    dimension: coverage_and_integration
-    acceptance_predicate: k12-05-coverage-routing-state
-    producer_capability: changed-scope-evidence-adapter-v1
-    producer_gate_id: null
-    producer_check: changed_scope_coverage_routing_state
-    consumer_gate_id: batch-review
-    fingerprint_binding: evidence-time
-    obligation_id: audit-obligation-eb616e90f4552ef21fd033e2
-    review_due: null
-    status: required
-    evidence_ref: null
-    reused_receipt_id: null
-    reuse_reason: null
-  - owner_kind: kernel
-    owner_rule_id: k12-09-structural-validity
-    kernel_extension_point: null
-    partition: mandatory-full-deterministic
-    due_stage: post-delta-close
-    target: .
-    applicability: mandatory
-    evidence_role: emits
-    evidence_kind: audit-receipt
-    dimension: structure_and_links
-    acceptance_predicate: k12-09-structural-validity
-    producer_capability: batch-close-producer-v1
-    producer_gate_id: null
-    producer_check: closed_list_structural_validity
-    consumer_gate_id: batch-close
-    fingerprint_binding: evidence-time
-    obligation_id: audit-obligation-f57b26511c04f37776cb471a
+    obligation_id: audit-obligation-b28c171fb51c50fca48c92eb
     review_due: null
     status: required
     evidence_ref: null
@@ -376,7 +310,7 @@ obligations:
     target: .
     applicability: mandatory
     evidence_role: emits
-    evidence_kind: audit-receipt
+    evidence_kind: batch-close-member-evidence
     dimension: structure_and_links
     acceptance_predicate: k12-09-graph-and-duplicate-basenames
     producer_capability: batch-close-producer-v1
@@ -384,7 +318,73 @@ obligations:
     producer_check: closed_list_graph_and_duplicate_basenames
     consumer_gate_id: batch-close
     fingerprint_binding: evidence-time
-    obligation_id: audit-obligation-fc0fee6e5ce4a98b249a0bd7
+    obligation_id: audit-obligation-b99e7cef2fd900c8ca35b64d
+    review_due: null
+    status: required
+    evidence_ref: null
+    reused_receipt_id: null
+    reuse_reason: null
+  - owner_kind: kernel
+    owner_rule_id: k12-09-registered-residual-content
+    kernel_extension_point: null
+    partition: mandatory-full-deterministic
+    due_stage: post-delta-close
+    target: .
+    applicability: mandatory
+    evidence_role: emits
+    evidence_kind: batch-close-member-evidence
+    dimension: coverage_and_integration
+    acceptance_predicate: k12-09-registered-residual-content
+    producer_capability: batch-close-producer-v1
+    producer_gate_id: null
+    producer_check: closed_list_registered_residual_content
+    consumer_gate_id: batch-close
+    fingerprint_binding: evidence-time
+    obligation_id: audit-obligation-c9263feac0bf9cba181779d6
+    review_due: null
+    status: required
+    evidence_ref: null
+    reused_receipt_id: null
+    reuse_reason: null
+  - owner_kind: kernel
+    owner_rule_id: k12-09-structural-validity
+    kernel_extension_point: null
+    partition: mandatory-full-deterministic
+    due_stage: post-delta-close
+    target: .
+    applicability: mandatory
+    evidence_role: emits
+    evidence_kind: batch-close-member-evidence
+    dimension: structure_and_links
+    acceptance_predicate: k12-09-structural-validity
+    producer_capability: batch-close-producer-v1
+    producer_gate_id: null
+    producer_check: closed_list_structural_validity
+    consumer_gate_id: batch-close
+    fingerprint_binding: evidence-time
+    obligation_id: audit-obligation-cac1f81f2c26d514e5e4a319
+    review_due: null
+    status: required
+    evidence_ref: null
+    reused_receipt_id: null
+    reuse_reason: null
+  - owner_kind: kernel
+    owner_rule_id: k12-09-controlled-vocabulary
+    kernel_extension_point: null
+    partition: mandatory-full-deterministic
+    due_stage: post-delta-close
+    target: .
+    applicability: mandatory
+    evidence_role: emits
+    evidence_kind: batch-close-member-evidence
+    dimension: guidance_and_contract
+    acceptance_predicate: k12-09-controlled-vocabulary
+    producer_capability: batch-close-producer-v1
+    producer_gate_id: null
+    producer_check: closed_list_controlled_vocabulary
+    consumer_gate_id: batch-close
+    fingerprint_binding: evidence-time
+    obligation_id: audit-obligation-e9a4cd366f1280f647c433d9
     review_due: null
     status: required
     evidence_ref: null

@@ -845,9 +845,6 @@ class TaskRuntimeRunnerCheckpointIntegrationTests(unittest.TestCase):
             [call.args[1] for call in dispatched.call_args_list])
         assembler = dispatched.call_args_list[2].args[2]
         self.assertEqual(
-            runner.runtime_paths.AUDIT_RECEIPT_REGISTER_PATH,
-            assembler["audit_receipt_register"])
-        self.assertEqual(
             runner.TERMINAL_RECEIPT_PATH,
             assembler["terminal_audit_receipt_register"])
         writer = dispatched.call_args_list[4].args[2]

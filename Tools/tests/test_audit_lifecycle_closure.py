@@ -51,27 +51,31 @@ class AuditLifecycleClosureTests(unittest.TestCase):
                 mock.patch.object(producer_chain, "_registered_producer",
                                   wraps=producer_chain._registered_producer) as join:
             with evidence_runtime.evidence_observation(result) as observed:
-                expected = producer_chain.precursor_chain_for_spec(spec, root=REPOSITORY)
-                actual = producer_chain.precursor_chain_for_obligation(obligation, root=REPOSITORY)
+                expected = producer_chain.producer_chain_for_spec(spec, root=REPOSITORY)
+                actual = producer_chain.producer_chain_for_obligation(obligation, root=REPOSITORY)
                 self.assertEqual(expected, actual)
-                actual["precursor_tool"] = "forged"
-                record = {"record_kind": expected["precursor_record_kind"],
-                          "tool": expected["precursor_tool"], "check": expected["precursor_check"]}
-                self.assertEqual(expected, producer_chain.require_precursor_record(
+                actual["producer_tool"] = "forged"
+                record = {"record_kind": expected["producer_record_kind"],
+                          "tool": expected["producer_tool"], "check": expected["producer_check"]}
+                self.assertEqual(expected, producer_chain.require_producer_record(
                     record, obligation, root=REPOSITORY))
                 with self.assertRaises(ValueError):
-                    producer_chain.precursor_chain_for_obligation(
+                    producer_chain.producer_chain_for_obligation(
                         dict(obligation, producer_capability="forged"), root=REPOSITORY)
                 with self.assertRaises(ValueError):
-                    producer_chain.require_precursor_record(
+                    producer_chain.require_producer_record(
                         dict(record, tool="forged"), obligation, root=REPOSITORY)
                 self.assertEqual(1, load.call_count)
-                self.assertEqual(2, join.call_count)  # Precursor and finalizer, once.
+                # This Kernel check is accepted by its sole producer at first
+                # publication; no second finalizer may be joined for it.
+                self.assertEqual(spec["producer_capability"],
+                                 expected["producer_capability"])
+                self.assertEqual(1, join.call_count)
                 with evidence_runtime.evidence_observation(observed):
-                    self.assertEqual(expected, producer_chain.precursor_chain_for_spec(spec, root=REPOSITORY))
+                    self.assertEqual(expected, producer_chain.producer_chain_for_spec(spec, root=REPOSITORY))
                 self.assertEqual(2, load.call_count)
             self.assertIsNone(producer_chain._OBSERVATION_MEMO.get())
-            self.assertEqual(expected, producer_chain.precursor_chain_for_spec(spec, root=REPOSITORY))
+            self.assertEqual(expected, producer_chain.producer_chain_for_spec(spec, root=REPOSITORY))
             self.assertEqual(3, load.call_count)
 
     def test_every_kernel_spec_has_one_tool_execution_route(self):
@@ -85,26 +89,6 @@ class AuditLifecycleClosureTests(unittest.TestCase):
                 else:
                     self.assertNotEqual("batch-close-stage", route)
 
-    def test_premerge_audit_plans_freeze_actual_precursor_and_derive_finalizer(self):
-        rows = [row for row in self.specs
-                if row["due_stage"] == "pre-merge" and
-                row["evidence_kind"] == "audit-receipt"]
-        self.assertTrue(rows)
-        for spec in rows:
-            with self.subTest(rule=spec["owner_rule_id"]):
-                self.assertIsNone(spec["producer_gate_id"])
-                chain = producer_chain.precursor_chain_for_spec(
-                    spec, root=REPOSITORY)
-                self.assertEqual(spec["producer_capability"],
-                                 chain["precursor_capability"])
-                self.assertEqual(spec["producer_check"],
-                                 chain["precursor_check"])
-                self.assertEqual(
-                    producer_chain.FINAL_AUDIT_RECEIPT_CAPABILITY,
-                    chain["final_producer_capability"])
-                self.assertNotEqual(chain["precursor_capability"],
-                                    chain["final_producer_capability"])
-
     def test_changed_scope_contract_import_does_not_resolve_capabilities(self):
         with mock.patch.object(
                 capabilities, "load_operation_capabilities_snapshot",
@@ -115,33 +99,17 @@ class AuditLifecycleClosureTests(unittest.TestCase):
             "changed-scope-evidence-adapter-v1",
             reloaded.ADAPTER_CAPABILITY_ID)
 
-    def test_precursor_owner_entrypoint_shape_and_finalizer_are_closed(self):
+    def test_native_producer_owner_entrypoint_and_consumer_are_closed(self):
         final_consumer = "Tools/execution/audit/audit_evidence_runtime.py"
-        finalizer = self.capability(
-            producer_chain.FINAL_AUDIT_RECEIPT_CAPABILITY)
-        self.assertEqual("producer", finalizer["kind"])
-        self.assertEqual(
-            "Tools/execution/audit/complete_audit_receipt.py",
-            finalizer["implementation_owner"])
-        finalizer_descriptor = describe_entrypoint(
-            capabilities.capability_invocation_tool(
-                producer_chain.FINAL_AUDIT_RECEIPT_CAPABILITY,
-                root=REPOSITORY))
-        self.assertEqual(finalizer["invocation_owner"],
-                         finalizer_descriptor.invocation_path)
-        self.assertEqual(finalizer["implementation_owner"],
-                         finalizer_descriptor.implementation_path)
-        self.assertIn(final_consumer, finalizer["consumers"])
-
         for spec in self.specs:
-            if (spec["due_stage"] != "pre-merge" or
-                    spec["evidence_kind"] != "audit-receipt"):
+            if execution_runtime.producer_route(spec, root=REPOSITORY) not in {
+                    "substantive-review", "rendering-verification", "deterministic-check"}:
                 continue
             with self.subTest(rule=spec["owner_rule_id"]):
-                chain = producer_chain.precursor_chain_for_spec(
+                chain = producer_chain.producer_chain_for_spec(
                     spec, root=REPOSITORY)
-                entry = self.capability(chain["precursor_capability"])
-                descriptor = describe_entrypoint(chain["precursor_tool"])
+                entry = self.capability(chain["producer_capability"])
+                descriptor = describe_entrypoint(chain["producer_tool"])
                 self.assertEqual("producer", entry["kind"])
                 self.assertEqual(entry["invocation_owner"],
                                  descriptor.invocation_path)
@@ -149,13 +117,10 @@ class AuditLifecycleClosureTests(unittest.TestCase):
                                  descriptor.implementation_path)
                 self.assertEqual(
                     os.path.basename(entry["invocation_owner"])[:-3],
-                    chain["precursor_tool"])
+                    chain["producer_tool"])
                 self.assertIn(final_consumer, entry["consumers"])
-                self.assertIn(
-                    "Tools/execution/audit/complete_audit_receipt.py",
-                    entry["consumers"])
                 self.assertEqual(spec["producer_check"],
-                                 chain["precursor_check"])
+                                 chain["producer_check"])
                 if spec["source_registry"] == \
                         projection.SUBSTANTIVE_REGISTRY_PATH:
                     expected_kind = substantive.load_contract(
@@ -166,9 +131,9 @@ class AuditLifecycleClosureTests(unittest.TestCase):
                         REPOSITORY)["record_kind"]
                 else:
                     expected_kind = \
-                        lifecycle.CHANGED_SCOPE_PRECURSOR_RECORD_KIND
+                        lifecycle.CHANGED_SCOPE_RECORD_KIND
                 self.assertEqual(expected_kind,
-                                 chain["precursor_record_kind"])
+                                 chain["producer_record_kind"])
 
     def test_chain_and_runtime_route_use_the_same_explicit_authority_root(self):
         with tempfile.TemporaryDirectory() as temporary:
@@ -182,20 +147,20 @@ class AuditLifecycleClosureTests(unittest.TestCase):
                 encoding="utf-8")
             spec = projection.obligation_spec_for_rule(
                 "k12-05-guidance-state-zero-counts", alternate)
-            chain = producer_chain.precursor_chain_for_spec(
+            chain = producer_chain.producer_chain_for_spec(
                 spec, root=alternate)
             self.assertEqual("changed-scope-evidence-adapter-v1",
-                             chain["precursor_capability"])
+                             chain["producer_capability"])
             obligation = projection.resolve_obligation_definition(
                 spec, "Progress.guidance_queue")
             self.assertEqual(
-                "deterministic-audit-precursor",
+                "deterministic-check",
                 execution_runtime.producer_route(
                     obligation, root=alternate))
             with self.assertRaisesRegex(
                     producer_chain.AuditProducerChainError,
                     "differs from its (registered|Kernel registry)"):
-                producer_chain.precursor_chain_for_spec(spec)
+                producer_chain.producer_chain_for_spec(spec)
 
     def test_every_capability_route_has_one_registered_producer_and_consumer(self):
         execution_consumer = \
@@ -234,13 +199,14 @@ class AuditLifecycleClosureTests(unittest.TestCase):
         self.assertEqual(
             expected,
             {row["evidence_kind"] for row in self.specs} |
-            {"candidate-set-receipt", judgment.RECORD_KIND},
+            {row["evidence_kind"] for row in
+             changed_scope.load_registry(REPOSITORY)["extension_points"]} |
+            {judgment.RECORD_KIND},
         )
 
     def test_each_consumer_status_has_one_next_action_interpretation(self):
         expected = {
             "satisfied": "terminal-evidence-complete",
-            "ready-for-completion": "complete-precursor",
             "needs-confirmation": "confirm-substantive-review",
             "needs-correction": "external-correction",
             "escalated": "external-escalation",
@@ -262,17 +228,17 @@ class AuditLifecycleClosureTests(unittest.TestCase):
             "k12-02-level0-mermaid-fence-closure", REPOSITORY)
         obligation = projection.resolve_obligation_definition(
             spec, "Topics/Diagram.md")
-        chain = producer_chain.precursor_chain_for_obligation(
+        chain = producer_chain.producer_chain_for_obligation(
             obligation, root=REPOSITORY)
         self.assertEqual(
-            "audit-producer-evidence", chain["precursor_record_kind"])
+            "changed-scope-check-evidence", chain["producer_record_kind"])
 
         mutated = copy.deepcopy(obligation)
         mutated["producer_check"] = "nearby_unregistered_check"
         with self.assertRaisesRegex(
                 producer_chain.AuditProducerChainError,
                 "registered|chain"):
-            producer_chain.precursor_chain_for_obligation(
+            producer_chain.producer_chain_for_obligation(
                 mutated, root=REPOSITORY)
 
         unknown = copy.deepcopy(obligation)
@@ -280,7 +246,7 @@ class AuditLifecycleClosureTests(unittest.TestCase):
         with self.assertRaisesRegex(
                 producer_chain.AuditProducerChainError,
                 "unknown|chain"):
-            producer_chain.precursor_chain_for_obligation(
+            producer_chain.producer_chain_for_obligation(
                 unknown, root=REPOSITORY)
 
     def test_changed_scope_registry_is_rendering_obligation_single_owner(self):

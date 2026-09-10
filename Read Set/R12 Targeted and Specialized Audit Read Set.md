@@ -17,7 +17,7 @@ load_edges:
       - kernel/K12 Quality Assurance/18 Cross-page and Control-plane Dimension Map.md
       - kernel/K12 Quality Assurance/19 Incremental Audit Planning.md
       - kernel/K12 Quality Assurance/audit-plan-contract.yaml
-      - kernel/K12 Quality Assurance/audit-receipt-contract.yaml
+      - kernel/K12 Quality Assurance/audit-fingerprint-contract.yaml
       - kernel/K12 Quality Assurance/evidence-invalidation-contract.yaml
       - kernel/K12 Quality Assurance/batch-close-closed-list.yaml
       - kernel/K12 Quality Assurance/batch-review-obligation-registry.yaml

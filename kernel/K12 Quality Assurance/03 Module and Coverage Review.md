@@ -22,7 +22,7 @@ Before a module is complete, check:
   matches its actual semantic leaves and that each original section has exactly
   one canonical owner.
 
-Module Review first consumes the valid AuditReceipts of batches already closed under [[kernel/K12 Quality Assurance/14 Batch Review#Batch Review|Batch Review]], then reviews the owner, dependency, coverage, and navigation invariants that can only be judged across batches. Local mechanisms with no relevant change SHOULD NOT be re-reviewed page by page; when receipts are missing or invalidated, or sampling exposes a systemic problem, expand the scope per [[kernel/K12 Quality Assurance/07 Audit Evidence Reuse and Invalidation|Audit Evidence Reuse and Invalidation]].
+Module Review first consumes the valid plan-bound evidence of batches already closed under [[kernel/K12 Quality Assurance/14 Batch Review#Batch Review|Batch Review]], then reviews the owner, dependency, coverage, and navigation invariants that can only be judged across batches. Local mechanisms with no relevant change SHOULD NOT be re-reviewed page by page; when receipts are missing or invalidated, or sampling exposes a systemic problem, expand the scope per [[kernel/K12 Quality Assurance/07 Audit Evidence Reuse and Invalidation|Audit Evidence Reuse and Invalidation]].
 
 ## Coverage Reconciliation Review
 

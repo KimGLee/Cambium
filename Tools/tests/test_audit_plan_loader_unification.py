@@ -13,7 +13,6 @@ sys.path.insert(0, str(TOOLS))
 
 import Tools.execution.audit.audit_evidence_runtime as audit_evidence_runtime  # noqa: E402
 import Tools.execution.audit.audit_producer_runtime as audit_producer_runtime  # noqa: E402
-import Tools.execution.audit.complete_audit_receipt as complete_audit_receipt  # noqa: E402
 import Tools.execution.audit.record_batch_page_review as record_batch_page_review  # noqa: E402
 import Tools.execution.audit.record_substantive_review as record_substantive_review  # noqa: E402
 import Tools.execution.task_runtime.runtime_paths as runtime_paths  # noqa: E402
@@ -93,29 +92,6 @@ class AuditPlanLoaderUnificationTests(unittest.TestCase):
             self.result, self.item, "pre-merge", required_state="open",
             plan_path=PLAN_PATH)
 
-    def test_completion_loader_delegates_directly_to_stage_resolver(self):
-        frozen = (object(),)
-        with mock.patch.object(
-                audit_producer_runtime, "managed_plan_path",
-                return_value="/repo/" + PLAN_PATH), mock.patch.object(
-                    complete_audit_receipt.audit_evidence_runtime,
-                    "resolve_stage_plan", return_value=self.resolved) as resolver, \
-                mock.patch.object(
-                    complete_audit_receipt.kblib, "sha256_file",
-                    return_value=PLAN_SHA256), mock.patch.object(
-                        audit_producer_runtime, "freeze_manifest_pages",
-                        return_value=frozen):
-            absolute, plan, digest, actual_frozen = \
-                complete_audit_receipt._load_current_plan(
-                    "/repo", PLAN_PATH, self.result, self.item)
-
-        self.assertEqual("/repo/" + PLAN_PATH, absolute)
-        self.assertIs(self.plan, plan)
-        self.assertEqual(PLAN_SHA256, digest)
-        self.assertIs(frozen, actual_frozen)
-        resolver.assert_called_once_with(
-            self.result, self.item, "pre-merge", required_state="open",
-            plan_path=PLAN_PATH)
 
     def test_batch_page_loader_does_not_reinterpret_live_queue_revision(self):
         snapshot = SimpleNamespace(exists=True, sha256=PLAN_SHA256)
@@ -148,10 +124,6 @@ class AuditPlanLoaderUnificationTests(unittest.TestCase):
     def test_producers_do_not_depend_on_plan_producer_currentness(self):
         self.assertNotIn(
             "prepare_audit_plan", record_substantive_review.__dict__)
-        self.assertNotIn(
-            "prepare_audit_plan", complete_audit_receipt.__dict__)
-        self.assertNotIn(
-            "record_substantive_review", complete_audit_receipt.__dict__)
         self.assertFalse(hasattr(
             record_batch_page_review, "_require_plan_runtime_binding"))
 

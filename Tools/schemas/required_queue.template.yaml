@@ -49,7 +49,7 @@ selected_profile_manifest: ""
 # no other Queue/Coverage write may intervene before this item closes. Closure
 # separately consumes a current Queue consistency receipt and a canonical
 # batch_close_gate receipt. The latter binds the recomputed current repository
-# snapshot SHA, the global review receipt, and seven distinct Closed List
+# snapshot SHA, the actual reviewer attestation, and seven distinct Closed List
 # evidence receipts; matching strings alone and batch-local review cannot
 # substitute for this post-merge global gate.
 required_queue: []

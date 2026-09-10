@@ -164,13 +164,6 @@ class AuditScenarioActions:
             self.assertEqual(0, produced.returncode, produced.stdout)
             evidence = json.loads(produced.stdout)
 
-            if obligation["evidence_kind"] == "audit-receipt":
-                completed = self.run_tool(
-                    "complete_audit_receipt.py", *common,
-                    "--evidence-receipt", evidence["receipt_id"],
-                    "--apply",
-                )
-                self.assertEqual(0, completed.returncode, completed.stdout)
 
         self.assertEqual(1, len(sampled_page_receipts), plan)
         return plan_path, sampled_page_receipts[0]

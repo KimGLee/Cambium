@@ -12,9 +12,9 @@ source_files:
   - kernel/K12 Quality Assurance/12 Substantive Correctness Review.md
   - kernel/K12 Quality Assurance/18 Cross-page and Control-plane Dimension Map.md
   - kernel/K12 Quality Assurance/19 Incremental Audit Planning.md
-source_hash: '25b021dccaae'
-reviewed_source_hash: '25b021dccaae'
-reviewed_card_hash: '66b82089e307'
+source_hash: 'd43dfc404800'
+reviewed_source_hash: 'd43dfc404800'
+reviewed_card_hash: 'f6abc5510d05'
 ---
 # R12 Targeted and Specialized Audit Card
 
@@ -26,7 +26,7 @@ Audit one declared affected scope or specialized invariant without expanding it 
 
 - Confirm the audit object, predicate, dimensions, affected boundary, and evidence eligible for reuse.
 - After R12 and the audit scope are already selected, resolve only the conditional owners implicated by that boundary.
-- Re-run only the due AuditPlan obligations or registered specialized-audit checks for invalidated dimensions and necessary global invariants. Preserve every planned evidence kind; complete only `audit-receipt` obligations into full AuditReceipts.
+- Re-run only the due AuditPlan obligations or registered specialized-audit checks for invalidated dimensions and necessary global invariants. Preserve every planned evidence kind and its exact first-publication acceptance binding.
 - Preserve the audit verdict and current evidence under their canonical owners.
 - For a discovered erroneous judgment, return to K12/07 and use `evidence-invalidation-v1` with the required decision; then resolve the original obligation's permitted continuation.
 

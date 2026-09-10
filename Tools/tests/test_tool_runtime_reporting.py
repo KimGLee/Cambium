@@ -402,7 +402,6 @@ class CheckerReportingBoundaryTests(unittest.TestCase):
             "record_changed_scope_evidence",
             "record_substantive_review",
             "record_batch_page_review",
-            "complete_audit_receipt",
             "prepare_audit_plan",
         )
         for name in producers:

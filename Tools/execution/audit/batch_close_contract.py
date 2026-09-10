@@ -22,7 +22,6 @@ GATE_RECEIPT_TYPE_ID = "batch-close-gate-v1"
 MEMBER_RECEIPT_TYPE_ID = "batch-close-member-evidence-v1"
 REVIEW_ATTESTATION_RECEIPT_TYPE_ID = "batch-close-review-attestation-v1"
 PAGE_REVIEW_RECEIPT_TYPE_ID = "batch-close-page-review-v1"
-GLOBAL_REVIEW_RECEIPT_TYPE_ID = "batch-close-global-review-v1"
 _DOCUMENT_FIELDS = {
     "schema_version", "registry_id", "semantic_owner", "members",
 }
@@ -117,11 +116,11 @@ def validate_batch_close_closed_list(document):
                                  label)
         else:
             raise ValueError("%s has unknown dimension_binding" % label)
-        if kind == "audit-receipt":
+        if kind == "batch-close-member-evidence":
             if role != "emits" or producer_field != "producer_capability" or \
                     binding == "dimensionless-gate":
                 raise ValueError(
-                    "%s AuditReceipt member has an invalid producer or role" %
+                    "%s direct member evidence has an invalid producer or role" %
                     label)
         elif kind == "gate-receipt":
             if (role != "consumes" or
@@ -211,14 +210,8 @@ _PAGE_REVIEW_FIELDS = (
         "metadata_execution_contract_fingerprint",
         "merged_snapshot_sha256",
     }))
-_GLOBAL_REVIEW_FIELDS = (
-    _COMMON_RECEIPT_FIELDS | _PLAN_BINDING_FIELDS | frozenset({
-        "batch_id", "integrator_id", "reviewer_id",
-        "merged_snapshot_sha256", "reviewer_attestation_receipt",
-        "closed_list_evidence", "closed_list_producer_evidence",
-    }))
 _GATE_PASS_FIELDS = (
-    _COMMON_RECEIPT_FIELDS | _PLAN_BINDING_FIELDS | _PROFILE_BINDING_FIELDS |
+    _COMMON_RECEIPT_FIELDS | _PROFILE_BINDING_FIELDS |
     frozenset({
         "batch_id", "integrator_id", "reviewer_id", "queue_revision",
         "queue_state_revision", "required_queue_sha256",
@@ -230,8 +223,8 @@ _GATE_PASS_FIELDS = (
         "corpus_plan_triggers", "corpus_plan_receipt",
         "delta_apply_receipt", "queue_consistency_receipt",
         "merged_snapshot_sha256", "reviewer_attestation_receipt",
-        "global_review_receipt", "closed_list_evidence",
-        "closed_list_producer_evidence", "page_review_receipts",
+        "closed_list_evidence",
+        "page_review_receipts",
         "page_review_receipt_count", "page_review_receipt_set_sha256",
         "metadata_execution_contract_fingerprint", "settlement_protocol",
         "current_unsettled_count", "current_unsettled_set_sha256",
@@ -311,15 +304,37 @@ def current_receipt_errors(record, *, root=None):
             errors.append("batch-close page-review fields are not closed")
         if record.get("result") != "pass":
             errors.append("result")
-    elif type_id == GLOBAL_REVIEW_RECEIPT_TYPE_ID:
-        errors = _base_errors(record, type_id, "batch_global_review")
-        if set(record) != _GLOBAL_REVIEW_FIELDS:
-            errors.append("batch-close global-review fields are not closed")
-        if record.get("result") != "pass":
-            errors.append("result")
     else:
         return ["batch-close receipt_type_id is invalid"]
     return sorted(set(errors))
+
+
+def review_context_errors(aggregate, attestation):
+    """Bind the existing real review to its close; never reconstruct a copy.
+
+    Catalog owners validate each body. This pure relation check is shared by
+    close admission and later plan/Terminal consumers, including explicit
+    historical reporting. It does not select or reauthorize any receipt.
+    """
+    if not isinstance(attestation, dict):
+        return ["batch-close reviewer attestation is missing"]
+    expected = {
+        "receipt_id": aggregate.get("reviewer_attestation_receipt"),
+        "receipt_type_id": REVIEW_ATTESTATION_RECEIPT_TYPE_ID,
+        "check": "batch_global_review_attestation",
+        "result": "pass",
+        "invalidated_by": None,
+        **{field: aggregate.get(field) for field in (
+            "tool", "tool_version", "target", "batch_id", "task_id",
+            "integrator_id", "reviewer_id", "merged_snapshot_sha256",
+            "upstream_revision_id", "selected_profile_manifest")},
+    }
+    errors = ["batch-close reviewer attestation differs in %s" % field
+              for field, value in expected.items()
+              if attestation.get(field) != value]
+    if not isinstance(expected["receipt_id"], str) or not expected["receipt_id"]:
+        errors.append("batch-close must identify its reviewer attestation")
+    return errors
 
 
 __all__ = [
@@ -328,12 +343,12 @@ __all__ = [
     'GATE_CHECK',
     'GATE_ID',
     'GATE_RECEIPT_TYPE_ID',
-    'GLOBAL_REVIEW_RECEIPT_TYPE_ID',
     'MEMBER_RECEIPT_TYPE_ID',
     'PAGE_REVIEW_RECEIPT_TYPE_ID',
     'REVIEW_ATTESTATION_RECEIPT_TYPE_ID',
     'closed_list_member_rows',
     'current_receipt_errors',
+    'review_context_errors',
     'load_batch_close_closed_list',
     'validate_batch_close_closed_list',
 ]

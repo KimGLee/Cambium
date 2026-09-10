@@ -23,7 +23,7 @@ obligation_projection:
   producer_capability: substantive-review-attestation-v1
   producer_gate_id: null
   consumer_gate_id: batch-review
-  evidence_kind: audit-receipt
+  evidence_kind: substantive-review-evidence
   evidence_role: emits
   dimension: content_and_depth
   acceptance_predicate: content-correctness

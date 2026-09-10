@@ -489,7 +489,6 @@ class PublicSurface(unittest.TestCase):
             "execution.audit.audit_evidence_runtime",
             "execution.audit.check_batch_close",
             "execution.audit.record_batch_review",
-            "execution.task_runtime.queue_runtime.close_gate",
         }, actual)
 
     def test_reconciliation_projection_fields_have_one_literal_owner(self):

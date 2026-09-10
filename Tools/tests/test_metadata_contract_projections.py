@@ -41,13 +41,13 @@ class MetadataContractProjectionTests(unittest.TestCase):
         with mock.patch.object(owner, "_validate_capabilities",
                                wraps=owner._validate_capabilities) as validate:
             lookup = owner.CapabilityLookup(REPOSITORY)
-            identity = "audit-receipt-producer-v1"
+            identity = "substantive-review-attestation-v1"
             for _ in range(4):
                 entry = lookup.entry(identity)
-                self.assertEqual("complete_audit_receipt", lookup.invocation_tool(identity))
+                self.assertEqual("record_substantive_review", lookup.invocation_tool(identity))
                 entry["invocation_owner"] = "Tools/forged.py"
             self.assertEqual(1, validate.call_count)
-            self.assertEqual("Tools/complete_audit_receipt.py", lookup.entry(identity)["invocation_owner"])
+            self.assertEqual("Tools/record_substantive_review.py", lookup.entry(identity)["invocation_owner"])
             self.assertIsNone(lookup.entry("missing"))
             with self.assertRaisesRegex(ValueError, "unknown Tool capability"):
                 lookup.invocation_tool("missing")

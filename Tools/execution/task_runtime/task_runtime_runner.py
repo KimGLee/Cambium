@@ -1305,11 +1305,8 @@ def _await_terminal_audit(root, action, supplied, route):
                 "terminal_audit_input": input_path,
                 "queue_check_receipt": queue_receipt["receipt_id"],
                 "corpus_plan_check_receipt": corpus_receipt["receipt_id"],
-                "audit_receipt_register":
-                    runtime_paths.AUDIT_RECEIPT_REGISTER_PATH,
                 "terminal_audit_receipt_register": TERMINAL_RECEIPT_PATH,
-                "full_deterministic_results":
-                    runtime_paths.AUDIT_RECEIPT_REGISTER_PATH,
+                "full_deterministic_results": TERMINAL_RECEIPT_PATH,
                 "proof": TERMINAL_PROOF_PATH,
                 "apply": True,
                 "json": True,

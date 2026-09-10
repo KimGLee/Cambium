@@ -14,11 +14,13 @@ from datetime import datetime, timezone
 import os
 import re
 
+import Tools.execution.audit.audit_lifecycle_contract as audit_lifecycle_contract
 import Tools.execution.audit.audit_fingerprint as audit_fingerprint
 import Tools.execution.audit.audit_dimension_contract as audit_dimension_contract
 import Tools.execution.audit.audit_plan_contract as audit_plan_contract
-import Tools.execution.audit.audit_receipt_contract as audit_receipt_contract
 import Tools.execution.evidence.evidence_attempt_runtime as evidence_attempt_runtime
+import Tools.knowledge.rendering.rendering_verification_contract as rendering_contract
+import Tools.knowledge.rendering.profile_rendering_evidence_contract as profile_rendering
 import Tools.platform.common.kblib as kblib
 from Tools.platform.common.primitives import (
     catalog_record, document_projection, require_trimmed_string,
@@ -843,11 +845,15 @@ def _matches_consumed_obligation(record, plan, plan_sha256, obligation,
                                  selector):
     """Match evidence through its native record contract and plan binding."""
     evidence_kind = obligation["evidence_kind"]
-    if evidence_kind == "audit-receipt":
+    if evidence_kind == "rendering-verification-evidence":
+        # This native batch-level fact carries a scope and plan binding, not
+        # a copied AuditReceipt definition. Its own owner validates both.
         try:
-            audit_receipt_contract.validate_audit_receipt(record)
+            rendering_contract.validate_record_for_obligation(
+                record, plan, plan_sha256, obligation)
         except (TypeError, ValueError):
             return False
+        return record.get("result") in selector["evidence_result_values"]
 
     expected = {
         "record_kind": evidence_kind,
@@ -868,19 +874,12 @@ def _matches_consumed_obligation(record, plan, plan_sha256, obligation,
         "fingerprint_binding": obligation["fingerprint_binding"],
         "invalidated_by": None,
     }
-    if evidence_kind == "audit-receipt":
-        expected["dimension"] = obligation["dimension"]
-        scope = record.get("scope")
-        target_matches = isinstance(scope, list) and \
-            obligation["target"] in scope
-    else:
-        # Native changed-scope Gate evidence carries the plan partition and a
-        # direct target.  Full AuditReceipt deliberately carries neither: its
-        # governed target is represented by the closed `scope` field above.
-        expected["partition"] = obligation["partition"]
-        expected["target"] = obligation["target"]
-        expected["dimension"] = None
-        target_matches = True
+    expected["partition"] = obligation["partition"]
+    expected["target"] = obligation["target"]
+    expected["dimension"] = (obligation["dimension"] if evidence_kind in {
+        audit_lifecycle_contract.CHANGED_SCOPE_RECORD_KIND,
+        profile_rendering.RECORD_KIND} else None)
+    target_matches = True
     return (target_matches and
             all(record.get(field) == value
                 for field, value in expected.items()) and
@@ -1439,6 +1438,27 @@ def dependency_fingerprint(sources_sha256, consumed_records=(),
     }))
 
 
+def validate_record_plan_binding(record, plan, plan_sha256, obligation, registry=None):
+    """Join an atomic result to its sole immutable obligation definition.
+
+    Record shape and fingerprints remain owned by this module. No expanded
+    Receipt is synthesized or persisted, and each item keeps its exact refs
+    and independent currentness/correction boundary.
+    """
+    registry = _registry(registry)
+    rule_id = (record.get("rule_id") if record.get("review_variant") == "m-atomic-item"
+               else record.get("sample_rule_id"))
+    spec = obligation_spec_for_rule(rule_id, registry)
+    errors = plan_projection_errors(obligation, spec)
+    if obligation.get("owner_rule_id") != rule_id:
+        errors.append("owner_rule_id")
+    errors.extend(audit_lifecycle_contract.attempt_binding_mismatches(
+        record, plan, plan_sha256, obligation))
+    if errors:
+        raise ValueError("batch-page plan binding drifts in: %s" % ", ".join(sorted(set(errors))))
+    return record
+
+
 def validate_input_binding(record, relative_path, text,
                            semantic_content_fingerprint, *, consumed_records=()):
     """Validate the complete M/S page, Sources and dependency binding.
@@ -1543,20 +1563,7 @@ def validate_producer_receipt(record, registry=None):
             "rule_id": item["rule_id"],
             "source_group": item["source_group"],
             "check": spec["producer_check"],
-            "partition": record.get("partition"),
-            "due_stage": spec["due_stage"],
-            "evidence_role": spec["evidence_role"],
-            "evidence_kind": spec["evidence_kind"],
-            "dimension": spec["dimension"],
-            "acceptance_predicate": spec["acceptance_predicate"],
-            "producer_capability": spec["producer_capability"],
-            "consumer_gate_id": spec["consumer_gate_id"],
-            "fingerprint_binding": spec["fingerprint_binding"],
         }
-        allowed_partitions = {
-            row["partition"] for row in spec["trigger_partition_mappings"]}
-        if record.get("partition") not in allowed_partitions:
-            raise ValueError("M batch-page record partition is not registered")
         mismatches = [field for field, expected_value in expected.items()
                       if record.get(field) != expected_value]
         if mismatches:
@@ -1674,5 +1681,6 @@ __all__ = [
     'current_receipt_errors',
     'validate_input_binding',
     'validate_producer_receipt',
+    'validate_record_plan_binding',
     'validate_receipt_consumption',
 ]

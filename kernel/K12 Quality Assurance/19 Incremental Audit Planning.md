@@ -9,7 +9,7 @@ Each batch publishes one immutable `AuditPlan` when it enters `open`. [`audit-pl
 
 Completeness is derived from the current Kernel registries plus registrations admitted through an existing Kernel extension point. A Profile extension MUST stay under that extension point and MUST NOT be inserted into a Kernel base closed set. A Tool may project these definitions, but it cannot invent an obligation, broaden applicability, change the acceptance predicate, or grant a new producer or consumer authority.
 
-The complete plan may consume different registered evidence kinds. Only an `audit-receipt` obligation requires a non-null registered dimension and produces the dimension-specific receipt owned by K12/07-K12/08. A dimensionless Gate obligation, including the `page-contract` evidence consumed by `manifest_page_contract`, retains its Gate evidence kind and MUST NOT receive an invented dimension. The plan partitions are:
+The complete plan consumes registered evidence kinds according to each obligation's acceptance contract. Native evidence binds its registered dimension where required by K12/07-K12/08; it does not need a second receipt wrapper. A dimensionless Gate obligation, including the `page-contract` evidence consumed by `manifest_page_contract`, retains its Gate evidence kind and MUST NOT receive an invented dimension. The plan partitions are:
 
 - mandatory full deterministic checks;
 - changed-scope deterministic checks;
@@ -26,7 +26,7 @@ The complete plan may consume different registered evidence kinds. Only an `audi
 
 Every obligation belongs to exactly one partition. The AuditPlan itself carries no actual per-obligation artifact, dependency, or contract fingerprint. When an obligation reaches `pre-merge` or `post-delta-close` and its actual target exists, the stage resolver freezes those three actual fingerprints in the evidence-time record, or binds the exact reusable receipt that already carries them. That resolution is immutable and binds the original plan ID and plan fingerprint; it MUST NOT rewrite the AuditPlan or append an obligation after `open`.
 
-The `post-delta-close` obligations derived from the K12/09 Batch-close Closed List all resolve against one identical post-Delta after-image. Mixed snapshots cannot form a closure. The `closed` transition consumes the complete AuditPlan closure across all registered evidence kinds, explicit reconciliation of reused, superseded, and invalidated evidence, and zero unresolved required invalidations; it cannot validate only the subset represented as AuditReceipts. This semantic owner does not prescribe action order; registered capabilities own deterministic diffing, partition construction, stage resolution, and validation.
+The `post-delta-close` obligations derived from the K12/09 Batch-close Closed List all resolve against one identical post-Delta after-image. Mixed snapshots cannot form a closure. The `closed` transition consumes the complete AuditPlan closure across all registered evidence kinds, explicit reconciliation of reused, superseded, and invalidated evidence, and zero unresolved required invalidations; it cannot validate only one evidence kind. This semantic owner does not prescribe action order; registered capabilities own deterministic diffing, partition construction, stage resolution, and validation.
 
 The mandatory full deterministic partition is the [[kernel/K12 Quality Assurance/09 Batch-close Closed List#Batch-close Closed List|Batch-close Closed List]]; this module decides the plan, not the list's membership.
 

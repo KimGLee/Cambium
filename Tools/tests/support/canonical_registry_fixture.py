@@ -44,7 +44,7 @@ KERNEL_MACHINE_REGISTRY_PATHS = (
     "kernel/K08 Metadata and Status/vocabulary-extensions-contract.yaml",
     "kernel/K12 Quality Assurance/audit-dimension-base.yaml",
     "kernel/K12 Quality Assurance/audit-plan-contract.yaml",
-    "kernel/K12 Quality Assurance/audit-receipt-contract.yaml",
+    "kernel/K12 Quality Assurance/audit-fingerprint-contract.yaml",
     "kernel/K12 Quality Assurance/batch-close-closed-list.yaml",
     "kernel/K12 Quality Assurance/batch-review-obligation-registry.yaml",
     "kernel/K12 Quality Assurance/changed-scope-check-registry.yaml",

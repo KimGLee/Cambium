@@ -20,6 +20,7 @@ ROOT = TOOLS.parent
 sys.path.insert(0, str(ROOT))
 
 import Tools.execution.audit.audit_obligation_projection as audit_obligation_projection
+import Tools.execution.audit.audit_lifecycle_contract as audit_lifecycle_contract
 import Tools.execution.audit.changed_scope_evidence_contract as changed_scope_evidence_contract
 import Tools.execution.audit.changed_scope_runtime_checks as checks
 import Tools.execution.task_runtime.runtime_state_contract as runtime_state_contract
@@ -42,7 +43,7 @@ class KernelRegistryBindingContractTests(unittest.TestCase):
         for row in rows:
             if row["rule_id"] not in expected:
                 continue
-            self.assertEqual("audit-receipt", row["evidence_kind"])
+            self.assertEqual(audit_lifecycle_contract.CHANGED_SCOPE_RECORD_KIND, row["evidence_kind"])
             self.assertEqual(
                 changed_scope_evidence_contract.ADAPTER_CAPABILITY_ID,
                 row["producer_capability"])

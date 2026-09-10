@@ -74,7 +74,7 @@ class RequiredQueueLifecycleEndToEndTests(RequiredQueueE2EScenarioCase):
         deliveries, obligations, reviews = {}, {}, {}
         withdrawn = False
         revised = False
-        before_revision_register = None
+        before_revision_registers = {}
         before_revision_ids = set()
         seen = set()
         original_review = None
@@ -95,11 +95,17 @@ class RequiredQueueLifecycleEndToEndTests(RequiredQueueE2EScenarioCase):
                     # A natural content revision is not a correction event.
                     # Exercise it once on the small S batch, not by replaying
                     # every M checklist item or adding another lifecycle.
-                    register = self.root / runtime_paths.AUDIT_RECEIPT_REGISTER_PATH
-                    before_revision_register = register.read_bytes()
-                    before_revision_ids = {row["receipt_id"] for row in (
-                        json.loads(line) for line in before_revision_register.splitlines())
-                        if row.get("plan_id") == plan["plan_id"] and row.get("due_stage") == "pre-merge"}
+                    before_revision_registers = {
+                        path: path.read_bytes() for path in
+                        (self.root / runtime_paths.RECEIPT_ROOT).rglob("*.jsonl")}
+                    due = {row["obligation_id"] for row in plan["obligations"]
+                           if row["due_stage"] == "pre-merge"}
+                    before_revision_ids = {row["receipt_id"]
+                        for content in before_revision_registers.values()
+                        for line in content.splitlines() if line.strip()
+                        for row in [json.loads(line)]
+                        if row.get("plan_id") == plan["plan_id"] and
+                        row.get("obligation_id") in due}
                     self.assertTrue(before_revision_ids)
                     page = self.root / object_path
                     page.write_text(page.read_text(encoding="utf-8") +
@@ -192,11 +198,13 @@ class RequiredQueueLifecycleEndToEndTests(RequiredQueueE2EScenarioCase):
                                             reviews[original_review["obligation_id"]]["receipt_id"])
                         self.assertNotIn(original_review["receipt_id"], queue_runtime.current_receipt_catalog(runtime))
                     if revised:
-                        self.assertTrue((self.root / runtime_paths.AUDIT_RECEIPT_REGISTER_PATH).
-                                        read_bytes().startswith(before_revision_register))
+                        for path, before in before_revision_registers.items():
+                            self.assertTrue(path.read_bytes().startswith(before), path)
                         close_id = runtime["items_by_id"][batch_id]["close_gate_receipt"]
                         close = queue_runtime.current_receipt_catalog(runtime).resolve(close_id)[1]
-                        rows = close["audit_evidence_reconciliation"]
+                        context = queue_runtime.current_receipt_catalog(runtime).resolve(
+                            close["reviewer_attestation_receipt"])[1]
+                        rows = context["audit_evidence_reconciliation"]
                         selected = {row["selected_evidence_ref"] for row in rows}
                         natural_history = {identity for row in rows
                                            for identity in row["invalidated_evidence_refs"]}
@@ -222,12 +230,10 @@ class RequiredQueueLifecycleEndToEndTests(RequiredQueueE2EScenarioCase):
     def test_real_terminal_proof_receipt_completes_task(self):
         self.merge_and_close("B1", "Topics/A.md")
         self.merge_and_close("B2", "Topics/B.md")
-        # Terminal Gate receipts and full dimension AuditReceipts have
-        # distinct machine owners.  The former are written to the terminal
-        # register; the latter remain in the AuditReceipt register produced
-        # by the real AuditPlan closure.
+        # Terminal Gates retain their phase-specific register. Dimension
+        # evidence stays in its native producer register and frozen close
+        # selection; no duplicate receipt register is constructed.
         terminal_register = runtime_paths.TERMINAL_AUDIT_RECEIPT_PATH
-        audit_register = runtime_paths.AUDIT_RECEIPT_REGISTER_PATH
         completed_queue = self.run_tool(
             "check_queue.py", "--require-complete", "--receipts",
             terminal_register)
@@ -301,9 +307,8 @@ class RequiredQueueLifecycleEndToEndTests(RequiredQueueE2EScenarioCase):
             "assemble_terminal_proof.py", "--terminal-audit-input", input_relative,
             "--queue-check-receipt", proof_queue_receipt,
             "--corpus-plan-check-receipt", corpus_plan_receipt,
-            "--audit-receipt-register", audit_register,
             "--terminal-audit-receipt-register", terminal_register,
-            "--full-deterministic-results", audit_register,
+            "--full-deterministic-results", terminal_register,
             "--proof", proof_relative, "--apply", "--json")
         self.assertEqual(0, assembled.returncode,
                          (assembled.stdout, assembled.stderr))

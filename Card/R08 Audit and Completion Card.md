@@ -11,9 +11,9 @@ source_files:
   - kernel/K12 Quality Assurance/15 Terminal Audit and Convergence.md
   - kernel/K12 Quality Assurance/16 Terminal Proof Contract.md
   - kernel/K13 Task Runtime and Execution Control/11 Completion Policy.md
-source_hash: '2c2097205b20'
-reviewed_source_hash: '2c2097205b20'
-reviewed_card_hash: '9fd4b42419e2'
+source_hash: 'fd50177492a5'
+reviewed_source_hash: 'fd50177492a5'
+reviewed_card_hash: '3cf4afccd3ac'
 ---
 # R08 Audit and Completion Card
 
@@ -24,7 +24,7 @@ Evaluate an already requested build completion candidate and produce the applica
 ## Actions
 
 - Resolve the R08 completion Read Set only after a build task enters its completion boundary; maintenance completion does not use R08.
-- Reconcile current scope, Coverage, Queue, invalidations, reused evidence, each registered native evidence kind, full AuditReceipts where required, and applicable Profile dimensions.
+- Reconcile current scope, Coverage, Queue, invalidations, reused evidence, each registered native evidence kind, and applicable Profile dimensions.
 - Require the current K12/15–K12/16 Terminal Proof prerequisite set, including its registered Queue, Corpus Planning, Profile-load, and completion evidence, then require `terminal-proof`; return to those owners rather than maintaining a shorter local substitute.
 - From the verified resulting state, prepare a bounded handoff that states the completed scope and current evidence/result, and separates unresolved, optional, deferred, and external-evidence backlog with re-entry conditions.
 

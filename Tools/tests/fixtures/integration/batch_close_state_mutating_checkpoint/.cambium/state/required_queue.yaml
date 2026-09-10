@@ -20,16 +20,16 @@ required_queue:
     work_spec_sha256: null
     state: merge-ready
     hold_state: none
-    opened_at: 2026-09-10T14:15:39Z
-    activation_receipt: audit-check_queue-20260910T141539Z-f8a9c526b1bf46a2913c3676ffb3b20b-0001
+    opened_at: 2026-09-10T17:17:19Z
+    activation_receipt: audit-check_queue-20260910T171718Z-1052822d9e704e4286c836739c7d0cee-0001
     transition_receipts:
-      - audit-update_queue-20260910T141540Z-234686b6c1e84e08be46087c5fe71335-0001
-      - audit-update_queue-20260910T141551Z-15ae4da67b204ab885227918ea59c88b-0001
-    merge_ready_at: 2026-09-10T14:15:49Z
+      - audit-update_queue-20260910T171719Z-bc0be0a2db7a441fa3a34bd29a595400-0001
+      - audit-update_queue-20260910T171725Z-f4753cb6c3b1414a9f7535f148e6163c-0001
+    merge_ready_at: 2026-09-10T17:17:25Z
     delta_path: .cambium/deltas/B1.yaml
-    delta_sha256: sha256:53ca7a704d8c62ca0af537c9f68667ae7547ffd9e2d01405abeba00cd2b1a360
+    delta_sha256: sha256:56d92490502cd901b198b9ca417dad45682ff27f0368382ba13d9938487fb171
     batch_receipts:
-      - audit-manual-attestation-20260910T141549Z-9acf7181a55a41a595221aead3e6f447-0001
+      - audit-manual-attestation-20260910T171724Z-0ae3b3e6a9b04597b68bfd617c14dd08-0001
   - id: B2
     family: Core
     order: 2

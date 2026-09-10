@@ -1,9 +1,8 @@
 """Runtime bindings shared by AuditPlan evidence producers.
 
-This module does not define an AuditPlan, a substantive-review receipt, or an
-AuditReceipt.  Their closed shapes come from the Kernel-owned contract
+This module does not define an AuditPlan, a substantive-review receipt, or another accepted evidence object. Their closed shapes come from the Kernel-owned contract
 loaders.  It only freezes the already-admitted adopter runtime and provides
-the common compare-and-swap checks needed by the three writers.
+the common compare-and-swap checks needed by the registered writers.
 """
 
 from dataclasses import dataclass

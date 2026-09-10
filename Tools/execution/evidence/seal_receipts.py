@@ -144,10 +144,9 @@ _RUNTIME_OBJECT_ID_BY_PATH = {
 # happen to carry a batch-looking string are deliberately absent.
 TERMINAL_BATCH_SOURCE_KINDS = frozenset((
     receipt_reference_contract.SOURCE_CLOSE,
-    receipt_reference_contract.SOURCE_CLOSE_GLOBAL_REVIEW,
     receipt_reference_contract.SOURCE_CLOSE_ATTESTATION,
     receipt_reference_contract.SOURCE_PAGE_REVIEW,
-    receipt_reference_contract.SOURCE_AUDIT_RECEIPT,
+    receipt_reference_contract.SOURCE_PLAN_BOUND_CHECK,
     receipt_reference_contract.SOURCE_DELTA_APPLY,
 ))
 
@@ -264,13 +263,10 @@ def _closed_bundle_graph(result, closed):
 def _hot_close_replay_receipts(catalog, close):
     """Return every receipt body a current-format close replay must resolve.
 
-    The close aggregate does not only reference its visible Closed List
-    receipts.  For each K12/09 ``audit-receipt`` member it also binds the raw
-    producer record twice: directly through
-    ``closed_list_producer_evidence`` and from the full AuditReceipt's
-    ``evidence_ref``.  The close consumer replays the full pair and compares
-    their contract-bound identity fields; a cold projection cannot answer that
-    contract.
+    The close consumes its real reviewer attestation and direct K12/09 check
+    facts. The attestation names the complete plan selection, including any
+    pre-merge review chain still needed by its actual evidence kind. The graph
+    resolves those bodies without introducing a second post-Delta wrapper.
 
     This is deliberately the exact body-reference closure of the hot close
     consumer, not a string sweep and not a sealed-body bypass.  Sealing remains
@@ -307,7 +303,7 @@ def _hot_closed_bundle_receipts(result, closed, hot_references):
 
     Keeping only the trio is still insufficient: while its close gate is hot,
     ``check_queue`` revalidates the complete current-contract bundle through
-    receipt bodies (global review, reviewer attestation, page-review children,
+    receipt bodies (reviewer attestation, page-review children,
     Closed List members, and the optional Corpus Planning child).  Those rows
     may use the cold projection only after the trio itself takes the sealed
     branch.  Retain that exact body dependency closure with the trio; a later

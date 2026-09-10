@@ -208,11 +208,6 @@ def _validate_changed_rule(row, label, plan_values, dimensions):
                 "%s Profile-bound dimension must remain unresolved" % label)
     else:
         raise ValueError("%s dimension_binding is not registered" % label)
-    if (row["evidence_kind"] == "audit-receipt" and
-            (row["evidence_role"] != "emits" or
-             (dimension is None and binding != "profile-registration"))):
-        raise ValueError(
-            "%s AuditReceipt route must emit a dimension" % label)
     normalized = dict(row)
     normalized["producer_capability"] = capability
     normalized["producer_gate_id"] = gate_id
@@ -392,11 +387,6 @@ def _spec(_registered_dimensions=None, _plan_contract_values=None, **values):
         raise ValueError("obligation spec dimension binding is unknown")
     elif values["dimension"] is not None and values["dimension"] not in dimensions:
         raise ValueError("obligation spec dimension is not registered")
-    if (values["evidence_kind"] == "audit-receipt" and
-            (values["evidence_role"] != "emits" or
-             (values["dimension"] is None and
-              values["dimension_binding"] != "profile-registration"))):
-        raise ValueError("AuditReceipt spec must emit one dimension")
     if values["nonblocking"] is not None and not isinstance(
             values["nonblocking"], bool):
         raise ValueError("obligation spec nonblocking must be boolean or null")
@@ -938,10 +928,6 @@ def resolve_obligation_definition(spec, target, trigger=None, dimension=None,
         raise ValueError("caller cannot change a fixed obligation dimension")
     if resolved_dimension is not None and resolved_dimension not in dimensions:
         raise ValueError("resolved obligation dimension is not registered")
-    if (spec["evidence_kind"] == "audit-receipt" and
-            (spec["evidence_role"] != "emits" or
-             resolved_dimension is None)):
-        raise ValueError("resolved AuditReceipt obligation needs one dimension")
     definition = {
         "owner_kind": spec["owner_kind"],
         "owner_rule_id": spec["owner_rule_id"],

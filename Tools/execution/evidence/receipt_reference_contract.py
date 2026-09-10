@@ -48,10 +48,9 @@ SOURCE_PROFILE_ADOPTION = "profile-adoption-receipt"
 SOURCE_STANDARDS_ADOPTION = "standards-adoption-receipt"
 SOURCE_COVERAGE = "coverage-ledger"
 SOURCE_CLOSE = "close-aggregate"
-SOURCE_CLOSE_GLOBAL_REVIEW = "close-global-review"
 SOURCE_CLOSE_ATTESTATION = "close-reviewer-attestation"
 SOURCE_PAGE_REVIEW = "close-page-review"
-SOURCE_AUDIT_RECEIPT = "audit-receipt"
+SOURCE_PLAN_BOUND_CHECK = "plan-bound-check"
 SOURCE_BATCH_PAGE_REVIEW = "batch-page-review-record"
 SOURCE_SUBSTANTIVE_REVIEW = "substantive-review-evidence"
 SOURCE_EVIDENCE_INVALIDATION = "evidence-invalidation-event"
@@ -367,10 +366,6 @@ RECEIPT_REFERENCE_SPECS = (
 
     # Current close aggregate. Retired close formats are external archives and
     # never enter this graph.
-    _spec("close.plan-selection", SOURCE_CLOSE,
-          ("audit_evidence_reconciliation[]", "selected_evidence_ref"),
-          CARDINALITY_MANY, MATERIALIZATION_BODY_REQUIRED,
-          CLOSE_BUNDLE_CLOSURE, acceptance_dependency=True),
     _spec("close.queue-consistency", SOURCE_CLOSE,
           ("queue_consistency_receipt",), CARDINALITY_ONE,
           MATERIALIZATION_COLD_PROJECTION, CLOSE_BUNDLE_CLOSURE,
@@ -380,10 +375,6 @@ RECEIPT_REFERENCE_SPECS = (
           CARDINALITY_ONE, MATERIALIZATION_COLD_PROJECTION,
           CLOSE_BUNDLE_CLOSURE,
           projection_fields=IDENTITY_PROJECTION_FIELDS),
-    _spec("close.global-review", SOURCE_CLOSE, ("global_review_receipt",),
-          CARDINALITY_ONE, MATERIALIZATION_BODY_REQUIRED,
-          CLOSE_BUNDLE_CLOSURE,
-          acceptance_dependency=True),
     _spec("close.reviewer-attestation", SOURCE_CLOSE,
           ("reviewer_attestation_receipt",), CARDINALITY_ONE,
           MATERIALIZATION_BODY_REQUIRED, CLOSE_BUNDLE_CLOSURE,
@@ -400,33 +391,10 @@ RECEIPT_REFERENCE_SPECS = (
           CARDINALITY_MANY, MATERIALIZATION_BODY_REQUIRED,
           CLOSE_BUNDLE_CLOSURE,
           acceptance_dependency=True),
-    _spec("close.closed-list-producer", SOURCE_CLOSE,
-          ("closed_list_producer_evidence{}",), CARDINALITY_MANY,
-          MATERIALIZATION_BODY_REQUIRED, CLOSE_BUNDLE_CLOSURE,
-          acceptance_dependency=True),
-    _spec("close.post-delta-evidence", SOURCE_CLOSE,
-          ("post_delta_evidence_bindings[]", "evidence_ref"),
+    _spec("close-attestation.plan-selection", SOURCE_CLOSE_ATTESTATION,
+          ("audit_evidence_reconciliation[]", "selected_evidence_ref"),
           CARDINALITY_MANY, MATERIALIZATION_BODY_REQUIRED,
-          CLOSE_BUNDLE_CLOSURE,
-          acceptance_dependency=True),
-
-    _spec("close-global.reviewer-attestation", SOURCE_CLOSE_GLOBAL_REVIEW,
-          ("reviewer_attestation_receipt",), CARDINALITY_ONE,
-          MATERIALIZATION_BODY_REQUIRED, CLOSE_BUNDLE_CLOSURE,
-          acceptance_dependency=True),
-    _spec("close-global.closed-list", SOURCE_CLOSE_GLOBAL_REVIEW,
-          ("closed_list_evidence{}",), CARDINALITY_MANY,
-          MATERIALIZATION_BODY_REQUIRED, CLOSE_BUNDLE_CLOSURE,
-          acceptance_dependency=True),
-    _spec("close-global.closed-list-producer", SOURCE_CLOSE_GLOBAL_REVIEW,
-          ("closed_list_producer_evidence{}",), CARDINALITY_MANY,
-          MATERIALIZATION_BODY_REQUIRED, CLOSE_BUNDLE_CLOSURE,
-          acceptance_dependency=True),
-    _spec("close-global.post-delta-evidence", SOURCE_CLOSE_GLOBAL_REVIEW,
-          ("post_delta_evidence_bindings[]", "evidence_ref"),
-          CARDINALITY_MANY, MATERIALIZATION_BODY_REQUIRED,
-          CLOSE_BUNDLE_CLOSURE,
-          acceptance_dependency=True),
+          CLOSE_BUNDLE_CLOSURE, acceptance_dependency=True),
     _spec("close-attestation.candidate-baseline", SOURCE_CLOSE_ATTESTATION,
           ("candidate_baseline_receipt",), CARDINALITY_OPTIONAL,
           MATERIALIZATION_ID_ONLY, CLOSE_BUNDLE_CLOSURE,
@@ -441,8 +409,8 @@ RECEIPT_REFERENCE_SPECS = (
           MATERIALIZATION_BODY_REQUIRED, CLOSE_BUNDLE_CLOSURE,
           acceptance_dependency=True),
 
-    # Review records retain their own references even before an AuditReceipt
-    # or wrapper exists. A round-one link is also review history; these
+    # Native review records retain their references at first publication.
+    # A round-one link is also review history; these
     # materialization edges alone never authorize another review round.
     _spec("batch-page-review.opening-transition", SOURCE_BATCH_PAGE_REVIEW,
           ("opening_transition_receipt",), CARDINALITY_ONE,
@@ -472,18 +440,11 @@ RECEIPT_REFERENCE_SPECS = (
           MATERIALIZATION_BODY_REQUIRED,
           acceptance_dependency=True),
 
-    # Full AuditReceipt links its historical attempt and producer evidence.
-    _spec("audit-receipt.opening-transition", SOURCE_AUDIT_RECEIPT,
+    # Directly accepted facts retain their real opening reference. This is
+    # an edge category, not another stored acceptance object or authority.
+    _spec("plan-bound-check.opening-transition", SOURCE_PLAN_BOUND_CHECK,
           ("opening_transition_receipt",), CARDINALITY_ONE,
           MATERIALIZATION_BODY_REQUIRED, CLOSE_BUNDLE_CLOSURE),
-    _spec("audit-receipt.evidence", SOURCE_AUDIT_RECEIPT,
-          ("evidence_ref",), CARDINALITY_ONE,
-          MATERIALIZATION_BODY_REQUIRED, CLOSE_BUNDLE_CLOSURE,
-          acceptance_dependency=True),
-    _spec("audit-receipt.reused-alias", SOURCE_AUDIT_RECEIPT,
-          ("reused_receipt_id",), CARDINALITY_OPTIONAL,
-          MATERIALIZATION_ID_ONLY, CLOSE_BUNDLE_CLOSURE, alias=True,
-          acceptance_dependency=True),
 
     # Apply-delta evidence can be the current Coverage owner.
     _spec("delta-apply.opening-transition", SOURCE_DELTA_APPLY,

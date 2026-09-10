@@ -45,7 +45,7 @@ After each large batch completes, report:
 - Queue path, structural/state revisions, fingerprint, transition receipt, and remaining Required work-unit count.
 - Which guidance this batch received, applied, queued, deferred, or superseded, and the corresponding version changes.
 - Which rendering levels and deterministic verifications were performed; if Levels 2–4 were entered, report the trigger, unresolved question, minimal check target, result, and whether expanded checking was triggered; if not entered, state `visual_trigger: not_applicable` explicitly.
-- Which AuditReceipts were reused, superseded, or invalidated, what scope the incremental manual review and sampling covered, and whether systemic expansion was triggered.
+- Which audit evidence records were reused, superseded, or invalidated, what scope the incremental manual review and sampling covered, and whether systemic expansion was triggered.
 
 The final task report MUST also attach the Amendment Log summary, Guidance Reconciliation, Coverage Ledger summary, the applicable build Terminal Proof or maintenance completion receipt, optional / deferred work, and the external evidence backlog.
 

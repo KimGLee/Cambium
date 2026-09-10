@@ -14,8 +14,8 @@ source_files:
   - kernel/K12 Quality Assurance/05 Automated and Manual Checks.md
   - kernel/K12 Quality Assurance/14 Batch Review.md
   - kernel/K12 Quality Assurance/19 Incremental Audit Planning.md
-source_hash: 'eb24d3183345'
-reviewed_source_hash: 'eb24d3183345'
+source_hash: 'ae940551e827'
+reviewed_source_hash: 'ae940551e827'
 reviewed_card_hash: 'ddc08602fdcf'
 ---
 # R02 Single Note Authoring Card

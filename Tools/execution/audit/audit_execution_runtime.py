@@ -25,8 +25,6 @@ from Tools.platform.agent_interface.entrypoint_loader import (
 from Tools.execution.task_runtime.queue_runtime.receipts import current_receipt_catalog
 
 
-AUDIT_RECEIPT_COMPLETION_CAPABILITY = \
-    audit_producer_chain.FINAL_AUDIT_RECEIPT_CAPABILITY
 MANUAL_ATTESTATION_CAPABILITY = "manual-attestation-v1"
 
 
@@ -49,12 +47,14 @@ def producer_route(obligation, *, root=None, evaluation=None):
     if obligation.get("due_stage") == "post-delta-close":
         return "batch-close-stage"
     kind = obligation.get("evidence_kind")
-    if kind == "audit-receipt":
+    if kind in {"changed-scope-check-evidence",
+                "rendering-verification-evidence", "profile-rendering-evidence",
+                "substantive-review-evidence"}:
         try:
-            chain = (audit_producer_chain.precursor_chain_for_spec(
+            chain = (audit_producer_chain.producer_chain_for_spec(
                          obligation, root=root, evaluation=evaluation)
                      if "spec_id" in obligation else
-                     audit_producer_chain.precursor_chain_for_obligation(
+                     audit_producer_chain.producer_chain_for_obligation(
                          obligation, root=root, evaluation=evaluation))
             return chain["execution_route"]
         except audit_producer_chain.AuditProducerChainError:
@@ -138,30 +138,13 @@ def _external_reparse(item, status, obligation, *, disposition, token,
     }
 
 
-def _complete_precursor(root, item, status, obligation, precursor):
-    arguments = _base_arguments(item, status, obligation)
-    arguments["obligation_id"] = [obligation["obligation_id"]]
-    arguments["evidence_receipt"] = [precursor["receipt_id"]]
-    return {
-        "status": "invoke",
-        "token": "complete-audit-receipt",
-        "capability_id": AUDIT_RECEIPT_COMPLETION_CAPABILITY,
-        "tool": _tool(root, AUDIT_RECEIPT_COMPLETION_CAPABILITY),
-        "target": _target(item, obligation, status),
-        "arguments": arguments,
-        "required_input": None,
-        "reason_code": "valid-precursor-needs-full-audit-receipt",
-        "reason": None,
-    }
-
-
 def _catalog_record(result, receipt_id):
     return catalog_record(current_receipt_catalog(result).get(receipt_id))
 
 
 def _substantive_review_step(result, item, status, obligation, *, prior=None,
                              chain=None):
-    chain = chain or audit_producer_chain.precursor_chain_for_obligation(
+    chain = chain or audit_producer_chain.producer_chain_for_obligation(
         obligation, root=result["root"],
         evaluation=(result.get("_profile_authorized_view") or {}).get("_evaluation"))
     if chain["execution_route"] != "substantive-review":
@@ -198,8 +181,8 @@ def _substantive_review_step(result, item, status, obligation, *, prior=None,
         "reason_code": reason_code,
         "reason": None,
         "resume_tool": _tool(result["root"],
-                             chain["precursor_capability"]),
-        "resume_capability_id": chain["precursor_capability"],
+                             chain["producer_capability"]),
+        "resume_capability_id": chain["producer_capability"],
         "resume_arguments": arguments,
     }
 
@@ -219,9 +202,9 @@ def _missing_step(result, item, status, obligation):
 
     if route in {
             "substantive-review", "rendering-verification",
-            "deterministic-audit-precursor", "profile-rendering"}:
+            "deterministic-check", "profile-rendering"}:
         try:
-            chain = audit_producer_chain.precursor_chain_for_obligation(
+            chain = audit_producer_chain.producer_chain_for_obligation(
                 obligation, root=result["root"], evaluation=evaluation)
         except audit_producer_chain.AuditProducerChainError as exc:
             return _repair(
@@ -231,7 +214,7 @@ def _missing_step(result, item, status, obligation):
             return _substantive_review_step(
                 result, item, status, obligation, chain=chain)
         if route == "rendering-verification":
-            producer_capability = chain["precursor_capability"]
+            producer_capability = chain["producer_capability"]
             return {
                 "status": "await-host",
                 "token": "record-rendering-verification",
@@ -252,7 +235,7 @@ def _missing_step(result, item, status, obligation):
                 "resume_capability_id": producer_capability,
                 "resume_arguments": arguments,
             }
-        adapter_capability = chain["precursor_capability"]
+        adapter_capability = chain["producer_capability"]
         return {
             "status": "invoke",
             "token": "record-changed-scope-evidence",
@@ -261,7 +244,7 @@ def _missing_step(result, item, status, obligation):
             "target": _target(item, obligation, status),
             "arguments": arguments,
             "required_input": None,
-            "reason_code": "deterministic-audit-precursor-missing",
+            "reason_code": "deterministic-check-missing",
             "reason": None,
         }
 
@@ -461,24 +444,10 @@ def _next_stage_step(result, item, due_stage, required_state):
     if row is not None:
         obligation = row["obligation"]
         route = resolution_route(row.get("status"))
-        if route == "complete-precursor":
-            precursor = _catalog_record(result, row.get("evidence_ref"))
-            if not isinstance(precursor, dict):
-                return _repair(
-                    item, status, obligation,
-                    "audit-precursor-not-current",
-                    "selected producer attempt is not current")
-            step = _complete_precursor(result["root"], item, status, obligation, precursor)
-            ready = [value for value in _executable_rows(status)
-                     if resolution_route(value.get("status")) == "complete-precursor"]
-            if len(ready) > 1:
-                step["arguments"]["obligation_id"] = [value["obligation"]["obligation_id"] for value in ready]
-                step["arguments"]["evidence_receipt"] = [value["evidence_ref"] for value in ready]
-            return step
         if route == "confirm-substantive-review":
             prior = _catalog_record(result, row.get("evidence_ref"))
             try:
-                chain = audit_producer_chain.precursor_chain_for_obligation(
+                chain = audit_producer_chain.producer_chain_for_obligation(
                     obligation, root=result["root"],
                     evaluation=(result.get("_profile_authorized_view") or {}).get("_evaluation"))
             except audit_producer_chain.AuditProducerChainError:

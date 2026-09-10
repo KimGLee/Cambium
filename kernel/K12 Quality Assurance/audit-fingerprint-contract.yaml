@@ -1,0 +1,41 @@
+schema_version: 1
+contract_id: cambium-audit-fingerprint
+semantic_owner: K12/07
+
+# K12/07 owns this projection. A page fingerprint binds the canonical
+# repository-relative path, the exact body bytes after any complete
+# frontmatter fence, and only the six listed semantic frontmatter fields.
+# YAML spelling and mapping order do not change the fingerprint; presence and
+# normalized value do. Every other frontmatter field is deliberately excluded.
+page_artifact_fingerprint:
+  protocol_id: cambium-page-artifact-v1
+  digest_serialization: sha256-prefixed-canonical-json-utf8
+  page_material_fields:
+    - protocol_id
+    - path
+    - frontmatter
+    - body
+  path_binding: canonical-repository-relative-posix
+  body_binding: exact-bytes-after-frontmatter
+  frontmatter_normalization: restricted-yaml-semantic
+  opening_frontmatter_marker: "---"
+  included_frontmatter_fields:
+    - type
+    - priority
+    - tier
+    - coverage_disposition
+    - lifecycle
+    - prerequisites
+  excluded_frontmatter_policy: all-other-fields
+  absent_included_field_policy: omit
+  closing_frontmatter_markers:
+    - "---"
+    - "..."
+  page_set_protocol_id: cambium-page-artifact-set-v1
+  page_set_material_fields:
+    - protocol_id
+    - members
+  page_set_member_fields:
+    - path
+    - artifact_fingerprint
+  page_set_order: canonical-path-ascending

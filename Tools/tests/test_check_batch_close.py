@@ -182,7 +182,7 @@ class WorkSpecStabilityContractTests(unittest.TestCase):
                 check_batch_close._assert_work_spec_unchanged(root, item)
 
 
-class MultiRegisterPublicationContractTests(unittest.TestCase):
+class ClosePublicationContractTests(unittest.TestCase):
     """Own the mechanical publication order and catalog path topology."""
 
     def test_unusable_pre_merge_handoff_rejects_before_child_publication(self):
@@ -234,22 +234,19 @@ class MultiRegisterPublicationContractTests(unittest.TestCase):
             self.assertFalse((root / ".cambium/tmp/state-writer.lock").exists())
             self.assertFalse((root / ".cambium/receipts").exists())
 
-    def test_preflight_catalog_uses_each_machine_owned_register(self):
-        close = {"receipt_id": "raw-1"}
-        audit = {"receipt_id": "audit-1", "record_kind": "audit-receipt"}
+    def test_preflight_catalog_preserves_close_identity_and_reserves_history(self):
+        fact = {"receipt_id": "fact-1"}
         commit = {"receipt_id": "close-1"}
-        catalog = check_batch_close._receipt_catalog_with(
-            {"receipt_catalog": {}, "current_receipt_catalog": {}}, (
-                (".cambium/receipts/batch-close.jsonl", [close]),
-                (".cambium/receipts/audit-receipts.jsonl", [audit]),
-                (".cambium/receipts/batch-close.jsonl", [commit]),
-            ))
-        self.assertEqual(
-            ".cambium/receipts/batch-close.jsonl", catalog["raw-1"][0])
-        self.assertEqual(
-            ".cambium/receipts/audit-receipts.jsonl", catalog["audit-1"][0])
-        self.assertEqual(
-            ".cambium/receipts/batch-close.jsonl", catalog["close-1"][0])
+        runtime = {"receipt_catalog": {}, "current_receipt_catalog": {}}
+        catalog = check_batch_close._receipt_catalog_with(runtime, [fact, commit])
+        self.assertEqual({"fact-1", "close-1"}, set(catalog))
+        self.assertTrue(all(entry[0] == ".cambium/receipts/batch-close.jsonl"
+                            for entry in catalog.values()))
+        with self.assertRaisesRegex(ValueError, "collides"):
+            check_batch_close._receipt_catalog_with(runtime, [fact, fact])
+        runtime["receipt_catalog"] = {"fact-1": ("history", fact)}
+        with self.assertRaisesRegex(ValueError, "collides"):
+            check_batch_close._receipt_catalog_with(runtime, [fact, commit])
 
     def test_aggregate_is_the_last_publication_edge(self):
         calls = []
@@ -259,13 +256,10 @@ class MultiRegisterPublicationContractTests(unittest.TestCase):
                     (path, [record["receipt_id"] for record in records]))):
             check_batch_close._publish_close_bundle(
                 "/runtime/batch-close.jsonl",
-                "/runtime/audit-receipts.jsonl",
                 [{"receipt_id": "raw-1"}],
-                [{"receipt_id": "audit-1"}],
                 {"receipt_id": "close-1"})
         self.assertEqual([
             ("/runtime/batch-close.jsonl", ["raw-1"]),
-            ("/runtime/audit-receipts.jsonl", ["audit-1"]),
             ("/runtime/batch-close.jsonl", ["close-1"]),
         ], calls)
 
@@ -410,6 +404,8 @@ class AppliedBatchCloseTests(BatchCloseCheckpointCase):
     """Adjacent producer/consumer and durable-write seams."""
 
     def test_produced_bundle_is_accepted_by_the_close_consumer(self):
+        history = {path: path.read_bytes() for path in
+                   (self.root / ".cambium/receipts").rglob("*.jsonl")}
         real_cas = check_batch_close._assert_manifest_pages_unchanged
         with mock.patch.object(
                 check_batch_close, "_assert_manifest_pages_unchanged",
@@ -428,22 +424,15 @@ class AppliedBatchCloseTests(BatchCloseCheckpointCase):
         batch_records = [json.loads(line) for line in (
             self.root / ".cambium/receipts/batch-close.jsonl"
         ).read_text(encoding="utf-8").splitlines()]
-        audit_records = [json.loads(line) for line in (
-            self.root / ".cambium/receipts/audit-receipts.jsonl"
-        ).read_text(encoding="utf-8").splitlines()]
-        self.assertTrue(audit_records)
-        self.assertTrue(all(
-            record.get("record_kind") == "audit-receipt"
-            for record in audit_records))
+        for path, before in history.items():
+            self.assertTrue(path.read_bytes().startswith(before), path)
         batch_ids = {record["receipt_id"] for record in batch_records}
-        audit_ids = {record["receipt_id"] for record in audit_records}
-        self.assertTrue(batch_ids.isdisjoint(audit_ids))
         self.assertIn(close_gate, batch_ids)
         close_record = next(
             record for record in batch_records
             if record["receipt_id"] == close_gate)
         self.assertTrue(
-            set(close_record["closed_list_evidence"].values()) & audit_ids)
+            set(close_record["closed_list_evidence"].values()) <= batch_ids)
         runtime = runtime_validation.validate_runtime(self.root)
         self.assertEqual([], runtime["errors"])
         errors = queue_runtime.close_gate_receipt_errors(
@@ -466,30 +455,25 @@ class AppliedBatchCloseTests(BatchCloseCheckpointCase):
         self.assertEqual([], closed["errors"])
         self.assertEqual("closed", closed["items_by_id"]["B1"]["state"])
 
-        # A current close still consumed by Coverage must retain the complete
-        # replay body closure, including its plan-selected AuditReceipts in
-        # their named register. The seal owner decides retention; this seam
-        # checks its output against the actual close/Terminal consumers.
+        # The seal owner preserves all bodies required by the exact native
+        # close selection. Terminal must resolve those same records, not a
+        # separately reconstructed acceptance register.
         from Tools.execution.evidence import seal_receipts
         from Tools.execution.audit import audit_evidence_runtime
-        from Tools.execution.task_runtime.queue_runtime import receipts as receipt_store
         candidates = seal_receipts.plan_seal(str(self.root), closed)
         sealing_ids = {identity for rows in candidates.values()
                        for identity, _body in rows}
         self.assertNotIn(close_gate, sealing_ids)
         projected = audit_evidence_runtime.terminal_dimension_evidence(closed)
-        full_ids = {row["evidence_ref"] for row in projected
-                    if row["evidence_ref"] in audit_ids}
-        self.assertTrue(full_ids)
-        self.assertTrue(full_ids.isdisjoint(sealing_ids))
-        registered = receipt_store.read_receipt_register(
-            str(self.root), ".cambium/receipts/audit-receipts.jsonl")
-        for identity in full_ids:
-            receipt_store.require_register_member(
-                registered, identity,
-                closed["current_receipt_catalog"].resolve(identity)[1])
+        selected_ids = {row["evidence_ref"] for row in projected}
+        self.assertTrue(selected_ids)
+        self.assertTrue(selected_ids.isdisjoint(sealing_ids))
+        for identity in selected_ids:
+            self.assertIsNotNone(closed["current_receipt_catalog"].resolve(identity))
 
-    def test_partial_multi_register_publication_retains_fail_closed_lock(self):
+    def test_partial_close_publication_retains_fail_closed_lock(self):
+        history = {path: path.read_bytes() for path in
+                   (self.root / ".cambium/receipts").rglob("*.jsonl")}
         program = r'''
 import os
 import sys
@@ -504,7 +488,7 @@ def append_then_crash(path, receipts):
     global append_count
     real_append(path, receipts)
     append_count += 1
-    if append_count == 2:
+    if append_count == 1:
         os._exit(23)
 
 check_batch_close._append_receipts = append_then_crash
@@ -535,8 +519,8 @@ raise SystemExit(check_batch_close.main([
         self.assertEqual("absent", operation["status"])
         self.assertTrue(
             (self.root / ".cambium/receipts/batch-close.jsonl").is_file())
-        self.assertTrue(
-            (self.root / ".cambium/receipts/audit-receipts.jsonl").is_file())
+        for path, before in history.items():
+            self.assertTrue(path.read_bytes().startswith(before), path)
         batch_records = [json.loads(line) for line in (
             self.root / ".cambium/receipts/batch-close.jsonl"
         ).read_text(encoding="utf-8").splitlines()]

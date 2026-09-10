@@ -1,10 +1,13 @@
 import copy
+import contextlib
+import io
 import json
 import os
 import subprocess
 import sys
 import tempfile
 import unittest
+from unittest import mock
 from pathlib import Path
 
 
@@ -41,6 +44,27 @@ class TerminalProofCliBoundaryTests(unittest.TestCase):
         self.assertEqual(1, result.returncode, result.stdout + result.stderr)
         self.assertIn("unsafe receipt path", result.stdout)
         self.assertEqual(before, state.read_bytes())
+
+        # A readable checker response is not necessarily a governance Receipt.
+        # Exercise the existing entry in process; do not reconstruct a Task.
+        output = self.root / ".cambium/receipts/proof.jsonl"
+        proof = self.root / "missing-proof.yaml"
+        for text in (None, "{}\n"):
+            with self.subTest(proof=text):
+                if text is not None:
+                    proof.write_text(text, encoding="utf-8")
+                stream = io.StringIO()
+                with contextlib.redirect_stdout(stream), contextlib.redirect_stderr(
+                        io.StringIO()), mock.patch.object(sys, "argv", [
+                            str(SCRIPT), str(proof), "--json", "--receipts", str(output)]):
+                    code = check_proof.main()
+                report = json.loads(stream.getvalue())
+                self.assertEqual(1, code)
+                self.assertTrue(report)
+                self.assertTrue(all(
+                    set(row) == {"check", "target", "result", "details"}
+                    for row in report))
+                self.assertFalse(output.exists())
 
 
 class CanonicalStateArgumentTests(unittest.TestCase):
@@ -90,74 +114,38 @@ class CanonicalStateArgumentTests(unittest.TestCase):
 
 class TerminalProofCurrentEvidenceTests(unittest.TestCase):
     def setUp(self):
-        self.receipt_id = "audit-full-current"
-        self.projection = audit_evidence_runtime.reconciliation_from_bindings(
-            [{
-                "obligation_id": "obligation-1",
-                "due_stage": "pre-merge",
-                "evidence_ref": self.receipt_id,
-            }], {"obligation-1": "producer-evidence-1"})
-        self.close = {
-            "receipt_id": "close-1",
-            "audit_plan_id": "audit-plan-1",
-            "invalidated_by": None,
-            **self.projection,
+        # Native selection and invalidation propagation are owned by the
+        # audit runtime tests. This consumer only compares that projection.
+        self.expected = {
+            "reused_receipts": [], "superseded_receipts": [],
+            "invalidated_receipts": [], "unresolved_invalidations": 0,
         }
-        self.proof = {
-            "reused_receipts": [],
-            "superseded_receipts": [],
-            "invalidated_receipts": [],
-            "unresolved_invalidations": 0,
-        }
+        self.proof = copy.deepcopy(self.expected)
+        self.runtime = {"test": "admitted current runtime"}
+        owner = mock.patch.object(audit_evidence_runtime,
+            "terminal_plan_reconciliation", side_effect=lambda runtime: self.expected)
+        self.resolve = owner.start()
+        self.addCleanup(owner.stop)
 
-    def runtime(self, *, close=None, invalidated=None):
-        close = self.close if close is None else close
-        entry = ("receipts/close.jsonl", close)
-        return {
-            "items_by_id": {
-                "B001": {
-                    "id": "B001",
-                    "state": "closed",
-                    "close_gate_receipt": close["receipt_id"],
-                },
-            },
-            "current_receipt_catalog": {close["receipt_id"]: entry},
-            "invalidated_evidence_receipt_ids": invalidated or [],
-        }
-
-    def test_current_plan_reconciliation_tracks_direct_and_precursor_invalidation(self):
-        self.assertEqual(
-            [], check_proof._terminal_reconciliation_failures(
-                self.proof, self.runtime()))
-
-        for invalidated in (self.receipt_id, "producer-evidence-1"):
-            with self.subTest(invalidated=invalidated):
-                runtime = self.runtime(invalidated=[invalidated])
-                failures = check_proof._terminal_reconciliation_failures(
-                    self.proof, runtime)
-                checks = {failure[0] for failure in failures}
-                self.assertIn("proof-invalidated-receipts-mismatch", checks)
-                self.assertIn(
-                    "proof-unresolved-invalidations-mismatch", checks)
-
-                reconciled = copy.deepcopy(self.proof)
-                reconciled.update({
-                    "invalidated_receipts": [invalidated],
-                    "unresolved_invalidations": 1,
-                })
-                self.assertEqual(
-                    [], check_proof._terminal_reconciliation_failures(
-                        reconciled, runtime))
+    def test_current_plan_reconciliation_propagates_native_invalidation(self):
+        self.assertEqual([], check_proof._terminal_reconciliation_failures(
+            self.proof, self.runtime))
+        self.expected.update(invalidated_receipts=["native-review-current"],
+                             unresolved_invalidations=1)
+        failures = check_proof._terminal_reconciliation_failures(self.proof, self.runtime)
+        self.assertEqual({"proof-invalidated-receipts-mismatch",
+                          "proof-unresolved-invalidations-mismatch"},
+                         {failure[0] for failure in failures})
+        self.assertEqual([], check_proof._terminal_reconciliation_failures(
+            copy.deepcopy(self.expected), self.runtime))
+        self.resolve.assert_called_with(self.runtime)
 
     def test_terminal_reconciliation_lists_are_sorted_unique_receipt_ids(self):
         proof = copy.deepcopy(self.proof)
         proof["superseded_receipts"] = ["old-2", "old-1", "old-1"]
+        failures = check_proof._terminal_reconciliation_failures(proof, self.runtime)
+        self.assertEqual("proof-superseded-receipts-invalid", failures[0][0])
 
-        failures = check_proof._terminal_reconciliation_failures(
-            proof, self.runtime())
-
-        self.assertEqual(
-            "proof-superseded-receipts-invalid", failures[0][0])
 
 class TerminalRuntimeClosureTests(unittest.TestCase):
     def setUp(self):

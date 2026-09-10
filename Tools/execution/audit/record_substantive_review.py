@@ -93,12 +93,12 @@ def _obligation(root, plan, obligation_id, page):
             "obligation %s is not a current substantive-review requirement: "
             "%s" % (obligation_id, ", ".join(mismatches)))
     try:
-        chain = audit_producer_chain.precursor_chain_for_obligation(
+        chain = audit_producer_chain.producer_chain_for_obligation(
             row, root=root)
     except audit_producer_chain.AuditProducerChainError as exc:
         raise audit_producer_runtime.AuditProducerError(str(exc)) from exc
     if (chain.get("execution_route") != "substantive-review" or
-            chain.get("precursor_tool") != TOOL):
+            chain.get("producer_tool") != TOOL):
         raise audit_producer_runtime.AuditProducerError(
             "obligation has no substantive-review precursor chain")
     return row

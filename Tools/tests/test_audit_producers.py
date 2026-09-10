@@ -1,4 +1,4 @@
-"""Focused producer tests for AuditPlan -> review -> full AuditReceipt."""
+"""Focused producer tests for AuditPlan -> accepted review evidence."""
 
 from pathlib import Path
 from types import SimpleNamespace
@@ -16,9 +16,7 @@ sys.path.insert(0, str(TOOLS))
 
 import Tools.execution.audit.audit_plan_contract as audit_plan_contract
 import Tools.execution.audit.audit_producer_runtime as audit_producer_runtime
-import Tools.execution.audit.audit_receipt_contract as audit_receipt_contract
 import Tools.execution.audit.batch_review_obligation_contract as batch_review_obligation_contract
-import Tools.execution.audit.complete_audit_receipt as complete_audit_receipt
 import Tools.execution.audit.prepare_audit_plan as prepare_audit_plan
 import Tools.execution.audit.record_substantive_review as record_substantive_review
 import Tools.execution.audit.substantive_review_contract as substantive_review_contract
@@ -203,7 +201,7 @@ class AuditProducerTests(unittest.TestCase):
             row["target"] for row in rows
             if row["owner_rule_id"] == s_rule))
 
-    def test_review_and_full_receipt_match_kernel_contracts(self):
+    def test_review_first_publication_binds_the_kernel_obligation(self):
         obligation = self.obligation()
         plan = self.plan(obligation)
         plan_sha = audit_plan_contract.plan_sha256(plan)
@@ -217,50 +215,16 @@ class AuditProducerTests(unittest.TestCase):
             reviewer_role="reviewer", round_number=1,
             verdict="passed", findings=[], statement="reviewed", prior=None)
         substantive_review_contract.validate_review_receipt(evidence)
-        full = complete_audit_receipt.build_audit_receipt(
-            plan=plan, plan_sha256=plan_sha,
-            obligation=obligation, evidence=evidence)
-        audit_receipt_contract.validate_audit_receipt(full)
-        self.assertEqual("content_and_depth", full["dimension"])
+        self.assertEqual(plan["plan_id"], evidence["plan_id"])
+        self.assertEqual(plan_sha, evidence["audit_plan_sha256"])
+        self.assertEqual(obligation["obligation_id"], evidence["obligation_id"])
+        self.assertEqual(obligation["evidence_kind"], evidence["record_kind"])
         self.assertEqual(
             audit_producer_runtime.page_artifact_fingerprint(frozen_page),
-            full["artifact_fingerprint"])
-        self.assertNotEqual(
-            evidence["semantic_content_fingerprint"],
-            full["artifact_fingerprint"])
-        self.assertEqual(evidence["receipt_id"], full["evidence_ref"])
-
-        # A validated existing completion is reused, not written a second time.
-        with contextlib.ExitStack() as stack:
-            stack.enter_context(mock.patch.object(
-                audit_producer_runtime, "admitted_runtime",
-                return_value=(str(REPOSITORY), {}, object())))
-            stack.enter_context(mock.patch.object(
-                audit_producer_runtime, "open_batch", return_value=({}, {})))
-            stack.enter_context(mock.patch.object(
-                complete_audit_receipt, "_load_current_plan",
-                return_value=(None, plan, plan_sha, (frozen_page,))))
-            stack.enter_context(mock.patch.object(
-                complete_audit_receipt.audit_evidence_runtime, "evidence_evaluation",
-                side_effect=lambda result: result))
-            stack.enter_context(mock.patch.object(
-                complete_audit_receipt.audit_evidence_runtime, "require_completion_evidence",
-                return_value=(evidence, full)))
-            stack.enter_context(mock.patch.object(
-                audit_producer_runtime, "managed_receipt_path", return_value="unused.jsonl"))
-            append = stack.enter_context(mock.patch.object(kblib.ReceiptPublication, "append"))
-            output = stack.enter_context(contextlib.redirect_stdout(io.StringIO()))
-            code = complete_audit_receipt.main([
-                str(REPOSITORY), "--batch", "B001", "--plan", "unused.yaml",
-                "--obligation-id", obligation["obligation_id"],
-                "--evidence-receipt", evidence["receipt_id"], "--apply"])
-        result = json.loads(output.getvalue())
-        self.assertEqual(0, code)
-        self.assertFalse(result["applied"])
-        self.assertEqual("already-present", result["status"])
-        self.assertEqual(full["receipt_id"], result["receipt_id"])
-        self.assertTrue(result["publication"]["reused"])
-        append.assert_not_called()
+            evidence["artifact_fingerprint"])
+        self.assertNotEqual(evidence["semantic_content_fingerprint"],
+                            evidence["artifact_fingerprint"])
+        self.assertNotIn("evidence_ref", evidence)
 
     def test_changes_required_confirms_recording_without_claiming_review_pass(self):
         obligation = self.obligation()

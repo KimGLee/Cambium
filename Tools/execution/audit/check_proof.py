@@ -37,9 +37,7 @@ Method:
   dimensions -> fail; with --root every cited ref must be the exact current
   selected evidence of a non-dimensionless obligation in a closed batch's
   complete AuditPlan reconciliation. Each evidence kind remains governed by
-  its own owner contract. The `audit-receipt` subset must additionally occur
-  exactly once, byte-for-byte, in audit_receipt_register and pass the full
-  Kernel-owned AuditReceipt contract. A current record outside the close
+  its own owner contract. A current record outside the close
   reconciliation, historical/stale evidence, or a dimensionless Gate cannot
   enter coverage. A dimension may use reasoned not-applicable only when the
   complete closed plans contain no applicable obligation in that dimension;
@@ -112,7 +110,6 @@ import sys
 import Tools.platform.common.kblib as kblib
 import Tools.execution.audit.audit_evidence_runtime as audit_evidence_runtime
 import Tools.execution.audit.audit_dimension_contract as audit_dimension_contract
-import Tools.execution.audit.audit_receipt_contract as audit_receipt_contract
 import Tools.execution.audit.terminal_proof_contract as terminal_proof_contract
 import Tools.execution.context_delivery.card_contract as card_contract
 import Tools.execution.planning.check_corpus_plan as check_corpus_plan
@@ -143,22 +140,10 @@ _JSON_REPORTER = reporting.RedirectedJsonReceipts()
 
 
 
-def _make_receipt(tool, tool_version, check, target, result, details, seq):
-    """Build one current proof Gate receipt with its stable Gate ID."""
-    if tool != TOOL or tool_version != TOOL_VERSION:
-        raise ValueError("check_proof receipt producer identity drift")
-    is_gate = check == GATE_CHECK
-    receipt = kblib.make_receipt(
-        tool, tool_version,
-        GATE_CHECK if is_gate else terminal_proof_contract.DIAGNOSTIC_CHECK,
-        target, result, details, seq,
-        receipt_type_id=(
-            terminal_proof_contract.GATE_RECEIPT_TYPE_ID if is_gate else
-            terminal_proof_contract.DIAGNOSTIC_RECEIPT_TYPE_ID))
-    receipt["gate_id"] = GATE_ID
-    if not is_gate:
-        receipt["diagnostic_id"] = check
-    return receipt
+def _check_result(check, target, result, details):
+    """Report a check without creating a governance Receipt identity."""
+    return {"check": check, "target": target,
+            "result": result, "details": details}
 
 # K12/06: fields that must be 0 among the completion conditions (the three open
 # guidance counts are covered by the review of guidance_reconciliation_result
@@ -671,15 +656,13 @@ def _dimension_coverage_failures(proof, registered_dimensions=(),
 
 
 def _validate_dimension_coverage_evidence(
-        root, proof, cited, runtime, registered_dimensions=()):
+        cited, runtime):
     """Match Proof coverage to the closed AuditPlan evidence projection.
 
     The shared audit runtime resolves each selected record through its own
     evidence-kind owner and the immutable close reconciliation.  This consumer
-    only compares that projection with the Proof.  Full AuditReceipts retain
-    their additional byte-level membership requirement in the canonical
-    AuditReceipt register; heterogeneous evidence is never made to impersonate
-    that contract.
+    only compares that projection with the Proof. Each native record is
+    accepted by its own contract; no copied acceptance register is required.
     """
     failures = []
     try:
@@ -732,53 +715,6 @@ def _validate_dimension_coverage_evidence(
                     receipt_id, row["dimension"], dimension),
             ))
 
-    audit_rows = {
-        receipt_id: row for receipt_id, row in expected.items()
-        if row["evidence_kind"] == "audit-receipt"
-    }
-    if not audit_rows:
-        return failures
-    receipt_path_raw = proof.get("audit_receipt_register")
-    records, register_failures = _proof_register(
-        root, receipt_path_raw, "proof-dimension-receipt")
-    failures.extend(register_failures)
-    if records is None:
-        return failures
-    for receipt_id, row in sorted(audit_rows.items()):
-        dimension = row["dimension"]
-        target = "Terminal Proof#dimension_coverage#%s" % dimension
-        current, membership_failures = _current_receipt_evidence(
-            root, receipt_id,
-            field="dimension_coverage#%s" % dimension,
-            check_prefix="proof-dimension-receipt",
-            runtime=runtime,
-        )
-        if membership_failures:
-            failures.extend(membership_failures)
-            continue
-        record, register_failures = _proof_register_member(
-            records, receipt_id, current, "proof-dimension-receipt", target)
-        failures.extend(register_failures)
-        if record is None:
-            continue
-        try:
-            audit_receipt_contract.validate_audit_receipt(
-                record,
-                contract=audit_receipt_contract.load_contract(root),
-                dimensions=(set(BASE_RECEIPT_DIMENSIONS) |
-                            set(registered_dimensions)),
-            )
-        except (OSError, TypeError, UnicodeError, ValueError,
-                kblib.YamlSubsetError) as exc:
-            failures.append(_queue_linkage_failure(
-                "proof-dimension-receipt-contract-invalid", target,
-                "%s cites receipt %r, which is not a complete Kernel-owned "
-                "AuditReceipt: %s. A Gate record, a generic successful "
-                "Receipt, or a non-AuditReceipt record with an ad-hoc dimension field "
-                "cannot satisfy dimension coverage" %
-                (dimension, receipt_id, exc),
-            ))
-            continue
     return failures
 
 
@@ -1333,7 +1269,7 @@ def _validate_terminal_coverage_state(proof, progress_ledger, coverage_ledger,
 
 
 def main():
-    """CLI entry point; `--json` projects the produced receipts onto stdout."""
+    """CLI entry point; JSON reports checks and any final Completion Gate."""
     return reporting.run_redirected_json(_JSON_REPORTER, _main)
 
 
@@ -1348,7 +1284,7 @@ def _main():
     ap.add_argument("--root", help="vault root; when given, path-valued proof "
                     "fields must exist and selected routes must agree with "
                     "canonical Card and Read Set declarations")
-    ap.add_argument("--receipts", help="JSONL path to append machine-readable receipts to")
+    ap.add_argument("--receipts", help="JSONL path to append a passing Completion Gate to; diagnostics stay in the report")
     ap.add_argument("--json", action="store_true", help=JSON_FLAG_HELP)
     args = ap.parse_args()
     _JSON_REPORTER.begin(args.json)
@@ -1371,8 +1307,8 @@ def _main():
 
     required_fields = list(_TERMINAL_VALUES["field_order"])
 
-    receipts = []
-    seq = 0
+    results = []
+    gate_receipt = None
     proof_name = os.path.basename(args.proof)
     proof_sha256 = None
 
@@ -1381,12 +1317,10 @@ def _main():
         proof_sha256 = kblib.sha256_bytes(proof_bytes)
         proof = kblib.parse_yaml_subset(proof_bytes.decode("utf-8"))
     except (OSError, UnicodeError, kblib.YamlSubsetError) as exc:
-        seq += 1
-        receipts.append(_make_receipt(
-            TOOL, TOOL_VERSION, "proof-unreadable", args.proof, "fail",
-            "cannot read/parse proof: %s" % exc, seq))
-        kblib.write_receipts(receipt_output, receipts)
-        _JSON_REPORTER.record(receipts)
+        results.append(_check_result(
+            "proof-unreadable", args.proof, "fail",
+            "cannot read/parse proof: %s" % exc))
+        _JSON_REPORTER.record(results)
         print("check_proof: cannot read or parse %s: %s" % (args.proof, exc))
         return 1
     if not isinstance(proof, dict):
@@ -1402,23 +1336,21 @@ def _main():
         if (field not in proof or value == "" or
                 (value is None and field not in NULLABLE_REQUIRED_FIELDS)):
             missing.append(field)
-            seq += 1
-            receipts.append(_make_receipt(
-                TOOL, TOOL_VERSION, "proof-field-missing",
+            results.append(_check_result(
+                "proof-field-missing",
                 "%s#%s" % (proof_name, field), "fail",
-                "Terminal Proof is missing required field %s (K12/16 field list)" % field, seq))
+                "Terminal Proof is missing required field %s (K12/16 field list)" % field))
 
     frozen_string_bad = 0
     if "upstream_revision_id" not in missing:
         value = proof.get("upstream_revision_id")
         if _uninstantiated_value(value):
             frozen_string_bad += 1
-            seq += 1
-            receipts.append(_make_receipt(
-                TOOL, TOOL_VERSION, "proof-upstream-revision-id-invalid",
+            results.append(_check_result(
+                "proof-upstream-revision-id-invalid",
                 "%s#upstream_revision_id" % proof_name, "fail",
                 "upstream_revision_id must be an instantiated non-empty string "
-                "copied exactly from the frozen Task Contract", seq))
+                "copied exactly from the frozen Task Contract"))
 
     profile_manifest_bad = 0
     selected_profile_manifest = proof.get("selected_profile_manifest")
@@ -1428,32 +1360,29 @@ def _main():
         )
         if manifest_error:
             profile_manifest_bad += 1
-            seq += 1
-            receipts.append(_make_receipt(
-                TOOL, TOOL_VERSION, "proof-profile-manifest-invalid",
+            results.append(_check_result(
+                "proof-profile-manifest-invalid",
                 "%s#selected_profile_manifest" % proof_name, "fail",
                 "selected_profile_manifest %r is invalid: %s" %
-                (selected_profile_manifest, manifest_error), seq))
+                (selected_profile_manifest, manifest_error)))
 
     queue_structure_bad = 0
     if "task_id" not in missing and _uninstantiated_value(proof.get("task_id")):
         queue_structure_bad += 1
-        seq += 1
-        receipts.append(_make_receipt(
-            TOOL, TOOL_VERSION, "proof-task-id-invalid",
+        results.append(_check_result(
+            "proof-task-id-invalid",
             "%s#task_id" % proof_name, "fail",
-            "task_id must be an instantiated non-empty string", seq))
+            "task_id must be an instantiated non-empty string"))
 
     if "required_queue_path" not in missing:
         queue_path = proof.get("required_queue_path")
         if queue_path != CANONICAL_QUEUE_PATH:
             queue_structure_bad += 1
-            seq += 1
-            receipts.append(_make_receipt(
-                TOOL, TOOL_VERSION, "proof-queue-path-noncanonical",
+            results.append(_check_result(
+                "proof-queue-path-noncanonical",
                 "%s#required_queue_path" % proof_name, "fail",
                 "required_queue_path must be exactly %s; found %r" %
-                (CANONICAL_QUEUE_PATH, queue_path), seq))
+                (CANONICAL_QUEUE_PATH, queue_path)))
 
     for field, minimum in (("queue_revision", 1),
                            ("queue_state_revision", 0)):
@@ -1463,12 +1392,11 @@ def _main():
         if (not isinstance(value, int) or isinstance(value, bool) or
                 value < minimum):
             queue_structure_bad += 1
-            seq += 1
-            receipts.append(_make_receipt(
-                TOOL, TOOL_VERSION, "proof-queue-revision-invalid",
+            results.append(_check_result(
+                "proof-queue-revision-invalid",
                 "%s#%s" % (proof_name, field), "fail",
                 "%s must be an integer >= %d; found %r" %
-                (field, minimum, value), seq))
+                (field, minimum, value)))
 
     for field, check in (
             ("coverage_ledger_sha256", "proof-coverage-fingerprint-invalid"),
@@ -1479,24 +1407,22 @@ def _main():
         value = proof.get(field)
         if not isinstance(value, str) or not SHA256_RE.fullmatch(value):
             queue_structure_bad += 1
-            seq += 1
-            receipts.append(_make_receipt(
-                TOOL, TOOL_VERSION, check,
+            results.append(_check_result(
+                check,
                 "%s#%s" % (proof_name, field), "fail",
                 "%s must use sha256:<64 lowercase hex>; found %r" %
-                (field, value), seq))
+                (field, value)))
 
     if "queue_check_receipt" not in missing:
         value = proof.get("queue_check_receipt")
         if (not isinstance(value, str) or
                 not value.startswith("audit-check_queue-")):
             queue_structure_bad += 1
-            seq += 1
-            receipts.append(_make_receipt(
-                TOOL, TOOL_VERSION, "proof-queue-receipt-id-invalid",
+            results.append(_check_result(
+                "proof-queue-receipt-id-invalid",
                 "%s#queue_check_receipt" % proof_name, "fail",
                 "queue_check_receipt must be a check_queue receipt_id; "
-                "found %r" % value, seq))
+                "found %r" % value))
 
     route_id_bad = 0
     valid_route_ids = set()
@@ -1504,36 +1430,33 @@ def _main():
     if "selected_route_ids" not in missing:
         if not isinstance(route_ids, list) or not route_ids:
             route_id_bad += 1
-            seq += 1
-            receipts.append(_make_receipt(
-                TOOL, TOOL_VERSION, "proof-route-ids-empty",
+            results.append(_check_result(
+                "proof-route-ids-empty",
                 "%s#selected_route_ids" % proof_name, "fail",
                 "selected_route_ids must be a non-empty list of Runtime "
-                "Route identities", seq))
+                "Route identities"))
         else:
             seen_route_ids = set()
             for index, route_id in enumerate(route_ids):
                 target = "%s#selected_route_ids[%d]" % (proof_name, index)
                 if not isinstance(route_id, str) or not route_id.strip():
                     route_id_bad += 1
-                    seq += 1
-                    receipts.append(_make_receipt(
-                        TOOL, TOOL_VERSION, "proof-route-id-invalid",
+                    results.append(_check_result(
+                        "proof-route-id-invalid",
                         target, "fail",
                         "route identity %r must be a non-empty string; "
                         "canonical membership is checked against the machine "
-                        "registry when --root is supplied" % route_id, seq))
+                        "registry when --root is supplied" % route_id))
                 else:
                     valid_route_ids.add(route_id)
                 route_key = repr(route_id)
                 if route_key in seen_route_ids:
                     route_id_bad += 1
-                    seq += 1
-                    receipts.append(_make_receipt(
-                        TOOL, TOOL_VERSION, "proof-route-id-duplicate",
+                    results.append(_check_result(
+                        "proof-route-id-duplicate",
                         target, "fail",
                         "route ID %r is duplicated; selected_route_ids must "
-                        "contain unique IDs" % route_id, seq))
+                        "contain unique IDs" % route_id))
                 else:
                     seen_route_ids.add(route_key)
 
@@ -1541,14 +1464,13 @@ def _main():
             if missing_terminal_routes:
                 route_id_bad += len(missing_terminal_routes)
                 for route_id in sorted(missing_terminal_routes):
-                    seq += 1
-                    receipts.append(_make_receipt(
-                        TOOL, TOOL_VERSION, "proof-terminal-route-missing",
+                    results.append(_check_result(
+                        "proof-terminal-route-missing",
                         "%s#selected_route_ids" % proof_name, "fail",
                         "%s is mandatory in Terminal Proof: R01 establishes "
                         "the common control boundary, R12 owns the bounded "
                         "targeted/specialized review scope, and R08 is the "
-                        "terminal audit/completion route" % route_id, seq))
+                        "terminal audit/completion route" % route_id))
 
     profile_route_id_bad = 0
     profile_route_ids = proof.get("selected_profile_route_ids")
@@ -1556,12 +1478,11 @@ def _main():
     if "selected_profile_route_ids" not in missing:
         if not isinstance(profile_route_ids, list):
             profile_route_id_bad += 1
-            seq += 1
-            receipts.append(_make_receipt(
-                TOOL, TOOL_VERSION, "proof-profile-route-ids-not-list",
+            results.append(_check_result(
+                "proof-profile-route-ids-not-list",
                 "%s#selected_profile_route_ids" % proof_name, "fail",
                 "selected_profile_route_ids must be a list; use [] when no "
-                "supplemental profile route was combined", seq))
+                "supplemental profile route was combined"))
         else:
             seen_profile_route_ids = set()
             for index, route_id in enumerate(profile_route_ids):
@@ -1569,21 +1490,19 @@ def _main():
                 if (not isinstance(route_id, str) or
                         not PROFILE_ROUTE_ID_RE.fullmatch(route_id)):
                     profile_route_id_bad += 1
-                    seq += 1
-                    receipts.append(_make_receipt(
-                        TOOL, TOOL_VERSION, "proof-profile-route-id-invalid",
+                    results.append(_check_result(
+                        "proof-profile-route-id-invalid",
                         target, "fail",
                         "profile route ID %r is invalid; expected "
                         "P:<profile_id>:<route_name> with non-empty colon-free "
-                        "segments" % route_id, seq))
+                        "segments" % route_id))
                 elif route_id in seen_profile_route_ids:
                     profile_route_id_bad += 1
-                    seq += 1
-                    receipts.append(_make_receipt(
-                        TOOL, TOOL_VERSION, "proof-profile-route-id-duplicate",
+                    results.append(_check_result(
+                        "proof-profile-route-id-duplicate",
                         target, "fail",
                         "profile route ID %r is duplicated; supplemental "
-                        "route IDs must be unique" % route_id, seq))
+                        "route IDs must be unique" % route_id))
                 else:
                     seen_profile_route_ids.add(route_id)
                     valid_profile_route_ids.append(route_id)
@@ -1595,12 +1514,11 @@ def _main():
     if "selected_card_paths" not in missing:
         if not isinstance(selected_card_paths, list) or not selected_card_paths:
             card_path_bad += 1
-            seq += 1
-            receipts.append(_make_receipt(
-                TOOL, TOOL_VERSION, "proof-card-paths-empty",
+            results.append(_check_result(
+                "proof-card-paths-empty",
                 "%s#selected_card_paths" % proof_name, "fail",
                 "selected_card_paths must be a non-empty list with one "
-                "canonical curated Card path for every selected Rxx route", seq))
+                "canonical curated Card path for every selected Rxx route"))
         else:
             seen_card_paths = set()
             for index, card_path in enumerate(selected_card_paths):
@@ -1609,21 +1527,19 @@ def _main():
                 if _path_error:
                     card_path_bad += 1
                     path_structure_bad += 1
-                    seq += 1
-                    receipts.append(_make_receipt(
-                        TOOL, TOOL_VERSION, "proof-card-path-invalid",
+                    results.append(_check_result(
+                        "proof-card-path-invalid",
                         target, "fail",
                         "Card path %r is invalid: %s" %
-                        (card_path, _path_error), seq))
+                        (card_path, _path_error)))
                 elif card_path in seen_card_paths:
                     card_path_bad += 1
                     path_structure_bad += 1
-                    seq += 1
-                    receipts.append(_make_receipt(
-                        TOOL, TOOL_VERSION, "proof-card-path-duplicate",
+                    results.append(_check_result(
+                        "proof-card-path-duplicate",
                         target, "fail",
                         "Card path %r is duplicated; selected_card_paths "
-                        "must be unique" % card_path, seq))
+                        "must be unique" % card_path))
                 else:
                     seen_card_paths.add(card_path)
                     valid_card_paths.append(card_path)
@@ -1634,12 +1550,11 @@ def _main():
     if "selected_read_sets" not in missing:
         if not isinstance(selected_read_sets, list):
             read_set_bad += 1
-            seq += 1
-            receipts.append(_make_receipt(
-                TOOL, TOOL_VERSION, "proof-read-sets-not-list",
+            results.append(_check_result(
+                "proof-read-sets-not-list",
                 "%s#selected_read_sets" % proof_name, "fail",
                 "selected_read_sets must be a list; use [] when no Read Set "
-                "was read back", seq))
+                "was read back"))
         else:
             seen_read_set_paths = set()
             for index, read_set_path in enumerate(selected_read_sets):
@@ -1648,21 +1563,19 @@ def _main():
                 if _path_error:
                     read_set_bad += 1
                     path_structure_bad += 1
-                    seq += 1
-                    receipts.append(_make_receipt(
-                        TOOL, TOOL_VERSION, "proof-read-set-path-invalid",
+                    results.append(_check_result(
+                        "proof-read-set-path-invalid",
                         target, "fail",
                         "Read Set path %r is invalid: %s" %
-                        (read_set_path, _path_error), seq))
+                        (read_set_path, _path_error)))
                 elif read_set_path in seen_read_set_paths:
                     read_set_bad += 1
                     path_structure_bad += 1
-                    seq += 1
-                    receipts.append(_make_receipt(
-                        TOOL, TOOL_VERSION, "proof-read-set-path-duplicate",
+                    results.append(_check_result(
+                        "proof-read-set-path-duplicate",
                         target, "fail",
                         "Read Set path %r is duplicated; selected_read_sets "
-                        "records each actual readback once" % read_set_path, seq))
+                        "records each actual readback once" % read_set_path))
                 else:
                     seen_read_set_paths.add(read_set_path)
                     valid_read_set_paths.append(read_set_path)
@@ -1686,19 +1599,17 @@ def _main():
             _path_error = _repo_relative_path_error(raw_path)
             if _path_error:
                 path_structure_bad += 1
-                seq += 1
-                receipts.append(_make_receipt(
-                    TOOL, TOOL_VERSION, "proof-path-invalid",
+                results.append(_check_result(
+                    "proof-path-invalid",
                     target, "fail",
                     "path %r recorded in %s is invalid: %s"
-                    % (raw_path, field, _path_error), seq))
+                    % (raw_path, field, _path_error)))
             elif raw_path in seen_paths:
                 path_structure_bad += 1
-                seq += 1
-                receipts.append(_make_receipt(
-                    TOOL, TOOL_VERSION, "proof-path-duplicate",
+                results.append(_check_result(
+                    "proof-path-duplicate",
                     target, "fail",
-                    "path %r is duplicated in %s" % (raw_path, field), seq))
+                    "path %r is duplicated in %s" % (raw_path, field)))
             else:
                 seen_paths.add(raw_path)
 
@@ -1706,13 +1617,12 @@ def _main():
             isinstance(selected_card_paths, list) and selected_card_paths and
             len(route_ids) != len(selected_card_paths)):
         card_path_bad += 1
-        seq += 1
-        receipts.append(_make_receipt(
-            TOOL, TOOL_VERSION, "proof-card-route-cardinality",
+        results.append(_check_result(
+            "proof-card-route-cardinality",
             "%s#selected_card_paths" % proof_name, "fail",
             "selected_card_paths has %d item(s) for %d selected_route_ids; "
             "Terminal Proof requires one Card path per selected Rxx route"
-            % (len(selected_card_paths), len(route_ids)), seq))
+            % (len(selected_card_paths), len(route_ids))))
 
     # K12/16: every base receipt dimension is accounted for explicitly. A
     # dimension that simply has no receipts fails closed instead of passing.
@@ -1755,11 +1665,10 @@ def _main():
                         "profile-load exposed no authorized view"])
                 profile_manifest_bad += 1
                 dimension_bad += 1
-                seq += 1
-                receipts.append(_make_receipt(
-                    TOOL, TOOL_VERSION, "proof-profile-not-loadable",
+                results.append(_check_result(
+                    "proof-profile-not-loadable",
                     "%s#selected_profile_manifest" % proof_name, "fail",
-                    profile_load_evaluation_error, seq))
+                    profile_load_evaluation_error))
             else:
                 profile_load_evaluation = authorized_profile_view.get(
                     "_evaluation")
@@ -1773,21 +1682,18 @@ def _main():
                         "Profile view: %s" % exc)
                     profile_manifest_bad += 1
                     dimension_bad += 1
-                    seq += 1
-                    receipts.append(_make_receipt(
-                        TOOL, TOOL_VERSION,
+                    results.append(_check_result(
                         "proof-runtime-check-unavailable", str(root),
-                        "fail", profile_load_evaluation_error, seq))
+                        "fail", profile_load_evaluation_error))
 
         (registered_dimensions, all_registered_dimensions,
          dimension_registry_authoritative, registry_failures) = (
             _registered_receipt_dimensions(profile_load_evaluation))
         for check, target, details in registry_failures:
             dimension_bad += 1
-            seq += 1
-            receipts.append(_make_receipt(
-                TOOL, TOOL_VERSION, check,
-                "%s#%s" % (proof_name, target), "fail", details, seq))
+            results.append(_check_result(
+                check,
+                "%s#%s" % (proof_name, target), "fail", details))
     if "dimension_coverage" not in missing:
         dimension_failures, cited_dimension_receipts = (
             _dimension_coverage_failures(
@@ -1795,10 +1701,9 @@ def _main():
                 dimension_registry_authoritative))
         dimension_bad += len(dimension_failures)
         for check, target, details in dimension_failures:
-            seq += 1
-            receipts.append(_make_receipt(
-                TOOL, TOOL_VERSION, check,
-                "%s#%s" % (proof_name, target), "fail", details, seq))
+            results.append(_check_result(
+                check,
+                "%s#%s" % (proof_name, target), "fail", details))
 
     zero_bad = []
     for field in ZERO_FIELDS:
@@ -1807,31 +1712,28 @@ def _main():
         value = proof.get(field)
         if not isinstance(value, int) or isinstance(value, bool) or value != 0:
             zero_bad.append(field)
-            seq += 1
-            receipts.append(_make_receipt(
-                TOOL, TOOL_VERSION, "proof-zero-field",
+            results.append(_check_result(
+                "proof-zero-field",
                 "%s#%s" % (proof_name, field), "fail",
-                "zero-condition field %s = %r; the completion conditions require it to be 0 (K12/06)" % (field, value), seq))
+                "zero-condition field %s = %r; the completion conditions require it to be 0 (K12/06)" % (field, value)))
 
     if "selected_profile_id" in proof:
         profile_manifest_bad += 1
-        seq += 1
-        receipts.append(_make_receipt(
-            TOOL, TOOL_VERSION, "proof-duplicate-profile-identity",
+        results.append(_check_result(
+            "proof-duplicate-profile-identity",
             "%s#selected_profile_id" % proof_name, "fail",
             "selected_profile_id is forbidden: profile identity is derived "
-            "only from selected_profile_manifest", seq))
+            "only from selected_profile_manifest"))
 
     extra = [k for k in proof
              if k not in required_fields and k != "selected_profile_id"]
     for field in extra:
-        seq += 1
-        receipts.append(_make_receipt(
-            TOOL, TOOL_VERSION, "proof-extra-field",
+        results.append(_check_result(
+            "proof-extra-field",
             "%s#%s" % (proof_name, field), "candidate",
             "field %s is not in the K12/16 field list (the list is an 'at least' "
             "list; whether extra fields are reasonable is a human call)"
-            % field, seq))
+            % field))
 
     # ---- semantic checks: statuses, failure tokens, path existence ----
     # (K12/06 completion conditions are semantic, not just structural; a proof
@@ -1843,25 +1745,23 @@ def _main():
         value = str(proof.get(field)).strip()
         if value != "passed":
             status_bad.append(field)
-            seq += 1
-            receipts.append(_make_receipt(
-                TOOL, TOOL_VERSION, "proof-status-not-passed",
+            results.append(_check_result(
+                "proof-status-not-passed",
                 "%s#%s" % (proof_name, field), "fail",
                 "%s = %r; completion requires this result to be \"passed\" "
-                "(K12/06)" % (field, value), seq))
+                "(K12/06)" % (field, value)))
     for field in NO_FAIL_TOKEN_FIELDS:
         if field in missing or field not in proof:
             continue
         value = str(proof.get(field))
         if re.search(r"\bfail(ed|ure)?\b", value, re.IGNORECASE):
             status_bad.append(field)
-            seq += 1
-            receipts.append(_make_receipt(
-                TOOL, TOOL_VERSION, "proof-evidence-declares-failure",
+            results.append(_check_result(
+                "proof-evidence-declares-failure",
                 "%s#%s" % (proof_name, field), "fail",
                 "%s contains an explicit failure statement: %r (K12/06: "
                 "evidence recording a failure cannot support completion)"
-                % (field, value), seq))
+                % (field, value)))
 
     path_bad = 0
     registry_bad = 0
@@ -1875,27 +1775,23 @@ def _main():
     if args.root:
         if not root.is_dir():
             path_bad += 1
-            seq += 1
-            receipts.append(_make_receipt(
-                TOOL, TOOL_VERSION, "proof-root-invalid", str(root), "fail",
-                "--root must resolve to an existing directory", seq))
+            results.append(_check_result(
+                "proof-root-invalid", str(root), "fail",
+                "--root must resolve to an existing directory"))
         else:
             current_evidence_failures = _terminal_reconciliation_failures(
                 proof, runtime=current_runtime)
             current_evidence_bad = len(current_evidence_failures)
             for check, target, details in current_evidence_failures:
-                seq += 1
-                receipts.append(_make_receipt(
-                    TOOL, TOOL_VERSION, check, target, "fail", details, seq
+                results.append(_check_result(
+                    check, target, "fail", details
                 ))
 
             if repository_snapshot_error is not None:
                 path_bad += 1
-                seq += 1
-                receipts.append(_make_receipt(
-                    TOOL, TOOL_VERSION,
+                results.append(_check_result(
                     "proof-repository-snapshot-unavailable", str(root),
-                    "fail", repository_snapshot_error, seq))
+                    "fail", repository_snapshot_error))
 
             active_view = ((current_runtime or {}).get(
                 "_active_standards_authorized_view"))
@@ -1914,11 +1810,10 @@ def _main():
                     "K00/03 identity view"]
             for index, details in enumerate(active_state_errors):
                 active_state_bad += 1
-                seq += 1
-                receipts.append(_make_receipt(
-                    TOOL, TOOL_VERSION, "proof-active-state-invalid",
+                results.append(_check_result(
+                    "proof-active-state-invalid",
                     "%s#active_state[%d]" % (proof_name, index), "fail",
-                    details, seq))
+                    details))
             if not active_state_errors:
                 active_state_checked = True
                 for field in \
@@ -1928,15 +1823,13 @@ def _main():
                     if active_state.get(field) != proof.get(field):
                         active_state_checked = False
                         active_state_bad += 1
-                        seq += 1
-                        receipts.append(_make_receipt(
-                            TOOL, TOOL_VERSION,
+                        results.append(_check_result(
                             "proof-active-state-mismatch",
                             "%s#%s" % (proof_name, field), "fail",
                             "Terminal Proof %s=%r does not match active "
                             "Standards state %r in %s" %
                             (field, proof.get(field), active_state.get(field),
-                             ACTIVE_STATE_PATH), seq))
+                             ACTIVE_STATE_PATH)))
 
             for field in PATH_FIELDS:
                 if field in missing or field not in proof:
@@ -1954,22 +1847,20 @@ def _main():
                     resolved, resolve_error = _resolve_under_root(root, raw_path)
                     if resolve_error:
                         path_bad += 1
-                        seq += 1
-                        receipts.append(_make_receipt(
-                            TOOL, TOOL_VERSION, "proof-path-invalid",
+                        results.append(_check_result(
+                            "proof-path-invalid",
                             target, "fail",
                             "path %r recorded in %s is invalid: %s"
-                            % (raw_path, field, resolve_error), seq))
+                            % (raw_path, field, resolve_error)))
                     elif not resolved.is_file():
                         path_bad += 1
-                        seq += 1
-                        receipts.append(_make_receipt(
-                            TOOL, TOOL_VERSION, "proof-path-missing",
+                        results.append(_check_result(
+                            "proof-path-missing",
                             target, "fail",
                             "path %r recorded in %s is not a regular file "
                             "under root %s (K12/15 requires recorded path "
                             "references to be resolvable files)" %
-                            (raw_path, field, root), seq))
+                            (raw_path, field, root)))
 
             if ("selected_profile_manifest" not in missing and
                     not _selected_profile_manifest_error(
@@ -1993,24 +1884,21 @@ def _main():
                         ]
                         detail = (output_lines[-1] if output_lines else
                                   "no diagnostic output")
-                    seq += 1
-                    receipts.append(_make_receipt(
-                        TOOL, TOOL_VERSION, "proof-profile-not-loadable",
+                    results.append(_check_result(
+                        "proof-profile-not-loadable",
                         "%s#selected_profile_manifest" % proof_name, "fail",
                         "profile-load exited %d: %s" %
-                        (profile_load_evaluation.exit_code, detail), seq))
+                        (profile_load_evaluation.exit_code, detail)))
                 elif profile_load_evaluation_error is None:
                     # A regular manifest should have produced an evaluation
                     # above; fail closed if a future control-flow change breaks
                     # that invariant.
                     profile_manifest_bad += 1
-                    seq += 1
-                    receipts.append(_make_receipt(
-                        TOOL, TOOL_VERSION,
+                    results.append(_check_result(
                         "proof-profile-check-unavailable",
                         "%s#selected_profile_manifest" % proof_name, "fail",
                         "profile-load evaluation was not available for the "
-                        "selected manifest", seq))
+                        "selected manifest"))
 
             if profile_identity_checked:
                 expected_prefix = "P:%s:" % selected_profile_id
@@ -2019,15 +1907,13 @@ def _main():
                             PROFILE_ROUTE_ID_RE.fullmatch(route_id) and
                             not route_id.startswith(expected_prefix)):
                         profile_route_id_bad += 1
-                        seq += 1
-                        receipts.append(_make_receipt(
-                            TOOL, TOOL_VERSION,
+                        results.append(_check_result(
                             "proof-profile-route-id-mismatch",
                             "%s#selected_profile_route_ids[%d]" %
                             (proof_name, index), "fail",
                             "profile route ID %r belongs to another profile; "
                             "the selected manifest declares profile_id %r" %
-                            (route_id, selected_profile_id), seq))
+                            (route_id, selected_profile_id)))
 
                 selected_profile_dir = \
                     profile_layout_contract.\
@@ -2045,15 +1931,12 @@ def _main():
                                 profile_layout_contract.PROFILES_DIRECTORY and
                                 parts[1] != selected_profile_dir):
                             profile_manifest_bad += 1
-                            seq += 1
-                            receipts.append(_make_receipt(
-                                TOOL, TOOL_VERSION,
+                            results.append(_check_result(
                                 "proof-profile-path-mismatch",
                                 "%s#%s[%d]" % (proof_name, field, index),
                                 "fail", "profile-owned path %r belongs to %r, "
                                 "but selected_profile_manifest chooses %r" %
-                                (raw_path, parts[1], selected_profile_dir),
-                                seq))
+                                (raw_path, parts[1], selected_profile_dir)))
 
             try:
                 card_map, read_map = stamp_cards.discover_cards(root)
@@ -2070,11 +1953,10 @@ def _main():
                     registry_errors = [str(exc)]
             registry_bad = len(registry_errors)
             for index, details in enumerate(registry_errors):
-                seq += 1
-                receipts.append(_make_receipt(
-                    TOOL, TOOL_VERSION, "proof-route-registry-invalid",
+                results.append(_check_result(
+                    "proof-route-registry-invalid",
                     "%s#route_registry[%d]" % (proof_name, index), "fail",
-                    details, seq))
+                    details))
 
             # Declaration-dependent proof checks only run against structurally
             # sound entity frontmatter. Navigation indexes are not consulted;
@@ -2083,12 +1965,11 @@ def _main():
                 registry_checked = True
                 for route_id in sorted(valid_route_ids - set(card_map)):
                     route_id_bad += 1
-                    seq += 1
-                    receipts.append(_make_receipt(
-                        TOOL, TOOL_VERSION, "proof-route-id-unregistered",
+                    results.append(_check_result(
+                        "proof-route-id-unregistered",
                         "%s#selected_route_ids" % proof_name, "fail",
                         "route identity %s is absent from the canonical "
-                        "Card/Read Set machine registry" % route_id, seq))
+                        "Card/Read Set machine registry" % route_id))
                 selected_card_set = set(valid_card_paths)
                 expected_card_set = {
                     card_map[route_id]["path"]
@@ -2100,12 +1981,11 @@ def _main():
                     route_id = next(
                         route for route, entry in card_map.items()
                         if entry["path"] == card_path)
-                    seq += 1
-                    receipts.append(_make_receipt(
-                        TOOL, TOOL_VERSION, "proof-card-path-missing-for-route",
+                    results.append(_check_result(
+                        "proof-card-path-missing-for-route",
                         "%s#selected_card_paths" % proof_name, "fail",
                         "selected route %s requires canonical Card path %s"
-                        % (route_id, card_path), seq))
+                        % (route_id, card_path)))
                 for card_path in sorted(selected_card_set - expected_card_set):
                     card_path_bad += 1
                     registered_route = next(
@@ -2117,11 +1997,10 @@ def _main():
                             "selected_route_ids" % (card_path, registered_route))
                     else:
                         details = "Card path %s is not registered" % card_path
-                    seq += 1
-                    receipts.append(_make_receipt(
-                        TOOL, TOOL_VERSION, "proof-card-route-mismatch",
+                    results.append(_check_result(
+                        "proof-card-route-mismatch",
                         "%s#selected_card_paths" % proof_name, "fail",
-                        details, seq))
+                        details))
 
                 read_set_to_route = {
                     entry["path"]: route_id
@@ -2135,13 +2014,11 @@ def _main():
                             root, selected_profile_manifest)
                     except read_set_contract.ReadSetContractError as exc:
                         read_set_bad += 1
-                        seq += 1
-                        receipts.append(_make_receipt(
-                            TOOL, TOOL_VERSION,
+                        results.append(_check_result(
                             "proof-profile-read-set-registry-invalid",
                             "%s#selected_read_sets" % proof_name, "fail",
                             "selected Profile machine Read Set declarations "
-                            "are invalid: %s" % exc, seq))
+                            "are invalid: %s" % exc))
                 profile_path_to_route = {
                     entry["path"]: route_id
                     for route_id, entry in profile_read_map.items()
@@ -2151,81 +2028,67 @@ def _main():
                     entry = profile_read_map.get(route_id)
                     if entry is None:
                         read_set_bad += 1
-                        seq += 1
-                        receipts.append(_make_receipt(
-                            TOOL, TOOL_VERSION,
+                        results.append(_check_result(
                             "proof-profile-read-set-route-unregistered",
                             "%s#selected_profile_route_ids" % proof_name,
                             "fail", "selected Profile route %s has no machine "
-                            "profile-read-set declaration" % route_id, seq))
+                            "profile-read-set declaration" % route_id))
                     elif entry["path"] not in selected_read_set_set:
                         read_set_bad += 1
-                        seq += 1
-                        receipts.append(_make_receipt(
-                            TOOL, TOOL_VERSION,
+                        results.append(_check_result(
                             "proof-profile-read-set-path-missing",
                             "%s#selected_read_sets" % proof_name, "fail",
                             "selected Profile route %s requires machine Read "
-                            "Set path %s" % (route_id, entry["path"]), seq))
+                            "Set path %s" % (route_id, entry["path"])))
                 for read_set_path in valid_read_set_paths:
                     if read_set_path.startswith(
                             live_read_set_schema["path_prefix"]):
                         registered_route = read_set_to_route.get(read_set_path)
                         if registered_route is None:
                             read_set_bad += 1
-                            seq += 1
-                            receipts.append(_make_receipt(
-                                TOOL, TOOL_VERSION,
+                            results.append(_check_result(
                                 "proof-read-set-unregistered",
                                 "%s#selected_read_sets" % proof_name, "fail",
                                 "Read Set path %s has no canonical machine "
                                 "declaration under %s"
                                 % (read_set_path,
-                                   live_read_set_schema["directory"]), seq))
+                                   live_read_set_schema["directory"])))
                         elif registered_route not in valid_route_ids:
                             read_set_bad += 1
-                            seq += 1
-                            receipts.append(_make_receipt(
-                                TOOL, TOOL_VERSION,
+                            results.append(_check_result(
                                 "proof-read-set-route-mismatch",
                                 "%s#selected_read_sets" % proof_name, "fail",
                                 "Read Set path %s belongs to %s, which is not "
                                 "in selected_route_ids"
-                                % (read_set_path, registered_route), seq))
+                                % (read_set_path, registered_route)))
                     elif read_set_path.startswith(
                             profile_layout_contract.PROFILES_DIRECTORY + "/"):
                         registered_route = profile_path_to_route.get(
                             read_set_path)
                         if registered_route is None:
                             read_set_bad += 1
-                            seq += 1
-                            receipts.append(_make_receipt(
-                                TOOL, TOOL_VERSION,
+                            results.append(_check_result(
                                 "proof-profile-read-set-unregistered",
                                 "%s#selected_read_sets" % proof_name, "fail",
                                 "profile Read Set path %s has no machine "
                                 "declaration inside the selected Profile"
-                                % read_set_path, seq))
+                                % read_set_path))
                         elif registered_route not in valid_profile_route_ids:
                             read_set_bad += 1
-                            seq += 1
-                            receipts.append(_make_receipt(
-                                TOOL, TOOL_VERSION,
+                            results.append(_check_result(
                                 "proof-profile-read-set-route-mismatch",
                                 "%s#selected_read_sets" % proof_name, "fail",
                                 "Profile Read Set path %s belongs to %s, which "
                                 "is not in selected_profile_route_ids" %
-                                (read_set_path, registered_route), seq))
+                                (read_set_path, registered_route)))
                     else:
                         read_set_bad += 1
-                        seq += 1
-                        receipts.append(_make_receipt(
-                            TOOL, TOOL_VERSION,
+                        results.append(_check_result(
                             "proof-read-set-path-outside-registry",
                             "%s#selected_read_sets" % proof_name, "fail",
                             "Read Set path %s is neither a canonical kernel "
                             "Read Set nor a profile supplemental Read Set"
-                            % read_set_path, seq))
+                            % read_set_path))
 
     progress_cross_fail = 0
     progress_ledger = None
@@ -2233,12 +2096,10 @@ def _main():
     proof_progress_sha256 = None
     if args.root and not args.progress_ledger:
         progress_cross_fail += 1
-        seq += 1
-        receipts.append(_make_receipt(
-            TOOL, TOOL_VERSION, "progress-ledger-required", proof_name,
+        results.append(_check_result(
+            "progress-ledger-required", proof_name,
             "fail", "--progress-ledger is required with --root; without the "
-            "frozen Task Contract snapshot this run cannot support complete",
-            seq))
+            "frozen Task Contract snapshot this run cannot support complete"))
 
     if args.progress_ledger:
         progress_path = Path(args.progress_ledger)
@@ -2249,13 +2110,12 @@ def _main():
             )
         if progress_path_error:
             progress_cross_fail += 1
-            seq += 1
-            receipts.append(_make_receipt(
-                TOOL, TOOL_VERSION, "progress-ledger-noncanonical",
+            results.append(_check_result(
+                "progress-ledger-noncanonical",
                 args.progress_ledger, "fail",
                 "--progress-ledger must identify the canonical %s without "
                 "aliases or symlinks: %s" %
-                (CANONICAL_PROGRESS_PATH, progress_path_error), seq))
+                (CANONICAL_PROGRESS_PATH, progress_path_error)))
             progress_path = None
         try:
             if progress_path is not None:
@@ -2277,11 +2137,10 @@ def _main():
         except (OSError, UnicodeError, ValueError,
                 kblib.YamlSubsetError) as exc:
             progress_cross_fail += 1
-            seq += 1
-            receipts.append(_make_receipt(
-                TOOL, TOOL_VERSION, "progress-ledger-unreadable",
+            results.append(_check_result(
+                "progress-ledger-unreadable",
                 args.progress_ledger, "fail",
-                "cannot read/parse Progress Ledger: %s" % exc, seq))
+                "cannot read/parse Progress Ledger: %s" % exc))
             progress_ledger = None
 
         if progress_path is not None:
@@ -2300,9 +2159,8 @@ def _main():
                 )
             progress_cross_fail += len(progress_failures)
             for check, target, details in progress_failures:
-                seq += 1
-                receipts.append(_make_receipt(
-                    TOOL, TOOL_VERSION, check, target, "fail", details, seq
+                results.append(_check_result(
+                    check, target, "fail", details
                 ))
 
         if (isinstance(progress_ledger, dict) and
@@ -2316,23 +2174,19 @@ def _main():
                     invalid = True
                 if invalid:
                     progress_cross_fail += 1
-                    seq += 1
-                    receipts.append(_make_receipt(
-                        TOOL, TOOL_VERSION, "progress-contract-field-invalid",
+                    results.append(_check_result(
+                        "progress-contract-field-invalid",
                         "Progress Ledger#contract.%s" % field, "fail",
-                        "%s must be an instantiated canonical string" % field,
-                        seq))
+                        "%s must be an instantiated canonical string" % field))
     coverage_cross_fail = 0
     ledger = None
     coverage_sha256 = None
     if args.root and not args.ledger:
         coverage_cross_fail += 1
-        seq += 1
-        receipts.append(_make_receipt(
-            TOOL, TOOL_VERSION, "coverage-ledger-required", proof_name,
+        results.append(_check_result(
+            "coverage-ledger-required", proof_name,
             "fail", "--ledger is required with --root so "
             "required_authoring_gaps is checked against current Coverage",
-            seq,
         ))
     if args.ledger:
         ledger_path = Path(args.ledger)
@@ -2343,13 +2197,12 @@ def _main():
             )
         if ledger_path_error:
             coverage_cross_fail += 1
-            seq += 1
-            receipts.append(_make_receipt(
-                TOOL, TOOL_VERSION, "coverage-ledger-noncanonical",
+            results.append(_check_result(
+                "coverage-ledger-noncanonical",
                 args.ledger, "fail",
                 "--ledger must identify the canonical %s without aliases or "
                 "symlinks: %s" %
-                (CANONICAL_COVERAGE_PATH, ledger_path_error), seq))
+                (CANONICAL_COVERAGE_PATH, ledger_path_error)))
             ledger_path = None
         try:
             if ledger_path is not None:
@@ -2371,10 +2224,9 @@ def _main():
         except (OSError, UnicodeError, ValueError,
                 kblib.YamlSubsetError) as exc:
             coverage_cross_fail += 1
-            seq += 1
-            receipts.append(_make_receipt(
-                TOOL, TOOL_VERSION, "ledger-unreadable", args.ledger, "fail",
-                "cannot read/parse Coverage Ledger: %s" % exc, seq))
+            results.append(_check_result(
+                "ledger-unreadable", args.ledger, "fail",
+                "cannot read/parse Coverage Ledger: %s" % exc))
             ledger = None
 
         if args.root and ledger_path is not None:
@@ -2383,20 +2235,18 @@ def _main():
             )
             coverage_cross_fail += len(coverage_failures)
             for check, target, details in coverage_failures:
-                seq += 1
-                receipts.append(_make_receipt(
-                    TOOL, TOOL_VERSION, check, target, "fail", details, seq
+                results.append(_check_result(
+                    check, target, "fail", details
                 ))
         elif isinstance(ledger, dict):
             open_gaps = ledger.get("open_gaps")
             if isinstance(open_gaps, list) and open_gaps:
                 coverage_cross_fail += 1
-                seq += 1
-                receipts.append(_make_receipt(
-                    TOOL, TOOL_VERSION, "proof-ledger-mismatch",
+                results.append(_check_result(
+                    "proof-ledger-mismatch",
                     "%s#required_authoring_gaps" % proof_name, "fail",
                     "Coverage Ledger open_gaps has %d unclosed gap(s), but "
-                    "the proof claims completion" % len(open_gaps), seq))
+                    "the proof claims completion" % len(open_gaps)))
 
     queue_cross_fail = 0
     queue_linkage_checked = False
@@ -2413,17 +2263,15 @@ def _main():
                 root, proof, progress_ledger, coverage_sha256, proof_progress_sha256,
                 runtime=observed)
             dimension_evidence_failures = _validate_dimension_coverage_evidence(
-                root, proof, cited_dimension_receipts, runtime=observed,
-                registered_dimensions=registered_dimensions)
+                cited_dimension_receipts, runtime=observed)
             corpus_failures, corpus_plan_linkage_checked = _validate_corpus_plan_linkage(
                 root, proof, proof_progress_sha256, runtime=observed,
                 authorized_profile_view=authorized_profile_view,
                 repository_snapshot_sha256=repository_snapshot_sha256)
         queue_cross_fail = len(queue_failures)
         for check, target, details in queue_failures:
-            seq += 1
-            receipts.append(_make_receipt(
-                TOOL, TOOL_VERSION, check, target, "fail", details, seq
+            results.append(_check_result(
+                check, target, "fail", details
             ))
         queue_linkage_checked = (
             queue_live_check_passed and not queue_failures
@@ -2431,15 +2279,13 @@ def _main():
 
         dimension_bad += len(dimension_evidence_failures)
         for check, target, details in dimension_evidence_failures:
-            seq += 1
-            receipts.append(_make_receipt(
-                TOOL, TOOL_VERSION, check, target, "fail", details, seq))
+            results.append(_check_result(
+                check, target, "fail", details))
 
         corpus_plan_cross_fail = len(corpus_failures)
         for check, target, details in corpus_failures:
-            seq += 1
-            receipts.append(_make_receipt(
-                TOOL, TOOL_VERSION, check, target, "fail", details, seq
+            results.append(_check_result(
+                check, target, "fail", details
             ))
 
     if args.root and root is not None and root.is_dir():
@@ -2448,12 +2294,11 @@ def _main():
             repository_snapshot_sha256)
         profile_manifest_bad += len(profile_currency_failures)
         for check, target, details in profile_currency_failures:
-            seq += 1
-            receipts.append(_make_receipt(
-                TOOL, TOOL_VERSION, check, target, "fail", details, seq
+            results.append(_check_result(
+                check, target, "fail", details
             ))
 
-    if not any(r["result"] == "fail" for r in receipts):
+    if not any(r["result"] == "fail" for r in results):
         route_summary = (
             ", selected routes/Card paths and kernel Read Set readbacks "
             "match the canonical indexes" if registry_checked else
@@ -2480,9 +2325,7 @@ def _main():
                 ).as_posix()
             except (OSError, RuntimeError, ValueError):
                 proof_receipt_path = str(Path(args.proof).resolve())
-        seq += 1
-        summary_receipt = _make_receipt(
-            TOOL, TOOL_VERSION,
+        summary_receipt = _check_result(
             (GATE_CHECK if args.root and queue_linkage_checked else
              "proof-structural-summary"),
             proof_receipt_path,
@@ -2501,8 +2344,14 @@ def _main():
                 ", bound to the current Corpus Planning receipt"
                 if corpus_plan_linkage_checked else "",
                 ", consistent with Coverage Ledger open_gaps"
-                if args.ledger else ""), seq)
+                if args.ledger else ""))
         if args.root and queue_linkage_checked:
+            summary_receipt = kblib.make_receipt(
+                TOOL, TOOL_VERSION, GATE_CHECK, proof_receipt_path,
+                "pass", summary_receipt["details"], 1,
+                receipt_type_id=terminal_proof_contract.GATE_RECEIPT_TYPE_ID)
+            summary_receipt["gate_id"] = GATE_ID
+            gate_receipt = summary_receipt
             for field in (
                     "task_id", "scope_version", "contract_version",
                     "upstream_revision_id", "selected_profile_manifest",
@@ -2529,7 +2378,7 @@ def _main():
                 profile_load_evaluation.profile_contract_fingerprint)
             summary_receipt["profile_load_inputs_sha256"] = (
                 profile_load_evaluation.profile_load_inputs_sha256)
-        receipts.append(summary_receipt)
+        results.append(summary_receipt)
 
     print("check_proof: checking %s against %d required template field(s)" % (args.proof, len(required_fields)))
     print("  missing_fields=%d route_id_violations=%d "
@@ -2566,11 +2415,11 @@ def _main():
              ("failed" if args.root else "not_run"),
              "passed" if corpus_plan_linkage_checked else
              ("failed" if args.root else "not_run")))
-    for r in receipts:
+    for r in results:
         if r["result"] != "pass":
             print("  [%s %s] %s — %s" % (r["result"].upper()[:4], r["check"],
                                          r["target"], r["details"]))
-    if not any(r["result"] == "fail" for r in receipts):
+    if not any(r["result"] == "fail" for r in results):
         if args.root:
             print("  Conclusion: Terminal Proof consistency check passed with "
                   "active Standards state, filled profile, frozen Progress "
@@ -2581,16 +2430,16 @@ def _main():
             print("  Conclusion: structural lint passed; without --root this "
                   "is not Terminal Completion Gate evidence.")
 
-    for receipt in receipts:
+    if gate_receipt is not None:
         receipt_errors = terminal_proof_contract.current_receipt_errors(
-            receipt)
+            gate_receipt)
         if receipt_errors:
             print("[FAIL] constructed Terminal Receipt is invalid: %s" %
                   "; ".join(receipt_errors), file=sys.stderr)
             return 1
-    kblib.write_receipts(receipt_output, receipts)
-    _JSON_REPORTER.record(receipts)
-    return kblib.exit_code(receipts)
+        kblib.write_receipts(receipt_output, [gate_receipt])
+    _JSON_REPORTER.record(results)
+    return kblib.exit_code(results)
 
 
 if __name__ == "__main__":
