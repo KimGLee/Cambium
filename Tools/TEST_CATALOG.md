@@ -14,7 +14,7 @@ These counts identify test methods whose per-method, per-class, or per-process s
 
 | Process | Temporary resource | File copy | Full repository copy | E2E builder | Full lifecycle |
 | ---: | ---: | ---: | ---: | ---: | ---: |
-| 37 | 322 | 56 | 50 | 0 | 1 |
+| 37 | 323 | 56 | 50 | 0 | 1 |
 
 ## Before and current static baseline
 
@@ -23,7 +23,7 @@ These counts identify test methods whose per-method, per-class, or per-process s
 | Test modules | 129 | 134 |
 | Test cases | 2543 | 1303 |
 | Process-launch call sites | 192 | 52 |
-| Temporary-resource call sites | 233 | 164 |
+| Temporary-resource call sites | 233 | 165 |
 | Full repository copy call sites | 86 | 35 |
 | Cross-test import sites | 22 | 0 |
 
@@ -92,7 +92,7 @@ These counts identify test methods whose per-method, per-class, or per-process s
 | `Tools/tests/test_check_proof_audit_receipts.py` | `Tools/execution/audit/check_proof.py` | `unit` | True | 8 | 3 | 0 | 1 | 0 | 0 |
 | `Tools/tests/test_check_queue.py` | `Tools/execution/task_runtime/check_queue.py` | `unit` | True | 23 | 7 | 0 | 1 | 0 | 0 |
 | `Tools/tests/test_check_structure.py` | `Tools/platform/common/kblib.py` | `contract` | True | 3 | 2 | 0 | 0 | 0 | 0 |
-| `Tools/tests/test_ci_impact.py` | `.github/scripts/ci_impact.py` | `contract` | True | 16 | 7 | 0 | 1 | 0 | 0 |
+| `Tools/tests/test_ci_impact.py` | `.github/scripts/ci_impact.py` | `contract` | True | 16 | 7 | 0 | 2 | 0 | 0 |
 | `Tools/tests/test_close_gate_post_delta_consumer.py` | `Tools/execution/task_runtime/queue_runtime/close_gate.py` | `contract` | True | 10 | 3 | 0 | 1 | 0 | 1 |
 | `Tools/tests/test_compile_cli_contract.py` | `Tools/platform/agent_interface/compile_cli_contract.py` | `contract` | True | 16 | 13 | 0 | 1 | 0 | 0 |
 | `Tools/tests/test_compile_queue.py` | `Tools/execution/planning/compile_queue.py` | `unit` | True | 14 | 10 | 1 | 3 | 1 | 1 |
@@ -1177,7 +1177,7 @@ Python references are resolved against their owner AST, never imported. Invarian
 | `test_ci_impact.CiMatrixPresentationContractTests.test_history_is_bounded_main_only_and_network_failure_falls_back` | `ci_impact._historical_costs` | python-symbol / resolved | `test_ci_impact.CiMatrixPresentationContractTests.test_history_is_bounded_main_only_and_network_failure_falls_back` | `contract` | — | — | — | — | — | — | — | False | — | `keep` |
 | `test_ci_impact.CiMatrixPresentationContractTests.test_member_labels_preserve_exact_selection_and_version_order` | `ci_impact._matrix` | python-symbol / resolved | `test_ci_impact.CiMatrixPresentationContractTests.test_member_labels_preserve_exact_selection_and_version_order` | `contract` | — | — | — | — | — | — | — | False | — | `keep` |
 | `test_ci_impact.CiMatrixPresentationContractTests.test_required_budget_refuses_missing_failed_or_mixed_attempt_evidence` | `ci_impact.required_budget_verdict` | python-symbol / resolved | `test_ci_impact.CiMatrixPresentationContractTests.test_required_budget_refuses_missing_failed_or_mixed_attempt_evidence` | `contract` | — | — | — | — | — | — | — | False | — | `keep` |
-| `test_ci_impact.CiMatrixPresentationContractTests.test_required_budget_uses_the_whole_attempt_and_exact_job_closure` | `ci_impact.required_budget_verdict` | python-symbol / resolved | `test_ci_impact.CiMatrixPresentationContractTests.test_required_budget_uses_the_whole_attempt_and_exact_job_closure` | `contract` | — | — | — | — | — | — | — | False | — | `keep` |
+| `test_ci_impact.CiMatrixPresentationContractTests.test_required_budget_uses_the_whole_attempt_and_exact_job_closure` | `ci_impact.required_budget_verdict` | python-symbol / resolved | `test_ci_impact.CiMatrixPresentationContractTests.test_required_budget_uses_the_whole_attempt_and_exact_job_closure` | `contract` | temp=1 | — | — | — | — | — | — | False | — | `keep` |
 | `test_ci_impact.SelectedTestRunnerDelegationContractTests.test_ci_delegates_exact_files_and_failure_to_catalog_runner` | `ci_impact.run_selected_tests` | python-symbol / resolved | `test_ci_impact.SelectedTestRunnerDelegationContractTests.test_ci_delegates_exact_files_and_failure_to_catalog_runner` | `contract` | — | — | — | — | — | — | — | False | — | `keep` |
 | `test_ci_impact.SelectedTestRunnerDelegationContractTests.test_ci_exposes_explicit_jobs_without_changing_selection` | `ci_impact.run_selected_tests` | python-symbol / resolved | `test_ci_impact.SelectedTestRunnerDelegationContractTests.test_ci_exposes_explicit_jobs_without_changing_selection` | `contract` | — | — | — | — | — | — | — | False | — | `keep` |
 | `test_ci_impact.ToolDependencyImpactContractTests.test_changed_tool_selects_reverse_closure_and_cli_surface` | `ci_impact.impacted_tool_tests` | python-symbol / resolved | `test_ci_impact.ToolDependencyImpactContractTests.test_changed_tool_selects_reverse_closure_and_cli_surface` | `contract` | — | — | temp=1 | — | — | — | — | False | — | `keep` |

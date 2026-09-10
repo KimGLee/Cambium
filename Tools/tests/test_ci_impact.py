@@ -229,7 +229,17 @@ class CiMatrixPresentationContractTests(unittest.TestCase):
                 self.assertEqual(10, result["run_start_delay_seconds"])
                 self.assertIsNone(result["job_start_delay_seconds"]["Impact plan"])
                 self.assertEqual(1788998760, result["deadline"])
+                self.assertEqual(1789000200, result["execution_deadline"])
+                self.assertEqual(1800, result["safety_seconds"])
                 self.assertFalse(result["final"])
+        # Execution consumes the safety boundary, not the 360-second verdict.
+        with tempfile.TemporaryDirectory() as folder:
+            output = Path(folder) / "outputs"
+            ci_impact._write_github_outputs(output, dict(plan, mode="full", budget=result))
+            values = dict(line.split("=", 1) for line in output.read_text().splitlines())
+        self.assertNotIn("deadline", values)
+        self.assertEqual("30", values["job_timeout_minutes"])
+        self.assertEqual("1789000200.0", values["execution_deadline"])
         # The gate's final cost includes its own post-observation work.
         gate.update(status="completed", conclusion="success", completed_at="2026-09-10T00:06:01Z")
         result = ci_impact.required_budget_verdict(

@@ -21,7 +21,7 @@ jobs:
   plan:
     name: Impact plan
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 30 # Safety only; ci-required still enforces 360 seconds.
     outputs:
       mode: ${{ steps.plan.outputs.mode }}
       run_tests: ${{ steps.plan.outputs.run_tests }}
@@ -29,7 +29,7 @@ jobs:
       test_matrix: ${{ steps.plan.outputs.test_matrix }}
       required_jobs: ${{ steps.plan.outputs.required_jobs }}
       job_timeout_minutes: ${{ steps.plan.outputs.job_timeout_minutes }}
-      deadline: ${{ steps.plan.outputs.deadline }}
+      execution_deadline: ${{ steps.plan.outputs.execution_deadline }}
     steps:
       - name: Check out repository history
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -93,7 +93,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: ${{ fromJSON(needs.plan.outputs.job_timeout_minutes) }}
     env:
-      CI_DEADLINE: ${{ needs.plan.outputs.deadline }}
+      CI_DEADLINE: ${{ needs.plan.outputs.execution_deadline }}
       PYTHONDONTWRITEBYTECODE: "1"
     strategy:
       fail-fast: false
@@ -136,7 +136,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: ${{ fromJSON(needs.plan.outputs.job_timeout_minutes) }}
     env:
-      CI_DEADLINE: ${{ needs.plan.outputs.deadline }}
+      CI_DEADLINE: ${{ needs.plan.outputs.execution_deadline }}
       PYTHONDONTWRITEBYTECODE: "1"
     strategy:
       fail-fast: false
@@ -201,7 +201,7 @@ jobs:
       - name: Run catalog-selected tests
         env:
           TEST_FILES: ${{ matrix.test-files }}
-          TEST_DEADLINE: ${{ needs.plan.outputs.deadline }}
+          TEST_DEADLINE: ${{ needs.plan.outputs.execution_deadline }}
         run: make test-selected PYTHON=python TEST_FILES="$TEST_FILES" TEST_REPORT="$RUNNER_TEMP/test-costs.json" TEST_DEADLINE="$TEST_DEADLINE"
 
       - name: Preserve test costs

@@ -50,6 +50,7 @@ import Tools.platform.distribution.test_runner as test_runner  # noqa: E402
 PYTHON_VERSIONS = ("3.10", "3.14")
 CI_TARGET_SECONDS = 300
 CI_LIMIT_SECONDS = 360
+CI_SAFETY_SECONDS = 1800
 MAX_SELECTIVE_TESTS = 24
 TEST_NAME_RE = re.compile(r"test_[a-z0-9_]+\.py\Z")
 
@@ -74,11 +75,13 @@ def required_job_names(plan):
 
 
 def run_budget(run, *, run_id, attempt, observed_at):
-    """One engineering deadline for an entire official workflow attempt.
+    """Separate performance acceptance from an execution safety deadline.
 
     First-attempt queue time remains inside the budget. A rerun uses its
     official attempt start, while retaining elapsed time since first creation.
-    This is CI acceptance, never a governance or Receipt verdict.
+    Exceeding the acceptance budget does not stop measurement. Only the
+    independent safety deadline terminates unfinished work. Neither is a
+    governance or Receipt verdict.
     """
     if (not isinstance(run, dict) or type(run_id) is not int or type(attempt) is not int or
             run_id < 1 or attempt < 1 or run.get("id") != run_id or
@@ -95,6 +98,8 @@ def run_budget(run, *, run_id, attempt, observed_at):
         "run_id": run_id, "attempt": attempt,
         "origin": run["created_at"] if attempt == 1 else run["run_started_at"],
         "deadline": origin + CI_LIMIT_SECONDS,
+        "execution_deadline": origin + CI_SAFETY_SECONDS,
+        "safety_seconds": CI_SAFETY_SECONDS,
         "target_seconds": CI_TARGET_SECONDS, "limit_seconds": CI_LIMIT_SECONDS,
         "elapsed_seconds": elapsed, "since_creation_seconds": now - created,
         "run_start_delay_seconds": started - created if attempt == 1 else None,
@@ -713,10 +718,10 @@ def _write_github_outputs(path, plan):
         "check_matrix": compact(plan["check_matrix"]),
         "test_matrix": compact(plan["test_matrix"]),
         "required_jobs": compact(required_job_names(plan)),
-        "job_timeout_minutes": str(math.ceil(CI_LIMIT_SECONDS / 60)),
+        "job_timeout_minutes": str(math.ceil(CI_SAFETY_SECONDS / 60)),
     }
     if "budget" in plan:
-        values["deadline"] = str(plan["budget"]["deadline"])
+        values["execution_deadline"] = str(plan["budget"]["execution_deadline"])
     with Path(path).open("a", encoding="utf-8") as handle:
         for key, value in values.items():
             handle.write("%s=%s\n" % (key, value))
@@ -863,7 +868,7 @@ def main(argv=None):
             print("ci-budget: %s" % error, file=sys.stderr)
             return 1
     history = _historical_costs(os.environ.get("GITHUB_REPOSITORY"),
-        deadline=plan.get("budget", {}).get("deadline")) if args.cost_history else {
+        deadline=plan.get("budget", {}).get("execution_deadline")) if args.cost_history else {
         "samples": {}, "runs": [], "status": "not-requested"}
     if plan["run_tests"]:
         plan["test_matrix"] = _matrix(root, plan["check_versions"], plan["selected_tests"],

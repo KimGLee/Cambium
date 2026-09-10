@@ -50067,7 +50067,7 @@
             "file_copies": 0,
             "full_repository_copies": 0,
             "process_calls": 0,
-            "temp_resources": 0
+            "temp_resources": 1
           },
           "execution": {
             "builder_triggers": [],
@@ -50080,7 +50080,7 @@
               "file_copies": 0,
               "full_repository_copies": 0,
               "process_calls": 0,
-              "temp_resources": 0
+              "temp_resources": 1
             },
             "scopes": {
               "direct_method": {
@@ -50090,7 +50090,7 @@
                   "file_copies": 0,
                   "full_repository_copies": 0,
                   "process_calls": 0,
-                  "temp_resources": 0
+                  "temp_resources": 1
                 },
                 "first_use_builds": {},
                 "fixture_entrypoints": [],
@@ -50148,7 +50148,7 @@
               "file_copies": 0,
               "full_repository_copies": 0,
               "process_calls": 0,
-              "temp_resources": 0
+              "temp_resources": 1
             },
             "triggered_once_per_process": {
               "builds": {},
@@ -50785,13 +50785,13 @@
         "file_copies": 0,
         "full_repository_copies": 0,
         "process_calls": 0,
-        "temp_resources": 1
+        "temp_resources": 2
       },
       "effects": {
         "file_copies": 0,
         "full_repository_copies": 0,
         "process_calls": 0,
-        "temp_resources": 1
+        "temp_resources": 2
       },
       "fixture_dependencies": [],
       "lifecycle": "current",
@@ -163039,7 +163039,7 @@
       "full_lifecycle": 1,
       "full_repository_copies": 50,
       "process_calls": 37,
-      "temp_resources": 322
+      "temp_resources": 323
     },
     "module_scenario_first_use_builds": 14,
     "owner_references": {
@@ -163052,7 +163052,7 @@
       "file_copies": 7,
       "full_repository_copies": 15,
       "process_calls": 40,
-      "temp_resources": 147
+      "temp_resources": 148
     },
     "test_cases": 1303,
     "test_modules": 134

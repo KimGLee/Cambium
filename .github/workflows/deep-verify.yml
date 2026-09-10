@@ -2,12 +2,18 @@ name: deep-verify
 
 on:
   workflow_dispatch:
+    inputs:
+      mcp_timing_diagnosis:
+        description: Measure only the fixed MCP scenario; not CI acceptance
+        type: boolean
+        default: false
 
 permissions:
   contents: read
 
 jobs:
   deep-verify:
+    if: ${{ !inputs.mcp_timing_diagnosis }}
     name: Deep checks · Py${{ matrix.python-version }}
     runs-on: ubuntu-latest
     timeout-minutes: 45
@@ -66,3 +72,55 @@ jobs:
             cat "$RUNNER_TEMP/worktree-status"
             exit 1
           fi
+
+  mcp-timing:
+    if: ${{ inputs.mcp_timing_diagnosis }}
+    name: Diagnose · Py${{ matrix.python-version }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.10", "3.14"]
+    env:
+      PYTHONDONTWRITEBYTECODE: "1"
+    steps:
+      - name: Check out diagnostic controller
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          path: diagnostic-control
+          persist-credentials: false
+      - name: Check out fixed measured commit
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: 6b7ce7c13710e2f9b14021188c87bb7d38046967
+          path: source
+          persist-credentials: false
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: ${{ matrix.python-version }}
+      - name: Install the same pinned Profile toolchain as required CI
+        working-directory: source
+        run: |
+          python -m pip install --disable-pip-version-check -r Tools/requirements-profile.txt -r Tools/requirements-host.txt
+          python .github/scripts/install_cue.py --destination "$RUNNER_TEMP/cambium-profile-cue"
+          echo "CAMBIUM_CUE=$RUNNER_TEMP/cambium-profile-cue/cue" >> "$GITHUB_ENV"
+      - name: Measure the existing complete MCP scenario once
+        working-directory: source
+        run: python ../diagnostic-control/.github/scripts/mcp_diagnostic.py "$RUNNER_TEMP/mcp-diagnostic"
+      - name: Preserve completed or incomplete diagnostics
+        if: ${{ always() }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # pinned upstream commit
+        with:
+          name: mcp-diagnostic-${{ matrix.python-version }}
+          path: ${{ runner.temp }}/mcp-diagnostic/
+          if-no-files-found: error
+          retention-days: 14
+      - name: Verify measured source was not modified
+        if: ${{ always() }}
+        working-directory: source
+        run: |
+          test "$(git rev-parse HEAD)" = 6b7ce7c13710e2f9b14021188c87bb7d38046967
+          git status --porcelain=v1 --untracked-files=all > "$RUNNER_TEMP/diagnostic-source-status"
+          test ! -s "$RUNNER_TEMP/diagnostic-source-status"
