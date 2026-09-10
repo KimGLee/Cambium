@@ -329,7 +329,9 @@ class CiMatrixPresentationContractTests(unittest.TestCase):
         self.assertEqual(1, api.call_count)
 
     def test_budget_metadata_reads_complete_attempt_pages_and_rejects_partial_results(self):
-        run = {"id": 17, "run_attempt": 2}
+        run = {"id": 17, "run_attempt": 2, "head_sha": "a" * 40,
+               "created_at": "2026-09-10T00:00:00Z",
+               "run_started_at": "2026-09-10T01:00:00Z"}
         pages = [{"total_count": 2, "jobs": [{"id": 1}]},
                  {"total_count": 2, "jobs": [{"id": 2}]}]
         with mock.patch.object(ci_impact.subprocess, "run", side_effect=[
@@ -339,6 +341,26 @@ class CiMatrixPresentationContractTests(unittest.TestCase):
                 "owner/repo", 17, 2, include_jobs=True))
         self.assertIn("repos/owner/repo/actions/runs/17/attempts/2/jobs?per_page=100", api.call_args.args[0])
         self.assertEqual(["--paginate", "--slurp"], api.call_args.args[0][-2:])
+        self.assertEqual("repos/owner/repo/actions/runs/17", api.call_args_list[0].args[0][-1])
+        # Older attempt snapshots keep their start but never redefine the
+        # original workflow creation. GitHub can create that snapshot later
+        # than run_started_at; no tolerance or shifted deadline is required.
+        prior = dict(run, run_attempt=1, created_at="2026-09-10T00:00:01Z",
+                     run_started_at="2026-09-10T00:00:00Z")
+        with mock.patch.object(ci_impact.subprocess, "run", side_effect=[
+                SimpleNamespace(stdout=json.dumps(run).encode()),
+                SimpleNamespace(stdout=json.dumps(prior).encode())]):
+            observed, jobs = ci_impact._run_metadata("owner/repo", 17, 1)
+        self.assertEqual([], jobs)
+        result = ci_impact.run_budget(observed, run_id=17, attempt=1,
+                                     observed_at="2026-09-10T00:05:00Z")
+        self.assertEqual((300, "2026-09-10T00:00:00Z"),
+                         (result["elapsed_seconds"], result["origin"]))
+        for invalid in (dict(prior, head_sha="b" * 40), dict(prior, run_attempt=2)):
+            with mock.patch.object(ci_impact.subprocess, "run", side_effect=[
+                    SimpleNamespace(stdout=json.dumps(run).encode()),
+                    SimpleNamespace(stdout=json.dumps(invalid).encode())]), self.assertRaises(ValueError):
+                ci_impact._run_metadata("owner/repo", 17, 1)
         for incomplete in ([], pages[:1], [pages[0], dict(pages[1], total_count=3)]):
             with mock.patch.object(ci_impact.subprocess, "run", side_effect=[
                     SimpleNamespace(stdout=json.dumps(run).encode()),

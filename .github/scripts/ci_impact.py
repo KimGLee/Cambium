@@ -173,7 +173,8 @@ def _run_metadata(repository, run_id, attempt, *, include_jobs=False):
             type(run_id) is not int or run_id < 1 or
             type(attempt) is not int or attempt < 1):
         raise ValueError("repository, run ID and attempt are required")
-    endpoint = "repos/%s/actions/runs/%d/attempts/%d" % (repository, run_id, attempt)
+    workflow_endpoint = "repos/%s/actions/runs/%d" % (repository, run_id)
+    endpoint = workflow_endpoint + "/attempts/%d" % attempt
     # Bound this whole metadata read, not each page independently.
     stop = time.monotonic() + 15
     def api(path, paginate=False):
@@ -185,7 +186,24 @@ def _run_metadata(repository, run_id, attempt, *, include_jobs=False):
             check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
             timeout=remaining)
         return json.loads(response.stdout)
-    run = api(endpoint)
+    workflow = api(workflow_endpoint)
+    if (not isinstance(workflow, dict) or workflow.get("id") != run_id or
+            type(workflow.get("run_attempt")) is not int or
+            workflow["run_attempt"] < attempt):
+        raise ValueError("workflow metadata does not identify the requested run/attempt")
+    if workflow["run_attempt"] == attempt:
+        run = workflow
+    else:
+        run = api(endpoint)
+        if (not isinstance(run, dict) or run.get("id") != run_id or
+                run.get("run_attempt") != attempt or
+                not run.get("head_sha") or
+                run.get("head_sha") != workflow.get("head_sha")):
+            raise ValueError("attempt metadata does not match the workflow")
+        # Attempt API creation is not the workflow's original creation; it
+        # can even follow run_started_at. Keep the workflow origin and the
+        # requested attempt's own start instead of conflating their clocks.
+        run = dict(run, created_at=workflow.get("created_at"))
     if not include_jobs:
         return run, []
     pages = api(endpoint + "/jobs?per_page=100", paginate=True)
