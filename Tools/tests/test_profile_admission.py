@@ -156,6 +156,49 @@ class ProfileAdmissionTests(unittest.TestCase):
         self.assertIn("selected Profile changed after profile-load",
                       "; ".join(profile_admission.currency_errors(admission)))
 
+    def test_currency_observation_shares_inputs_but_retires_at_each_boundary(self):
+        admission = self.admission()
+        with mock.patch.object(profile_admission, "_currency_errors",
+                               wraps=profile_admission._currency_errors) as fresh:
+            with profile_admission.currency_observation():
+                for _ in range(3):
+                    self.assertEqual([], profile_admission.currency_errors(admission))
+                self.assertEqual(1, fresh.call_count)
+                # A nested explicit observation is a new boundary, not a join.
+                with profile_admission.currency_observation():
+                    self.assertEqual([], profile_admission.currency_errors(admission))
+                self.assertEqual(3, fresh.call_count)
+            self.assertEqual(4, fresh.call_count)
+            self.assertEqual([], profile_admission.currency_errors(admission))
+            self.assertEqual(5, fresh.call_count)
+
+    def test_currency_observation_rejects_changed_inputs_before_return(self):
+        state = self.install_active_state()
+        with mock.patch.object(check_profile, "evaluate_profile_load",
+                               return_value=self.evaluation):
+            admission, errors = profile_admission.admit_profile(self.fixture.root)
+        self.assertEqual([], errors)
+        for target, message in (
+                (self.fixture.root / model.PROFILE_TOOLCHAIN_PATH, "canonical profile-load"),
+                (self.fixture.profile / "profile.toml", "selected Profile changed"),
+                (state, "active Standards state changed")):
+            original = target.read_bytes()
+            try:
+                with self.subTest(target=target), self.assertRaisesRegex(ValueError, message):
+                    with profile_admission.currency_observation():
+                        self.assertEqual([], profile_admission.currency_errors(admission))
+                        target.write_bytes(original + b"\n# changed during read\n")
+                        self.assertEqual([], profile_admission.currency_errors(admission))
+                # The failed observation cannot hide the change on a new read.
+                self.assertTrue(profile_admission.currency_errors(admission))
+            finally:
+                target.write_bytes(original)
+        with self.assertRaisesRegex(RuntimeError, "original read failure"):
+            with profile_admission.currency_observation():
+                profile_admission.currency_errors(admission)
+                raise RuntimeError("original read failure")
+        self.assertIsNone(profile_admission._CURRENCY_OBSERVATION.get())
+
     def test_reference_body_change_is_stale_but_unbound_notes_are_not(self):
         admission = self.admission()
         (self.fixture.profile / "unbound.md").write_text("Unbound candidate notes.\n")

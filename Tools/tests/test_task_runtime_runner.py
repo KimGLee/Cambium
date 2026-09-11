@@ -526,7 +526,7 @@ class TaskRuntimeRunnerContractTests(unittest.TestCase):
 
             dispatch.assert_not_called()
 
-    def test_contract_reuse_is_operation_scoped_and_rechecks_input_bytes(self):
+    def test_unknown_capture_inputs_revalidate_before_each_route(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory).resolve()
             path = root / runtime_paths.CLI_CONTRACT_ARTIFACT_PATH
@@ -540,18 +540,20 @@ class TaskRuntimeRunnerContractTests(unittest.TestCase):
             current = completed(returncode=0)
             with mock.patch.object(
                     runner, "_carried_cli_contract_currentness_check",
-                    return_value=current) as check, compile_cli_contract.checked_view_scope():
+                    return_value=current) as check:
                 path.write_text(
                     compile_cli_contract.kblib.canonical_yaml(first),
                     encoding="utf-8")
                 loaded_first = runner._compiled_cli_tool(root, "sample")
                 self.assertEqual(loaded_first, runner._compiled_cli_tool(root, "sample"))
-                self.assertEqual(1, check.call_count)
+                # Each route consumes a fresh result from the compiler owner;
+                # a previous route's projection is never a validation ticket.
+                self.assertEqual(2, check.call_count)
                 path.write_text(
                     compile_cli_contract.kblib.canonical_yaml(second),
                     encoding="utf-8")
                 loaded_second = runner._compiled_cli_tool(root, "sample")
-                self.assertEqual(2, check.call_count)
+                self.assertEqual(3, check.call_count)
 
             self.assertEqual([], loaded_first["arguments"])
             self.assertEqual(["changed"], loaded_second["arguments"])

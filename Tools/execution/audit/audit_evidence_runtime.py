@@ -34,6 +34,7 @@ import Tools.execution.evidence.metadata_gate_runtime as metadata_gate_runtime
 import Tools.knowledge.metadata.metadata_property_state as metadata_property_state
 import Tools.governance.profile.profile_batch_judgment_contract as profile_batch_judgment_contract
 import Tools.governance.profile.profile_contract as profile_contract
+import Tools.governance.profile.profile_admission as profile_admission
 import Tools.knowledge.rendering.rendering_verification_contract as rendering_verification_contract
 import Tools.knowledge.rendering.profile_rendering_evidence_contract as profile_rendering
 import Tools.execution.task_runtime.runtime_paths as runtime_paths
@@ -223,7 +224,8 @@ def evidence_observation(result):
     view = evidence_evaluation(view)
     view["_audit_stage_resolutions"] = {}
     try:
-        with audit_producer_chain.producer_chain_observation(
+        with profile_admission.currency_observation(), \
+                audit_producer_chain.producer_chain_observation(
                 view["_audit_evidence_facts"].memo), \
                 audit_plan_contract.serialization_observation(
                     view["_audit_evidence_facts"].memo), \
@@ -2108,11 +2110,18 @@ def terminal_dimension_evidence(result):
     if not isinstance(items, dict):
         raise AuditEvidenceError(
             "Terminal dimension evidence has no canonical Queue item view")
+    with continue_evidence_observation(result) as observed:
+        return _terminal_dimension_evidence(observed)
+
+
+def _terminal_dimension_evidence(result):
+    """Project within the same owner observation used by other consumers."""
+    items = result["items_by_id"]
     catalog = current_receipt_catalog(result)
     profile_view = result.get("_profile_authorized_view")
     try:
-        from Tools.governance.profile.profile_admission import contract_from_admitted_view
-        contract = contract_from_admitted_view(result["root"], profile_view)
+        contract = profile_admission.contract_from_admitted_view(
+            result["root"], profile_view)
         terminal_dimensions = frozenset(
             profile_contract.terminal_receipt_dimensions_projection(
                 contract))

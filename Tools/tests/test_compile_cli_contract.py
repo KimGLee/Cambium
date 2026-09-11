@@ -526,70 +526,105 @@ class AgentInterfaceJoinContractTests(unittest.TestCase):
 
 class CompilerProjectionLifecycleTests(unittest.TestCase):
 
-    def test_checked_view_rechecks_components_discovery_environment_and_target(self):
-        with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory)
-            source = root / "Tools" / "owner.py"
-            source.parent.mkdir()
-            source.write_text("value = 1\n", encoding="utf-8")
-            validator = mock.Mock(return_value={
-                "artifact": "cli-invocation-contract", "source_hash": "source",
-                "projection_target": "carried-runtime",
-                "tools": [{"tool": "sample", "arguments": []},
-                          {"tool": "other", "arguments": []}]})
-            def load(target="carried-runtime", raw=b"projection"):
-                validator.return_value["projection_target"] = target
-                return compiler.checked_tool(root, target, raw, "sample", validator, lambda: raw)
-            with compiler.checked_view_scope():
-                load()["arguments"].append("forged")
-                self.assertEqual({"tool": "sample", "arguments": [],
-                                  "invocation_contract_source_hash": "source"}, load())
-                self.assertEqual(1, validator.call_count)
-                with mock.patch.object(compiler, "deepcopy", wraps=copy.deepcopy) as detach:
-                    load()
-                self.assertEqual([mock.call({"tool": "sample", "arguments": []})],
-                                 detach.call_args_list)
-                # Runtime writes do not change the compiler's immutable input.
-                (root / ".cambium").mkdir()
-                (root / ".cambium" / "receipt").write_text("new", encoding="utf-8")
-                load()
-                self.assertEqual(1, validator.call_count)
-                for relative in ("Tools/owner.py", "Tools/new_adapter.py",
-                                 "Tools/policy.yaml", "kernel/registry.yaml",
-                                 "distribution-boundary.yaml"):
-                    path = root / relative
-                    path.parent.mkdir(parents=True, exist_ok=True)
-                    path.write_text("changed", encoding="utf-8")
-                    before = validator.call_count
-                    load()
-                    self.assertEqual(before + 1, validator.call_count)
-                (root / "Tools/new_adapter.py").unlink()
-                load()
-                load(raw=b"new projection")
-                load(target="source-distribution")
-                with mock.patch.dict(os.environ, {"CAMBIUM_TEST_VIEW": "changed"}):
-                    load()
-                self.assertEqual(10, validator.call_count)
-            load()
-            self.assertEqual(11, validator.call_count)
-            # A mutation during validation does not seed an accepted view.
-            def unstable():
-                source.write_text("changed again", encoding="utf-8")
-                return {}
-            with compiler.checked_view_scope():
-                with self.assertRaisesRegex(compiler.ContractError, "inputs changed"):
-                    compiler.checked_tool(root, "carried-runtime", b"x", "sample", unstable, lambda: b"x")
-                load()
-            self.assertEqual(12, validator.call_count)
-            with self.assertRaisesRegex(compiler.ContractError, "0 entries"):
-                compiler.checked_tool(root, "carried-runtime", b"projection", "absent",
-                                      validator, lambda: b"projection")
-            for invalid in ({}, dict(validator.return_value, projection_target="wrong"),
-                            dict(validator.return_value, tools=[{"tool": "sample"}] * 2)):
-                with self.assertRaises(compiler.ContractError):
-                    compiler.checked_tool(root, "carried-runtime", b"x", "sample",
-                                          lambda: invalid, lambda: b"x")
-    """Integration: one local artifact distinguishes HOLD from bad evidence."""
+    def test_dynamic_parser_inputs_never_reuse_an_old_full_check(self):
+        fixture = CliContractFixture()
+        self.addCleanup(fixture.cleanup)
+        for location in (fixture.root.parent / "default.txt",
+                         fixture.root / ".cambium" / "default.txt"):
+            with self.subTest(location=location):
+                location.parent.mkdir(parents=True, exist_ok=True)
+                location.write_text("3")
+                fixture.write_tool("sample", """
+                    import argparse
+                    from pathlib import Path
+                    def main(argv=None):
+                        parser = argparse.ArgumentParser()
+                        parser.add_argument('--limit', type=int, default=int(Path(%r).read_text()))
+                        return parser.parse_args(argv)
+                """ % str(location))
+                fixture.write_policy()
+                raw = compiler.render(fixture.compile()).encode()
+
+                def validate():
+                    current = fixture.compile()
+                    if compiler.render(current).encode() != raw:
+                        raise compiler.ContractError("dynamic declaration changed")
+                    return current
+
+                def read():
+                    return compiler.checked_tool(
+                        fixture.root, tool_availability.SOURCE_DISTRIBUTION,
+                        raw, "sample", validate, lambda: raw)
+
+                self.assertEqual(3, read()["arguments"][0]["default"])
+                location.write_text("7")
+                with self.assertRaisesRegex(
+                        compiler.ContractError, "dynamic declaration changed"):
+                    read()
+                # Restoring the input makes a new full check valid; no prior
+                # rejection or success becomes a persistent authority.
+                location.write_text("3")
+                self.assertEqual(3, read()["arguments"][0]["default"])
+
+    def test_checked_query_rechecks_return_boundary_and_detaches_result(self):
+        fixture = CliContractFixture()
+        self.addCleanup(fixture.cleanup)
+        source = fixture.write_tool("sample", """
+            import argparse
+            def main(argv=None):
+                parser = argparse.ArgumentParser()
+                return parser.parse_args(argv)
+        """)
+        fixture.write_policy()
+        document = fixture.compile()
+        raw = compiler.render(document).encode()
+        original = source.read_bytes()
+
+        def validate():
+            current = fixture.compile()
+            if compiler.render(current).encode() != raw:
+                raise compiler.ContractError("source changed")
+            return current
+
+        def read(readback=lambda: raw):
+            return compiler.checked_tool(
+                fixture.root, tool_availability.SOURCE_DISTRIBUTION,
+                raw, "sample", validate, readback)
+
+        row = read()
+        row["arguments"].append("forged")
+        self.assertEqual([], read()["arguments"])
+        for change in ("component", "projection", "environment", "unreadable"):
+            with self.subTest(change=change):
+                def changed_readback():
+                    if change == "component":
+                        source.write_bytes(original + b"\n# changed during read\n")
+                    elif change == "projection":
+                        return raw + b"\n# changed"
+                    elif change == "environment":
+                        os.environ["CAMBIUM_TEST_VIEW"] = "changed"
+                    else:
+                        raise OSError("unreadable readback")
+                    return raw
+                try:
+                    with mock.patch.dict(os.environ, {}, clear=False):
+                        with self.assertRaises(compiler.ContractError):
+                            read(changed_readback)
+                finally:
+                    source.write_bytes(original)
+                self.assertEqual([], read()["arguments"])
+
+        invalid_documents = (
+            {},
+            dict(document, projection_target="wrong"),
+            dict(document, tools=[]),
+            dict(document, tools=[document["tools"][0]] * 2),
+        )
+        for invalid in invalid_documents:
+            with self.subTest(invalid=invalid), self.assertRaises(compiler.ContractError):
+                compiler.checked_tool(
+                    fixture.root, tool_availability.SOURCE_DISTRIBUTION,
+                    raw, "sample", lambda: invalid, lambda: raw)
 
     def test_write_check_stale_and_unreliable_evidence_share_one_lifecycle(self):
         fixture = CliContractFixture()

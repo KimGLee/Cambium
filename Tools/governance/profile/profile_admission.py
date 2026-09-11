@@ -7,6 +7,8 @@ then consume the immutable slot and record values from that evaluation.
 """
 
 from collections.abc import Mapping
+from contextlib import contextmanager
+from contextvars import ContextVar
 from dataclasses import dataclass
 from types import MappingProxyType
 import os
@@ -19,6 +21,29 @@ import Tools.governance.standards.standards_state as standards_state
 
 
 PROFILE_SCOPE_SLOT = profile_contract.PROFILE_SCOPE_SLOT
+_CURRENCY_OBSERVATION = ContextVar("profile_currency_observation", default=None)
+
+
+@contextmanager
+def currency_observation():
+    """Share normative rebinding only inside one explicit read-only boundary.
+
+    Admissions are checked on first use and again before a successful return.
+    Nested observations start fresh; writers and resulting-state reads must
+    never join a previous observation. No caller-supplied success bit exists.
+    """
+    admissions = {}
+    token = _CURRENCY_OBSERVATION.set(admissions)
+    try:
+        yield
+        # Bypass the scoped lookup: these are independent end observations.
+        for admission in admissions.values():
+            errors = _currency_errors(admission)
+            if errors:
+                raise ValueError("; ".join(errors))
+    finally:
+        admissions.clear()
+        _CURRENCY_OBSERVATION.reset(token)
 
 
 @dataclass(frozen=True)
@@ -338,6 +363,20 @@ def require_slot(admission, slot_name):
 
 def currency_errors(admission):
     """Fail if Profile bytes changed after the shared admission snapshot."""
+    observations = _CURRENCY_OBSERVATION.get()
+    key = (admission.root, id(admission.evaluation),
+           admission.active_state_repo_path, admission.active_state_sha256)
+    if observations is not None and key in observations:
+        return []
+    errors = _currency_errors(admission)
+    if not errors and observations is not None:
+        # Retain the evaluation itself so object identities cannot be recycled.
+        observations[key] = admission
+    return errors
+
+
+def _currency_errors(admission):
+    """The sole fresh Profile/selection/normative-input rebinding algorithm."""
     if admission.active_state_repo_path is not None:
         try:
             state_snapshot = kblib.repository_file_snapshot(

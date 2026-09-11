@@ -24,6 +24,7 @@ transport test.
 
 import ast
 import argparse
+import importlib.util
 import json
 import os
 from pathlib import Path
@@ -361,7 +362,7 @@ class LayerBoundaryTests(unittest.TestCase):
         self.assertEqual(offenders, [])
         allowed = {
             "hashlib", "json", "os", "stat", "subprocess", "sys", "traceback",
-            "tempfile", "uuid", "Tools",
+            "tempfile", "uuid", "contextlib", "py_compile", "Tools",
         }
 
         self.assertEqual(self.imported_module_names() - allowed, set())
@@ -515,10 +516,12 @@ class BindingTests(SyntheticCase):
             PYTHONPYCACHEPREFIX=str(local_cache),
             PYTHONDONTWRITEBYTECODE="0")
 
-        result = request(server, "tools/call", {
-            "name": "echo_tool",
-            "arguments": {"root": ".", "first": "a", "second": "b"},
-        })["result"]
+        with mcp_server._prepared_imports(self.dist.root):
+            prepared_prefix = mcp_server._CAMBIUM_PYCACHE_PREFIX
+            result = request(server, "tools/call", {
+                "name": "echo_tool",
+                "arguments": {"root": ".", "first": "a", "second": "b"},
+            })["result"]
 
         payload = result["structuredContent"]["stdout_json"]
         self.assertEqual(os.path.realpath(payload["cwd"]),
@@ -526,10 +529,66 @@ class BindingTests(SyntheticCase):
         self.assertEqual(payload["workspace"],
                          os.path.realpath(str(self.dist.workspace)))
         self.assertEqual(
-            mcp_server._CAMBIUM_PYCACHE_PREFIX,
+            prepared_prefix,
             payload["pycache_prefix"])
         self.assertTrue(payload["dont_write_bytecode"])
         self.assertFalse(local_cache.exists())
+        self.assertFalse(Path(prepared_prefix).exists())
+
+    def test_prepared_code_reexecutes_defaults_and_checks_content_not_mtime(self):
+        source = (self.dist.root / "Tools/import_probe.py").resolve()
+        external = source.with_suffix(".txt")
+        source.write_text(
+            "from pathlib import Path\nvalue = 1\n"
+            "external = Path(__file__).with_suffix('.txt').read_text()\n")
+        external.write_text("first")
+        initial = source.stat()
+        previous_prefix = mcp_server._CAMBIUM_PYCACHE_PREFIX
+
+        def execute_module():
+            spec = importlib.util.spec_from_file_location("import_probe", source)
+            module = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(module)
+            return module.value, module.external
+
+        with mcp_server._prepared_imports(self.dist.root):
+            prefix = Path(mcp_server._CAMBIUM_PYCACHE_PREFIX)
+            self.assertEqual(0o700, prefix.stat().st_mode & 0o777)
+            self.assertNotIn(self.dist.root, prefix.parents)
+            artifact = Path(importlib.util.cache_from_source(str(source)))
+            bytecode = artifact.read_bytes()
+            self.assertEqual(3, int.from_bytes(bytecode[4:8], "little"))
+            self.assertEqual((1, "first"), execute_module())
+            external.write_text("second")
+            self.assertEqual((1, "second"), execute_module())
+            source.write_text(source.read_text().replace("value = 1", "value = 2"))
+            os.utime(source, ns=(initial.st_atime_ns, initial.st_mtime_ns))
+            self.assertEqual(initial.st_size, source.stat().st_size)
+            self.assertEqual((2, "second"), execute_module())
+            # The stale code object is not rewritten or interpreted as a
+            # validation result; a source miss executes the new bytes.
+            self.assertEqual(bytecode, artifact.read_bytes())
+        self.assertFalse(prefix.exists())
+        self.assertEqual(previous_prefix, mcp_server._CAMBIUM_PYCACHE_PREFIX)
+
+    def test_optional_import_preparation_failure_and_exception_cleanup(self):
+        previous = (mcp_server._CAMBIUM_PYCACHE_PREFIX, sys.pycache_prefix,
+                    os.environ.get("PYTHONPYCACHEPREFIX"))
+        with mock.patch.object(mcp_server.tempfile, "TemporaryDirectory",
+                               side_effect=PermissionError("unavailable")):
+            with mcp_server._prepared_imports(self.dist.root):
+                self.assertEqual(previous[0], mcp_server._CAMBIUM_PYCACHE_PREFIX)
+        with mock.patch.object(mcp_server.py_compile, "compile",
+                               side_effect=OSError("unavailable")):
+            with self.assertRaisesRegex(RuntimeError, "stdio failure"):
+                with mcp_server._prepared_imports(self.dist.root):
+                    prefix = Path(mcp_server._CAMBIUM_PYCACHE_PREFIX)
+                    self.assertTrue(prefix.is_dir())
+                    self.assertFalse(list(prefix.rglob("*.pyc")))
+                    raise RuntimeError("stdio failure")
+        self.assertFalse(prefix.exists())
+        self.assertEqual(previous, (mcp_server._CAMBIUM_PYCACHE_PREFIX,
+                         sys.pycache_prefix, os.environ.get("PYTHONPYCACHEPREFIX")))
 
     def test_a_session_refuses_a_replaced_workspace_directory(self):
         server = started(self.dist)
