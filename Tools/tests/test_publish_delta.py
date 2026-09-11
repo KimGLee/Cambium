@@ -51,10 +51,9 @@ class CandidateDeltaContractTests(unittest.TestCase):
 
     def test_page_reference_projection_preserves_kinds_and_refuses_unaccepted_evidence(self):
         # Acceptance is owned and tested by audit_evidence_runtime. This seam
-        # only selects its results, including L precursor and dimensionless Gate.
+        # only selects its results, including native L review and dimensionless Gate.
         item = {"id": "B1", "manifest": ["A.md", "B.md"]}
         records = {
-            "audit": {"receipt_id": "audit", "result": "passed", "target": "A.md", "evidence_ref": "review"},
             "review": {"receipt_id": "review", "result": "pass", "target": "A.md"},
             "gate": {"receipt_id": "gate", "result": "pass", "target": "B.md"},
             "trigger": {"receipt_id": "trigger", "result": "candidate", "target": "B.md"},
@@ -62,7 +61,7 @@ class CandidateDeltaContractTests(unittest.TestCase):
         result = {"current_receipt_catalog": {key: ("receipts.jsonl", value) for key, value in records.items()}}
         rows = [{"obligation": {"obligation_id": key, "target": target, "evidence_kind": kind},
                  "status": "satisfied", "evidence_ref": key}
-                for key, target, kind in (("audit", "A.md", "audit-receipt"),
+                for key, target, kind in (("review", "A.md", "substantive-review-evidence"),
                     ("gate", "B.md", "gate-receipt"), ("trigger", "B.md", "candidate-set-receipt"))]
         with mock.patch.object(audit_evidence_runtime, "stage_evidence_status", return_value={"obligations": rows}):
             self.assertEqual({"A.md": ["review"], "B.md": ["gate"]},

@@ -1,12 +1,9 @@
 """Resolve one Kernel-owned audit producer through its complete chain.
 
-The frozen AuditPlan names the actual producer of the intermediate evidence.
-For an ``audit-receipt`` obligation, the final AuditReceipt producer is a
-deterministic consequence of that evidence kind; it is not substituted into
-the plan in place of the real producer. Kernel registries own the precursor
-identity and check, ``operation-capabilities.yaml`` owns its implementation
-and public entrypoint, record contracts own the intermediate shape, and the
-AuditReceipt contract owns the terminal shape.
+The frozen AuditPlan names the actual producer of the accepted check or review
+fact. Kernel registries own its identity, check and evidence kind;
+``operation-capabilities.yaml`` owns the implementation and public entrypoint;
+each native record contract owns the fact shape and acceptance boundary.
 
 This module is the sole Tool-side interpretation that joins those independent
 authorities. It does not create obligations or maintain a second producer-ID
@@ -31,30 +28,38 @@ class AuditProducerChainError(ValueError):
     """A registered audit obligation has no unique executable evidence chain."""
 
 
-FINAL_AUDIT_RECEIPT_CAPABILITY = "audit-receipt-producer-v1"
-
 _CHAIN_FIELDS = (
-    "execution_route", "final_evidence_kind", "final_producer_capability",
-    "precursor_record_kind", "precursor_tool", "precursor_capability",
-    "precursor_check",
+    "execution_route",
+    "producer_record_kind", "producer_tool", "producer_capability",
+    "producer_check",
 )
 
 _OBSERVATION_MEMO = ContextVar("audit_producer_chain_memo", default=None)
 
 
 @contextmanager
-def producer_chain_observation(memo):
-    """Use the evidence owner's mechanical facts for this read only.
+def producer_chain_observation(memo=None):
+    """Share source interpretation within one catalog or evidence read.
 
     No second store or persisted chain is created. The canonical spec is
     still checked by each public entry, and record/plan acceptance remains
-    with its contract. A fresh evidence observation supplies a fresh memo.
+    with its contract. Catalog admission may use this same owner without an
+    evidence view; that local memo expires at scope exit. Nothing survives
+    into another namespace, writer admission or after-image observation.
     """
+    values = {}
+    if memo is None:
+        def memo(key, compute):
+            if key not in values:
+                values[key] = compute()
+            return values[key]
     token = _OBSERVATION_MEMO.set(memo)
     try:
-        yield
+        with projection.obligation_projection_observation(memo):
+            yield
     finally:
         _OBSERVATION_MEMO.reset(token)
+        values.clear()
 
 
 def _observed(key, compute):
@@ -88,14 +93,14 @@ def validated_spec(spec, *, root=None, snapshots=None, evaluation=None):
     """
     if not isinstance(spec, dict):
         raise AuditProducerChainError(
-            "AuditReceipt producer-chain spec must be a mapping")
+            "Audit producer-chain spec must be a mapping")
     rule_id = spec.get("owner_rule_id")
     try:
         canonical = _canonical_spec(
             spec, root=root, snapshots=snapshots, evaluation=evaluation)
     except (TypeError, ValueError) as exc:
         raise AuditProducerChainError(
-            "unknown AuditReceipt producer chain owner %r: %s" %
+            "unknown audit producer chain owner %r: %s" %
             (rule_id, exc)) from exc
     if spec != canonical:
         drift = sorted({
@@ -120,7 +125,7 @@ def validated_spec_for_obligation(obligation, *, root=None, snapshots=None,
         candidates = _definition_candidates(spec, obligation)
     except (TypeError, ValueError) as exc:
         raise AuditProducerChainError(
-            "unknown AuditReceipt producer chain owner %r: %s" %
+            "unknown audit producer chain owner %r: %s" %
             (rule_id, exc)) from exc
     matches = [candidate for candidate in candidates
                if all(obligation.get(field) == value
@@ -159,14 +164,6 @@ def _canonical_spec(value, *, root=None, snapshots=None, evaluation=None):
     return matches[0]
 
 
-def finalizer_capability_for_spec(spec):
-    """Derive the terminal producer from the registered evidence kind."""
-    if spec.get("evidence_kind") != lifecycle.AUDIT_RECEIPT_RECORD_KIND:
-        raise AuditProducerChainError(
-            "producer chain does not terminate in an AuditReceipt")
-    return FINAL_AUDIT_RECEIPT_CAPABILITY
-
-
 def _registered_producer(capability_id, lookup):
     # The lookup belongs to the installed Tool package, not the adopting
     # repository whose frozen Kernel projection was validated by the caller.
@@ -199,15 +196,15 @@ def _record_contract(spec, *, root=None, snapshots=None, contract_loader=None):
             contract = (contract_loader(rendering) if contract_loader else
                         rendering.load_contract(root, snapshots=snapshots))
             return "rendering-verification", contract["record_kind"]
-        return ("deterministic-audit-precursor",
-                lifecycle.CHANGED_SCOPE_PRECURSOR_RECORD_KIND)
+        return ("deterministic-check",
+                lifecycle.CHANGED_SCOPE_RECORD_KIND)
     raise AuditProducerChainError(
-        "registered AuditReceipt spec has no installed precursor record "
+        "registered audit spec has no installed producer record "
         "contract")
 
 
-def precursor_chain_for_spec(spec, *, root=None, snapshots=None, evaluation=None):
-    """Resolve one validated precursor and its derived finalizer."""
+def producer_chain_for_spec(spec, *, root=None, snapshots=None, evaluation=None):
+    """Resolve the sole producer of a validated obligation."""
     spec = validated_spec(
         spec, root=root, snapshots=snapshots, evaluation=evaluation)
     return _chain_for_validated_spec(spec, root=root, snapshots=snapshots)
@@ -219,37 +216,29 @@ def _chain_for_validated_spec(spec, *, root=None, snapshots=None,
     capability_id = spec.get("producer_capability")
     if capability_id is None or spec.get("producer_gate_id") is not None:
         raise AuditProducerChainError(
-            "AuditReceipt obligation does not freeze one precursor capability")
-    finalizer = finalizer_capability_for_spec(spec)
-    if capability_id == finalizer:
-        raise AuditProducerChainError(
-            "AuditPlan freezes the finalizer instead of the actual producer")
-    # Precursor and finalizer must resolve from the same installed capability
-    # registry snapshot.  Reopening the file between these lookups could join
-    # identities from two revisions into a chain that never existed.
+            "audit obligation does not freeze one producer capability")
     lookup = _observed(("capabilities",), capabilities.CapabilityLookup)
     route, record_kind = _record_contract(
         spec, root=root, snapshots=snapshots, contract_loader=contract_loader)
+    if spec["evidence_kind"] != record_kind:
+        raise AuditProducerChainError("planned evidence kind differs from its producer contract")
     def join():
         _entry, tool = _registered_producer(capability_id, lookup)
-        _registered_producer(finalizer, lookup)
         chain = {
             "execution_route": route,
-            "final_evidence_kind": spec["evidence_kind"],
-            "final_producer_capability": finalizer,
-            "precursor_record_kind": record_kind,
-            "precursor_tool": tool,
-            "precursor_capability": capability_id,
-            "precursor_check": spec["producer_check"],
+            "producer_record_kind": record_kind,
+            "producer_tool": tool,
+            "producer_capability": capability_id,
+            "producer_check": spec["producer_check"],
         }
         if tuple(chain) != _CHAIN_FIELDS:
-            raise AssertionError("AuditReceipt producer-chain fields drifted")
+            raise AssertionError("audit producer-chain fields drifted")
         return chain
     return deepcopy(_observed(("join", kblib.canonical_json_bytes(spec),
                                route, record_kind), join))
 
 
-def precursor_chain_for_obligation(obligation, *, root=None,
+def producer_chain_for_obligation(obligation, *, root=None,
                                     snapshots=None, evaluation=None,
                                     contract_loader=None):
     """Validate a frozen obligation and resolve its complete producer chain."""
@@ -259,31 +248,30 @@ def precursor_chain_for_obligation(obligation, *, root=None,
         spec, root=root, snapshots=snapshots, contract_loader=contract_loader)
 
 
-def precursor_record_matches(record, chain):
+def producer_record_matches(record, chain):
     """Return whether a record has the exact registered producer identity."""
     return (isinstance(record, dict) and isinstance(chain, dict) and
-            record.get("record_kind") == chain.get("precursor_record_kind") and
-            record.get("tool") == chain.get("precursor_tool") and
-            record.get("check") == chain.get("precursor_check"))
+            record.get("record_kind") == chain.get("producer_record_kind") and
+            record.get("tool") == chain.get("producer_tool") and
+            record.get("check") == chain.get("producer_check"))
 
 
-def require_precursor_record(record, obligation, *, root=None,
+def require_producer_record(record, obligation, *, root=None,
                              snapshots=None, evaluation=None):
     """Return the chain or reject evidence from another registered producer."""
-    chain = precursor_chain_for_obligation(
+    chain = producer_chain_for_obligation(
         obligation, root=root, snapshots=snapshots, evaluation=evaluation)
-    if not precursor_record_matches(record, chain):
+    if not producer_record_matches(record, chain):
         raise AuditProducerChainError(
-            "producer evidence does not match the registered precursor chain")
+            "producer evidence does not match the registered producer chain")
     return chain
 
 
 __all__ = [
     'AuditProducerChainError',
-    'FINAL_AUDIT_RECEIPT_CAPABILITY',
-    'precursor_chain_for_obligation',
-    'precursor_chain_for_spec',
-    'precursor_record_matches',
+    'producer_chain_for_obligation',
+    'producer_chain_for_spec',
+    'producer_record_matches',
     'producer_chain_observation',
-    'require_precursor_record',
+    'require_producer_record',
 ]

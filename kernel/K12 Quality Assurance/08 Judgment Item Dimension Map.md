@@ -6,7 +6,7 @@
 
 ## Purpose
 
-An `AuditReceipt` carries one `dimension` from [`audit-dimension-base.yaml`](audit-dimension-base.yaml). This module maps page-level judgments; K12/18 maps higher layers, and [`batch-review-obligation-registry.yaml`](batch-review-obligation-registry.yaml) maps M-tier atoms.
+A dimension-specific AuditPlan obligation carries one `dimension` from [`audit-dimension-base.yaml`](audit-dimension-base.yaml). This module maps page-level judgments; K12/18 maps higher layers, and [`batch-review-obligation-registry.yaml`](batch-review-obligation-registry.yaml) maps M-tier atoms.
 
 ## Terms
 

@@ -8,9 +8,7 @@ TOOLS = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(TOOLS / "tests"))
 sys.path.insert(0, str(TOOLS))
 
-import Tools.execution.audit.audit_receipt_contract as audit_receipt_contract
 import Tools.execution.audit.batch_close_audit as batch_close_audit
-import Tools.execution.audit.check_batch_close as check_batch_close
 from Tools.platform.common import kblib
 from Tools.tests.fixtures.contract import post_delta_objects as objects
 from Tools.tests.fixtures.contract.post_delta_objects import SHA_A, SHA_C, SHA_E, SHA_F
@@ -29,18 +27,13 @@ class PostDeltaAuditClosureTests(unittest.TestCase):
         self.projection = batch_close_audit.resolve_post_delta_projection(
             self.stage, self.rows, self.profile)
         self.final_by_member = {}
-        self.raw_by_member = {}
         for index, pair in enumerate(self.projection, 1):
             row = pair["member"]
             obligation = pair["obligation"]
             if row["evidence_kind"] == "gate-receipt":
                 evidence = objects.gate_evidence()
             else:
-                raw = objects.producer_evidence(self.stage, obligation, index)
-                evidence = batch_close_audit.build_full_audit_receipt(
-                    self.stage, pair, raw)
-                audit_receipt_contract.validate_audit_receipt(evidence)
-                self.raw_by_member[row["member_id"]] = raw
+                evidence = objects.producer_evidence(self.stage, obligation, index)
             self.final_by_member[row["member_id"]] = evidence
         self.closure = batch_close_audit.build_post_delta_evidence_set(
             self.stage, self.projection, self.final_by_member, SHA_F)
@@ -88,79 +81,38 @@ class PostDeltaAuditClosureTests(unittest.TestCase):
             batch_close_audit.validate_post_delta_evidence_set(
                 self.stage, self.projection, bindings, self.by_id, SHA_F)
 
-    def test_full_receipt_requires_the_plan_fingerprint_boundary(self):
-        pair = next(
-            pair for pair in self.projection
-            if pair["member"]["evidence_kind"] == "audit-receipt")
-        member_id = pair["member"]["member_id"]
-        raw = dict(self.raw_by_member[member_id])
-        raw.pop("fingerprint_binding")
-        with self.assertRaisesRegex(
-                batch_close_audit.PostDeltaAuditError,
-                "fingerprint_binding"):
-            batch_close_audit.build_full_audit_receipt(
-                self.stage, pair, raw)
+    def test_member_acceptance_preserves_plan_and_input_boundaries(self):
+        pair = next(pair for pair in self.projection
+                    if pair["member"]["evidence_kind"] == "batch-close-member-evidence")
+        record = self.final_by_member[pair["member"]["member_id"]]
+        self.assertIs(record, batch_close_audit.validate_member_evidence(
+            self.stage, pair, record, SHA_F))
+        for field in ("task_id", "batch_id", "target", "plan_id", "obligation_id",
+                      "opening_transition_receipt", "upstream_revision_id",
+                      "active_standards_sha256", "selected_profile_manifest",
+                      "profile_snapshot_sha256", "profile_contract_fingerprint",
+                      "audit_plan_path", "audit_plan_sha256", "fingerprint_binding",
+                      "artifact_fingerprint", "dependency_fingerprint", "contract_fingerprint"):
+            with self.subTest(field=field):
+                changed = dict(record, **{field: "foreign"})
+                with self.assertRaisesRegex(batch_close_audit.PostDeltaAuditError, field):
+                    batch_close_audit.validate_member_evidence(self.stage, pair, changed, SHA_F)
 
-    def test_terminal_pair_replays_the_same_precursor_projection(self):
-        pair = next(
-            pair for pair in self.projection
-            if pair["member"]["evidence_kind"] == "audit-receipt")
-        member_id = pair["member"]["member_id"]
-        raw = self.raw_by_member[member_id]
-        receipt = self.final_by_member[member_id]
-
-        final_by_id = {receipt["receipt_id"]: receipt}
-        binding = next(
-            row for row in self.closure["bindings"]
-            if row["member_id"] == member_id)
-        batch_close_audit.validate_post_delta_evidence_set(
-            self.stage, (pair,), (binding,), final_by_id, SHA_F,
-            producer_evidence_by_member={member_id: raw},
-            producer_tool="check_batch_close",
-            producer_tool_version=check_batch_close.TOOL_VERSION)
-
-        with self.assertRaisesRegex(
-                batch_close_audit.PostDeltaAuditError,
-                "producer evidence members"):
-            batch_close_audit.validate_post_delta_evidence_set(
-                self.stage, (pair,), (binding,), final_by_id, SHA_F,
-                producer_evidence_by_member={},
-                producer_tool="check_batch_close",
-                producer_tool_version=check_batch_close.TOOL_VERSION)
-
-        foreign = deepcopy(raw)
-        foreign["obligation_id"] = "foreign-obligation"
-        with self.assertRaisesRegex(
-                batch_close_audit.PostDeltaAuditError,
-                "obligation_id"):
-            batch_close_audit.validate_post_delta_evidence_set(
-                self.stage, (pair,), (binding,), final_by_id, SHA_F,
-                producer_evidence_by_member={member_id: foreign},
-                producer_tool="check_batch_close",
-                producer_tool_version=check_batch_close.TOOL_VERSION)
-
-        mismatched = deepcopy(raw)
-        mismatched["contract_fingerprint"] = SHA_A
-        with self.assertRaisesRegex(
-                batch_close_audit.PostDeltaAuditError,
-                "contract_fingerprint"):
-            batch_close_audit.validate_post_delta_evidence_set(
-                self.stage, (pair,), (binding,), final_by_id, SHA_F,
-                producer_evidence_by_member={member_id: mismatched},
-                producer_tool="check_batch_close",
-                producer_tool_version=check_batch_close.TOOL_VERSION)
-
-        rebound = deepcopy(receipt)
-        rebound["evidence_ref"] = "missing-raw-receipt"
-        with self.assertRaisesRegex(
-                batch_close_audit.PostDeltaAuditError,
-                "evidence_ref"):
-            batch_close_audit.validate_post_delta_evidence_set(
-                self.stage, (pair,), (binding,),
-                {rebound["receipt_id"]: rebound}, SHA_F,
-                producer_evidence_by_member={member_id: raw},
-                producer_tool="check_batch_close",
-                producer_tool_version=check_batch_close.TOOL_VERSION)
+    def test_direct_fact_must_remain_resolvable_and_unmodified(self):
+        for pair, binding in zip(self.projection, self.closure["bindings"]):
+            with self.subTest(member=pair["member"]["member_id"]):
+                missing = dict(self.by_id)
+                missing.pop(binding["evidence_ref"])
+                with self.assertRaisesRegex(batch_close_audit.PostDeltaAuditError, "evidence_ref"):
+                    batch_close_audit.validate_post_delta_evidence_set(
+                        self.stage, self.projection, self.closure["bindings"], missing, SHA_F)
+        pair = self.projection[0]
+        record = self.final_by_member[pair["member"]["member_id"]]
+        for field in ("receipt_type_id", "check", "tool", "tool_version", "result", "invalidated_by"):
+            with self.subTest(field=field):
+                changed = dict(record, **{field: "foreign"})
+                with self.assertRaises(batch_close_audit.PostDeltaAuditError):
+                    batch_close_audit.validate_member_evidence(self.stage, pair, changed, SHA_F)
 
     def test_item8_consumes_dimensionless_gate_evidence(self):
         item8 = self.closure["bindings"][-1]
@@ -172,7 +124,7 @@ class PostDeltaAuditClosureTests(unittest.TestCase):
         self.assertNotIn("dimension", gate)
         self.assertEqual(
             7,
-            sum(binding["evidence_kind"] == "audit-receipt"
+            sum(binding["evidence_kind"] == "batch-close-member-evidence"
                 for binding in self.closure["bindings"]),
         )
 

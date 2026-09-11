@@ -27,8 +27,6 @@ PRODUCER_TOOL_VERSION = queue_canon.TERMINAL_PROOF_TOOL_VERSION
 GATE_ID = "terminal-proof"
 GATE_CHECK = "proof-check-summary"
 GATE_RECEIPT_TYPE_ID = "terminal-proof-gate-v2"
-DIAGNOSTIC_CHECK = "proof-diagnostic"
-DIAGNOSTIC_RECEIPT_TYPE_ID = "terminal-proof-diagnostic-v1"
 _CONTRACT_FIELDS = frozenset((
     "schema_version", "contract_id", "semantic_owner", "record_kind",
     "producer_capability", "consumer_gate_id", "serialization", "fields",
@@ -280,7 +278,6 @@ _BASE_RECEIPT_FIELDS = frozenset({
     "details", "checked_at", "tool", "tool_version", "invalidated_by",
     "gate_id",
 })
-_DIAGNOSTIC_RECEIPT_FIELDS = _BASE_RECEIPT_FIELDS | {"diagnostic_id"}
 _GATE_RECEIPT_FIELDS = _BASE_RECEIPT_FIELDS | frozenset({
     "task_id", "scope_version", "contract_version",
     "upstream_revision_id", "selected_profile_manifest",
@@ -295,45 +292,30 @@ _GATE_RECEIPT_FIELDS = _BASE_RECEIPT_FIELDS | frozenset({
 
 
 def current_receipt_errors(record, *, root=None):
-    """Validate the two current check_proof Receipt machine objects."""
+    """Validate the current Terminal Completion Gate Receipt."""
     del root
     if not isinstance(record, dict):
         return ["Terminal Receipt must be an object"]
     type_id = record.get("receipt_type_id")
-    if type_id == GATE_RECEIPT_TYPE_ID:
-        expected_fields = _GATE_RECEIPT_FIELDS
-        expected_check = GATE_CHECK
-        expected_result = "pass"
-    elif type_id == DIAGNOSTIC_RECEIPT_TYPE_ID:
-        expected_fields = _DIAGNOSTIC_RECEIPT_FIELDS
-        expected_check = DIAGNOSTIC_CHECK
-        expected_result = None
-    else:
+    if type_id != GATE_RECEIPT_TYPE_ID:
         return ["Terminal Receipt receipt_type_id is invalid"]
     errors = []
-    if set(record) != expected_fields:
+    if set(record) != _GATE_RECEIPT_FIELDS:
         errors.append("Terminal Receipt fields are not closed")
     expected = {
         "tool": PRODUCER_TOOL,
         "tool_version": PRODUCER_TOOL_VERSION,
-        "check": expected_check,
+        "check": GATE_CHECK,
+        "result": "pass",
         "gate_id": GATE_ID,
         "invalidated_by": None,
     }
-    if expected_result is not None:
-        expected["result"] = expected_result
     errors.extend(field for field, value in expected.items()
                   if record.get(field) != value)
     for field in ("receipt_id", "target", "details", "checked_at"):
         value = record.get(field)
         if not isinstance(value, str) or not value or value.strip() != value:
             errors.append(field)
-    if type_id == DIAGNOSTIC_RECEIPT_TYPE_ID:
-        if record.get("result") not in {"pass", "fail", "candidate"}:
-            errors.append("result")
-        value = record.get("diagnostic_id")
-        if not isinstance(value, str) or not value or value.strip() != value:
-            errors.append("diagnostic_id")
     return sorted(set(errors))
 
 

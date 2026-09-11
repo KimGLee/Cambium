@@ -605,6 +605,40 @@ def validate_action(record):
     return record
 
 
+
+
+def page_review_inputs(record, action):
+    """Validate one transport collection; never fill or interpret answers."""
+    _closed_fields(record, {"initial_action_id", "reviews"}, "page review inputs")
+    validate_action(action)
+    if record["initial_action_id"] != action["action_id"]:
+        raise ValueError("page review inputs do not bind the current action")
+    if (action.get("disposition") != "await-agent" or
+            action.get("token") != "record-batch-page-review"):
+        raise ValueError("page review inputs require a current page-review action")
+    for field in ("batch_id", "page", "plan_id", "audit_plan_sha256"):
+        require_trimmed_string(action["target"].get(field), field)
+    inputs = page_review_answers(record["reviews"])
+    if action["target"]["obligation_id"] not in inputs:
+        raise ValueError("page review inputs omit the current obligation")
+    return inputs
+
+
+def page_review_answers(rows):
+    """The existing review collection shape, shared with its sole producer."""
+    if not isinstance(rows, list) or not rows:
+        raise ValueError("page review inputs require a non-empty reviews list")
+    inputs = {}
+    for row in rows:
+        _closed_fields(row, {"obligation_id", "input"}, "page review input row")
+        identity = require_trimmed_string(row["obligation_id"], "obligation_id")
+        if identity in inputs:
+            raise ValueError("page review inputs repeat an obligation")
+        _mapping(row["input"], "page review answer", nonempty=True)
+        inputs[identity] = dict(row["input"])
+    return inputs
+
+
 def build_action(**fields):
     """Build and validate one action, deriving rather than choosing its ID."""
     record = dict(fields)
@@ -620,11 +654,13 @@ def build_action(**fields):
 
 
 __all__ = [
+    'page_review_answers',
     'AWAIT_DISPOSITIONS',
     'SCHEMA_VERSION',
     'action_route',
     'action_route_for_token',
     'build_action',
+    'page_review_inputs',
     'resume_action_token',
     'resume_recommendation',
 ]

@@ -9,6 +9,7 @@ tested only for delegation to that shared runner.
 """
 
 import importlib.util
+import copy
 import io
 import json
 from types import SimpleNamespace
@@ -58,8 +59,8 @@ class CiImpactFixture(unittest.TestCase):
             "Tools/tests/test_run_leaf.py": "import run_leaf\n",
             "Tools/tests/test_charlie.py": "def test_charlie(): pass\n",
             "Tools/tests/test_mcp_server.py": "def test_transport(): pass\n",
-            "Tools/tests/test_tools_readme_inventory.py": (
-                "def test_inventory(): pass\n"),
+            "Tools/tests/test_readme_examples.py": (
+                "def test_examples(): pass\n"),
         }
         for relative, text in sources.items():
             path = cls.root / relative
@@ -108,12 +109,12 @@ class ChangedPathImpactContractTests(CiImpactFixture):
         self.assertEqual(["test_charlie.py"], direct["selected_tests"])
         self.assertEqual(["3.10", "3.14"], direct["check_versions"])
 
-        inventory = self.plan(("M", "Tools/README.md", ""))
-        self.assertEqual("selective", inventory["mode"])
+        examples = self.plan(("M", "Tools/README.md", ""))
+        self.assertEqual("selective", examples["mode"])
         self.assertEqual(
-            ["test_tools_readme_inventory.py"],
-            inventory["selected_tests"])
-        self.assertEqual(["3.14"], inventory["check_versions"])
+            ["test_readme_examples.py"],
+            examples["selected_tests"])
+        self.assertEqual(["3.14"], examples["check_versions"])
 
     def test_shared_authority_and_unclassified_paths_require_full(self):
         paths = (
@@ -201,6 +202,88 @@ class ToolDependencyImpactContractTests(CiImpactFixture):
 
 class CiMatrixPresentationContractTests(unittest.TestCase):
 
+    def test_required_budget_uses_the_whole_attempt_and_exact_job_closure(self):
+        run = {"id": 17, "run_attempt": 1,
+               "created_at": "2026-09-10T00:00:00Z",
+               "run_started_at": "2026-09-10T00:00:10Z"}
+        plan = {"run_tests": True,
+                "check_matrix": {"include": [{"python-version": "3.14"}]},
+                "test_matrix": {"include": [{"python-version": "3.14", "test-label": "Lifecycle A"}]}}
+        names = ci_impact.required_job_names(plan)
+        self.assertEqual(["Contracts · Py3.14", "Impact plan", "Lifecycle A · Py3.14", "ci-required"], names)
+        jobs = [{"id": index, "run_id": 17, "run_attempt": 1, "name": name,
+                 "started_at": "2026-09-10T00:00:20Z", "status": "completed",
+                 "conclusion": "success", "completed_at": "2026-09-10T00:04:50Z"}
+                for index, name in enumerate(names, 1)]
+        gate = jobs[-1]
+        gate.update(status="in_progress", conclusion=None, completed_at=None)
+        for observed, expected_seconds, expected_result in (
+                ("2026-09-10T00:05:00Z", 300, "passed"),
+                ("2026-09-10T00:06:00Z", 360, "passed"),
+                ("2026-09-10T00:06:01Z", 361, "budget-exceeded")):
+            with self.subTest(observed=observed):
+                result = ci_impact.required_budget_verdict(
+                    run, jobs, names, run_id=17, attempt=1, observed_at=observed)
+                self.assertEqual(expected_seconds, result["elapsed_seconds"])
+                self.assertEqual(expected_result, result["result"])
+                self.assertEqual(10, result["run_start_delay_seconds"])
+                self.assertIsNone(result["job_start_delay_seconds"]["Impact plan"])
+                self.assertEqual(1788998760, result["deadline"])
+                self.assertEqual(1789000200, result["execution_deadline"])
+                self.assertEqual(1800, result["safety_seconds"])
+                self.assertFalse(result["final"])
+        # Execution consumes the safety boundary, not the 360-second verdict.
+        with tempfile.TemporaryDirectory() as folder:
+            output = Path(folder) / "outputs"
+            ci_impact._write_github_outputs(output, dict(plan, mode="full", budget=result))
+            values = dict(line.split("=", 1) for line in output.read_text().splitlines())
+        self.assertNotIn("deadline", values)
+        self.assertEqual("30", values["job_timeout_minutes"])
+        self.assertEqual("1789000200.0", values["execution_deadline"])
+        # The gate's final cost includes its own post-observation work.
+        gate.update(status="completed", conclusion="success", completed_at="2026-09-10T00:06:01Z")
+        result = ci_impact.required_budget_verdict(
+            run, jobs, names, run_id=17, attempt=1,
+            observed_at="2026-09-10T00:06:10Z", final=True)
+        self.assertEqual("budget-exceeded", result["result"])
+        self.assertEqual(361, result["elapsed_seconds"])
+        rerun = dict(run, run_attempt=2, run_started_at="2026-09-10T01:00:00Z")
+        result = ci_impact.run_budget(rerun, run_id=17, attempt=2,
+                                     observed_at="2026-09-10T01:05:00Z")
+        self.assertEqual((300, 3900), (result["elapsed_seconds"], result["since_creation_seconds"]))
+
+    def test_required_budget_refuses_missing_failed_or_mixed_attempt_evidence(self):
+        run = {"id": 17, "run_attempt": 1,
+               "created_at": "2026-09-10T00:00:00Z",
+               "run_started_at": "2026-09-10T00:00:10Z"}
+        names = ci_impact.required_job_names({"run_tests": False,
+            "check_matrix": {"include": [{"python-version": "3.14"}]}})
+        jobs = [{"id": index, "run_id": 17, "run_attempt": 1, "name": name,
+                 "started_at": "2026-09-10T00:00:20Z", "status": "completed",
+                 "conclusion": "success", "completed_at": "2026-09-10T00:00:40Z"}
+                for index, name in enumerate(names, 1)]
+        def check(candidate, candidate_run=run, candidate_names=names):
+            return ci_impact.required_budget_verdict(candidate_run, candidate, candidate_names,
+                run_id=17, attempt=1, observed_at="2026-09-10T00:01:00Z", final=True)
+        self.assertEqual("passed", check(jobs)["result"])
+        for field, value in (("run_attempt", 2), ("conclusion", "failure"),
+                             ("conclusion", "skipped"), ("status", "queued"),
+                             ("started_at", "not-a-time"), ("completed_at", None),
+                             ("completed_at", "2026-09-10T00:02:00Z")):
+            candidate = copy.deepcopy(jobs)
+            candidate[0][field] = value
+            with self.subTest(field=field, value=value), self.assertRaises(ValueError):
+                check(candidate)
+        for candidate in (jobs[:-1], jobs + [jobs[0]], jobs + [dict(jobs[0], id=99, name="unexpected")]):
+            with self.assertRaises(ValueError):
+                check(candidate)
+        for field, value in (("id", 18), ("run_attempt", 2),
+                             ("created_at", "2026-09-10T00:00:30Z")):
+            with self.assertRaises(ValueError):
+                check(jobs, dict(run, **{field: value}))
+        with self.assertRaises(ValueError):
+            check(jobs, candidate_names=names + [names[0]])
+
     def test_member_labels_preserve_exact_selection_and_version_order(self):
         facts = {
             "test_lifecycle.py": {"seconds": 600, "e2e": True, "parallel_safe": False, "samples": 4},
@@ -250,6 +333,56 @@ class CiMatrixPresentationContractTests(unittest.TestCase):
         self.assertEqual("3.14.7", result["samples"]["test_alpha.py"][0]["python"])
         with mock.patch.object(ci_impact.subprocess, "run", side_effect=OSError("offline")):
             self.assertEqual("unavailable", ci_impact._historical_costs("owner/repo")["status"])
+        with mock.patch.object(ci_impact.time, "monotonic", side_effect=[100, 101, 106]), \
+                mock.patch.object(ci_impact.subprocess, "run", return_value=SimpleNamespace(stdout=json.dumps(runs).encode())) as api:
+            self.assertEqual("unavailable", ci_impact._historical_costs("owner/repo")["status"])
+        self.assertEqual(1, api.call_count)
+
+    def test_budget_metadata_reads_complete_attempt_pages_and_rejects_partial_results(self):
+        run = {"id": 17, "run_attempt": 2, "head_sha": "a" * 40,
+               "created_at": "2026-09-10T00:00:00Z",
+               "run_started_at": "2026-09-10T01:00:00Z"}
+        pages = [{"total_count": 2, "jobs": [{"id": 1}]},
+                 {"total_count": 2, "jobs": [{"id": 2}]}]
+        with mock.patch.object(ci_impact.subprocess, "run", side_effect=[
+                SimpleNamespace(stdout=json.dumps(run).encode()),
+                SimpleNamespace(stdout=json.dumps(pages).encode())]) as api:
+            self.assertEqual((run, [{"id": 1}, {"id": 2}]), ci_impact._run_metadata(
+                "owner/repo", 17, 2, include_jobs=True))
+        self.assertIn("repos/owner/repo/actions/runs/17/attempts/2/jobs?per_page=100", api.call_args.args[0])
+        self.assertEqual(["--paginate", "--slurp"], api.call_args.args[0][-2:])
+        self.assertEqual("repos/owner/repo/actions/runs/17", api.call_args_list[0].args[0][-1])
+        # Older attempt snapshots keep their start but never redefine the
+        # original workflow creation. GitHub can create that snapshot later
+        # than run_started_at; no tolerance or shifted deadline is required.
+        prior = dict(run, run_attempt=1, created_at="2026-09-10T00:00:01Z",
+                     run_started_at="2026-09-10T00:00:00Z")
+        with mock.patch.object(ci_impact.subprocess, "run", side_effect=[
+                SimpleNamespace(stdout=json.dumps(run).encode()),
+                SimpleNamespace(stdout=json.dumps(prior).encode())]):
+            observed, jobs = ci_impact._run_metadata("owner/repo", 17, 1)
+        self.assertEqual([], jobs)
+        result = ci_impact.run_budget(observed, run_id=17, attempt=1,
+                                     observed_at="2026-09-10T00:05:00Z")
+        self.assertEqual((300, "2026-09-10T00:00:00Z"),
+                         (result["elapsed_seconds"], result["origin"]))
+        for invalid in (dict(prior, head_sha="b" * 40), dict(prior, run_attempt=2)):
+            with mock.patch.object(ci_impact.subprocess, "run", side_effect=[
+                    SimpleNamespace(stdout=json.dumps(run).encode()),
+                    SimpleNamespace(stdout=json.dumps(invalid).encode())]), self.assertRaises(ValueError):
+                ci_impact._run_metadata("owner/repo", 17, 1)
+        for incomplete in ([], pages[:1], [pages[0], dict(pages[1], total_count=3)]):
+            with mock.patch.object(ci_impact.subprocess, "run", side_effect=[
+                    SimpleNamespace(stdout=json.dumps(run).encode()),
+                    SimpleNamespace(stdout=json.dumps(incomplete).encode())]), self.assertRaises(ValueError):
+                ci_impact._run_metadata("owner/repo", 17, 2, include_jobs=True)
+        with mock.patch.object(ci_impact.time, "time", return_value=100), \
+                mock.patch.object(ci_impact.os, "execvp") as execute:
+            self.assertEqual(0, ci_impact.main(["run-step", "--deadline", "110", "--", "make", "check"]))
+            execute.assert_called_once_with("timeout", ["timeout", "--kill-after=1s", "--", "10.0", "make", "check"])
+            execute.reset_mock()
+            self.assertEqual(124, ci_impact.main(["run-step", "--deadline", "99", "--", "make", "check"]))
+            execute.assert_not_called()
 
 
 class SelectedTestRunnerDelegationContractTests(unittest.TestCase):
@@ -271,7 +404,11 @@ class SelectedTestRunnerDelegationContractTests(unittest.TestCase):
                 "run-tests", "--root", str(ROOT), "--tests", "test_alpha.py",
                 "--jobs", "1"])
         self.assertEqual(0, result)
-        run.assert_called_once_with(ROOT, "test_alpha.py", 1, None)
+        run.assert_called_once_with(ROOT, "test_alpha.py", 1, None, None)
+        with mock.patch.object(ci_impact, "validate_selected_tests", return_value=["test_alpha.py"]), \
+                mock.patch.object(ci_impact.test_runner, "main", return_value=124) as dispatch:
+            self.assertEqual(124, ci_impact.run_selected_tests(ROOT, "test_alpha.py", deadline=1788998760))
+        self.assertEqual(["--deadline", "1788998760"], dispatch.call_args.args[0][-2:])
 
 
 if __name__ == "__main__":

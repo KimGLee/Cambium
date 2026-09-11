@@ -22,6 +22,8 @@ import Tools.execution.task_runtime.runtime_paths as runtime_paths
 import Tools.execution.task_runtime.runtime_state_contract as runtime_state_contract
 from Tools.execution.evidence import receipt_type_contract
 from Tools.execution.evidence import receipt_reference_contract
+from Tools.execution.audit import batch_review_obligation_contract
+from Tools.execution.audit import audit_producer_chain
 
 from Tools.execution.task_runtime.queue_runtime.canon import (
     SEAL_TOOL,
@@ -420,48 +422,53 @@ def receipt_catalog(root, errors):
         errors.append("current Receipt type registry is invalid: %s" % exc)
         return catalog
     catalog._type_registry = type_registry
-    seen_receipt_paths = {}
-    for dirpath, dirnames, filenames in os.walk(receipt_dir, topdown=True,
-                                                followlinks=False):
-        safe_dirs = []
-        for name in sorted(dirnames):
-            full = os.path.join(dirpath, name)
-            if dirpath == receipt_dir and name == "cold":
-                # The cold namespace is loaded by cold_receipt_store from
-                # its manifest and index, never by this recursive scan.
-                continue
-            if os.path.islink(full):
-                errors.append("receipt namespace contains symlink directory %s" %
-                              os.path.relpath(full, root))
-            else:
-                safe_dirs.append(name)
-        dirnames[:] = safe_dirs
-        for name in sorted(filenames):
-            if not name.endswith(".jsonl"):
-                continue
-            relative = os.path.relpath(os.path.join(dirpath, name), root)
-            try:
-                records = read_receipt_register(root, relative)
-            except ReceiptRegisterError as exc:
-                errors.append(str(exc))
-                continue
-            for receipt_id, receipt in records.items():
-                if receipt_id in seen_receipt_paths:
-                    errors.append("duplicate receipt_id %s in %s and %s" %
-                                  (receipt_id, seen_receipt_paths[receipt_id],
-                                   relative))
+    # Reuse only the registry owner's exact-byte mechanical projection.
+    # Every body and lifecycle eligibility is still checked independently;
+    # exit drops the scope before another namespace or runtime observation.
+    with batch_review_obligation_contract.registry_observation(root), \
+            audit_producer_chain.producer_chain_observation():
+        seen_receipt_paths = {}
+        for dirpath, dirnames, filenames in os.walk(receipt_dir, topdown=True,
+                                                    followlinks=False):
+            safe_dirs = []
+            for name in sorted(dirnames):
+                full = os.path.join(dirpath, name)
+                if dirpath == receipt_dir and name == "cold":
+                    # The cold namespace is loaded by cold_receipt_store from
+                    # its manifest and index, never by this recursive scan.
                     continue
-                seen_receipt_paths[receipt_id] = relative
-                admission_errors = receipt_type_contract.current_receipt_errors(
-                    receipt, ("hot", "historical"), root=root,
-                    registry=type_registry)
-                if admission_errors:
-                    errors.extend(
-                        "receipt %s#%s is not a current-contract Receipt: %s" %
-                        (relative, receipt_id, error)
-                        for error in admission_errors)
+                if os.path.islink(full):
+                    errors.append("receipt namespace contains symlink directory %s" %
+                                  os.path.relpath(full, root))
+                else:
+                    safe_dirs.append(name)
+            dirnames[:] = safe_dirs
+            for name in sorted(filenames):
+                if not name.endswith(".jsonl"):
                     continue
-                catalog[receipt_id] = (relative, receipt)
+                relative = os.path.relpath(os.path.join(dirpath, name), root)
+                try:
+                    records = read_receipt_register(root, relative)
+                except ReceiptRegisterError as exc:
+                    errors.append(str(exc))
+                    continue
+                for receipt_id, receipt in records.items():
+                    if receipt_id in seen_receipt_paths:
+                        errors.append("duplicate receipt_id %s in %s and %s" %
+                                      (receipt_id, seen_receipt_paths[receipt_id],
+                                       relative))
+                        continue
+                    seen_receipt_paths[receipt_id] = relative
+                    admission_errors = receipt_type_contract.current_receipt_errors(
+                        receipt, ("hot", "historical"), root=root,
+                        registry=type_registry)
+                    if admission_errors:
+                        errors.extend(
+                            "receipt %s#%s is not a current-contract Receipt: %s" %
+                            (relative, receipt_id, error)
+                            for error in admission_errors)
+                        continue
+                    catalog[receipt_id] = (relative, receipt)
     return catalog
 
 
@@ -772,76 +779,81 @@ def _cold_verified_records(root, entries, by_segment, type_registry, errors):
     it cannot vouch for, so an unproven projection is withheld, not warned
     about.
     """
-    verified = {}
-    segments = {}
-    for segment in sorted(entries):
-        entry = entries[segment]
-        try:
-            exists, payload = kblib.read_receipt_bytes(os.path.join(root, segment))
-            if not exists:
-                raise FileNotFoundError(segment)
-        except (OSError, ValueError) as exc:
-            errors.append("cold segment %s became unreadable: %s" %
-                          (segment, exc))
-            continue
-        if kblib.sha256_bytes(payload) != entry["segment_sha256"]:
-            errors.append("cold segment %s does not match the hash the "
-                          "manifest sealed; sealed bytes may not change "
-                          "(K12/07 fail-closed)" % segment)
-            continue
-        if payload.count(b"\n") != entry["records"]:
-            errors.append("cold segment %s holds %d records but the manifest "
-                          "sealed %d" %
-                          (segment, payload.count(b"\n"), entry["records"]))
-            continue
-        rows = by_segment.get(segment)
-        if not rows:
-            continue
-        try:
-            lines = payload.decode("utf-8").splitlines(keepends=True)
-        except UnicodeError as exc:
-            errors.append("cold segment %s is not valid UTF-8: %s" %
-                          (segment, exc))
-            continue
-        for row in rows:
-            raw = lines[row["line"] - 1]
-            if kblib.sha256_bytes(raw.encode("utf-8")) != row["record_sha256"]:
-                errors.append(
-                    "cold index receipt %s does not hash to the sealed record "
-                    "at %s line %d; a projection that no longer names its own "
-                    "record is an assertion, not evidence (K12/07 "
-                          "fail-closed)" % (row["receipt_id"], segment, row["line"]))
+    # Reuse only the registry owner's exact-byte mechanical projection.
+    # Every body and lifecycle eligibility is still checked independently;
+    # exit drops the scope before another namespace or runtime observation.
+    with batch_review_obligation_contract.registry_observation(root), \
+            audit_producer_chain.producer_chain_observation():
+        verified = {}
+        segments = {}
+        for segment in sorted(entries):
+            entry = entries[segment]
+            try:
+                exists, payload = kblib.read_receipt_bytes(os.path.join(root, segment))
+                if not exists:
+                    raise FileNotFoundError(segment)
+            except (OSError, ValueError) as exc:
+                errors.append("cold segment %s became unreadable: %s" %
+                              (segment, exc))
+                continue
+            if kblib.sha256_bytes(payload) != entry["segment_sha256"]:
+                errors.append("cold segment %s does not match the hash the "
+                              "manifest sealed; sealed bytes may not change "
+                              "(K12/07 fail-closed)" % segment)
+                continue
+            if payload.count(b"\n") != entry["records"]:
+                errors.append("cold segment %s holds %d records but the manifest "
+                              "sealed %d" %
+                              (segment, payload.count(b"\n"), entry["records"]))
+                continue
+            rows = by_segment.get(segment)
+            if not rows:
                 continue
             try:
-                body = json.loads(raw)
-            except ValueError as exc:
-                errors.append("cold receipt %s at %s line %d is not JSON: %s" %
-                              (row["receipt_id"], segment, row["line"], exc))
+                lines = payload.decode("utf-8").splitlines(keepends=True)
+            except UnicodeError as exc:
+                errors.append("cold segment %s is not valid UTF-8: %s" %
+                              (segment, exc))
                 continue
-            if not isinstance(body, dict):
-                errors.append("cold receipt %s at %s line %d must be a JSON "
-                              "object" %
-                              (row["receipt_id"], segment, row["line"]))
-                continue
-            if body.get("receipt_id") != row["receipt_id"]:
-                errors.append("cold receipt %s projection does not match the "
-                              "sealed body receipt_id" % row["receipt_id"])
-                continue
-            if body.get("receipt_type_id") != row.get("receipt_type_id"):
-                errors.append("cold receipt %s projection does not match the "
-                              "sealed body receipt_type_id" %
-                              row["receipt_id"])
-                continue
-            admission_errors = receipt_type_contract.current_receipt_errors(
-                body, "cold", root=root, registry=type_registry)
-            if admission_errors:
-                errors.extend(
-                    "cold receipt %s is not a current-contract Receipt: %s" %
-                    (row["receipt_id"], error)
-                    for error in admission_errors)
-                continue
-            verified[row["receipt_id"]] = (dict(row), body)
-            segments[segment] = payload
+            for row in rows:
+                raw = lines[row["line"] - 1]
+                if kblib.sha256_bytes(raw.encode("utf-8")) != row["record_sha256"]:
+                    errors.append(
+                        "cold index receipt %s does not hash to the sealed record "
+                        "at %s line %d; a projection that no longer names its own "
+                        "record is an assertion, not evidence (K12/07 "
+                              "fail-closed)" % (row["receipt_id"], segment, row["line"]))
+                    continue
+                try:
+                    body = json.loads(raw)
+                except ValueError as exc:
+                    errors.append("cold receipt %s at %s line %d is not JSON: %s" %
+                                  (row["receipt_id"], segment, row["line"], exc))
+                    continue
+                if not isinstance(body, dict):
+                    errors.append("cold receipt %s at %s line %d must be a JSON "
+                                  "object" %
+                                  (row["receipt_id"], segment, row["line"]))
+                    continue
+                if body.get("receipt_id") != row["receipt_id"]:
+                    errors.append("cold receipt %s projection does not match the "
+                                  "sealed body receipt_id" % row["receipt_id"])
+                    continue
+                if body.get("receipt_type_id") != row.get("receipt_type_id"):
+                    errors.append("cold receipt %s projection does not match the "
+                                  "sealed body receipt_type_id" %
+                                  row["receipt_id"])
+                    continue
+                admission_errors = receipt_type_contract.current_receipt_errors(
+                    body, "cold", root=root, registry=type_registry)
+                if admission_errors:
+                    errors.extend(
+                        "cold receipt %s is not a current-contract Receipt: %s" %
+                        (row["receipt_id"], error)
+                        for error in admission_errors)
+                    continue
+                verified[row["receipt_id"]] = (dict(row), body)
+                segments[segment] = payload
     return verified, segments
 
 

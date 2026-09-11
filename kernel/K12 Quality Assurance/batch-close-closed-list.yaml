@@ -14,7 +14,7 @@ members:
     producer_check: closed_list_wiki_link_resolution
     consumer_gate_id: batch-close
     evidence_role: emits
-    evidence_kind: audit-receipt
+    evidence_kind: batch-close-member-evidence
     dimension: structure_and_links
     dimension_binding: fixed
   - member_id: structural_validity
@@ -25,7 +25,7 @@ members:
     producer_check: closed_list_structural_validity
     consumer_gate_id: batch-close
     evidence_role: emits
-    evidence_kind: audit-receipt
+    evidence_kind: batch-close-member-evidence
     dimension: structure_and_links
     dimension_binding: fixed
   - member_id: graph_and_duplicate_basenames
@@ -36,7 +36,7 @@ members:
     producer_check: closed_list_graph_and_duplicate_basenames
     consumer_gate_id: batch-close
     evidence_role: emits
-    evidence_kind: audit-receipt
+    evidence_kind: batch-close-member-evidence
     dimension: structure_and_links
     dimension_binding: fixed
   - member_id: coverage_file_count
@@ -47,7 +47,7 @@ members:
     producer_check: closed_list_coverage_file_count
     consumer_gate_id: batch-close
     evidence_role: emits
-    evidence_kind: audit-receipt
+    evidence_kind: batch-close-member-evidence
     dimension: coverage_and_integration
     dimension_binding: fixed
   - member_id: guidance_and_contract_continuity
@@ -58,7 +58,7 @@ members:
     producer_check: closed_list_guidance_and_contract_continuity
     consumer_gate_id: batch-close
     evidence_role: emits
-    evidence_kind: audit-receipt
+    evidence_kind: batch-close-member-evidence
     dimension: guidance_and_contract
     dimension_binding: fixed
   - member_id: registered_residual_content
@@ -69,7 +69,7 @@ members:
     producer_check: closed_list_registered_residual_content
     consumer_gate_id: batch-close
     evidence_role: emits
-    evidence_kind: audit-receipt
+    evidence_kind: batch-close-member-evidence
     dimension: null
     dimension_binding: profile-registration
   - member_id: controlled_vocabulary
@@ -80,7 +80,7 @@ members:
     producer_check: closed_list_controlled_vocabulary
     consumer_gate_id: batch-close
     evidence_role: emits
-    evidence_kind: audit-receipt
+    evidence_kind: batch-close-member-evidence
     dimension: guidance_and_contract
     dimension_binding: fixed
   - member_id: manifest_page_contract

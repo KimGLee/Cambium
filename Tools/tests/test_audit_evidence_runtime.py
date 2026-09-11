@@ -23,9 +23,8 @@ import Tools.execution.audit.audit_evidence_runtime as runtime  # noqa: E402
 import Tools.execution.audit.audit_obligation_projection as projection  # noqa: E402
 import Tools.execution.audit.audit_plan_contract as plan_contract  # noqa: E402
 import Tools.execution.audit.audit_producer_runtime as producer_runtime  # noqa: E402
-import Tools.execution.audit.audit_receipt_contract as receipt_contract  # noqa: E402
+import Tools.execution.audit.audit_fingerprint as receipt_contract  # noqa: E402
 import Tools.execution.audit.batch_review_receipt_contract as wrapper_contract
-import Tools.execution.audit.complete_audit_receipt as complete_receipt  # noqa: E402
 import Tools.execution.audit.record_substantive_review as review_producer  # noqa: E402
 import Tools.execution.audit.substantive_review_contract as review_contract  # noqa: E402
 from Tools.execution.task_runtime.queue_runtime import profile_view
@@ -97,18 +96,12 @@ class CurrentEvidenceCheckpoint:
             reviewer_role="reviewer", round_number=1,
             verdict="passed", findings=[],
             statement="current content passes substantive review")
-        full = complete_receipt.build_audit_receipt(
-            plan=plan, plan_sha256=plan_sha256,
-            obligation=obligation, evidence=review)
-
         review_contract.validate_review_receipt(review)
-        receipt_contract.validate_audit_receipt(full)
 
         cls.base_plan = plan
         cls.base_plan_sha256 = plan_sha256
         cls.base_obligation = obligation
         cls.base_review = review
-        cls.base_full = full
         cls.base_item = {
             "id": "B001",
             "state": "open",
@@ -120,11 +113,9 @@ class CurrentEvidenceCheckpoint:
         self.plan_sha256 = self.base_plan_sha256
         self.obligation = copy.deepcopy(self.base_obligation)
         self.review = copy.deepcopy(self.base_review)
-        self.full = copy.deepcopy(self.base_full)
         self.item = copy.deepcopy(self.base_item)
         self.catalog = {
             self.review["receipt_id"]: self.review,
-            self.full["receipt_id"]: self.full,
         }
         self.result = {
             "root": str(REPOSITORY),
@@ -205,6 +196,38 @@ class CurrentEvidenceCheckpoint:
 class AuditEvidenceReconciliationContractTests(CurrentEvidenceCheckpoint,
                                                 unittest.TestCase):
 
+    def test_direct_close_member_selection_uses_current_after_image_not_wrapper_history(self):
+        from Tools.tests.fixtures.contract import post_delta_objects as objects
+        rows = kblib.load_yaml_file(REPOSITORY /
+            "kernel/K12 Quality Assurance/batch-close-closed-list.yaml")["members"]
+        stage = objects.plan_stage(rows)
+        obligation = stage["obligations"][0]
+        old = objects.producer_evidence(stage, obligation, 1)
+        after = digest("new-after-image")
+        current = dict(old, receipt_id="current-member", merged_snapshot_sha256=after,
+                       artifact_fingerprint=after)
+
+        def resolve(records, invalidated=()):
+            catalog = {record["receipt_id"]: record for record in records}
+            view = runtime.evidence_evaluation({
+                "root": str(REPOSITORY), "current_receipt_catalog": catalog,
+                "receipt_catalog": catalog, "invalidated_evidence_receipt_ids": invalidated,
+                "_profile_authorized_view": {"_contract": objects.profile_binding()}})
+            with mock.patch.object(kblib, "repository_snapshot_sha256", return_value=after):
+                return runtime._required_obligation_resolution(
+                    view, {"id": "B1", "state": "merge-ready"}, stage["plan"],
+                    stage["audit_plan_sha256"], catalog, obligation, require_current=True)
+
+        selected = resolve([old, current])
+        self.assertEqual("satisfied", selected["status"])
+        self.assertEqual(current, selected["record"])
+        self.assertEqual("missing", resolve([old])["status"])
+        self.assertEqual("missing", resolve([current], [current["receipt_id"]])["status"])
+        duplicate = dict(current, receipt_id="conflicting-member")
+        self.assertEqual("ambiguous", resolve([current, duplicate])["status"])
+        damaged = dict(current, contract_fingerprint=digest("foreign-contract"))
+        self.assertEqual("invalid", resolve([damaged])["status"])
+
     def test_withdrawn_l_review_preserves_rounds_and_cannot_restart(self):
         first = self.review_record("review-first", blocking=True)
         second = self.review_record("review-confirmed", prior=first)
@@ -262,13 +285,13 @@ class AuditEvidenceReconciliationContractTests(CurrentEvidenceCheckpoint,
                     admit(number, reference)
         second = self.review_record("review-confirmed", prior=first)
         self.catalog[second["receipt_id"]] = second
-        with self.assertRaisesRegex(ValueError, "ready-for-completion"):
+        with self.assertRaisesRegex(ValueError, "satisfied"):
             admit(1)
         second["artifact_fingerprint"] = digest("after-second-changed")
         with self.assertRaisesRegex(ValueError, "escalated"):
             admit(2, first["receipt_id"])
 
-    def test_completion_admission_requires_unique_precursor_and_complete_pair(self):
+    def test_direct_acceptance_requires_unique_review_and_complete_pair(self):
         first = self.review_record("review-first", blocking=True)
         first["artifact_fingerprint"] = digest("before-correction")
         second = self.review_record("review-confirmed", prior=first)
@@ -286,26 +309,11 @@ class AuditEvidenceReconciliationContractTests(CurrentEvidenceCheckpoint,
             with self.subTest(records=[row["receipt_id"] for row in records]):
                 self.catalog.clear()
                 self.catalog.update({row["receipt_id"]: row for row in records})
-                def completion():
-                    return runtime.require_completion_evidence(
-                        self.result, self.item, self.plan, self.plan_sha256,
-                        self.obligation, selected["receipt_id"])
-                if expected_error:
-                    with self.assertRaisesRegex(ValueError, expected_error):
-                        completion()
-                    continue
-                evidence, existing = completion()
-                self.assertEqual(selected, evidence)
-                self.assertIsNone(existing)
-                full = complete_receipt.build_audit_receipt(
-                    plan=self.plan, plan_sha256=self.plan_sha256,
-                    obligation=self.obligation, evidence=evidence)
-                proposed = runtime.obligation_evidence_resolution(
-                    self.result, self.item, self.plan, self.plan_sha256,
-                    self.obligation, proposed_record=full)
-                self.assertEqual("satisfied", proposed["status"])
-                self.catalog[full["receipt_id"]] = full
-                self.assertEqual((evidence, full), completion())
+                resolution = self.resolution()
+                self.assertEqual(expected_error or "satisfied", resolution["status"], resolution)
+                if expected_error is None:
+                    self.assertEqual(selected, resolution["record"])
+
 
     def test_currentness_uses_kernel_artifact_not_raw_reviewed_metadata_bytes(self):
         original = (REPOSITORY / self.obligation["target"]).read_text()
@@ -318,18 +326,15 @@ class AuditEvidenceReconciliationContractTests(CurrentEvidenceCheckpoint,
                 digest("semantic"), SimpleNamespace(read_text=lambda: after)))
         self.assertEqual(before_artifact, after_artifact)
         self.assertNotEqual(digest(original), digest(after))
-        self.catalog.pop(self.full["receipt_id"])
         with mock.patch.object(runtime, "_current_page_artifact_fingerprint",
                                return_value=after_artifact):
-            with self.assertRaisesRegex(ValueError, "ready-for-completion"):
+            with self.assertRaisesRegex(ValueError, "satisfied"):
                 runtime.require_substantive_review_attempt(
                     self.result, self.item, self.plan, self.plan_sha256,
                     self.obligation, round_number=1)
-            evidence, existing = runtime.require_completion_evidence(
-                self.result, self.item, self.plan, self.plan_sha256,
-                self.obligation, self.review["receipt_id"])
-            self.assertEqual(self.review, evidence)
-            self.assertIsNone(existing)
+            resolution = self.resolution()
+            self.assertEqual("satisfied", resolution["status"], resolution)
+            self.assertEqual(self.review, resolution["record"])
 
     def test_invalid_stable_precursor_is_not_reclassified_as_stale(self):
         self.review["tool_version"] = "forged"
@@ -361,11 +366,42 @@ class AuditEvidenceReconciliationContractTests(CurrentEvidenceCheckpoint,
         self.assertTrue(all(old > new for old, new in zip(*counts)))
         self.assertNotIn("_audit_evidence_facts", self.result)
 
+        # Recursive M dependency consumers and the surrounding stage can
+        # ask for one obligation in the same explicit read-only observation.
+        # The selected result is private, and a new catalog, live/frozen
+        # mode or observation must still perform its own resolution.
+        with mock.patch.object(
+                runtime, "_required_obligation_resolution_unchecked",
+                wraps=runtime._required_obligation_resolution_unchecked) as resolve:
+            with runtime.evidence_observation(self.result) as observed:
+                def query(catalog=self.catalog, *, require_current=True):
+                    return runtime._required_obligation_resolution(
+                        observed, self.item, self.plan, self.plan_sha256,
+                        catalog, self.obligation,
+                        require_current=require_current)
+
+                selected = query()
+                selected["attempts"].clear()
+                self.assertEqual(outcomes[1], query())
+                self.assertEqual(1, resolve.call_count)
+                frozen = runtime._FrozenEvidenceView(self.result, self.catalog, [
+                    runtime._reconciliation_row(self.result, self.plan,
+                                                self.obligation, outcomes[1])])
+                self.assertEqual("satisfied", query(frozen, require_current=False)["status"])
+                self.assertEqual(2, resolve.call_count)
+                candidate = self.copy_with_id(self.review, "competing-current-audit")
+                replacement = {**self.catalog, candidate["receipt_id"]: candidate}
+                self.assertEqual("ambiguous", query(replacement)["status"])
+                self.assertEqual(3, resolve.call_count)
+            with runtime.evidence_observation(self.result) as observed:
+                self.assertEqual(outcomes[1], query())
+            self.assertEqual(4, resolve.call_count)
+        self.assertNotIn("_audit_stage_resolutions", self.result)
+
         # New public evaluations must observe changed bytes, even under the
         # same Receipt ID. A coherent but false Sources/dependency pair must
         # not be accepted merely because those two stored fields agree.
-        for record in (self.review, self.full):
-            record["dependency_fingerprint"] = digest("invented-sources")
+        self.review["dependency_fingerprint"] = digest("invented-sources")
         self.review["sources_sha256"] = digest("invented-sources")
         self.assertNotEqual("satisfied", self.resolution()["status"])
 
@@ -405,39 +441,31 @@ class AuditEvidenceReconciliationContractTests(CurrentEvidenceCheckpoint,
 
         self.assertEqual(review_contract.RECEIPT_TYPE_ID,
                          self.review["receipt_type_id"])
-        self.assertEqual(receipt_contract.RECEIPT_TYPE_ID,
-                         self.full["receipt_type_id"])
         self.assertEqual("satisfied", resolution["status"])
-        self.assertEqual(self.full["receipt_id"],
+        self.assertEqual(self.review["receipt_id"],
                          resolution["record"]["receipt_id"])
-        self.assertEqual(self.full["receipt_id"],
+        self.assertEqual(self.review["receipt_id"],
                          row["selected_evidence_ref"])
         self.assertEqual(
-            sorted((self.review["receipt_id"], self.full["receipt_id"])),
+            [self.review["receipt_id"]],
             row["produced_evidence_refs"])
         self.assertFalse(row["unresolved"])
 
     def test_resolution_status_matrix_uses_current_typed_attempts(self):
-        duplicate_full = self.copy_with_id(
-            self.full, "audit-complete_audit_receipt-duplicate-0001")
-        misbound_full = self.copy_with_id(
-            self.full, "audit-complete_audit_receipt-misbound-0001")
-        misbound_full["audit_plan_sha256"] = digest("different-plan")
+        duplicate_review = self.copy_with_id(
+            self.review, "audit-record_substantive_review-duplicate-0001")
+        misbound_review = self.copy_with_id(
+            self.review, "audit-record_substantive_review-misbound-0001")
+        misbound_review["audit_plan_sha256"] = digest("different-plan")
         cases = (
             ("empty", {}, "missing"),
-            ("producer-only",
-             {self.review["receipt_id"]: self.review},
-             "ready-for-completion"),
             ("complete", self.catalog, "satisfied"),
             ("two-terminals", {
-                **self.catalog, duplicate_full["receipt_id"]: duplicate_full,
+                **self.catalog, duplicate_review["receipt_id"]: duplicate_review,
             }, "ambiguous"),
-            ("terminal-without-producer", {
-                self.full["receipt_id"]: self.full,
-            }, "invalid"),
             ("misbound-terminal", {
                 self.review["receipt_id"]: self.review,
-                misbound_full["receipt_id"]: misbound_full,
+                misbound_review["receipt_id"]: misbound_review,
             }, "invalid"),
         )
 
@@ -447,34 +475,12 @@ class AuditEvidenceReconciliationContractTests(CurrentEvidenceCheckpoint,
                     expected,
                     self.resolution(catalog=catalog)["status"])
 
-    def test_terminal_receipt_cannot_mask_invalid_or_ambiguous_precursors(self):
-        duplicate_review = self.copy_with_id(
-            self.review, "audit-record_substantive_review-duplicate-0001")
-        invalid_review = copy.deepcopy(self.review)
-        invalid_review["audit_plan_sha256"] = digest("different-plan")
-        cases = (
-            ("ambiguous", "precursor", {
-                **self.catalog,
-                duplicate_review["receipt_id"]: duplicate_review,
-            }),
-            ("invalid", "invalid records", {
-                self.full["receipt_id"]: self.full,
-                invalid_review["receipt_id"]: invalid_review,
-            }),
-        )
-
-        for expected, reason, catalog in cases:
-            with self.subTest(expected=expected):
-                resolution = self.resolution(catalog=catalog)
-                self.assertEqual(expected, resolution["status"])
-                self.assertIn(reason, resolution["reason"])
-
     def test_history_is_classified_but_never_reauthorizes_current_evidence(self):
         predecessor = self.copy_with_id(
-            self.full, "audit-complete_audit_receipt-predecessor-0001",
-            invalidated_by=self.full["receipt_id"])
+            self.review, "audit-record_substantive_review-predecessor-0001",
+            invalidated_by=self.review["receipt_id"])
         invalidated = self.copy_with_id(
-            self.full, "audit-complete_audit_receipt-invalidated-0001",
+            self.review, "audit-record_substantive_review-invalidated-0001",
             invalidated_by="standards-invalidation-event")
         self.result["receipt_catalog"] = {
             predecessor["receipt_id"]: predecessor,
@@ -491,7 +497,7 @@ class AuditEvidenceReconciliationContractTests(CurrentEvidenceCheckpoint,
         self.assertFalse(row["unresolved"])
 
         unclassified = self.copy_with_id(
-            self.full, "audit-complete_audit_receipt-unclassified-0001")
+            self.review, "audit-record_substantive_review-unclassified-0001")
         self.result["receipt_catalog"][unclassified["receipt_id"]] = \
             unclassified
         row = runtime._reconciliation_row(
@@ -503,10 +509,14 @@ class AuditEvidenceReconciliationContractTests(CurrentEvidenceCheckpoint,
     def test_terminal_reports_withdrawn_close_without_reauthorizing_history(self):
         row = runtime._reconciliation_row(
             self.result, self.plan, self.obligation, self.resolution())
-        close = {"receipt_id": "closed", "audit_plan_id": self.plan["plan_id"],
-                 **runtime._reconciliation_projection([row])}
+        close = {"receipt_id": "closed", "reviewer_attestation_receipt": "attestation"}
+        context = {"receipt_id": "attestation", "result": "pass", "invalidated_by": None,
+                   "receipt_type_id": "batch-close-review-attestation-v1",
+                   "check": "batch_global_review_attestation",
+                   "audit_plan_id": self.plan["plan_id"],
+                   **runtime._reconciliation_projection([row])}
         self.item.update(state="closed", close_gate_receipt="closed")
-        self.result["receipt_catalog"] = {"closed": close}
+        self.result["receipt_catalog"] = {"closed": close, "attestation": context}
         self.result["current_receipt_catalog"] = {}
         with self.assertRaisesRegex(runtime.AuditEvidenceError, "no current close"):
             runtime.terminal_plan_reconciliation(self.result)
@@ -528,7 +538,7 @@ class AuditEvidenceReconciliationContractTests(CurrentEvidenceCheckpoint,
 
         overlapping = copy.deepcopy(projection_value)
         overlapping["audit_evidence_reconciliation"][0][
-            "superseded_evidence_refs"] = [self.full["receipt_id"]]
+            "superseded_evidence_refs"] = [self.review["receipt_id"]]
         with self.assertRaisesRegex(runtime.AuditEvidenceError, "overlap"):
             runtime.validate_plan_reconciliation(overlapping)
 
@@ -556,7 +566,7 @@ class BatchReviewPublicationIntegrationTests(CurrentEvidenceCheckpoint,
             # Install only the immutable contracts this local seam reads,
             # not a repository or an executable lifecycle fixture.
             for path in (*projection._BASE_PROJECTION_SOURCE_PATHS,
-                         receipt_contract.AUDIT_RECEIPT_CONTRACT_PATH):
+                         receipt_contract.AUDIT_FINGERPRINT_CONTRACT_PATH):
                 destination = root / path
                 destination.parent.mkdir(parents=True, exist_ok=True)
                 destination.write_bytes((REPOSITORY / path).read_bytes())
@@ -640,10 +650,7 @@ class BatchReviewPublicationIntegrationTests(CurrentEvidenceCheckpoint,
             revised = self.copy_with_id(self.review, "revised-review")
             revised["artifact_fingerprint"] = digest("revised-content")
             artifact.return_value = revised["artifact_fingerprint"]
-            full = complete_receipt.build_audit_receipt(plan=self.plan,
-                plan_sha256=self.plan_sha256, obligation=self.obligation, evidence=revised)
-            full["receipt_id"] = "revised-full"
-            self.catalog.update({row["receipt_id"]: row for row in (revised, full)})
+            self.catalog[revised["receipt_id"]] = revised
             code, revised_result = submit()
             self.assertEqual(0, code, revised_result)
             self.assertNotEqual(first_id, revised_result["receipt_id"])
@@ -673,12 +680,8 @@ class AuditEvidenceCheckpointIntegrationTests(CurrentEvidenceCheckpoint,
         from Tools.execution.task_runtime.queue_runtime import review as queue_review
         old_review = self.copy_with_id(self.review, "old-review")
         old_review["artifact_fingerprint"] = digest("previous-page")
-        old_full = complete_receipt.build_audit_receipt(
-            plan=self.plan, plan_sha256=self.plan_sha256, obligation=self.obligation,
-            evidence=old_review)
-        old_full["receipt_id"] = "old-full"
         self.catalog.clear()
-        self.catalog.update({row["receipt_id"]: row for row in (old_review, old_full)})
+        self.catalog[old_review["receipt_id"]] = old_review
         relative = ".cambium/work_specs/audit-plans/current.yaml"
         delta = {"path": "Delta.md", "sha256": digest("delta"), "page_receipt_ids": []}
         def selected_wrapper():
@@ -694,7 +697,7 @@ class AuditEvidenceCheckpointIntegrationTests(CurrentEvidenceCheckpoint,
                 old = self.bind_review(runtime.batch_review_evidence(self.result, self.item))
                 self.item.update(state="open", batch_receipts=[])
                 self.assertIs(old, selected_wrapper())
-            self.catalog.update({row["receipt_id"]: row for row in (self.review, self.full)})
+            self.catalog[self.review["receipt_id"]] = self.review
             self.assertIsNone(selected_wrapper())
             new = self.bind_review(runtime.batch_review_evidence(self.result, self.item))
             new["receipt_id"] = "new-wrapper"
@@ -716,11 +719,8 @@ class AuditEvidenceCheckpointIntegrationTests(CurrentEvidenceCheckpoint,
         first = self.review_record("first", blocking=True)
         first["artifact_fingerprint"] = digest("before-correction")
         second = self.review_record("second", prior=first)
-        full = complete_receipt.build_audit_receipt(
-            plan=self.plan, plan_sha256=self.plan_sha256,
-            obligation=self.obligation, evidence=second)
         self.catalog.clear()
-        self.catalog.update({row["receipt_id"]: row for row in (first, second, full)})
+        self.catalog.update({row["receipt_id"]: row for row in (first, second)})
         relative = ".cambium/work_specs/audit-plans/current.yaml"
         with mock.patch.object(runtime, "_resolve_current_plan",
                                return_value=(relative, self.plan, self.plan_sha256)), \
@@ -730,9 +730,14 @@ class AuditEvidenceCheckpointIntegrationTests(CurrentEvidenceCheckpoint,
             self.item.update(state="closed", close_gate_receipt="close")
             close = {"receipt_id": "close", "result": "pass", "invalidated_by": None,
                      "receipt_type_id": batch_close_contract.GATE_RECEIPT_TYPE_ID,
+                     "reviewer_attestation_receipt": "attestation"}
+            context = {"receipt_id": "attestation", "result": "pass", "invalidated_by": None,
+                     "receipt_type_id": batch_close_contract.REVIEW_ATTESTATION_RECEIPT_TYPE_ID,
+                     "check": "batch_global_review_attestation",
                      **{key: value for key, value in closure.items()
                         if key not in {"audit_evidence_bindings", "audit_evidence_set_sha256"}}}
             self.catalog["close"] = close
+            self.catalog["attestation"] = context
             postdelta = {
                 "stage_plan": {"audit_plan_path": relative, "plan": self.plan,
                                "audit_plan_sha256": self.plan_sha256},
@@ -746,7 +751,7 @@ class AuditEvidenceCheckpointIntegrationTests(CurrentEvidenceCheckpoint,
                     return runtime._closed_batch_dimension_evidence(
                         runtime.evidence_evaluation(self.result), self.item,
                         self.catalog, {self.obligation["dimension"]})
-                self.assertEqual([full["receipt_id"]], [row["evidence_ref"] for row in terminal()])
+                self.assertEqual([second["receipt_id"]], [row["evidence_ref"] for row in terminal()])
                 self.assertNotIn(first["receipt_id"], closure["audit_evidence_reconciliation"][0]["produced_evidence_refs"])
                 for failure in ("missing", "withdrawn", "corrupt"):
                     with self.subTest(failure=failure):
@@ -780,7 +785,7 @@ class AuditEvidenceCheckpointIntegrationTests(CurrentEvidenceCheckpoint,
                 before = copy.deepcopy(dict(history))
                 view = invalidation.invalidation_view(history, root=REPOSITORY)
                 self.assertEqual({first["receipt_id"], second["receipt_id"],
-                                  full["receipt_id"], "wrapper", "close"}, set(view["affected"]))
+                                  "wrapper", "attestation", "close"}, set(view["affected"]))
                 self.result.update(receipt_catalog=history,
                     current_receipt_catalog=receipt_store.adoption_filtered_catalog(history, view["affected"]),
                     invalidated_evidence_receipt_ids=list(view["affected"]),
@@ -795,11 +800,7 @@ class AuditEvidenceCheckpointIntegrationTests(CurrentEvidenceCheckpoint,
     def test_stage_and_batch_review_share_one_current_checkpoint(self):
         old_review = self.copy_with_id(self.review, "old-review")
         old_review["artifact_fingerprint"] = digest("before-revision")
-        old_full = complete_receipt.build_audit_receipt(
-            plan=self.plan, plan_sha256=self.plan_sha256,
-            obligation=self.obligation, evidence=old_review)
-        old_full["receipt_id"] = "old-full"
-        self.catalog.update({row["receipt_id"]: row for row in (old_review, old_full)})
+        self.catalog[old_review["receipt_id"]] = old_review
         resolved = (
             ".cambium/work_specs/audit-plans/current.yaml",
             self.plan,
@@ -813,12 +814,16 @@ class AuditEvidenceCheckpointIntegrationTests(CurrentEvidenceCheckpoint,
                     return_value=None), \
                 mock.patch.object(runtime, "_required_obligation_resolution",
                     wraps=runtime._required_obligation_resolution) as resolve, \
+                mock.patch.object(runtime, "_reconciliation_row",
+                    wraps=runtime._reconciliation_row) as reconcile, \
                 runtime.evidence_observation(self.result) as observed:
             status = runtime.stage_evidence_status(
                 observed, self.item, "pre-merge",
                 required_state="open")
+            reconcile.assert_not_called()
             closure = runtime.batch_review_evidence(
                 observed, self.item, required_state="open")
+            self.assertGreater(reconcile.call_count, 0)
             self.assertEqual(
                 [], runtime.wrapper_binding_errors(
                     observed, self.item, copy.deepcopy(closure),
@@ -832,11 +837,13 @@ class AuditEvidenceCheckpointIntegrationTests(CurrentEvidenceCheckpoint,
 
         self.assertEqual("satisfied", status["obligations"][0]["status"])
         self.assertEqual(status["audit_plan_id"], closure["audit_plan_id"])
+        self.assertEqual(status["obligations"][0]["evidence_ref"],
+                         closure["audit_evidence_bindings"][0]["evidence_ref"])
+        runtime.validate_plan_reconciliation({
+            field: closure[field]
+            for field in runtime.audit_reconciliation_contract.projection_fields()})
         self.assertEqual(
-            status["audit_evidence_reconciliation_sha256"],
-            closure["audit_evidence_reconciliation_sha256"])
-        self.assertEqual(
-            self.full["receipt_id"],
+            self.review["receipt_id"],
             closure["audit_evidence_bindings"][0]["evidence_ref"])
 
         # Closing uses the same pre-merge projection both to validate the
@@ -845,8 +852,8 @@ class AuditEvidenceCheckpointIntegrationTests(CurrentEvidenceCheckpoint,
         frozen = self.bind_review(closure)
         with mock.patch.object(runtime, "_resolve_current_plan", return_value=resolved), \
                 mock.patch.object(runtime, "_require_current_profile_rendering_contract_state"), \
-                mock.patch.object(runtime, "_final_attempt_errors",
-                                  wraps=runtime._final_attempt_errors) as final_check, \
+                mock.patch.object(runtime, "_producer_record_errors",
+                                  wraps=runtime._producer_record_errors) as final_check, \
                 mock.patch.object(runtime, "batch_review_evidence",
                                   wraps=runtime.batch_review_evidence) as premerge, \
                 mock.patch.object(runtime, "_post_delta_evidence_closure",
@@ -857,12 +864,12 @@ class AuditEvidenceCheckpointIntegrationTests(CurrentEvidenceCheckpoint,
                 self.result, self.item, required_state="merge-ready")
         self.assertEqual(closure, after)
         self.assertEqual(closure, {key: frozen[key] for key in closure})
-        self.assertEqual(sorted([old_review["receipt_id"], old_full["receipt_id"]]),
+        self.assertEqual([old_review["receipt_id"]],
                          after["audit_evidence_reconciliation"][0]["invalidated_evidence_refs"])
         self.assertEqual(["closed AuditPlan evidence is invalid: post-Delta owner seam"], errors)
         self.assertEqual(2, premerge.call_count)
         self.assertEqual(2, final_check.call_count)
-        self.assertTrue(all(call.args[-1]["receipt_id"] == self.full["receipt_id"]
+        self.assertTrue(all(call.args[-1]["receipt_id"] == self.review["receipt_id"]
                             and call.kwargs["require_current"] is False
                             for call in final_check.call_args_list))
 
@@ -879,18 +886,18 @@ class AuditEvidenceCheckpointIntegrationTests(CurrentEvidenceCheckpoint,
                 ("unresolved", lambda: wrapper.update(audit_evidence_unresolved_count=1)),
                 ("binding", lambda: wrapper["audit_evidence_bindings"][0].update(
                     evidence_sha256=digest("different body"))),
-                ("selected-body", lambda: self.full.update(verifier="forged")),
+                ("selected-body", lambda: self.review.update(details="changed declaration")),
             )
             for label, mutate in cases:
-                saved_wrapper, saved_full = copy.deepcopy(wrapper), copy.deepcopy(self.full)
+                saved_wrapper, saved_review = copy.deepcopy(wrapper), copy.deepcopy(self.review)
                 with self.subTest(label=label):
                     mutate()
                     with self.assertRaises(runtime.AuditEvidenceError):
                         runtime.batch_review_evidence(self.result, self.item, required_state="merge-ready")
                 wrapper.clear()
                 wrapper.update(saved_wrapper)
-                self.full.clear()
-                self.full.update(saved_full)
+                self.review.clear()
+                self.review.update(saved_review)
                 self.item["batch_receipts"] = ["wrapper"]
 
 
@@ -976,6 +983,12 @@ class TerminalDimensionEvidenceProjectionTests(unittest.TestCase):
             "receipt_id": "close-B001",
             "result": "pass",
             "invalidated_by": None,
+            "reviewer_attestation_receipt": "attestation-B001",
+        }
+        self.context = {
+            "receipt_id": "attestation-B001", "result": "pass", "invalidated_by": None,
+            "receipt_type_id": "batch-close-review-attestation-v1",
+            "check": "batch_global_review_attestation",
             "audit_plan_id": "audit-plan-B001",
             "audit_plan_path": self.plan_path,
             "audit_plan_sha256": self.plan_sha256,
@@ -996,6 +1009,7 @@ class TerminalDimensionEvidenceProjectionTests(unittest.TestCase):
             "items_by_id": {"B001": self.item},
             "current_receipt_catalog": {
                 self.close["receipt_id"]: self.close,
+                self.context["receipt_id"]: self.context,
                 **self.records,
             },
             "invalidated_evidence_receipt_ids": [],
@@ -1011,7 +1025,7 @@ class TerminalDimensionEvidenceProjectionTests(unittest.TestCase):
 
     def _premerge_closure(self):
         """Input from the independently tested frozen-stage owner."""
-        rows = [row for row in self.close["audit_evidence_reconciliation"]
+        rows = [row for row in self.context["audit_evidence_reconciliation"]
                 if row["due_stage"] == "pre-merge"]
         return {
             "audit_plan_id": self.plan["plan_id"],
@@ -1083,6 +1097,31 @@ class TerminalDimensionEvidenceProjectionTests(unittest.TestCase):
         }
         self.assertEqual(rows, self.project())
 
+        # The frozen-stage owner accepts a common N/A declaration for the
+        # primary item and its covered children. Terminal projects only the
+        # primary fact, without pretending that each child actually ran.
+        primary = self.plan["obligations"][0]
+        common = self.records["evidence-m-content"]
+        children = [dict(primary, obligation_id="covered-%s" % position)
+                    for position in range(2)]
+        common.update(obligation_id=primary["obligation_id"],
+                      covered_obligation_ids=[row["obligation_id"] for row in children])
+        primary_reconciled = next(row for row in self.context["audit_evidence_reconciliation"]
+                                  if row["obligation_id"] == primary["obligation_id"])
+        for child in children:
+            self.plan["obligations"].append(child)
+            self.refs[child["obligation_id"]] = common["receipt_id"]
+        self.context.update(runtime._reconciliation_projection(
+            self.context["audit_evidence_reconciliation"] +
+            [dict(primary_reconciled, obligation_id=child["obligation_id"])
+             for child in children]))
+        self.assertEqual(rows, self.project())
+
+        # Applicability filtering does not allow duplicate executed evidence.
+        common["covered_obligation_ids"] = []
+        with self.assertRaisesRegex(runtime.AuditEvidenceError, "repeats a selected evidence ref"):
+            self.project()
+
     def test_invalidated_or_owner_rejected_selected_evidence_fails_closed(self):
         self.result["invalidated_evidence_receipt_ids"] = [
             "evidence-m-content"]
@@ -1100,12 +1139,12 @@ class TerminalDimensionEvidenceProjectionTests(unittest.TestCase):
 
     def test_post_delta_reconciliation_must_equal_owner_closure(self):
         rows = copy.deepcopy(
-            self.close["audit_evidence_reconciliation"])
+            self.context["audit_evidence_reconciliation"])
         target = next(row for row in rows
                       if row["obligation_id"] == "page-contract")
         target["selected_evidence_ref"] = "foreign-page-contract"
         target["produced_evidence_refs"] = ["foreign-page-contract"]
-        self.close.update(runtime._reconciliation_projection(rows))
+        self.context.update(runtime._reconciliation_projection(rows))
         self.result["current_receipt_catalog"]["foreign-page-contract"] = {
             "receipt_id": "foreign-page-contract",
             "record_kind": "gate-receipt",
@@ -1148,7 +1187,7 @@ class TerminalDimensionEvidenceProjectionTests(unittest.TestCase):
             self.result["current_receipt_catalog"][evidence_ref] = \
                 self.records[evidence_ref]
         self.plan["obligations"] = copy.deepcopy(self.obligations)
-        self.close.update(runtime._reconciliation_projection([{
+        self.context.update(runtime._reconciliation_projection([{
             "obligation_id": row["obligation_id"],
             "due_stage": row["due_stage"],
             "selected_evidence_ref": self.refs[row["obligation_id"]],

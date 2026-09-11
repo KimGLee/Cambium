@@ -113,11 +113,11 @@ class ProfileAdmissionTests(unittest.TestCase):
             evaluation.contract, self.fixture.root)[0]
         with mock.patch.object(check_profile, "evaluate_profile_load",
                                side_effect=AssertionError("must reuse")):
-            chain = audit_producer_chain.precursor_chain_for_spec(
+            chain = audit_producer_chain.producer_chain_for_spec(
                 spec, root=self.fixture.root, evaluation=evaluation)
             self.assertEqual("profile-rendering", chain["execution_route"])
             with self.assertRaises(audit_producer_chain.AuditProducerChainError):
-                audit_producer_chain.precursor_chain_for_spec(spec, root=self.fixture.root)
+                audit_producer_chain.producer_chain_for_spec(spec, root=self.fixture.root)
 
     def test_reuse_requires_same_manifest_root_and_exact_gate_summary(self):
         manifest = self.evaluation.contract.manifest_repo_path
@@ -168,8 +168,24 @@ class ProfileAdmissionTests(unittest.TestCase):
         admission = self.admission()
         target = self.fixture.root / model.PROFILE_TOOLCHAIN_PATH
         target.write_text(target.read_text() + "\n")
-        self.assertIn("canonical profile-load inputs changed",
-                      "; ".join(profile_admission.currency_errors(admission)))
+        with mock.patch.object(check_profile, "canonical_profile_load_inputs",
+                               wraps=check_profile.canonical_profile_load_inputs) as discover:
+            self.assertIn("canonical profile-load inputs changed",
+                          "; ".join(profile_admission.currency_errors(admission)))
+        discover.assert_called_once()
+
+        # Changed registries must resolve the new closure, not only compare
+        # the formerly linked paths. This is still a currentness check, not
+        # permission to adopt that changed capability.
+        registry_path = self.fixture.root / model.SCAN_CAPABILITY_PATH
+        registry = kblib.load_yaml_file(registry_path)
+        added = "Tools/new_scan.py"
+        registry["capabilities"][0]["implementation_path"] = added
+        (self.fixture.root / added).write_text("# New implementation input.\n")
+        registry_path.write_text(kblib.canonical_yaml(registry))
+        snapshots, fingerprint = admission.evaluation.rebind_normative_inputs()
+        self.assertIn(added, snapshots)
+        self.assertNotEqual(self.evaluation.profile_load_inputs_sha256, fingerprint)
 
     def test_decoder_requirements_are_in_draft_and_gate_currency(self):
         path = model.PROFILE_REQUIREMENTS_PATH
@@ -208,8 +224,24 @@ class ProfileAdmissionTests(unittest.TestCase):
                              self.evaluation.summary_receipt[name])
         self.assertEqual(self.evaluation.profile_snapshot_sha256,
                          admission.evaluation.rebind_profile_snapshot().sha256)
-        self.assertEqual(self.evaluation.profile_load_inputs_sha256,
-                         admission.evaluation.rebind_normative_inputs()[1])
+        with mock.patch.object(check_profile, "canonical_profile_load_inputs",
+                               wraps=check_profile.canonical_profile_load_inputs) as discover, \
+                mock.patch.object(kblib, "repository_file_snapshot",
+                                  wraps=kblib.repository_file_snapshot) as read:
+            first, first_hash = admission.evaluation.rebind_normative_inputs()
+            second, second_hash = admission.evaluation.rebind_normative_inputs()
+        self.assertEqual(self.evaluation.profile_load_inputs_sha256, first_hash)
+        self.assertEqual(first_hash, second_hash)
+        self.assertEqual(set(self.evaluation.normative_snapshots), set(first))
+        self.assertEqual(2 * len(first), read.call_count)
+        self.assertTrue(all(first[path] is not second[path] for path in first))
+        discover.assert_not_called()
+        # Each check still reads real files; no old observation excuses a
+        # missing source at the next boundary.
+        target = self.fixture.root / model.PROFILE_TOOLCHAIN_PATH
+        target.unlink()
+        with self.assertRaises((OSError, ValueError)):
+            admission.evaluation.rebind_normative_inputs()
 
 
 class DynamicOwnerSnapshotTests(unittest.TestCase):

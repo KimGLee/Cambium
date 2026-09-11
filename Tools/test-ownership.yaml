@@ -510,29 +510,6 @@ tests:
     disposition: keep
     semantics: audit_producers
     parallel_safe: true
-  - path: Tools/tests/test_audit_receipt_contract.py
-    owner: Tools/execution/audit/audit_receipt_contract.py
-    level: contract
-    lifecycle: current
-    disposition: keep
-    semantics: current_full_audit_receipt_contract
-    owner_contract_symbol: audit_receipt_contract.validate_audit_receipt
-    parallel_safe: true
-    overrides:
-      - selector: AuditReceiptSchemaContractTests.*
-        semantics: audit_receipt_closed_schema_and_identity
-        owner_contract_symbol: audit_receipt_contract.validate_contract
-        parallel_safe: true
-      - selector: AuditReceiptAfterImageContractTests.*
-        semantics: audit_receipt_page_after_image_contract
-        owner_contract_symbol: audit_receipt_contract.page_artifact_fingerprint_contract
-        parallel_safe: true
-      - selector: AuditReceiptTypedDispatchIntegrationTests.*
-        owner: Tools/execution/evidence/receipt_type_contract.py
-        level: integration
-        semantics: audit_receipt_typed_registry_dispatch
-        owner_contract_symbol: receipt_type_contract.current_receipt_errors
-        parallel_safe: true
   - path: Tools/tests/test_batch_close_audit.py
     owner: Tools/execution/audit/batch_close_audit.py
     level: contract
@@ -540,11 +517,6 @@ tests:
     disposition: keep
     semantics: batch_close_audit
     parallel_safe: true
-    overrides:
-      - selector: PostDeltaAuditClosureTests.test_terminal_pair_replays_the_same_precursor_projection
-        owner_contract_symbol: batch_close_audit.validate_post_delta_evidence_set
-        semantics: post_delta_precursor_fingerprint_acceptance
-        duplicate_group: post-delta-precursor-owner-and-close-consumer
   - path: Tools/tests/test_batch_close_contract.py
     owner: Tools/execution/audit/batch_close_contract.py
     level: contract
@@ -732,7 +704,7 @@ tests:
         semantics: batch_close_current_bundle_recovery_projection
         owner_contract_symbol: resume.batch_close_recovery_inventory
         parallel_safe: true
-      - selector: AppliedBatchCloseTests.test_partial_multi_register_publication_retains_fail_closed_lock
+      - selector: AppliedBatchCloseTests.test_partial_close_publication_retains_fail_closed_lock
         level: slow
         semantics: batch_close_interrupted_publication_fail_closed
         owner_contract_symbol: check_batch_close._append_receipts
@@ -927,11 +899,11 @@ tests:
     owner_contract_symbol: check_proof._dimension_coverage_failures
     parallel_safe: true
     overrides:
-      - selector: TerminalProofAuditReceiptConsumerIntegrationTests.*
-        level: integration
+      - selector: TerminalProofEvidenceConsumerTests.*
+        level: unit
         semantics: terminal_proof_plan_bound_dimension_evidence_consumer
         owner_contract_symbol: check_proof._validate_dimension_coverage_evidence
-        parallel_safe: false
+        parallel_safe: true
       - selector: TerminalProofContractTests.*
         owner: Tools/execution/audit/terminal_proof_contract.py
         level: contract
@@ -1033,6 +1005,12 @@ tests:
       - selector: CiMatrixPresentationContractTests.test_history_is_bounded_main_only_and_network_failure_falls_back
         semantics: bounded_read_only_ci_history
         owner_contract_symbol: ci_impact._historical_costs
+      - selector: CiMatrixPresentationContractTests.test_required_budget_*
+        semantics: complete_required_attempt_job_and_time_acceptance
+        owner_contract_symbol: ci_impact.required_budget_verdict
+      - selector: CiMatrixPresentationContractTests.test_budget_metadata_*
+        semantics: complete_official_attempt_metadata_read
+        owner_contract_symbol: ci_impact._run_metadata
       - selector: SelectedTestRunnerDelegationContractTests.*
         semantics: ci_exact_selection_delegates_to_catalog_execution_owner
         owner_contract_symbol: ci_impact.run_selected_tests
@@ -1060,11 +1038,6 @@ tests:
         level: integration
         semantics: post_delta_current_repository_owner_seam
         parallel_safe: false
-      - selector: PostDeltaCloseConsumerTests.test_raw_producer_evidence_must_remain_resolvable
-        semantics: close_consumer_propagates_unresolvable_precursor
-        consumer_only: true
-        primary_owner_test: test_batch_close_audit.PostDeltaAuditClosureTests.test_terminal_pair_replays_the_same_precursor_projection
-        duplicate_group: post-delta-precursor-owner-and-close-consumer
   - path: Tools/tests/test_compile_cli_contract.py
     owner: Tools/platform/agent_interface/compile_cli_contract.py
     level: contract
@@ -1134,7 +1107,7 @@ tests:
       - selector: CompilerProjectionLifecycleTests.test_checked_view_rechecks_components_discovery_environment_and_target
         level: contract
         semantics: invocation_scoped_cli_input_identity_and_invalidation
-        owner_contract_symbol: compile_cli_contract.checked_projection
+        owner_contract_symbol: compile_cli_contract.checked_tool
       - selector: CompilerCliTransportTests.test_public_cli_transports_one_current_projection_check
         level: integration
         semantics: compile_cli_contract_public_transport
@@ -2873,6 +2846,10 @@ tests:
         owner: Tools/platform/distribution/test_runner.py
         semantics: file_process_isolation_preserves_selected_levels
         owner_contract_symbol: test_runner.module_groups
+      - selector: TestRunnerSelectionContractTests.test_deadline_*
+        owner: Tools/platform/distribution/test_runner.py
+        semantics: shared_deadline_admission_and_incomplete_case_accounting
+        owner_contract_symbol: test_runner.main
       - selector: TestRunnerSelectionContractTests.test_cost_*
         owner: Tools/platform/distribution/test_runner.py
         level: unit
@@ -2887,6 +2864,12 @@ tests:
         semantics: test_catalog_repository_projection_freshness
         owner_contract_symbol: test_catalog.build_catalog
         parallel_safe: false
+      - selector: TestRunnerDeadlineIntegrationTests.*
+        owner: Tools/platform/distribution/test_runner.py
+        level: integration
+        semantics: bounded_test_process_descendant_and_fixture_cleanup
+        owner_contract_symbol: test_runner.main
+        parallel_safe: true
   - path: Tools/tests/test_tool_availability.py
     owner: Tools/platform/agent_interface/tool_availability.py
     level: contract
@@ -2946,13 +2929,19 @@ tests:
         semantics: canonical_repository_relative_path_shape
         owner_contract_symbol: path_contract.canonical_repository_relative_path
         parallel_safe: true
-  - path: Tools/tests/test_tools_readme_inventory.py
+  - path: Tools/tests/test_readme_examples.py
     owner: Tools/README.md
     level: unit
     lifecycle: current
     disposition: keep
-    semantics: tools_readme_inventory
+    semantics: readme_links_and_command_examples
     parallel_safe: true
+    overrides:
+      - selector: ToolsReadmeCommandTests.test_documented_scripts_and_options_exist
+        owner: Tools/platform/agent_interface/entrypoint_loader.py
+        owner_contract_symbol: entrypoint_loader.capture_argument_parser
+        level: contract
+        semantics: documented_examples_use_current_cli_interface
   - path: Tools/tests/test_update_queue.py
     owner: Tools/execution/task_runtime/update_queue.py
     level: integration

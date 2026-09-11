@@ -122,7 +122,6 @@ class UpdateQueueFixture(AuditScenarioActions):
         plan_path = plan_result["plan_path"]
         plan = self.load(plan_path)
         page_receipts = []
-        produced_by_obligation = {}
 
         for obligation in plan["obligations"]:
             if (obligation.get("status") != "required" or
@@ -141,24 +140,22 @@ class UpdateQueueFixture(AuditScenarioActions):
             )
             if obligation["evidence_kind"] == "batch-page-review-record":
                 produced = self.run_tool(
-                    "record_batch_page_review.py", *common,
+                    "record_batch_page_review.py",
+                    "--batch", batch_id, "--plan", plan_path,
                     "--page", obligation["target"],
-                    "--variant", "s-sampled-page",
-                    "--reviewer-context-id", "fixture-review-context",
-                    "--reviewer-role", "reviewer",
-                    "--verdict", "passed",
-                    "--statement",
-                    "fixture page satisfies the frozen sampled-review "
-                    "acceptance contract",
+                    "--review", json.dumps({
+                        "obligation_id": obligation["obligation_id"],
+                        "input": {
+                            "reviewer_context_id": "fixture-review-context",
+                            "reviewer_role": "reviewer", "verdict": "passed",
+                            "statement": "fixture page satisfies the frozen sampled-review acceptance contract",
+                        },
+                    }),
                     "--apply",
                 )
                 self.assertEqual(0, produced.returncode, produced.stdout)
-                evidence = json.loads(produced.stdout)
+                evidence = json.loads(produced.stdout)[0]
                 page_receipts.append(evidence["receipt_id"])
-                produced_by_obligation[obligation["obligation_id"]] = {
-                    "evidence_receipt": evidence["receipt_id"],
-                    "audit_receipt": None,
-                }
                 continue
 
             if obligation["producer_check"] == "substantive_review":
@@ -192,26 +189,12 @@ class UpdateQueueFixture(AuditScenarioActions):
             evidence = json.loads(produced.stdout)
             if obligation["producer_check"] == "substantive_review":
                 page_receipts.append(evidence["receipt_id"])
-            audit_receipt_id = None
-            if obligation["evidence_kind"] == "audit-receipt":
-                completed = self.run_tool(
-                    "complete_audit_receipt.py", *common,
-                    "--evidence-receipt", evidence["receipt_id"],
-                    "--apply",
-                )
-                self.assertEqual(0, completed.returncode, completed.stdout)
-                audit_receipt_id = json.loads(completed.stdout)["receipt_id"]
-            produced_by_obligation[obligation["obligation_id"]] = {
-                "evidence_receipt": evidence["receipt_id"],
-                "audit_receipt": audit_receipt_id,
-            }
 
         self.assertEqual(1, len(page_receipts), plan)
         return {
             "plan": plan,
             "plan_path": plan_path,
             "page_receipt": page_receipts[0],
-            "produced_by_obligation": produced_by_obligation,
         }
 
 

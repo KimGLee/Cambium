@@ -48,7 +48,7 @@ class DeterministicRenderingContractTests(unittest.TestCase):
                 self.registry["base_rules"][0]["producer_capability"],
             "producer_check": "invented-gap-pass",
             "evidence_role": "emits",
-            "evidence_kind": "audit-receipt",
+            "evidence_kind": self.registry["base_rules"][0]["evidence_kind"],
             "dimension": gap["dimension"],
             "dimension_binding": "fixed",
             "consumer_gate_id": "batch-review",

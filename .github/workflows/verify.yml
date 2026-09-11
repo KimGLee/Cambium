@@ -21,12 +21,15 @@ jobs:
   plan:
     name: Impact plan
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 30 # Safety only; ci-required still enforces 360 seconds.
     outputs:
       mode: ${{ steps.plan.outputs.mode }}
       run_tests: ${{ steps.plan.outputs.run_tests }}
       check_matrix: ${{ steps.plan.outputs.check_matrix }}
       test_matrix: ${{ steps.plan.outputs.test_matrix }}
+      required_jobs: ${{ steps.plan.outputs.required_jobs }}
+      job_timeout_minutes: ${{ steps.plan.outputs.job_timeout_minutes }}
+      execution_deadline: ${{ steps.plan.outputs.execution_deadline }}
     steps:
       - name: Check out repository history
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -62,6 +65,7 @@ jobs:
             --base "$BASE_SHA" \
             --head "$HEAD_SHA" \
             --cost-history \
+            --ci-budget \
             --plan-path "$RUNNER_TEMP/ci-plan.json" \
             --github-output "$GITHUB_OUTPUT"
 
@@ -87,7 +91,10 @@ jobs:
     needs:
       - plan
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: ${{ fromJSON(needs.plan.outputs.job_timeout_minutes) }}
+    env:
+      CI_DEADLINE: ${{ needs.plan.outputs.execution_deadline }}
+      PYTHONDONTWRITEBYTECODE: "1"
     strategy:
       fail-fast: false
       matrix: ${{ fromJSON(needs.plan.outputs.check_matrix) }}
@@ -104,12 +111,12 @@ jobs:
 
       - name: Install the pinned Profile toolchain
         run: |
-          python -m pip install --disable-pip-version-check -r Tools/requirements-profile.txt -r Tools/requirements-host.txt
-          python .github/scripts/install_cue.py --destination "$RUNNER_TEMP/cambium-profile-cue"
+          python .github/scripts/ci_impact.py run-step --deadline "$CI_DEADLINE" -- python -m pip install --disable-pip-version-check -r Tools/requirements-profile.txt -r Tools/requirements-host.txt
+          python .github/scripts/ci_impact.py run-step --deadline "$CI_DEADLINE" -- python .github/scripts/install_cue.py --destination "$RUNNER_TEMP/cambium-profile-cue"
           echo "CAMBIUM_CUE=$RUNNER_TEMP/cambium-profile-cue/cue" >> "$GITHUB_ENV"
 
       - name: Run deterministic verification
-        run: make check
+        run: python .github/scripts/ci_impact.py run-step --deadline "$CI_DEADLINE" -- make check
 
       - name: Tracked and untracked non-ignored tree must be unchanged
         if: ${{ always() }}
@@ -127,7 +134,10 @@ jobs:
     needs:
       - plan
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: ${{ fromJSON(needs.plan.outputs.job_timeout_minutes) }}
+    env:
+      CI_DEADLINE: ${{ needs.plan.outputs.execution_deadline }}
+      PYTHONDONTWRITEBYTECODE: "1"
     strategy:
       fail-fast: false
       matrix: ${{ fromJSON(needs.plan.outputs.test_matrix) }}
@@ -160,8 +170,8 @@ jobs:
 
       - name: Install the pinned Profile toolchain
         run: |
-          python -m pip install --disable-pip-version-check -r Tools/requirements-profile.txt -r Tools/requirements-host.txt
-          python .github/scripts/install_cue.py --destination "$RUNNER_TEMP/cambium-profile-cue"
+          python .github/scripts/ci_impact.py run-step --deadline "$CI_DEADLINE" -- python -m pip install --disable-pip-version-check -r Tools/requirements-profile.txt -r Tools/requirements-host.txt
+          python .github/scripts/ci_impact.py run-step --deadline "$CI_DEADLINE" -- python .github/scripts/install_cue.py --destination "$RUNNER_TEMP/cambium-profile-cue"
           echo "CAMBIUM_CUE=$RUNNER_TEMP/cambium-profile-cue/cue" >> "$GITHUB_ENV"
 
       - name: Set up rendering Node
@@ -177,9 +187,9 @@ jobs:
           renderer_workspace="$RUNNER_TEMP/cambium-static-renderer"
           mkdir -p "$renderer_workspace"
           cp Tools/knowledge/rendering/static_renderer/package.json Tools/knowledge/rendering/static_renderer/package-lock.json "$renderer_workspace/"
-          npm ci --prefix "$renderer_workspace" --ignore-scripts --no-audit --no-fund
+          python .github/scripts/ci_impact.py run-step --deadline "$CI_DEADLINE" -- npm ci --prefix "$renderer_workspace" --ignore-scripts --no-audit --no-fund
           export PLAYWRIGHT_BROWSERS_PATH="$renderer_workspace/browsers"
-          node "$renderer_workspace/node_modules/playwright-core/cli.js" install --with-deps chromium
+          python .github/scripts/ci_impact.py run-step --deadline "$CI_DEADLINE" -- node "$renderer_workspace/node_modules/playwright-core/cli.js" install --with-deps chromium
           renderer_node="$(node -p 'process.execPath')"
           renderer_browser="$(node -e 'console.log(require(process.argv[1]).chromium.executablePath())' "$renderer_workspace/node_modules/playwright-core")"
           test -x "$renderer_node"
@@ -191,7 +201,8 @@ jobs:
       - name: Run catalog-selected tests
         env:
           TEST_FILES: ${{ matrix.test-files }}
-        run: make test-selected PYTHON=python TEST_FILES="$TEST_FILES" TEST_REPORT="$RUNNER_TEMP/test-costs.json"
+          TEST_DEADLINE: ${{ needs.plan.outputs.execution_deadline }}
+        run: make test-selected PYTHON=python TEST_FILES="$TEST_FILES" TEST_REPORT="$RUNNER_TEMP/test-costs.json" TEST_DEADLINE="$TEST_DEADLINE"
 
       - name: Preserve test costs
         if: ${{ always() }}
@@ -225,6 +236,11 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 2
     steps:
+      - name: Check out budget owner
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
       - name: Require every matrix job to succeed
         env:
           PLAN_RESULT: ${{ needs.plan.result }}
@@ -252,3 +268,14 @@ jobs:
           echo "verification mode: $VERIFICATION_MODE"
           echo "verify check matrix result: success"
           echo "verify test matrix result: $TEST_RESULT"
+
+      - name: Check complete required-chain budget
+        if: ${{ always() }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REQUIRED_JOBS: ${{ needs.plan.outputs.required_jobs }}
+        run: |
+          PYTHONDONTWRITEBYTECODE=1 python .github/scripts/ci_impact.py budget \
+            --repository "$GITHUB_REPOSITORY" \
+            --run-id "$GITHUB_RUN_ID" --attempt "$GITHUB_RUN_ATTEMPT" \
+            --expected-jobs "$REQUIRED_JOBS"

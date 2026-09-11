@@ -11,7 +11,7 @@ The contract covers the two record variants emitted by
 ``record_changed_scope_evidence``:
 
 * dimensionless, plan-bound Gate evidence; and
-* strict precursor evidence for a later dimension-specific AuditReceipt.
+* check facts accepted against their exact plan obligation at publication.
 
 It does not make a Gate dimension-specific and it does not execute a judgment
 algorithm.  Producer-time code separately re-runs the registered pure check
@@ -37,7 +37,7 @@ REGISTRY_PATH = audit_obligation_projection.CHANGED_SCOPE_REGISTRY_PATH
 # Public implementation identity is import-safe.  The installed operation
 # registry is deliberately resolved only when a producer chain is requested;
 # importing this contract must not open a repository registry or require a
-# complete adopter bundle.  `producer_trace` and every AuditReceipt consumer
+# complete adopter bundle.  `producer_trace` and every plan evidence consumer
 # re-link these identities through `audit_producer_chain` before use.
 ADAPTER_CAPABILITY_ID = "changed-scope-evidence-adapter-v1"
 TOOL = "record_changed_scope_evidence"
@@ -45,7 +45,7 @@ TOOL_VERSION = "1.0.0"
 DIRECT_RECEIPT_TYPE_ID = "changed-scope-gate-evidence-v3"
 DIRECT_SCHEMA_VERSION = 3
 CANDIDATE_SET_RECEIPT_TYPE_ID = "changed-scope-candidate-set-v2"
-AUDIT_PRECURSOR_RECEIPT_TYPE_ID = "changed-scope-audit-precursor-v2"
+CHECK_RECEIPT_TYPE_ID = "changed-scope-check-evidence-v3"
 SCHEMA_VERSION = 2
 PROFILE_SCAN_EXTENSION = \
     audit_obligation_projection.PROFILE_REGISTERED_SCAN_EXTENSION
@@ -76,7 +76,7 @@ DIRECT_RECORD_FIELDS = frozenset((
     "source_summary_receipt_id", "source_receipt_set_sha256",
     "source_receipts", "source_input_binding",
 ))
-AUDIT_PRODUCER_RECORD_FIELDS = frozenset((
+CHECK_RECORD_FIELDS = frozenset((
     "receipt_id", "receipt_type_id", "check", "target", "result", "details", "checked_at",
     "tool", "tool_version", "invalidated_by", "schema_version",
     "record_kind", "plan_id", "audit_plan_sha256", "obligation_id",
@@ -934,9 +934,9 @@ def validate_candidate_set_record_for_plan(
     return record
 
 
-def validate_audit_producer_record(record, registry=None,
+def validate_check_record(record, registry=None,
                                    control_registry=None, root=None):
-    """Validate the closed precursor record without executing its check."""
+    """Validate the closed accepted-check record without executing its check."""
     root = repository_source_root(__file__, root)
     registry = registry or load_registry(root)
     # Keep this argument in the public API so producer and consumers use one
@@ -946,15 +946,15 @@ def validate_audit_producer_record(record, registry=None,
         raise ChangedScopeEvidenceContractError(
             "K00 Control registry must be a mapping")
     if (not isinstance(record, dict) or
-            set(record) != AUDIT_PRODUCER_RECORD_FIELDS):
+            set(record) != CHECK_RECORD_FIELDS):
         raise ChangedScopeEvidenceContractError(
             "changed-scope audit producer evidence fields are not closed")
     if (record.get("schema_version") != SCHEMA_VERSION or
             record.get("record_kind") !=
-            audit_lifecycle_contract.CHANGED_SCOPE_PRECURSOR_RECORD_KIND):
+            audit_lifecycle_contract.CHANGED_SCOPE_RECORD_KIND):
         raise ChangedScopeEvidenceContractError(
             "changed-scope audit producer evidence schema is invalid")
-    if record.get("receipt_type_id") != AUDIT_PRECURSOR_RECEIPT_TYPE_ID:
+    if record.get("receipt_type_id") != CHECK_RECEIPT_TYPE_ID:
         raise ChangedScopeEvidenceContractError(
             "changed-scope audit producer receipt_type_id is invalid")
     if (record.get("tool") != TOOL or
@@ -966,16 +966,16 @@ def validate_audit_producer_record(record, registry=None,
     try:
         spec = audit_obligation_projection.obligation_spec_for_rule(
             row["rule_id"], root)
-        chain = audit_producer_chain.precursor_chain_for_spec(
+        chain = audit_producer_chain.producer_chain_for_spec(
             spec, root=root)
     except (TypeError, ValueError) as exc:
         raise ChangedScopeEvidenceContractError(
             "record rule has no exact changed-scope runtime producer: %s" %
             exc) from exc
     if (row.get("producer_capability") !=
-            chain.get("precursor_capability") or
+            chain.get("producer_capability") or
             chain.get("execution_route") !=
-            "deterministic-audit-precursor" or
+            "deterministic-check" or
             row.get("producer_gate_id") is not None or owner is None):
         raise ChangedScopeEvidenceContractError(
             "record rule has no exact changed-scope runtime producer")
@@ -1075,11 +1075,11 @@ def validate_audit_producer_record(record, registry=None,
     return record
 
 
-def validate_audit_producer_record_for_plan(
+def validate_check_record_for_plan(
         record, plan, plan_sha256, obligation, registry=None,
         control_registry=None, *, root=None, artifact_fingerprint=None,
         dependency_fingerprint=None, input_binding=None, check_result=None):
-    """Validate precursor evidence against its exact original plan row.
+    """Validate check facts against their exact original plan row.
 
     Optional producer-time values allow the writer to add live-input equality
     checks.  A later consumer can omit them and still receives the same closed
@@ -1090,11 +1090,11 @@ def validate_audit_producer_record_for_plan(
     registry = registry or load_registry(root)
     control_registry = control_registry or load_control_registry(root)
     try:
-        audit_producer_chain.require_precursor_record(
+        audit_producer_chain.require_producer_record(
             record, obligation, root=root)
     except audit_producer_chain.AuditProducerChainError as exc:
         raise ChangedScopeEvidenceContractError(str(exc)) from exc
-    validate_audit_producer_record(
+    validate_check_record(
         record, registry, control_registry, root)
     row = registry_row(obligation.get("owner_rule_id"), registry, root)
     mismatches = _obligation_definition_errors(obligation, row, root)
@@ -1132,8 +1132,8 @@ def validate_record_for_plan(
         raise ChangedScopeEvidenceContractError(
             "changed-scope evidence must be a mapping")
     kind = record.get("record_kind")
-    if kind == audit_lifecycle_contract.CHANGED_SCOPE_PRECURSOR_RECORD_KIND:
-        return validate_audit_producer_record_for_plan(
+    if kind == audit_lifecycle_contract.CHANGED_SCOPE_RECORD_KIND:
+        return validate_check_record_for_plan(
             record, plan, plan_sha256, obligation, registry,
             control_registry, root=root,
             artifact_fingerprint=artifact_fingerprint)
@@ -1156,7 +1156,7 @@ def current_receipt_errors(record, *, root=None):
     validators = {
         DIRECT_RECEIPT_TYPE_ID: validate_direct_record,
         CANDIDATE_SET_RECEIPT_TYPE_ID: validate_candidate_set_record,
-        AUDIT_PRECURSOR_RECEIPT_TYPE_ID: validate_audit_producer_record,
+        CHECK_RECEIPT_TYPE_ID: validate_check_record,
     }
     validator = validators.get(record.get("receipt_type_id"))
     if validator is None:
@@ -1170,7 +1170,7 @@ def current_receipt_errors(record, *, root=None):
 
 
 __all__ = [
-    'AUDIT_PRECURSOR_RECEIPT_TYPE_ID',
+    'CHECK_RECEIPT_TYPE_ID',
     'CANDIDATE_SET_RECEIPT_TYPE_ID',
     'ChangedScopeEvidenceContractError',
     'DIRECT_RECEIPT_TYPE_ID',
@@ -1199,8 +1199,8 @@ __all__ = [
     'runtime_contract_fingerprint',
     'source_gate_selector',
     'source_summary',
-    'validate_audit_producer_record',
-    'validate_audit_producer_record_for_plan',
+    'validate_check_record',
+    'validate_check_record_for_plan',
     'current_receipt_errors',
     'validate_candidate_set_record_for_plan',
     'validate_direct_record',

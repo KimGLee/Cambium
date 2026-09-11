@@ -56,21 +56,15 @@ def inherited_path_capability_subprocess():
     return _pathcaps.subprocess_kwargs()
 
 
-def run_cambium_subprocess(*popenargs, **kwargs):
-    """Run one Cambium child without dropping inherited path authority.
-
-    Direct ``subprocess.run`` calls silently close the retained target,
-    parent, and acknowledgement descriptors.  Centralizing this boundary
-    makes capability propagation the default for every Cambium child while
-    remaining a no-op for ordinary CLI execution.
-    """
+def _cambium_subprocess_kwargs(kwargs):
+    """One authority-forwarding owner for blocking and managed children."""
     binding = kwargs.pop("path_binding", None)
     if binding is not None:
         # An authorized orchestrator has already admitted the selected child's
         # arguments. Do not overwrite its scoped manifest with the parent's.
         kwargs["env"] = binding["env"]
         kwargs["pass_fds"] = binding["pass_fds"]
-        return subprocess.run(*popenargs, **kwargs)
+        return kwargs
     inherited = inherited_path_capability_subprocess()
     caller_fds = kwargs.pop("pass_fds", ())
     if caller_fds is None:
@@ -87,7 +81,17 @@ def run_cambium_subprocess(*popenargs, **kwargs):
         environment = dict(os.environ if caller_env is None else caller_env)
         environment.update(inherited_env)
         kwargs["env"] = environment
-    return subprocess.run(*popenargs, **kwargs)
+    return kwargs
+
+
+def run_cambium_subprocess(*popenargs, **kwargs):
+    """Run a child with retained path authority and acknowledgements."""
+    return subprocess.run(*popenargs, **_cambium_subprocess_kwargs(kwargs))
+
+
+def open_cambium_subprocess(*popenargs, **kwargs):
+    """Create the same authorized child; its caller owns waiting and cleanup."""
+    return subprocess.Popen(*popenargs, **_cambium_subprocess_kwargs(kwargs))
 
 
 def read_bytes(path, consumptions=("snapshot", "transaction")):
@@ -120,6 +124,8 @@ class YamlSubsetError(ValueError):
 
 def strip_yaml_comment(line):
     """Strip inline comments (# must be at start of line or preceded by whitespace; # inside quotes is kept)."""
+    if "#" not in line:
+        return line.rstrip()
     out = []
     quote = None
     for idx, ch in enumerate(line):
@@ -296,6 +302,21 @@ def _parse_yaml_subset_by_exact_text(text):
     return value
 
 
+def _copy_yaml_tree(value):
+    """Detach the parser's plain containers; its scalars are immutable.
+
+    The restricted parser creates only dictionaries, lists and scalar values,
+    with no object hooks, aliases or cycles. General-purpose deepcopy's object
+    dispatch and identity graph therefore prove nothing additional here.
+    This is private to the parser, not a copier for caller-supplied objects.
+    """
+    if isinstance(value, dict):
+        return {key: _copy_yaml_tree(item) for key, item in value.items()}
+    if isinstance(value, list):
+        return [_copy_yaml_tree(item) for item in value]
+    return value
+
+
 def parse_yaml_subset(text):
     """Parse the restricted YAML subset into one caller-owned object.
 
@@ -307,7 +328,7 @@ def parse_yaml_subset(text):
     """
     if not isinstance(text, str):
         raise TypeError("restricted YAML input must be text")
-    return copy.deepcopy(_parse_yaml_subset_by_exact_text(text))
+    return _copy_yaml_tree(_parse_yaml_subset_by_exact_text(text))
 
 
 def parse_vocabulary_artifact(text):

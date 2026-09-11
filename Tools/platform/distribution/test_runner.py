@@ -16,9 +16,11 @@ from dataclasses import dataclass
 import functools
 import hashlib
 import json
+import math
 import os
 import pathlib
 import platform
+import signal
 import subprocess
 import sys
 import tempfile
@@ -43,8 +45,9 @@ def measure_scope(kind: str, identity: str):
     test child this is a no-op; no environment flag reaches production tools.
     """
     state = _MEASUREMENTS.get()
+    counts = {}
     if state is None:
-        yield
+        yield counts
         return
     stack, rows, on_scope = state
     frame = {"kind": kind, "identity": identity, "children": 0.0}
@@ -53,7 +56,7 @@ def measure_scope(kind: str, identity: str):
     started = time.monotonic()
     outcome = "returned"
     try:
-        yield
+        yield counts
     except BaseException:
         outcome = "raised"
         raise
@@ -67,6 +70,12 @@ def measure_scope(kind: str, identity: str):
                      "elapsed": elapsed,
                      "exclusive": max(0.0, elapsed - frame["children"]),
                      "outcome": outcome}
+        if counts:
+            if any(not isinstance(key, str) or not key or
+                   not isinstance(value, int) or isinstance(value, bool) or value < 0
+                   for key, value in counts.items()):
+                raise ValueError("measured work counts require names and nonnegative integers")
+            row["counts"] = dict(sorted(counts.items()))
         rows.append(row)
         if on_scope is not None:
             on_scope(dict(row))
@@ -305,28 +314,64 @@ def _run_child(
     root: pathlib.Path,
     env: dict[str, str],
     progress_path: pathlib.Path | None = None,
+    deadline: float | None = None,
 ) -> GroupResult:
     """The only subprocess boundary used by the catalog runner."""
     started = time.monotonic()
+    if deadline is not None and started >= deadline:
+        return GroupResult(group, 124, "", "test deadline exhausted before admission\n", 0.0)
     try:
         print("test runner: starting path=%s cases=%d" % (group.path, len(group.test_ids)), flush=True)
         with tempfile.TemporaryDirectory(prefix="cambium-test-cost-") as temporary:
             report = pathlib.Path(temporary) / "result.json"
-            result = kblib.run_cambium_subprocess(
+            # This boundary owns test-process lifetime, not business execution.
+            # Keep authority forwarding at its existing owner; private TMPDIR
+            # also makes interrupted fixture resources reclaimable by parent.
+            environment = {**env, "TMPDIR": temporary}
+            timed_out = False
+            with kblib.open_cambium_subprocess(
                 [python, "-c", "from Tools.platform.distribution.test_runner import child_main; "
                  "raise SystemExit(child_main())", str(report),
                  str(progress_path) if progress_path else "", *group.test_ids],
-                cwd=str(root), env=env, check=False, stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE, text=True)
+                cwd=str(root), env=environment, stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE, text=True,
+                start_new_session=os.name == "posix") as process:
+                def terminate(signum):
+                    try:
+                        if os.name == "posix":
+                            os.killpg(process.pid, signum)
+                        else:
+                            process.kill()
+                    except ProcessLookupError:
+                        pass
+                try:
+                    remaining = None if deadline is None else max(0, deadline - time.monotonic())
+                    stdout, stderr = process.communicate(timeout=remaining)
+                except subprocess.TimeoutExpired:
+                    timed_out = True
+                    terminate(signal.SIGTERM)
+                    try:
+                        stdout, stderr = process.communicate(timeout=1)
+                    except subprocess.TimeoutExpired:
+                        terminate(signal.SIGKILL)
+                        stdout, stderr = process.communicate()
+                    # A descendant may ignore TERM and close its inherited
+                    # pipes. Successful communicate is not proof it exited.
+                    terminate(signal.SIGKILL)
+                    stderr += "\ntest deadline exceeded; isolated process group terminated\n"
+                except BaseException:
+                    terminate(signal.SIGKILL)
+                    process.communicate()
+                    raise
             try:
                 measurement = json.loads(report.read_text(encoding="utf-8"))
             except (OSError, ValueError):
                 measurement = None  # A crash has no complete timing report.
         return GroupResult(
             group=group,
-            returncode=result.returncode,
-            stdout=result.stdout,
-            stderr=result.stderr,
+            returncode=124 if timed_out else process.returncode,
+            stdout=stdout,
+            stderr=stderr,
             elapsed=time.monotonic() - started,
             measurement=measurement,
         )
@@ -429,13 +474,18 @@ def _execute_suite(
     completed_modules = 0
     returncode = 0
     number_by_group = {group: number for number, group in enumerate(groups, 1)}
+    def completed(result):
+        count = (result.measurement or {}).get("tests_run")
+        if type(count) is int and 0 <= count <= len(result.group.test_ids):
+            return count
+        return len(result.group.test_ids) if result.returncode == 0 else 0
 
     for _number, result in _parallel_results(
         parallel, jobs=jobs, run_child=run_child
     ):
         number = number_by_group[result.group]
         _emit_result(suite, number, len(groups), result, "parallel")
-        completed_cases += len(result.group.test_ids)
+        completed_cases += completed(result)
         completed_modules += 1
         if result.returncode and not returncode:
             returncode = result.returncode
@@ -445,7 +495,7 @@ def _execute_suite(
     for group in serial:
         result = run_child(group)
         _emit_result(suite, number_by_group[group], len(groups), result, "serial")
-        completed_cases += len(group.test_ids)
+        completed_cases += completed(result)
         completed_modules += 1
         if result.returncode:
             return result.returncode, completed_cases, completed_modules
@@ -476,8 +526,19 @@ def main(argv=None) -> int:
     )
     parser.add_argument("--list", action="store_true", dest="list_only")
     parser.add_argument("--report", help="write a new low-authority JSON cost report outside the repository")
+    parser.add_argument("--deadline", type=float,
+                        help="shared absolute Unix execution deadline; no per-file budget reset")
     args = parser.parse_args(argv)
     root = pathlib.Path(args.root).resolve()
+    deadline = None
+    if args.deadline is not None:
+        if not math.isfinite(args.deadline) or args.deadline <= 0 or os.name != "posix":
+            print("test runner: FAIL: deadline requires a finite positive timestamp and POSIX process isolation", file=sys.stderr)
+            return 1
+        deadline = time.monotonic() + (args.deadline - time.time())
+        if deadline <= time.monotonic():
+            print("test runner: deadline exhausted before catalog admission", file=sys.stderr)
+            return 124
     report_path = pathlib.Path(args.report).resolve() if args.report else None
     if report_path is not None and (report_path.is_relative_to(root) or report_path.exists()):
         print("test runner: FAIL: --report must be a new file outside the repository", file=sys.stderr)
@@ -544,7 +605,7 @@ def main(argv=None) -> int:
             source_hash = None  # Diagnostics do not redefine test admission.
         result = _run_child(group, python=args.python or sys.executable, root=root, env=env,
                             progress_path=progress_dir / (group.module + ".jsonl")
-                            if progress_dir else None)
+                            if progress_dir else None, deadline=deadline)
         reports.append({"path": group.path, "test_ids": list(group.test_ids),
                         "test_source_sha256": source_hash,
                         "elapsed": result.elapsed, "exit": result.returncode,

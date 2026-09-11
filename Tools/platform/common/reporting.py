@@ -105,6 +105,14 @@ _PUBLICATION_FIELDS = frozenset(("append", "record_confirmation", "reused"))
 
 def validate_publication_result(payload):
     """Validate transient mechanical facts, never a producer's business verdict."""
+    if isinstance(payload, list):
+        if not payload:
+            raise ValueError("publication results must report at least one attempted operation")
+        for item in payload:
+            if not isinstance(item, dict):
+                raise ValueError("publication result collection must be flat")
+            validate_publication_result(item)
+        return payload
     if not isinstance(payload, dict):
         raise ValueError("publication result must be one object")
     publication = payload.get("publication")
@@ -173,6 +181,8 @@ def publication_result(publication, *, status, errors=(), **fields):
 def publication_result_reliable(payload):
     """Whether the operation boundary is settled, not whether its review passed."""
     validate_publication_result(payload)
+    if isinstance(payload, list):
+        return all(item["status"] != "uncertain" for item in payload)
     return payload["status"] != "uncertain"
 
 

@@ -11,8 +11,6 @@ import datetime
 import os
 import stat
 
-import Tools.execution.audit.audit_reconciliation_contract as audit_reconciliation_contract
-import Tools.execution.audit.audit_receipt_contract as audit_receipt_contract
 import Tools.execution.audit.batch_close_audit as batch_close_audit
 import Tools.execution.audit.batch_close_contract as batch_close_contract
 import Tools.execution.evidence.candidate_lifecycle as candidate_lifecycle
@@ -323,7 +321,6 @@ def _page_review_acceptance_errors(
     reserved_receipt_ids = {
         value for value in (
             aggregate_id,
-            aggregate.get("global_review_receipt"),
             aggregate.get("reviewer_attestation_receipt"),
             aggregate.get("queue_consistency_receipt"),
             aggregate.get("delta_apply_receipt"),
@@ -493,13 +490,6 @@ def _page_review_acceptance_errors(
     return errors, ids
 
 
-_POST_DELTA_EVIDENCE_BINDING_FIELDS = (
-    "audit_plan_id", "audit_plan_path", "audit_plan_sha256",
-    "post_delta_evidence_bindings", "post_delta_evidence_count",
-    "post_delta_evidence_set_sha256",
-)
-
-
 def _profile_registered_close_dimension(contract):
     """Resolve the one selected-Profile dimension used by K12/09 item 6."""
     scan = getattr(contract, "required_scan", None)
@@ -542,26 +532,28 @@ def _catalog_record(catalog, receipt_id, label, errors, *, expected_path=None):
 
 
 def _post_delta_close_evidence_errors(
-        catalog, aggregate, global_review, attestation, *, item_id, task_id,
-        merged_snapshot_sha256, receipt_version,
+        catalog, aggregate, attestation, *, item_id, task_id,
+        merged_snapshot_sha256,
         root=None, profile_evaluation=None, historical=False):
     """Consume the exact heterogeneous K12/09 closure of this contract.
 
     This validates bytes already named by the aggregate.  It deliberately does
     not scan for or decide which AuditPlan is current; the state-transition
     consumer owns that system-level currentness check.  The record must bind
-    one immutable plan identity consistently in
-    its aggregate, global review, attestation, complete ordered registry
-    bindings, and every full AuditReceipt member.
+    one immutable plan identity in its real attestation, complete ordered
+    registry bindings, and every first-published member fact. The aggregate
+    references that attestation rather than copying its plan payload.
     """
     errors = []
     label = "%s batch-close gate receipt %s" % (
         item_id, aggregate.get("receipt_id"))
     rows = batch_close_contract.closed_list_member_rows(root)
 
-    plan_id = aggregate.get("audit_plan_id")
-    plan_path = aggregate.get("audit_plan_path")
-    plan_sha256 = aggregate.get("audit_plan_sha256")
+    if not isinstance(attestation, dict):
+        return ["%s reviewer attestation is missing" % label], []
+    plan_id = attestation.get("audit_plan_id")
+    plan_path = attestation.get("audit_plan_path")
+    plan_sha256 = attestation.get("audit_plan_sha256")
     for field, value in (
             ("audit_plan_id", plan_id), ("audit_plan_path", plan_path)):
         if not nonempty_string(value):
@@ -570,21 +562,7 @@ def _post_delta_close_evidence_errors(
         errors.append("%s audit_plan_sha256 must be a sha256 fingerprint" %
                       label)
 
-    for child_name, child in (
-            ("global review", global_review),
-            ("reviewer attestation", attestation)):
-        if not isinstance(child, dict):
-            continue
-        for field in (
-                *_POST_DELTA_EVIDENCE_BINDING_FIELDS,
-                *audit_reconciliation_contract.projection_fields()):
-            if child.get(field) != aggregate.get(field):
-                errors.append(
-                    "%s %s %s does not equal the aggregate binding" %
-                    (item_id, child_name, field))
-
     evidence = aggregate.get("closed_list_evidence")
-    producer_evidence = aggregate.get("closed_list_producer_evidence")
     expected_fields = [row["member_id"] for row in rows]
     if not isinstance(evidence, dict):
         errors.append("%s closed_list_evidence must be a mapping" % label)
@@ -593,14 +571,8 @@ def _post_delta_close_evidence_errors(
         errors.append(
             "%s closed_list_evidence keys must equal the current K12/09 "
             "registry" % label)
-    if not isinstance(producer_evidence, dict) or \
-            set(producer_evidence) != set(expected_fields):
-        errors.append(
-            "%s closed_list_producer_evidence keys must equal the current "
-            "K12/09 registry" % label)
-        producer_evidence = {}
 
-    bindings = aggregate.get("post_delta_evidence_bindings")
+    bindings = attestation.get("post_delta_evidence_bindings")
     if not isinstance(bindings, list):
         errors.append(
             "%s post_delta_evidence_bindings must be an ordered list" % label)
@@ -609,14 +581,10 @@ def _post_delta_close_evidence_errors(
 
     evidence_by_id = {}
     evidence_ids = []
-    producer_records = {}
     for row in rows:
         member_id = row["member_id"]
         evidence_id = evidence.get(member_id)
-        final_path = None if historical else (
-            runtime_paths.BATCH_CLOSE_RECEIPT_PATH
-            if row["evidence_kind"] == "gate-receipt" else
-            runtime_paths.AUDIT_RECEIPT_REGISTER_PATH)
+        final_path = None if historical else runtime_paths.BATCH_CLOSE_RECEIPT_PATH
         record = _catalog_record(
             catalog, evidence_id,
             "%s Closed List member %s" % (item_id, member_id), errors,
@@ -624,12 +592,6 @@ def _post_delta_close_evidence_errors(
         if record is not None:
             evidence_by_id[evidence_id] = record
             evidence_ids.append(evidence_id)
-        producer_id = producer_evidence.get(member_id)
-        producer_records[member_id] = _catalog_record(
-            catalog, producer_id,
-            "%s producer evidence %s" % (item_id, member_id), errors,
-            expected_path=(None if historical else
-                           runtime_paths.BATCH_CLOSE_RECEIPT_PATH))
 
     stage = {
         "audit_plan_id": plan_id,
@@ -650,10 +612,7 @@ def _post_delta_close_evidence_errors(
     try:
         closure = batch_close_audit.validate_post_delta_evidence_set(
             stage, projection, bindings, evidence_by_id,
-            merged_snapshot_sha256,
-            producer_evidence_by_member=producer_records,
-            producer_tool=BATCH_CLOSE_TOOL,
-            producer_tool_version=receipt_version)
+            merged_snapshot_sha256)
     except (TypeError, ValueError) as exc:
         errors.append("%s post-Delta evidence closure is invalid: %s" %
                       (label, exc))
@@ -675,22 +634,8 @@ def _post_delta_close_evidence_errors(
         if not isinstance(record, dict):
             continue
         if row["evidence_kind"] == "gate-receipt":
-            if record.get("record_kind") == "audit-receipt":
-                errors.append(
-                    "%s %s must consume the original dimensionless Gate "
-                    "record, not an AuditReceipt wrapper" % (label, member_id))
-            if producer_evidence.get(member_id) != evidence_id:
-                errors.append(
-                    "%s %s producer evidence must be that same original Gate "
-                    "record" % (label, member_id))
             continue
 
-        try:
-            audit_receipt_contract.validate_audit_receipt(record)
-        except (TypeError, ValueError) as exc:
-            errors.append("%s %s is not a full AuditReceipt: %s" %
-                          (label, member_id, exc))
-            continue
         expected_dimension = row.get("dimension")
         if row.get("dimension_binding") == "profile-registration":
             expected_dimension = (expected_profile_dimension
@@ -700,46 +645,31 @@ def _post_delta_close_evidence_errors(
                 errors.append(
                     "%s %s has no registered Profile dimension" %
                     (label, member_id))
+        if binding.get("dimension") != expected_dimension:
+            errors.append("%s %s dimension differs from its registry/plan binding" %
+                          (label, member_id))
         expected = {
-            "plan_id": plan_id,
-            "audit_plan_sha256": plan_sha256,
-            "obligation_id": binding.get("obligation_id"),
-            "owner_kind": "kernel",
-            "owner_rule_id": row["rule_id"],
-            "kernel_extension_point": None,
             "task_id": task_id,
             "batch_id": item_id,
-            "due_stage": row["due_stage"],
-            "evidence_role": row["evidence_role"],
-            "evidence_kind": row["evidence_kind"],
-            "dimension": expected_dimension,
-            "producer_check": row["producer_check"],
-            "producer_capability": row.get("producer_capability"),
-            "producer_gate_id": row.get("producer_gate_id"),
-            "consumer_gate_id": row["consumer_gate_id"],
-            "fingerprint_binding": "evidence-time",
-            "artifact_fingerprint": merged_snapshot_sha256,
-            "result": "passed",
-            "invalidated_by": None,
         }
         mismatches = [field for field, value in expected.items()
                       if record.get(field) != value]
         if mismatches:
             errors.append(
-                "%s %s AuditReceipt differs from its registry/plan binding "
+                "%s %s member fact differs from its registry/plan binding "
                 "in: %s" %
                 (label, member_id, ", ".join(sorted(mismatches))))
 
     if closure is not None:
-        expected_aggregate = {
+        expected_context = {
             "post_delta_evidence_count": len(rows),
             "post_delta_evidence_set_sha256":
                 closure["evidence_set_sha256"],
         }
-        for field, value in expected_aggregate.items():
-            if aggregate.get(field) != value:
+        for field, value in expected_context.items():
+            if attestation.get(field) != value:
                 errors.append("%s %s=%r, expected %r" %
-                              (label, field, aggregate.get(field), value))
+                              (label, field, attestation.get(field), value))
     return errors, evidence_ids
 
 
@@ -984,22 +914,6 @@ def close_gate_receipt_errors(catalog, receipt_id, *, item_id, task_id,
         },
     )
 
-    global_review_id = receipt.get("global_review_receipt")
-    global_review = require_receipt(
-        catalog, global_review_id, "%s global review" % item_id, errors,
-        expected={
-            "tool": BATCH_CLOSE_TOOL,
-            "tool_version": receipt_version,
-            "receipt_type_id":
-                batch_close_contract.GLOBAL_REVIEW_RECEIPT_TYPE_ID,
-            "check": "batch_global_review",
-            "target": item_id,
-            "batch_id": item_id,
-            "task_id": task_id,
-            "merged_snapshot_sha256": merged_snapshot_sha256,
-        },
-    )
-
     integrator_id = receipt.get("integrator_id")
     reviewer_id = receipt.get("reviewer_id")
     for field, value in (("integrator_id", integrator_id),
@@ -1013,32 +927,10 @@ def close_gate_receipt_errors(catalog, receipt_id, *, item_id, task_id,
                       "different declared labels" % (label, receipt_id))
 
     attestation_id = receipt.get("reviewer_attestation_receipt")
-    if isinstance(global_review, dict):
-        for field, value in (("integrator_id", integrator_id),
-                             ("reviewer_id", reviewer_id),
-                             ("reviewer_attestation_receipt", attestation_id)):
-            if global_review.get(field) != value:
-                errors.append("%s global review receipt %s has %s=%r, "
-                              "expected %r" %
-                              (item_id, global_review_id, field,
-                               global_review.get(field), value))
     attestation = require_receipt(
         catalog, attestation_id, "%s declared reviewer attestation" %
-        item_id, errors,
-        expected={
-            "tool": BATCH_CLOSE_TOOL,
-            "tool_version": receipt_version,
-            "receipt_type_id":
-                batch_close_contract.REVIEW_ATTESTATION_RECEIPT_TYPE_ID,
-            "check": "batch_global_review_attestation",
-            "target": item_id,
-            "batch_id": item_id,
-            "task_id": task_id,
-            "integrator_id": integrator_id,
-            "reviewer_id": reviewer_id,
-            "merged_snapshot_sha256": merged_snapshot_sha256,
-        },
-    )
+        item_id, errors)
+    errors.extend(batch_close_contract.review_context_errors(receipt, attestation))
     if isinstance(attestation, dict):
         if not nonempty_string(attestation.get("details")):
             errors.append("%s declared reviewer attestation %s has no "
@@ -1081,10 +973,9 @@ def close_gate_receipt_errors(catalog, receipt_id, *, item_id, task_id,
                       "member(s): %s" %
                       (label, receipt_id, ", ".join(extra)))
     post_delta_errors, evidence_ids = _post_delta_close_evidence_errors(
-        catalog, receipt, global_review, attestation,
+        catalog, receipt, attestation,
         item_id=item_id, task_id=task_id,
         merged_snapshot_sha256=merged_snapshot_sha256,
-        receipt_version=receipt_version,
         root=root,
         profile_evaluation=profile_evaluation,
         historical=historical)
@@ -1096,18 +987,13 @@ def close_gate_receipt_errors(catalog, receipt_id, *, item_id, task_id,
     if receipt_id in evidence_ids:
         errors.append("%s receipt %s cannot cite itself as Closed List "
                       "evidence" % (label, receipt_id))
-    if global_review_id in evidence_ids or global_review_id == receipt_id:
-        errors.append("%s receipt %s global_review_receipt must be a distinct "
+    if attestation_id in evidence_ids or attestation_id == receipt_id:
+        errors.append("%s receipt %s reviewer attestation must be a distinct "
                       "record from the aggregator and the Closed List members" %
                       (label, receipt_id))
-    if attestation_id in evidence_ids or attestation_id in (
-            global_review_id, receipt_id):
-        errors.append("%s receipt %s reviewer attestation must be a distinct "
-                      "record from the aggregator, global review, and the Closed "
-                      "List members" % (label, receipt_id))
     if page_review_ids:
         reserved = set(evidence_ids + [
-            receipt_id, global_review_id, attestation_id,
+            receipt_id, attestation_id,
             queue_consistency_receipt, delta_apply_receipt,
         ])
         if corpus_receipt_id is not None:
@@ -1118,13 +1004,8 @@ def close_gate_receipt_errors(catalog, receipt_id, *, item_id, task_id,
                 "%s receipt %s page-review children must be distinct from "
                 "the aggregator and every other close-evidence record: %s" %
                 (label, receipt_id, ", ".join(reused)))
-    if (isinstance(global_review, dict) and
-            global_review.get("closed_list_evidence") != evidence):
-        errors.append("%s global review receipt %s does not bind the same "
-                      "Closed List evidence mapping" %
-                      (item_id, global_review_id))
     if corpus_receipt_id is not None and corpus_receipt_id in (
-            evidence_ids + [receipt_id, global_review_id, attestation_id,
+            evidence_ids + [receipt_id, attestation_id,
                             queue_consistency_receipt, delta_apply_receipt]):
         errors.append(
             "%s receipt %s Corpus Planning child must be distinct from the "

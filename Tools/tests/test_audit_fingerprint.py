@@ -3,6 +3,7 @@
 from pathlib import Path
 import sys
 import unittest
+import copy
 
 
 REPOSITORY = Path(__file__).resolve().parents[2]
@@ -10,7 +11,7 @@ TOOLS = REPOSITORY / "Tools"
 sys.path.insert(0, str(TOOLS))
 
 import Tools.execution.audit.audit_fingerprint as audit_fingerprint  # noqa: E402
-import Tools.execution.audit.audit_receipt_contract as receipt_contract  # noqa: E402
+import Tools.execution.audit.audit_fingerprint as receipt_contract  # noqa: E402
 import Tools.platform.common.kblib as kblib  # noqa: E402
 
 
@@ -191,6 +192,51 @@ class PageSetArtifactFingerprintTests(unittest.TestCase):
             audit_fingerprint.page_set_artifact_fingerprint([
                 ("Topics/A.md",),
             ])
+
+
+SOURCE = audit_fingerprint.load_contract(REPOSITORY)
+
+
+class PageArtifactContractTests(unittest.TestCase):
+    def test_page_after_image_projection_is_exactly_the_source_contract(self):
+        sequence_fields = {
+            "page_material_fields", "closing_frontmatter_markers",
+            "included_frontmatter_fields", "page_set_material_fields",
+            "page_set_member_fields",
+        }
+        expected = {
+            field: tuple(value) if field in sequence_fields else value
+            for field, value in SOURCE[
+                "page_artifact_fingerprint"].items()
+        }
+
+        self.assertEqual(
+            expected, audit_fingerprint.page_artifact_fingerprint_contract())
+
+    def test_page_after_image_contract_rejects_shape_order_and_binding_drift(self):
+        def extra_field(document):
+            document["page_artifact_fingerprint"]["extra"] = "invalid"
+
+        def change_body_binding(document):
+            document["page_artifact_fingerprint"][
+                "body_binding"] = "normalized-markdown"
+
+        def change_path_binding(document):
+            document["page_artifact_fingerprint"][
+                "path_binding"] = "host-absolute"
+
+        def reorder_member_fields(document):
+            document["page_artifact_fingerprint"][
+                "page_set_member_fields"].reverse()
+
+        for mutate in (
+                extra_field, change_body_binding,
+                change_path_binding, reorder_member_fields):
+            with self.subTest(case=mutate.__name__):
+                document = copy.deepcopy(SOURCE)
+                mutate(document)
+                with self.assertRaises(ValueError):
+                    audit_fingerprint.validate_contract(document)
 
 
 if __name__ == "__main__":

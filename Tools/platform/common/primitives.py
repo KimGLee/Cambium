@@ -38,13 +38,27 @@ def validated_document(document, validator, *, cache_projection=False):
     return document
 
 
-def document_projection(document, validator):
-    """Reuse only the same owner and exact document; never expose cache values."""
+def document_projection(document, validator, *, path=()):
+    """Validate the whole input, then copy only the requested projection.
+
+    An empty path returns the complete projection; None requests validation
+    without a returned copy. Neither changes the owner's acceptance check.
+    """
     if (isinstance(document, _ProjectedDocument) and
             document._validator is validator and
             document._bytes == document._identity()):
-        return deepcopy(document._projection)
-    return validator(document)
+        value = document._projection
+        if path is None:
+            return None
+        for key in path:
+            value = value[key]
+        return deepcopy(value)
+    value = validator(document)
+    if path is None:
+        return None
+    for key in path:
+        value = value[key]
+    return value
 
 
 def nonempty_string(value):

@@ -153,6 +153,15 @@ class CanonicalJsonOutputTests(unittest.TestCase):
                 with self.assertRaises(ValueError):
                     reporting.validate_publication_result(value)
         self.assertIs(original, reporting.validate_publication_result(original))
+        # A same-page dispatch reports independent append facts; there is no
+        # aggregate applied flag that could conceal a failed later item.
+        publication.confirmed = False
+        uncertain = reporting.publication_result(publication, status="recorded")
+        self.assertTrue(reporting.publication_result_reliable([original]))
+        self.assertFalse(reporting.publication_result_reliable([original, uncertain]))
+        for collection in ([], [original, malformed[0]], [[original]]):
+            with self.subTest(collection=collection), self.assertRaises(ValueError):
+                reporting.validate_publication_result(collection)
 
     def test_host_handoff_is_not_a_receipt_or_a_claim_that_nothing_was_written(self):
         failure = HostEnvironmentUnavailable("compiler unavailable", capability_id="render",
@@ -402,7 +411,6 @@ class CheckerReportingBoundaryTests(unittest.TestCase):
             "record_changed_scope_evidence",
             "record_substantive_review",
             "record_batch_page_review",
-            "complete_audit_receipt",
             "prepare_audit_plan",
         )
         for name in producers:

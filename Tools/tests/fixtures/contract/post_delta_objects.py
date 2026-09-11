@@ -75,6 +75,9 @@ def producer_evidence(stage, obligation, ordinal):
     plan = stage["plan"]
     return {
         "receipt_id": "raw-%02d" % ordinal, "tool": "check_batch_close",
+        "receipt_type_id": "batch-close-member-evidence-v1", "gate_id": "batch-close",
+        "integrator_id": "fixture-integrator", "reviewer_id": "fixture-reviewer",
+        "candidate_count": 0, "candidate_type_counts": {}, "candidate_set_sha256": SHA_A,
         "tool_version": check_batch_close.TOOL_VERSION,
         "check": obligation["producer_check"], "target": obligation["target"],
         "result": "pass", "details": "fixture producer evidence",

@@ -41,7 +41,7 @@ def _projection_string(value, label, *, nullable=False):
     return require_trimmed_string(value, label)
 
 
-def _validate_obligation_projection(projection, acceptance_predicate):
+def _validate_obligation_projection(projection, acceptance_predicate, record_kind):
     """Validate the K12/12 AuditPlan projection without restating values."""
     if (not isinstance(projection, dict) or
             set(projection) != _OBLIGATION_PROJECTION_FIELDS):
@@ -90,12 +90,12 @@ def _validate_obligation_projection(projection, acceptance_predicate):
     if projection["acceptance_predicate"] != acceptance_predicate:
         raise ValueError(
             "substantive-review projection changes its acceptance predicate")
-    if (projection["evidence_kind"] == "audit-receipt" and
-            (projection["evidence_role"] != "emits" or
-             projection["dimension"] is None)):
+    if (projection["evidence_kind"] != record_kind or
+            projection["evidence_role"] != "emits" or
+            projection["dimension"] is None):
         raise ValueError(
-            "substantive-review AuditReceipt projection must emit one "
-            "dimension")
+            "substantive-review projection must emit its native kind "
+            "in one dimension")
 
     mappings = projection.get("trigger_partition_mappings")
     if not isinstance(mappings, list) or not mappings:
@@ -145,7 +145,7 @@ def _validate_contract(document):
         raise ValueError("substantive-review round_cap must be 2")
     projection = _validate_obligation_projection(
         document.get("obligation_projection"),
-        document.get("acceptance_predicate"))
+        document.get("acceptance_predicate"), document.get("record_kind"))
     field_order, fields = _support.field_specs(
         document.get("fields"), "fields", allowed_types=_FIELD_TYPES)
     finding_order, finding_fields = _support.field_specs(

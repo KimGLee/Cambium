@@ -6,6 +6,9 @@ public validator and receipt path use a real Profile-load evaluation.
 """
 
 from copy import deepcopy
+import contextlib
+import io
+import json
 from pathlib import Path
 import unittest
 from unittest import mock
@@ -344,17 +347,33 @@ class CorpusPlanPipelineIntegrationTests(
         self.assertEqual("not-recorded",
                          projection["semantic_acceptance"]["status"])
 
-        receipt = check_corpus_plan.make_pass_receipt(result)
-        self.assertEqual(
-            [], check_corpus_plan.current_gate_receipt_errors(receipt))
-        self.assertEqual(
-            [], check_corpus_plan.pass_receipt_errors(
-                self.root, receipt, expected_binding=receipt))
+        output = self.root / ".cambium/receipts/corpus-check.jsonl"
+        def report():
+            stream = io.StringIO()
+            with contextlib.redirect_stdout(stream), mock.patch.object(
+                    check_corpus_plan, "validate_corpus_plan", return_value=result):
+                code = check_corpus_plan.main([
+                    str(self.root), "--json", "--receipts",
+                    output.relative_to(self.root).as_posix()])
+            return code, json.loads(stream.getvalue())
+
+        code, passed = report()
+        self.assertEqual(0, code, passed)
+        published = output.read_bytes()
+        records = [json.loads(line) for line in published.splitlines()]
+        self.assertEqual(1, len(records))
+        self.assertEqual([], check_corpus_plan.current_gate_receipt_errors(records[0]))
+        self.assertEqual([], check_corpus_plan.pass_receipt_errors(
+            self.root, records[0], expected_binding=records[0]))
 
         self.global_map.write_bytes(
             self.global_map.read_bytes() + b"\n# changed bytes\n")
         with self.assertRaisesRegex(ValueError, "Global Map changed"):
             check_corpus_plan.receipt_binding(result)
+        code, failed = report()
+        self.assertEqual(1, code)
+        self.assertTrue(failed["errors"])
+        self.assertEqual(published, output.read_bytes())
 
     def test_k02_owner_mutation_invalidates_the_bound_validation_result(self):
         result = self.validate_current_plan()

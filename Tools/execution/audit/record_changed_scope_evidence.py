@@ -138,11 +138,11 @@ def _dedicated_capability_producer(row, root):
     try:
         spec = audit_obligation_projection.obligation_spec_for_rule(
             row["rule_id"], root)
-        chain = audit_producer_chain.precursor_chain_for_spec(
+        chain = audit_producer_chain.producer_chain_for_spec(
             spec, root=root)
         if chain["execution_route"] != "rendering-verification":
             return None
-        capability_id = chain["precursor_capability"]
+        capability_id = chain["producer_capability"]
         contract = rendering_verification_contract.load_contract(root)
         rendering_verification_contract.validate_contract(contract)
         capability = metadata_execution_contract.capability_entry_by_id(
@@ -160,11 +160,11 @@ def _dedicated_capability_producer(row, root):
             descriptor.implementation_path):
         return None
     if (getattr(producer_module, "TOOL", None) != invocation_tool or
-            invocation_tool != chain["precursor_tool"] or
+            invocation_tool != chain["producer_tool"] or
             getattr(producer_module, "TOOL_VERSION", None) !=
             rendering_verification_contract.CURRENT_PRODUCER_VERSION or
             getattr(producer_module, "CHECK", None) !=
-            chain["precursor_check"] or
+            chain["producer_check"] or
             not callable(getattr(producer_module, "build_record", None)) or
             not callable(getattr(
                 producer_module, "validate_record_for_plan", None))):
@@ -202,16 +202,16 @@ def producer_trace(root=None, registry=None, control_registry=None):
             try:
                 spec = audit_obligation_projection.obligation_spec_for_rule(
                     row["rule_id"], root)
-                chain = audit_producer_chain.precursor_chain_for_spec(
+                chain = audit_producer_chain.producer_chain_for_spec(
                     spec, root=root)
             except (TypeError, ValueError):
                 chain = None
             if (pure_owner is not None and isinstance(chain, dict) and
                     chain["execution_route"] ==
-                    "deterministic-audit-precursor" and
-                    chain["precursor_capability"] == capability):
+                    "deterministic-check" and
+                    chain["producer_capability"] == capability):
                 status = "available"
-                adapter_id = chain["precursor_capability"]
+                adapter_id = chain["producer_capability"]
                 existing_tool = pure_owner["tool"]
                 existing_version = pure_owner["tool_version"]
                 existing_check = pure_owner["check"]
@@ -377,14 +377,14 @@ def resolve_obligation(root, plan, obligation_id, registry=None,
         rule_id, producer_trace(root, registry, control_registry))
     expected_kind = (
         "gate-receipt" if trace["producer_route_kind"] == "gate"
-        else "audit-receipt")
+        else "changed-scope-check-evidence")
     if obligation["evidence_kind"] != expected_kind:
         raise ChangedScopeProducerError(
             "installed adapter route expects %s, not %s" %
             (expected_kind, obligation["evidence_kind"]))
-    if expected_kind == "audit-receipt":
+    if expected_kind == "changed-scope-check-evidence":
         try:
-            audit_producer_chain.precursor_chain_for_obligation(
+            audit_producer_chain.producer_chain_for_obligation(
                 obligation, root=root)
         except audit_producer_chain.AuditProducerChainError as exc:
             raise ChangedScopeProducerError(str(exc)) from exc
@@ -710,8 +710,8 @@ def _runtime_contract_fingerprint(
         plan, obligation, registry, row, source_sha256)
 
 
-def build_audit_producer_record(*, context, check_result, seq=1):
-    """Wrap one exact pure result for complete_audit_receipt."""
+def build_check_record(*, context, check_result, seq=1):
+    """Bind one exact pure result to its first-publication acceptance."""
     plan = context["plan"]
     obligation = context["obligation"]
     row = context["row"]
@@ -740,13 +740,13 @@ def build_audit_producer_record(*, context, check_result, seq=1):
             owner["tool"], owner["tool_version"]),
         seq,
         receipt_type_id=
-            changed_scope_evidence_contract.AUDIT_PRECURSOR_RECEIPT_TYPE_ID,
+            changed_scope_evidence_contract.CHECK_RECEIPT_TYPE_ID,
         root=context["root"], identity=identity)
     seed.update({
         "schema_version": changed_scope_evidence_contract.SCHEMA_VERSION,
         "record_kind":
-            audit_producer_chain.precursor_chain_for_obligation(
-                obligation, root=context["root"])["precursor_record_kind"],
+            audit_producer_chain.producer_chain_for_obligation(
+                obligation, root=context["root"])["producer_record_kind"],
         "plan_id": plan["plan_id"],
         "audit_plan_sha256": context["plan_sha256"],
         "obligation_id": obligation["obligation_id"],
@@ -786,11 +786,11 @@ def build_audit_producer_record(*, context, check_result, seq=1):
         "check_result": check_result,
         "input_binding": input_binding,
     })
-    validate_audit_producer_record_for_context(seed, context)
+    validate_check_record_for_context(seed, context)
     return seed
 
 
-def validate_audit_producer_record_for_context(record, context):
+def validate_check_record_for_context(record, context):
     """Re-run the pure check and prove exact current-plan/input binding."""
     plan = context["plan"]
     obligation = context["obligation"]
@@ -798,7 +798,7 @@ def validate_audit_producer_record_for_context(record, context):
     binding, artifact, dependency = _runtime_input_binding(
         context, current_result)
     changed_scope_evidence_contract.\
-        validate_audit_producer_record_for_plan(
+        validate_check_record_for_plan(
             record, plan, context["plan_sha256"], obligation,
             context["registry"], context["control_registry"],
             root=context["root"], artifact_fingerprint=artifact,
@@ -878,7 +878,7 @@ def existing_direct_record(result, plan, plan_sha256, obligation, registry,
               obligation["obligation_id"])
 
 
-def existing_audit_producer_record(context):
+def existing_check_record(context):
     matches = audit_producer_runtime.obligation_attempt_records(
         context["result"], tool=TOOL,
         plan_id=context["plan"]["plan_id"],
@@ -886,7 +886,7 @@ def existing_audit_producer_record(context):
     return evidence_attempt_runtime.unique_current_attempt(
         matches,
         validate_stable=lambda record:
-            changed_scope_evidence_contract.validate_audit_producer_record_for_plan(
+            changed_scope_evidence_contract.validate_check_record_for_plan(
                 record, context["plan"], context["plan_sha256"],
                 context["obligation"], context["registry"],
                 context["control_registry"], root=context["root"]),
@@ -933,7 +933,7 @@ def existing_evidence_record(context):
             context["obligation"], context["registry"],
             context["control_registry"],
             audit_producer_runtime.page_artifact_fingerprint(page))
-    return existing_audit_producer_record(context)
+    return existing_check_record(context)
 
 
 def require_exact_evidence_readback(path, receipt, context, *, records=None):
@@ -944,8 +944,8 @@ def require_exact_evidence_readback(path, receipt, context, *, records=None):
         raise ChangedScopeProducerError(
             "published changed-scope evidence did not read back exactly")
     if receipt["record_kind"] == \
-            audit_lifecycle_contract.CHANGED_SCOPE_PRECURSOR_RECORD_KIND:
-        validate_audit_producer_record_for_context(matches[0], context)
+            audit_lifecycle_contract.CHANGED_SCOPE_RECORD_KIND:
+        validate_check_record_for_context(matches[0], context)
     elif receipt["record_kind"] == "candidate-set-receipt":
         validate_candidate_set_record_for_context(matches[0], context)
     else:
@@ -1054,7 +1054,7 @@ def produce_evidence(context, *, seq=1):
                 context["trace"]["existing_tool_version"],
                 context["trace"]["existing_check"]))
     check_result = _runtime_check_result(context)
-    return build_audit_producer_record(
+    return build_check_record(
         context=context, check_result=check_result, seq=seq)
 
 

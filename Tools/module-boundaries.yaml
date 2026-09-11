@@ -161,12 +161,6 @@ modules:
     domain: planning
     layer: entrypoint
     public: []
-  - module: complete_audit_receipt
-    path: Tools/complete_audit_receipt.py
-    area: execution
-    domain: audit
-    layer: entrypoint
-    public: []
   - module: compose_page_contract
     path: Tools/compose_page_contract.py
     area: knowledge
@@ -228,7 +222,6 @@ modules:
       - evidence_observation
       - obligation_evidence_resolution
       - reconciliation_from_bindings
-      - require_completion_evidence
       - require_substantive_review_attempt
       - resolve_stage_plan
       - stage_evidence_closure
@@ -249,10 +242,14 @@ modules:
     domain: audit
     layer: contract
     public:
+      - AUDIT_FINGERPRINT_CONTRACT_PATH
+      - load_contract
       - obligation_contract_fingerprint
       - page_artifact_fingerprint
+      - page_artifact_fingerprint_contract
       - page_set_artifact_fingerprint
       - sources_sha256
+      - validate_contract
   - module: execution.audit.audit_lifecycle_contract
     path: Tools/execution/audit/audit_lifecycle_contract.py
     area: execution
@@ -260,9 +257,8 @@ modules:
     layer: contract
     public:
       - ATTEMPT_IDENTITY_FIELDS
-      - AUDIT_RECEIPT_RECORD_KIND
       - AuditLifecycleContractError
-      - CHANGED_SCOPE_PRECURSOR_RECORD_KIND
+      - CHANGED_SCOPE_RECORD_KIND
       - EVIDENCE_BINDING_FIELDS
       - OBLIGATION_BINDING_FIELDS
       - PLAN_BINDING_FIELDS
@@ -282,6 +278,7 @@ modules:
       - SUBSTANTIVE_REGISTRY_PATH
       - composed_obligation_specs
       - load_changed_scope_registry
+      - obligation_projection_observation
       - obligation_spec_for_rule
       - profile_registered_scan_spec
       - profile_rendering_specs
@@ -304,6 +301,7 @@ modules:
       - plan_contract_snapshot_sha256
       - plan_sha256
       - required_obligation_ids
+      - serialization_observation
       - validate_contract
       - validate_plan
       - validate_value
@@ -314,12 +312,11 @@ modules:
     layer: contract
     public:
       - AuditProducerChainError
-      - FINAL_AUDIT_RECEIPT_CAPABILITY
-      - precursor_chain_for_obligation
-      - precursor_chain_for_spec
-      - precursor_record_matches
+      - producer_chain_for_obligation
+      - producer_chain_for_spec
       - producer_chain_observation
-      - require_precursor_record
+      - producer_record_matches
+      - require_producer_record
   - module: execution.audit.audit_producer_runtime
     path: Tools/execution/audit/audit_producer_runtime.py
     area: execution
@@ -350,18 +347,6 @@ modules:
       - runtime_state_bindings
       - standards_bindings
       - validate_obligation_attempt_binding
-  - module: execution.audit.audit_receipt_contract
-    path: Tools/execution/audit/audit_receipt_contract.py
-    area: execution
-    domain: audit
-    layer: contract
-    public:
-      - RECEIPT_TYPE_ID
-      - current_receipt_errors
-      - load_contract
-      - page_artifact_fingerprint_contract
-      - project_new_passing_audit_receipt
-      - validate_audit_receipt
   - module: execution.audit.audit_reconciliation_contract
     path: Tools/execution/audit/audit_reconciliation_contract.py
     area: execution
@@ -375,9 +360,9 @@ modules:
     domain: audit
     layer: contract
     public:
-      - build_full_audit_receipt
       - build_post_delta_evidence_set
       - resolve_post_delta_projection
+      - validate_member_evidence
       - validate_post_delta_evidence_set
   - module: execution.audit.batch_close_contract
     path: Tools/execution/audit/batch_close_contract.py
@@ -390,13 +375,13 @@ modules:
       - GATE_CHECK
       - GATE_ID
       - GATE_RECEIPT_TYPE_ID
-      - GLOBAL_REVIEW_RECEIPT_TYPE_ID
       - MEMBER_RECEIPT_TYPE_ID
       - PAGE_REVIEW_RECEIPT_TYPE_ID
       - REVIEW_ATTESTATION_RECEIPT_TYPE_ID
       - closed_list_member_rows
       - current_receipt_errors
       - load_batch_close_closed_list
+      - review_context_errors
       - validate_batch_close_closed_list
   - module: execution.audit.batch_review_obligation_contract
     path: Tools/execution/audit/batch_review_obligation_contract.py
@@ -409,16 +394,20 @@ modules:
       - PRODUCER_TOOL_VERSION
       - RECEIPT_TYPE_ID
       - base_obligation_specs
+      - consumption_coverage
       - consumption_dependency_obligation_ids
       - contract_fingerprint
+      - covered_obligation_ids
       - current_receipt_errors
       - dependency_fingerprint
       - load_registry
       - obligation_spec_for_rule
       - plan_projection_errors
+      - registry_observation
       - registry_sha256
       - resolve_consumed_evidence
       - review_input_constraints
+      - review_input_shape
       - select_s_targets
       - validate_applicability_disposition
       - validate_input_binding
@@ -426,6 +415,7 @@ modules:
       - validate_plan_base_closure
       - validate_producer_receipt
       - validate_receipt_consumption
+      - validate_record_plan_binding
       - validate_review_input
   - module: execution.audit.batch_review_receipt_contract
     path: Tools/execution/audit/batch_review_receipt_contract.py
@@ -447,8 +437,8 @@ modules:
     layer: contract
     public:
       - ADAPTER_CAPABILITY_ID
-      - AUDIT_PRECURSOR_RECEIPT_TYPE_ID
       - CANDIDATE_SET_RECEIPT_TYPE_ID
+      - CHECK_RECEIPT_TYPE_ID
       - ChangedScopeEvidenceContractError
       - DIRECT_RECEIPT_TYPE_ID
       - DIRECT_SCHEMA_VERSION
@@ -477,9 +467,9 @@ modules:
       - runtime_contract_fingerprint
       - source_gate_selector
       - source_summary
-      - validate_audit_producer_record
-      - validate_audit_producer_record_for_plan
       - validate_candidate_set_record_for_plan
+      - validate_check_record
+      - validate_check_record_for_plan
       - validate_direct_record
       - validate_direct_record_for_plan
       - validate_record_for_plan
@@ -514,13 +504,6 @@ modules:
       - main
   - module: execution.audit.check_proof
     path: Tools/execution/audit/check_proof.py
-    area: execution
-    domain: audit
-    layer: application
-    public:
-      - main
-  - module: execution.audit.complete_audit_receipt
-    path: Tools/execution/audit/complete_audit_receipt.py
     area: execution
     domain: audit
     layer: application
@@ -590,8 +573,6 @@ modules:
     domain: audit
     layer: contract
     public:
-      - DIAGNOSTIC_CHECK
-      - DIAGNOSTIC_RECEIPT_TYPE_ID
       - GATE_CHECK
       - GATE_ID
       - GATE_RECEIPT_TYPE_ID
@@ -745,15 +726,14 @@ modules:
       - REVALIDATION_CLOSURE
       - ReceiptReferenceError
       - ResolvedReceipt
-      - SOURCE_AUDIT_RECEIPT
       - SOURCE_CANDIDATE_DELTA
       - SOURCE_CLOSE
       - SOURCE_CLOSE_ATTESTATION
-      - SOURCE_CLOSE_GLOBAL_REVIEW
       - SOURCE_COVERAGE
       - SOURCE_DELTA_APPLY
       - SOURCE_ITEM
       - SOURCE_PAGE_REVIEW
+      - SOURCE_PLAN_BOUND_CHECK
       - SOURCE_PROGRESS
       - SOURCE_STANDARDS_STATE
       - SOURCE_TRANSITION
@@ -833,7 +813,6 @@ modules:
       - SEMANTIC_ACCEPTANCE_TOOL_VERSION
       - acceptance_plan_errors
       - close_requirement
-      - current_diagnostic_receipt_errors
       - current_freshness_binding
       - current_gate_receipt_errors
       - main
@@ -1551,7 +1530,6 @@ modules:
       - AMENDMENT_DELTA_ROOT
       - AMENDMENT_RECEIPT_PATH
       - AUDIT_PLAN_ROOT
-      - AUDIT_RECEIPT_REGISTER_PATH
       - BATCH_CLOSE_RECEIPT_PATH
       - BATCH_JUDGMENT_RECEIPT_PATH
       - BATCH_PAGE_REVIEW_RECEIPT_PATH
@@ -1704,6 +1682,8 @@ modules:
       - action_route
       - action_route_for_token
       - build_action
+      - page_review_answers
+      - page_review_inputs
       - resume_action_token
       - resume_recommendation
   - module: execution.task_runtime.task_runtime_runner
@@ -1826,7 +1806,6 @@ modules:
       - TOOL
       - TOOL_VERSION
       - canonical_profile_load_inputs
-      - current_diagnostic_receipt_errors
       - current_gate_receipt_errors
       - evaluate_profile_load
       - finding_category
@@ -2497,7 +2476,7 @@ modules:
       - ContractError
       - TOOL
       - apply_gated_writer_tools
-      - checked_projection
+      - checked_tool
       - compile_contract
       - main
       - with_checked_views
@@ -2651,6 +2630,7 @@ modules:
       - markdown_atx_heading
       - markdown_authority_lines
       - no_authoritative_write_guard
+      - open_cambium_subprocess
       - open_path_capability_parent
       - parse_scalar
       - parse_vocabulary_artifact

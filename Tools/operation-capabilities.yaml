@@ -159,7 +159,6 @@ capabilities:
     consumers:
       - Tools/execution/audit/audit_evidence_runtime.py
       - Tools/execution/audit/audit_execution_runtime.py
-      - Tools/execution/audit/complete_audit_receipt.py
       - Tools/execution/audit/record_batch_judgment.py
       - Tools/execution/audit/record_batch_page_review.py
       - Tools/execution/audit/record_batch_review.py
@@ -184,7 +183,7 @@ capabilities:
       - Tools/execution/task_runtime/task_runtime_runner.py
     operations: []
     receipt_contracts:
-      - receipt_type_id: batch-page-review-record-v3
+      - receipt_type_id: batch-page-review-record-v4
         correction_subject: true
         validator_owner: Tools.execution.audit.batch_review_obligation_contract:current_receipt_errors
         catalog_lifecycle: [hot, historical, cold]
@@ -200,7 +199,6 @@ capabilities:
     consumers:
       - Tools/execution/audit/audit_evidence_runtime.py
       - Tools/execution/audit/audit_execution_runtime.py
-      - Tools/execution/audit/complete_audit_receipt.py
       - Tools/execution/task_runtime/task_runtime_runner.py
     operations: []
     receipt_contracts:
@@ -220,7 +218,6 @@ capabilities:
     consumers:
       - Tools/execution/audit/audit_evidence_runtime.py
       - Tools/execution/audit/audit_execution_runtime.py
-      - Tools/execution/audit/complete_audit_receipt.py
       - Tools/execution/task_runtime/task_runtime_runner.py
     operations: []
     receipt_contracts:
@@ -234,11 +231,11 @@ capabilities:
         validator_owner: Tools.execution.audit.changed_scope_evidence_contract:current_receipt_errors
         catalog_lifecycle: [hot, historical, cold]
         reference_source_kind: none
-      - receipt_type_id: changed-scope-audit-precursor-v2
+      - receipt_type_id: changed-scope-check-evidence-v3
         correction_subject: true
         validator_owner: Tools.execution.audit.changed_scope_evidence_contract:current_receipt_errors
         catalog_lifecycle: [hot, historical, cold]
-        reference_source_kind: none
+        reference_source_kind: plan-bound-check
 
   - capability_id: dedicated-rendering-verification-v1
     kind: producer
@@ -250,7 +247,6 @@ capabilities:
     consumers:
       - Tools/execution/audit/audit_evidence_runtime.py
       - Tools/execution/audit/audit_execution_runtime.py
-      - Tools/execution/audit/complete_audit_receipt.py
       - Tools/execution/task_runtime/task_runtime_runner.py
     operations: []
     receipt_contracts:
@@ -258,7 +254,7 @@ capabilities:
         correction_subject: true
         validator_owner: Tools.knowledge.rendering.rendering_verification_contract:current_receipt_errors
         catalog_lifecycle: [hot, historical, cold]
-        reference_source_kind: none
+        reference_source_kind: plan-bound-check
 
   - capability_id: profile-rendering-evidence-v1
     kind: producer
@@ -271,7 +267,6 @@ capabilities:
       - Tools/execution/audit/audit_producer_chain.py
       - Tools/execution/audit/audit_evidence_runtime.py
       - Tools/execution/audit/audit_execution_runtime.py
-      - Tools/execution/audit/complete_audit_receipt.py
       - Tools/execution/task_runtime/task_runtime_runner.py
     operations: []
     receipt_contracts:
@@ -279,29 +274,7 @@ capabilities:
         correction_subject: true
         validator_owner: Tools.knowledge.rendering.profile_rendering_evidence_contract:current_receipt_errors
         catalog_lifecycle: [hot, historical, cold]
-        reference_source_kind: none
-
-  - capability_id: audit-receipt-producer-v1
-    kind: producer
-    capability_version: 1.0.0
-    implementation_owner: Tools/execution/audit/complete_audit_receipt.py
-    invocation_owner: Tools/complete_audit_receipt.py
-    writers: []
-    checkers:
-      - Tools/execution/audit/check_proof.py
-    consumers:
-      - Tools/execution/audit/audit_evidence_runtime.py
-      - Tools/execution/audit/audit_execution_runtime.py
-      - Tools/execution/audit/record_batch_review.py
-      - Tools/execution/task_runtime/task_runtime_runner.py
-      - Tools/execution/task_runtime/update_queue.py
-    operations: []
-    receipt_contracts:
-      - receipt_type_id: audit-receipt-v3
-        correction_subject: true
-        validator_owner: Tools.execution.audit.audit_receipt_contract:current_receipt_errors
-        catalog_lifecycle: [hot, historical, cold]
-        reference_source_kind: audit-receipt
+        reference_source_kind: plan-bound-check
 
   - capability_id: terminal-proof-producer-v1
     kind: producer
@@ -332,10 +305,6 @@ capabilities:
         validator_owner: Tools.execution.audit.terminal_proof_contract:current_receipt_errors
         catalog_lifecycle: [hot, historical, cold]
         reference_source_kind: terminal-proof-gate
-      - receipt_type_id: terminal-proof-diagnostic-v1
-        validator_owner: Tools.execution.audit.terminal_proof_contract:current_receipt_errors
-        catalog_lifecycle: [hot, historical, cold]
-        reference_source_kind: none
 
   - capability_id: corpus-plan-structure-gate-v1
     kind: producer
@@ -608,7 +577,7 @@ capabilities:
         correction_subject: true
         validator_owner: Tools.execution.audit.batch_close_contract:current_receipt_errors
         catalog_lifecycle: [hot, historical, cold]
-        reference_source_kind: none
+        reference_source_kind: plan-bound-check
       - receipt_type_id: batch-close-review-attestation-v1
         correction_subject: true
         validator_owner: Tools.execution.audit.batch_close_contract:current_receipt_errors
@@ -619,11 +588,6 @@ capabilities:
         validator_owner: Tools.execution.audit.batch_close_contract:current_receipt_errors
         catalog_lifecycle: [hot, historical, cold]
         reference_source_kind: close-page-review
-      - receipt_type_id: batch-close-global-review-v1
-        correction_subject: true
-        validator_owner: Tools.execution.audit.batch_close_contract:current_receipt_errors
-        catalog_lifecycle: [hot, historical, cold]
-        reference_source_kind: close-global-review
 
   - capability_id: task-runtime-runner-v1
     kind: consumer
@@ -711,10 +675,6 @@ capabilities:
       - receipt_type_id: corpus-plan-gate-receipt-v1
         correction_subject: true
         validator_owner: Tools.execution.planning.check_corpus_plan:current_gate_receipt_errors
-        catalog_lifecycle: [hot, historical, cold]
-        reference_source_kind: none
-      - receipt_type_id: corpus-plan-diagnostic-receipt-v1
-        validator_owner: Tools.execution.planning.check_corpus_plan:current_diagnostic_receipt_errors
         catalog_lifecycle: [hot, historical, cold]
         reference_source_kind: none
 
@@ -868,10 +828,6 @@ capabilities:
     receipt_contracts:
       - receipt_type_id: profile-load-gate-receipt-v1
         validator_owner: Tools.governance.profile.check_profile:current_gate_receipt_errors
-        catalog_lifecycle: [hot, historical, cold]
-        reference_source_kind: none
-      - receipt_type_id: profile-load-diagnostic-receipt-v1
-        validator_owner: Tools.governance.profile.check_profile:current_diagnostic_receipt_errors
         catalog_lifecycle: [hot, historical, cold]
         reference_source_kind: none
 

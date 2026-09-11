@@ -13,6 +13,7 @@ import json
 from pathlib import Path
 import re
 import unittest
+from unittest import mock
 
 import Tools.governance.profile.check_profile as check_profile
 import Tools.platform.common.kblib as kblib
@@ -208,12 +209,22 @@ class ProfileReportContractTests(unittest.TestCase):
     def report(self):
         self.fixture.save()
         buffer = io.StringIO()
-        with contextlib.redirect_stdout(buffer):
+        with contextlib.redirect_stdout(buffer), mock.patch.object(
+                kblib, "write_receipts") as publish:
             code = check_profile.main([
-                str(self.fixture.profile), "--root", str(self.fixture.root), "--json"])
+                str(self.fixture.profile), "--root", str(self.fixture.root),
+                "--json", "--receipts", str(self.fixture.root / "profile.jsonl")])
+        self.publications = publish.call_args_list
         return code, json.loads(buffer.getvalue())
 
     def test_json_projects_one_categorized_failure_and_exit_code(self):
+        code, report = self.report()
+        self.assertEqual((0, "pass"), (code, report["result"]))
+        self.assertEqual(1, len(self.publications))
+        records = self.publications[0].args[1]
+        self.assertEqual(1, len(records))
+        self.assertEqual([], check_profile.current_gate_receipt_errors(records[0]))
+
         del self.fixture.document["slots"]["priority-rubric"]
         code, report = self.report()
         self.assertEqual(1, code)
@@ -224,6 +235,7 @@ class ProfileReportContractTests(unittest.TestCase):
             set(finding) == {"check", "target", "details", "category"}
             for finding in report["findings"]))
         self.assertNotEqual("pass", report.get("profile_load", {}).get("result"))
+        self.assertEqual([], self.publications)
 
     def test_profile_load_reports_typed_shape_drift_as_mechanical(self):
         self.fixture.slot("profile-scope")["goal"]["statement"] = 42

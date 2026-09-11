@@ -5,6 +5,7 @@ from pathlib import Path
 import sys
 from types import SimpleNamespace
 import unittest
+from unittest import mock
 
 
 REPOSITORY = Path(__file__).resolve().parents[2]
@@ -38,9 +39,11 @@ class BaseProjectionTests(unittest.TestCase):
         return [row for row in self.rows if row["source_registry"] == path]
 
     def test_m_expected_set_comes_from_registry_and_is_not_substantive(self):
+        emitting = [row for row in self.batch_review["m_tier_atomic_items"]
+                    if row["evidence_role"] == "emits"]
         expected = tuple(
             (row["item_id"], row["rule_id"])
-            for row in self.batch_review["m_tier_atomic_items"])
+            for row in emitting)
         actual_rows = [row for row in self.rows_from(
             projection.BATCH_REVIEW_REGISTRY_PATH) if row["tier"] == "M"]
         actual = tuple(
@@ -57,7 +60,7 @@ class BaseProjectionTests(unittest.TestCase):
         self.assertTrue(all(
             row["evidence_kind"] == source["evidence_kind"]
             for row, source in zip(
-                actual_rows, self.batch_review["m_tier_atomic_items"])))
+                actual_rows, emitting)))
 
     def test_k12_09_projection_is_exactly_the_registry_eight(self):
         expected = tuple(
@@ -229,6 +232,35 @@ class BaseProjectionTests(unittest.TestCase):
         self.assertNotEqual(
             first[0]["owner_rule_id"],
             projection.base_obligation_specs(REPOSITORY)[0]["owner_rule_id"])
+        with mock.patch.object(projection, "deepcopy", wraps=copy.deepcopy) as duplicate:
+            selected = projection.obligation_spec_for_rule(second[0]["owner_rule_id"], REPOSITORY)
+        self.assertEqual(second[0], selected)
+        self.assertEqual(1, duplicate.call_count)
+        selected["owner_rule_id"] = "consumer-mutation"
+        self.assertEqual(second[0], projection.obligation_spec_for_rule(second[0]["owner_rule_id"], REPOSITORY))
+        with self.assertRaisesRegex(ValueError, "unknown or ambiguous"):
+            projection.obligation_spec_for_rule("missing-rule", REPOSITORY)
+
+        def memo_for_window():
+            facts = {}
+            def memo(key, compute):
+                if key not in facts:
+                    facts[key] = compute()
+                return facts[key]
+            return memo
+
+        with mock.patch.object(kblib, "read_text", wraps=kblib.read_text) as read:
+            with projection.obligation_projection_observation(memo_for_window()):
+                self.assertEqual(second, projection.base_obligation_specs(REPOSITORY))
+                for row in second:
+                    self.assertEqual(row, projection.obligation_spec_for_rule(
+                        row["owner_rule_id"], REPOSITORY))
+                source_paths = [call.args[0] for call in read.call_args_list]
+                self.assertTrue(source_paths)
+                self.assertEqual(len(source_paths), len(set(source_paths)))
+            # Leaving an observation retires its bytes, even in one process.
+            projection.obligation_spec_for_rule(second[0]["owner_rule_id"], REPOSITORY)
+            self.assertEqual(2 * len(source_paths), read.call_count)
 
         changed = copy.deepcopy(self.batch_review)
         changed["m_tier_atomic_items"][0]["rule_id"] = \
@@ -238,6 +270,31 @@ class BaseProjectionTests(unittest.TestCase):
         }
         with self.assertRaisesRegex(ValueError, "unadmitted K12/02 owner"):
             projection.base_obligation_specs(REPOSITORY, snapshots)
+        # Even an unchanged requested rule must reject a corrupt sibling:
+        # lookup is over the complete validated closure, not a per-ID filter.
+        with self.assertRaisesRegex(ValueError, "unadmitted K12/02 owner"):
+            projection.obligation_spec_for_rule(second[0]["owner_rule_id"], REPOSITORY, snapshots)
+
+        with projection.obligation_projection_observation(memo_for_window()):
+            self.assertEqual(second, projection.base_obligation_specs(REPOSITORY))
+            # Explicit caller snapshots are not replaced by captured files.
+            with self.assertRaisesRegex(ValueError, "unadmitted K12/02 owner"):
+                projection.obligation_spec_for_rule(
+                    second[0]["owner_rule_id"], REPOSITORY, snapshots)
+
+            real_read = kblib.read_text
+            def changed_source(path):
+                if str(path).endswith(projection.BATCH_REVIEW_REGISTRY_PATH):
+                    return kblib.canonical_yaml(changed)
+                return real_read(path)
+            with mock.patch.object(kblib, "read_text", side_effect=changed_source):
+                # A nested NEW boundary sees changed files, not outer bytes.
+                with projection.obligation_projection_observation(memo_for_window()):
+                    with self.assertRaisesRegex(ValueError, "unadmitted K12/02 owner"):
+                        projection.obligation_spec_for_rule(
+                            second[0]["owner_rule_id"], REPOSITORY)
+                self.assertEqual(second, projection.base_obligation_specs(REPOSITORY))
+        self.assertEqual(second, projection.base_obligation_specs(REPOSITORY))
 
 
 if __name__ == "__main__":

@@ -14,9 +14,9 @@ source_files:
   - kernel/K12 Quality Assurance/05 Automated and Manual Checks.md
   - kernel/K12 Quality Assurance/14 Batch Review.md
   - kernel/K12 Quality Assurance/19 Incremental Audit Planning.md
-source_hash: 'eb24d3183345'
-reviewed_source_hash: 'eb24d3183345'
-reviewed_card_hash: 'ddc08602fdcf'
+source_hash: '0593c0ee65dd'
+reviewed_source_hash: '0593c0ee65dd'
+reviewed_card_hash: 'e7ce946f69f2'
 ---
 # R02 Single Note Authoring Card
 
@@ -29,7 +29,7 @@ Create or change one canonical page within an already confirmed scope and owner 
 - Confirm the page owner, note type, intended reader, and applicable Profile bindings before writing.
 - Write to the applicable depth and preserve claim/source distinctions.
 - After the batch enters `open`, materialize its immutable AuditPlan; satisfy each obligation when due through its unique registered producer without changing its native evidence kind.
-- Send L-tier pages through independent substantive review and M-tier pages only through the M checklist inside Batch Review.
+- Send L-tier pages through independent substantive review and M-tier pages through the Batch Review checklist; answer only outstanding semantic items, preserving accepted machine evidence and common-condition coverage.
 - Treat applicable rendering predicates and the separate rendering-verification record as distinct obligations; neither substitutes for the other.
 
 ## Stop or escalate

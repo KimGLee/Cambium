@@ -9,8 +9,8 @@ source_files:
   - kernel/K00 Standards Control/13 Runtime Admission and Recovery.md
   - kernel/K02 Knowledge Work Construction/03 Corpus Planning Applicability and Lifecycle.md
   - kernel/K12 Quality Assurance/19 Incremental Audit Planning.md
-source_hash: '79aa7fa4d3b6'
-reviewed_source_hash: '79aa7fa4d3b6'
+source_hash: '0b03cdc4156a'
+reviewed_source_hash: '0b03cdc4156a'
 reviewed_card_hash: '1aeaaed4ba97'
 ---
 # R11 Large-scale Work Admission Card

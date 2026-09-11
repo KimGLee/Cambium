@@ -7,6 +7,7 @@ explicitly.  It owns no validation rule of its own.
 """
 
 import Tools.execution.evidence.metadata_gate_runtime as metadata_gate_runtime
+from Tools.execution.audit import batch_review_obligation_contract
 from Tools.execution.task_runtime import queue_runtime
 
 
@@ -22,12 +23,14 @@ def validate_runtime(*args, **kwargs):
         raise TypeError(
             "gate_evidence_errors is owned by metadata_gate_runtime and "
             "cannot be overridden")
-    return queue_runtime.runtime.validate_runtime(
-        *args,
-        gate_evidence_errors=
-            metadata_gate_runtime.persisted_property_gate_errors,
-        **kwargs,
-    )
+    root = args[0] if args else kwargs.get("root")
+    with batch_review_obligation_contract.registry_observation(root):
+        return queue_runtime.runtime.validate_runtime(
+            *args,
+            gate_evidence_errors=
+                metadata_gate_runtime.persisted_property_gate_errors,
+            **kwargs,
+        )
 
 
 def require_gate_context_current(context, phase, *, runtime=None):

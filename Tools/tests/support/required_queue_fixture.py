@@ -20,19 +20,11 @@ import Tools.platform.distribution.module_boundary_facts as module_boundary_fact
 
 from Tools.execution.task_runtime import queue_runtime
 import Tools.execution.task_runtime.runtime_validation as runtime_validation  # noqa: E402
-import Tools.execution.audit.check_batch_close as check_batch_close
-import Tools.execution.audit.batch_close_contract as batch_close_contract
-import Tools.execution.task_runtime.batch_settlement as batch_settlement
-import Tools.execution.evidence.candidate_lifecycle as candidate_lifecycle
 import Tools.platform.common.kblib as kblib
 import Tools.knowledge.content.maintenance_candidates as maintenance_candidates
-import Tools.governance.control.metadata_execution_contract as metadata_execution_contract
-import Tools.knowledge.metadata.metadata_property_state as metadata_property_state
-import Tools.knowledge.metadata.project_page_state as project_page_state
 import Tools.execution.task_runtime.runtime_paths as runtime_paths
 import Tools.execution.task_runtime.record_maintenance_evidence as record_maintenance_evidence
 import Tools.platform.distribution.stamp_cards as stamp_cards
-import Tools.governance.standards.standards_state as standards_state
 from Tools.tests.support.profile_fixture import FIXTURE_UPSTREAM_REVISION, install_loadable_profile
 from Tools.tests.support.initial_task_plan_fixture import (  # noqa: E402
     install_initial_task_plan_fixture,
@@ -134,7 +126,10 @@ class RequiredQueueFixture(AuditScenarioActions):
                 "# %s\n\n"
                 "## Synthetic Residual\n\n"
                 "Accepted-root liveness marker for the registered fixture "
-                "scan.\n" % name,
+                "scan. This page describes a static synthetic concept, not "
+                "an operational procedure.\n\n"
+                "Failure behavior is not applicable: this marker has no "
+                "execution, operational transition, or failure outcome.\n" % name,
                 encoding="utf-8",
             )
 
@@ -224,203 +219,6 @@ class RequiredQueueFixture(AuditScenarioActions):
         record = json.loads((self.root / relative).read_text(
             encoding="utf-8").splitlines()[-1])
         return record["receipt_id"]
-
-    def close_gate_receipt(self, batch_id, consistency_receipt):
-        queue = self.queue()
-        item = next(entry for entry in queue["required_queue"]
-                    if entry["id"] == batch_id)
-        revision = queue["state_revision"]
-        runtime = runtime_validation.validate_runtime(self.root)
-        settlement = batch_settlement.current_settlement_report(
-            runtime["coverage"], batch_id)
-        self.assertEqual([], settlement["errors"], settlement["errors"])
-        baseline_errors, baseline = check_batch_close._candidate_baseline(
-            str(self.root), runtime, batch_id)
-        self.assertEqual([], baseline_errors, baseline_errors)
-        applied = next(
-            entry for entry in runtime["applied_delta_receipts"]
-            if entry.get("batch") == batch_id)
-        delta_apply_receipt = applied["selected_receipt"]
-        delta_apply_record = queue_runtime.current_receipt_catalog(runtime)[
-            delta_apply_receipt][1]
-        review_checked_at = delta_apply_record["checked_at"]
-        merged_snapshot_sha256 = kblib.repository_snapshot_sha256(self.root)
-        evidence = {}
-        records = []
-        integrator_id = "fixture-integrator"
-        reviewer_id = "fixture-reviewer"
-        for field in batch_close_contract.CLOSED_LIST_EVIDENCE_FIELDS:
-            receipt_id = "audit-e2e-closed-list-%s-r%d-%s" % (
-                batch_id, revision, field)
-            records.append({
-                "receipt_id": receipt_id,
-                "tool": "check_batch_close",
-                "tool_version": queue_runtime.BATCH_CLOSE_TOOL_VERSION,
-                "check": "closed_list_%s" % field,
-                "target": ".",
-                "batch_id": batch_id,
-                "task_id": queue["task_id"],
-                "integrator_id": integrator_id,
-                "reviewer_id": reviewer_id,
-                "result": "pass",
-                "invalidated_by": None,
-                "merged_snapshot_sha256": merged_snapshot_sha256,
-                "candidate_evidence": [],
-            })
-            evidence[field] = receipt_id
-        attestation_id = "audit-e2e-review-attestation-%s-r%d" % (
-            batch_id, revision)
-        evidence_relative = "%s/%s-r%d-fixture.jsonl" % (
-            kblib.RECEIPT_COLD_EVIDENCE_PREFIX, batch_id, revision)
-        evidence_file = self.root / evidence_relative
-        evidence_file.parent.mkdir(parents=True, exist_ok=True)
-        if not evidence_file.exists():
-            evidence_file.write_bytes(b"")
-        records.append({
-            "receipt_id": attestation_id,
-            "tool": "check_batch_close",
-            "tool_version": queue_runtime.BATCH_CLOSE_TOOL_VERSION,
-            "check": "batch_global_review_attestation",
-            "target": batch_id,
-            "batch_id": batch_id,
-            "task_id": queue["task_id"],
-            "integrator_id": integrator_id,
-            "reviewer_id": reviewer_id,
-            "result": "pass",
-            "invalidated_by": None,
-            "checked_at": "2026-08-04T02:30:00Z",
-            "details": "fixture independent review attestation",
-            "merged_snapshot_sha256": merged_snapshot_sha256,
-            "accepted_candidate_count": 0,
-            "accepted_candidate_types": [],
-            "accepted_by_type_counts": {},
-            "candidate_set_sha256": kblib.sha256_bytes(b""),
-            "candidate_protocol": candidate_lifecycle.CANDIDATE_PROTOCOL,
-            "candidate_baseline_protocol": baseline["protocol"],
-            "candidate_baseline_receipt": baseline["attestation_receipt"],
-            "carried_candidate_count": 0,
-            "carried_candidate_set_sha256":
-                candidate_lifecycle.candidate_set_sha256([]),
-            "fresh_candidate_count": 0,
-            "fresh_candidate_set_sha256":
-                candidate_lifecycle.candidate_set_sha256([]),
-            "candidate_evidence_path": evidence_relative,
-            "candidate_evidence_sha256": kblib.sha256_bytes(b""),
-            "candidate_evidence_bytes": 0,
-            "candidate_evidence_records": 0,
-            "candidate_dispositions": [],
-        })
-        metadata_contract = \
-            metadata_execution_contract.load_metadata_execution_contract(
-                self.root)
-        profile_view = runtime["_profile_authorized_view"]
-        projection_rules = \
-            metadata_property_state.profile_gate_projection_rules(
-                self.root, profile_view["_contract"].extension_gates,
-                metadata_contract=metadata_contract,
-                typed_profile_contract=profile_view["_contract"])
-        profile_bindings = {
-            field: profile_view[field]
-            for field in (
-                "selected_profile_manifest", "profile_snapshot_sha256",
-                "profile_contract_fingerprint", "profile_load_inputs_sha256",
-            )
-        }
-        page_review_ids = []
-        for index, relative in enumerate(sorted(item["manifest"])):
-            page_review_id = "audit-e2e-page-review-%s-r%d-%d" % (
-                batch_id, revision, index)
-            page = kblib.repository_target_snapshot(
-                self.root, relative, suffixes=".md", singly_linked=True)
-            self.assertTrue(page.exists)
-            records.append({
-                "receipt_id": page_review_id,
-                "tool": "check_batch_close",
-                "tool_version": queue_runtime.BATCH_CLOSE_TOOL_VERSION,
-                "check": "page_review_acceptance",
-                "target": relative,
-                "batch_id": batch_id,
-                "task_id": queue["task_id"],
-                "integrator_id": integrator_id,
-                "reviewer_id": reviewer_id,
-                "result": "pass",
-                "invalidated_by": None,
-                "checked_at": review_checked_at,
-                "reviewed_on": review_checked_at[:10],
-                "semantic_content_sha256":
-                    project_page_state.semantic_content_fingerprint(
-                        relative, page.read_text(), projection_rules),
-                "metadata_execution_contract_fingerprint":
-                    metadata_contract.contract_fingerprint,
-                "merged_snapshot_sha256": merged_snapshot_sha256,
-                "reviewer_attestation_receipt": attestation_id,
-                **profile_bindings,
-            })
-            page_review_ids.append(page_review_id)
-        page_review_ids.sort()
-        global_review_id = "audit-e2e-global-review-%s-r%d" % (
-            batch_id, revision)
-        records.append({
-            "receipt_id": global_review_id,
-            "tool": "check_batch_close",
-            "tool_version": queue_runtime.BATCH_CLOSE_TOOL_VERSION,
-            "check": "batch_global_review",
-            "target": batch_id,
-            "batch_id": batch_id,
-            "task_id": queue["task_id"],
-            "integrator_id": integrator_id,
-            "reviewer_id": reviewer_id,
-            "result": "pass",
-            "invalidated_by": None,
-            "merged_snapshot_sha256": merged_snapshot_sha256,
-            "reviewer_attestation_receipt": attestation_id,
-            "closed_list_evidence": evidence,
-        })
-        close_id = "audit-e2e-batch-close-%s-r%d" % (batch_id, revision)
-        records.append({
-            "receipt_id": close_id,
-            "tool": "check_batch_close",
-            "tool_version": queue_runtime.BATCH_CLOSE_TOOL_VERSION,
-            "check": "batch_close_gate",
-            "target": batch_id,
-            "batch_id": batch_id,
-            "task_id": queue["task_id"],
-            "integrator_id": integrator_id,
-            "reviewer_id": reviewer_id,
-            "result": "pass",
-            "invalidated_by": None,
-            "checked_at": "2026-08-04T02:30:00Z",
-            "queue_revision": queue["queue_revision"],
-            "queue_state_revision": queue["state_revision"],
-            "required_queue_sha256": kblib.sha256_file(
-                self.root / queue_runtime.QUEUE_PATH),
-            "coverage_ledger_sha256": kblib.sha256_file(
-                self.root / queue_runtime.COVERAGE_PATH),
-            "progress_ledger_sha256": kblib.sha256_file(
-                self.root / queue_runtime.PROGRESS_PATH),
-            "delta_sha256": item["delta_sha256"],
-            "delta_apply_receipt": delta_apply_receipt,
-            "queue_consistency_receipt": consistency_receipt,
-            "corpus_plan_required": False,
-            "corpus_plan_triggers": [],
-            "corpus_plan_receipt": None,
-            "work_spec_path": item["work_spec_path"],
-            "work_spec_sha256": item["work_spec_sha256"],
-            "merged_snapshot_sha256": merged_snapshot_sha256,
-            "reviewer_attestation_receipt": attestation_id,
-            "global_review_receipt": global_review_id,
-            "closed_list_evidence": evidence,
-            "page_review_receipts": page_review_ids,
-            "page_review_receipt_count": len(page_review_ids),
-            "page_review_receipt_set_sha256":
-                candidate_lifecycle.candidate_set_sha256(page_review_ids),
-            "metadata_execution_contract_fingerprint":
-                metadata_contract.contract_fingerprint,
-            **profile_bindings,
-        } | batch_settlement.close_binding(settlement))
-        kblib.write_receipts(
-            self.root / ".cambium/receipts/close-gates.jsonl", records)
-        return close_id
 
     def transition(self, batch_id, transition, *evidence):
         queue = self.queue()

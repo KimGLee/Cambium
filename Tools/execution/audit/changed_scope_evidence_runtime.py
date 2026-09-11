@@ -258,7 +258,7 @@ def validate_current_record(record, *, root, result, item, plan,
     projection = current_projection(
         root=root, result=result, item=item, plan=plan,
         obligation=obligation, frozen=frozen, registry=registry)
-    changed_scope_evidence_contract.validate_audit_producer_record_for_plan(
+    changed_scope_evidence_contract.validate_check_record_for_plan(
         record, plan, plan_sha256, obligation,
         registry or changed_scope_evidence_contract.load_registry(root),
         control_registry, root=root,

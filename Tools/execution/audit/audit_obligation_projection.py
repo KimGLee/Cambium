@@ -8,6 +8,8 @@ Profile-owned rows enter only through :func:`compose_profile_extensions`.
 from Tools.platform.repository.repository import repository_source_root
 
 from copy import deepcopy
+from contextlib import contextmanager
+from contextvars import ContextVar
 from functools import lru_cache
 import os
 
@@ -65,6 +67,24 @@ _DEFINITION_FIELDS = {
     "consumer_gate_id", "fingerprint_binding",
 }
 
+_OBSERVATION_MEMO = ContextVar("audit_obligation_projection_memo", default=None)
+
+
+@contextmanager
+def obligation_projection_observation(memo):
+    """Read source bytes once within the existing evidence observation.
+
+    The evidence owner supplies and retires the memo. This module still
+    validates its complete exact-source closure and returns independent
+    projections; no plan, receipt or currentness verdict is cached here.
+    Explicit snapshots always take precedence over this read-only window.
+    """
+    token = _OBSERVATION_MEMO.set(memo)
+    try:
+        yield
+    finally:
+        _OBSERVATION_MEMO.reset(token)
+
 
 def _root(root):
     if root is None:
@@ -88,7 +108,15 @@ def _source_text(path, root=None, snapshots=None):
     snapshot = (snapshots or {}).get(path)
     if snapshot is not None:
         return snapshot.read_text()
-    return kblib.read_text(os.path.join(_root(root), *path.split("/")))
+    memo = _OBSERVATION_MEMO.get()
+    def read():
+        return kblib.read_text(os.path.join(_root(root), *path.split("/")))
+    if memo is None:
+        return read()
+    # Resolve physical paths when capturing the source, not again for every
+    # lookup of the same captured bytes. Relative spellings remain cwd-bound.
+    source_root = None if root is None else os.path.abspath(os.fspath(root))
+    return memo(("obligation-projection-source", source_root, path), read)
 
 
 def _read_document(path, root=None, snapshots=None):
@@ -180,11 +208,6 @@ def _validate_changed_rule(row, label, plan_values, dimensions):
                 "%s Profile-bound dimension must remain unresolved" % label)
     else:
         raise ValueError("%s dimension_binding is not registered" % label)
-    if (row["evidence_kind"] == "audit-receipt" and
-            (row["evidence_role"] != "emits" or
-             (dimension is None and binding != "profile-registration"))):
-        raise ValueError(
-            "%s AuditReceipt route must emit a dimension" % label)
     normalized = dict(row)
     normalized["producer_capability"] = capability
     normalized["producer_gate_id"] = gate_id
@@ -364,11 +387,6 @@ def _spec(_registered_dimensions=None, _plan_contract_values=None, **values):
         raise ValueError("obligation spec dimension binding is unknown")
     elif values["dimension"] is not None and values["dimension"] not in dimensions:
         raise ValueError("obligation spec dimension is not registered")
-    if (values["evidence_kind"] == "audit-receipt" and
-            (values["evidence_role"] != "emits" or
-             (values["dimension"] is None and
-              values["dimension_binding"] != "profile-registration"))):
-        raise ValueError("AuditReceipt spec must emit one dimension")
     if values["nonblocking"] is not None and not isinstance(
             values["nonblocking"], bool):
         raise ValueError("obligation spec nonblocking must be boolean or null")
@@ -638,6 +656,10 @@ def validate_plan_definition_authority(plan, contract, root=None,
                 "AuditPlan obligation %s drifts from registered owner %s in: "
                 "%s" % (obligation["obligation_id"], rule_id,
                          ", ".join(sorted(set(drift)))))
+    m_targets = {row["target"] for row in plan["obligations"]
+                 if by_rule[row["owner_rule_id"]].get("tier") == "M"}
+    batch_review_obligation_contract.consumption_coverage(
+        plan, m_targets, batch_review_obligation_contract.load_registry(root, snapshots))
     return plan
 
 
@@ -827,8 +849,8 @@ def _base_projection_source_bundle(root, snapshots):
 
 
 @lru_cache(maxsize=32)
-def _base_obligation_specs_for_exact_sources(root, source_bundle):
-    """Build once for one complete immutable machine-source snapshot."""
+def _base_obligation_index_for_exact_sources(root, source_bundle):
+    """Validate the entire source closure once, then index its unique IDs."""
     snapshots = {
         path: _TextSnapshot(text) for path, text in source_bundle}
     plan_values = _plan_values(root, snapshots)
@@ -849,7 +871,7 @@ def _base_obligation_specs_for_exact_sources(root, source_bundle):
            row["kernel_extension_point"] is not None for row in specs):
         raise ValueError("Kernel base projection contains a Profile extension")
     _reject_unadmitted_rendering_specs(specs, root, snapshots)
-    return tuple(deepcopy(row) for row in specs)
+    return {row["owner_rule_id"]: deepcopy(row) for row in specs}
 
 
 def base_obligation_specs(root=None, snapshots=None):
@@ -861,19 +883,23 @@ def base_obligation_specs(root=None, snapshots=None):
     verified projection.
     """
     root = _root(root)
-    specs = _base_obligation_specs_for_exact_sources(
+    index = _base_obligation_index_for_exact_sources(
         root, _base_projection_source_bundle(root, snapshots))
-    return tuple(deepcopy(row) for row in specs)
+    return tuple(deepcopy(row) for row in index.values())
 
 
 def obligation_spec_for_rule(rule_id, root=None, snapshots=None):
     """Resolve exactly one base spec by stable owner rule ID."""
     rule_id = require_trimmed_string(rule_id, "rule_id")
-    matches = [row for row in base_obligation_specs(root, snapshots)
-               if row["owner_rule_id"] == rule_id]
-    if len(matches) != 1:
+    root = _root(root)
+    index = _base_obligation_index_for_exact_sources(
+        root, _base_projection_source_bundle(root, snapshots))
+    if rule_id not in index:
         raise ValueError("unknown or ambiguous base obligation rule %s" % rule_id)
-    return matches[0]
+    # Copy only the requested spec. Full-set callers still use the same
+    # validated index, but a per-obligation consumer no longer copies every
+    # other rule for each candidate/precursor/final-record comparison.
+    return deepcopy(index[rule_id])
 
 
 def resolve_obligation_definition(spec, target, trigger=None, dimension=None,
@@ -906,10 +932,6 @@ def resolve_obligation_definition(spec, target, trigger=None, dimension=None,
         raise ValueError("caller cannot change a fixed obligation dimension")
     if resolved_dimension is not None and resolved_dimension not in dimensions:
         raise ValueError("resolved obligation dimension is not registered")
-    if (spec["evidence_kind"] == "audit-receipt" and
-            (spec["evidence_role"] != "emits" or
-             resolved_dimension is None)):
-        raise ValueError("resolved AuditReceipt obligation needs one dimension")
     definition = {
         "owner_kind": spec["owner_kind"],
         "owner_rule_id": spec["owner_rule_id"],
@@ -978,6 +1000,7 @@ __all__ = [
     'composed_obligation_specs',
     'load_changed_scope_registry',
     'obligation_spec_for_rule',
+    'obligation_projection_observation',
     'profile_registered_scan_spec',
     'required_obligation',
     'resolve_obligation_definition',

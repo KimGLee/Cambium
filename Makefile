@@ -82,7 +82,7 @@ test: full
 
 test-selected:
 	@test -n "$(TEST_FILES)" || (echo "TEST_FILES is required" && exit 1)
-	PYTHONDONTWRITEBYTECODE=1 $(PYTHON) .github/scripts/ci_impact.py run-tests --root . --tests "$(TEST_FILES)" $(if $(TEST_REPORT),--report "$(TEST_REPORT)")
+	PYTHONDONTWRITEBYTECODE=1 $(PYTHON) .github/scripts/ci_impact.py run-tests --root . --tests "$(TEST_FILES)" $(if $(TEST_REPORT),--report "$(TEST_REPORT)") $(if $(TEST_DEADLINE),--deadline "$(TEST_DEADLINE)")
 
 fast:
 	PYTHONDONTWRITEBYTECODE=1 $(PYTHON) Tools/run_tests.py fast --root . --python "$(PYTHON)" --jobs "$(TEST_JOBS)"

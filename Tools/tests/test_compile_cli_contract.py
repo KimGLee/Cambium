@@ -308,6 +308,19 @@ class CompilerFixtureContractTests(unittest.TestCase):
                 "receipt_extension_sources"]
         }
         self.assertIn("Tools/fixture_receipts.py", imported_sources)
+        # The negative syntax index must not suppress normalized Python
+        # identifiers or mistake a Unicode line separator inside a string
+        # for a source line. Nested imports retain their lexical BFS binding.
+        source = (
+            'marker = "first\u2028second"\n'
+            'def build():\n'
+            '    from Tools.platform.common import kblib as receipts\n'
+            '    value = receipts.ｍake_receipt("x", "1", "c", "t", "pass", "d", 0)\n'
+            '    value["normalized_field"] = True\n'
+            '    return value\n')
+        fields, extraction, _sources = compiler._ReceiptExtensionAnalyzer(
+            str(self.fixture.root), {}).analyze("Tools.normalized", source)
+        self.assertEqual((["normalized_field"], "complete"), (fields, extraction))
 
     def test_same_owner_inputs_render_identically_without_process_replay(self):
         first = compiler.render(self.contract)
@@ -319,8 +332,25 @@ class CompilerFixtureContractTests(unittest.TestCase):
             if module_name not in analyzer.modules:
                 extracted.append(module_name)
             return original(analyzer, module_name, source_text)
-        with mock.patch.object(compiler._ReceiptExtensionAnalyzer, "_load_module", load):
+        with mock.patch.object(compiler._ReceiptExtensionAnalyzer, "_load_module", load), \
+                mock.patch.object(compiler, "_scope_nodes", wraps=compiler._scope_nodes) as walk:
             second = compiler.render(self.fixture.compile())
+            # Reading the same helper from another CLI may reuse syntax, not
+            # graph-dependent resolution or another tool's mutable result.
+            shared = analyzers[0].modules
+            source = shared["Tools.fixture_receipts"]["source"]
+            separate = compiler._ReceiptExtensionAnalyzer(str(self.fixture.root), shared)
+            expected = separate.analyze("Tools.fixture_receipts", source)
+            count = walk.call_count
+            self.assertEqual(expected, compiler._ReceiptExtensionAnalyzer(
+                str(self.fixture.root), shared).analyze("Tools.fixture_receipts", source))
+            self.assertEqual(count, walk.call_count)
+            scopes = [id(call.args[0]) for call in walk.call_args_list]
+            self.assertEqual(len(scopes), len(set(scopes)))
+            # Parser-only scopes were already classified during source
+            # discovery. They do not pay another full AST receipt walk.
+            self.assertNotIn("main", [getattr(call.args[0], "name", None)
+                                      for call in walk.call_args_list])
         self.assertEqual(first, second)
         self.assertEqual(len(extracted), len(set(extracted)))
         self.assertEqual(1, len({id(analyzer.modules) for analyzer in analyzers}))
@@ -502,13 +532,23 @@ class CompilerProjectionLifecycleTests(unittest.TestCase):
             source = root / "Tools" / "owner.py"
             source.parent.mkdir()
             source.write_text("value = 1\n", encoding="utf-8")
-            validator = mock.Mock(return_value={"tools": [{"tool": "sample"}]})
+            validator = mock.Mock(return_value={
+                "artifact": "cli-invocation-contract", "source_hash": "source",
+                "projection_target": "carried-runtime",
+                "tools": [{"tool": "sample", "arguments": []},
+                          {"tool": "other", "arguments": []}]})
             def load(target="carried-runtime", raw=b"projection"):
-                return compiler.checked_projection(root, target, raw, validator, lambda: raw)
+                validator.return_value["projection_target"] = target
+                return compiler.checked_tool(root, target, raw, "sample", validator, lambda: raw)
             with compiler.checked_view_scope():
-                load()["tools"].clear()
-                self.assertEqual([{"tool": "sample"}], load()["tools"])
+                load()["arguments"].append("forged")
+                self.assertEqual({"tool": "sample", "arguments": [],
+                                  "invocation_contract_source_hash": "source"}, load())
                 self.assertEqual(1, validator.call_count)
+                with mock.patch.object(compiler, "deepcopy", wraps=copy.deepcopy) as detach:
+                    load()
+                self.assertEqual([mock.call({"tool": "sample", "arguments": []})],
+                                 detach.call_args_list)
                 # Runtime writes do not change the compiler's immutable input.
                 (root / ".cambium").mkdir()
                 (root / ".cambium" / "receipt").write_text("new", encoding="utf-8")
@@ -538,9 +578,17 @@ class CompilerProjectionLifecycleTests(unittest.TestCase):
                 return {}
             with compiler.checked_view_scope():
                 with self.assertRaisesRegex(compiler.ContractError, "inputs changed"):
-                    compiler.checked_projection(root, "carried-runtime", b"x", unstable, lambda: b"x")
+                    compiler.checked_tool(root, "carried-runtime", b"x", "sample", unstable, lambda: b"x")
                 load()
             self.assertEqual(12, validator.call_count)
+            with self.assertRaisesRegex(compiler.ContractError, "0 entries"):
+                compiler.checked_tool(root, "carried-runtime", b"projection", "absent",
+                                      validator, lambda: b"projection")
+            for invalid in ({}, dict(validator.return_value, projection_target="wrong"),
+                            dict(validator.return_value, tools=[{"tool": "sample"}] * 2)):
+                with self.assertRaises(compiler.ContractError):
+                    compiler.checked_tool(root, "carried-runtime", b"x", "sample",
+                                          lambda: invalid, lambda: b"x")
     """Integration: one local artifact distinguishes HOLD from bad evidence."""
 
     def test_write_check_stale_and_unreliable_evidence_share_one_lifecycle(self):

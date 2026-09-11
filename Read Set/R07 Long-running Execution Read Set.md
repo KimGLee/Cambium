@@ -72,7 +72,7 @@ load_edges:
       - kernel/K12 Quality Assurance/09 Batch-close Closed List.md
       - kernel/K12 Quality Assurance/12 Substantive Correctness Review.md
       - kernel/K12 Quality Assurance/14 Batch Review.md
-      - kernel/K12 Quality Assurance/audit-receipt-contract.yaml
+      - kernel/K12 Quality Assurance/audit-fingerprint-contract.yaml
       - kernel/K12 Quality Assurance/substantive-review-contract.yaml
       - kernel/K13 Task Runtime and Execution Control/12 Completion Gate Bindings.md
     read_sets:

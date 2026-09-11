@@ -13,6 +13,7 @@ import subprocess
 import sys
 from dataclasses import dataclass
 from contextvars import ContextVar
+from contextlib import contextmanager
 
 import Tools.execution.audit.audit_evidence_runtime as audit_evidence_runtime
 import Tools.execution.audit.audit_execution_runtime as audit_execution_runtime
@@ -34,10 +35,9 @@ import Tools.execution.task_runtime.runtime_paths as runtime_paths
 import Tools.execution.task_runtime.runtime_validation as runtime_validation
 import Tools.execution.task_runtime.task_runtime_action as task_runtime_action
 import Tools.execution.task_runtime.runtime_state_contract as runtime_state_contract
-import Tools.execution.audit.batch_review_obligation_contract as batch_review_obligation_contract
 from Tools.platform.common.primitives import catalog_record
 from Tools.platform.common.reporting import write_canonical_json, host_environment_boundary
-from Tools.platform.common.reporting import publication_result_reliable, observe_invocation
+from Tools.platform.common.reporting import publication_result_reliable, observe_invocation, validate_publication_result
 from Tools.platform.repository import path_admission, path_capability
 from Tools.platform.common.host_environment import HostEnvironmentUnavailable, preparation_request
 
@@ -54,7 +54,8 @@ MAINTENANCE_GATE_RECEIPT_PATH = runtime_paths.child_path(
 TERMINAL_RECEIPT_PATH = runtime_paths.path_for("terminal-audit-receipts")
 TERMINAL_PROOF_PATH = assemble_terminal_proof.DEFAULT_PROOF_PATH
 _EXECUTION_OBSERVATION = ContextVar("runner_execution_observation", default=None)
-_ADMISSION_OBSERVATION = ContextVar("runner_admission_observation", default=None)
+_AUDIT_RESUMPTIONS = ContextVar("runner_audit_resumptions", default=None)
+_RUNTIME_INPUTS = ContextVar("runner_runtime_inputs", default=None)
 
 
 class RunnerError(ValueError):
@@ -309,9 +310,14 @@ def _audit_action(result, item):
             return phase_action
         if step.get("external_instruction"):
             target = dict(target, external_instruction=step["external_instruction"])
-        return _await(
+        action = _await(
             result, step["status"], step["token"], _producer_input(result, step),
             step["reason_code"], target=target, plan_sha256=plan_sha)
+        pending = _AUDIT_RESUMPTIONS.get()
+        if pending is not None:
+            pending[(os.path.realpath(os.path.abspath(result["root"])),
+                     action["action_id"])] = step
+        return action
     if step["status"] == "repair":
         return _repair(result, step["reason_code"], target=target)
     if step["status"] != "complete":
@@ -648,6 +654,29 @@ def _resume_action(result):
     return handler.resume(result, route, parameters, token)
 
 
+def _validate_runtime(root, **kwargs):
+    """Re-admit runtime, retaining only the owner's rebindable input pair.
+
+    Profile and Standards interpretation can survive a Queue/Receipt write;
+    runtime acceptance cannot. The existing validator rebinds their actual
+    source bytes on every call and independently reads all runtime state.
+    This operation-local handoff never retains its result or an audit verdict.
+    """
+    inputs = _RUNTIME_INPUTS.get()
+    canonical_root = os.path.realpath(os.path.abspath(os.fspath(root)))
+    context = inputs.get(canonical_root) if inputs is not None else None
+    if context is not None:
+        kwargs = dict(queue_runtime.runtime_authority_validation_kwargs(context),
+                      **kwargs)
+    result = runtime_validation.validate_runtime(root, **kwargs)
+    if (inputs is not None and context is None and not result.get("errors") and
+            result.get("_metadata_execution_contract") is not None):
+        # The authority owner validates the complete inseparable pair. Partial
+        # planning/repair observations have no such pair and are not retained.
+        inputs[canonical_root] = queue_runtime.runtime_authority_context(result)
+    return result
+
+
 @compile_cli_contract.with_checked_views
 def next_action(root):
     """Read one authoritative snapshot and return its typed next action."""
@@ -655,12 +684,8 @@ def next_action(root):
     # materialization.  The Runner admits that one empty-Queue boundary so it
     # can invoke the existing compiler; every non-empty Queue still receives
     # the ordinary full validation in the same validator.
-    result = runtime_validation.validate_runtime(
+    result = _validate_runtime(
         root, allow_unmaterialized_queue=True)
-    admission = _ADMISSION_OBSERVATION.get()
-    if admission is not None:
-        admission.clear()
-        admission[os.path.realpath(os.path.abspath(root))] = result
     try:
         with audit_evidence_runtime.evidence_observation(result) as observed:
             return _resume_action(observed)
@@ -707,8 +732,8 @@ def _carried_cli_contract_currentness_check(root):
         stderr=subprocess.PIPE, check=False)
 
 
-def _compiled_cli_contract(root):
-    """Validate and load this adopter runtime's carried CLI contract.
+def _compiled_cli_tool(root, tool):
+    """Consume one Tool row from the fully checked carried CLI contract.
 
     ``Tools/compiled/cli-contract.yaml`` describes the complete source
     distribution and is deliberately omitted from an adopter.  A Runner
@@ -751,37 +776,16 @@ def _compiled_cli_contract(root):
             raise RunnerError(
                 "validated carried-runtime CLI contract cannot be loaded: %s" %
                 exc) from exc
-        if not isinstance(document, dict) or \
-                document.get("artifact") != "cli-invocation-contract" or \
-                not isinstance(document.get("tools"), list):
-            raise RunnerError("compiled CLI contract has an invalid artifact shape")
-        if document.get("projection_target") != "carried-runtime":
-            raise RunnerError(
-                "Runner requires a carried-runtime CLI contract; found %r" %
-                document.get("projection_target"))
         return document
 
     def readback():
         with open(path, "rb") as handle:
             return handle.read()
     try:
-        return compile_cli_contract.checked_projection(
-            root, tool_availability.CARRIED_RUNTIME, before, validate, readback)
+        return compile_cli_contract.checked_tool(
+            root, tool_availability.CARRIED_RUNTIME, before, tool, validate, readback)
     except compile_cli_contract.ContractError as exc:
         raise RunnerError(str(exc)) from exc
-
-
-def _compiled_cli_tool(root, tool):
-    document = _compiled_cli_contract(root)
-    matches = [
-        row for row in document["tools"]
-        if isinstance(row, dict) and row.get("tool") == tool
-    ]
-    if len(matches) != 1:
-        raise RunnerError(
-            "compiled CLI contract resolves %s to %d entries" %
-            (tool, len(matches)))
-    return dict(matches[0], invocation_contract_source_hash=document.get("source_hash"))
 
 
 def _command_inputs(root, tool, arguments):
@@ -831,9 +835,9 @@ def _render_command(tool, script, schema, values):
 def _run_command(root, tool, arguments):
     # A child is an independent admission/write boundary. Never retain a
     # pre-dispatch runtime view for subsequent actions or resulting-state reads.
-    admission = _ADMISSION_OBSERVATION.get()
-    if admission is not None:
-        admission.clear()
+    pending = _AUDIT_RESUMPTIONS.get()
+    if pending is not None:
+        pending.clear()
     observation = _EXECUTION_OBSERVATION.get()
     if observation is not None:
         observation.update(stage="parameter-admission", current_tool=tool)
@@ -1006,7 +1010,7 @@ def _require_rendering_ready(result, batch_id):
 
 def _activate_ready_batch(root, batch_id, *,
                           standards_revalidation_receipt=None):
-    before = runtime_validation.validate_runtime(root)
+    before = _validate_runtime(root)
     if before.get("errors"):
         raise RunnerError("runtime invalid before activation: %s" %
                           "; ".join(before["errors"]))
@@ -1030,7 +1034,7 @@ def _activate_ready_batch(root, batch_id, *,
     if len(candidates) != 1:
         raise RunnerError(
             "activation Gate produced %d matching receipts" % len(candidates))
-    result = runtime_validation.validate_runtime(root)
+    result = _validate_runtime(root)
     if result.get("errors"):
         raise RunnerError(
             "runtime changed after activation Gate: %s" %
@@ -1055,7 +1059,7 @@ def _activate_ready_batch(root, batch_id, *,
             **arguments,
         })
     if completed.returncode == 0:
-        current = runtime_validation.validate_runtime(root)
+        current = _validate_runtime(root)
         item = (current.get("items_by_id") or {}).get(batch_id) or {}
         if item.get("state") != "open":
             raise RunnerError(
@@ -1089,7 +1093,7 @@ def _enter_completion_candidate(root):
         raise RunnerError(
             "completion Gate produced %d matching receipts" %
             len(candidates))
-    result = runtime_validation.validate_runtime(root)
+    result = _validate_runtime(root)
     if result.get("errors"):
         raise RunnerError(
             "runtime changed after completion Gate: %s" %
@@ -1108,7 +1112,7 @@ def _enter_completion_candidate(root):
                 "json": True,
             })
     if completed.returncode == 0:
-        current = runtime_validation.validate_runtime(root)
+        current = _validate_runtime(root)
         if (current.get("progress") or {}).get("task_state") != \
                 "completion-candidate":
             raise RunnerError(
@@ -1139,7 +1143,7 @@ def _invoke_activate_revalidated_batch(root, action):
 def _invoke_consume_standards_revalidation(root, action):
     completed = _run_command(root, action["tool"], action["arguments"])
     if completed.returncode == 0:
-        current = runtime_validation.validate_runtime(root)
+        current = _validate_runtime(root)
         batch_id = action["target"]["batch_id"]
         item = (current.get("items_by_id") or {}).get(batch_id) or {}
         outstanding = queue_runtime.outstanding_standards_revalidation(
@@ -1175,28 +1179,6 @@ def _require_input(action, supplied):
     return interface_contract.bind_input(action["required_input"], supplied)
 
 
-def _recheck_audit_step(root, action):
-    """Re-read current runtime, reusing only the owner's admitted source views.
-
-    The runtime owner rechecks Profile/Standards identity and current bytes.
-    Queue, pages, evidence and the stage are read again, not taken from a cached
-    verdict. Independent producer admission, locked CAS and read-back remain.
-    """
-    prior = (_ADMISSION_OBSERVATION.get() or {}).get(
-        os.path.realpath(os.path.abspath(root)))
-    kwargs = {}
-    if prior is not None and not queue_runtime.runtime_admission_errors(prior):
-        kwargs = queue_runtime.runtime_authority_validation_kwargs(
-            queue_runtime.runtime_authority_context(prior))
-    result = runtime_validation.validate_runtime(root, **kwargs)
-    item = (result.get("items_by_id") or {}).get(
-        action["target"].get("batch_id"))
-    if not isinstance(item, dict) or item.get("state") != "open":
-        raise RunnerError("awaited audit action no longer targets an open batch")
-    return audit_execution_runtime.next_stage_step(
-        result, item, "pre-merge", required_state="open")
-
-
 def _await_external_reparse(_root, action, _supplied, _route):
     raise RunnerError(
         "action %s is resolved outside the Runner; derive a new action after "
@@ -1206,7 +1188,7 @@ def _await_external_reparse(_root, action, _supplied, _route):
 def _await_task_transition(root, action, supplied, route):
     transition = supplied["transition"]
     summary = supplied["checkpoint_summary"]
-    result = runtime_validation.validate_runtime(root)
+    result = _validate_runtime(root)
     return _run_command(
         root, metadata_execution_contract.capability_invocation_tool(
             _route_capability(route), root=root), {
@@ -1273,7 +1255,7 @@ def _await_standards_revalidation(root, action, supplied, route):
                 "json": True,
             })
     if completed.returncode == 0:
-        current = runtime_validation.validate_runtime(root)
+        current = _validate_runtime(root)
         aggregate_id = _current_standards_revalidation_aggregate(
             current, batch_id)
         if aggregate_id is None:
@@ -1322,11 +1304,8 @@ def _await_terminal_audit(root, action, supplied, route):
                 "terminal_audit_input": input_path,
                 "queue_check_receipt": queue_receipt["receipt_id"],
                 "corpus_plan_check_receipt": corpus_receipt["receipt_id"],
-                "audit_receipt_register":
-                    runtime_paths.AUDIT_RECEIPT_REGISTER_PATH,
                 "terminal_audit_receipt_register": TERMINAL_RECEIPT_PATH,
-                "full_deterministic_results":
-                    runtime_paths.AUDIT_RECEIPT_REGISTER_PATH,
+                "full_deterministic_results": TERMINAL_RECEIPT_PATH,
                 "proof": TERMINAL_PROOF_PATH,
                 "apply": True,
                 "json": True,
@@ -1356,7 +1335,7 @@ def _await_terminal_audit(root, action, supplied, route):
         checked, _registered_gate_predicate(root, "terminal-proof"),
         "Terminal Proof Gate")
 
-    current = runtime_validation.validate_runtime(root)
+    current = _validate_runtime(root)
     if current.get("errors"):
         raise RunnerError(
             "runtime changed after Terminal Proof Gate: %s" %
@@ -1375,7 +1354,7 @@ def _await_terminal_audit(root, action, supplied, route):
                 "json": True,
             })
     if completed.returncode == 0:
-        resulting = runtime_validation.validate_runtime(root)
+        resulting = _validate_runtime(root)
         if (resulting.get("progress") or {}).get("task_state") != "complete":
             raise RunnerError(
                 "Terminal completion writer succeeded without completing task")
@@ -1384,15 +1363,23 @@ def _await_terminal_audit(root, action, supplied, route):
 
 def _await_audit_producer(root, action, supplied, _route):
     token = action["token"]
-    step = _recheck_audit_step(root, action)
-    if step.get("token") != token:
-        raise RunnerError("awaited audit action is no longer current")
+    # The operation has just observed this action (and matched the caller's
+    # initial identity). Consume that exact owner's step, rather
+    # than resolving a different obligation under the same token a second
+    # time. It is scoped to this root and invocation, never supplied by a
+    # caller or retained across producer dispatch/after-image observation.
+    pending = _AUDIT_RESUMPTIONS.get()
+    key = (os.path.realpath(os.path.abspath(root)), action["action_id"])
+    step = pending.pop(key, None) if pending is not None else None
+    if step is None or step.get("token") != token:
+        raise RunnerError("awaited audit action has no current invocation step")
     arguments = dict(step["resume_arguments"])
     arguments.update(supplied)
     if token == "record-batch-page-review":
-        batch_review_obligation_contract.validate_review_input(
-            step["target"]["review_input_constraints"],
-            arguments.get("applicability_disposition"), arguments.get("applicability_reason"))
+        answers = task_runtime_action.page_review_answers(
+            [json.loads(value) for value in arguments["reviews"]])
+        if action["target"]["obligation_id"] not in answers:
+            raise RunnerError("page review inputs omit the current obligation")
     elif token == "record-rendering-verification":
         rendering_verification_contract.rendering_input(
             **{field: arguments.get(field) for field in ("rendering_mode", "visual_trigger",
@@ -1532,19 +1519,32 @@ def _continue_awaited(root, action, supplied):
     return handler.await_input(root, action, supplied, route)
 
 
+@contextmanager
+def _runner_operation_scope():
+    """Retire pending steps and rebindable input objects at operation exit."""
+    pending = {}
+    inputs = {}
+    token = _AUDIT_RESUMPTIONS.set(pending)
+    input_token = _RUNTIME_INPUTS.set(inputs)
+    try:
+        yield
+    finally:
+        pending.clear()
+        _AUDIT_RESUMPTIONS.reset(token)
+        inputs.clear()
+        _RUNTIME_INPUTS.reset(input_token)
+
+
 @compile_cli_contract.with_checked_views
+@_runner_operation_scope()
 def execute(root, expected_action_id, input_record=None):
     """Execute exactly the current action and return its authoritative result."""
-    token = _ADMISSION_OBSERVATION.set({})
-    try:
-        action = next_action(root)
-        if action["action_id"] != expected_action_id:
-            raise RunnerError(
-                "next action changed; expected %s, current %s" %
-                (expected_action_id, action["action_id"]))
-        return _execute_observed(root, action, input_record)
-    finally:
-        _ADMISSION_OBSERVATION.reset(token)
+    action = next_action(root)
+    if action["action_id"] != expected_action_id:
+        raise RunnerError(
+            "next action changed; expected %s, current %s" %
+            (expected_action_id, action["action_id"]))
+    return _execute_observed(root, action, input_record)
 
 
 def _execute_observed(root, action, input_record=None):
@@ -1602,20 +1602,44 @@ def _execute_observed(root, action, input_record=None):
 
 
 @compile_cli_contract.with_checked_views
-def run_until_boundary(root, *, max_steps=64):
-    """Run deterministic invoke actions until a semantic or repair boundary."""
+@_runner_operation_scope()
+def run_until_boundary(root, *, max_steps=64, input_record=None):
+    """Continue deterministic actions, or deliver explicit same-page answers.
+
+    The existing same-page input collection is dispatched once to its sole
+    producer. That producer keeps independent publications and read-backs;
+    the Runner does not duplicate its item loop or manufacture item actions.
+    """
     if not isinstance(max_steps, int) or isinstance(max_steps, bool) or \
             max_steps < 1:
         raise RunnerError("max_steps must be a positive integer")
     executed = []
     action = next_action(root)
+    reviews = (task_runtime_action.page_review_inputs(input_record, action)
+               if input_record is not None else None)
+
+    def finish(next_value, error=None):
+        result = {"executed": executed, "next_action": next_value}
+        if error is not None:
+            result["next_action_error"] = error
+        if reviews is not None:
+            # Not attempted, not authorization to retry a failed/uncertain
+            # item. Such an item remains in executed with its actual outcome.
+            result["remaining_input_ids"] = sorted(reviews)
+        return result
+
     for _index in range(max_steps):
-        if action["disposition"] != "invoke":
-            return {"executed": executed, "next_action": action}
-        outcome = _execute_observed(root, action)
+        supplied = None
+        if reviews is not None:
+            supplied = {"reviews": [{"obligation_id": identity, "input": answer}
+                                    for identity, answer in reviews.items()]}
+        elif action["disposition"] != "invoke":
+            return finish(action)
+        outcome = _execute_observed(root, action, supplied)
         executed.append({
             "action_id": action["action_id"],
             "token": action["token"],
+            "target": dict(action.get("target") or {}),
             "returncode": outcome["returncode"],
             "tool_returncode": outcome.get("tool_returncode", outcome["returncode"]),
             "invocation_errors": outcome.get("invocation_errors", []),
@@ -1625,19 +1649,32 @@ def run_until_boundary(root, *, max_steps=64):
             "failure": outcome["failure"],
             "substeps": outcome["substeps"],
         })
+        if reviews is not None:
+            # The child reports each attempted append independently. Unused
+            # answers (including ones already covered by a common fact) are
+            # not silently turned into new declarations or retry authority.
+            try:
+                reports = json.loads(outcome["output"])
+                validate_publication_result(reports)
+                remaining_ids = reports[-1]["remaining_input_ids"]
+                if (not isinstance(remaining_ids, list) or
+                        len(remaining_ids) != len(set(remaining_ids)) or
+                        any(identity not in reviews for identity in remaining_ids)):
+                    raise ValueError("producer returned an invalid remaining input set")
+                reviews = {identity: reviews[identity] for identity in remaining_ids}
+            except (KeyError, IndexError, TypeError, ValueError) as exc:
+                return finish(outcome["next_action"], outcome["next_action_error"] or str(exc))
+            if (outcome["returncode"] == 0 and outcome["next_action"] is not None and
+                    outcome["next_action"]["action_id"] == action["action_id"]):
+                return finish(outcome["next_action"], "successful Tool invocation did not advance its action")
+            return finish(outcome["next_action"], outcome["next_action_error"])
         if outcome["returncode"] != 0:
-            return {
-                "executed": executed,
-                "next_action": outcome["next_action"],
-                "next_action_error": outcome["next_action_error"],
-            }
+            return finish(outcome["next_action"], outcome["next_action_error"])
         if (outcome["next_action"] is not None and
                 outcome["next_action"]["action_id"] == action["action_id"]):
-            raise RunnerError(
-                "successful Tool invocation did not advance its action")
+            raise RunnerError("successful Tool invocation did not advance its action")
         if outcome["next_action"] is None:
-            return {"executed": executed, "next_action": None,
-                    "next_action_error": outcome["next_action_error"]}
+            return finish(None, outcome["next_action_error"])
         action = outcome["next_action"]
     raise RunnerError("max_steps reached before a boundary")
 
@@ -1688,11 +1725,12 @@ def main(argv=None):
         help="execute exactly this current action identity")
     mode.add_argument(
         "--run-until-boundary", action="store_true",
-        help="advance invoke actions until Agent, user, Host, repair, or terminal")
+        help="advance invoke actions to a boundary, or deliver explicit same-page review inputs")
     await_input = parser.add_mutually_exclusive_group()
     await_input.add_argument(
         "--input",
-        help=("repository-relative JSON object below %s for await input" %
+        help=("JSON below %s: one await input for --execute, or initial_action_id "
+              "and reviews [{obligation_id, input}] for same-page --run-until-boundary" %
               runtime_paths.TRANSIENT_ROOT))
     await_input.add_argument(
         "--proposal",
@@ -1700,7 +1738,7 @@ def main(argv=None):
               "action" % runtime_paths.TRANSIENT_ROOT))
     parser.add_argument(
         "--max-steps", type=int, default=64,
-        help="maximum deterministic actions for --run-until-boundary")
+        help="maximum actions for --run-until-boundary")
     parser.add_argument(
         "--json", action="store_true",
         help=("emit the canonical machine result; output is always JSON and "
@@ -1708,8 +1746,8 @@ def main(argv=None):
     args = parser.parse_args(argv)
 
     try:
-        if args.input and not args.execute:
-            raise ValueError("--input requires --execute")
+        if args.input and not (args.execute or args.run_until_boundary):
+            raise ValueError("--input requires --execute or --run-until-boundary")
         if args.proposal and not args.execute:
             raise ValueError("--proposal requires --execute")
         if args.max_steps != 64 and not args.run_until_boundary:
@@ -1721,7 +1759,8 @@ def main(argv=None):
                 args.root, args.execute, input_record=input_record)
         elif args.run_until_boundary:
             result = run_until_boundary(
-                args.root, max_steps=args.max_steps)
+                args.root, max_steps=args.max_steps,
+                input_record=_input_record(args.root, args.input))
         else:
             result = next_action(args.root)
     except (OSError, TypeError, UnicodeError, ValueError,

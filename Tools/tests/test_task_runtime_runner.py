@@ -25,6 +25,7 @@ from Tools.execution.task_runtime import queue_runtime  # noqa: E402
 from Tools.execution.task_runtime import runtime_paths  # noqa: E402
 from Tools.platform.agent_interface import compile_cli_contract  # noqa: E402
 from Tools.platform.agent_interface import tool_availability  # noqa: E402
+from Tools.platform.common import reporting
 from Tools.tests.support.task_runtime_object_factory import (  # noqa: E402
     parsed_runtime_state,
 )
@@ -65,36 +66,34 @@ class TaskRuntimeRunnerUnitTests(unittest.TestCase):
             self.assertNotIn("_audit_evidence_facts", view)
             self.assertNotIn("_audit_stage_resolutions", view)
 
-    def test_audit_recheck_reuses_only_authorized_sources_before_dispatch(self):
-        prior = parsed_runtime_state()
-        current = parsed_runtime_state()
-        current["items_by_id"]["B1"]["state"] = "open"
-        action = {"target": {"batch_id": "B1"}}
-        authority = object()
-        views = {"authorized_profile_view": {"current": "profile"},
-                 "authorized_active_standards_view": {"current": "standards"}}
-        token = runner._ADMISSION_OBSERVATION.set({"/fixture": prior})
-        try:
-            with mock.patch.object(runner.queue_runtime, "runtime_admission_errors", return_value=[]), \
-                    mock.patch.object(runner.queue_runtime, "runtime_authority_context", return_value=authority) as owner, \
-                    mock.patch.object(runner.queue_runtime, "runtime_authority_validation_kwargs", return_value=views), \
-                    mock.patch.object(runner.runtime_validation, "validate_runtime", return_value=current) as validate, \
-                    mock.patch.object(runner.audit_execution_runtime, "next_stage_step", return_value={"token": "current"}) as step:
-                self.assertEqual({"token": "current"}, runner._recheck_audit_step("/fixture", action))
-                owner.assert_called_once_with(prior)
-                validate.assert_called_once_with("/fixture", **views)
-                step.assert_called_once_with(current, current["items_by_id"]["B1"], "pre-merge", required_state="open")
-                validate.side_effect = ValueError("owner refuses changed source")
-                with self.assertRaisesRegex(ValueError, "changed source"):
-                    runner._recheck_audit_step("/fixture", action)
-                self.assertEqual(1, step.call_count)
-            with mock.patch.object(runner, "_command_inputs", side_effect=ValueError("stop before child")):
-                with self.assertRaises(ValueError):
-                    runner._run_command("/fixture", "sample", {})
-                self.assertEqual({}, runner._ADMISSION_OBSERVATION.get())
-        finally:
-            runner._ADMISSION_OBSERVATION.reset(token)
-        self.assertIsNone(runner._ADMISSION_OBSERVATION.get())
+        # Reusing the existing source interpretation does not reuse a runtime
+        # result: each action/readback still calls the complete validator.
+        state["_metadata_execution_contract"] = object()
+        after = dict(state, queue={**state["queue"], "state_revision": 2})
+        authority = {"owner-pair": object()}
+        arguments = {"authorized_profile_view": state["_profile_authorized_view"],
+                     "authorized_active_standards_view": state["_active_standards_authorized_view"]}
+        with mock.patch.object(runner.runtime_validation, "validate_runtime",
+                               side_effect=[state, after, state]) as validate, \
+                mock.patch.object(runner.queue_runtime, "runtime_authority_context",
+                                  return_value=authority) as retain, \
+                mock.patch.object(runner.queue_runtime, "runtime_authority_validation_kwargs",
+                                  return_value=arguments) as rebind:
+            with runner._runner_operation_scope():
+                self.assertIs(state, runner._validate_runtime("/fixture"))
+                self.assertIs(after, runner._validate_runtime("/fixture"))
+            self.assertIsNone(runner._RUNTIME_INPUTS.get())
+            self.assertIs(state, runner._validate_runtime("/fixture"))
+        self.assertEqual([mock.call("/fixture"), mock.call("/fixture", **arguments),
+                          mock.call("/fixture")], validate.call_args_list)
+        retain.assert_called_once_with(state)
+        rebind.assert_called_once_with(authority)
+        with self.assertRaisesRegex(ValueError, "unreadable"), \
+                mock.patch.object(runner.runtime_validation, "validate_runtime",
+                                  side_effect=ValueError("unreadable")):
+            with runner._runner_operation_scope():
+                runner._validate_runtime("/fixture")
+        self.assertIsNone(runner._RUNTIME_INPUTS.get())
 
     def test_withdrawn_consumed_proof_is_an_explicit_owned_continuation(self):
         state = parsed_runtime_state()
@@ -299,60 +298,122 @@ class TaskRuntimeRunnerUnitTests(unittest.TestCase):
         self.assertIs(boundary, result["next_action"])
         self.assertEqual(2, observe.call_count)  # One before and one resulting-state observation.
 
+        # Collection delivery is a Runner boundary, not a second producer or
+        # an atomic transaction. Parsed in-memory states suffice here.
+        def review(identity, *, binding=invoke["binding"], **target):
+            fields = dict(invoke)
+            fields.pop("action_id")
+            fields.update(binding=binding, disposition="await-agent", token="record-batch-page-review",
+                          capability_id=None, tool=None, arguments={}, required_input={
+                              "type": "object", "properties": {}, "additionalProperties": False,
+                              "x-cambium-binding": {}}, target={
+                              "batch_id": "B1", "page": "Topics/A.md", "plan_id": "plan-one",
+                              "audit_plan_sha256": "sha256:" + "a" * 64,
+                              "obligation_id": identity, **target})
+            return action_contract.build_action(**fields)
+
+        first, second = review("one"), review("two")
+        inputs = {"initial_action_id": first["action_id"], "reviews": [
+            {"obligation_id": "two", "input": {"statement": "Second answer."}},
+            {"obligation_id": "one", "input": {"statement": "First answer."}},
+        ]}
+        publication = runner.kblib.ReceiptPublication()
+        publication.outcome, publication.confirmed = "present", True
+        one = reporting.publication_result(publication, status="recorded", receipt_id="one")
+        two = reporting.publication_result(publication, status="recorded", receipt_id="two", remaining_input_ids=[])
+        success = dict(failed, returncode=0, diagnostics="", output=json.dumps([one, two]), next_action=invoke)
+        with mock.patch.object(runner, "next_action", return_value=first), \
+                mock.patch.object(runner, "_execute_observed", return_value=success) as dispatch:
+            delivered = runner.run_until_boundary("/fixture", input_record=inputs)
+        dispatch.assert_called_once()
+        self.assertEqual({"reviews": inputs["reviews"]}, dispatch.call_args.args[2])
+        self.assertEqual(1, len(delivered["executed"]))
+        self.assertEqual([], delivered["remaining_input_ids"])
+        self.assertIs(invoke, delivered["next_action"])
+        self.assertIsNone(runner._AUDIT_RESUMPTIONS.get())
+
+        publication.confirmed = False
+        uncertain = reporting.publication_result(publication, status="recorded", receipt_id="two", remaining_input_ids=[])
+        for next_value, outcome in (
+                (invoke, dict(success, output=json.dumps([dict(one, remaining_input_ids=["two"])]))),
+                (second, dict(success, returncode=1, output=json.dumps([one, uncertain]))),
+                (first, success)):
+            with self.subTest(next_value=next_value["action_id"]), \
+                    mock.patch.object(runner, "next_action", return_value=first), \
+                    mock.patch.object(runner, "_execute_observed", return_value=dict(outcome, next_action=next_value)) as dispatch:
+                stopped = runner.run_until_boundary("/fixture", input_record=inputs)
+            dispatch.assert_called_once()
+            self.assertEqual(outcome["output"], stopped["executed"][0]["output"])
+            self.assertIs(next_value, stopped["next_action"])
+            if next_value is first:
+                self.assertIn("did not advance", stopped["next_action_error"])
+
 
 class TaskRuntimeRunnerContractTests(unittest.TestCase):
     """One representative compiled-CLI consumption contract."""
 
-    def test_page_review_binding_roundtrips_null_and_exact_consumption(self):
+    def test_page_review_collection_roundtrips_existing_input_and_nulls(self):
         from Tools.execution.audit import audit_obligation_projection as projection
         from Tools.execution.audit import audit_execution_runtime as execution
         from Tools.platform.agent_interface import cli_argv_renderer as renderer
         registry = execution.batch_review_obligation_contract
-        parser = runner.entrypoint_loader.capture_argument_parser(
-            "record_batch_page_review", TOOLS, require_marker=True)
-        cli = {"tool": "record_batch_page_review", "arguments":
-               compile_cli_contract.describe_arguments(TOOLS.parent, parser)}
+        parser = runner.entrypoint_loader.capture_argument_parser("record_batch_page_review", TOOLS, require_marker=True)
+        cli = {"tool": "record_batch_page_review", "arguments": compile_cli_contract.describe_arguments(TOOLS.parent, parser)}
         owner = projection.obligation_spec_for_rule(registry.M_ATOMIC_RULE_IDS[0], root=TOOLS.parent)
-        obligation = projection.required_obligation(projection.resolve_obligation_definition(
-            owner, "Topics/A.md", trigger="new"))
+        obligation = projection.required_obligation(projection.resolve_obligation_definition(owner, "Topics/A.md", trigger="new"))
         obligation["obligation_id"] = "obligation-one"
-        status = {"audit_plan_path": ".cambium/work_specs/audit-plans/p.yaml",
+        status = {"audit_plan_id": "plan-one", "audit_plan_path": ".cambium/work_specs/audit-plans/p.yaml",
                   "audit_plan_sha256": "sha256:" + "a" * 64,
                   "obligations": [{"obligation": obligation, "status": "missing"}]}
-        result = {"root": str(TOOLS.parent)}
+        result = parsed_runtime_state(root=str(TOOLS.parent))
+        result["items_by_id"]["B1"]["state"] = "open"
         step = execution._missing_step(result, {"id": "B1"}, status, obligation)
-        with mock.patch.object(runner, "_compiled_cli_tool", return_value=cli):
-            shape = runner._producer_input(result, step)
-        with mock.patch.object(runner, "_compiled_cli_tool", return_value=dict(
-                cli, invocation_contract_source_hash="sha256:" + "b" * 64)):
-            changed_shape = runner._producer_input(result, step)
-        self.assertEqual(shape["properties"], changed_shape["properties"])
-        self.assertNotEqual(shape["x-cambium-binding"]["source_fingerprint"],
-                            changed_shape["x-cambium-binding"]["source_fingerprint"])
-        supplied = {"reviewer_context_id": "reviewer-one", "reviewer_role": "reviewer",
-                    "verdict": "passed", "statement": "Bounded review result.",
-                    "applicability_disposition": "applicable", "applicability_reason": None}
-        action = {"token": step["token"], "required_input": shape}
-        bound = runner._require_input(action, supplied)
+        answer = {"reviewer_context_id": "reviewer-one", "reviewer_role": "reviewer",
+                  "verdict": "passed", "statement": "Bounded review result.",
+                  "applicability_disposition": "applicable", "applicability_reason": None}
+        supplied = {"reviews": [{"obligation_id": "obligation-one", "input": answer}]}
         captured = []
-
+        publication = runner.kblib.ReceiptPublication()
+        publication.outcome, publication.confirmed = "present", True
         def parse_command(_root, tool, arguments):
-            argv, _ = renderer.build_argv(tool, renderer.schema_from_compiled_tool(cli),
-                                         dict(arguments, root=str(TOOLS.parent)))
-            captured.append(parser.parse_args(argv))
-            return completed()
-
-        with mock.patch.object(runner, "_recheck_audit_step", return_value=step), \
-                mock.patch.object(runner, "_run_command", side_effect=parse_command):
-            runner._await_audit_producer(TOOLS.parent, action, bound, None)
-        self.assertIsNone(captured[0].applicability_reason)
-        self.assertEqual([], captured[0].consumed_evidence_ref)
-        self.assertEqual("obligation-one", captured[0].obligation_id)
-        self.assertTrue(captured[0].apply)
-        for invalid in (dict(supplied, batch="B2"), dict(supplied, consumed_evidence_ref=[]),
-                        dict(supplied, reviewer_role=0), {}):
-            with self.subTest(keys=sorted(invalid)), self.assertRaises(ValueError):
+            argv, _ = renderer.build_argv(tool, renderer.schema_from_compiled_tool(cli), dict(arguments, root=str(TOOLS.parent)))
+            parsed = parser.parse_args(argv)
+            captured.append(parsed)
+            payload = [reporting.publication_result(publication, status="recorded", remaining_input_ids=[])]
+            return completed(stdout=json.dumps(payload))
+        with mock.patch.object(runner.runtime_validation, "validate_runtime", return_value=result) as validate, \
+                mock.patch.object(runner, "_phase_action", return_value=None), \
+                mock.patch.object(runner, "_compiled_cli_tool", return_value=cli), \
+                mock.patch.object(runner.audit_execution_runtime, "next_stage_step", return_value=step) as select, \
+                mock.patch.object(runner, "_resume_action", side_effect=lambda observed:
+                                  runner._audit_action(observed, observed["items_by_id"]["B1"])):
+            action = runner.next_action(TOOLS.parent)
+            self.assertIsNone(runner._AUDIT_RESUMPTIONS.get())
+            shape = action["required_input"]
+            with mock.patch.object(runner, "_compiled_cli_tool", return_value=dict(cli, invocation_contract_source_hash="changed")):
+                changed = runner._producer_input(result, step)
+            self.assertEqual(shape["properties"], changed["properties"])
+            self.assertNotEqual(shape["x-cambium-binding"]["source_fingerprint"], changed["x-cambium-binding"]["source_fingerprint"])
+            validate.reset_mock()
+            select.reset_mock()
+            with mock.patch.object(runner, "_run_command", side_effect=parse_command) as dispatch:
+                outcome = runner.execute(TOOLS.parent, action["action_id"], supplied)
+            self.assertEqual(0, outcome["returncode"], outcome)
+            self.assertEqual(2, validate.call_count)
+            self.assertEqual(2, select.call_count)
+            dispatch.assert_called_once()
+            self.assertEqual(supplied["reviews"], [json.loads(value) for value in captured[0].reviews])
+            self.assertTrue(captured[0].apply)
+            self.assertNotIn("consumed_evidence_ref", vars(captured[0]))
+            step["target"]["obligation_id"] = "different-obligation"
+            with mock.patch.object(runner, "_run_command") as dispatch, self.assertRaisesRegex(runner.RunnerError, "next action changed"):
+                runner.execute(TOOLS.parent, action["action_id"], supplied)
+            dispatch.assert_not_called()
+        for invalid in ({}, dict(supplied, batch="B2"), {"reviews": [
+                {"obligation_id": "obligation-one", "input": dict(answer, reviewer_role=0)}]}):
+            with self.subTest(input=invalid), self.assertRaises(ValueError):
                 runner._require_input(action, invalid)
+        self.assertIsNone(runner._AUDIT_RESUMPTIONS.get())
 
     def test_execute_preserves_predispatch_and_partial_substep_failure(self):
         action = resume_action("materialize-required-queue")
@@ -400,7 +461,10 @@ class TaskRuntimeRunnerContractTests(unittest.TestCase):
         contract = compile_cli_contract.compile_contract(
             root, tool_availability.CARRIED_RUNTIME)
         with mock.patch.object(
-                runner, "_compiled_cli_contract", return_value=contract):
+                runner, "_compiled_cli_tool", side_effect=lambda root, tool:
+                compile_cli_contract.checked_tool(
+                    root, tool_availability.CARRIED_RUNTIME, b"fixture", tool,
+                    lambda: contract, lambda: b"fixture")):
             delta = ".cambium/deltas/B1.yaml"
             inputs = runner._command_inputs(
                 root, "apply_delta", {
@@ -470,9 +534,9 @@ class TaskRuntimeRunnerContractTests(unittest.TestCase):
             first = {
                 "artifact": "cli-invocation-contract",
                 "projection_target": "carried-runtime",
-                "tools": [],
+                "tools": [{"tool": "sample", "arguments": []}],
             }
-            second = dict(first, tools=[{"tool": "sample"}])
+            second = dict(first, tools=[{"tool": "sample", "arguments": ["changed"]}])
             current = completed(returncode=0)
             with mock.patch.object(
                     runner, "_carried_cli_contract_currentness_check",
@@ -480,17 +544,17 @@ class TaskRuntimeRunnerContractTests(unittest.TestCase):
                 path.write_text(
                     compile_cli_contract.kblib.canonical_yaml(first),
                     encoding="utf-8")
-                loaded_first = runner._compiled_cli_contract(root)
-                self.assertEqual(loaded_first, runner._compiled_cli_contract(root))
+                loaded_first = runner._compiled_cli_tool(root, "sample")
+                self.assertEqual(loaded_first, runner._compiled_cli_tool(root, "sample"))
                 self.assertEqual(1, check.call_count)
                 path.write_text(
                     compile_cli_contract.kblib.canonical_yaml(second),
                     encoding="utf-8")
-                loaded_second = runner._compiled_cli_contract(root)
+                loaded_second = runner._compiled_cli_tool(root, "sample")
                 self.assertEqual(2, check.call_count)
 
-            self.assertEqual([], loaded_first["tools"])
-            self.assertEqual([{"tool": "sample"}], loaded_second["tools"])
+            self.assertEqual([], loaded_first["arguments"])
+            self.assertEqual(["changed"], loaded_second["arguments"])
 
 
 class TaskRuntimeRunnerCheckpointIntegrationTests(unittest.TestCase):
@@ -720,9 +784,6 @@ class TaskRuntimeRunnerCheckpointIntegrationTests(unittest.TestCase):
              "check_proof", "update_task"],
             [call.args[1] for call in dispatched.call_args_list])
         assembler = dispatched.call_args_list[2].args[2]
-        self.assertEqual(
-            runner.runtime_paths.AUDIT_RECEIPT_REGISTER_PATH,
-            assembler["audit_receipt_register"])
         self.assertEqual(
             runner.TERMINAL_RECEIPT_PATH,
             assembler["terminal_audit_receipt_register"])

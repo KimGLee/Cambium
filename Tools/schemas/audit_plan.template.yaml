@@ -29,7 +29,7 @@ obligations:
     target: Topics/Example.md
     applicability: "tier=L AND trigger in [new,needs_rereview,review_by_expired]"
     evidence_role: emits
-    evidence_kind: audit-receipt
+    evidence_kind: substantive-review-evidence
     dimension: content_and_depth
     acceptance_predicate: content-correctness
     producer_check: substantive_review

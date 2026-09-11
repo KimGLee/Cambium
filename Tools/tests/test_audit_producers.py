@@ -1,4 +1,4 @@
-"""Focused producer tests for AuditPlan -> review -> full AuditReceipt."""
+"""Focused producer tests for AuditPlan -> accepted review evidence."""
 
 from pathlib import Path
 from types import SimpleNamespace
@@ -16,10 +16,6 @@ sys.path.insert(0, str(TOOLS))
 
 import Tools.execution.audit.audit_plan_contract as audit_plan_contract
 import Tools.execution.audit.audit_producer_runtime as audit_producer_runtime
-import Tools.execution.audit.audit_receipt_contract as audit_receipt_contract
-import Tools.execution.audit.batch_review_obligation_contract as batch_review_obligation_contract
-import Tools.execution.audit.complete_audit_receipt as complete_audit_receipt
-import Tools.execution.audit.prepare_audit_plan as prepare_audit_plan
 import Tools.execution.audit.record_substantive_review as record_substantive_review
 import Tools.execution.audit.substantive_review_contract as substantive_review_contract
 import Tools.platform.common.kblib as kblib
@@ -97,113 +93,8 @@ class AuditProducerTests(unittest.TestCase):
             "reuse_reason": None,
         }
 
-    def test_plan_derives_l_m_and_registry_selected_s_obligations(self):
-        frozen = tuple(self.frozen(path) for path in ("L.md", "M.md", "S.md"))
-        required_scan = SimpleNamespace(
-            scan_id="fixture-residual",
-            required_for_k12_item_6=True,
-            judgment_item_id="fixture-residual-judgment",
-            candidate_predicate="fixture residual predicate",
-        )
-        contract = SimpleNamespace(
-            valid=True,
-            manifest_repo_path="profiles/test/profile.toml",
-            profile_contract_fingerprint=SHA_A,
-            extension_dimensions=(),
-            judgment_items=(SimpleNamespace(
-                judgment_item_id="fixture-residual-judgment",
-                dimension_id="coverage_and_integration",
-                evidence_role="emits",
-                predicate_owner=None,
-            ),),
-            registered_scans=(required_scan,),
-            required_scan=required_scan,
-            batch_review_requirements=(),
-        )
-        result = {
-            "root": str(REPOSITORY),
-            "coverage": {"pages": [
-                {"path": "L.md", "tier": "L",
-                 "authoring_status": "unassessed", "property_state": {}},
-                {"path": "M.md", "tier": "M",
-                 "authoring_status": "unassessed", "property_state": {}},
-                {"path": "S.md", "tier": "S",
-                 "authoring_status": "unassessed", "property_state": {}},
-            ]},
-            "_profile_authorized_view": {"_contract": contract},
-        }
-        item = {"id": "B001", "manifest": ["L.md", "M.md", "S.md"]}
-        activation = {}
-        state = {
-            "task_id": "task-test", "queue_revision": 1,
-            "queue_state_revision": 2, "required_queue_sha256": SHA_A,
-            "coverage_ledger_sha256": SHA_A,
-            "progress_ledger_sha256": SHA_A,
-        }
-        profile = {
-            "selected_profile_manifest": "profiles/test/profile.toml",
-            "profile_snapshot_sha256": SHA_A,
-            "profile_contract_fingerprint": SHA_A,
-        }
-        standards = {
-            "upstream_revision_id": "standards-test",
-            "active_standards_sha256": SHA_A,
-        }
-        opening = {
-            "opening_transition_receipt": "audit-open",
-            "manifest_semantic_before_set_sha256": SHA_A,
-        }
-        with mock.patch.object(
-                audit_producer_runtime, "freeze_manifest_pages",
-                return_value=frozen), mock.patch.object(
-                    audit_producer_runtime, "runtime_state_bindings",
-                    return_value=state), mock.patch.object(
-                        audit_producer_runtime, "profile_bindings",
-                        return_value=profile), mock.patch.object(
-                            audit_producer_runtime, "standards_bindings",
-                            return_value=standards), mock.patch.object(
-                                prepare_audit_plan,
-                                "check_queue_opening_context",
-                                return_value=opening), mock.patch.object(
-                                    prepare_audit_plan,
-                                    "_changed_scope_targets",
-                                    return_value=((), None)), mock.patch(
-                                        "Tools.governance.profile.profile_admission.contract_from_admitted_view",
-                                        return_value=contract):
-            # This test owns obligation projection from an admitted model;
-            # real Gate and view binding are covered by admission integration.
-            plan, _ = prepare_audit_plan.build_plan(
-                str(REPOSITORY), result, item, activation,
-                generated_at="2026-08-28T00:00:00Z")
-        registry = batch_review_obligation_contract.load_registry(
-            str(REPOSITORY))
-        m_rules = {row["rule_id"]
-                   for row in registry["m_tier_atomic_items"]}
-        s_rule = registry["s_tier_sampling"]["rule_id"]
-        substantive_rule = substantive_review_contract.load_contract(
-            str(REPOSITORY))["obligation_projection"]["owner_rule_id"]
-        rows = plan["obligations"]
-        self.assertEqual(1, sum(
-            row["owner_rule_id"] == substantive_rule and
-            row["target"] == "L.md" for row in rows))
-        self.assertEqual(m_rules, {
-            row["owner_rule_id"] for row in rows
-            if row["target"] == "M.md" and
-            row["owner_rule_id"] in m_rules})
-        self.assertFalse(any(
-            row["owner_rule_id"] == substantive_rule and
-            row["target"] == "M.md" for row in rows))
-        expected_s = batch_review_obligation_contract.select_s_targets(
-            ["S.md"], task_id=plan["task_id"],
-            batch_id=plan["batch_id"],
-            opening_transition_receipt=plan[
-                "opening_transition_receipt"],
-            registry=registry)["sample_selected_targets"]
-        self.assertEqual(expected_s, sorted(
-            row["target"] for row in rows
-            if row["owner_rule_id"] == s_rule))
 
-    def test_review_and_full_receipt_match_kernel_contracts(self):
+    def test_review_first_publication_binds_the_kernel_obligation(self):
         obligation = self.obligation()
         plan = self.plan(obligation)
         plan_sha = audit_plan_contract.plan_sha256(plan)
@@ -217,50 +108,16 @@ class AuditProducerTests(unittest.TestCase):
             reviewer_role="reviewer", round_number=1,
             verdict="passed", findings=[], statement="reviewed", prior=None)
         substantive_review_contract.validate_review_receipt(evidence)
-        full = complete_audit_receipt.build_audit_receipt(
-            plan=plan, plan_sha256=plan_sha,
-            obligation=obligation, evidence=evidence)
-        audit_receipt_contract.validate_audit_receipt(full)
-        self.assertEqual("content_and_depth", full["dimension"])
+        self.assertEqual(plan["plan_id"], evidence["plan_id"])
+        self.assertEqual(plan_sha, evidence["audit_plan_sha256"])
+        self.assertEqual(obligation["obligation_id"], evidence["obligation_id"])
+        self.assertEqual(obligation["evidence_kind"], evidence["record_kind"])
         self.assertEqual(
             audit_producer_runtime.page_artifact_fingerprint(frozen_page),
-            full["artifact_fingerprint"])
-        self.assertNotEqual(
-            evidence["semantic_content_fingerprint"],
-            full["artifact_fingerprint"])
-        self.assertEqual(evidence["receipt_id"], full["evidence_ref"])
-
-        # A validated existing completion is reused, not written a second time.
-        with contextlib.ExitStack() as stack:
-            stack.enter_context(mock.patch.object(
-                audit_producer_runtime, "admitted_runtime",
-                return_value=(str(REPOSITORY), {}, object())))
-            stack.enter_context(mock.patch.object(
-                audit_producer_runtime, "open_batch", return_value=({}, {})))
-            stack.enter_context(mock.patch.object(
-                complete_audit_receipt, "_load_current_plan",
-                return_value=(None, plan, plan_sha, (frozen_page,))))
-            stack.enter_context(mock.patch.object(
-                complete_audit_receipt.audit_evidence_runtime, "evidence_evaluation",
-                side_effect=lambda result: result))
-            stack.enter_context(mock.patch.object(
-                complete_audit_receipt.audit_evidence_runtime, "require_completion_evidence",
-                return_value=(evidence, full)))
-            stack.enter_context(mock.patch.object(
-                audit_producer_runtime, "managed_receipt_path", return_value="unused.jsonl"))
-            append = stack.enter_context(mock.patch.object(kblib.ReceiptPublication, "append"))
-            output = stack.enter_context(contextlib.redirect_stdout(io.StringIO()))
-            code = complete_audit_receipt.main([
-                str(REPOSITORY), "--batch", "B001", "--plan", "unused.yaml",
-                "--obligation-id", obligation["obligation_id"],
-                "--evidence-receipt", evidence["receipt_id"], "--apply"])
-        result = json.loads(output.getvalue())
-        self.assertEqual(0, code)
-        self.assertFalse(result["applied"])
-        self.assertEqual("already-present", result["status"])
-        self.assertEqual(full["receipt_id"], result["receipt_id"])
-        self.assertTrue(result["publication"]["reused"])
-        append.assert_not_called()
+            evidence["artifact_fingerprint"])
+        self.assertNotEqual(evidence["semantic_content_fingerprint"],
+                            evidence["artifact_fingerprint"])
+        self.assertNotIn("evidence_ref", evidence)
 
     def test_changes_required_confirms_recording_without_claiming_review_pass(self):
         obligation = self.obligation()

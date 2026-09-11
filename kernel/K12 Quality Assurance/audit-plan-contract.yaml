@@ -151,9 +151,13 @@ due_stage_values:
   - post-delta-close
 
 evidence_kind_values:
-  - audit-receipt
+  - changed-scope-check-evidence
+  - rendering-verification-evidence
+  - profile-rendering-evidence
+  - substantive-review-evidence
   - gate-receipt
   - batch-page-review-record
+  - batch-close-member-evidence
   - candidate-set-receipt
   - page-batch-judgment-v2
 

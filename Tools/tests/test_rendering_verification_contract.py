@@ -20,7 +20,6 @@ import Tools.execution.audit.audit_plan_contract as audit_plan_contract  # noqa:
 import Tools.execution.audit.audit_obligation_projection as audit_obligation_projection  # noqa: E402
 import Tools.execution.audit.audit_evidence_runtime as audit_evidence_runtime  # noqa: E402
 import Tools.execution.audit.audit_producer_runtime as audit_producer_runtime  # noqa: E402
-import Tools.execution.audit.complete_audit_receipt as complete_audit_receipt  # noqa: E402
 import Tools.platform.common.kblib as kblib  # noqa: E402
 import Tools.knowledge.rendering.record_rendering_verification as producer  # noqa: E402
 import Tools.knowledge.rendering.rendering_verification_contract as contract  # noqa: E402
@@ -93,7 +92,7 @@ class ProfileRenderingEvidenceTests(_ProfileRenderingFixture, unittest.TestCase)
         specs = audit_obligation_projection.profile_rendering_specs(self.profile, REPOSITORY)
         self.assertEqual(1, len(specs))
         row = specs[0]
-        self.assertEqual(("profile-extension", "rendering", "audit-receipt", "pre-merge", False),
+        self.assertEqual(("profile-extension", "rendering", profile_evidence.RECORD_KIND, "pre-merge", False),
                          (row["owner_kind"], row["dimension"], row["evidence_kind"],
                           row["due_stage"], row["nonblocking"]))
         self.assertEqual(before, audit_obligation_projection.base_obligation_specs(REPOSITORY))
@@ -163,7 +162,7 @@ class ProfileRenderingEvidenceTests(_ProfileRenderingFixture, unittest.TestCase)
                     plan, [("Topics/A.md", "# Plain\n")], self.profile, root=REPOSITORY)
         self.assertEqual(before, plan)
 
-    def test_finalizer_consumer_preserves_invalid_artifacts_vs_unavailable_observation(self):
+    def test_current_consumer_preserves_invalid_artifacts_vs_unavailable_observation(self):
         record, plan, obligation = self._record()
         digest = audit_plan_contract.plan_sha256(plan)
         self.assertEqual([], profile_evidence.current_receipt_errors(record))
@@ -183,9 +182,16 @@ class ProfileRenderingEvidenceTests(_ProfileRenderingFixture, unittest.TestCase)
                     mock.patch.object(static_render_runtime, "validate_render_result",
                         side_effect=outcome if isinstance(outcome, Exception) else None,
                         return_value=outcome):
-                with self.assertRaises(exception):
-                    audit_evidence_runtime.require_completion_evidence(
-                        result, item, plan, digest, obligation, record["receipt_id"])
+                if isinstance(outcome, Exception):
+                    with self.assertRaises(exception):
+                        audit_evidence_runtime.obligation_evidence_resolution(
+                            result, item, plan, digest, obligation)
+                else:
+                    resolution = audit_evidence_runtime.obligation_evidence_resolution(
+                        result, item, plan, digest, obligation)
+                    self.assertEqual("missing", resolution["status"], resolution)
+                    self.assertEqual(["stale"], [row["state"]
+                        for row in resolution["attempts"]])
 
     def test_report_and_source_drift_cannot_reuse_current_evidence(self):
         record, plan, obligation = self._record()
@@ -383,24 +389,7 @@ class RenderingVerificationContractTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "dimension"):
             producer.resolve_obligation(plan, obligation["obligation_id"])
 
-    def test_full_audit_receipt_consumes_record_without_changing_boundary(self):
-        evidence, plan, obligation = self.build(
-            rendering_mode="targeted-visual-exception",
-            visual_trigger="deterministic evidence conflicts",
-            unresolved_question="which output is displayed",
-            verification_target="Topics/A.md diagram",
-            verification_result="the compiled artifact is displayed")
-        full = complete_audit_receipt.build_audit_receipt(
-            plan=plan, plan_sha256=audit_plan_contract.plan_sha256(plan),
-            obligation=obligation, evidence=evidence)
-        self.assertEqual("rendering", full["dimension"])
-        self.assertEqual(
-            "k12-02-rendering-verification-record",
-            full["acceptance_predicate"])
-        self.assertEqual(evidence["receipt_id"], full["evidence_ref"])
-        self.assertIn(obligation["target"], full["scope"])
-
-    def test_rendering_full_receipt_keeps_precursor_chain_visible(self):
+    def test_rendering_fact_is_consumed_without_duplicate_binding_object(self):
         frozen = []
         for relative in ("README.md", "README.zh-CN.md"):
             snapshot = kblib.repository_target_snapshot(
@@ -412,12 +401,8 @@ class RenderingVerificationContractTests(unittest.TestCase):
         frozen = tuple(frozen)
         evidence, plan, obligation = self.build(frozen=frozen)
         plan_sha = audit_plan_contract.plan_sha256(plan)
-        full = complete_audit_receipt.build_audit_receipt(
-            plan=plan, plan_sha256=plan_sha,
-            obligation=obligation, evidence=evidence)
         catalog = {
             evidence["receipt_id"]: evidence,
-            full["receipt_id"]: full,
         }
         item = {"id": plan["batch_id"],
                 "manifest": [row.path for row in frozen]}
@@ -434,13 +419,13 @@ class RenderingVerificationContractTests(unittest.TestCase):
             result, plan, obligation, resolution)
 
         self.assertEqual("satisfied", resolution["status"])
-        self.assertEqual(full["receipt_id"], row["selected_evidence_ref"])
+        self.assertEqual(evidence["receipt_id"], row["selected_evidence_ref"])
         self.assertEqual(
-            sorted([full["receipt_id"], evidence["receipt_id"]]),
+            [evidence["receipt_id"]],
             row["produced_evidence_refs"])
         self.assertFalse(row["unresolved"])
 
-    def test_completion_revalidates_the_unique_rendering_contract(self):
+    def test_current_consumer_revalidates_the_unique_rendering_contract(self):
         evidence, plan, obligation = self.build(
             rendering_mode="deterministic-static")
         plan_sha = audit_plan_contract.plan_sha256(plan)
@@ -454,17 +439,18 @@ class RenderingVerificationContractTests(unittest.TestCase):
                 exists=relative in pages, read_text=lambda: pages[relative]))
         snapshots.start()
         self.addCleanup(snapshots.stop)
-        observed, existing = audit_evidence_runtime.require_completion_evidence(
-            result, item, plan, plan_sha, obligation, evidence["receipt_id"])
-        self.assertIs(evidence, observed)
-        self.assertIsNone(existing)
+        resolution = audit_evidence_runtime.obligation_evidence_resolution(
+            result, item, plan, plan_sha, obligation)
+        self.assertEqual("satisfied", resolution["status"], resolution)
+        self.assertIs(evidence, resolution["record"])
 
         drifted = copy.deepcopy(evidence)
         drifted["highest_level"] = 0
         result["current_receipt_catalog"] = {drifted["receipt_id"]: drifted}
-        with self.assertRaisesRegex(ValueError, "rendering-verification contract"):
-            audit_evidence_runtime.require_completion_evidence(
-                result, item, plan, plan_sha, obligation, drifted["receipt_id"])
+        resolution = audit_evidence_runtime.obligation_evidence_resolution(
+            result, item, plan, plan_sha, obligation)
+        self.assertEqual("invalid", resolution["status"], resolution)
+        self.assertIn("rendering-verification contract", resolution["reason"])
 
     def test_retry_ignores_stale_rendering_history_but_not_current(self):
         evidence, plan, obligation = self.build(

@@ -93,17 +93,28 @@ class DocumentRoundTripTests(unittest.TestCase):
                 self.assertTrue(quoted or value[:1] not in ALWAYS)
 
     def test_repeated_parse_results_are_independent_objects(self):
-        text = "root:\n  values: [one, two]\n"
+        text = ("root:\n  values: [one, two]\n"
+                "  nested:\n    - mapping: {}\n      list: []\n"
+                "  number: -3\n  decimal: -0.0\n  enabled: true\n"
+                "  nothing: null\n  quoted: '3'\n")
 
         first = kblib.parse_yaml_subset(text)
         second = kblib.parse_yaml_subset(text)
         first["root"]["values"].append("mutated")
+        first["root"]["nested"][0]["mapping"]["forged"] = True
+        first["root"]["nested"][0]["list"].append("forged")
 
         self.assertEqual(["one", "two"], second["root"]["values"])
         self.assertEqual(
             ["one", "two"],
             kblib.parse_yaml_subset(text)["root"]["values"],
         )
+        self.assertEqual([{"mapping": {}, "list": []}], second["root"]["nested"])
+        for key, value, kind in (("number", -3, int), ("decimal", -0.0, float),
+                                 ("enabled", True, bool), ("nothing", None, type(None)),
+                                 ("quoted", "3", str)):
+            self.assertEqual(value, second["root"][key])
+            self.assertIs(kind, type(second["root"][key]))
 
     def test_parse_cache_identity_is_the_complete_source_text(self):
         before = kblib.parse_yaml_subset("value: before\n")
@@ -111,6 +122,13 @@ class DocumentRoundTripTests(unittest.TestCase):
 
         self.assertEqual({"value": "before"}, before)
         self.assertEqual({"value": "after"}, after)
+        for line, expected in (("  name: value   ", "  name: value"),
+                               ('value: "# inside" # outside', 'value: "# inside"'),
+                               ("value: word#inside", "value: word#inside"),
+                               ("# comment", "")):
+            self.assertEqual(expected, kblib.strip_yaml_comment(line))
+        with self.assertRaises(kblib.YamlSubsetError):
+            kblib.parse_yaml_subset("value: before\nvalue: duplicate\n")
 
 
 if __name__ == "__main__":

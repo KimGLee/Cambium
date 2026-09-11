@@ -3,7 +3,7 @@
 
 The producer derives every evidence set from the admitted runtime: page
 evidence comes from the exact managed Delta, Profile judgments come from the
-current activation, and full AuditReceipts come from the current AuditPlan.
+current activation, and accepted native evidence comes from the current AuditPlan.
 Callers provide only the batch, the integrator role, and the integrator's
 bounded statement. Queue, page, Delta, and AuditPlan bytes are read-only.
 """

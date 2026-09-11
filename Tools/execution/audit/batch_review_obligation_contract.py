@@ -8,14 +8,16 @@ the seven display groups.
 from Tools.platform.repository.repository import repository_source_root
 
 from copy import deepcopy
+from contextlib import contextmanager
+from contextvars import ContextVar
 from datetime import datetime, timezone
 import os
 import re
 
+import Tools.execution.audit.audit_lifecycle_contract as audit_lifecycle_contract
 import Tools.execution.audit.audit_fingerprint as audit_fingerprint
 import Tools.execution.audit.audit_dimension_contract as audit_dimension_contract
 import Tools.execution.audit.audit_plan_contract as audit_plan_contract
-import Tools.execution.audit.audit_receipt_contract as audit_receipt_contract
 import Tools.execution.evidence.evidence_attempt_runtime as evidence_attempt_runtime
 import Tools.platform.common.kblib as kblib
 from Tools.platform.common.primitives import (
@@ -28,13 +30,40 @@ BATCH_REVIEW_OBLIGATION_REGISTRY_PATH = (
     "kernel/K12 Quality Assurance/batch-review-obligation-registry.yaml")
 PRODUCER_TOOL = "record_batch_page_review"
 PRODUCER_TOOL_VERSION = "2.0.0"
-RECEIPT_TYPE_ID = "batch-page-review-record-v3"
+RECEIPT_TYPE_ID = "batch-page-review-record-v4"
 S_SELECTION_ALGORITHM_ID = "batch-s-sha256-rank-v1"
+
+_REGISTRY_OBSERVATION = ContextVar("batch_review_registry_observation", default=None)
+
+
+@contextmanager
+def registry_observation(root):
+    """Bound exact-input registry projections to one read-only operation.
+
+    Each load still reads the registry and the two contracts used by its
+    validator. Only their mechanical projection is shared, never a Receipt
+    verdict. A nested operation starts a new scope; exit drops every value.
+    """
+    observation = {"root": root, "documents": {}}
+    token = _REGISTRY_OBSERVATION.set(observation)
+    try:
+        yield
+    finally:
+        observation["documents"].clear()
+        _REGISTRY_OBSERVATION.reset(token)
+
+
+def _registry(registry):
+    if registry is not None:
+        return registry
+    observation = _REGISTRY_OBSERVATION.get()
+    return (load_registry(observation["root"], cache_projection=True)
+            if observation is not None else _SHIPPED_REGISTRY)
 
 _TOP_FIELDS = {
     "schema_version", "registry_id", "semantic_owner",
     "machine_projection_owner", "closed_world", "audit_plan_projection",
-    "m_applicability_contract", "m_consumption_contracts",
+    "m_applicability_contract", "m_consumption_contracts", "m_shared_applicability",
     "m_tier_source_groups", "m_tier_atomic_items", "s_tier_sampling",
     "producer_evidence_contract",
 }
@@ -268,8 +297,8 @@ def validate_registry(document):
 
 def _validate_registry(document):
     _closed_mapping(document, _TOP_FIELDS, "batch-review registry")
-    if document.get("schema_version") != 3:
-        raise ValueError("batch-review registry schema_version must be 3")
+    if document.get("schema_version") != 4:
+        raise ValueError("batch-review registry schema_version must be 4")
     if document.get("registry_id") != "cambium-batch-review-obligations":
         raise ValueError("batch-review registry_id is invalid")
     if document.get("semantic_owner") != "K12/01-K12/14":
@@ -298,7 +327,7 @@ def _validate_registry(document):
             applicability_contract.get("not_applicable_reason") !=
             "nonempty" or
             applicability_contract.get("plan_definition_policy") !=
-            "freeze-all-registered-atoms" or
+            "freeze-emits-and-resolve-consumption" or
             applicability_contract.get("required_dependency_disposition") !=
             "applicable"):
         raise ValueError("M applicability disposition contract is invalid")
@@ -391,12 +420,18 @@ def _validate_registry(document):
             raise ValueError("%s evidence_role is not registered" % label)
         if dimension not in dimensions:
             raise ValueError("%s must bind exactly one base dimension" % label)
-        if row.get("evidence_kind") != projection["evidence_kind"]:
-            raise ValueError("%s changes the projected evidence kind" % label)
-        capability = require_trimmed_string(
-            row.get("producer_capability"), label + ".producer_capability")
-        if row.get("producer_check") != "batch_page_review:" + item_id:
-            raise ValueError("%s producer_check must derive from item_id" % label)
+        capability = row.get("producer_capability")
+        if role == "consumes":
+            if any(row.get(field) is not None for field in (
+                    "evidence_kind", "producer_capability", "producer_check")):
+                raise ValueError("%s consumption cannot create a second producer" % label)
+        else:
+            if row.get("evidence_kind") != projection["evidence_kind"]:
+                raise ValueError("%s changes the projected evidence kind" % label)
+            capability = require_trimmed_string(
+                capability, label + ".producer_capability")
+            if row.get("producer_check") != "batch_page_review:" + item_id:
+                raise ValueError("%s producer_check must derive from item_id" % label)
         if row.get("consumer_gate_id") != projection["consumer_gate_id"]:
             raise ValueError("%s changes the projected consumer" % label)
         if row.get("due_stage") != projection["due_stage"]:
@@ -428,6 +463,20 @@ def _validate_registry(document):
         normalized_items.append(normalized)
     if used_groups != set(groups_by_id):
         raise ValueError("every M source group must own an atomic item")
+
+    shared = _closed_mapping(document.get("m_shared_applicability"), {
+        "condition_item_id", "dependent_predicate", "condition_covers_dependents_when",
+    }, "m_shared_applicability")
+    condition = items_by_id.get(shared["condition_item_id"])
+    dependents = [row for row in normalized_items
+                  if row["applicability"] == shared["dependent_predicate"]]
+    if (condition is None or condition["evidence_role"] != "emits" or
+            condition["applicability"] == "always" or not dependents or
+            shared["condition_covers_dependents_when"] not in disposition_values or
+            any(row["item_id"] == condition["item_id"] or
+                row["evidence_role"] != "emits" or
+                row["source_group"] != condition["source_group"] for row in dependents)):
+        raise ValueError("shared applicability must bind one condition and its emitting group")
 
     consumption_rows = document.get("m_consumption_contracts")
     if not isinstance(consumption_rows, list) or not consumption_rows:
@@ -492,7 +541,7 @@ def _validate_registry(document):
                     not (kernel_selector or profile_rendering_selector) or
                     selector["partition"] not in plan_contract["partitions"] or
                     selector["due_stage"] not in plan_contract["due_stages"] or
-                    selector["target_binding"] != "same-page" or
+                    selector["target_binding"] not in {"same-page", "same-batch"} or
                     selector["evidence_role"] != "emits" or
                     selector["obligation_status"] != "required" or
                     selector["consumer_gate_id"] !=
@@ -614,7 +663,7 @@ def _validate_registry(document):
             producer["variants"]["s-sampled-page"]["tier"] != "S"):
         raise ValueError("producer variants bind the wrong tier")
 
-    return {
+    values = {
         "projection": deepcopy(projection),
         "m_applicability": {
             "unconditional_predicate":
@@ -622,9 +671,10 @@ def _validate_registry(document):
             "disposition_values": disposition_values,
             "applicable_reason": None,
             "not_applicable_reason": "nonempty",
-            "plan_definition_policy": "freeze-all-registered-atoms",
+            "plan_definition_policy": applicability_contract["plan_definition_policy"],
         },
         "m_consumption_by_item_id": consumption_by_item_id,
+        "m_shared_applicability": deepcopy(shared),
         "trigger_partition_mappings": mappings,
         "groups_by_id": groups_by_id,
         "m_items": tuple(normalized_items),
@@ -648,6 +698,9 @@ def _validate_registry(document):
         },
         "producer": producer,
     }
+    values["specs_by_rule"] = {
+        row["rule_id"]: row for row in _base_obligation_specs(values)}
+    return values
 
 
 def load_registry(root=None, snapshots=None, *, cache_projection=False):
@@ -660,9 +713,32 @@ def load_registry(root=None, snapshots=None, *, cache_projection=False):
     else:
         text = kblib.read_text(os.path.join(
             root, *BATCH_REVIEW_OBLIGATION_REGISTRY_PATH.split("/")))
-    document = kblib.parse_yaml_subset(text)
-    return validated_document(document, _validate_registry,
-                              cache_projection=cache_projection)
+    observation = _REGISTRY_OBSERVATION.get()
+    if observation is None or not cache_projection:
+        document = kblib.parse_yaml_subset(text)
+        return validated_document(document, _validate_registry,
+                                  cache_projection=cache_projection)
+    # These are the exact dependency owners read by _validate_registry, not
+    # another allowed-value table. Reread their bytes on every lookup, so a
+    # changed/missing dependency cannot reuse the previous projection.
+    def dependency_bytes():
+        return tuple(kblib.read_text(os.path.join(
+            repository_source_root(owner.__file__), relative))
+            for owner, relative in (
+                (audit_plan_contract, audit_plan_contract.AUDIT_PLAN_CONTRACT_PATH),
+                (audit_dimension_contract, audit_dimension_contract.AUDIT_DIMENSION_BASE_PATH)))
+    dependencies = dependency_bytes()
+    key = (os.path.realpath(os.fspath(root)), text, dependencies)
+    documents = observation["documents"]
+    document = documents.get(key)
+    if document is None:
+        document = validated_document(
+            kblib.parse_yaml_subset(text), _validate_registry,
+            cache_projection=True)
+        if dependencies != dependency_bytes():
+            raise ValueError("batch-review registry dependencies changed during validation")
+        documents[key] = document
+    return document
 
 
 def _base_spec(values, *, tier, rule_id, applicability, acceptance,
@@ -703,9 +779,14 @@ def _base_spec(values, *, tier, rule_id, applicability, acceptance,
 
 
 def base_obligation_specs(registry=None):
-    """Return the complete M/S base spec set without inventing IDs/targets."""
-    registry = registry or _SHIPPED_REGISTRY
-    values = validate_registry(registry)
+    """Project actual M/S producers, not duplicate consuming declarations."""
+    index = document_projection(
+        _registry(registry), _validate_registry, path=("specs_by_rule",))
+    return tuple(spec for spec in index.values()
+                 if spec["evidence_role"] == "emits")
+
+
+def _base_obligation_specs(values):
     projection = values["projection"]
     specs = []
     for item in values["m_items"]:
@@ -743,29 +824,30 @@ def base_obligation_specs(registry=None):
 def obligation_spec_for_rule(rule_id, registry=None):
     """Resolve exactly one Kernel base spec by its stable rule ID."""
     rule_id = require_trimmed_string(rule_id, "rule_id")
-    matches = [row for row in base_obligation_specs(registry)
-               if row["rule_id"] == rule_id]
-    if len(matches) != 1:
-        raise ValueError("unknown or ambiguous batch-review rule %s" % rule_id)
-    return matches[0]
+    try:
+        return document_projection(_registry(registry), _validate_registry,
+                                   path=("specs_by_rule", rule_id))
+    except KeyError as exc:
+        raise ValueError("unknown or ambiguous batch-review rule %s" % rule_id) from exc
 
 
 def validate_applicability_disposition(spec, disposition, reason,
                                        registry=None):
     """Validate the explicit M-atom applicability disposition.
 
-    The AuditPlan continues to freeze every atom definition.  This is the
+    The AuditPlan freezes each emitting definition. This is the
     evidence-time disposition of a conditional definition, not a plan status
     and not a Tool interpretation of the underlying judgment predicate.
     """
-    values = validate_registry(registry or _SHIPPED_REGISTRY)
+    applicability = document_projection(_registry(registry), _validate_registry,
+                                        path=("m_applicability",))
     if not isinstance(spec, dict) or spec.get("tier") != "M":
         raise ValueError("applicability disposition requires an M atom")
-    if disposition not in values["m_applicability"]["disposition_values"]:
+    if disposition not in applicability["disposition_values"]:
         raise ValueError("M applicability disposition is not registered")
     unconditional = (
         spec.get("applicability") ==
-        values["m_applicability"]["unconditional_predicate"])
+        applicability["unconditional_predicate"])
     if unconditional and disposition != "applicable":
         raise ValueError("an always-applicable M atom cannot be not-applicable")
     if disposition == "applicable":
@@ -779,61 +861,14 @@ def validate_applicability_disposition(spec, disposition, reason,
     }
 
 
-def _matches_consumed_obligation(record, plan, plan_sha256, obligation,
-                                 selector):
-    """Match evidence through its native record contract and plan binding."""
-    evidence_kind = obligation["evidence_kind"]
-    if evidence_kind == "audit-receipt":
-        try:
-            audit_receipt_contract.validate_audit_receipt(record)
-        except (TypeError, ValueError):
-            return False
-
-    expected = {
-        "record_kind": evidence_kind,
-        "plan_id": plan["plan_id"],
-        "audit_plan_sha256": plan_sha256,
-        "obligation_id": obligation["obligation_id"],
-        "owner_kind": obligation["owner_kind"],
-        "owner_rule_id": obligation["owner_rule_id"],
-        "kernel_extension_point": obligation["kernel_extension_point"],
-        "due_stage": obligation["due_stage"],
-        "evidence_role": obligation["evidence_role"],
-        "evidence_kind": evidence_kind,
-        "acceptance_predicate": obligation["acceptance_predicate"],
-        "producer_check": obligation["producer_check"],
-        "producer_capability": obligation["producer_capability"],
-        "producer_gate_id": obligation["producer_gate_id"],
-        "consumer_gate_id": obligation["consumer_gate_id"],
-        "fingerprint_binding": obligation["fingerprint_binding"],
-        "invalidated_by": None,
-    }
-    if evidence_kind == "audit-receipt":
-        expected["dimension"] = obligation["dimension"]
-        scope = record.get("scope")
-        target_matches = isinstance(scope, list) and \
-            obligation["target"] in scope
-    else:
-        # Native changed-scope Gate evidence carries the plan partition and a
-        # direct target.  Full AuditReceipt deliberately carries neither: its
-        # governed target is represented by the closed `scope` field above.
-        expected["partition"] = obligation["partition"]
-        expected["target"] = obligation["target"]
-        expected["dimension"] = None
-        target_matches = True
-    return (target_matches and
-            all(record.get(field) == value
-                for field, value in expected.items()) and
-            record.get("result") in selector["evidence_result_values"])
 
 
-def _consumption_dependency_obligations(obligations, spec, target,
-                                        registry):
+def _consumption_dependency_obligations(obligations, spec, target, *, batch_id=None):
     """Resolve the frozen obligations one M atom consumes.
 
-    This is the single selector interpretation shared by execution ordering,
-    evidence production, and final consumption validation. Emitting atoms
-    have no consumption dependency. A contract-gap is not an empty dependency
+    This is the selector interpretation for existing machine evidence.
+    Emitting atoms use the separate shared-condition relation, not these
+    consumption edges. A contract-gap is not an empty dependency
     set: without a resolved selector neither applicability nor consumption
     can be proved.
     """
@@ -852,6 +887,8 @@ def _consumption_dependency_obligations(obligations, spec, target,
     selector = consumption.get("selector")
     if not isinstance(selector, dict):
         raise ValueError("resolved M consumption contract has no selector")
+    if selector["target_binding"] == "same-batch":
+        target = require_trimmed_string(batch_id, "consumption batch identity")
 
     expected = []
     for obligation in obligations:
@@ -896,13 +933,11 @@ def consumption_dependency_obligation_ids(obligations,
                                           consuming_obligation,
                                           registry=None):
     """Return machine-derived dependencies for one frozen M obligation."""
-    registry = registry or _SHIPPED_REGISTRY
-    validate_registry(registry)
+    registry = _registry(registry)
+    document_projection(registry, _validate_registry, path=None)
     if not isinstance(consuming_obligation, dict):
         raise ValueError("consuming obligation must be a mapping")
-    if (consuming_obligation.get("evidence_kind") !=
-            "batch-page-review-record" or
-            consuming_obligation.get("evidence_role") != "consumes"):
+    if consuming_obligation.get("evidence_kind") != "batch-page-review-record":
         return ()
     spec = obligation_spec_for_rule(
         consuming_obligation.get("owner_rule_id"), registry)
@@ -912,10 +947,40 @@ def consumption_dependency_obligation_ids(obligations,
             "AuditPlan batch-review obligation %s drifts in: %s" %
             (consuming_obligation.get("obligation_id"),
              ", ".join(errors)))
-    return tuple(
-        row["obligation_id"] for row in
-        _consumption_dependency_obligations(
-            obligations, spec, consuming_obligation.get("target"), registry))
+    return tuple(row["obligation_id"] for row in
+                 _shared_condition_obligations(obligations, spec,
+                                               consuming_obligation["target"], registry))
+
+
+def _shared_condition_obligations(obligations, spec, target, registry):
+    shared = registry["m_shared_applicability"]
+    if spec["tier"] != "M" or spec["applicability"] != shared["dependent_predicate"]:
+        return ()
+    values = document_projection(registry, _validate_registry, path=("m_items_by_id",))
+    condition = values[shared["condition_item_id"]]
+    selected = [row for row in obligations if row["owner_rule_id"] == condition["rule_id"]
+                and row["target"] == target]
+    if len(selected) != 1:
+        raise ValueError("shared applicability requires exactly one planned condition")
+    errors = plan_projection_errors(selected[0], obligation_spec_for_rule(condition["rule_id"], registry))
+    if errors:
+        raise ValueError("shared condition plan definition drifts: " + ", ".join(errors))
+    return tuple(selected)
+
+
+def covered_obligation_ids(plan, spec, target, disposition, verdict, registry=None):
+    """Project one common N/A fact onto its frozen same-page obligations."""
+    registry = _registry(registry)
+    shared = registry["m_shared_applicability"]
+    if (spec.get("item_id") != shared["condition_item_id"] or verdict != "passed" or
+            disposition != shared["condition_covers_dependents_when"]):
+        return ()
+    return tuple(sorted(row["obligation_id"] for row in plan["obligations"]
+                        if row["target"] == target and
+                        row["applicability"] == shared["dependent_predicate"] and
+                        row["owner_rule_id"] in {
+                            item["rule_id"] for item in registry["m_tier_atomic_items"]
+                            if item["applicability"] == shared["dependent_predicate"]}))
 
 
 def review_input_constraints(obligations, consuming_obligation, registry=None):
@@ -926,7 +991,7 @@ def review_input_constraints(obligations, consuming_obligation, registry=None):
     conditional emitting judgments remain with the reviewer. Rendering plan
     drift/contract gaps are checked by the stage plan owner before this view.
     """
-    registry = registry or _SHIPPED_REGISTRY
+    registry = _registry(registry)
     spec = obligation_spec_for_rule(
         consuming_obligation.get("owner_rule_id"), registry)
     dependencies = consumption_dependency_obligation_ids(
@@ -950,6 +1015,33 @@ def review_input_constraints(obligations, consuming_obligation, registry=None):
     }
 
 
+def review_input_shape(registry=None):
+    """Expose the existing review answers using their record owner's types.
+
+    This is a Tool input projection, not another checklist or result contract.
+    Applicability remains contextual and is enforced by review_input_constraints.
+    """
+    values = document_projection(_registry(registry), _validate_registry, path=("producer",))
+    names = {"reviewer_context_id": "reviewer_context_id", "reviewer_role": "reviewer_role",
+             "verdict": "verdict", "statement": "details",
+             "applicability_disposition": "applicability_disposition",
+             "applicability_reason": "applicability_reason"}
+    properties = {}
+    for name, source in names.items():
+        nullable = values["fields"][source] == "nullable-string"
+        properties[name] = {"type": ["string", "null"] if nullable else "string", "minLength": 1}
+    properties["verdict"]["enum"] = sorted(values["verdict_results"])
+    properties["applicability_disposition"]["type"] = ["string", "null"]
+    properties["applicability_disposition"]["enum"] = [None] + list(
+        _registry(registry)["m_applicability_contract"]["disposition_values"])
+    answer = {"type": "object", "properties": properties, "additionalProperties": False,
+              "required": [name for name in names if not name.startswith("applicability_")]}
+    return {"type": "array", "minItems": 1, "items": {
+        "type": "object", "additionalProperties": False,
+        "required": ["obligation_id", "input"], "properties": {
+            "obligation_id": {"type": "string", "minLength": 1}, "input": answer}}}
+
+
 def validate_review_input(constraints, disposition, reason, registry=None):
     """Reuse the producer's predicate for the stage's machine-known inputs."""
     if disposition not in constraints["allowed_applicability_dispositions"]:
@@ -961,16 +1053,14 @@ def validate_review_input(constraints, disposition, reason, registry=None):
         raise ValueError("sampled S evidence cannot carry M applicability")
 
 
-def validate_plan_applicability(obligations, spec, target, disposition,
-                                registry=None):
+def validate_plan_applicability(obligations, spec, target, disposition, registry=None):
     """Reject contradictions with frozen plan facts, independent of live input.
 
     The original statement remains structurally readable. A known incorrect
     declaration needs a correction decision; it is not ordinary input drift.
     """
-    registry = registry or _SHIPPED_REGISTRY
-    dependencies = _consumption_dependency_obligations(
-        obligations, spec, target, registry)
+    dependencies = _shared_condition_obligations(
+        obligations, spec, target, _registry(registry))
     if disposition == "not-applicable" and dependencies:
         raise ValueError(
             "not-applicable contradicts required AuditPlan consumption "
@@ -982,137 +1072,66 @@ def validate_plan_applicability(obligations, spec, target, disposition,
 def resolve_consumed_evidence(plan, plan_sha256, spec, target, catalog,
                               referenced_receipt_ids, disposition,
                               registry=None, *, current_receipt_ids=None):
-    """Resolve exactly the canonical evidence for one M `consumes` atom.
+    """Resolve the common semantic condition, not a second machine-result wrapper.
 
-    The selector comes only from the Kernel registry.  The function accepts a
-    stable catalog view plus an explicit live-current identity set and returns
-    the exact sorted evidence rows; callers cannot substitute an unrelated or
-    stale passing receipt. ``current_receipt_ids=None`` validates the exact
-    recorded references for construction or stable-history replay; it does
-    not select current authority from history. Live producers and consumers
-    pass the IDs resolved by the runtime AuditPlan currentness owner. An
-    unresolved selector is an explicit HOLD, not a permissive fallback.
+    Live callers supply the original stage owner's current identities; frozen
+    history validates only the recorded references. No latest-record selection
+    and no regenerated declaration can replace that exact accepted fact.
     """
-    registry = registry or _SHIPPED_REGISTRY
-    validate_registry(registry)
+    registry = _registry(registry)
     audit_plan_contract.validate_plan(plan)
     if audit_plan_contract.plan_sha256(plan) != plan_sha256:
         raise ValueError("consumed evidence binds a different AuditPlan")
-    target = require_trimmed_string(target, "consumption target")
-    if not isinstance(catalog, dict):
-        raise ValueError("current evidence catalog must be a mapping")
-    derive_refs = referenced_receipt_ids is None
-    if derive_refs and current_receipt_ids is None:
+    refs = _string_list(list(referenced_receipt_ids or ()), "consumed evidence references",
+                        allow_empty=True, sorted_unique=True)
+    dependencies = _shared_condition_obligations(plan["obligations"], spec, target, registry)
+    if not dependencies:
+        if refs:
+            raise ValueError("review has no registered shared-condition dependency")
+        return ()
+    if disposition != "applicable":
+        raise ValueError("shared-condition dependents cannot independently declare not-applicable")
+    if referenced_receipt_ids is None and current_receipt_ids is None:
         raise ValueError("deriving evidence references requires a current view")
-    refs = _string_list(
-        list(referenced_receipt_ids or ()), "consumed evidence references",
-        allow_empty=True, sorted_unique=True)
-    if current_receipt_ids is None:
-        # Construction and stable-history validation prove the exact evidence
-        # set recorded by this immutable consumer.  Unreferenced predecessor
-        # attempts remain valid history; without a live-currentness view they
-        # must not be reinterpreted as competing current evidence.
-        current_ids = frozenset(refs)
-    else:
-        if (not isinstance(current_receipt_ids,
-                           (set, frozenset, list, tuple)) or
-                isinstance(current_receipt_ids, (str, bytes))):
-            raise ValueError("current receipt IDs must be a collection")
-        current_values = list(current_receipt_ids)
-        if any(not isinstance(value, str) or not value or
-               value.strip() != value for value in current_values):
-            raise ValueError(
-                "current receipt IDs must be non-empty unique strings")
-        if len(current_values) != len(set(current_values)):
-            raise ValueError(
-                "current receipt IDs must be non-empty unique strings")
-        current_ids = frozenset(current_values)
-    if spec.get("tier") != "M":
-        if refs:
-            raise ValueError("sampled S evidence cannot consume evidence")
-        return ()
-    disposition_values = validate_applicability_disposition(
-        spec, disposition,
-        None if disposition == "applicable" else "selector-validation",
-        registry)
-    expected_obligations = validate_plan_applicability(
-        plan.get("obligations") or (), spec, target, disposition, registry)
-    if disposition_values["applicability_disposition"] == "not-applicable":
-        if refs:
-            raise ValueError(
-                "a not-applicable M atom cannot consume evidence")
-        return ()
-    if spec.get("evidence_role") == "emits":
-        if refs:
-            raise ValueError("an emitting M item cannot consume evidence")
-        return ()
-    if spec.get("evidence_role") != "consumes":
-        raise ValueError("M item has no admitted consumption role")
-    # The dependency owner above has already validated the selector, including
-    # HOLD. Do not maintain a second interpretation after disposition parsing.
-    selector = spec["consumption_contract"]["selector"]
-    records_by_obligation = {
-        obligation["obligation_id"]: []
-        for obligation in expected_obligations
-    }
-    for catalog_id, entry in catalog.items():
+    current_ids = frozenset(refs if current_receipt_ids is None else current_receipt_ids)
+    condition = dependencies[0]
+    matches = []
+    for identity, entry in catalog.items():
         record = catalog_record(entry)
-        if not isinstance(record, dict) or record.get("receipt_id") != \
-                catalog_id:
-            continue
-        obligation_id = record.get("obligation_id")
-        if obligation_id not in records_by_obligation:
-            continue
-        obligation = next(
-            row for row in expected_obligations
-            if row["obligation_id"] == obligation_id)
-        if _matches_consumed_obligation(
-                record, plan, plan_sha256, obligation, selector):
-            records_by_obligation[obligation_id].append(record)
+        if (isinstance(record, dict) and record.get("receipt_id") == identity and
+                record.get("plan_id") == plan["plan_id"] and
+                record.get("obligation_id") == condition["obligation_id"]):
+            matches.append(record)
 
-    resolved = []
-    for obligation in expected_obligations:
-        matches = records_by_obligation[obligation["obligation_id"]]
-        def validate_current(record):
-            if (current_ids is not None and
-                    record["receipt_id"] not in current_ids):
-                raise ValueError("receipt does not observe current inputs")
+    def stable(record):
+        validate_producer_receipt(record, registry)
+        validate_record_plan_binding(record, plan, plan_sha256, condition, registry)
 
-        try:
-            selected = evidence_attempt_runtime.unique_current_attempt(
-                matches,
-                validate_stable=lambda record: record,
-                validate_current=validate_current,
-                label="M consumption selector %s obligation %s" % (
-                    selector["selector_id"], obligation["obligation_id"]))
-        except evidence_attempt_runtime.EvidenceAttemptError as exc:
-            raise ValueError(
-                "M consumption selector %s requires exactly one current "
-                "passing record for obligation %s: %s" % (
-                    selector["selector_id"], obligation["obligation_id"],
-                    exc)) from exc
-        if selected is None:
-            raise ValueError(
-                "M consumption selector %s requires exactly one current "
-                "passing record for obligation %s, found %d" %
-                (selector["selector_id"], obligation["obligation_id"],
-                 0))
-        resolved.append(selected)
-    resolved.sort(key=lambda row: row["receipt_id"])
-    expected_refs = tuple(row["receipt_id"] for row in resolved)
-    if not derive_refs and refs != expected_refs:
-        raise ValueError(
-            "consumed evidence references differ from selector %s: "
-            "expected=%s actual=%s" %
-            (selector["selector_id"], list(expected_refs), list(refs)))
-    return tuple(resolved)
+    def current(record):
+        if record["receipt_id"] not in current_ids:
+            raise ValueError("condition does not observe current inputs")
+
+    try:
+        selected = evidence_attempt_runtime.unique_current_attempt(
+            matches, validate_stable=stable, validate_current=current,
+            label="shared applicability condition")
+    except evidence_attempt_runtime.EvidenceAttemptError as exc:
+        raise ValueError(str(exc)) from exc
+    if selected is None or selected["verdict"] != "passed":
+        raise ValueError("shared applicability requires one accepted current condition")
+    if selected["applicability_disposition"] == registry["m_shared_applicability"][
+            "condition_covers_dependents_when"]:
+        raise ValueError("common not-applicable fact already covers the dependent requirements")
+    if referenced_receipt_ids is not None and refs != (selected["receipt_id"],):
+        raise ValueError("consumed references differ from the exact shared condition")
+    return (selected,)
 
 
 def validate_receipt_consumption(plan, plan_sha256, record, catalog,
                                  registry=None, *, current_receipt_ids=None,
                                  validate_record=None):
     """Consumer-safe strict revalidation for one persisted M record."""
-    registry = registry or _SHIPPED_REGISTRY
+    registry = _registry(registry)
     (validate_record or validate_producer_receipt)(record, registry)
     if record.get("review_variant") != "m-atomic-item":
         if record.get("consumed_evidence_refs"):
@@ -1157,15 +1176,33 @@ def plan_projection_errors(obligation, spec):
     return sorted(set(errors))
 
 
+def consumption_coverage(plan, targets, registry=None):
+    """Resolve requirement-to-original-obligation edges, never new evidence.
+
+    These are derived views over one frozen plan. The normal stage/closed
+    consumer validates each referenced producer, input and selected evidence.
+    A missing exact edge or an unresolved selector is not a passing view.
+    """
+    specs = document_projection(_registry(registry), _validate_registry,
+                                path=("specs_by_rule",))
+    return {
+        (page, spec["rule_id"]): tuple(
+            row["obligation_id"] for row in _consumption_dependency_obligations(
+                plan["obligations"], spec, page, batch_id=plan["batch_id"]))
+        for page in sorted(set(targets)) for spec in specs.values()
+        if spec["tier"] == "M" and spec["evidence_role"] == "consumes"
+    }
+
+
 def validate_plan_base_closure(plan, manifest, tiers, registry=None):
     """Prove the plan has every and only applicable K12/14 base target.
 
-    All registered M atoms are definitions frozen for every M manifest page;
-    their conditional applicability is discharged explicitly by the review
-    details, never by omitting a plan row.  Concrete S targets are the
-    deterministic Tool sample.
+    Emitting definitions remain frozen, including conditional judgments.
+    Consuming requirements map to the original planned producers, whose
+    evidence is accepted by the ordinary stage closure, not another receipt.
+    Concrete S targets are the deterministic Tool sample.
     """
-    registry = registry or _SHIPPED_REGISTRY
+    registry = _registry(registry)
     audit_plan_contract.validate_plan(plan)
     if (not isinstance(manifest, list) or manifest != sorted(manifest) or
             len(manifest) != len(set(manifest)) or
@@ -1180,7 +1217,8 @@ def validate_plan_base_closure(plan, manifest, tiers, registry=None):
                          ", ".join(missing_tiers))
 
     specs = base_obligation_specs(registry)
-    by_rule = {spec["rule_id"]: spec for spec in specs}
+    by_rule = document_projection(
+        registry, _validate_registry, path=("specs_by_rule",))
     m_specs = tuple(spec for spec in specs if spec["tier"] == "M")
     s_spec = next(spec for spec in specs if spec["tier"] == "S")
     m_pages = sorted(path for path in manifest if tiers[path] == "M")
@@ -1203,6 +1241,8 @@ def validate_plan_base_closure(plan, manifest, tiers, registry=None):
         spec = by_rule.get(rule_id)
         if spec is None:
             continue
+        if spec["evidence_role"] == "consumes":
+            raise ValueError("AuditPlan cannot duplicate a consuming M requirement")
         pair = (obligation.get("target"), rule_id)
         if pair in actual:
             raise ValueError(
@@ -1225,6 +1265,7 @@ def validate_plan_base_closure(plan, manifest, tiers, registry=None):
             % (missing, extra))
     return {
         "obligations_by_target_rule": actual,
+        "consumed_obligations_by_target_rule": consumption_coverage(plan, m_pages, registry),
         "s_selection": selection,
     }
 
@@ -1234,8 +1275,8 @@ def s_sample_count(population_count, registry=None):
     if (not isinstance(population_count, int) or
             isinstance(population_count, bool) or population_count < 0):
         raise ValueError("S population count must be a non-negative integer")
-    values = validate_registry(registry or _SHIPPED_REGISTRY)
-    count = values["s_count"]
+    count = document_projection(_registry(registry), _validate_registry,
+                                path=("s_count",))
     minimum = count["minimum_count"]
     if population_count < minimum:
         return population_count
@@ -1253,7 +1294,7 @@ def _set_sha256(values):
 def select_s_targets(population, *, task_id, batch_id,
                      opening_transition_receipt, registry=None):
     """Deterministically select and freeze Tool-owned S review targets."""
-    registry = registry or _SHIPPED_REGISTRY
+    registry = _registry(registry)
     values = validate_registry(registry)
     task_id = require_trimmed_string(task_id, "task_id")
     batch_id = require_trimmed_string(batch_id, "batch_id")
@@ -1310,14 +1351,14 @@ def select_s_targets(population, *, task_id, batch_id,
 
 
 def registry_sha256(registry=None):
-    registry = registry or _SHIPPED_REGISTRY
-    validate_registry(registry)
+    registry = _registry(registry)
+    document_projection(registry, _validate_registry, path=None)
     return kblib.sha256_bytes(kblib.canonical_json_bytes(registry))
 
 
 def contract_fingerprint(spec, bindings, registry=None):
     """Bind the current atomic contract and governed Profile identities."""
-    registry = registry or _SHIPPED_REGISTRY
+    registry = _registry(registry)
     material = {
         "registry_sha256": registry_sha256(registry),
         "rule_id": spec["rule_id"],
@@ -1382,6 +1423,45 @@ def dependency_fingerprint(sources_sha256, consumed_records=(),
     }))
 
 
+def validate_record_plan_binding(record, plan, plan_sha256, obligation, registry=None):
+    """Join an atomic result to its sole immutable obligation definition.
+
+    Record shape and fingerprints remain owned by this module. No expanded
+    Receipt is synthesized or persisted, and each item keeps its exact refs
+    and independent currentness/correction boundary.
+    """
+    registry = _registry(registry)
+    rule_id = (record.get("rule_id") if record.get("review_variant") == "m-atomic-item"
+               else record.get("sample_rule_id"))
+    spec = obligation_spec_for_rule(rule_id, registry)
+    primary = next((row for row in plan["obligations"]
+                    if row["obligation_id"] == record.get("obligation_id")), None)
+    if primary is None:
+        raise ValueError("batch-page record has no original planned obligation")
+    errors = plan_projection_errors(primary, spec)
+    if primary.get("owner_rule_id") != rule_id:
+        errors.append("owner_rule_id")
+    errors.extend(audit_lifecycle_contract.attempt_binding_mismatches(
+        record, plan, plan_sha256, primary))
+    if obligation["obligation_id"] == primary["obligation_id"]:
+        errors.extend(field for field in set(primary) | set(obligation)
+                      if primary.get(field) != obligation.get(field))
+    covered = covered_obligation_ids(
+        plan, spec, primary["target"], record.get("applicability_disposition"),
+        record.get("verdict"), registry)
+    if tuple(record.get("covered_obligation_ids", ())) != covered:
+        errors.append("covered_obligation_ids")
+    if obligation["obligation_id"] != primary["obligation_id"]:
+        if obligation["obligation_id"] not in covered or obligation not in plan["obligations"]:
+            errors.append("unauthorized covered obligation")
+        else:
+            errors.extend(plan_projection_errors(obligation, obligation_spec_for_rule(
+                obligation["owner_rule_id"], registry)))
+    if errors:
+        raise ValueError("batch-page plan binding drifts in: %s" % ", ".join(sorted(set(errors))))
+    return record
+
+
 def validate_input_binding(record, relative_path, text,
                            semantic_content_fingerprint, *, consumed_records=()):
     """Validate the complete M/S page, Sources and dependency binding.
@@ -1439,9 +1519,8 @@ def _timestamp(value):
 
 def validate_producer_receipt(record, registry=None):
     """Validate one closed M-atomic or sampled-S producer record."""
-    registry = registry or _SHIPPED_REGISTRY
-    values = validate_registry(registry)
-    producer = values["producer"]
+    registry = _registry(registry)
+    producer = document_projection(registry, _validate_registry, path=("producer",))
     if not isinstance(record, dict):
         raise ValueError("batch-page review record must be an object")
     variant_id = record.get("review_variant")
@@ -1476,29 +1555,20 @@ def validate_producer_receipt(record, registry=None):
     if record.get("invalidated_by") is not None:
         raise ValueError("new batch-page review evidence must be current")
     if variant_id == "m-atomic-item":
-        item = values["m_items_by_id"].get(record.get("item_id"))
-        if item is None:
+        try:
+            item = document_projection(
+                registry, _validate_registry, path=("m_items_by_id", record.get("item_id")))
+        except KeyError:
             raise ValueError("M batch-page record names an unknown item")
         spec = obligation_spec_for_rule(item["rule_id"], registry)
+        if spec["evidence_role"] != "emits":
+            raise ValueError("consuming M requirements accept original evidence, not declarations")
         expected = {
             "tier": "M",
             "rule_id": item["rule_id"],
             "source_group": item["source_group"],
             "check": spec["producer_check"],
-            "partition": record.get("partition"),
-            "due_stage": spec["due_stage"],
-            "evidence_role": spec["evidence_role"],
-            "evidence_kind": spec["evidence_kind"],
-            "dimension": spec["dimension"],
-            "acceptance_predicate": spec["acceptance_predicate"],
-            "producer_capability": spec["producer_capability"],
-            "consumer_gate_id": spec["consumer_gate_id"],
-            "fingerprint_binding": spec["fingerprint_binding"],
         }
-        allowed_partitions = {
-            row["partition"] for row in spec["trigger_partition_mappings"]}
-        if record.get("partition") not in allowed_partitions:
-            raise ValueError("M batch-page record partition is not registered")
         mismatches = [field for field, expected_value in expected.items()
                       if record.get(field) != expected_value]
         if mismatches:
@@ -1508,27 +1578,24 @@ def validate_producer_receipt(record, registry=None):
             spec, record.get("applicability_disposition"),
             record.get("applicability_reason"), registry)
         refs = record.get("consumed_evidence_refs")
-        if disposition["applicability_disposition"] == "not-applicable":
-            if refs:
-                raise ValueError(
-                    "a not-applicable M item cannot consume evidence refs")
-        elif spec["evidence_role"] == "emits" and refs:
-            raise ValueError("an emitting M item cannot consume evidence refs")
-        elif spec["evidence_role"] == "consumes":
-            consumption = spec.get("consumption_contract") or {}
-            if consumption.get("resolution") == "hold":
-                raise ValueError(
-                    "M consumption selector is HOLD for %s: %s" %
-                    (spec.get("item_id"),
-                     consumption.get("hold_reason")))
-            if not refs:
-                raise ValueError(
-                    "an applicable consuming M item requires evidence refs")
+        shared = registry["m_shared_applicability"]
+        dependent = spec["applicability"] == shared["dependent_predicate"]
+        if dependent:
+            if disposition["applicability_disposition"] != "applicable" or len(refs) != 1:
+                raise ValueError("dependent item requires the accepted shared condition")
+        elif refs:
+            raise ValueError("item has no registered shared-condition dependency")
+        covers = record["covered_obligation_ids"]
+        if covers and (item["item_id"] != shared["condition_item_id"] or
+                       verdict != "passed" or record["applicability_disposition"] !=
+                       shared["condition_covers_dependents_when"]):
+            raise ValueError("only an accepted common N/A fact can cover other obligations")
     else:
-        spec = obligation_spec_for_rule(values["s_rule_id"], registry)
+        sample_rule_id = document_projection(registry, _validate_registry, path=("s_rule_id",))
+        spec = obligation_spec_for_rule(sample_rule_id, registry)
         expected = {
             "tier": "S",
-            "sample_rule_id": values["s_rule_id"],
+            "sample_rule_id": sample_rule_id,
             "check": spec["producer_check"],
             "partition": spec["partition"],
             "due_stage": spec["due_stage"],
@@ -1575,7 +1642,8 @@ def current_receipt_errors(record, *, root=None):
     """Return current hard-cut batch-page review record errors."""
     try:
         validate_producer_receipt(
-            record, registry=load_registry(root) if root is not None else None)
+            record, registry=load_registry(root, cache_projection=True)
+            if root is not None else None)
     except (OSError, TypeError, UnicodeError, ValueError,
             kblib.YamlSubsetError) as exc:
         return [str(exc)]
@@ -1593,6 +1661,9 @@ S_SAMPLING_RULE_ID = _SHIPPED_VALUES["s_rule_id"]
 
 
 __all__ = [
+    'review_input_shape',
+    'covered_obligation_ids',
+    'consumption_coverage',
     'BATCH_REVIEW_OBLIGATION_REGISTRY_PATH',
     'PRODUCER_TOOL',
     'PRODUCER_TOOL_VERSION',
@@ -1603,6 +1674,7 @@ __all__ = [
     'dependency_fingerprint',
     'load_registry',
     'obligation_spec_for_rule',
+    'registry_observation',
     'registry_sha256',
     'select_s_targets',
     'validate_plan_base_closure',
@@ -1613,5 +1685,6 @@ __all__ = [
     'current_receipt_errors',
     'validate_input_binding',
     'validate_producer_receipt',
+    'validate_record_plan_binding',
     'validate_receipt_consumption',
 ]

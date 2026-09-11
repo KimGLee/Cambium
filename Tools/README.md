@@ -47,7 +47,7 @@ Follow these owners instead of copying their field lists:
 | Profile storage and source mapping | [`profile-encoding.yaml`](governance/profile/profile-encoding.yaml), [`profile_layout_contract.py`](governance/profile/profile_layout_contract.py) |
 | Corpus Planning | [`corpus-planning-contract.yaml`](<../kernel/K02 Knowledge Work Construction/corpus-planning-contract.yaml>), [`corpus_planning_contract.py`](execution/planning/corpus_planning_contract.py) |
 | Audit dimensions and plan | [`audit-dimension-base.yaml`](<../kernel/K12 Quality Assurance/audit-dimension-base.yaml>), [`audit-plan-contract.yaml`](<../kernel/K12 Quality Assurance/audit-plan-contract.yaml>) |
-| Review and receipt contracts | [K12/12](<../kernel/K12 Quality Assurance/12 Substantive Correctness Review.md>), [K12/14](<../kernel/K12 Quality Assurance/14 Batch Review.md>), [`audit-receipt-contract.yaml`](<../kernel/K12 Quality Assurance/audit-receipt-contract.yaml>) |
+| Review and receipt contracts | [K12/12](<../kernel/K12 Quality Assurance/12 Substantive Correctness Review.md>), [K12/14](<../kernel/K12 Quality Assurance/14 Batch Review.md>), [`audit-fingerprint-contract.yaml`](<../kernel/K12 Quality Assurance/audit-fingerprint-contract.yaml>) |
 | Batch-close checklist | [`batch-close-closed-list.yaml`](<../kernel/K12 Quality Assurance/batch-close-closed-list.yaml>), [`batch_close_contract.py`](execution/audit/batch_close_contract.py) |
 | Policy extensions | [`contract-exception-policy-base.yaml`](<../kernel/K00 Standards Control/contract-exception-policy-base.yaml>) |
 | Installed scan and operation capabilities | [`scan-capabilities.yaml`](scan-capabilities.yaml), [`operation-capabilities.yaml`](operation-capabilities.yaml) |
@@ -177,6 +177,8 @@ The main runtime entry points are:
 - [`apply_delta.py`](apply_delta.py): preflight or apply one canonical runtime Delta from `--root` plus its repository-relative Delta path; Coverage is derived from the runtime contract and is not a caller-selected input;
 - [`check_proof.py`](check_proof.py): verify the terminal proof object and its bound state when invoked in root mode.
 
+Profile-load, Corpus Planning and Terminal Proof checkers return diagnostic details through their normal text or JSON reports. Their `--receipts` output appends only a genuine passing Gate; individual findings, failures and structural-only Terminal checks do not create governance Receipt identities. A readable report is not authorization. Preserve the report when diagnosing a failure, and use the existing Gate consumer to decide whether published evidence is acceptable.
+
 Queue compilation preserves declared targets; `queued -> open` materializes current Coverage for that batch only. Unopened batches remain planning-only: their pages are not reset, projected, or treated as reviewed. Task Plans do not supply runtime `authoring_status`, `gate_receipts`, or `property_state`.
 
 Use the live interfaces:
@@ -188,22 +190,44 @@ python3 Tools/apply_delta.py --help
 python3 Tools/check_queue.py . --resume-status
 ```
 
+For a current `record-batch-page-review` action, an Agent may deliver explicitly reviewed answers for the same page together. Use the action's `action_id`, obligation IDs from its AuditPlan, and the declared `reviews` item shape; the Runner does not supply judgments or a page-wide default verdict. Requirements already proved by planned machine evidence do not ask for another human declaration. The registered shared failure-applicability judgment can cover its conditional items only when the page explicitly explains genuine non-applicability; otherwise those items retain distinct answers.
+
+```json
+{
+  "initial_action_id": "<current action_id>",
+  "reviews": [
+    {"obligation_id": "<plan obligation ID>", "input": {"reviewer_context_id": "<review context>", "reviewer_role": "<authorized role>", "verdict": "passed", "statement": "<this item's review finding>", "applicability_disposition": "applicable", "applicability_reason": null}}
+  ]
+}
+```
+
+Save the explicit answers below `.cambium/tmp/`, then invoke:
+
+```text
+python3 Tools/run_task.py . --run-until-boundary --input .cambium/tmp/reviews.json
+```
+
+The original producer receives this collection once and shares frozen page/plan preparation. It resolves existing condition dependencies, then independently admits, locks, publishes and reads back each new fact. It stops on changed inputs, unavailable dependencies or a failed/uncertain result, preserving earlier confirmed publications. `executed` contains the actual producer invocation; its JSON output is an array of individual publication outcomes, not an aggregate Receipt. `remaining_input_ids` means **not attempted**, including answers already covered by a common fact; it is not permission to retry a failed item. Re-query the Runner before further work. Single-action `--execute ACTION_ID --input ...` accepts the action's declared `reviews` shape as well. Without `--input`, continuous mode still stops at semantic boundaries.
+
 Runtime data belongs in `.cambium/`, not `Tools/`. [`runtime_paths.py`](execution/task_runtime/runtime_paths.py) owns shared paths. Policy references `runtime_path_id`; the CLI compiler resolves its value and rejects unknown IDs, mismatched constraints or duplicate literal authorities.
 
 ### Audit evidence hand-off
 
 [`audit_evidence_runtime`](execution/audit/audit_evidence_runtime.py) selects live evidence when due; close/Terminal validate its frozen selection, reconciliation and acceptance dependencies. Readable history is not a passing candidate; withdrawal still removes authority. `evidence_observation` shares mechanical facts only within one read-only action. New observations, locked checks, CAS and read-back remain independent.
 
-Producers share `ReceiptPublication.locked_append` mechanics and `audit_receipt_contract` projections, not semantic authority.
+Producers share `ReceiptPublication.locked_append` mechanics and the shared `audit_fingerprint` projection, not semantic authority.
+
+M atom results reference the original plan's obligation definition; their individual judgments, evidence references and fingerprints remain separately recorded and correctable. The seven emitted post-Delta Closed List facts are accepted against that plan at first publication, without a second full AuditReceipt. The eighth member keeps its native Gate. A close is authorized only by the final complete bundle: its existing reviewer attestation carries the shared plan reconciliation once, and the aggregate commits that exact evidence set. These changes do not remove independent substantive-review rounds or their acceptance boundaries.
+
+Changed-scope checks likewise publish their check fact and plan acceptance together. The Runner consumes that current accepted record directly, without a second full acceptance wrapper. Native Gate, candidate scans and review evidence keep their respective contracts; changed inputs, failed checks and withdrawn records cannot satisfy an obligation simply because publication previously succeeded.
 
 For an open batch, create its AuditPlan and invoke the producer named by each due obligation:
 
 ```text
 python3 Tools/prepare_audit_plan.py --help
-python3 Tools/complete_audit_receipt.py --help
 ```
 
-Ready obligations may be grouped with repeated `--obligation-id` (paired `--evidence-receipt` for finalization). Existing producers preserve evidence kinds, recheck inputs and serialize `--apply` writes. Batch Review requires pre-merge closure.
+Use each producer's declared input shape; supported multi-obligation calls retain individual result identities. Producers preserve evidence kinds, recheck inputs and serialize `--apply` writes. Batch Review requires complete pre-merge closure.
 
 `publish_delta` assembles omitted page `gate_receipts`; invalid explicit references fail. See [runtime policy](agent-interface-policy.yaml).
 
@@ -260,7 +284,7 @@ MCP and Runner share observation of raw exit codes, `output_reliable`, `invocati
 
 Fill only the Runner's generated `required_input` properties; `x-cambium-binding` retains machine-selected identities. CLI declarations own shapes; domain contracts own conditions. `required_input: null` means external resolution, not a submittable readiness assertion.
 
-Omission, `null` and `[]` are distinct. Only declared nullable arguments encode null by omission. In `record_batch_page_review`, omitted `consumed_evidence_ref` means derive, while `[]` asserts an empty set. Unrepresentable values fail rather than widening scope.
+Omission, `null` and `[]` are distinct. Only declared nullable arguments encode null by omission; nested review values preserve their declared nulls through JSON encoding. The M/S producer derives variant and exact evidence references from its frozen plan and current accepted dependencies; callers no longer supply them. Unrepresentable values fail rather than widening scope.
 
 Responses retain substeps and failure stages. Pre-dispatch rejection has no child return code; after later failure or `next_action_error`, inspect authoritative state read-only.
 
@@ -300,11 +324,17 @@ make slow
 make full
 ```
 
-Generators write Markdown/JSON projections; `--check` recomputes their bytes. Each selected file runs once; only wholly `parallel_safe` files overlap. Required Queue E2E drives real MCP `run_task` through closed, then verifies Terminal Proof. Adjacent integrations consume static checkpoints, not lifecycle replay.
+Generators write Markdown/JSON projections; `--check` recomputes their bytes. Each selected file runs once; only wholly `parallel_safe` files overlap. Required Queue E2E drives real MCP `run_task` through closed, then verifies Terminal Proof. It uses the existing continuous mode between semantic boundaries and records every inner action and producer; closing remains a single action so the next batch cannot start before its after-image is verified. Adjacent integrations consume static checkpoints, not lifecycle replay.
 
 `Tools/run_tests.py full --report /tmp/cambium-test-costs.json` records nested costs; `.progress/*.jsonl` beside the report preserves completed scopes after interruption, not a passing verdict. CI uses main-run medians for scheduling, never omission. Main retains full verification.
 
-Runner source views are invocation-scoped and recheck component discovery/bytes, projection and environment. Runtime rechecks may reuse owner-authorized Profile/Standards views, never an old verdict. Independent producer admission, locked currentness and after-image read-back remain.
+The required workflow budget is owned by [ci_impact.py](../.github/scripts/ci_impact.py): about 300 seconds is the target and 360 seconds the acceptance limit for the whole attempt, including preparation and the final gate. Exceeding 360 seconds fails acceptance but does not terminate work: jobs share a separate 1,800-second safety deadline so remote measurements can finish. At that safety boundary, `run_tests --deadline` stops isolated test groups and records incomplete work, not a natural completion time. The gate checks the current attempt, and publication verifies its actual completion time. Missing advisory history does not remove tests; a functional pass alone does not prove the budget was met. Nested cost scopes include work counts, so fewer outer requests cannot hide unchanged inner execution.
+
+Runner source views are invocation-scoped and recheck component discovery/bytes, projection and environment. Execution first re-derives and matches the caller's complete action identity, then consumes that invocation's exact audit step without a second stage selection. No step survives a producer dispatch or becomes a caller-supplied authorization. Independent producer admission, locked currentness and after-image read-back remain.
+
+During one Runner operation, repeated runtime reads may carry the original Profile/Standards input pair through the runtime owner's existing revalidation interface. Every read still rebinds actual source bytes and validates current Queue, Coverage, Progress and evidence; changed inputs fail closed. The pair is released at operation exit and is never a saved runtime result or a cross-request authorization cache.
+
+Hot/historical catalog scans and sealed-body verification each open a separate registry observation. Review records share the existing owner's mechanical projection only while the registry and its contract dependencies have identical bytes. Every record still receives its own body and lifecycle-eligibility checks. Leaving the scan retires the projection; locked and resulting-state reads start afresh. This does not cache current authority or Receipt verdicts.
 
 When adding or changing a public CLI:
 

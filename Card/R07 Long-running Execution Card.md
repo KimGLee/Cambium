@@ -15,9 +15,9 @@ source_files:
   - kernel/K13 Task Runtime and Execution Control/17 Escalation Policy.md
   - kernel/K12 Quality Assurance/14 Batch Review.md
   - kernel/K12 Quality Assurance/19 Incremental Audit Planning.md
-source_hash: 'f9c549102cec'
-reviewed_source_hash: 'f9c549102cec'
-reviewed_card_hash: '872a0e9da739'
+source_hash: '05849f18e6c2'
+reviewed_source_hash: '05849f18e6c2'
+reviewed_card_hash: 'c81aef9817d2'
 ---
 # R07 Long-running Execution Card
 
@@ -30,7 +30,7 @@ Execute admitted multi-batch work while keeping Queue, Progress, evidence, deliv
 - Resume or reconcile the current runtime before selecting the next action.
 - Confirm the frozen Standards/Profile identity and reconcile pending guidance before opening the next batch.
 - Work only on an admitted batch whose dependencies and delivery gate are satisfied.
-- Materialize the current AuditPlan, invoke the registered producer for every due obligation, and preserve each planned evidence kind; only `audit-receipt` obligations use the full AuditReceipt producer. Create the batch-review wrapper only after the complete due-stage closure resolves.
+- Materialize the current AuditPlan and follow its outstanding evidence actions; preserve each planned evidence kind and reuse accepted machine evidence or registered common facts without duplicate declarations. Create the batch-review wrapper only after the complete due-stage closure resolves.
 - Use the registered writer for every state transition, satisfy its required Gate evidence, and read back canonical state after each critical write.
 - Require the applicable batch review and close Gates before accepting the batch result.
 - Checkpoint accepted progress, evidence, remaining work, and the next safe action before yielding or handing off.

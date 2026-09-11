@@ -21,8 +21,7 @@ class AuditLifecycleContractError(ValueError):
 # changed-scope record validator.  Keeping this mechanical vocabulary here
 # prevents the resolver and the record-shape contract from maintaining two
 # spellings for the same intermediate evidence kind.
-AUDIT_RECEIPT_RECORD_KIND = "audit-receipt"
-CHANGED_SCOPE_PRECURSOR_RECORD_KIND = "audit-producer-evidence"
+CHANGED_SCOPE_RECORD_KIND = "changed-scope-check-evidence"
 
 
 # Authority fields copied from the immutable plan into every plan-bound
@@ -59,7 +58,6 @@ EVIDENCE_BINDING_FIELDS = (
 
 _RESOLUTION_ROUTES = {
     "satisfied": "terminal-evidence-complete",
-    "ready-for-completion": "complete-precursor",
     "needs-confirmation": "confirm-substantive-review",
     "needs-correction": "external-correction",
     "escalated": "external-escalation",
@@ -140,9 +138,8 @@ def attempt_binding_mismatches(record, plan, plan_sha256, obligation, *,
 
 __all__ = [
     'ATTEMPT_IDENTITY_FIELDS',
-    'AUDIT_RECEIPT_RECORD_KIND',
     'AuditLifecycleContractError',
-    'CHANGED_SCOPE_PRECURSOR_RECORD_KIND',
+    'CHANGED_SCOPE_RECORD_KIND',
     'EVIDENCE_BINDING_FIELDS',
     'PLAN_BINDING_FIELDS',
     'attempt_binding',

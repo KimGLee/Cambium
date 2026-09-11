@@ -22,14 +22,14 @@ from Tools.platform.common import reporting
 from Tools.platform.common.primitives import catalog_record
 
 
-_SHIPPED_PRODUCER_CHAIN = audit_producer_chain.precursor_chain_for_spec(
+_SHIPPED_PRODUCER_CHAIN = audit_producer_chain.producer_chain_for_spec(
     audit_obligation_projection.obligation_spec_for_rule(
         "k12-02-rendering-verification-record"))
 TOOL = rendering_verification_contract.CURRENT_PRODUCER_TOOL
 TOOL_VERSION = rendering_verification_contract.CURRENT_PRODUCER_VERSION
 CHECK = rendering_verification_contract.CURRENT_PRODUCER_CHECK
-if (TOOL != _SHIPPED_PRODUCER_CHAIN["precursor_tool"] or
-        CHECK != _SHIPPED_PRODUCER_CHAIN["precursor_check"]):
+if (TOOL != _SHIPPED_PRODUCER_CHAIN["producer_tool"] or
+        CHECK != _SHIPPED_PRODUCER_CHAIN["producer_check"]):
     raise ValueError("rendering receipt owner differs from producer chain")
 DEFAULT_RECEIPTS = runtime_paths.RENDERING_VERIFICATION_RECEIPT_PATH
 
@@ -51,7 +51,7 @@ def resolve_obligation(plan, obligation_id, contract=None, root=None):
             obligation_id)
     obligation = matches[0]
     try:
-        chain = audit_producer_chain.precursor_chain_for_obligation(
+        chain = audit_producer_chain.producer_chain_for_obligation(
             obligation, root=root)
     except audit_producer_chain.AuditProducerChainError as exc:
         raise RenderingVerificationError(str(exc)) from exc
@@ -171,7 +171,7 @@ def validate_record_for_plan(record, plan, plan_sha256, obligation, frozen,
     """Validate exact plan, manifest, and evidence-time fingerprint binding."""
     contract = contract or rendering_verification_contract.load_contract(root)
     try:
-        audit_producer_chain.require_precursor_record(
+        audit_producer_chain.require_producer_record(
             record, obligation, root=root)
     except audit_producer_chain.AuditProducerChainError as exc:
         raise RenderingVerificationError(str(exc)) from exc
@@ -205,7 +205,7 @@ def _reject_existing(result, plan, plan_sha256, obligation, frozen,
         obligation_id=obligation["obligation_id"])
 
     def validate_stable(record):
-        audit_producer_chain.require_precursor_record(
+        audit_producer_chain.require_producer_record(
             record, obligation, root=root)
         return rendering_verification_contract.validate_record_for_obligation(
             record, plan, plan_sha256, obligation, contract)

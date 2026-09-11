@@ -73,6 +73,8 @@ import argparse
 import ast
 import os
 import sys
+import unicodedata
+from collections import deque
 from contextlib import contextmanager
 from contextvars import ContextVar
 from copy import deepcopy
@@ -163,17 +165,34 @@ def _view_input_identity(root, projection_target, artifact_bytes):
             component_boundary.component_content_identity(root))
 
 
-def checked_projection(root, projection_target, artifact_bytes, validate, readback):
-    """Consume the original full validator, then reuse only unchanged input.
+def checked_tool(root, projection_target, artifact_bytes, tool, validate, readback):
+    """Fully validate a projection, then detach only the requested Tool row.
 
     `validate` must perform the target root's full compiler check and byte
     read-back. No caller may supply a success bit or a prevalidated document.
     Outside an explicit operation scope the validator always runs. Returned
-    documents are private copies so consumers cannot mutate the stored view.
+    rows are private copies so consumers cannot mutate the stored view. The
+    complete artifact is still validated; a query does not narrow validation
+    to one tool or trust fields merely because they appear in the artifact.
     """
+    def select(document):
+        if (not isinstance(document, dict) or
+                document.get("artifact") != "cli-invocation-contract" or
+                not isinstance(document.get("tools"), list)):
+            raise ContractError("compiled CLI contract has an invalid artifact shape")
+        if document.get("projection_target") != projection_target:
+            raise ContractError("compiled CLI contract has a different projection target")
+        matches = [row for row in document["tools"]
+                   if isinstance(row, dict) and row.get("tool") == tool]
+        if len(matches) != 1:
+            raise ContractError("compiled CLI contract resolves %s to %d entries" %
+                                (tool, len(matches)))
+        return dict(deepcopy(matches[0]),
+                    invocation_contract_source_hash=document.get("source_hash"))
+
     views = _CHECKED_VIEWS.get()
     if views is None:
-        return validate()
+        return select(validate())
     root = os.path.realpath(os.path.abspath(os.fspath(root)))
     key = (root, projection_target)
     try:
@@ -182,13 +201,13 @@ def checked_projection(root, projection_target, artifact_bytes, validate, readba
         if existing is not None and existing[0] == before:
             if readback() != artifact_bytes:
                 raise ContractError("CLI projection changed during input observation")
-            return deepcopy(existing[1])
+            return select(existing[1])
         views.pop(key, None)
         document = validate()
         if before != _view_input_identity(root, projection_target, readback()):
             raise ContractError("CLI computation inputs changed during currentness validation")
         views[key] = (before, deepcopy(document))
-        return document
+        return select(document)
     except ContractError:
         views.pop(key, None)
         raise
@@ -988,8 +1007,19 @@ class _ReceiptExtensionAnalyzer:
             raise ContractError(
                 "receipt source %s does not parse: %s" %
                 (relative, exc)) from exc
+        functions = {
+            node.name: node for node in tree.body
+            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+        }
         bindings = {}
-        for node in ast.walk(tree):
+        # Imports are statements, never children of expressions. Preserve
+        # their original breadth-first order (including nested statements)
+        # without walking every business expression just to find imports.
+        pending = deque([tree])
+        while pending:
+            node = pending.popleft()
+            pending.extend(child for child in ast.iter_child_nodes(node)
+                           if not isinstance(child, ast.expr))
             if isinstance(node, ast.Import):
                 for alias in node.names:
                     if alias.asname:
@@ -1005,10 +1035,20 @@ class _ReceiptExtensionAnalyzer:
                     qualified = "%s.%s" % (owner, alias.name) \
                         if owner else alias.name
                     bindings[alias.asname or alias.name] = qualified
-        functions = {
-            node.name: node for node in tree.body
-            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
-        }
+        # This is only a conservative negative index, not field extraction.
+        # Python normalizes identifiers with NFKC. Any factory recognized by
+        # _is_receipt_factory must contain both owner-defined fragments in
+        # its normalized source; comments/strings/nested definitions can only
+        # overselect. Selected scopes still use the unchanged AST analyzer.
+        lines = source_text.split("\n")
+        receipt_scopes = {}
+        for scope in (tree, *functions.values()):
+            text = source_text if scope is tree else "\n".join(
+                lines[scope.lineno - 1:scope.end_lineno])
+            normalized = unicodedata.normalize("NFKC", text)
+            if (RECEIPT_FACTORY_PREFIX not in normalized or
+                    RECEIPT_FACTORY_SUFFIX not in normalized):
+                receipt_scopes[scope] = (frozenset(), False, ())
         info = {
             "module": module_name,
             "path": relative,
@@ -1016,6 +1056,7 @@ class _ReceiptExtensionAnalyzer:
             "tree": tree,
             "bindings": bindings,
             "functions": functions,
+            "receipt_scopes": receipt_scopes,
         }
         self.modules[module_name] = info
         return info
@@ -1128,11 +1169,18 @@ class _ReceiptExtensionAnalyzer:
                         for keyword in value.keywords))
         return set(), False
 
-    def _analyze_scope(self, info, scope):
+    def _scope_facts(self, scope):
+        """Extract only lexical facts, independent of the factory call graph.
+
+        A shared helper's syntax need not be walked again for every CLI that
+        calls it. Factory resolution is deliberately excluded: recursion and
+        partial results still belong to each analyzer's traversal.
+        """
         result = self._empty()
         nodes = list(_scope_nodes(scope))
         receipt_names = set()
         assignments = {}
+        factory_calls = []
 
         for node in nodes:
             if isinstance(node, (ast.Assign, ast.AnnAssign)):
@@ -1162,7 +1210,7 @@ class _ReceiptExtensionAnalyzer:
 
         for node in nodes:
             if isinstance(node, ast.Call) and _is_receipt_factory(node):
-                self._merge(result, self._factory(info, node))
+                factory_calls.append(node)
 
             if isinstance(node, ast.Call) and \
                     isinstance(node.func, ast.Attribute) and \
@@ -1194,6 +1242,19 @@ class _ReceiptExtensionAnalyzer:
                     else:
                         result["partial"] = True
 
+        return (frozenset(result["fields"]), result["partial"],
+                tuple(factory_calls))
+
+    def _analyze_scope(self, info, scope):
+        facts = info["receipt_scopes"].get(scope)
+        if facts is None:
+            facts = self._scope_facts(scope)
+            info["receipt_scopes"][scope] = facts
+        fields, partial, factory_calls = facts
+        result = {"fields": set(fields), "sources": set(),
+                  "partial": partial}
+        for call in factory_calls:
+            self._merge(result, self._factory(info, call))
         result["fields"].difference_update(self.common_envelope_fields)
         return result
 
@@ -1662,14 +1723,13 @@ def main(argv=None):
         except OSError as exc:
             print("%s --check: cannot read %s: %s" % (TOOL, output, exc))
             return 2
-        drift = _recorded_binding_drift(existing, contract)
-        if drift:
-            # Naming the specific mismatch matters more than "stale" here: a
-            # target or boundary mismatch is an artifact describing a
-            # different repository, which regenerating silently would hide.
-            print("%s --check: %s" % (TOOL, drift))
-            return 2
         if existing != text:
+            drift = _recorded_binding_drift(existing, contract)
+            if drift:
+                # Exact equality already proves every field agrees. Parse a
+                # differing artifact only to explain its binding mismatch.
+                print("%s --check: %s" % (TOOL, drift))
+                return 2
             print("%s --check: %s is stale or hand-edited; regenerate it "
                   "with `python3 Tools/compile_cli_contract.py . "
                   "--projection-target %s`"

@@ -48,7 +48,6 @@ SEMANTIC_ACCEPTANCE_TOOL = "record_corpus_acceptance"
 SEMANTIC_ACCEPTANCE_TOOL_VERSION = "1.0.0"
 SEMANTIC_ACCEPTANCE_CHECK = "corpus_plan_semantic_acceptance"
 GATE_RECEIPT_TYPE_ID = "corpus-plan-gate-receipt-v1"
-DIAGNOSTIC_RECEIPT_TYPE_ID = "corpus-plan-diagnostic-receipt-v1"
 
 _CONTRACT_VALUES_KEY = "_corpus_planning_contract_values"
 _CONTRACT_SNAPSHOT_KEY = "_corpus_planning_contract_snapshot"
@@ -107,12 +106,6 @@ def current_gate_receipt_errors(record, *, root=None):
     return errors
 
 
-def current_diagnostic_receipt_errors(record, *, root=None):
-    check = record.get("check") if isinstance(record, dict) else None
-    return receipt_type_contract.base_receipt_errors(
-        record, receipt_type_id=DIAGNOSTIC_RECEIPT_TYPE_ID,
-        tool=TOOL, tool_version=TOOL_VERSION,
-        checks=check if isinstance(check, str) and check != GATE_CHECK else ())
 SEMANTIC_ACCEPTANCE_PLAN_PREFIX = \
     runtime_paths.CORPUS_PLAN_ACCEPTANCE_DELTA_ROOT
 SEMANTIC_ACCEPTANCE_DECISIONS = {"accepted", "rejected"}
@@ -1976,27 +1969,6 @@ def normalized_projection(result, *, repository_snapshot_sha256=None):
     }
 
 
-def _receipts_for(result, *, repository_snapshot_sha256=None):
-    if not result["errors"]:
-        try:
-            return [make_pass_receipt(
-                result,
-                repository_snapshot_sha256=repository_snapshot_sha256,
-                seq=1,
-            )]
-        except (OSError, TypeError, ValueError) as exc:
-            _add_error(result, "receipt_binding", result.get(
-                "profile_manifest") or "<unresolved>", str(exc))
-    receipts = []
-    for seq, error in enumerate(result["errors"], 1):
-        receipts.append(kblib.make_receipt(
-            TOOL, TOOL_VERSION, error["check"], error["target"], "fail",
-            error["details"], seq,
-            receipt_type_id=DIAGNOSTIC_RECEIPT_TYPE_ID,
-            root=result.get("root")))
-    return receipts
-
-
 def main(argv=None):
     parser = kblib.ArgumentParser(
         description="Validate explicit Corpus Planning artifacts")
@@ -2006,7 +1978,7 @@ def main(argv=None):
         help="repository-relative Profile manifest or Profile directory; "
              "default: selected Profile in Progress Ledger",
     )
-    parser.add_argument("--receipts", help="append JSONL receipts here")
+    parser.add_argument("--receipts", help="append the passing Corpus Planning Gate here; diagnostics stay in the report")
     parser.add_argument(
         "--json", action="store_true",
         help="write only the deterministic normalized result JSON to stdout",
@@ -2019,14 +1991,20 @@ def main(argv=None):
     except (OSError, ValueError) as exc:
         snapshot = None
         _add_error(result, "repository_snapshot", result["root"], str(exc))
-    receipts = _receipts_for(
-        result, repository_snapshot_sha256=snapshot)
-    if args.receipts:
+    gate = None
+    if not result["errors"]:
+        try:
+            gate = make_pass_receipt(
+                result, repository_snapshot_sha256=snapshot, seq=1)
+        except (OSError, TypeError, ValueError) as exc:
+            _add_error(result, "receipt_binding", result.get(
+                "profile_manifest") or "<unresolved>", str(exc))
+    if args.receipts and gate is not None:
         try:
             receipt_path = kblib.repository_path(
                 result["root"], args.receipts, must_exist=False,
                 reject_symlink=True)
-            kblib.write_receipts(receipt_path, receipts)
+            kblib.write_receipts(receipt_path, [gate])
         except (OSError, ValueError) as exc:
             _add_error(result, "receipt_write", args.receipts, str(exc))
     for error in _result_currency_errors(result):

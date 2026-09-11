@@ -29,6 +29,8 @@ The sole machine list for an ordinary batch's changed-scope obligations is [`cha
 
 Candidate rows can open review scope but cannot fail it directly. Maintenance, Standards-governance, and Terminal checks stay outside this base. Profile checks enter only through `k12-05-registered-scan` and remain Profile-owned.
 
+Rows assigned `changed-scope-check-evidence` publish their check result and acceptance binding together. First publication MUST validate the original plan and obligation, registered check and acceptance predicate, due stage, exact input and contract fingerprints, and currentness. Consumers validate that same fact against the original obligation; they MUST NOT require a second complete AuditReceipt merely to repeat its binding. A failed check remains a failed historical attempt, not satisfied evidence. Input changes or withdrawal do not erase prior attempts and do not invalidate unrelated obligations. Native Gate and candidate records retain their distinct contracts.
+
 - Empty- and short-file scans produce candidates only; a Tool cannot invent a threshold, unit, or applicable page set.
 - Missing Sources, Related, and metadata belong to the advisory `page-contract` Gate under [[kernel/K08 Metadata and Status/06 Frontmatter Applicability Contract|K08/06]]. Missing `Related` is not reported ([[kernel/K09 Wiki Link and Navigation/04 MOC Related and Link Creation|K09/04]]), while claim support remains [[kernel/K07 Sources and Accuracy Standard|K07]] review.
 - Frontmatter controlled vocabulary validation is performed by the

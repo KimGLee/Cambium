@@ -55,7 +55,7 @@ Exact edge membership and its division between the ordinary Queue writer, Amendm
 |---|---|
 | Initial batch admission | current `required-queue-admission`; closed dependencies; required confirmation; current Work Spec when bound; disjoint manifest and concurrency/exclusivity compliance |
 | Merge readiness | exact-manifest Delta; current page and scoped-check evidence; one current `batch-review` wrapper; zero prospective unsettled K13/08 references bound to exact Delta and Coverage bytes |
-| Serial close | exact Delta applied; zero landed unsettled references; Closed List and global review passed; current Queue consistency and batch-close evidence over one repository snapshot; any applicable Corpus Planning child evidence |
+| Serial close | exact Delta applied; zero landed unsettled references; Closed List and the independent reviewer attestation passed; current Queue consistency and batch-close evidence over one repository snapshot; any applicable Corpus Planning child evidence |
 | Invalidation rollback | recorded merge failure and immutable invalidation history binding the archived Delta, invalidated evidence, and any byte-exact Coverage restoration required by a prior apply |
 
 Corpus Planning applicability is resolved from the frozen Task Contract and validator-defined affected-path set, not trusted from a caller-provided boolean. Stale Profile, planning, state, Queue, or repository bindings cannot authorize close.

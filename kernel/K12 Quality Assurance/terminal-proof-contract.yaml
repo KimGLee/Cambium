@@ -178,8 +178,7 @@ fields:
     source: derived
     # Derived only from non-dimensionless obligations selected by each
     # admitted closed batch's complete AuditPlan reconciliation. Every ref
-    # keeps its registered evidence kind; the audit-receipt subset must also
-    # remain an exact member of audit_receipt_register.
+    # keeps its native registered evidence kind and exact frozen selection.
     example:
       structure_and_links:
         - audit-fixture-structure-and-links
@@ -191,13 +190,6 @@ fields:
       rendering: "not-applicable: no rendering trigger is present"
       guidance_and_contract:
         - audit-fixture-guidance-and-contract
-  - field: audit_receipt_register
-    type: repository-path
-    nullable: false
-    source: derived
-    # This register owns only the full AuditReceipt subset of the heterogeneous
-    # plan-bound evidence cited by dimension_coverage.
-    example: .cambium/receipts/audit-receipts.jsonl
   - field: terminal_audit_receipt_register
     type: repository-path
     nullable: false
@@ -227,7 +219,7 @@ fields:
     type: repository-path
     nullable: false
     source: derived
-    example: .cambium/receipts/audit-receipts.jsonl
+    example: .cambium/receipts/terminal.jsonl
   - field: incremental_manual_scope
     type: repository-path-list
     nullable: false
@@ -282,16 +274,14 @@ path_fields:
   - selected_read_sets
   - loaded_module_paths
   - required_queue_path
-  - audit_receipt_register
   - terminal_audit_receipt_register
   - full_deterministic_results
   - incremental_manual_scope
 
 canonical_path_values:
   required_queue_path: .cambium/state/required_queue.yaml
-  audit_receipt_register: .cambium/receipts/audit-receipts.jsonl
   terminal_audit_receipt_register: .cambium/receipts/terminal.jsonl
-  full_deterministic_results: .cambium/receipts/audit-receipts.jsonl
+  full_deterministic_results: .cambium/receipts/terminal.jsonl
 
 required_route_ids:
   - R01
