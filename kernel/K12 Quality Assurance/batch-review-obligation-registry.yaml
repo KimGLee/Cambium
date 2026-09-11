@@ -1,20 +1,20 @@
-schema_version: 3
+schema_version: 4
 registry_id: cambium-batch-review-obligations
 semantic_owner: K12/01-K12/14
 machine_projection_owner: K12/14
 
 # This is the sole machine projection of the Kernel-owned M-tier checklist and
 # S-tier sampling rule. The seven M-tier bullets remain human-readable source
-# groups; only the atomic items below are AuditPlan obligation members.
+# groups. Emitting items become AuditPlan members; consuming items reference
+# the original planned evidence, without a second attestation obligation.
 closed_world:
   m_tier_atomic_items: true
   source_groups_are_obligations: false
   profile_extensions_in_base_set: false
   unknown_item_fields: reject
 
-# The plan freezes every registered atom as a definition.  A conditional atom
-# is discharged by an explicit page-review disposition, never by disappearing
-# from the plan or by silently being treated as universally applicable.
+# The plan freezes every emitting definition, including conditional ones.
+# Consumption coverage is resolved from the same frozen original obligations.
 m_applicability_contract:
   unconditional_predicate: always
   disposition_values:
@@ -22,8 +22,18 @@ m_applicability_contract:
     - not-applicable
   applicable_reason: null
   not_applicable_reason: nonempty
-  plan_definition_policy: freeze-all-registered-atoms
+  plan_definition_policy: freeze-emits-and-resolve-consumption
   required_dependency_disposition: applicable
+
+# The existing explicit-N/A item owns this one shared semantic condition.
+# A passing applicable answer attests that the page explicitly states why
+# failure behavior is genuinely absent. It covers the conditional items with
+# that same predicate. Otherwise their distinct applicable answers remain
+# independently correctable and bind the accepted common condition evidence.
+m_shared_applicability:
+  condition_item_id: m03-not-applicable-explicit
+  dependent_predicate: when-failure-behavior-applies
+  condition_covers_dependents_when: applicable
 
 audit_plan_projection:
   owner_kind: kernel
@@ -48,8 +58,8 @@ audit_plan_projection:
 # M07 consumes the complete same-page changed-scope deterministic closure.
 # The conditional Profile-rendering atom consumes every same-page, current
 # Profile-rendering obligation frozen by the typed Profile contract. A page
-# with no matching obligation can still record an explicit not-applicable
-# disposition; an applicable page cannot pass without the exact evidence.
+# with no matching construct needs no duplicate N/A declaration. The Profile
+# plan closure must still reject a present construct without a valid contract.
 m_consumption_contracts:
   - item_id: m05-no-required-link-missing
     resolution: resolved
@@ -132,6 +142,28 @@ m_consumption_contracts:
         - pass
         - passed
       match_cardinality: one-or-more-all-matching-required
+    hold_reason: null
+
+  - item_id: m07-rendering-level-or-exception
+    resolution: resolved
+    selector:
+      selector_id: m07-batch-rendering-boundary-v1
+      source: audit-plan-obligation-evidence
+      owner_kind: kernel
+      owner_rule_ids:
+        - k12-02-rendering-verification-record
+      kernel_extension_point: null
+      partition: changed-scope-deterministic
+      due_stage: pre-merge
+      target_binding: same-batch
+      evidence_role: emits
+      obligation_status: required
+      consumer_gate_id: batch-review
+      evidence_currency: current
+      evidence_result_values:
+        - pass
+        - passed
+      match_cardinality: exactly-one
     hold_reason: null
 
 m_tier_source_groups:
@@ -666,10 +698,10 @@ m_tier_atomic_items:
       contract_id: k12-01-m-tier-no-required-link-missing-v1
       text: No required link is missing.
     evidence_role: consumes
-    evidence_kind: batch-page-review-record
+    evidence_kind: null
     dimension: structure_and_links
-    producer_capability: batch-page-review-attestation-v1
-    producer_check: batch_page_review:m05-no-required-link-missing
+    producer_capability: null
+    producer_check: null
     consumer_gate_id: batch-review
     due_stage: pre-merge
     trigger_partition_mappings:
@@ -686,10 +718,10 @@ m_tier_atomic_items:
       contract_id: k12-01-m-tier-no-required-link-ambiguous-v1
       text: No required link is ambiguous.
     evidence_role: consumes
-    evidence_kind: batch-page-review-record
+    evidence_kind: null
     dimension: structure_and_links
-    producer_capability: batch-page-review-attestation-v1
-    producer_check: batch_page_review:m05-no-required-link-ambiguous
+    producer_capability: null
+    producer_check: null
     consumer_gate_id: batch-review
     due_stage: pre-merge
     trigger_partition_mappings:
@@ -786,10 +818,10 @@ m_tier_atomic_items:
       contract_id: k12-01-m-tier-triggered-rendering-obligations-applied-v1
       text: All triggered rendering obligations have been applied.
     evidence_role: consumes
-    evidence_kind: batch-page-review-record
+    evidence_kind: null
     dimension: rendering
-    producer_capability: batch-page-review-attestation-v1
-    producer_check: batch_page_review:m06-triggered-rendering-obligations-applied
+    producer_capability: null
+    producer_check: null
     consumer_gate_id: batch-review
     due_stage: pre-merge
     trigger_partition_mappings:
@@ -806,10 +838,10 @@ m_tier_atomic_items:
       contract_id: k12-01-m-tier-applicable-deterministic-checks-pass-v1
       text: Applicable deterministic checks pass.
     evidence_role: consumes
-    evidence_kind: batch-page-review-record
+    evidence_kind: null
     dimension: guidance_and_contract
-    producer_capability: batch-page-review-attestation-v1
-    producer_check: batch_page_review:m07-applicable-deterministic-checks-pass
+    producer_capability: null
+    producer_check: null
     consumer_gate_id: batch-review
     due_stage: pre-merge
     trigger_partition_mappings:
@@ -825,11 +857,11 @@ m_tier_atomic_items:
     acceptance_contract:
       contract_id: k12-01-m-tier-rendering-level-or-exception-v1
       text: Rendering remains at Level 0 / Level 1 unless an objective visual exception trigger and unresolved question are recorded.
-    evidence_role: emits
-    evidence_kind: batch-page-review-record
+    evidence_role: consumes
+    evidence_kind: null
     dimension: rendering
-    producer_capability: batch-page-review-attestation-v1
-    producer_check: batch_page_review:m07-rendering-level-or-exception
+    producer_capability: null
+    producer_check: null
     consumer_gate_id: batch-review
     due_stage: pre-merge
     trigger_partition_mappings:
@@ -973,6 +1005,8 @@ producer_evidence_contract:
       type: string
     - field: consumed_evidence_refs
       type: string-list
+    - field: covered_obligation_ids
+      type: string-list
     - field: sample_rule_id
       type: string
     - field: sample_population_count
@@ -1036,6 +1070,7 @@ producer_evidence_contract:
         - item_id
         - rule_id
         - source_group
+        - covered_obligation_ids
       forbidden_fields:
         - partition
         - due_stage
@@ -1060,7 +1095,8 @@ producer_evidence_contract:
         - item_id, rule_id, source_group, and check name exactly one registry item. The plan_id, audit_plan_sha256, and obligation_id reference the immutable obligation definition; its partition, stage, role, dimension, predicate, producer, consumer, and fingerprint boundary are not copied into every atomic result.
         - The referenced obligation dimension is exactly the registered item dimension; each item retains its own artifact, dependency, and contract fingerprints and independent correction identity.
         - An always-applicable item records applicable with a null reason; a conditional item records applicable with a null reason or not-applicable with a nonempty reason.
-        - An emits item has an empty consumed_evidence_refs list. An applicable consumes item binds exactly the canonical evidence selected by its resolved consumption contract; an unresolved selector is HOLD. A not-applicable conditional consumes item binds no evidence.
+        - Consuming requirements do not produce M declarations. A shared-condition dependent binds the exact accepted condition evidence; other emitting items have no consumed references.
+        - Only the registered common condition may cover other obligation IDs, and only when it passes in its covering disposition. The exact covered set is derived from the same page and original plan, never supplied by the reviewer. Withdrawing this common fact invalidates its coverage and dependents; unrelated results retain their own correction identities.
     - review_variant: s-sampled-page
       tier: S
       required_fields:
@@ -1084,6 +1120,7 @@ producer_evidence_contract:
         - selection_fingerprint
         - selection_frozen_at
       forbidden_fields:
+        - covered_obligation_ids
         - applicability_disposition
         - applicability_reason
         - item_id

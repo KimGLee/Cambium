@@ -129,6 +129,10 @@ class _EvidenceFacts:
                 if not all(isinstance(value, str) for value in binding):
                     continue
                 index.setdefault(binding, []).append(record)
+                if record.get("record_kind") == "batch-page-review-record":
+                    for covered in record.get("covered_obligation_ids") or ():
+                        if isinstance(covered, str) and covered != binding[1]:
+                            index.setdefault((binding[0], covered), []).append(record)
             for rows in index.values():
                 rows.sort(key=lambda row: row.get("receipt_id") or "")
             if not self.enabled:
@@ -691,17 +695,19 @@ def _batch_page_binding_errors(result, catalog, root, plan, plan_sha256,
         batch_review_obligation_contract.validate_record_plan_binding(
             record, plan, plan_sha256, obligation, registry)
         spec = batch_review_obligation_contract.obligation_spec_for_rule(
-            obligation.get("owner_rule_id"), registry)
+            record.get("rule_id") or record.get("sample_rule_id"), registry)
+        primary = next(row for row in plan["obligations"]
+                       if row["obligation_id"] == record["obligation_id"])
         current_receipt_ids = (catalog.selected_ids
                                if isinstance(catalog, _FrozenEvidenceView) else None)
         if require_current:
             current_receipt_ids = frozenset()
-            if (spec.get("tier") == "M" and
-                    spec.get("evidence_role") == "consumes"):
+            if batch_review_obligation_contract.consumption_dependency_obligation_ids(
+                    plan["obligations"], primary, registry):
                 current_receipt_ids = current_consumption_evidence_ids(
                     result, (result.get("items_by_id") or {}).get(
                         plan["batch_id"], {}), plan, plan_sha256,
-                    obligation, registry)
+                    primary, registry)
         consumed = batch_review_obligation_contract.validate_receipt_consumption(
             plan, plan_sha256, record, catalog, registry,
             current_receipt_ids=current_receipt_ids,

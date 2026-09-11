@@ -39,13 +39,13 @@ pages:
     reentry_condition: null
     authoring_status: reviewed
     gate_receipts:
-      - audit-record_batch_page_review-20260910T175217Z-6ed94b36c31347048d8b052dcbde40c2-0001
-      - audit-check_batch_close-20260910T175222Z-f772b9f30587483db492b8804b0312cc-0010
+      - audit-record_batch_page_review-20260911T051948Z-f65bc9b7eaff4b8fa8aa73d33358655a-0001
+      - audit-check_batch_close-20260911T051952Z-5381eb2a59c844efaba666f3e64cf672-0010
     property_state:
       last_reviewed:
-        value: 2026-09-10
-        evidence_receipt: audit-check_batch_close-20260910T175222Z-f772b9f30587483db492b8804b0312cc-0010
-        content_fingerprint: sha256:bbff007034a2d19522a357b835a062f22948721d86bb2cc2f8997f18510e365f
+        value: 2026-09-11
+        evidence_receipt: audit-check_batch_close-20260911T051952Z-5381eb2a59c844efaba666f3e64cf672-0010
+        content_fingerprint: sha256:3cae6b335b58a7f58970425c193ae89dda855cd56a5bc8acf9d0981774800a50
   - path: Topics/B.md
     coverage_disposition: required
     canonical_owner: Topics/B.md
@@ -60,11 +60,11 @@ pages:
     reentry_condition: null
     authoring_status: reviewed
     gate_receipts:
-      - audit-record_batch_page_review-20260910T175224Z-b629f6cc59ae4ff8b7e96d6d9cc83e9e-0001
-      - audit-check_batch_close-20260910T175232Z-f4389168a06e48f08bdcd6d40475bec2-0010
+      - audit-record_batch_page_review-20260911T051955Z-00f09cc6f11f4e3bbfd0bf9880d8450a-0001
+      - audit-check_batch_close-20260911T052002Z-e0eb1e98ec3f4a3baac42253c032cad8-0010
     property_state:
       last_reviewed:
-        value: 2026-09-10
-        evidence_receipt: audit-check_batch_close-20260910T175232Z-f4389168a06e48f08bdcd6d40475bec2-0010
-        content_fingerprint: sha256:bd95631b283d1c1d77897215514b20d468fdd5da02003716994af13c2dca471c
+        value: 2026-09-11
+        evidence_receipt: audit-check_batch_close-20260911T052002Z-e0eb1e98ec3f4a3baac42253c032cad8-0010
+        content_fingerprint: sha256:b5c8c55c0599e683c595841079ea1849f7a4ce32311d48264f8acfeb2058359f
 open_gaps: []

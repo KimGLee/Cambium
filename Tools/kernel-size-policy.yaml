@@ -77,7 +77,7 @@ exceptions:
     growth_cap_bytes: 10752
     record_id: EXC-016
   - path: kernel/K12 Quality Assurance/14 Batch Review.md
-    measured_bytes: 6757
+    measured_bytes: 7330
     growth_cap_bytes: 7680
     record_id: EXC-017
   - path: kernel/K13 Task Runtime and Execution Control/19 Card Context Activation and Read-back Delivery.md

@@ -1,12 +1,11 @@
 #!/usr/bin/env python3
-"""Record one plan-bound M atom or sampled-S Batch Review judgment.
+"""Publish explicit same-page M/S results through one original producer.
 
-The CLI never chooses a new obligation.  It resolves one immutable AuditPlan
-row back to the Kernel K12/14 registry, freezes the three evidence-time
-fingerprints, and publishes one closed append-only producer record.
+The existing reviews collection shares frozen material and preparation.
+Every independent fact still has its own guarded append and exact read-back;
+a later refusal never rolls back or conceals earlier confirmed publications.
 """
 
-import os
 import sys
 
 import Tools.execution.audit.audit_evidence_runtime as audit_evidence_runtime
@@ -90,7 +89,7 @@ def _require_plan_bytes_current(root, relative, before):
             "AuditPlan bytes changed before evidence publication")
 
 
-def _required_obligation(plan, obligation_id, page, variant, registry):
+def _required_obligation(plan, obligation_id, page, tier, registry):
     matches = [row for row in plan.get("obligations") or []
                if isinstance(row, dict) and
                row.get("obligation_id") == obligation_id]
@@ -107,12 +106,10 @@ def _required_obligation(plan, obligation_id, page, variant, registry):
             obligation.get("owner_rule_id"), registry)
     except ValueError as exc:
         raise audit_producer_runtime.AuditProducerError(str(exc)) from exc
-    expected_variant = (
-        "m-atomic-item" if spec["tier"] == "M" else "s-sampled-page")
-    if variant != expected_variant:
+    if tier != spec["tier"]:
         raise audit_producer_runtime.AuditProducerError(
-            "--variant %s disagrees with plan rule %s" %
-            (variant, spec["rule_id"]))
+            "Coverage tier %s disagrees with plan rule %s" %
+            (tier, spec["rule_id"]))
     if obligation.get("status") != "required":
         raise audit_producer_runtime.AuditProducerError(
             "batch-page producer accepts only a required obligation")
@@ -135,8 +132,8 @@ def _current_consumed_records(result, item, receipt_ids, *, plan,
         receipt_ids = sorted(receipt_ids)
     try:
         current_receipt_ids = frozenset()
-        if (spec.get("tier") == "M" and
-                spec.get("evidence_role") == "consumes"):
+        if batch_contract.consumption_dependency_obligation_ids(
+                plan["obligations"], obligation, registry):
             current_receipt_ids = \
                 audit_evidence_runtime.current_consumption_evidence_ids(
                     result, item, plan, plan_sha256, obligation, registry)
@@ -162,7 +159,7 @@ def current_review_attempt(result, item, plan, plan_sha256, obligation, spec,
         batch_contract.validate_record_plan_binding(record, plan, plan_sha256, obligation, registry)
         batch_contract.validate_plan_applicability(
             plan["obligations"], spec, obligation["target"],
-            record.get("applicability_disposition"))
+            record.get("applicability_disposition"), registry)
         return record
 
     def validate_current(record):
@@ -310,6 +307,9 @@ def build_review_receipt(*, root, plan, plan_sha256, obligation, spec,
             "item_id": spec["item_id"],
             "rule_id": spec["rule_id"],
             "source_group": spec["source_group"],
+            "covered_obligation_ids": list(batch_contract.covered_obligation_ids(
+                plan, spec, page_snapshot.path, disposition["applicability_disposition"],
+                verdict, registry)),
         })
     else:
         if selection is None:
@@ -351,167 +351,148 @@ def require_exact_readback(receipt_absolute, receipt, registry, *, observation=N
 
 
 def main(argv=None):
-    from Tools.platform.agent_interface.agent_interface_contract import nullable_argument
+    import json
+    from Tools.execution.task_runtime.task_runtime_action import page_review_answers
     parser = kblib.ArgumentParser(
-        description="Record one plan-bound Batch Review page judgment")
+        description="Record explicit same-page M/S answers with independent publications")
     parser.add_argument("root", help="adopting repository root")
     parser.add_argument("--batch", required=True)
     parser.add_argument("--plan", required=True)
-    parser.add_argument("--obligation-id", required=True)
     parser.add_argument("--page", required=True)
-    parser.add_argument(
-        "--variant", required=True,
-        choices=("m-atomic-item", "s-sampled-page"))
-    parser.add_argument("--reviewer-context-id", required=True)
-    parser.add_argument("--reviewer-role", required=True)
-    parser.add_argument(
-        "--verdict", required=True,
-        choices=("passed", "changes-required"))
-    parser.add_argument("--statement", required=True)
-    nullable_argument(parser.add_argument(
-        "--applicability-disposition",
-        choices=("applicable", "not-applicable"),
-        help="required for M atoms; evidence-time disposition, not plan status"))
-    nullable_argument(parser.add_argument(
-        "--applicability-reason",
-        help="required only when a conditional M atom is not applicable"))
-    parser.add_argument(
-        "--consumed-evidence-ref", action="extend", nargs="*", default=None,
-        help="optional exact assertion of Tool-derived current evidence IDs")
+    parser.add_argument("--review", dest="reviews", action="append", required=True,
+                        help="one JSON {obligation_id, input} row from the existing reviews collection")
     parser.add_argument("--apply", action="store_true")
     args = parser.parse_args(argv)
-    publication = kblib.ReceiptPublication()
-
+    outcomes = []
+    remaining = {}
     try:
-        root, result, authority = audit_producer_runtime.admitted_runtime(
-            args.root)
-        item, _activation = audit_producer_runtime.open_batch(
-            result, args.batch)
+        remaining = page_review_answers([json.loads(value) for value in args.reviews])
+        root, initial, authority = audit_producer_runtime.admitted_runtime(args.root)
+        item, _activation = audit_producer_runtime.open_batch(initial, args.batch)
         (_absolute, plan, plan_sha256, frozen, tiers, registry,
-         closure, plan_snapshot) = load_current_plan(
-             root, args.plan, result, item)
-        obligation, spec = _required_obligation(
-            plan, args.obligation_id, args.page, args.variant, registry)
-        if tiers[args.page] != spec["tier"]:
-            raise audit_producer_runtime.AuditProducerError(
-                "review target tier disagrees with the plan rule")
-        page_snapshot = audit_producer_runtime.frozen_manifest_page(
-            frozen, args.page)
+         closure, plan_snapshot) = load_current_plan(root, args.plan, initial, item)
+        page_snapshot = audit_producer_runtime.frozen_manifest_page(frozen, args.page)
         if page_snapshot is None:
-            raise audit_producer_runtime.AuditProducerError(
-                "page %s is not exactly one frozen manifest member" %
-                args.page)
-        consumed = _current_consumed_records(
-            result, item, args.consumed_evidence_ref,
-            plan=plan, plan_sha256=plan_sha256, obligation=obligation,
-            spec=spec,
-            page=args.page,
-            disposition=args.applicability_disposition,
-            registry=registry)
-        _require_no_current_attempt(
-            result, item, plan, plan_sha256, obligation, spec,
-            page_snapshot, registry)
-        selection = (
-            closure["s_selection"] if spec["tier"] == "S" else None)
-        receipt = build_review_receipt(
-            root=root, plan=plan, plan_sha256=plan_sha256,
-            obligation=obligation, spec=spec, page_snapshot=page_snapshot,
-            reviewer_context_id=args.reviewer_context_id,
-            reviewer_role=args.reviewer_role, verdict=args.verdict,
-            statement=args.statement, consumed_records=consumed,
-            applicability_disposition=args.applicability_disposition,
-            applicability_reason=args.applicability_reason,
-            selection=selection, registry=registry)
-        receipt_absolute = audit_producer_runtime.managed_receipt_path(
-            root, DEFAULT_RECEIPTS)
+            raise audit_producer_runtime.AuditProducerError("page is not a frozen manifest member")
+        definitions = {row["obligation_id"]: row for row in plan["obligations"]}
         registry_digest = batch_contract.registry_sha256(registry)
-    except (OSError, TypeError, UnicodeError, ValueError,
-            kblib.YamlSubsetError) as exc:
-        reporting.write_canonical_json(reporting.publication_result(
-            publication, status="invalid", errors=[str(exc)]))
+        receipt_absolute = audit_producer_runtime.managed_receipt_path(root, DEFAULT_RECEIPTS)
+        # Existing condition dependencies, not a second lifecycle scheduler.
+        # Independent supplied answers stay in input order; their prerequisite
+        # is delivered first if it is also present in this same collection.
+        ordered = sorted(remaining, key=lambda identity: len(
+            batch_contract.consumption_dependency_obligation_ids(
+                plan["obligations"], definitions[identity], registry))
+            if identity in definitions else 0)
+    except (OSError, TypeError, UnicodeError, ValueError, kblib.YamlSubsetError) as exc:
+        reporting.write_canonical_json([reporting.publication_result(
+            kblib.ReceiptPublication(), status="invalid", errors=[str(exc)],
+            remaining_input_ids=sorted(remaining))])
         return 1
 
-    if not args.apply:
-        reporting.write_canonical_json(reporting.publication_result(
-            publication, status="planned", receipt_id=receipt["receipt_id"],
-            receipt_path=DEFAULT_RECEIPTS, result=receipt["result"],
-            review_variant=receipt["review_variant"]))
-        return 0 if receipt["result"] == "pass" else 1
+    covered = set()
+    for sequence, obligation_id in enumerate(ordered, 1):
+        if obligation_id in covered:
+            # The input was not executed or converted into another claim.
+            # Its original obligation is already covered by the common fact.
+            continue
+        supplied = remaining.pop(obligation_id)
+        publication = kblib.ReceiptPublication()
+        receipt = None
+        try:
+            row = definitions.get(obligation_id)
+            if row is None:
+                raise ValueError("review names an obligation outside the frozen plan")
+            obligation, spec = _required_obligation(
+                plan, obligation_id, args.page, tiers[args.page], registry)
+            input_shape = batch_contract.review_input_shape(registry)["items"]["properties"]["input"]
+            allowed = input_shape["properties"]
+            if set(supplied) - set(allowed):
+                raise ValueError("review answer has unregistered fields")
+            required = set(input_shape["required"])
+            if not required.issubset(supplied):
+                raise ValueError("review answer is missing required semantic inputs")
+            dependencies = batch_contract.consumption_dependency_obligation_ids(
+                plan["obligations"], obligation, registry)
+            if dependencies:
+                supplied.setdefault("applicability_disposition", "applicable")
+            constraints = batch_contract.review_input_constraints(plan["obligations"], obligation, registry)
+            batch_contract.validate_review_input(
+                constraints, supplied.get("applicability_disposition"),
+                supplied.get("applicability_reason"), registry)
 
-    operation = audit_producer_runtime.runtime_lock_metadata(
-        TOOL, "record-batch-page-review", result, authority,
-        batch_id=args.batch, plan_id=plan["plan_id"],
-        obligation_id=obligation["obligation_id"],
-        receipt_id=receipt["receipt_id"])
-    try:
-        with publication.locked_append(root, receipt_absolute, [receipt],
-                operation=operation, label="record_batch_page_review publication"):
-            locked = audit_producer_runtime.require_runtime_current(
-                root, authority, "before batch-page review publication")
-            locked_item, _locked_activation = \
-                audit_producer_runtime.open_batch(locked, args.batch)
-            (_locked_absolute, locked_plan, locked_plan_sha256,
-             _locked_plan_snapshot) = _resolve_current_plan(
-                 root, args.plan, locked, locked_item)
-            if (locked_plan != plan or
-                    locked_plan_sha256 != plan_sha256):
-                raise audit_producer_runtime.AuditProducerError(
-                    "resolved AuditPlan changed before evidence publication")
-            _require_plan_bytes_current(root, args.plan, plan_snapshot)
-            locked_tiers = _coverage_tiers(
-                locked, locked_item["manifest"])
-            locked_registry = batch_contract.load_registry(root, cache_projection=True)
-            if batch_contract.registry_sha256(
-                    locked_registry) != registry_digest:
-                raise audit_producer_runtime.AuditProducerError(
-                    "batch-review registry changed before publication")
-            locked_closure = batch_contract.validate_plan_base_closure(
-                plan, locked_item["manifest"], locked_tiers,
-                locked_registry)
-            if locked_closure["s_selection"] != closure["s_selection"]:
-                raise audit_producer_runtime.AuditProducerError(
-                    "S selection changed before publication")
-            audit_producer_runtime.require_pages_current(
-                root, (page_snapshot,),
-                "before batch-page review publication")
-            locked_consumed = _current_consumed_records(
-                locked, locked_item, args.consumed_evidence_ref,
-                plan=plan, plan_sha256=plan_sha256,
-                obligation=obligation, spec=spec,
-                page=args.page,
-                disposition=args.applicability_disposition,
-                registry=locked_registry)
-            if locked_consumed != consumed:
-                raise audit_producer_runtime.AuditProducerError(
-                    "consumed evidence changed before publication")
-            _require_no_current_attempt(
-                locked, locked_item, plan, plan_sha256, obligation, spec,
-                page_snapshot, locked_registry)
-            batch_contract.validate_producer_receipt(
-                receipt, locked_registry)
-    except (OSError, TypeError, ValueError,
-            kblib.RuntimeStateLockedError) as exc:
-        reporting.write_canonical_json(reporting.publication_result(
-            publication, status="uncertain", errors=[str(exc)],
-            receipt_id=receipt["receipt_id"]))
-        return 1
+            def prepare(current):
+                current_item, _ = audit_producer_runtime.open_batch(current, args.batch)
+                consumed = _current_consumed_records(
+                    current, current_item, None, plan=plan, plan_sha256=plan_sha256,
+                    obligation=obligation, spec=spec, page=args.page,
+                    disposition=supplied.get("applicability_disposition"), registry=registry)
+                _require_no_current_attempt(
+                    current, current_item, plan, plan_sha256, obligation, spec, page_snapshot, registry)
+                return build_review_receipt(
+                    root=root, plan=plan, plan_sha256=plan_sha256, obligation=obligation, spec=spec,
+                    page_snapshot=page_snapshot, consumed_records=consumed, registry=registry,
+                    selection=closure["s_selection"] if spec["tier"] == "S" else None,
+                    seq=sequence, **supplied)
 
-    try:
-        require_exact_readback(receipt_absolute, receipt, registry,
-                               observation=publication.observation)
-    except (OSError, TypeError, UnicodeError, ValueError) as exc:
-        reporting.write_canonical_json(reporting.publication_result(
-            publication, status="uncertain", errors=[str(exc)],
-            receipt_id=receipt["receipt_id"]))
-        return 1
+            if args.apply:
+                pending = []
+                operation = audit_producer_runtime.runtime_lock_metadata(
+                    TOOL, "record-batch-page-review", initial, authority,
+                    batch_id=args.batch, plan_id=plan["plan_id"], obligation_id=obligation_id)
 
-    publication.confirmed = True
-    reporting.write_canonical_json(reporting.publication_result(
-        publication, status="recorded", result=receipt["result"],
-        receipt_id=receipt["receipt_id"],
-        receipt_path=DEFAULT_RECEIPTS,
-        review_variant=receipt["review_variant"]))
-    return 0 if receipt["result"] == "pass" else 1
+                def verify():
+                    require_exact_readback(receipt_absolute, pending[0], registry,
+                                           observation=publication.observation)
+                    publication.confirmed = True
+
+                with publication.locked_append(
+                        root, receipt_absolute, pending, operation=operation,
+                        label="record_batch_page_review publication", verify=verify):
+                    locked = audit_producer_runtime.require_runtime_current(
+                        root, authority, "before batch-page review publication")
+                    locked_item, _ = audit_producer_runtime.open_batch(locked, args.batch)
+                    (_, locked_plan, locked_digest, _) = _resolve_current_plan(
+                        root, args.plan, locked, locked_item)
+                    if locked_plan != plan or locked_digest != plan_sha256:
+                        raise ValueError("resolved AuditPlan changed before evidence publication")
+                    _require_plan_bytes_current(root, args.plan, plan_snapshot)
+                    if (_coverage_tiers(locked, locked_item["manifest"]) != tiers or
+                            locked_item["manifest"] != item["manifest"]):
+                        raise ValueError("frozen review population or tiers changed")
+                    current_registry = batch_contract.load_registry(root, cache_projection=True)
+                    if batch_contract.registry_sha256(current_registry) != registry_digest:
+                        raise ValueError("batch-review registry changed before publication")
+                    audit_producer_runtime.require_pages_current(
+                        root, (page_snapshot,), "before batch-page review publication")
+                    # All candidate construction is read-only under the same
+                    # currentness boundary. The original writer appends only
+                    # this item after validation, then performs exact read-back.
+                    receipt = prepare(locked)
+                    pending.append(receipt)
+            else:
+                receipt = prepare(initial)
+            outcomes.append(reporting.publication_result(
+                publication, status="recorded" if args.apply else "planned",
+                result=receipt["result"], receipt_id=receipt["receipt_id"],
+                obligation_id=obligation_id, receipt_path=DEFAULT_RECEIPTS,
+                review_variant=receipt["review_variant"]))
+            if args.apply:
+                covered.update(receipt.get("covered_obligation_ids") or ())
+            if receipt["result"] != "pass":
+                outcomes[-1]["remaining_input_ids"] = sorted(remaining)
+                reporting.write_canonical_json(outcomes)
+                return 1
+        except (OSError, TypeError, UnicodeError, ValueError,
+                kblib.RuntimeStateLockedError, kblib.YamlSubsetError) as exc:
+            outcomes.append(reporting.publication_result(
+                publication, status="invalid", errors=[str(exc)],
+                obligation_id=obligation_id, remaining_input_ids=sorted(remaining)))
+            reporting.write_canonical_json(outcomes)
+            return 1
+    outcomes[-1]["remaining_input_ids"] = sorted(remaining)
+    reporting.write_canonical_json(outcomes)
+    return 0
 
 
 if __name__ == "__main__":

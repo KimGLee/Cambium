@@ -89,6 +89,16 @@ output_contracts:
     required_keys: [applied, status]
     empty_exit_codes: [1]
     empty_success_disabled_by: []
+  receipt-publications:
+    mode: always-json
+    result_contract: receipt-publication
+    json_argument: null
+    json_value: null
+    json_inactive_when_any: []
+    json_types: [array]
+    required_keys: []
+    empty_exit_codes: []
+    empty_success_disabled_by: []
   json-option-publication:
     mode: json-option
     result_contract: receipt-publication
@@ -828,11 +838,11 @@ tools:
     read_write_paths: []
     external_write: none
   - tool: record_batch_page_review
-    output: receipt-publication
+    output: receipt-publications
     exposure: mcp
     workspace_argument: root
     workspace_access: write
-    value_arguments: [batch, obligation_id, page, variant, reviewer_context_id, reviewer_role, verdict, statement, applicability_disposition, applicability_reason, consumed_evidence_ref, apply]
+    value_arguments: [batch, page, reviews, apply]
     read_paths: [plan]
     write_paths: []
     read_write_paths: []

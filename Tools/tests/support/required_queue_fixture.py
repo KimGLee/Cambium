@@ -126,7 +126,10 @@ class RequiredQueueFixture(AuditScenarioActions):
                 "# %s\n\n"
                 "## Synthetic Residual\n\n"
                 "Accepted-root liveness marker for the registered fixture "
-                "scan.\n" % name,
+                "scan. This page describes a static synthetic concept, not "
+                "an operational procedure.\n\n"
+                "Failure behavior is not applicable: this marker has no "
+                "execution, operational transition, or failure outcome.\n" % name,
                 encoding="utf-8",
             )
 

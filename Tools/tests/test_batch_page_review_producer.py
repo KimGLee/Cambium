@@ -1,7 +1,9 @@
 """Independent K12/14 registry, sampling, and producer-chain tests."""
 
 import copy
-from contextlib import nullcontext
+from contextlib import ExitStack, nullcontext, redirect_stdout
+import io
+import json
 from math import ceil
 from pathlib import Path
 from types import SimpleNamespace
@@ -54,7 +56,7 @@ class BatchPageReviewProducerTests(unittest.TestCase):
                 "targets a different page"):
             producer._required_obligation(
                 plan, obligation["obligation_id"], "Other.md",
-                "m-atomic-item", self.registry)
+                "M", self.registry)
         self.assertIsNone(audit_producer_runtime.frozen_manifest_page(
             [self.frozen(obligation["target"])], "Other.md"))
 
@@ -153,6 +155,7 @@ class BatchPageReviewProducerTests(unittest.TestCase):
             self.m_obligation(item, m_page, index)
             for index, item in enumerate(
                 self.registry["m_tier_atomic_items"], 1)
+            if item["evidence_role"] == "emits"
         ]
         selection = contract.select_s_targets(
             s_pages, task_id="task-test", batch_id="B001",
@@ -163,7 +166,13 @@ class BatchPageReviewProducerTests(unittest.TestCase):
             for index, page in enumerate(
                 selection["sample_selected_targets"], 1)
         )
-        return self.plan_header(obligations), manifest, tiers, selection
+        plan, _ = self.with_same_page_changed_scope(
+            self.plan_header(obligations), m_page,
+            rule_ids=("k12-02-level0-wiki-link-resolution",))
+        plan, _ = self.with_same_page_changed_scope(
+            plan, plan["batch_id"],
+            rule_ids=("k12-02-rendering-verification-record",))
+        return plan, manifest, tiers, selection
 
     def with_same_page_changed_scope(self, plan, page, count=2,
                                      rule_ids=None):
@@ -188,7 +197,7 @@ class BatchPageReviewProducerTests(unittest.TestCase):
             definition = audit_obligation_projection.\
                 resolve_obligation_definition(spec, page)
             definition.update({
-                "obligation_id": "changed-%04d" % index,
+                "obligation_id": "changed-%04d" % (len(plan["obligations"]) + index),
                 "review_due": None,
                 "status": "required",
                 "evidence_ref": None,
@@ -196,6 +205,9 @@ class BatchPageReviewProducerTests(unittest.TestCase):
                 "reuse_reason": None,
             })
             obligations.append(definition)
+        replaced = {(row["owner_rule_id"], row["target"]) for row in obligations}
+        changed["obligations"] = [row for row in changed["obligations"]
+                                  if (row["owner_rule_id"], row["target"]) not in replaced]
         changed["obligations"].extend(obligations)
         changed["obligations"].sort(key=lambda row: row["obligation_id"])
         audit_plan_contract.validate_plan(changed)
@@ -236,40 +248,6 @@ class BatchPageReviewProducerTests(unittest.TestCase):
         return changed, obligation
 
     @staticmethod
-    def passing_evidence(plan, obligation, index):
-        common = {
-            "receipt_id": "audit-changed-%04d" % index,
-            "record_kind": obligation["evidence_kind"],
-            "plan_id": plan["plan_id"],
-            "audit_plan_sha256": audit_plan_contract.plan_sha256(plan),
-            "obligation_id": obligation["obligation_id"],
-            "owner_kind": obligation["owner_kind"],
-            "owner_rule_id": obligation["owner_rule_id"],
-            "kernel_extension_point": obligation["kernel_extension_point"],
-            "due_stage": obligation["due_stage"],
-            "evidence_role": obligation["evidence_role"],
-            "evidence_kind": obligation["evidence_kind"],
-            "acceptance_predicate": obligation["acceptance_predicate"],
-            "producer_check": obligation["producer_check"],
-            "producer_capability": obligation["producer_capability"],
-            "producer_gate_id": obligation["producer_gate_id"],
-            "consumer_gate_id": obligation["consumer_gate_id"],
-            "fingerprint_binding": obligation["fingerprint_binding"],
-            "invalidated_by": None,
-        }
-        # A selector's unit input, not a fabricated producer Receipt. The
-        # source owner proves its complete shape/currentness separately;
-        # these tests exercise the native handoff fields and exact references.
-        common.update({
-            "target": obligation["target"],
-            "partition": obligation["partition"],
-            "dimension": None if obligation["evidence_kind"] == "gate-receipt"
-                         else obligation["dimension"],
-            "result": "pass",
-        })
-        return common
-
-    @staticmethod
     def frozen(path):
         return audit_producer_runtime.FrozenPage(
             path=path, page_sha256=SHA_A,
@@ -298,7 +276,8 @@ class BatchPageReviewProducerTests(unittest.TestCase):
             tuple(row["item_id"] for row in raw_items),
             contract.M_ATOMIC_ITEM_IDS)
         self.assertEqual(
-            raw_rules,
+            [row["rule_id"] for row in raw_items if row["evidence_role"] == "emits"] +
+            [self.registry["s_tier_sampling"]["rule_id"]],
             [row["rule_id"] for row in
              contract.base_obligation_specs(self.registry)])
         self.assertEqual(
@@ -445,14 +424,14 @@ class BatchPageReviewProducerTests(unittest.TestCase):
             first["sample_selected_targets"],
             next_batch["sample_selected_targets"])
 
-    def test_plan_closure_requires_every_registry_atom_and_exact_s_sample(self):
+    def test_plan_closure_requires_emitting_atoms_and_exact_s_sample(self):
         plan, manifest, tiers, selection = self.full_plan()
         result = contract.validate_plan_base_closure(
             plan, manifest, tiers, self.registry)
         self.assertEqual(selection, result["s_selection"])
         raw_expected = {
             ("M.md", row["rule_id"])
-            for row in self.registry["m_tier_atomic_items"]}
+            for row in self.registry["m_tier_atomic_items"] if row["evidence_role"] == "emits"}
         raw_expected.update(
             (page, self.registry["s_tier_sampling"]["rule_id"])
             for page in selection["sample_selected_targets"])
@@ -461,7 +440,8 @@ class BatchPageReviewProducerTests(unittest.TestCase):
             set(result["obligations_by_target_rule"]))
 
         incomplete = copy.deepcopy(plan)
-        incomplete["obligations"].pop(0)
+        incomplete["obligations"] = [row for row in incomplete["obligations"]
+                                     if row["obligation_id"] != "m-0001"]
         audit_plan_contract.validate_plan(incomplete)
         with self.assertRaisesRegex(ValueError, "closure differs"):
             contract.validate_plan_base_closure(
@@ -528,266 +508,47 @@ class BatchPageReviewProducerTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "fields are not closed"):
             contract.validate_producer_receipt(changed, self.registry)
 
-    def test_consumes_role_uses_exact_plan_selector_not_any_pass(self):
-        plan, manifest, tiers, _selection = self.full_plan()
-        plan, source_obligations = self.with_same_page_changed_scope(
-            plan, "M.md")
-        closure = contract.validate_plan_base_closure(
-            plan, manifest, tiers, self.registry)
-        consuming = next(
-            row for row in self.registry["m_tier_atomic_items"]
-            if row["item_id"] ==
-            "m07-applicable-deterministic-checks-pass")
-        obligation = closure["obligations_by_target_rule"][
-            ("M.md", consuming["rule_id"])]
-        spec = contract.obligation_spec_for_rule(
-            consuming["rule_id"], self.registry)
-        plan_sha256 = audit_plan_contract.plan_sha256(plan)
-        dependencies = tuple(
-            self.passing_evidence(plan, row, index)
-            for index, row in enumerate(source_obligations, 1))
-        kwargs = {
-            "root": str(REPOSITORY), "plan": plan,
-            "plan_sha256": plan_sha256,
-            "obligation": obligation, "spec": spec,
-            "page_snapshot": self.frozen("M.md"),
-            "reviewer_context_id": "review-context",
-            "reviewer_role": "batch-reviewer", "verdict": "passed",
-            "statement": "canonical deterministic evidence consumed",
-            "applicability_disposition": "applicable",
-            "registry": self.registry, "identity": {},
-        }
-        with self.assertRaisesRegex(ValueError, "exactly one current"):
-            producer.build_review_receipt(**kwargs)
-
-        arbitrary = {
-            "receipt_id": "audit-unrelated-pass",
-            "result": "pass",
-            "invalidated_by": None,
-        }
-        with self.assertRaisesRegex(ValueError, "exactly one current"):
-            producer.build_review_receipt(
-                **kwargs, consumed_records=(arbitrary,))
-        with self.assertRaisesRegex(ValueError, "exactly one current"):
-            producer.build_review_receipt(
-                **kwargs, consumed_records=dependencies[:-1])
-
-        receipt = producer.build_review_receipt(
-            **kwargs, consumed_records=dependencies)
-        self.assertEqual(
-            sorted(row["receipt_id"] for row in dependencies),
-            receipt["consumed_evidence_refs"])
-        self.assertEqual(
-            contract.dependency_fingerprint(
-                audit_fingerprint.sources_sha256(PAGE_TEXT),
-                dependencies),
-            receipt["dependency_fingerprint"])
-        catalog = {row["receipt_id"]: row for row in dependencies}
-        self.assertEqual(
-            tuple(sorted(dependencies, key=lambda row: row["receipt_id"])),
-            contract.validate_receipt_consumption(
-                plan, plan_sha256, receipt, catalog, self.registry))
-
-    def test_m07_consumes_native_gate_and_accepted_check(self):
-        plan, manifest, tiers, _selection = self.full_plan(s_count=0)
-        plan, source_obligations = self.with_same_page_changed_scope(
-            plan, "M.md", rule_ids=(
-                "k12-02-level0-wiki-link-resolution",
-                "k12-02-level0-fence-closure",
-            ))
-        closure = contract.validate_plan_base_closure(
-            plan, manifest, tiers, self.registry)
-        item = next(
-            row for row in self.registry["m_tier_atomic_items"]
-            if row["item_id"] ==
-            "m07-applicable-deterministic-checks-pass")
-        obligation = closure["obligations_by_target_rule"][
-            ("M.md", item["rule_id"])]
-        spec = contract.obligation_spec_for_rule(
-            item["rule_id"], self.registry)
-        dependencies = tuple(
-            self.passing_evidence(plan, row, index)
-            for index, row in enumerate(source_obligations, 1))
-        gate = next(row for row in dependencies
-                    if row["record_kind"] == "gate-receipt")
-        check = next(row for row in dependencies
-                     if row["record_kind"] ==
-                     audit_lifecycle_contract.CHANGED_SCOPE_RECORD_KIND)
-        self.assertEqual("changed-scope-deterministic", gate["partition"])
-        self.assertEqual("changed-scope-deterministic", check["partition"])
-        self.assertEqual("M.md", check["target"])
-        self.assertNotIn("evidence_ref", check)
-        kwargs = {
-            "root": str(REPOSITORY), "plan": plan,
-            "plan_sha256": audit_plan_contract.plan_sha256(plan),
-            "obligation": obligation, "spec": spec,
-            "page_snapshot": self.frozen("M.md"),
-            "reviewer_context_id": "review-context",
-            "reviewer_role": "batch-reviewer", "verdict": "passed",
-            "statement": "native Gate and accepted check consumed",
-            "applicability_disposition": "applicable",
-            "registry": self.registry, "identity": {},
-        }
-        receipt = producer.build_review_receipt(
-            **kwargs, consumed_records=dependencies)
-        self.assertEqual(
-            sorted(row["receipt_id"] for row in dependencies),
-            receipt["consumed_evidence_refs"])
-
-        mutations = (
-            (0, "plan_id", "wrong-plan"),
-            (1, "obligation_id", "wrong-obligation"),
-            (0, "owner_rule_id", "wrong-owner"),
-            (1, "target", "Other.md"),
-        )
-        for index, field, value in mutations:
-            with self.subTest(field=field):
-                changed = copy.deepcopy(dependencies)
-                changed[index][field] = value
-                with self.assertRaisesRegex(ValueError, "exactly one current"):
-                    producer.build_review_receipt(
-                        **kwargs, consumed_records=changed)
-
-        extra = {
-            "receipt_id": "extra-nonmatching-record",
-            "obligation_id": "not-in-the-plan-selector",
-            "result": "pass",
-            "invalidated_by": None,
-        }
-        with self.assertRaisesRegex(ValueError, "references differ"):
-            producer.build_review_receipt(
-                **kwargs, consumed_records=dependencies + (extra,))
-
-    def test_m05_consumes_only_the_exact_premerge_wiki_link_gate(self):
-        plan, manifest, tiers, _selection = self.full_plan(s_count=0)
-        plan, source_obligations = self.with_same_page_changed_scope(
-            plan, "M.md", rule_ids=(
-                "k12-02-level0-wiki-link-resolution",
-                "k12-02-level0-fence-closure",
-            ))
-        closure = contract.validate_plan_base_closure(
-            plan, manifest, tiers, self.registry)
-        by_rule = {row["owner_rule_id"]: row for row in source_obligations}
-        wiki = self.passing_evidence(
-            plan, by_rule["k12-02-level0-wiki-link-resolution"], 1)
-        unrelated = self.passing_evidence(
-            plan, by_rule["k12-02-level0-fence-closure"], 2)
-        item = next(
-            row for row in self.registry["m_tier_atomic_items"]
-            if row["item_id"] == "m05-no-required-link-missing")
-        obligation = closure["obligations_by_target_rule"][
-            ("M.md", item["rule_id"])]
-        spec = contract.obligation_spec_for_rule(
-            item["rule_id"], self.registry)
-        kwargs = {
-            "root": str(REPOSITORY), "plan": plan,
-            "plan_sha256": audit_plan_contract.plan_sha256(plan),
-            "obligation": obligation, "spec": spec,
-            "page_snapshot": self.frozen("M.md"),
-            "reviewer_context_id": "review-context",
-            "reviewer_role": "batch-reviewer", "verdict": "passed",
-            "statement": "the exact wiki-link Gate evidence passes",
-            "applicability_disposition": "applicable",
-            "registry": self.registry, "identity": {},
-        }
-        with self.assertRaisesRegex(ValueError, "references differ"):
-            producer.build_review_receipt(
-                **kwargs, consumed_records=(wiki, unrelated))
-        receipt = producer.build_review_receipt(
-            **kwargs, consumed_records=(wiki,))
-        self.assertEqual([wiki["receipt_id"]],
-                         receipt["consumed_evidence_refs"])
-
-    def test_m_selector_uses_explicit_live_current_receipt_ids(self):
-        plan, manifest, tiers, _selection = self.full_plan(s_count=0)
-        plan, source_obligations = self.with_same_page_changed_scope(
-            plan, "M.md", rule_ids=(
-                "k12-02-level0-wiki-link-resolution",))
-        closure = contract.validate_plan_base_closure(
-            plan, manifest, tiers, self.registry)
-        item = next(
-            row for row in self.registry["m_tier_atomic_items"]
-            if row["item_id"] == "m05-no-required-link-missing")
-        obligation = closure["obligations_by_target_rule"][
-            ("M.md", item["rule_id"])]
-        spec = contract.obligation_spec_for_rule(
-            item["rule_id"], self.registry)
-        plan_sha256 = audit_plan_contract.plan_sha256(plan)
-
-        successor = self.passing_evidence(plan, source_obligations[0], 1)
-        predecessor = copy.deepcopy(successor)
-        predecessor["receipt_id"] = "stale-predecessor-receipt"
-        catalog = {
-            predecessor["receipt_id"]: predecessor,
-            successor["receipt_id"]: successor,
-        }
-        selected = contract.resolve_consumed_evidence(
-            plan, plan_sha256, spec, obligation["target"], catalog,
-            [successor["receipt_id"]], "applicable", self.registry,
-            current_receipt_ids={successor["receipt_id"]})
-        self.assertEqual((successor,), selected)
-
-        review = producer.build_review_receipt(
-            root=str(REPOSITORY), plan=plan, plan_sha256=plan_sha256,
-            obligation=obligation, spec=spec,
-            page_snapshot=self.frozen("M.md"),
-            reviewer_context_id="review-context",
-            reviewer_role="batch-reviewer", verdict="passed",
-            statement="the current selected evidence passes",
-            applicability_disposition="applicable",
-            consumed_records=(successor,), registry=self.registry,
-            identity={})
-        self.assertEqual(
-            (successor,),
-            contract.validate_receipt_consumption(
-                plan, plan_sha256, review, catalog, self.registry))
-        self.assertEqual(
-            (successor,),
-            contract.validate_receipt_consumption(
-                plan, plan_sha256, review, catalog, self.registry,
-                current_receipt_ids={successor["receipt_id"]}))
-
-        with self.assertRaisesRegex(ValueError, "exactly one current"):
-            contract.resolve_consumed_evidence(
-                plan, plan_sha256, spec, obligation["target"], catalog,
-                [successor["receipt_id"]], "applicable", self.registry,
-                current_receipt_ids={
-                    predecessor["receipt_id"], successor["receipt_id"],
-                })
-
-        with self.assertRaisesRegex(ValueError, "found 0"):
-            contract.resolve_consumed_evidence(
-                plan, plan_sha256, spec, obligation["target"], catalog,
-                [successor["receipt_id"]], "applicable", self.registry,
-                current_receipt_ids=frozenset())
-
-        # A frozen M consumption may read an old body but cannot authorize
-        # it instead of the dependency selected by the same whole stage.
-        for row in (predecessor, successor):
-            row["receipt_type_id"] = changed_scope_contract.DIRECT_RECEIPT_TYPE_ID
-        for selected_dependency in (successor, predecessor):
-            with self.subTest(frozen_dependency=selected_dependency["receipt_id"]):
-                frozen_review = producer.build_review_receipt(
-                    root=str(REPOSITORY), plan=plan, plan_sha256=plan_sha256,
-                    obligation=obligation, spec=spec, page_snapshot=self.frozen("M.md"),
-                    reviewer_context_id="review-context", reviewer_role="batch-reviewer",
-                    verdict="passed", statement="recorded consumption",
-                    applicability_disposition="applicable",
-                    consumed_records=(selected_dependency,), registry=self.registry, identity={})
-                view = audit_evidence_runtime._FrozenEvidenceView(
-                    {"root": str(REPOSITORY)},
-                    {**catalog, frozen_review["receipt_id"]: frozen_review},
-                    [{"obligation_id": row["obligation_id"], "unresolved": False,
-                      "selected_disposition": "produced", "selected_evidence_ref": row["receipt_id"],
-                      "produced_evidence_refs": [row["receipt_id"]]}
-                     for row in (successor, frozen_review)])
-                if selected_dependency is predecessor:
-                    self.assertEqual(predecessor, view.get(predecessor["receipt_id"]))
-                    self.assertNotIn(predecessor["receipt_id"], set(view))
-                errors = audit_evidence_runtime._batch_page_binding_errors(
-                    {"root": str(REPOSITORY)}, view, str(REPOSITORY), plan,
-                    plan_sha256, obligation, frozen_review, require_current=False)
-                self.assertEqual(selected_dependency is predecessor, bool(errors), errors)
+    def test_direct_consumption_has_exact_plan_edges_without_new_declarations(self):
+        plan, manifest, tiers, _ = self.full_plan(s_count=0)
+        closure = contract.validate_plan_base_closure(plan, manifest, tiers, self.registry)
+        consumed = closure["consumed_obligations_by_target_rule"]
+        raw = self.registry["m_tier_atomic_items"]
+        consumers = [row for row in raw if row["evidence_role"] == "consumes"]
+        self.assertEqual({("M.md", row["rule_id"]) for row in consumers}, set(consumed))
+        produced = {row["owner_rule_id"] for row in plan["obligations"]}
+        for item in consumers:
+            self.assertNotIn(item["rule_id"], produced)
+            for field in ("evidence_kind", "producer_check", "producer_capability"):
+                self.assertIsNone(item[field])
+        by_item = {row["item_id"]: consumed[("M.md", row["rule_id"])] for row in consumers}
+        self.assertEqual(by_item["m05-no-required-link-missing"],
+                         by_item["m05-no-required-link-ambiguous"])
+        rendering = next(row for row in plan["obligations"]
+                         if row["owner_rule_id"] == "k12-02-rendering-verification-record")
+        self.assertEqual((rendering["obligation_id"],),
+                         by_item["m07-rendering-level-or-exception"])
+        # The same frozen source is accepted by its original stage consumer;
+        # no M producer can counterfeit that source with another declaration.
+        for source in ("k12-02-level0-wiki-link-resolution",
+                       "k12-02-rendering-verification-record"):
+            for mutation in ("absent", "wrong-target", "wrong-stage", "duplicate"):
+                changed = copy.deepcopy(plan)
+                row = next(row for row in changed["obligations"] if row["owner_rule_id"] == source)
+                if mutation == "absent":
+                    changed["obligations"].remove(row)
+                elif mutation == "wrong-target":
+                    row["target"] = "Other.md"
+                elif mutation == "wrong-stage":
+                    row["due_stage"] = "post-delta"
+                else:
+                    changed["obligations"].append(dict(row, obligation_id=row["obligation_id"] + "-copy"))
+                    changed["obligations"].sort(key=lambda row: row["obligation_id"])
+                with self.subTest(source=source, mutation=mutation), self.assertRaises(ValueError):
+                    contract.validate_plan_base_closure(changed, manifest, tiers, self.registry)
+        changed_registry = copy.deepcopy(self.registry)
+        changed_registry["m_tier_atomic_items"][-1]["producer_capability"] = "batch-page-review-attestation-v1"
+        with self.assertRaisesRegex(ValueError, "second producer"):
+            contract.validate_registry(changed_registry)
 
     def test_producer_attempt_selector_allows_stale_and_rejects_ambiguity(self):
         plan, manifest, tiers, _selection = self.full_plan(s_count=0)
@@ -868,345 +629,122 @@ class BatchPageReviewProducerTests(unittest.TestCase):
                 audit_plan_contract.plan_sha256(plan), obligation, spec,
                 page, self.registry)
 
-    def test_complete_plain_m_page_chain_has_one_record_per_atom(self):
-        plan, manifest, tiers, _selection = self.full_plan(s_count=0)
-        plan, source_obligations = self.with_same_page_changed_scope(
-            plan, "M.md",
-            rule_ids=("k12-02-level0-wiki-link-resolution",))
-        closure = contract.validate_plan_base_closure(
-            plan, manifest, tiers, self.registry)
-        plan_sha256 = audit_plan_contract.plan_sha256(plan)
-        wiki = self.passing_evidence(plan, source_obligations[0], 1)
-        wiki.update({
-            "artifact_fingerprint": audit_fingerprint.page_artifact_fingerprint("M.md", PAGE_TEXT),
-            "dependency_fingerprint": SHA_B, "contract_fingerprint": SHA_C,
-        })
+    def test_semantic_records_cover_only_emitting_requirements(self):
+        plan, manifest, tiers, _ = self.full_plan(s_count=0)
+        closure = contract.validate_plan_base_closure(plan, manifest, tiers, self.registry)
+        digest = audit_plan_contract.plan_sha256(plan)
         records = []
-        for seq, item in enumerate(
-                self.registry["m_tier_atomic_items"], 1):
-            spec = contract.obligation_spec_for_rule(
-                item["rule_id"], self.registry)
-            obligation = closure["obligations_by_target_rule"][
-                ("M.md", item["rule_id"])]
-            not_applicable = (
-                item["item_id"] ==
-                "m06-triggered-rendering-obligations-applied")
-            consumed = (wiki,) if (
-                item["evidence_role"] == "consumes" and
-                not not_applicable) else ()
+        emitting = [row for row in self.registry["m_tier_atomic_items"]
+                    if row["evidence_role"] == "emits"]
+        shared = self.registry["m_shared_applicability"]
+        emitting.sort(key=lambda row: row["item_id"] != shared["condition_item_id"])
+        for seq, item in enumerate(emitting, 1):
+            spec = contract.obligation_spec_for_rule(item["rule_id"], self.registry)
+            condition = item["item_id"] == shared["condition_item_id"]
+            dependent = item["applicability"] == shared["dependent_predicate"]
             records.append(producer.build_review_receipt(
-                root=str(REPOSITORY), plan=plan,
-                plan_sha256=plan_sha256,
-                obligation=obligation, spec=spec,
-                page_snapshot=self.frozen("M.md"),
-                reviewer_context_id="review-context",
-                reviewer_role="batch-reviewer", verdict="passed",
-                statement=(
-                    "no Profile rendering obligation is triggered"
-                    if not_applicable else
-                    "the existing M checklist acceptance item is satisfied"),
-                consumed_records=consumed,
-                applicability_disposition=(
-                    "not-applicable" if not_applicable else "applicable"),
-                applicability_reason=(
-                    "The plain page triggers no Profile rendering rule."
-                    if not_applicable else None),
-                registry=self.registry, identity={}, seq=seq))
-
-        self.assertEqual(
-            len(self.registry["m_tier_atomic_items"]), len(records))
-        self.assertEqual(
-            {row["rule_id"]
-             for row in self.registry["m_tier_atomic_items"]},
-            {row["rule_id"] for row in records})
-        # Catalog admission validates each body, but each invocation projects
-        # the full registry only once. It never reuses a previous body verdict
-        # or conceals an explicit malformed record.
+                root=str(REPOSITORY), plan=plan, plan_sha256=digest,
+                obligation=closure["obligations_by_target_rule"][("M.md", item["rule_id"])],
+                spec=spec, page_snapshot=self.frozen("M.md"),
+                reviewer_context_id="review-context", reviewer_role="batch-reviewer",
+                verdict="passed", statement="The stated semantic criterion is met.",
+                applicability_disposition="not-applicable" if condition else "applicable",
+                applicability_reason="Failure behavior is present." if condition else None,
+                consumed_records=(records[0],) if dependent else (), registry=self.registry,
+                identity={}, seq=seq))
+        self.assertEqual({row["rule_id"] for row in emitting},
+                         {row["rule_id"] for row in records})
+        # Body admission shares the source interpretation, not a prior body's
+        # verdict. Keep this original owner test, not another whole runtime.
         with mock.patch.object(contract, "_validate_registry", wraps=contract._validate_registry) as validate:
-            for record in records:
-                self.assertEqual([], contract.current_receipt_errors(record, root=str(REPOSITORY)))
-            self.assertEqual(len(records), validate.call_count)
-            invalid = dict(records[0], dimension="unknown-dimension")
-            self.assertTrue(contract.current_receipt_errors(invalid, root=str(REPOSITORY)))
-            self.assertEqual(len(records) + 1, validate.call_count)
-            before = validate.call_count
             with contract.registry_observation(REPOSITORY):
                 for record in records:
                     self.assertEqual([], contract.current_receipt_errors(record, root=str(REPOSITORY)))
-                self.assertEqual(before + 1, validate.call_count)
-                self.assertTrue(contract.current_receipt_errors(invalid, root=str(REPOSITORY)))
-            # The next runtime observation performs a fresh owner validation.
+                self.assertEqual(1, validate.call_count)
+                corrupt = dict(records[0], dimension="unknown-dimension")
+                self.assertTrue(contract.current_receipt_errors(corrupt, root=str(REPOSITORY)))
+                self.assertEqual(1, validate.call_count)
             with contract.registry_observation(REPOSITORY):
                 self.assertEqual([], contract.current_receipt_errors(records[0], root=str(REPOSITORY)))
-            self.assertEqual(before + 2, validate.call_count)
-        catalog = {wiki["receipt_id"]: wiki}
-        catalog.update({row["receipt_id"]: row for row in records})
-        result = {
-            "root": str(REPOSITORY),
-            "_profile_authorized_view": {},
-        }
-        current_snapshot = SimpleNamespace(exists=True, read_text=lambda: PAGE_TEXT)
-        resolve_consumption = audit_evidence_runtime.current_consumption_evidence_ids
-        patches = (
-            mock.patch.object(
-                audit_evidence_runtime.metadata_property_state,
-                "authorized_profile_projection_rules",
-                return_value=(None, {})),
-            mock.patch.object(
-                audit_evidence_runtime.metadata_property_state,
-                "semantic_page_snapshot",
-                return_value=(current_snapshot, SHA_B)),
-            mock.patch.object(
-                audit_evidence_runtime, "current_consumption_evidence_ids",
-                return_value=frozenset(catalog)),
-        )
-        with patches[0], patches[1], patches[2]:
-            for record in records:
-                obligation = closure["obligations_by_target_rule"][
-                    ("M.md", record["rule_id"])]
-                self.assertEqual(
-                    [], audit_evidence_runtime._batch_page_binding_errors(
-                        result, catalog, str(REPOSITORY), plan, plan_sha256,
-                        obligation, record),
-                    record["item_id"])
-                if record["item_id"] in (
-                        self.registry["m_tier_atomic_items"][0]["item_id"],
-                        "m06-triggered-rendering-obligations-applied"):
-                    # Emitting and not-applicable records still bind Sources;
-                    # neither may bypass dependency verification.
-                    corrupt = copy.deepcopy(record)
-                    corrupt["dependency_fingerprint"] = SHA_C
-                    self.assertTrue(any(
-                        "dependency fingerprint" in error for error in
-                        audit_evidence_runtime._batch_page_binding_errors(
-                            result, catalog, str(REPOSITORY), plan,
-                            plan_sha256, obligation, corrupt)))
-            with mock.patch.object(
-                    audit_evidence_runtime, "_direct_binding_errors",
-                    return_value=[]), mock.patch.object(
-                    audit_evidence_runtime, "_resolve_current_plan",
-                    return_value=("plan.yaml", plan, plan_sha256)), mock.patch.object(
-                    audit_evidence_runtime, "_require_current_profile_rendering_contract_state"), \
-                    mock.patch.object(audit_evidence_runtime._EvidenceFacts, "page_snapshot",
-                                      return_value=current_snapshot), \
-                    mock.patch.object(audit_evidence_runtime,
-                                      "current_consumption_evidence_ids",
-                                      side_effect=resolve_consumption):
-                item = {"id": "B001", "state": "open"}
-                view = {**result, "current_receipt_catalog": catalog,
-                        "items_by_id": {"B001": item}}
-                selections, resolutions = [], []
-                for scoped in (False, True):
-                    observation = (audit_evidence_runtime.evidence_observation(view)
-                                   if scoped else nullcontext(view))
-                    with observation as observed, mock.patch.object(
-                            audit_evidence_runtime,
-                            "_required_obligation_resolution_unchecked",
-                            wraps=audit_evidence_runtime._required_obligation_resolution_unchecked
-                            ) as resolve:
-                        selections.append(audit_evidence_runtime.stage_evidence_closure(
-                            observed, item, "pre-merge", required_state="open"
-                        )["audit_evidence_bindings"])
-                        resolutions.append(resolve.call_count)
-                self.assertEqual(selections[0], selections[1])
-                self.assertEqual(len(plan["obligations"]), resolutions[1])
-                self.assertLess(resolutions[1], resolutions[0])
-                selected = selections[1]
-        self.assertEqual(len(plan["obligations"]), len(selected))
-        self.assertEqual(
-            {row["obligation_id"] for row in plan["obligations"]},
-            {row["obligation_id"] for row in selected})
-
-    def test_central_consumer_rechecks_selector_and_page_fingerprints(self):
-        plan, manifest, tiers, _selection = self.full_plan()
-        plan, source_obligations = self.with_same_page_changed_scope(
-            plan, "M.md")
-        closure = contract.validate_plan_base_closure(
-            plan, manifest, tiers, self.registry)
-        consuming = next(
-            row for row in self.registry["m_tier_atomic_items"]
-            if row["item_id"] ==
-            "m07-applicable-deterministic-checks-pass")
-        obligation = closure["obligations_by_target_rule"][
-            ("M.md", consuming["rule_id"])]
-        spec = contract.obligation_spec_for_rule(
-            consuming["rule_id"], self.registry)
-        plan_sha256 = audit_plan_contract.plan_sha256(plan)
-        dependencies = tuple(
-            self.passing_evidence(plan, row, index)
-            for index, row in enumerate(source_obligations, 1))
-        receipt = producer.build_review_receipt(
-            root=str(REPOSITORY), plan=plan, plan_sha256=plan_sha256,
-            obligation=obligation, spec=spec,
-            page_snapshot=self.frozen("M.md"),
-            reviewer_context_id="review-context",
-            reviewer_role="batch-reviewer", verdict="passed",
-            statement="central closure rechecks exact dependencies",
-            consumed_records=dependencies,
-            applicability_disposition="applicable",
-            registry=self.registry, identity={})
-        catalog = {row["receipt_id"]: row for row in dependencies}
-        result = {"_profile_authorized_view": {}}
-        current_snapshot = SimpleNamespace(read_text=lambda: PAGE_TEXT)
-        patches = (
-            mock.patch.object(
-                audit_evidence_runtime.metadata_property_state,
-                "authorized_profile_projection_rules",
-                return_value=(None, {})),
-            mock.patch.object(
-                audit_evidence_runtime.metadata_property_state,
-                "semantic_page_snapshot",
-                return_value=(current_snapshot, SHA_B)),
-            mock.patch.object(
-                audit_evidence_runtime, "current_consumption_evidence_ids",
-                return_value=frozenset(catalog)),
-        )
-        with patches[0], patches[1], patches[2]:
-            self.assertEqual(
-                [], audit_evidence_runtime._batch_page_binding_errors(
-                    result, catalog, str(REPOSITORY), plan, plan_sha256,
-                    obligation, receipt))
-
-            selector_drift = copy.deepcopy(catalog)
-            changed_id = dependencies[0]["receipt_id"]
-            selector_drift[changed_id]["owner_rule_id"] = "unrelated-pass"
-            errors = audit_evidence_runtime._batch_page_binding_errors(
-                result, selector_drift, str(REPOSITORY), plan, plan_sha256,
-                obligation, receipt)
-            self.assertTrue(any("exactly one current" in row
-                                for row in errors), errors)
-
-            fingerprint_drift = copy.deepcopy(receipt)
-            fingerprint_drift["artifact_fingerprint"] = SHA_A
-            errors = audit_evidence_runtime._batch_page_binding_errors(
-                result, catalog, str(REPOSITORY), plan, plan_sha256,
-                obligation, fingerprint_drift)
-            self.assertTrue(any("artifact fingerprint" in row
-                                for row in errors), errors)
-
-            dependency_drift = copy.deepcopy(receipt)
-            dependency_drift["dependency_fingerprint"] = SHA_C
-            errors = audit_evidence_runtime._batch_page_binding_errors(
-                result, catalog, str(REPOSITORY), plan, plan_sha256,
-                obligation, dependency_drift)
-            self.assertTrue(any("dependency fingerprint" in row
-                                for row in errors), errors)
-
-            # Same identity and selector, different consumed bytes. A set of
-            # matching IDs alone cannot establish the original binding.
-            byte_drift = copy.deepcopy(catalog)
-            byte_drift[changed_id]["checked_at"] = "2026-08-30T00:00:00Z"
-            errors = audit_evidence_runtime._batch_page_binding_errors(
-                result, byte_drift, str(REPOSITORY), plan, plan_sha256,
-                obligation, receipt)
-            self.assertTrue(any("dependency fingerprint" in row
-                                for row in errors), errors)
+            self.assertEqual(2, validate.call_count)
 
     def test_consumption_contract_inventory_and_profile_rendering_edge(self):
         values = contract.validate_registry(self.registry)
-        consumes = {
-            row["item_id"] for row in self.registry["m_tier_atomic_items"]
-            if row["evidence_role"] == "consumes"
-        }
-        self.assertEqual(
-            consumes, set(values["m_consumption_by_item_id"]))
-        for item_id, row in values["m_consumption_by_item_id"].items():
-            self.assertEqual("resolved", row["resolution"], item_id)
-            self.assertIsNone(row["hold_reason"], item_id)
-            self.assertIsInstance(row["selector"], dict, item_id)
+        consumes = {row["item_id"] for row in self.registry["m_tier_atomic_items"]
+                    if row["evidence_role"] == "consumes"}
+        self.assertEqual(consumes, set(values["m_consumption_by_item_id"]))
+        plan, manifest, tiers, _ = self.full_plan(s_count=0)
+        item = next(row for row in self.registry["m_tier_atomic_items"]
+                    if row["item_id"] == "m06-triggered-rendering-obligations-applied")
+        key = ("M.md", item["rule_id"])
+        self.assertEqual((), contract.consumption_coverage(plan, ["M.md"], self.registry)[key])
+        plan, required = self.with_profile_rendering(plan, "M.md")
+        self.assertEqual((required["obligation_id"],),
+                         contract.validate_plan_base_closure(plan, manifest, tiers, self.registry)[
+                             "consumed_obligations_by_target_rule"][key])
+        # Another page's proof never discharges this page. Whether a construct
+        # requires a contract remains with the Profile-rendering closure owner.
+        required["target"] = "Other.md"
+        self.assertEqual((), contract.consumption_coverage(plan, ["M.md"], self.registry)[key])
+        held = copy.deepcopy(self.registry)
+        row = next(row for row in held["m_consumption_contracts"] if row["item_id"] == item["item_id"])
+        row.update(resolution="hold", selector=None, hold_reason="No accepted selector.")
+        with self.assertRaisesRegex(ValueError, "HOLD"):
+            contract.consumption_coverage(plan, ["M.md"], held)
 
-        plan, manifest, tiers, _selection = self.full_plan()
-        closure = contract.validate_plan_base_closure(
-            plan, manifest, tiers, self.registry)
-        rendering = next(
-            row for row in self.registry["m_tier_atomic_items"]
-            if row["item_id"] ==
-            "m06-triggered-rendering-obligations-applied")
-        spec = contract.obligation_spec_for_rule(
-            rendering["rule_id"], self.registry)
-        obligation = closure["obligations_by_target_rule"][
-            ("M.md", rendering["rule_id"])]
-        not_applicable = producer.build_review_receipt(
-            root=str(REPOSITORY), plan=plan,
-            plan_sha256=audit_plan_contract.plan_sha256(plan),
-            obligation=obligation, spec=spec,
-            page_snapshot=self.frozen("M.md"),
-            reviewer_context_id="review-context",
+    def test_common_condition_covers_na_items_and_retains_exact_correction_boundary(self):
+        plan, manifest, tiers, _ = self.full_plan(s_count=0)
+        closure = contract.validate_plan_base_closure(plan, manifest, tiers, self.registry)
+        digest = audit_plan_contract.plan_sha256(plan)
+        shared = self.registry["m_shared_applicability"]
+        condition = next(row for row in self.registry["m_tier_atomic_items"]
+                         if row["item_id"] == shared["condition_item_id"])
+        spec = contract.obligation_spec_for_rule(condition["rule_id"], self.registry)
+        primary = closure["obligations_by_target_rule"][("M.md", spec["rule_id"])]
+        dependent = [row for row in plan["obligations"]
+                     if row["applicability"] == shared["dependent_predicate"]]
+        common = producer.build_review_receipt(
+            root=str(REPOSITORY), plan=plan, plan_sha256=digest, obligation=primary,
+            spec=spec, page_snapshot=self.frozen("M.md"), reviewer_context_id="reviewer",
             reviewer_role="batch-reviewer", verdict="passed",
-            statement="no Profile rendering obligation is triggered",
-            applicability_disposition="not-applicable",
-            applicability_reason="The page triggers no Profile rendering rule.",
+            statement="The page explicitly explains why failure behavior is not applicable.",
+            applicability_disposition=shared["condition_covers_dependents_when"],
             registry=self.registry, identity={})
-        self.assertEqual(
-            "not-applicable", not_applicable["applicability_disposition"])
-
-        plan, rendering_obligation = self.with_profile_rendering(
-            plan, "M.md")
-        plan_sha256 = audit_plan_contract.plan_sha256(plan)
-        rendering_evidence = self.passing_evidence(
-            plan, rendering_obligation, 1)
-        self.assertEqual(
-            (rendering_obligation["obligation_id"],),
-            contract.consumption_dependency_obligation_ids(
-                plan["obligations"], obligation, self.registry))
-        constraints = contract.review_input_constraints(
-            plan["obligations"], obligation, self.registry)
-        self.assertEqual(
-            [self.registry["m_applicability_contract"][
-                "required_dependency_disposition"]],
-            constraints["allowed_applicability_dispositions"])
-        # A plan obligation, not a catalog entry or reviewer label, determines
-        # the dependency. Exercise absence and presence in the same owner.
-        for available in (False, True):
-            catalog = ({rendering_evidence["receipt_id"]: rendering_evidence}
-                       if available else {})
-            with self.subTest(available=available, disposition="not-applicable"):
-                with self.assertRaisesRegex(ValueError, "not-applicable contradicts"):
-                    contract.resolve_consumed_evidence(
-                        plan, plan_sha256, spec, "M.md", catalog, [],
-                        "not-applicable", self.registry,
-                        current_receipt_ids=frozenset(catalog))
-            with self.subTest(available=available, disposition="applicable"):
-                if available:
-                    self.assertEqual((rendering_evidence,),
-                        contract.resolve_consumed_evidence(
-                            plan, plan_sha256, spec, "M.md", catalog, None,
-                            "applicable", self.registry,
-                            current_receipt_ids=frozenset(catalog)))
-                else:
-                    with self.assertRaisesRegex(ValueError, "exactly one current"):
-                        contract.resolve_consumed_evidence(
-                            plan, plan_sha256, spec, "M.md", catalog, None,
-                            "applicable", self.registry,
-                            current_receipt_ids=frozenset())
-        # Stable record parsing keeps the erroneous declaration as readable
-        # history; using it to discharge the obligation is a separate proof.
-        erroneous = dict(not_applicable, audit_plan_sha256=plan_sha256)
-        contract.validate_producer_receipt(erroneous, self.registry)
-        with self.assertRaisesRegex(ValueError, "not-applicable contradicts"):
-            contract.validate_receipt_consumption(
-                plan, plan_sha256, erroneous, {}, self.registry,
-                current_receipt_ids=frozenset())
-        with mock.patch.object(producer, "_current_consumed_records",
-                               side_effect=AssertionError("invalid declaration reached live validation")):
-            with self.assertRaisesRegex(ValueError, "invalid stable attempt.*not-applicable contradicts"):
-                producer.current_review_attempt(
-                    {"current_receipt_catalog": {erroneous["receipt_id"]: erroneous}},
-                    {"id": plan["batch_id"]}, plan, plan_sha256, obligation, spec,
-                    self.frozen("M.md"), self.registry)
-        receipt = producer.build_review_receipt(
-            root=str(REPOSITORY), plan=plan, plan_sha256=plan_sha256,
-            obligation=obligation, spec=spec,
-            page_snapshot=self.frozen("M.md"),
-            reviewer_context_id="review-context",
-            reviewer_role="batch-reviewer", verdict="passed",
-            statement="current Profile rendering evidence is consumed",
-            consumed_records=(rendering_evidence,),
-            applicability_disposition="applicable",
-            registry=self.registry, identity={})
-        self.assertEqual(
-            [rendering_evidence["receipt_id"]],
-            receipt["consumed_evidence_refs"])
+        self.assertEqual(sorted(row["obligation_id"] for row in dependent), common["covered_obligation_ids"])
+        catalog = {common["receipt_id"]: common}
+        item = {"id": "B001", "state": "open"}
+        result = {"root": str(REPOSITORY), "items_by_id": {"B001": item},
+                  "current_receipt_catalog": catalog}
+        facts = audit_evidence_runtime._EvidenceFacts(result)
+        result["_audit_evidence_facts"] = facts
+        snapshot = SimpleNamespace(read_text=lambda: PAGE_TEXT)
+        with mock.patch.object(facts, "page_artifact", return_value=common["artifact_fingerprint"]), \
+                mock.patch.object(facts, "metadata_page", return_value=(snapshot, common["semantic_content_fingerprint"])):
+            for obligation in [primary] + dependent:
+                resolution = audit_evidence_runtime._required_obligation_resolution(
+                    result, item, plan, digest, catalog, obligation, require_current=True)
+                self.assertEqual("satisfied", resolution["status"], resolution)
+                self.assertEqual(common["receipt_id"], resolution["record"]["receipt_id"])
+                # Closed-stage revalidation accepts that same fact, without
+                # manufacturing one new record per covered obligation.
+                self.assertEqual([], audit_evidence_runtime._batch_page_binding_errors(
+                    result, catalog, str(REPOSITORY), plan, digest, obligation, common,
+                    require_current=False))
+            withdrawn = dict(result, invalidated_evidence_receipt_ids=[common["receipt_id"]])
+            for obligation in [primary] + dependent:
+                resolution = audit_evidence_runtime._required_obligation_resolution(
+                    withdrawn, item, plan, digest, catalog, obligation, require_current=False)
+                self.assertNotEqual("satisfied", resolution["status"])
+        forged = dict(common, covered_obligation_ids=common["covered_obligation_ids"] + ["m-0001"])
+        with self.assertRaisesRegex(ValueError, "covered_obligation_ids"):
+            contract.validate_record_plan_binding(forged, plan, digest, primary, self.registry)
+        # A dependent cannot add a redundant N/A or independent pass while the
+        # already-accepted common fact covers it.
+        target = dependent[0]
+        target_spec = contract.obligation_spec_for_rule(target["owner_rule_id"], self.registry)
+        with self.assertRaisesRegex(ValueError, "already covers"):
+            contract.resolve_consumed_evidence(plan, digest, target_spec, "M.md", catalog,
+                [common["receipt_id"]], "applicable", self.registry)
 
     def test_conditional_atoms_record_explicit_not_applicable_reason(self):
         plan, manifest, tiers, _selection = self.full_plan()
@@ -1253,26 +791,6 @@ class BatchPageReviewProducerTests(unittest.TestCase):
                 unconditional_spec, "not-applicable", "not present",
                 self.registry)
 
-        conditional_consumes = next(
-            row for row in self.registry["m_tier_atomic_items"]
-            if row["applicability"] != "always" and
-            row["evidence_role"] == "consumes")
-        consumes_spec = contract.obligation_spec_for_rule(
-            conditional_consumes["rule_id"], self.registry)
-        consumes_obligation = closure["obligations_by_target_rule"][
-            ("M.md", conditional_consumes["rule_id"])]
-        n_a = producer.build_review_receipt(
-            root=str(REPOSITORY), plan=plan,
-            plan_sha256=audit_plan_contract.plan_sha256(plan),
-            obligation=consumes_obligation, spec=consumes_spec,
-            page_snapshot=self.frozen("M.md"),
-            reviewer_context_id="review-context",
-            reviewer_role="batch-reviewer", verdict="passed",
-            statement="profile trigger is absent",
-            applicability_disposition="not-applicable",
-            applicability_reason="No matching Profile trigger is active.",
-            registry=self.registry, identity={})
-        self.assertEqual([], n_a["consumed_evidence_refs"])
 
     def test_sampled_s_record_stays_dimensionless_and_binds_selection(self):
         plan, manifest, tiers, selection = self.full_plan()
@@ -1344,62 +862,85 @@ class BatchPageReviewProducerTests(unittest.TestCase):
             runtime_paths.RUNTIME_OBJECTS[
                 "batch-page-review-receipts"].category)
 
-    def test_append_preserves_prior_rows_and_exact_readback_is_mandatory(self):
-        plan, manifest, tiers, _selection = self.full_plan()
-        closure = contract.validate_plan_base_closure(
-            plan, manifest, tiers, self.registry)
-        emitting = next(
-            row for row in self.registry["m_tier_atomic_items"]
-            if row["evidence_role"] == "emits")
-        obligation = closure["obligations_by_target_rule"][
-            ("M.md", emitting["rule_id"])]
-        spec = contract.obligation_spec_for_rule(
-            emitting["rule_id"], self.registry)
-        receipt = producer.build_review_receipt(
-            root=str(REPOSITORY), plan=plan,
-            plan_sha256=audit_plan_contract.plan_sha256(plan),
-            obligation=obligation, spec=spec,
-            page_snapshot=self.frozen("M.md"),
-            reviewer_context_id="review-context",
-            reviewer_role="batch-reviewer", verdict="passed",
-            statement="append and read back",
-            applicability_disposition="applicable",
-            registry=self.registry, identity={})
-        prior = {
-            "receipt_id": "audit-prior-row",
-            "check": "prior",
-            "target": "prior",
-            "result": "pass",
-        }
-        with tempfile.TemporaryDirectory() as directory:
-            path = Path(directory, "receipts.jsonl")
-            before = kblib.receipt_append_observation(str(path), [prior])
-            outcome, error, _ = kblib.write_receipts_observed(
-                str(path), [prior], before=before)
-            self.assertEqual(("present", None), (outcome, error))
-            before = kblib.receipt_append_observation(str(path), [receipt])
-            publication = kblib.ReceiptPublication()
-            outcome, error, _ = publication.append(
-                str(path), [receipt], before=before)
-            self.assertEqual(("present", None), (outcome, error))
-            with mock.patch.object(kblib, "read_receipt_bytes",
-                    side_effect=AssertionError("do not rescan the observed register")):
-                self.assertEqual(
-                    receipt,
-                    producer.require_exact_readback(
-                        str(path), receipt, self.registry,
-                        observation=publication.observation))
-            rows = audit_producer_runtime.read_receipt_records(str(path))
-            self.assertEqual(prior, rows[0])
-            self.assertEqual(receipt, rows[1])
-
-            with path.open("a", encoding="utf-8") as handle:
-                handle.write(
-                    kblib.canonical_json_bytes(receipt).decode("utf-8") +
-                    "\n")
-            with self.assertRaisesRegex(ValueError, "did not read back exactly"):
-                producer.require_exact_readback(
-                    str(path), receipt, self.registry)
+    def test_collection_preserves_individual_publication_and_readback(self):
+        # This producer seam starts with an admitted in-memory Plan. No Task,
+        # Queue, repository copy, CLI subprocess or E2E fixture is constructed.
+        plan, manifest, tiers, _ = self.full_plan(s_count=0)
+        closure = contract.validate_plan_base_closure(plan, manifest, tiers, self.registry)
+        rules = [item["rule_id"] for item in self.registry["m_tier_atomic_items"]
+                 if item["evidence_role"] == "emits" and item["applicability"] == "always"][:3]
+        obligations = [closure["obligations_by_target_rule"][("M.md", rule)] for rule in rules]
+        answers = [{"obligation_id": row["obligation_id"], "input": {
+            "reviewer_context_id": "review-context", "reviewer_role": "reviewer",
+            "verdict": "passed", "statement": "This particular semantic criterion is satisfied.",
+            "applicability_disposition": "applicable", "applicability_reason": None,
+        }} for row in obligations]
+        digest = audit_plan_contract.plan_sha256(plan)
+        item = {"id": "B001", "manifest": manifest}
+        state = {"root": str(REPOSITORY), "current_receipt_catalog": {},
+                 "coverage": {"pages": [{"path": path, "tier": tier} for path, tier in tiers.items()]}}
+        for failure in (None, "changes-required", "invalid-answer", "readback"):
+            with self.subTest(failure=failure), tempfile.TemporaryDirectory() as directory, ExitStack() as stack:
+                path = str(Path(directory, "reviews.jsonl"))
+                supplied = copy.deepcopy(answers)
+                if failure == "changes-required":
+                    supplied[1]["input"]["verdict"] = "changes-required"
+                elif failure == "invalid-answer":
+                    supplied[1]["input"]["verdict"] = "unregistered"
+                patch = lambda owner, name, **kw: stack.enter_context(mock.patch.object(owner, name, **kw))
+                patch(audit_producer_runtime, "admitted_runtime", return_value=(str(REPOSITORY), state, {}))
+                patch(audit_producer_runtime, "open_batch", return_value=(item, {}))
+                load = patch(producer, "load_current_plan", return_value=(
+                    None, plan, digest, (self.frozen("M.md"),), tiers, self.registry, closure, None))
+                patch(producer, "_resolve_current_plan", return_value=(None, plan, digest, None))
+                patch(producer, "_require_plan_bytes_current")
+                current = patch(audit_producer_runtime, "require_runtime_current", return_value=state)
+                pages = patch(audit_producer_runtime, "require_pages_current")
+                patch(audit_producer_runtime, "managed_receipt_path", return_value=path)
+                patch(audit_producer_runtime, "runtime_lock_metadata", return_value={})
+                patch(kblib, "runtime_receipt_identity", return_value={})
+                lock = patch(kblib, "runtime_write_lock", side_effect=lambda *a, **k: nullcontext(mock.Mock()))
+                patch(kblib, "no_authoritative_write_guard", side_effect=lambda lease: nullcontext())
+                exact = producer.require_exact_readback
+                seen = []
+                def readback(absolute, receipt, registry, **kwargs):
+                    seen.append(receipt["receipt_id"])
+                    # Exact observed bytes are consumed without a second scan.
+                    with mock.patch.object(kblib, "read_receipt_bytes",
+                            side_effect=AssertionError("do not rescan observed publication")):
+                        result = exact(absolute, receipt, registry, **kwargs)
+                    if failure == "readback" and len(seen) == 2:
+                        raise ValueError("resulting-state verification failed")
+                    return result
+                patch(producer, "require_exact_readback", side_effect=readback)
+                args = [str(REPOSITORY), "--batch", "B001", "--plan", "plan.yaml", "--page", "M.md", "--apply"]
+                for row in supplied:
+                    args.extend(("--review", json.dumps(row)))
+                output = stack.enter_context(redirect_stdout(io.StringIO()))
+                code = producer.main(args)
+                results = json.loads(output.getvalue())
+                self.assertEqual(0 if failure is None else 1, code, results)
+                rows = audit_producer_runtime.read_receipt_records(path)
+                expected = 3 if failure is None else 1 if failure == "invalid-answer" else 2
+                self.assertEqual(expected, len(rows), results)
+                self.assertEqual([row["obligation_id"] for row in obligations[:expected]],
+                                 [row["obligation_id"] for row in rows])
+                load.assert_called_once()
+                attempts = 3 if failure is None else 2
+                self.assertEqual(attempts, current.call_count)
+                self.assertEqual(attempts, pages.call_count)
+                self.assertEqual(attempts, lock.call_count)
+                self.assertEqual(expected, len(seen))
+                if failure is None:
+                    self.assertEqual([], results[-1]["remaining_input_ids"])
+                else:
+                    self.assertEqual([obligations[2]["obligation_id"]], results[-1]["remaining_input_ids"])
+                for row in rows:
+                    contract.validate_producer_receipt(row, self.registry)
+                if failure == "changes-required":
+                    self.assertEqual("fail", rows[1]["result"])
+                if failure == "readback":
+                    self.assertEqual("unconfirmed", results[-1]["publication"]["record_confirmation"])
 
 
 if __name__ == "__main__":

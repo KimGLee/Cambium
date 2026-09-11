@@ -244,12 +244,12 @@ modules:
     public:
       - AUDIT_FINGERPRINT_CONTRACT_PATH
       - load_contract
-      - validate_contract
-      - page_artifact_fingerprint_contract
       - obligation_contract_fingerprint
       - page_artifact_fingerprint
+      - page_artifact_fingerprint_contract
       - page_set_artifact_fingerprint
       - sources_sha256
+      - validate_contract
   - module: execution.audit.audit_lifecycle_contract
     path: Tools/execution/audit/audit_lifecycle_contract.py
     area: execution
@@ -314,8 +314,8 @@ modules:
       - AuditProducerChainError
       - producer_chain_for_obligation
       - producer_chain_for_spec
-      - producer_record_matches
       - producer_chain_observation
+      - producer_record_matches
       - require_producer_record
   - module: execution.audit.audit_producer_runtime
     path: Tools/execution/audit/audit_producer_runtime.py
@@ -360,9 +360,9 @@ modules:
     domain: audit
     layer: contract
     public:
-      - validate_member_evidence
       - build_post_delta_evidence_set
       - resolve_post_delta_projection
+      - validate_member_evidence
       - validate_post_delta_evidence_set
   - module: execution.audit.batch_close_contract
     path: Tools/execution/audit/batch_close_contract.py
@@ -381,8 +381,8 @@ modules:
       - closed_list_member_rows
       - current_receipt_errors
       - load_batch_close_closed_list
-      - validate_batch_close_closed_list
       - review_context_errors
+      - validate_batch_close_closed_list
   - module: execution.audit.batch_review_obligation_contract
     path: Tools/execution/audit/batch_review_obligation_contract.py
     area: execution
@@ -394,8 +394,10 @@ modules:
       - PRODUCER_TOOL_VERSION
       - RECEIPT_TYPE_ID
       - base_obligation_specs
+      - consumption_coverage
       - consumption_dependency_obligation_ids
       - contract_fingerprint
+      - covered_obligation_ids
       - current_receipt_errors
       - dependency_fingerprint
       - load_registry
@@ -405,14 +407,15 @@ modules:
       - registry_sha256
       - resolve_consumed_evidence
       - review_input_constraints
+      - review_input_shape
       - select_s_targets
       - validate_applicability_disposition
       - validate_input_binding
       - validate_plan_applicability
       - validate_plan_base_closure
       - validate_producer_receipt
-      - validate_record_plan_binding
       - validate_receipt_consumption
+      - validate_record_plan_binding
       - validate_review_input
   - module: execution.audit.batch_review_receipt_contract
     path: Tools/execution/audit/batch_review_receipt_contract.py
@@ -434,8 +437,8 @@ modules:
     layer: contract
     public:
       - ADAPTER_CAPABILITY_ID
-      - CHECK_RECEIPT_TYPE_ID
       - CANDIDATE_SET_RECEIPT_TYPE_ID
+      - CHECK_RECEIPT_TYPE_ID
       - ChangedScopeEvidenceContractError
       - DIRECT_RECEIPT_TYPE_ID
       - DIRECT_SCHEMA_VERSION
@@ -464,9 +467,9 @@ modules:
       - runtime_contract_fingerprint
       - source_gate_selector
       - source_summary
+      - validate_candidate_set_record_for_plan
       - validate_check_record
       - validate_check_record_for_plan
-      - validate_candidate_set_record_for_plan
       - validate_direct_record
       - validate_direct_record_for_plan
       - validate_record_for_plan
@@ -723,7 +726,6 @@ modules:
       - REVALIDATION_CLOSURE
       - ReceiptReferenceError
       - ResolvedReceipt
-      - SOURCE_PLAN_BOUND_CHECK
       - SOURCE_CANDIDATE_DELTA
       - SOURCE_CLOSE
       - SOURCE_CLOSE_ATTESTATION
@@ -731,6 +733,7 @@ modules:
       - SOURCE_DELTA_APPLY
       - SOURCE_ITEM
       - SOURCE_PAGE_REVIEW
+      - SOURCE_PLAN_BOUND_CHECK
       - SOURCE_PROGRESS
       - SOURCE_STANDARDS_STATE
       - SOURCE_TRANSITION
@@ -1679,7 +1682,7 @@ modules:
       - action_route
       - action_route_for_token
       - build_action
-      - page_review_input_scope
+      - page_review_answers
       - page_review_inputs
       - resume_action_token
       - resume_recommendation

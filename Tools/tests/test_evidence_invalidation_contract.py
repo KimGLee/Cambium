@@ -137,7 +137,7 @@ class EvidenceInvalidationContractTests(unittest.TestCase):
 
     def test_unknown_or_missing_dependency_is_not_zero_impact(self):
         self.catalog["consumer"] = {
-            "receipt_id": "consumer", "receipt_type_id": "batch-page-review-record-v3",
+            "receipt_id": "consumer", "receipt_type_id": batch_review_obligation_contract.RECEIPT_TYPE_ID,
             "consumed_evidence_refs": ["missing"]}
         with self.assertRaisesRegex(ValueError, "dependency is absent"):
             contract.invalidation_view(self.catalog, registry=self.registry)
@@ -145,7 +145,7 @@ class EvidenceInvalidationContractTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "no current producer"):
             contract.invalidation_view(self.catalog, registry=self.registry)
         self.catalog["consumer"].update(
-            receipt_type_id="batch-page-review-record-v3", consumed_evidence_refs=["review-one"])
+            receipt_type_id=batch_review_obligation_contract.RECEIPT_TYPE_ID, consumed_evidence_refs=["review-one"])
         self.catalog["review-one"]["consumed_evidence_refs"] = ["consumer"]
         self.event["subjects"] = [contract.subject_binding(self.catalog["review-one"])]
         with self.assertRaisesRegex(ValueError, "circular proof"):

@@ -139,7 +139,7 @@ class AuditExecutionRuntimeTests(unittest.TestCase):
                 self.assertIsNone(step["required_input"])
                 self.assertIn("external_resolution", step["external_instruction"])
 
-    def test_batch_page_variant_comes_from_frozen_producer_check(self):
+    def test_batch_page_inputs_leave_variant_and_evidence_selection_with_producer(self):
         registry = audit_execution_runtime.batch_review_obligation_contract
         for rule, variant in (
                 (registry.S_SAMPLING_RULE_ID, "s-sampled-page"),
@@ -154,26 +154,28 @@ class AuditExecutionRuntimeTests(unittest.TestCase):
                 self.obligation.update(
                     audit_obligation_projection.required_obligation(definition))
                 step = self.project()
-                self.assertEqual(variant, step["resume_arguments"]["variant"])
-                self.assertNotIn("consumed_evidence_refs", step["required_input"]["parameters"])
-                self.assertEqual([], step["resume_arguments"]["consumed_evidence_ref"])
+                self.assertEqual({"batch", "plan", "page"}, set(step["resume_arguments"]))
+                self.assertEqual({"reviews": "reviews"}, step["required_input"]["parameters"])
                 self.assert_execution_consumer(step["resume_capability_id"])
 
-    def test_m_consumption_waits_for_registry_selected_evidence_not_hash_order(self):
+    def test_m_shared_condition_is_selected_before_its_dependent_answers(self):
         target = "Topics/Page-1.md"
+        registry = audit_execution_runtime.batch_review_obligation_contract.load_registry()
+        shared = registry["m_shared_applicability"]
+        dependency = next(row for row in registry["m_tier_atomic_items"]
+                          if row["applicability"] == shared["dependent_predicate"])
+        condition = next(row for row in registry["m_tier_atomic_items"]
+                         if row["item_id"] == shared["condition_item_id"])
         consume_spec = audit_obligation_projection.obligation_spec_for_rule(
-            "k12-01-m-tier-no-required-link-ambiguous", root=REPOSITORY)
+            dependency["rule_id"], root=REPOSITORY)
         emit_spec = audit_obligation_projection.obligation_spec_for_rule(
-            "k12-02-level0-wiki-link-resolution", root=REPOSITORY)
+            condition["rule_id"], root=REPOSITORY)
         consuming = audit_obligation_projection.required_obligation(
             audit_obligation_projection.resolve_obligation_definition(
                 consume_spec, target, trigger="new"))
         emitting = audit_obligation_projection.required_obligation(
             audit_obligation_projection.resolve_obligation_definition(
-                emit_spec, target))
-        self.assertLess(
-            consuming["obligation_id"], emitting["obligation_id"],
-            "the regression needs the consumes identity to sort first")
+                emit_spec, target, trigger="new"))
         rows = [{
             "obligation": obligation,
             "status": "missing",
@@ -188,8 +190,8 @@ class AuditExecutionRuntimeTests(unittest.TestCase):
             step = self.project()
             self.assertEqual(1, validate.call_count)
 
-        self.assertEqual("invoke", step["status"])
-        self.assertEqual("record-changed-scope-evidence", step["token"])
+        self.assertEqual("await-agent", step["status"])
+        self.assertEqual("record-batch-page-review", step["token"])
         self.assertEqual(target, step["target"]["page"])
         self.assertEqual(
             emitting["obligation_id"], step["target"]["obligation_id"])
@@ -197,13 +199,13 @@ class AuditExecutionRuntimeTests(unittest.TestCase):
         next(row for row in rows
              if row["obligation"]["obligation_id"] ==
              emitting["obligation_id"]).update(
-                 status="satisfied", evidence_ref="wiki-link-evidence")
+                 status="satisfied", evidence_ref="shared-condition-evidence")
         step = self.project()
         self.assertEqual("await-agent", step["status"])
         self.assertEqual(
             consuming["obligation_id"], step["target"]["obligation_id"])
-        self.assertEqual(["wiki-link-evidence"],
-                         step["resume_arguments"]["consumed_evidence_ref"])
+        self.assertEqual(["shared-condition-evidence"],
+                         step["target"]["review_input_constraints"]["consumed_evidence_refs"])
         self.assertEqual(["applicable"], step["target"][
             "review_input_constraints"]["allowed_applicability_dispositions"])
 

@@ -656,6 +656,10 @@ def validate_plan_definition_authority(plan, contract, root=None,
                 "AuditPlan obligation %s drifts from registered owner %s in: "
                 "%s" % (obligation["obligation_id"], rule_id,
                          ", ".join(sorted(set(drift)))))
+    m_targets = {row["target"] for row in plan["obligations"]
+                 if by_rule[row["owner_rule_id"]].get("tier") == "M"}
+    batch_review_obligation_contract.consumption_coverage(
+        plan, m_targets, batch_review_obligation_contract.load_registry(root, snapshots))
     return plan
 
 

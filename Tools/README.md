@@ -190,7 +190,7 @@ python3 Tools/apply_delta.py --help
 python3 Tools/check_queue.py . --resume-status
 ```
 
-For a current `record-batch-page-review` action, an Agent may deliver explicitly reviewed answers for the same page together. Use the action's `action_id`, obligation IDs from its AuditPlan, and each action's original input fields; the Runner does not supply judgments or a page-wide default verdict.
+For a current `record-batch-page-review` action, an Agent may deliver explicitly reviewed answers for the same page together. Use the action's `action_id`, obligation IDs from its AuditPlan, and the declared `reviews` item shape; the Runner does not supply judgments or a page-wide default verdict. Requirements already proved by planned machine evidence do not ask for another human declaration. The registered shared failure-applicability judgment can cover its conditional items only when the page explicitly explains genuine non-applicability; otherwise those items retain distinct answers.
 
 ```json
 {
@@ -207,7 +207,7 @@ Save the explicit answers below `.cambium/tmp/`, then invoke:
 python3 Tools/run_task.py . --run-until-boundary --input .cambium/tmp/reviews.json
 ```
 
-The current plan determines order. Each item uses the original isolated producer, admission, locked checks and resulting-state read. Delivery stops at a different page, plan or runtime binding, changed page bytes, an intervening prerequisite, an absent answer, or any failed/uncertain result. `executed` retains each actual action, target and outcome; `remaining_input_ids` means **not attempted**, not permission to retry a failed item. This is not one atomic transaction or an aggregate Receipt. The normal single-action `--execute ACTION_ID --input ...` remains available. Without `--input`, continuous mode still stops at semantic boundaries.
+The original producer receives this collection once and shares frozen page/plan preparation. It resolves existing condition dependencies, then independently admits, locks, publishes and reads back each new fact. It stops on changed inputs, unavailable dependencies or a failed/uncertain result, preserving earlier confirmed publications. `executed` contains the actual producer invocation; its JSON output is an array of individual publication outcomes, not an aggregate Receipt. `remaining_input_ids` means **not attempted**, including answers already covered by a common fact; it is not permission to retry a failed item. Re-query the Runner before further work. Single-action `--execute ACTION_ID --input ...` accepts the action's declared `reviews` shape as well. Without `--input`, continuous mode still stops at semantic boundaries.
 
 Runtime data belongs in `.cambium/`, not `Tools/`. [`runtime_paths.py`](execution/task_runtime/runtime_paths.py) owns shared paths. Policy references `runtime_path_id`; the CLI compiler resolves its value and rejects unknown IDs, mismatched constraints or duplicate literal authorities.
 
@@ -284,7 +284,7 @@ MCP and Runner share observation of raw exit codes, `output_reliable`, `invocati
 
 Fill only the Runner's generated `required_input` properties; `x-cambium-binding` retains machine-selected identities. CLI declarations own shapes; domain contracts own conditions. `required_input: null` means external resolution, not a submittable readiness assertion.
 
-Omission, `null` and `[]` are distinct. Only declared nullable arguments encode null by omission. In `record_batch_page_review`, omitted `consumed_evidence_ref` means derive, while `[]` asserts an empty set. Unrepresentable values fail rather than widening scope.
+Omission, `null` and `[]` are distinct. Only declared nullable arguments encode null by omission; nested review values preserve their declared nulls through JSON encoding. The M/S producer derives variant and exact evidence references from its frozen plan and current accepted dependencies; callers no longer supply them. Unrepresentable values fail rather than widening scope.
 
 Responses retain substeps and failure stages. Pre-dispatch rejection has no child return code; after later failure or `next_action_error`, inspect authoritative state read-only.
 

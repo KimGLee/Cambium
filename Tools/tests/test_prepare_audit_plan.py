@@ -235,7 +235,8 @@ volatility:
         rows = plan["obligations"]
 
         m_rules = {row["rule_id"]
-                   for row in self.batch_registry["m_tier_atomic_items"]}
+                   for row in self.batch_registry["m_tier_atomic_items"]
+                   if row["evidence_role"] == "emits"}
         m_rows = [row for row in rows if row["target"] == "M.md" and
                   row["owner_rule_id"] in m_rules]
         self.assertEqual(m_rules, {row["owner_rule_id"] for row in m_rows})
@@ -377,7 +378,8 @@ last_reviewed: 2025-01-01
         plan, _ = self.build_values(values)
 
         m_rules = {row["rule_id"]
-                   for row in self.batch_registry["m_tier_atomic_items"]}
+                   for row in self.batch_registry["m_tier_atomic_items"]
+                   if row["evidence_role"] == "emits"}
         matches = [row for row in plan["obligations"]
                    if row["target"] == "M.md" and
                    row["owner_rule_id"] in m_rules]
@@ -398,7 +400,8 @@ last_reviewed: 2025-01-01
         plan, _ = self.build_values(values)
 
         m_rules = {row["rule_id"]
-                   for row in self.batch_registry["m_tier_atomic_items"]}
+                   for row in self.batch_registry["m_tier_atomic_items"]
+                   if row["evidence_role"] == "emits"}
         matches = [row for row in plan["obligations"]
                    if row["target"] == "M.md" and
                    row["owner_rule_id"] in m_rules]
@@ -420,7 +423,8 @@ last_reviewed: 2025-01-01
         plan, _ = self.build_values(values)
 
         m_rules = {row["rule_id"]
-                   for row in self.batch_registry["m_tier_atomic_items"]}
+                   for row in self.batch_registry["m_tier_atomic_items"]
+                   if row["evidence_role"] == "emits"}
         matches = [row for row in plan["obligations"]
                    if row["target"] == "M.md" and
                    row["owner_rule_id"] in m_rules]

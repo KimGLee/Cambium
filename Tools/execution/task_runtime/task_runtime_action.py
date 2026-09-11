@@ -605,20 +605,6 @@ def validate_action(record):
     return record
 
 
-def page_review_input_scope(action):
-    """Identity shared by page-review answers, not a permission to execute.
-
-    An answer set cannot follow another page, plan, producer or runtime
-    binding. Individual obligation selection and input acceptance still
-    belong to the current action and its registered producer.
-    """
-    if (action.get("disposition") != "await-agent" or
-            action.get("token") != "record-batch-page-review"):
-        return None
-    target = action["target"]
-    fields = ("batch_id", "page", "plan_id", "audit_plan_sha256")
-    values = tuple(require_trimmed_string(target.get(key), key) for key in fields)
-    return (kblib.canonical_json_bytes(action["binding"]), values)
 
 
 def page_review_inputs(record, action):
@@ -627,9 +613,19 @@ def page_review_inputs(record, action):
     validate_action(action)
     if record["initial_action_id"] != action["action_id"]:
         raise ValueError("page review inputs do not bind the current action")
-    if page_review_input_scope(action) is None:
+    if (action.get("disposition") != "await-agent" or
+            action.get("token") != "record-batch-page-review"):
         raise ValueError("page review inputs require a current page-review action")
-    rows = record["reviews"]
+    for field in ("batch_id", "page", "plan_id", "audit_plan_sha256"):
+        require_trimmed_string(action["target"].get(field), field)
+    inputs = page_review_answers(record["reviews"])
+    if action["target"]["obligation_id"] not in inputs:
+        raise ValueError("page review inputs omit the current obligation")
+    return inputs
+
+
+def page_review_answers(rows):
+    """The existing review collection shape, shared with its sole producer."""
     if not isinstance(rows, list) or not rows:
         raise ValueError("page review inputs require a non-empty reviews list")
     inputs = {}
@@ -640,8 +636,6 @@ def page_review_inputs(record, action):
             raise ValueError("page review inputs repeat an obligation")
         _mapping(row["input"], "page review answer", nonempty=True)
         inputs[identity] = dict(row["input"])
-    if action["target"]["obligation_id"] not in inputs:
-        raise ValueError("page review inputs omit the current obligation")
     return inputs
 
 
@@ -660,12 +654,12 @@ def build_action(**fields):
 
 
 __all__ = [
+    'page_review_answers',
     'AWAIT_DISPOSITIONS',
     'SCHEMA_VERSION',
     'action_route',
     'action_route_for_token',
     'build_action',
-    'page_review_input_scope',
     'page_review_inputs',
     'resume_action_token',
     'resume_recommendation',

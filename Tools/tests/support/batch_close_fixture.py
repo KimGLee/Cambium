@@ -131,19 +131,21 @@ class AuditScenarioActions:
             )
             if obligation["evidence_kind"] == "batch-page-review-record":
                 produced = self.run_tool(
-                    "record_batch_page_review.py", *common,
+                    "record_batch_page_review.py",
+                    "--batch", batch_id, "--plan", plan_path,
                     "--page", obligation["target"],
-                    "--variant", "s-sampled-page",
-                    "--reviewer-context-id", "fixture-review-context",
-                    "--reviewer-role", "reviewer",
-                    "--verdict", "passed",
-                    "--statement",
-                    "fixture page satisfies the frozen sampled-review "
-                    "acceptance contract",
+                    "--review", json.dumps({
+                        "obligation_id": obligation["obligation_id"],
+                        "input": {
+                            "reviewer_context_id": "fixture-review-context",
+                            "reviewer_role": "reviewer", "verdict": "passed",
+                            "statement": "fixture page satisfies the frozen sampled-review acceptance contract",
+                        },
+                    }),
                     "--apply",
                 )
                 self.assertEqual(0, produced.returncode, produced.stdout)
-                evidence = json.loads(produced.stdout)
+                evidence = json.loads(produced.stdout)[0]
                 sampled_page_receipts.append(evidence["receipt_id"])
                 continue
 

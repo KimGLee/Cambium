@@ -142,8 +142,8 @@ class RequiredQueueLifecycleEndToEndTests(RequiredQueueE2EScenarioCase):
                             "phase_delivery_receipt": delivered["receipt_id"]}
             elif token == "record-batch-page-review":
                 # Deliver individually authored answers together, not an
-                # aggregate pass. The original plan owns membership; Runner
-                # selects order and stops at any intervening prerequisite.
+                # aggregate pass. The original plan owns membership; its
+                # producer orders common conditions and preserves each result.
                 # A withdrawn or naturally stale current item is included
                 # again even though its immutable older record still exists.
                 answers = []
@@ -183,11 +183,13 @@ class RequiredQueueLifecycleEndToEndTests(RequiredQueueE2EScenarioCase):
                     self.assertEqual(delivered["delivery_nonce"], delivered["activation_phase_payload"]["delivery_nonce"])
                     deliveries[(delivered["phase_id"], delivered["part_index"])] = delivered
                 elif token == "record-batch-page-review":
-                    receipt_id = child_output["receipt_id"]
-                    row = next(json.loads(line) for line in
-                        (self.root / runtime_paths.BATCH_PAGE_REVIEW_RECEIPT_PATH).read_text().splitlines()
-                        if json.loads(line)["receipt_id"] == receipt_id)
-                    reviews[row["obligation_id"]] = row
+                    published = {row["receipt_id"] for row in child_output}
+                    for line in (self.root / runtime_paths.BATCH_PAGE_REVIEW_RECEIPT_PATH).read_text().splitlines():
+                        row = json.loads(line)
+                        if row["receipt_id"] in published:
+                            reviews[row["obligation_id"]] = row
+                            for identity in row.get("covered_obligation_ids", ()):
+                                reviews[identity] = row
                 elif token == "close-applied-batch":
                     runtime = runtime_validation.validate_runtime(self.root)
                     self.assertEqual([], runtime["errors"])

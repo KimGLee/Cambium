@@ -264,9 +264,6 @@ def _missing_step(result, item, status, obligation):
         }
 
     if route == "batch-page-review":
-        variant = ("s-sampled-page" if obligation.get("producer_check") ==
-                   "batch_page_review:s-tier-sampled-review"
-                   else "m-atomic-item")
         constraints = batch_review_obligation_contract.review_input_constraints(
             [row["obligation"] for row in status["obligations"]], obligation)
         dependency_ids = set(constraints["required_consumption_obligation_ids"])
@@ -291,21 +288,18 @@ def _missing_step(result, item, status, obligation):
                            review_input_constraints=constraints),
             "arguments": {},
             "required_input": {
-                "parameters": {name: name for name in (
-                    "reviewer_context_id", "reviewer_role", "verdict", "statement",
-                    "applicability_disposition", "applicability_reason")},
-                "required": ["applicability_disposition"] if variant == "m-atomic-item" else [],
-                "shapes": {"applicability_disposition": {
-                    "enum": constraints["allowed_applicability_dispositions"]}},
+                "parameters": {"reviews": "reviews"},
+                "required": ["reviews"],
+                "shapes": {"reviews": batch_review_obligation_contract.review_input_shape()},
+                "encodings": {"reviews": "json-items"},
                 "conditions": constraints,
             },
             "reason_code": "batch-page-review-requires-judgment",
             "reason": None,
             "resume_tool": _tool(result["root"], capability),
             "resume_capability_id": capability,
-            "resume_arguments": dict(
-                arguments, page=obligation["target"], variant=variant,
-                consumed_evidence_ref=constraints["consumed_evidence_refs"]),
+            "resume_arguments": {"batch": item["id"], "plan": status["audit_plan_path"],
+                                 "page": obligation["target"]},
         }
 
     if route == "profile-batch-judgment":
@@ -358,8 +352,9 @@ def _executable_rows(status):
     """Select unresolved obligations whose frozen dependencies are done.
 
     AuditPlan obligation IDs are content identities, not an execution order.
-    M ``consumes`` atoms obtain their dependencies from the Kernel-owned
-    Batch Review registry; all other rows remain dependency-free here.  The
+    M semantic items obtain shared-condition dependencies from the Kernel-owned
+    Batch Review registry; machine consumption is already covered by original
+    plan obligations and requires no extra declaration. The
     original AuditPlan order is retained only as a deterministic tie-break
     among rows that are actually executable.
     """

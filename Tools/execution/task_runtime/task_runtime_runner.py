@@ -35,10 +35,9 @@ import Tools.execution.task_runtime.runtime_paths as runtime_paths
 import Tools.execution.task_runtime.runtime_validation as runtime_validation
 import Tools.execution.task_runtime.task_runtime_action as task_runtime_action
 import Tools.execution.task_runtime.runtime_state_contract as runtime_state_contract
-import Tools.execution.audit.batch_review_obligation_contract as batch_review_obligation_contract
 from Tools.platform.common.primitives import catalog_record
 from Tools.platform.common.reporting import write_canonical_json, host_environment_boundary
-from Tools.platform.common.reporting import publication_result_reliable, observe_invocation
+from Tools.platform.common.reporting import publication_result_reliable, observe_invocation, validate_publication_result
 from Tools.platform.repository import path_admission, path_capability
 from Tools.platform.common.host_environment import HostEnvironmentUnavailable, preparation_request
 
@@ -1377,9 +1376,10 @@ def _await_audit_producer(root, action, supplied, _route):
     arguments = dict(step["resume_arguments"])
     arguments.update(supplied)
     if token == "record-batch-page-review":
-        batch_review_obligation_contract.validate_review_input(
-            step["target"]["review_input_constraints"],
-            arguments.get("applicability_disposition"), arguments.get("applicability_reason"))
+        answers = task_runtime_action.page_review_answers(
+            [json.loads(value) for value in arguments["reviews"]])
+        if action["target"]["obligation_id"] not in answers:
+            raise RunnerError("page review inputs omit the current obligation")
     elif token == "record-rendering-verification":
         rendering_verification_contract.rendering_input(
             **{field: arguments.get(field) for field in ("rendering_mode", "visual_trigger",
@@ -1606,10 +1606,9 @@ def _execute_observed(root, action, input_record=None):
 def run_until_boundary(root, *, max_steps=64, input_record=None):
     """Continue deterministic actions, or deliver explicit same-page answers.
 
-    An input collection only feeds consecutive page-review actions. It does
-    not execute another producer, infer an answer or create a batch
-    transaction. Every item uses the original independent writer and its
-    resulting-state read; earlier results survive a later refusal.
+    The existing same-page input collection is dispatched once to its sole
+    producer. That producer keeps independent publications and read-backs;
+    the Runner does not duplicate its item loop or manufacture item actions.
     """
     if not isinstance(max_steps, int) or isinstance(max_steps, bool) or \
             max_steps < 1:
@@ -1618,9 +1617,6 @@ def run_until_boundary(root, *, max_steps=64, input_record=None):
     action = next_action(root)
     reviews = (task_runtime_action.page_review_inputs(input_record, action)
                if input_record is not None else None)
-    scope = task_runtime_action.page_review_input_scope(action) if reviews is not None else None
-    page = (kblib.repository_file_snapshot(root, action["target"]["page"])
-            if reviews is not None else None)
 
     def finish(next_value, error=None):
         result = {"executed": executed, "next_action": next_value}
@@ -1635,15 +1631,8 @@ def run_until_boundary(root, *, max_steps=64, input_record=None):
     for _index in range(max_steps):
         supplied = None
         if reviews is not None:
-            try:
-                if (task_runtime_action.page_review_input_scope(action) != scope or
-                        action["target"]["obligation_id"] not in reviews):
-                    return finish(action)
-                if kblib.repository_file_snapshot(root, page.repository_path).data != page.data:
-                    return finish(action, "page changed during review input delivery")
-            except (OSError, TypeError, ValueError) as exc:
-                return finish(action, str(exc))
-            supplied = reviews.pop(action["target"]["obligation_id"])
+            supplied = {"reviews": [{"obligation_id": identity, "input": answer}
+                                    for identity, answer in reviews.items()]}
         elif action["disposition"] != "invoke":
             return finish(action)
         outcome = _execute_observed(root, action, supplied)
@@ -1660,18 +1649,33 @@ def run_until_boundary(root, *, max_steps=64, input_record=None):
             "failure": outcome["failure"],
             "substeps": outcome["substeps"],
         })
+        if reviews is not None:
+            # The child reports each attempted append independently. Unused
+            # answers (including ones already covered by a common fact) are
+            # not silently turned into new declarations or retry authority.
+            try:
+                reports = json.loads(outcome["output"])
+                validate_publication_result(reports)
+                remaining_ids = reports[-1]["remaining_input_ids"]
+                if (not isinstance(remaining_ids, list) or
+                        len(remaining_ids) != len(set(remaining_ids)) or
+                        any(identity not in reviews for identity in remaining_ids)):
+                    raise ValueError("producer returned an invalid remaining input set")
+                reviews = {identity: reviews[identity] for identity in remaining_ids}
+            except (KeyError, IndexError, TypeError, ValueError) as exc:
+                return finish(outcome["next_action"], outcome["next_action_error"] or str(exc))
+            if (outcome["returncode"] == 0 and outcome["next_action"] is not None and
+                    outcome["next_action"]["action_id"] == action["action_id"]):
+                return finish(outcome["next_action"], "successful Tool invocation did not advance its action")
+            return finish(outcome["next_action"], outcome["next_action_error"])
         if outcome["returncode"] != 0:
             return finish(outcome["next_action"], outcome["next_action_error"])
         if (outcome["next_action"] is not None and
                 outcome["next_action"]["action_id"] == action["action_id"]):
-            if reviews is not None:
-                return finish(outcome["next_action"], "successful Tool invocation did not advance its action")
             raise RunnerError("successful Tool invocation did not advance its action")
         if outcome["next_action"] is None:
             return finish(None, outcome["next_action_error"])
         action = outcome["next_action"]
-    if reviews is not None:
-        return finish(action, "max_steps reached before the review input boundary")
     raise RunnerError("max_steps reached before a boundary")
 
 

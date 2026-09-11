@@ -39,9 +39,11 @@ class BaseProjectionTests(unittest.TestCase):
         return [row for row in self.rows if row["source_registry"] == path]
 
     def test_m_expected_set_comes_from_registry_and_is_not_substantive(self):
+        emitting = [row for row in self.batch_review["m_tier_atomic_items"]
+                    if row["evidence_role"] == "emits"]
         expected = tuple(
             (row["item_id"], row["rule_id"])
-            for row in self.batch_review["m_tier_atomic_items"])
+            for row in emitting)
         actual_rows = [row for row in self.rows_from(
             projection.BATCH_REVIEW_REGISTRY_PATH) if row["tier"] == "M"]
         actual = tuple(
@@ -58,7 +60,7 @@ class BaseProjectionTests(unittest.TestCase):
         self.assertTrue(all(
             row["evidence_kind"] == source["evidence_kind"]
             for row, source in zip(
-                actual_rows, self.batch_review["m_tier_atomic_items"])))
+                actual_rows, emitting)))
 
     def test_k12_09_projection_is_exactly_the_registry_eight(self):
         expected = tuple(
