@@ -1,6 +1,6 @@
 {
   "artifacts": {
-    "ready_gate": "audit-check_queue-20260911T053953Z-12cf4258dec043e3bd0028d31e81029a-0001"
+    "ready_gate": "audit-check_queue-20260911T133735Z-3cfaa336a7524cf1959d595ea7f2cc83-0001"
   },
   "checkpoint_id": "update-queue-planning-ready-current",
   "current_contract_owner": "Tools.execution.task_runtime.runtime_validation.validate_runtime",
@@ -28,17 +28,17 @@
     },
     {
       "path": ".cambium/receipts/gates.jsonl",
-      "sha256": "sha256:7298f9530cd79780ef4d1e4175332a15142893c339b761570011ffe05b019cbd",
+      "sha256": "sha256:095d376c8387f29ad46d7eb764bd818c7edcfc8b1fbb417eae2b97c2a9d09ebb",
       "size": 8120
     },
     {
       "path": ".cambium/receipts/standards-adoptions.jsonl",
-      "sha256": "sha256:4be26b017c4ee6003291c05689a99a26db3cdab2fe3d41fa271811464e6538b8",
+      "sha256": "sha256:69f4e463674cc23ce2b49ec0ba50fd07cccf8c8c26c045888e14b1437a798e98",
       "size": 2314
     },
     {
       "path": ".cambium/receipts/task-plans.jsonl",
-      "sha256": "sha256:26ebe9b50b3f0808cfc661fb8a4260f32d947e915b384c868a5f613d7b85c550",
+      "sha256": "sha256:f4659f53b47c7ed5aaf7d7d735546f66cd0009ae71f2f342b79267f86b042121",
       "size": 1740
     },
     {
@@ -68,8 +68,8 @@
     },
     {
       "path": ".cambium/tmp/receipt-append.free",
-      "sha256": "sha256:5b6705ee9a9e1c0275f32507851f563bf7b9c7aeb95fed763ebfc5ecafc1045a",
-      "size": 91
+      "sha256": "sha256:f4df5131baa85b28189846746627be0741d8705e76cf4db3d14fb5935a830cda",
+      "size": 90
     },
     {
       "path": "Topics/A.md",
@@ -91,6 +91,6 @@
   "scenario": "planning-ready",
   "scenario_dependency_builder": "Tools.tests.fixtures.integration.update_queue_checkpoints.install_update_queue_profile",
   "schema_version": 1,
-  "tree_sha256": "sha256:20e6cb5b7e196b680a03168e6d3b7de135104cf8920d2bda43c028ea37d67096",
-  "validated_tree_sha256": "sha256:602f155b55b0ce449121e33bc3bb1f930c10a257c290415b107bb641ea719c39"
+  "tree_sha256": "sha256:38c420986b22fbf1036d8688fea85199fa7d2e7b025a0da1f7e90f743ed2e9fc",
+  "validated_tree_sha256": "sha256:90b12db5def97dd30f3e1ee4619818b6a9e7745a4a0c5da6aba0ed56d4fbb034"
 }

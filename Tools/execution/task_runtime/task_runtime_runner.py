@@ -677,7 +677,6 @@ def _validate_runtime(root, **kwargs):
     return result
 
 
-@compile_cli_contract.with_checked_views
 def next_action(root):
     """Read one authoritative snapshot and return its typed next action."""
     # An applied Task Plan intentionally precedes Required Queue
@@ -1535,7 +1534,6 @@ def _runner_operation_scope():
         _RUNTIME_INPUTS.reset(input_token)
 
 
-@compile_cli_contract.with_checked_views
 @_runner_operation_scope()
 def execute(root, expected_action_id, input_record=None):
     """Execute exactly the current action and return its authoritative result."""
@@ -1601,7 +1599,6 @@ def _execute_observed(root, action, input_record=None):
     }
 
 
-@compile_cli_contract.with_checked_views
 @_runner_operation_scope()
 def run_until_boundary(root, *, max_steps=64, input_record=None):
     """Continue deterministic actions, or deliver explicit same-page answers.

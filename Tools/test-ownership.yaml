@@ -1104,9 +1104,13 @@ tests:
         semantics: cli_contract_projection_identity_and_registered_output
         owner_contract_symbol: compile_cli_contract.main
         parallel_safe: false
-      - selector: CompilerProjectionLifecycleTests.test_checked_view_rechecks_components_discovery_environment_and_target
+      - selector: CompilerProjectionLifecycleTests.test_checked_query_rechecks_return_boundary_and_detaches_result
         level: contract
-        semantics: invocation_scoped_cli_input_identity_and_invalidation
+        semantics: fresh_complete_cli_validation_and_return_boundary
+        owner_contract_symbol: compile_cli_contract.checked_tool
+      - selector: CompilerProjectionLifecycleTests.test_dynamic_parser_inputs_never_reuse_an_old_full_check
+        level: contract
+        semantics: dynamic_cli_input_changes_require_fresh_compilation
         owner_contract_symbol: compile_cli_contract.checked_tool
       - selector: CompilerCliTransportTests.test_public_cli_transports_one_current_projection_check
         level: integration

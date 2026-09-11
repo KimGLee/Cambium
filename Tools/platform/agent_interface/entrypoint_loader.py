@@ -264,7 +264,35 @@ def capture_argument_parser(tool, tools_root=None, *, require_marker=True):
     root = os.path.abspath(tools_root or tools_source_root(__file__))
     descriptor = describe_entrypoint(
         tool, root, require_marker=require_marker)
-    invocation_path = os.path.join(root, tool + ".py")
+    return _capture_parser(descriptor, root)
+
+
+def capture_entrypoints(tools_root=None):
+    """Discover, capture and verify one complete source-owned CLI surface.
+
+    Descriptors are created here, never supplied by a caller. The compiler
+    consumes each descriptor with its parser instead of rediscovering the
+    same edge for every analysis. Successful exhaustion rechecks the inputs.
+    """
+    root = os.path.abspath(tools_root or tools_source_root(__file__))
+    names = sorted(os.listdir(root))
+    descriptors = discover_entrypoints(root)
+    for descriptor in descriptors:
+        yield descriptor, _capture_parser(descriptor, root)
+    if sorted(os.listdir(root)) != names:
+        raise EntrypointResolutionError("CLI discovery changed during capture")
+    for descriptor in descriptors:
+        for relative, source in (
+                (descriptor.invocation_path, descriptor.invocation_source),
+                (descriptor.implementation_path, descriptor.implementation_source)):
+            with open(os.path.join(os.path.dirname(root), relative), encoding="utf-8") as handle:
+                if handle.read() != source:
+                    raise EntrypointResolutionError("CLI source changed during capture: %s" % relative)
+
+
+def _capture_parser(descriptor, root):
+    """Capture only an owner-resolved descriptor, without a public bypass."""
+    invocation_path = os.path.join(root, descriptor.tool + ".py")
     implementation_path = os.path.join(
         os.path.dirname(root), *descriptor.implementation_path.split("/"))
     original_parse_args = argparse.ArgumentParser.parse_args
@@ -300,6 +328,7 @@ __all__ = [
     'describe_entrypoint',
     'discover_entrypoints',
     'capture_argument_parser',
+    'capture_entrypoints',
     'entrypoint_for_implementation_path',
     'load_tool_implementation',
 ]

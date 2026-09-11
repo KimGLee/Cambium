@@ -20,12 +20,11 @@ Extraction:
     `importlib` under its own name, with
     `argparse.ArgumentParser.parse_args` monkey-patched to raise as soon as
     the parser is complete. The tool's `main()` therefore builds its parser
-    and stops; not one line of its own behaviour runs. The patch is removed
-    again before this process does anything else.
-  - Module import is side-effect free by construction here: the only
-    top-level call in these modules is `sys.path.insert`. This compiler
-    additionally disables bytecode writing, so it touches no file that any
-    tool would write. It is read-only with respect to the repository.
+    and stops at parse_args; imports and pre-parser expressions still run.
+    Parser capture is not a sandbox or a proof that defaults only read
+    component files. The loader restores its patched process state and
+    disables bytecode writing. Runtime callers therefore retain the target
+    compiler's fresh full check instead of caching a previous check result.
   - The common Receipt envelope is projected directly from
     `kblib.make_receipt`, its current machine producer, and that owner's
     source bytes always join the manifest. Receipt extension fields are
@@ -75,10 +74,7 @@ import os
 import sys
 import unicodedata
 from collections import deque
-from contextlib import contextmanager
-from contextvars import ContextVar
 from copy import deepcopy
-from functools import wraps
 
 TOOLS_DIR = tools_source_root(__file__)
 REPO_ROOT = repository_source_root(__file__)
@@ -129,34 +125,11 @@ class ContractError(Exception):
     """The evidence for one tool is unreliable; the run must exit 1."""
 
 
-_CHECKED_VIEWS = ContextVar("cli_checked_views", default=None)
-
-
-@contextmanager
-def checked_view_scope():
-    """Reuse source facts within one invocation, never a persisted verdict."""
-    if _CHECKED_VIEWS.get() is not None:
-        yield
-        return
-    token = _CHECKED_VIEWS.set({})
-    try:
-        yield
-    finally:
-        _CHECKED_VIEWS.reset(token)
-
-
-def with_checked_views(function):
-    """Give a public Runner operation one bounded compiler-owned view scope."""
-    @wraps(function)
-    def scoped(*args, **kwargs):
-        with checked_view_scope():
-            return function(*args, **kwargs)
-    return scoped
-
-
 def _view_input_identity(root, projection_target, artifact_bytes):
-    # Argparse capture reads component source, registries and policy, not an
-    # adopter's mutable runtime. Use the entire existing component boundary as
+    # Capture can read dynamic inputs outside the component set. A fresh
+    # full target compiler is therefore mandatory for every query. This
+    # binding additionally detects component/host changes during that check.
+    # Use the entire existing component boundary as
     # a conservative superset: generated projections and newly discovered
     # adapters cannot fall outside a stale source_files list. Environment is
     # private in-process invalidation data, never serialized or logged.
@@ -170,8 +143,8 @@ def checked_tool(root, projection_target, artifact_bytes, tool, validate, readba
 
     `validate` must perform the target root's full compiler check and byte
     read-back. No caller may supply a success bit or a prevalidated document.
-    Outside an explicit operation scope the validator always runs. Returned
-    rows are private copies so consumers cannot mutate the stored view. The
+    The validator always runs: arbitrary Python capture may depend on inputs
+    outside component hashes. Returned rows are private copies. The
     complete artifact is still validated; a query does not narrow validation
     to one tool or trust fields merely because they appear in the artifact.
     """
@@ -190,29 +163,14 @@ def checked_tool(root, projection_target, artifact_bytes, tool, validate, readba
         return dict(deepcopy(matches[0]),
                     invocation_contract_source_hash=document.get("source_hash"))
 
-    views = _CHECKED_VIEWS.get()
-    if views is None:
-        return select(validate())
     root = os.path.realpath(os.path.abspath(os.fspath(root)))
-    key = (root, projection_target)
     try:
         before = _view_input_identity(root, projection_target, artifact_bytes)
-        existing = views.get(key)
-        if existing is not None and existing[0] == before:
-            if readback() != artifact_bytes:
-                raise ContractError("CLI projection changed during input observation")
-            return select(existing[1])
-        views.pop(key, None)
         document = validate()
         if before != _view_input_identity(root, projection_target, readback()):
             raise ContractError("CLI computation inputs changed during currentness validation")
-        views[key] = (before, deepcopy(document))
         return select(document)
-    except ContractError:
-        views.pop(key, None)
-        raise
     except (OSError, ValueError) as exc:
-        views.pop(key, None)
         raise ContractError("CLI view cannot establish input identity: %s" % exc) from exc
 
 
@@ -1330,7 +1288,6 @@ def compile_contract(root, projection_target):
     """
     root = os.path.abspath(root)
     availability = tool_availability.resolve(root, projection_target)
-    tools = discover_tools(root)
     registry_path = os.path.join(
         root, *DEFAULT_RUNTIME_PATH_REGISTRY.split("/"))
     try:
@@ -1354,16 +1311,14 @@ def compile_contract(root, projection_target):
 
     records = []
     source_facts = {}
-    for module_name, path, source_text in tools:
+    def captured():
         try:
-            descriptor = entrypoint_loader.describe_entrypoint(
-                module_name, os.path.join(root, TOOLS_SUBDIR),
-                require_marker=True)
-            parser = entrypoint_loader.capture_argument_parser(
-                module_name, os.path.join(root, TOOLS_SUBDIR),
-                require_marker=True)
-        except entrypoint_loader.EntrypointResolutionError as exc:
+            yield from entrypoint_loader.capture_entrypoints(os.path.join(root, TOOLS_SUBDIR))
+        except (OSError, UnicodeError, entrypoint_loader.EntrypointResolutionError) as exc:
             raise ContractError(str(exc)) from exc
+
+    for descriptor, parser in captured():
+        module_name = descriptor.tool
         try:
             extensions, completeness, extension_paths = _ReceiptExtensionAnalyzer(
                 root, source_facts).analyze(

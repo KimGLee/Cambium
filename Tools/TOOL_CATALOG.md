@@ -10,7 +10,7 @@ Regenerate with `python3 Tools/generate_tool_catalog.py .`. Verify without writi
 | Source | Exact-byte SHA-256 |
 |---|---|
 | `Tools/tool-taxonomy.yaml` | `sha256:44c6a46acf604ab28023a4028fb026bf11b01582093450bd113ff3527c95998f` |
-| `Tools/module-boundaries.yaml` | `sha256:5f561a63c47732bff73a6e4e533ebfa7d45d23ef59ca7ff6983c283285f69dbd` |
+| `Tools/module-boundaries.yaml` | `sha256:d6874a90d38f9af0001942f56f1e3e70c38c92f63a5ecdd48c9a139b94e920c4` |
 | `Tools/agent-interface-policy.yaml` | `sha256:f5e3f67420ff26d35a5532be1b67bbb9b2f6d57ef5f2776acb3e30d2e3aa232e` |
 | `Tools/operation-capabilities.yaml` | `sha256:53c3bdd946d8bae3bd1b185a0cdecf5e84b07ec787159eba98c6cb967ffb37c9` |
 
@@ -25,12 +25,12 @@ Static consumption, private access, and dependency facts come from `Tools/platfo
 | declared cli tools | 67 |
 | mcp tools | 49 |
 | host transports | 1 |
-| static public api symbols | 1561 |
+| static public api symbols | 1562 |
 | declared unused static public apis | 77 |
 | declared public apis without observed consumers | 38 |
 | registered capability relationships | 138 |
 | registered symbol relationships | 74 |
-| source public exports | 353 |
+| source public exports | 354 |
 | source public exports undeclared | 0 |
 | declared transport consumptions | 49 |
 | static private consumptions | 0 |
@@ -360,7 +360,7 @@ One deterministic use case that composes domain contracts and infrastructure.
 |---|---|---|---|---|
 | `governance.profile.apply_profile_adoption` | `Tools/governance/profile/apply_profile_adoption.py` | python-module | `governance / profile / application` | static Python (1 symbols / 1 consumers) |
 | `governance.profile.check_profile` | `Tools/governance/profile/check_profile.py` | python-module | `governance / profile / application` | static Python (8 symbols / 7 consumers), registered Python symbol (1 consumers) |
-| `governance.profile.profile_admission` | `Tools/governance/profile/profile_admission.py` | python-module | `governance / profile / application` | static Python (8 symbols / 29 consumers) |
+| `governance.profile.profile_admission` | `Tools/governance/profile/profile_admission.py` | python-module | `governance / profile / application` | static Python (9 symbols / 29 consumers) |
 | `governance.profile.profile_candidate` | `Tools/governance/profile/profile_candidate.py` | python-module | `governance / profile / application` | static Python (1 symbols / 1 consumers) |
 | `governance.profile.profile_onboarding_status` | `Tools/governance/profile/profile_onboarding_status.py` | python-module | `governance / profile / application` | static Python (1 symbols / 1 consumers) |
 | `governance.profile.scaffold_profile` | `Tools/governance/profile/scaffold_profile.py` | python-module | `governance / profile / application` | static Python (1 symbols / 1 consumers) |
@@ -583,7 +583,7 @@ One deterministic use case that composes domain contracts and infrastructure.
 
 | Module | Path | Type | Responsibility class | Interface exposure |
 |---|---|---|---|---|
-| `platform.agent_interface.compile_cli_contract` | `Tools/platform/agent_interface/compile_cli_contract.py` | python-module | `platform / agent-interface / application` | static Python (7 symbols / 3 consumers) |
+| `platform.agent_interface.compile_cli_contract` | `Tools/platform/agent_interface/compile_cli_contract.py` | python-module | `platform / agent-interface / application` | static Python (6 symbols / 3 consumers) |
 | `platform.agent_interface.inspect_host` | `Tools/platform/agent_interface/inspect_host.py` | python-module | `platform / agent-interface / application` | static Python (1 symbols / 1 consumers), registered capability (1 capabilities / 1 consumers), registered Python symbol (1 consumers) |
 | `platform.agent_interface.mcp_server` | `Tools/platform/agent_interface/mcp_server.py` | python-module | `platform / agent-interface / application` | none observed |
 | `platform.agent_interface.render_host_configs` | `Tools/platform/agent_interface/render_host_configs.py` | python-module | `platform / agent-interface / application` | static Python (5 symbols / 3 consumers) |
@@ -618,7 +618,7 @@ Repository IO, serialization, locking, transport, generation, and other Tool-own
 | Module | Path | Type | Responsibility class | Interface exposure |
 |---|---|---|---|---|
 | `platform.agent_interface.cli_argv_renderer` | `Tools/platform/agent_interface/cli_argv_renderer.py` | python-module | `platform / agent-interface / infrastructure` | static Python (7 symbols / 3 consumers) |
-| `platform.agent_interface.entrypoint_loader` | `Tools/platform/agent_interface/entrypoint_loader.py` | python-module | `platform / agent-interface / infrastructure` | static Python (6 symbols / 7 consumers) |
+| `platform.agent_interface.entrypoint_loader` | `Tools/platform/agent_interface/entrypoint_loader.py` | python-module | `platform / agent-interface / infrastructure` | static Python (7 symbols / 7 consumers) |
 | `platform.agent_interface.install_host_config` | `Tools/platform/agent_interface/install_host_config.py` | python-module | `platform / agent-interface / infrastructure` | static Python (1 symbols / 1 consumers) |
 
 #### Domain: `common`
@@ -1650,6 +1650,7 @@ Repository IO, serialization, locking, transport, generation, and other Tool-own
 | `governance.profile.profile_admission.admit_profile_manifest` | `execution.audit.changed_scope_evidence_contract`, `execution.audit.changed_scope_evidence_runtime`, `knowledge.rendering.profile_rendering_evidence_contract` | declared |
 | `governance.profile.profile_admission.contract_from_admitted_view` | `execution.audit.audit_evidence_runtime`, `execution.audit.prepare_audit_plan`, `execution.audit.record_batch_judgment`, `execution.audit.record_batch_review`, `execution.context_delivery.card_activation`, `execution.evidence.metadata_gate_runtime`, `execution.task_runtime.queue_runtime.review`, `execution.task_runtime.task_runtime_runner`, `execution.task_runtime.update_queue`, `governance.profile.profile_batch_judgment_contract`, `knowledge.metadata.metadata_property_state` | declared |
 | `governance.profile.profile_admission.currency_errors` | `knowledge.metadata.check_page_contract`, `knowledge.metadata.compose_page_contract`, `knowledge.metadata.compose_vocab`, `knowledge.structure.check_boundary_contract`, `knowledge.structure.check_structure`, `knowledge.structure.render_boundary_projection`, `knowledge.structure.render_structure_projection` | declared |
+| `governance.profile.profile_admission.currency_observation` | `execution.audit.audit_evidence_runtime` | declared |
 | `governance.profile.profile_admission.require_slot` | `knowledge.metadata.compose_page_contract`, `knowledge.metadata.compose_vocab`, `knowledge.structure.check_structure`, `knowledge.structure.render_structure_projection` | declared |
 | `governance.profile.profile_admission.scope_directories` | `knowledge.metadata.check_page_contract`, `knowledge.structure.check_boundary_contract`, `knowledge.structure.render_boundary_projection` | declared |
 | `governance.profile.profile_batch_judgment_contract.DUE_STAGE` | `execution.audit.record_batch_judgment` | declared |
@@ -1960,10 +1961,10 @@ Repository IO, serialization, locking, transport, generation, and other Tool-own
 | `platform.agent_interface.compile_cli_contract.checked_tool` | `execution.task_runtime.task_runtime_runner` | declared |
 | `platform.agent_interface.compile_cli_contract.compile_contract` | `governance.control.run_gates` | declared |
 | `platform.agent_interface.compile_cli_contract.main` | `compile_cli_contract` | declared |
-| `platform.agent_interface.compile_cli_contract.with_checked_views` | `execution.task_runtime.task_runtime_runner` | declared |
 | `platform.agent_interface.entrypoint_loader.EntrypointResolutionError` | `execution.audit.audit_execution_runtime`, `execution.audit.record_changed_scope_evidence`, `execution.task_runtime.queue_runtime.gate_registry`, `execution.task_runtime.task_runtime_runner`, `governance.control.metadata_execution_contract`, `governance.profile.profile_contract`, `platform.agent_interface.compile_cli_contract` | declared |
-| `platform.agent_interface.entrypoint_loader.capture_argument_parser` | `execution.audit.record_changed_scope_evidence`, `platform.agent_interface.compile_cli_contract` | declared |
-| `platform.agent_interface.entrypoint_loader.describe_entrypoint` | `execution.audit.audit_execution_runtime`, `execution.audit.record_changed_scope_evidence`, `execution.task_runtime.task_runtime_runner`, `governance.control.metadata_execution_contract`, `platform.agent_interface.compile_cli_contract` | declared |
+| `platform.agent_interface.entrypoint_loader.capture_argument_parser` | `execution.audit.record_changed_scope_evidence` | declared |
+| `platform.agent_interface.entrypoint_loader.capture_entrypoints` | `platform.agent_interface.compile_cli_contract` | declared |
+| `platform.agent_interface.entrypoint_loader.describe_entrypoint` | `execution.audit.audit_execution_runtime`, `execution.audit.record_changed_scope_evidence`, `execution.task_runtime.task_runtime_runner`, `governance.control.metadata_execution_contract` | declared |
 | `platform.agent_interface.entrypoint_loader.discover_entrypoints` | `platform.agent_interface.compile_cli_contract` | declared |
 | `platform.agent_interface.entrypoint_loader.entrypoint_for_implementation_path` | `governance.profile.profile_contract` | declared |
 | `platform.agent_interface.entrypoint_loader.load_tool_implementation` | `execution.audit.record_changed_scope_evidence`, `execution.task_runtime.queue_runtime.gate_registry` | declared |
@@ -2603,9 +2604,10 @@ Repository IO, serialization, locking, transport, generation, and other Tool-own
 | `knowledge.structure.markdown_structure_checks.has_mermaid_fence` | yes | `execution.audit.prepare_audit_plan`, `knowledge.rendering.changed_scope_rendering_checks` |
 | `knowledge.structure.markdown_structure_checks.table_scan` | yes | `knowledge.rendering.changed_scope_rendering_checks`, `knowledge.structure.repository_structure` |
 | `platform.agent_interface.entrypoint_loader.EntrypointResolutionError` | yes | `execution.audit.audit_execution_runtime`, `execution.audit.record_changed_scope_evidence`, `execution.task_runtime.queue_runtime.gate_registry`, `execution.task_runtime.task_runtime_runner`, `governance.control.metadata_execution_contract`, `governance.profile.profile_contract`, `platform.agent_interface.compile_cli_contract` |
-| `platform.agent_interface.entrypoint_loader.describe_entrypoint` | yes | `execution.audit.audit_execution_runtime`, `execution.audit.record_changed_scope_evidence`, `execution.task_runtime.task_runtime_runner`, `governance.control.metadata_execution_contract`, `platform.agent_interface.compile_cli_contract` |
+| `platform.agent_interface.entrypoint_loader.describe_entrypoint` | yes | `execution.audit.audit_execution_runtime`, `execution.audit.record_changed_scope_evidence`, `execution.task_runtime.task_runtime_runner`, `governance.control.metadata_execution_contract` |
 | `platform.agent_interface.entrypoint_loader.discover_entrypoints` | yes | `platform.agent_interface.compile_cli_contract` |
-| `platform.agent_interface.entrypoint_loader.capture_argument_parser` | yes | `execution.audit.record_changed_scope_evidence`, `platform.agent_interface.compile_cli_contract` |
+| `platform.agent_interface.entrypoint_loader.capture_argument_parser` | yes | `execution.audit.record_changed_scope_evidence` |
+| `platform.agent_interface.entrypoint_loader.capture_entrypoints` | yes | `platform.agent_interface.compile_cli_contract` |
 | `platform.agent_interface.entrypoint_loader.entrypoint_for_implementation_path` | yes | `governance.profile.profile_contract` |
 | `platform.agent_interface.entrypoint_loader.load_tool_implementation` | yes | `execution.audit.record_changed_scope_evidence`, `execution.task_runtime.queue_runtime.gate_registry` |
 | `platform.agent_interface.install_host_config.install` | yes | `platform.distribution.prepare_host` |

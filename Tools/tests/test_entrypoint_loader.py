@@ -4,7 +4,9 @@ import ast
 import argparse
 from pathlib import Path
 import tempfile
+import sys
 import unittest
+from unittest import mock
 
 
 REPOSITORY = Path(__file__).resolve().parents[2]
@@ -12,6 +14,7 @@ REPOSITORY = Path(__file__).resolve().parents[2]
 from Tools.platform.agent_interface import entrypoint_loader
 from Tools.platform.agent_interface import agent_interface_policy
 from Tools.platform.distribution import module_boundary_facts
+from Tools.tests.support.cli_contract_fixture import CliContractFixture
 
 
 class EntrypointLoaderTests(unittest.TestCase):
@@ -231,6 +234,44 @@ class EntrypointLoaderTests(unittest.TestCase):
                     entrypoint_loader.EntrypointResolutionError,
                     "exactly one IMPLEMENTATION_MODULE"):
                 entrypoint_loader.discover_entrypoints(tools)
+
+    def test_complete_capture_shares_descriptors_and_rejects_changed_surface(self):
+        fixture = CliContractFixture()
+        self.addCleanup(fixture.cleanup)
+        implementation = fixture.write_tool("sample", """
+            import argparse
+            def main(argv=None):
+                parser = argparse.ArgumentParser()
+                parser.add_argument('--value', default='one')
+                return parser.parse_args(argv)
+        """)
+        adapter = fixture.tools / "sample.py"
+        process_state = (argparse.ArgumentParser.parse_args,
+                         sys.dont_write_bytecode, list(sys.argv), list(sys.path))
+        with mock.patch.object(entrypoint_loader, "describe_entrypoint",
+                               wraps=entrypoint_loader.describe_entrypoint) as describe:
+            captured = list(entrypoint_loader.capture_entrypoints(fixture.tools))
+        self.assertEqual(len(captured), describe.call_count)
+        descriptor, parser = captured[0]
+        self.assertEqual("sample", descriptor.tool)
+        self.assertEqual("one", parser.get_default("value"))
+        for path in (adapter, implementation, fixture.tools / "new.py"):
+            original = path.read_bytes() if path.exists() else None
+            with self.subTest(path=path):
+                try:
+                    capture = entrypoint_loader.capture_entrypoints(fixture.tools)
+                    next(capture)
+                    path.write_bytes((original or b"") + b"\n# changed\n")
+                    with self.assertRaises(entrypoint_loader.EntrypointResolutionError):
+                        list(capture)
+                finally:
+                    if original is None:
+                        path.unlink()
+                    else:
+                        path.write_bytes(original)
+        self.assertEqual(process_state,
+                         (argparse.ArgumentParser.parse_args, sys.dont_write_bytecode,
+                          list(sys.argv), list(sys.path)))
 
 
 if __name__ == "__main__":

@@ -1070,12 +1070,23 @@ class TerminalDimensionEvidenceProjectionTests(unittest.TestCase):
         }
 
     def project(self):
+        def premerge(observed, *_args, **_kwargs):
+            self.assertIn("_audit_stage_resolutions", observed)
+            self.assertIn("_audit_evidence_facts", observed)
+            # Nested readers must join this exact view, not start another
+            # producer-chain/registry observation for each terminal member.
+            with runtime.continue_evidence_observation(observed) as nested:
+                self.assertIs(observed, nested)
+            return self._premerge_closure()
         with mock.patch.object(
                 runtime, "_post_delta_evidence_closure",
                 return_value=self._postdelta_closure()), mock.patch.object(
                 runtime, "batch_review_evidence",
-                side_effect=lambda *_args, **_kwargs: self._premerge_closure()):
-            return runtime.terminal_dimension_evidence(self.result)
+                side_effect=premerge):
+            result = runtime.terminal_dimension_evidence(self.result)
+        self.assertNotIn("_audit_stage_resolutions", self.result)
+        self.assertNotIn("_audit_evidence_facts", self.result)
+        return result
 
     def test_m_and_profile_evidence_project_but_dimensionless_and_na_do_not(self):
         rows = self.project()
@@ -1123,6 +1134,13 @@ class TerminalDimensionEvidenceProjectionTests(unittest.TestCase):
             self.project()
 
     def test_invalidated_or_owner_rejected_selected_evidence_fails_closed(self):
+        # Invalid admission must be rejected before opening any observation,
+        # preserving the original owner error instead of failing in preparation.
+        with mock.patch.object(runtime, "evidence_observation",
+                               side_effect=AssertionError("must not prepare")):
+            for invalid in (None, {}, {"errors": ["admission rejected"]}):
+                with self.subTest(invalid=invalid), self.assertRaises(runtime.AuditEvidenceError):
+                    runtime.terminal_dimension_evidence(invalid)
         self.result["invalidated_evidence_receipt_ids"] = [
             "evidence-m-content"]
         with self.assertRaisesRegex(
