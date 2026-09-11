@@ -39,12 +39,12 @@ pages:
     reentry_condition: null
     authoring_status: reviewed
     gate_receipts:
-      - audit-record_batch_page_review-20260911T133847Z-24d4d83288dd423394087f9f5c59c2af-0001
-      - audit-check_batch_close-20260911T133852Z-bd6bf7a32be74e81824d35ffcce23ade-0010
+      - audit-record_batch_page_review-20260911T143229Z-d8b564b2c1db4b35840a7404b5884eec-0001
+      - audit-check_batch_close-20260911T143234Z-b6261d94bf2e47a28a4c57a2c3fecc0f-0010
     property_state:
       last_reviewed:
         value: 2026-09-11
-        evidence_receipt: audit-check_batch_close-20260911T133852Z-bd6bf7a32be74e81824d35ffcce23ade-0010
+        evidence_receipt: audit-check_batch_close-20260911T143234Z-b6261d94bf2e47a28a4c57a2c3fecc0f-0010
         content_fingerprint: sha256:3cae6b335b58a7f58970425c193ae89dda855cd56a5bc8acf9d0981774800a50
   - path: Topics/B.md
     coverage_disposition: required
@@ -60,11 +60,11 @@ pages:
     reentry_condition: null
     authoring_status: reviewed
     gate_receipts:
-      - audit-record_batch_page_review-20260911T133855Z-ae0de56ea70249539acb500e1be1d2d7-0001
-      - audit-check_batch_close-20260911T133905Z-0e5a6f3c0d784f13b3c3dab9785c1131-0010
+      - audit-record_batch_page_review-20260911T143237Z-64297005dd8d4d16bac536995198321c-0001
+      - audit-check_batch_close-20260911T143246Z-abba73143b8d410a8d7279f728e39e60-0010
     property_state:
       last_reviewed:
         value: 2026-09-11
-        evidence_receipt: audit-check_batch_close-20260911T133905Z-0e5a6f3c0d784f13b3c3dab9785c1131-0010
+        evidence_receipt: audit-check_batch_close-20260911T143246Z-abba73143b8d410a8d7279f728e39e60-0010
         content_fingerprint: sha256:b5c8c55c0599e683c595841079ea1849f7a4ce32311d48264f8acfeb2058359f
 open_gaps: []

@@ -39,7 +39,7 @@ pages:
     reentry_condition: null
     authoring_status: drafted
     gate_receipts:
-      - audit-record_batch_page_review-20260911T133754Z-cb25a3470ab14be6840ef86a8caaf632-0001
+      - audit-record_batch_page_review-20260911T143135Z-dcfbdfc671444c99a16192f75864d08b-0001
     property_state: {}
   - path: Topics/B.md
     coverage_disposition: required

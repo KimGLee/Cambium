@@ -216,8 +216,10 @@ os.environ["PYTHONDONTWRITEBYTECODE"] = "1"
 sys.pycache_prefix = _CAMBIUM_PYCACHE_PREFIX
 sys.dont_write_bytecode = True
 
+from contextlib import contextmanager
 import hashlib
 import json
+import py_compile
 import stat
 import subprocess
 import Tools.platform.repository.path_admission as path_admission
@@ -1112,6 +1114,69 @@ class Server(object):
 # ---------------------------------------------------------------------------
 
 
+@contextmanager
+def _prepared_imports(distribution_root):
+    """Share only source compilation within this stdio process's children.
+
+    Never import adopter-local pyc or retain a parser/validation result. Each
+    fresh child still executes modules and defaults and checks source hashes.
+    A new private directory, not the pyc header, establishes cache provenance.
+    Preparation is optional: missing/changed/invalid sources compile normally
+    when actually imported. Automatic writes remain disabled in every child.
+    """
+    global _CAMBIUM_PYCACHE_PREFIX
+    try:
+        cache = tempfile.TemporaryDirectory(
+            prefix="cambium-mcp-imports-",
+            dir=os.path.dirname(_external_pycache_prefix()))
+    except OSError:
+        yield
+        return
+    previous = (_CAMBIUM_PYCACHE_PREFIX, sys.pycache_prefix,
+                os.environ.get("PYTHONPYCACHEPREFIX"))
+    try:
+        root = os.path.realpath(os.path.abspath(distribution_root))
+        if os.path.commonpath((root, os.path.realpath(cache.name))) == root:
+            # A caller may provide a distribution unlike this implementation's
+            # root. Never put optional cache bytes inside that component tree.
+            yield
+            return
+        _CAMBIUM_PYCACHE_PREFIX = cache.name
+        sys.pycache_prefix = cache.name
+        os.environ["PYTHONPYCACHEPREFIX"] = cache.name
+        sources = set()
+        for module in list(sys.modules.values()):
+            path = getattr(module, "__file__", None)
+            if isinstance(path, str) and path.endswith(".py"):
+                sources.add(os.path.abspath(path))
+        tools = os.path.join(root, "Tools")
+        if not os.path.islink(tools):
+            for directory, children, files in os.walk(tools, followlinks=False):
+                children[:] = [name for name in children if not
+                               os.path.islink(os.path.join(directory, name))]
+                sources.update(os.path.join(directory, name) for name in files
+                               if name.endswith(".py"))
+        for source in sorted(sources):
+            if not os.path.isfile(source) or os.path.islink(source):
+                continue
+            try:
+                py_compile.compile(
+                    source, doraise=True,
+                    invalidation_mode=py_compile.PycInvalidationMode.CHECKED_HASH)
+            except (OSError, py_compile.PyCompileError):
+                # No trust fallback: an unavailable artifact is a cache miss,
+                # not a passing check or permission to use an older directory.
+                continue
+        yield
+    finally:
+        _CAMBIUM_PYCACHE_PREFIX, sys.pycache_prefix, environment = previous
+        if environment is None:
+            os.environ.pop("PYTHONPYCACHEPREFIX", None)
+        else:
+            os.environ["PYTHONPYCACHEPREFIX"] = environment
+        cache.cleanup()
+
+
 def error_response(message_id, code, message, data=None):
     body = {"code": code, "message": message}
     if data is not None:
@@ -1173,6 +1238,14 @@ def serve(stdin=None, stdout=None, server=None):
     stdout = sys.stdout if stdout is None else stdout
     server = Server() if server is None else server
 
+    with _prepared_imports(server.distribution_root):
+        try:
+            return _serve_messages(stdin, stdout, server)
+        finally:
+            server.close()
+
+
+def _serve_messages(stdin, stdout, server):
     while True:
         line = stdin.readline()
         if not line:
