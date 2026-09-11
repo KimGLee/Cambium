@@ -1097,6 +1097,31 @@ class TerminalDimensionEvidenceProjectionTests(unittest.TestCase):
         }
         self.assertEqual(rows, self.project())
 
+        # The frozen-stage owner accepts a common N/A declaration for the
+        # primary item and its covered children. Terminal projects only the
+        # primary fact, without pretending that each child actually ran.
+        primary = self.plan["obligations"][0]
+        common = self.records["evidence-m-content"]
+        children = [dict(primary, obligation_id="covered-%s" % position)
+                    for position in range(2)]
+        common.update(obligation_id=primary["obligation_id"],
+                      covered_obligation_ids=[row["obligation_id"] for row in children])
+        primary_reconciled = next(row for row in self.context["audit_evidence_reconciliation"]
+                                  if row["obligation_id"] == primary["obligation_id"])
+        for child in children:
+            self.plan["obligations"].append(child)
+            self.refs[child["obligation_id"]] = common["receipt_id"]
+        self.context.update(runtime._reconciliation_projection(
+            self.context["audit_evidence_reconciliation"] +
+            [dict(primary_reconciled, obligation_id=child["obligation_id"])
+             for child in children]))
+        self.assertEqual(rows, self.project())
+
+        # Applicability filtering does not allow duplicate executed evidence.
+        common["covered_obligation_ids"] = []
+        with self.assertRaisesRegex(runtime.AuditEvidenceError, "repeats a selected evidence ref"):
+            self.project()
+
     def test_invalidated_or_owner_rejected_selected_evidence_fails_closed(self):
         self.result["invalidated_evidence_receipt_ids"] = [
             "evidence-m-content"]

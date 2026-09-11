@@ -20,21 +20,21 @@ required_queue:
     work_spec_sha256: null
     state: closed
     hold_state: none
-    opened_at: 2026-09-11T05:19:21Z
-    activation_receipt: audit-check_queue-20260911T051921Z-a85a142634bc41d1b2f4c9ca05ca4fb7-0001
+    opened_at: 2026-09-11T05:40:27Z
+    activation_receipt: audit-check_queue-20260911T054027Z-38bec01b5ab94106b2f6424c67efc4cd-0001
     transition_receipts:
-      - audit-update_queue-20260911T051921Z-497e6fc09e5f4cc08b691b50c9bbba58-0001
-      - audit-update_queue-20260911T051928Z-71a844f504d04a76a6310891056afe3a-0001
-      - audit-update_queue-20260911T051930Z-8e34f4feac004a75b92fe251ee465de4-0001
-    merge_ready_at: 2026-09-11T05:19:27Z
+      - audit-update_queue-20260911T054027Z-d95d658bd21443a9a3c0c73e49ccd993-0001
+      - audit-update_queue-20260911T054034Z-f526725d384848edbc0a7deb390d4c54-0001
+      - audit-update_queue-20260911T054036Z-1890ea24b02f4de0a03aef666c2d0a36-0001
+    merge_ready_at: 2026-09-11T05:40:33Z
     delta_path: .cambium/deltas/B1.yaml
-    delta_sha256: sha256:76d6039e489b3f83f5e672fc6d99e7cdc27c322ba59fef4e23a45639e89ea54e
+    delta_sha256: sha256:b8a421db8a27be56c9279b7b955cee9ddcc7199be8f478197d41890538341d99
     batch_receipts:
-      - audit-manual-attestation-20260911T051926Z-66944b2fc60547b982b2aae5ddd1afad-0001
-    closed_at: 2026-09-11T05:19:29Z
-    queue_consistency_receipt: audit-check_queue-20260911T051929Z-e2c9ebcec20a4ea78178ee637fceb3a1-0001
-    close_gate_receipt: audit-check_batch_close-20260911T051929Z-e2c9ebcec20a4ea78178ee637fceb3a1-9999
-    delta_apply_receipt: audit-apply_delta-20260911T051928Z-c577edfc77a44339883bc8e6fecfa32b-0001
+      - audit-manual-attestation-20260911T054033Z-04205a02accf4406b5cc355c1c7ea8ce-0001
+    closed_at: 2026-09-11T05:40:36Z
+    queue_consistency_receipt: audit-check_queue-20260911T054036Z-38e4f7367fa249e7b36c20c2d960f249-0001
+    close_gate_receipt: audit-check_batch_close-20260911T054035Z-38e4f7367fa249e7b36c20c2d960f249-9999
+    delta_apply_receipt: audit-apply_delta-20260911T054035Z-56e78cc3f40b4a05ae066fc2390a06f9-0001
   - id: B2
     family: Core
     order: 2
@@ -50,18 +50,18 @@ required_queue:
     work_spec_sha256: null
     state: closed
     hold_state: none
-    opened_at: 2026-09-11T05:19:30Z
-    activation_receipt: audit-check_queue-20260911T051930Z-d4609b4193094c19a25b68d215eb9bd5-0001
+    opened_at: 2026-09-11T05:40:37Z
+    activation_receipt: audit-check_queue-20260911T054037Z-af64a7b0b7ff4907a00e34a657546094-0001
     transition_receipts:
-      - audit-update_queue-20260911T051930Z-c28a55fcdd2c4d63868261091b66aac4-0001
-      - audit-update_queue-20260911T051937Z-9ebad3b11637478bb3f0f22172686ddc-0001
-      - audit-update_queue-20260911T051939Z-50db63a3ab544396a448d944965b03d2-0001
-    merge_ready_at: 2026-09-11T05:19:36Z
+      - audit-update_queue-20260911T054037Z-b1fcde0cdd554cd6b44b70cff9218c59-0001
+      - audit-update_queue-20260911T054044Z-779f11fd56c740648e7ff8e66310d9a6-0001
+      - audit-update_queue-20260911T054047Z-1f85e7a8372f4fa2a1bd907dd9698d1c-0001
+    merge_ready_at: 2026-09-11T05:40:43Z
     delta_path: .cambium/deltas/B2.yaml
-    delta_sha256: sha256:81d6fc87d5a44b49c27533eefd3dc54897ae82eaafc7e1273c9466bc526a149f
+    delta_sha256: sha256:8b802a819c9f8307f37a2b1d3d18a198a51977d9f931f1ed1d5809480bb0185f
     batch_receipts:
-      - audit-manual-attestation-20260911T051936Z-bee0211365f74737b2327a0dff451fb2-0001
-    closed_at: 2026-09-11T05:19:39Z
-    queue_consistency_receipt: audit-check_queue-20260911T051939Z-d2b1c461d16e463fa52cbfd4e3a2f2e7-0001
-    close_gate_receipt: audit-check_batch_close-20260911T051938Z-d2b1c461d16e463fa52cbfd4e3a2f2e7-9999
-    delta_apply_receipt: audit-apply_delta-20260911T051938Z-0c000298ec8e476d896249a86b7eb589-0001
+      - audit-manual-attestation-20260911T054043Z-061999b99702499c9a80942b48b8920c-0001
+    closed_at: 2026-09-11T05:40:46Z
+    queue_consistency_receipt: audit-check_queue-20260911T054046Z-12cf766c8a944dab83081b0b82ac57f4-0001
+    close_gate_receipt: audit-check_batch_close-20260911T054045Z-12cf766c8a944dab83081b0b82ac57f4-9999
+    delta_apply_receipt: audit-apply_delta-20260911T054045Z-32567123220d40c7aa78a9f0acff9762-0001

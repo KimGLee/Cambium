@@ -1688,6 +1688,12 @@ def _dimension_evidence_is_applicable(obligation, record):
         return False
     if record.get("record_kind") == "batch-page-review-record" and \
             record.get("review_variant") == "m-atomic-item":
+        # The stage owner has already validated this exact plan binding.
+        # Covered obligations are discharged by the registered common N/A
+        # fact; they are not additional checks that actually ran. The primary
+        # declaration remains applicable evidence in its own dimension.
+        if obligation["obligation_id"] in record.get("covered_obligation_ids", ()):
+            return False
         disposition = record.get("applicability_disposition")
         if disposition == "not-applicable":
             return False
@@ -2018,7 +2024,6 @@ def _closed_batch_dimension_evidence(
                          premerge["audit_evidence_bindings"]}
 
     rows = []
-    selected_refs = set()
     postdelta_rows = {
         row["obligation_id"]: row for row in
         postdelta["reconciliation"]["audit_evidence_reconciliation"]
@@ -2056,11 +2061,6 @@ def _closed_batch_dimension_evidence(
             raise AuditEvidenceError(
                 "closed batch %s obligation %s selects invalidated evidence "
                 "%s" % (batch_id, obligation_id, selected))
-        if selected in selected_refs:
-            raise AuditEvidenceError(
-                "closed batch %s selects evidence %s for more than one "
-                "AuditPlan obligation" % (batch_id, selected))
-        selected_refs.add(selected)
         if not _dimension_evidence_is_applicable(obligation, record):
             continue
         dimension = obligation.get("dimension")
