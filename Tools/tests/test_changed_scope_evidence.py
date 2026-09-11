@@ -28,6 +28,7 @@ if TOOLS not in sys.path:
 import Tools.execution.audit.audit_evidence_runtime as audit_evidence_runtime
 import Tools.execution.audit.audit_obligation_projection as obligation_projection
 import Tools.execution.audit.audit_producer_runtime as audit_producer_runtime
+import Tools.execution.audit.audit_producer_chain as producer_chain
 import Tools.execution.audit.changed_scope_evidence_contract as contract
 import Tools.execution.audit.changed_scope_evidence_runtime as evidence_runtime
 import Tools.execution.audit.changed_scope_runtime_checks as runtime_checks
@@ -717,7 +718,10 @@ class ChangedScopeEvidenceIntegrationTests(
             # Consume the actual durable catalog, not the MCP return payload.
             # Direct Gate evidence is accepted directly, never wrapped merely
             # to make every row have an AuditReceipt shape.
-            current = runtime_validation.validate_runtime(root)
+            with mock.patch.object(producer_chain.capabilities, "CapabilityLookup",
+                                   wraps=producer_chain.capabilities.CapabilityLookup) as lookup:
+                current = runtime_validation.validate_runtime(root)
+                self.assertEqual(1, lookup.call_count)
             self.assertEqual([], current["errors"])
             status = audit_evidence_runtime.stage_evidence_status(
                 current, current["items_by_id"]["B1"], "pre-merge",

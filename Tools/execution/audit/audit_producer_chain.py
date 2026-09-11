@@ -38,18 +38,28 @@ _OBSERVATION_MEMO = ContextVar("audit_producer_chain_memo", default=None)
 
 
 @contextmanager
-def producer_chain_observation(memo):
-    """Use the evidence owner's mechanical facts for this read only.
+def producer_chain_observation(memo=None):
+    """Share source interpretation within one catalog or evidence read.
 
     No second store or persisted chain is created. The canonical spec is
     still checked by each public entry, and record/plan acceptance remains
-    with its contract. A fresh evidence observation supplies a fresh memo.
+    with its contract. Catalog admission may use this same owner without an
+    evidence view; that local memo expires at scope exit. Nothing survives
+    into another namespace, writer admission or after-image observation.
     """
+    values = {}
+    if memo is None:
+        def memo(key, compute):
+            if key not in values:
+                values[key] = compute()
+            return values[key]
     token = _OBSERVATION_MEMO.set(memo)
     try:
-        yield
+        with projection.obligation_projection_observation(memo):
+            yield
     finally:
         _OBSERVATION_MEMO.reset(token)
+        values.clear()
 
 
 def _observed(key, compute):

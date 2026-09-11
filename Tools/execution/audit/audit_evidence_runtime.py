@@ -227,8 +227,6 @@ def evidence_observation(result):
                     view["root"]), \
                 profile_batch_judgment_contract.judgment_observation(
                     view["_audit_evidence_facts"].memo), \
-                audit_obligation_projection.obligation_projection_observation(
-                    view["_audit_evidence_facts"].memo), \
                 register_observation(view["_audit_evidence_facts"].memo):
             yield view
     finally:

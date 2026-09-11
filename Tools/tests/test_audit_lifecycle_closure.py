@@ -233,6 +233,28 @@ class AuditLifecycleClosureTests(unittest.TestCase):
         self.assertEqual(
             "changed-scope-check-evidence", chain["producer_record_kind"])
 
+        # Catalog and stage consumers share the same interpretation owner;
+        # neither a returned row nor an earlier successful scan is authority.
+        with mock.patch.object(capabilities, "CapabilityLookup",
+                               wraps=capabilities.CapabilityLookup) as lookup:
+            with producer_chain.producer_chain_observation():
+                for _ in range(3):
+                    observed = producer_chain.producer_chain_for_obligation(
+                        obligation, root=REPOSITORY)
+                    self.assertEqual(chain, observed)
+                    observed["producer_tool"] = "forged"
+                self.assertEqual(1, lookup.call_count)
+            with producer_chain.producer_chain_observation():
+                self.assertEqual(chain, producer_chain.producer_chain_for_obligation(
+                    obligation, root=REPOSITORY))
+            self.assertEqual(2, lookup.call_count)
+        with mock.patch.object(capabilities, "capability_invocation_edge_errors",
+                               return_value=["changed adapter"]):
+            with producer_chain.producer_chain_observation():
+                with self.assertRaisesRegex(ValueError, "changed adapter"):
+                    producer_chain.producer_chain_for_obligation(
+                        obligation, root=REPOSITORY)
+
         mutated = copy.deepcopy(obligation)
         mutated["producer_check"] = "nearby_unregistered_check"
         with self.assertRaisesRegex(

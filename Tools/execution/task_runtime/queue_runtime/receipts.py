@@ -23,6 +23,7 @@ import Tools.execution.task_runtime.runtime_state_contract as runtime_state_cont
 from Tools.execution.evidence import receipt_type_contract
 from Tools.execution.evidence import receipt_reference_contract
 from Tools.execution.audit import batch_review_obligation_contract
+from Tools.execution.audit import audit_producer_chain
 
 from Tools.execution.task_runtime.queue_runtime.canon import (
     SEAL_TOOL,
@@ -424,7 +425,8 @@ def receipt_catalog(root, errors):
     # Reuse only the registry owner's exact-byte mechanical projection.
     # Every body and lifecycle eligibility is still checked independently;
     # exit drops the scope before another namespace or runtime observation.
-    with batch_review_obligation_contract.registry_observation(root):
+    with batch_review_obligation_contract.registry_observation(root), \
+            audit_producer_chain.producer_chain_observation():
         seen_receipt_paths = {}
         for dirpath, dirnames, filenames in os.walk(receipt_dir, topdown=True,
                                                     followlinks=False):
@@ -780,7 +782,8 @@ def _cold_verified_records(root, entries, by_segment, type_registry, errors):
     # Reuse only the registry owner's exact-byte mechanical projection.
     # Every body and lifecycle eligibility is still checked independently;
     # exit drops the scope before another namespace or runtime observation.
-    with batch_review_obligation_contract.registry_observation(root):
+    with batch_review_obligation_contract.registry_observation(root), \
+            audit_producer_chain.producer_chain_observation():
         verified = {}
         segments = {}
         for segment in sorted(entries):

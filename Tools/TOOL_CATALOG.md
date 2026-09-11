@@ -98,7 +98,7 @@ Machine-contract loading, closed validation, pure projection, and stable predica
 | `execution.audit.audit_lifecycle_contract` | `Tools/execution/audit/audit_lifecycle_contract.py` | python-module | `execution / audit / contract` | static Python (9 symbols / 12 consumers) |
 | `execution.audit.audit_obligation_projection` | `Tools/execution/audit/audit_obligation_projection.py` | python-module | `execution / audit / contract` | static Python (14 symbols / 6 consumers) |
 | `execution.audit.audit_plan_contract` | `Tools/execution/audit/audit_plan_contract.py` | python-module | `execution / audit / contract` | static Python (13 symbols / 8 consumers) |
-| `execution.audit.audit_producer_chain` | `Tools/execution/audit/audit_producer_chain.py` | python-module | `execution / audit / contract` | static Python (6 symbols / 7 consumers) |
+| `execution.audit.audit_producer_chain` | `Tools/execution/audit/audit_producer_chain.py` | python-module | `execution / audit / contract` | static Python (6 symbols / 8 consumers) |
 | `execution.audit.audit_reconciliation_contract` | `Tools/execution/audit/audit_reconciliation_contract.py` | python-module | `execution / audit / contract` | static Python (1 symbols / 3 consumers) |
 | `execution.audit.batch_close_audit` | `Tools/execution/audit/batch_close_audit.py` | python-module | `execution / audit / contract` | static Python (4 symbols / 3 consumers) |
 | `execution.audit.batch_close_contract` | `Tools/execution/audit/batch_close_contract.py` | python-module | `execution / audit / contract` | static Python (13 symbols / 5 consumers), registered Python symbol (1 consumers) |
@@ -767,7 +767,7 @@ Repository IO, serialization, locking, transport, generation, and other Tool-own
 | `execution.audit.audit_obligation_projection.SUBSTANTIVE_REGISTRY_PATH` | `execution.audit.audit_producer_chain` | declared |
 | `execution.audit.audit_obligation_projection.composed_obligation_specs` | `execution.audit.prepare_audit_plan` | declared |
 | `execution.audit.audit_obligation_projection.load_changed_scope_registry` | `execution.audit.changed_scope_evidence_contract` | declared |
-| `execution.audit.audit_obligation_projection.obligation_projection_observation` | `execution.audit.audit_evidence_runtime` | declared |
+| `execution.audit.audit_obligation_projection.obligation_projection_observation` | `execution.audit.audit_producer_chain` | declared |
 | `execution.audit.audit_obligation_projection.obligation_spec_for_rule` | `execution.audit.audit_producer_chain`, `execution.audit.changed_scope_evidence_contract`, `execution.audit.record_changed_scope_evidence`, `knowledge.rendering.record_rendering_verification` | declared |
 | `execution.audit.audit_obligation_projection.profile_registered_scan_spec` | `execution.audit.changed_scope_evidence_contract` | declared |
 | `execution.audit.audit_obligation_projection.profile_rendering_specs` | `execution.audit.audit_producer_chain` | declared |
@@ -791,7 +791,7 @@ Repository IO, serialization, locking, transport, generation, and other Tool-own
 | `execution.audit.audit_producer_chain.AuditProducerChainError` | `execution.audit.audit_evidence_runtime`, `execution.audit.audit_execution_runtime`, `execution.audit.changed_scope_evidence_contract`, `execution.audit.record_changed_scope_evidence`, `execution.audit.record_substantive_review`, `knowledge.rendering.record_rendering_verification` | declared |
 | `execution.audit.audit_producer_chain.producer_chain_for_obligation` | `execution.audit.audit_evidence_runtime`, `execution.audit.audit_execution_runtime`, `execution.audit.record_changed_scope_evidence`, `execution.audit.record_substantive_review`, `knowledge.rendering.record_profile_rendering`, `knowledge.rendering.record_rendering_verification` | declared |
 | `execution.audit.audit_producer_chain.producer_chain_for_spec` | `execution.audit.audit_execution_runtime`, `execution.audit.changed_scope_evidence_contract`, `execution.audit.record_changed_scope_evidence`, `knowledge.rendering.record_rendering_verification` | declared |
-| `execution.audit.audit_producer_chain.producer_chain_observation` | `execution.audit.audit_evidence_runtime` | declared |
+| `execution.audit.audit_producer_chain.producer_chain_observation` | `execution.audit.audit_evidence_runtime`, `execution.task_runtime.queue_runtime.receipts` | declared |
 | `execution.audit.audit_producer_chain.producer_record_matches` | `execution.audit.audit_evidence_runtime` | declared |
 | `execution.audit.audit_producer_chain.require_producer_record` | `execution.audit.changed_scope_evidence_contract`, `knowledge.rendering.record_rendering_verification` | declared |
 | `execution.audit.audit_producer_runtime.AuditProducerError` | `execution.audit.prepare_audit_plan`, `execution.audit.record_batch_page_review`, `execution.audit.record_substantive_review`, `knowledge.rendering.record_rendering_verification` | declared |
@@ -2328,7 +2328,7 @@ Repository IO, serialization, locking, transport, generation, and other Tool-own
 | `execution.audit.audit_obligation_projection.composed_obligation_specs` | yes | `execution.audit.prepare_audit_plan` |
 | `execution.audit.audit_obligation_projection.load_changed_scope_registry` | yes | `execution.audit.changed_scope_evidence_contract` |
 | `execution.audit.audit_obligation_projection.obligation_spec_for_rule` | yes | `execution.audit.audit_producer_chain`, `execution.audit.changed_scope_evidence_contract`, `execution.audit.record_changed_scope_evidence`, `knowledge.rendering.record_rendering_verification` |
-| `execution.audit.audit_obligation_projection.obligation_projection_observation` | yes | `execution.audit.audit_evidence_runtime` |
+| `execution.audit.audit_obligation_projection.obligation_projection_observation` | yes | `execution.audit.audit_producer_chain` |
 | `execution.audit.audit_obligation_projection.profile_registered_scan_spec` | yes | `execution.audit.changed_scope_evidence_contract` |
 | `execution.audit.audit_obligation_projection.required_obligation` | yes | `execution.audit.prepare_audit_plan` |
 | `execution.audit.audit_obligation_projection.resolve_obligation_definition` | yes | `execution.audit.audit_producer_chain`, `execution.audit.changed_scope_evidence_contract`, `execution.audit.prepare_audit_plan`, `execution.audit.record_changed_scope_evidence` |
@@ -2351,7 +2351,7 @@ Repository IO, serialization, locking, transport, generation, and other Tool-own
 | `execution.audit.audit_producer_chain.producer_chain_for_obligation` | yes | `execution.audit.audit_evidence_runtime`, `execution.audit.audit_execution_runtime`, `execution.audit.record_changed_scope_evidence`, `execution.audit.record_substantive_review`, `knowledge.rendering.record_profile_rendering`, `knowledge.rendering.record_rendering_verification` |
 | `execution.audit.audit_producer_chain.producer_chain_for_spec` | yes | `execution.audit.audit_execution_runtime`, `execution.audit.changed_scope_evidence_contract`, `execution.audit.record_changed_scope_evidence`, `knowledge.rendering.record_rendering_verification` |
 | `execution.audit.audit_producer_chain.producer_record_matches` | yes | `execution.audit.audit_evidence_runtime` |
-| `execution.audit.audit_producer_chain.producer_chain_observation` | yes | `execution.audit.audit_evidence_runtime` |
+| `execution.audit.audit_producer_chain.producer_chain_observation` | yes | `execution.audit.audit_evidence_runtime`, `execution.task_runtime.queue_runtime.receipts` |
 | `execution.audit.audit_producer_chain.require_producer_record` | yes | `execution.audit.changed_scope_evidence_contract`, `knowledge.rendering.record_rendering_verification` |
 | `execution.audit.audit_reconciliation_contract.projection_fields` | yes | `execution.audit.audit_evidence_runtime`, `execution.audit.check_batch_close`, `execution.audit.record_batch_review` |
 | `execution.audit.batch_close_audit.validate_member_evidence` | yes | `execution.audit.audit_evidence_runtime` |
